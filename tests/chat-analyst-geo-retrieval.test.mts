@@ -178,6 +178,59 @@ describe('selectRelevantArticles — regions and countries (#10863)', () => {
     assert.ok(performance.now() - started < 200, `took ${performance.now() - started} ms`);
   });
 
+  it('a headline naming the US only by its code still counts (PR #10871 review)', () => {
+    const digest = { categories: { world: { items: [item('US tariffs on steel take effect', 30)] } } };
+    const out = selectRelevantArticles(flattenDigest(digest), 'United States trade');
+    assert.match(out, /US tariffs on steel/);
+    assert.doesNotMatch(out, /Coverage gap/);
+  });
+
+  it('a content tail after a dash is not a source (PR #10871 review)', () => {
+    const digest = {
+      categories: {
+        world: {
+          items: [
+            item('Trade agreement signed — Brazil', 30),
+            item('Markets rally - Brazil cuts rates', 30),
+          ],
+        },
+      },
+    };
+    const brazil = selectRelevantArticles(flattenDigest(digest), 'brazil');
+    assert.match(brazil, /Trade agreement signed/);
+    assert.match(brazil, /Markets rally/);
+    assert.doesNotMatch(brazil, /Coverage gap/);
+    assert.match(selectRelevantArticles(flattenDigest(digest), 'interest rates'), /Brazil cuts rates/);
+  });
+
+  it('sub-regions do not borrow the parent bucket or its corrections (PR #10871 review)', () => {
+    const digest = {
+      categories: {
+        asia: { items: [item('Japan exports rise', 50)] },
+        latam: { items: [item('Mexican peso climbs', 50)] },
+        africa: { items: [item('Egyptian pound slides', 50)] },
+      },
+    };
+    const southAsia = selectRelevantArticles(flattenDigest(digest), 'south asia');
+    assert.doesNotMatch(southAsia, /Japan exports/);
+    assert.match(southAsia, /Coverage gap: .*South Asia\./);
+    assert.doesNotMatch(selectRelevantArticles(flattenDigest(digest), 'south america'), /Mexican peso/);
+    assert.doesNotMatch(selectRelevantArticles(flattenDigest(digest), 'sub-saharan africa'), /Egyptian pound/);
+    assert.match(selectRelevantArticles(flattenDigest(digest), 'asia'), /Japan exports/);
+  });
+
+  it('Asia includes Central Asia (PR #10871 review)', () => {
+    const digest = { categories: { world: { items: [item('Kazakh grain exports hit record', 30)] } } };
+    assert.match(selectRelevantArticles(flattenDigest(digest), 'asia'), /Kazakh grain/);
+  });
+
+  it('a long whitespace run in a title stays linear (PR #10871 review)', () => {
+    const digest = { categories: { world: { items: [item(`a${' '.repeat(50_000)}b`, 10)] } } };
+    const started = performance.now();
+    selectRelevantArticles(flattenDigest(digest), 'markets');
+    assert.ok(performance.now() - started < 200, `took ${performance.now() - started} ms`);
+  });
+
   it('one slot per title when feeds repeat a story', () => {
     const digest = {
       categories: {

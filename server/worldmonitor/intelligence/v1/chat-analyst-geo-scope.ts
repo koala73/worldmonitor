@@ -10,6 +10,7 @@
  * (names, aliases, demonyms, exclusions).
  */
 import {
+  CODE_TOKEN_ALLOWLIST,
   countryDisplayName,
   countryMentionTerms,
   mentionsCountry,
@@ -35,6 +36,17 @@ interface RegionDefinition {
    */
   extraMembers?: string[];
   excludedMembers?: string[];
+  /**
+   * Explicit member list, replacing the taxonomy (a sub-region the taxonomy
+   * does not model, such as South America).
+   */
+  members?: string[];
+  /**
+   * Whether the digest bucket alone is evidence. Off for sub-regions: the
+   * `asia` bucket carries China and Japan stories, which say nothing about
+   * South Asia.
+   */
+  bucketCounts?: boolean;
   /** Lowercase, space-separated, matched as whole tokens. */
   phrases: string[];
 }
@@ -45,7 +57,15 @@ const REGIONS: RegionDefinition[] = [
     category: 'latam',
     macroRegions: ['latam'],
     extraMembers: ['MX'],
-    phrases: ['latin america', 'latin american', 'latam', 'south america', 'south american', 'central america', 'central american', 'caribbean'],
+    phrases: ['latin america', 'latin american', 'latam', 'central america', 'central american', 'caribbean'],
+  },
+  {
+    label: 'South America',
+    category: 'latam',
+    macroRegions: [],
+    members: ['AR', 'BO', 'BR', 'CL', 'CO', 'EC', 'FK', 'GF', 'GY', 'PE', 'PY', 'SR', 'UY', 'VE'],
+    bucketCounts: false,
+    phrases: ['south america', 'south american'],
   },
   {
     label: 'the Middle East',
@@ -54,15 +74,28 @@ const REGIONS: RegionDefinition[] = [
     excludedMembers: ['MT'],
     phrases: ['middle east', 'middle eastern', 'mena', 'persian gulf', 'gulf states'],
   },
-  { label: 'South Asia', category: 'asia', macroRegions: ['south-asia'], phrases: ['south asia', 'south asian'] },
-  { label: 'East Asia', category: 'asia', macroRegions: ['east-asia'], phrases: ['east asia', 'east asian'] },
-  { label: 'Asia', category: 'asia', macroRegions: ['east-asia', 'south-asia'], phrases: ['asia pacific', 'asia', 'asian', 'apac'] },
+  { label: 'South Asia', category: 'asia', macroRegions: ['south-asia'], bucketCounts: false, phrases: ['south asia', 'south asian'] },
+  { label: 'East Asia', category: 'asia', macroRegions: ['east-asia'], bucketCounts: false, phrases: ['east asia', 'east asian'] },
+  {
+    label: 'Asia',
+    category: 'asia',
+    macroRegions: ['east-asia', 'south-asia'],
+    extraMembers: ['KG', 'KZ', 'TJ', 'TM', 'UZ'],
+    phrases: ['asia pacific', 'asia', 'asian', 'apac'],
+  },
+  {
+    label: 'Sub-Saharan Africa',
+    category: 'africa',
+    macroRegions: ['sub-saharan-africa'],
+    bucketCounts: false,
+    phrases: ['sub saharan africa', 'sub saharan african'],
+  },
   {
     label: 'Africa',
     category: 'africa',
     macroRegions: ['sub-saharan-africa'],
     extraMembers: ['DJ', 'DZ', 'EG', 'LY', 'MA', 'TN'],
-    phrases: ['sub saharan africa', 'africa', 'african'],
+    phrases: ['africa', 'african'],
   },
   {
     label: 'Europe',
@@ -102,6 +135,7 @@ export interface GeoRegion {
   category: string;
   /** The region's own phrases, normalized, for a headline that names it. */
   phrases: string[];
+  bucketCounts: boolean;
   members: CountryMentionTerms[];
 }
 
@@ -126,6 +160,7 @@ function termsFor(code: string): CountryMentionTerms {
 function regionMembers(region: RegionDefinition): string[] {
   const excluded = new Set(region.excludedMembers ?? []);
   const codes = new Set([
+    ...(region.members ?? []),
     ...region.macroRegions.flatMap((id) => getForecastMacroRegionMembers(id)),
     ...(region.extraMembers ?? []),
   ]);
@@ -157,6 +192,7 @@ export function resolveGeoScope(query: string): GeoScope {
             label: region.label,
             category: region.category,
             phrases: region.phrases,
+            bucketCounts: region.bucketCounts ?? true,
             members: regionMembers(region).map(termsFor),
           });
         } else if (regions.length >= MAX_SCOPE_REGIONS) {
@@ -198,7 +234,9 @@ export function hasGeoScope(scope: GeoScope): boolean {
  */
 function mentions(rawTitle: string, normalizedTitle: string, terms: CountryMentionTerms): boolean {
   const candidate = terms.names.some((name) => name && normalizedTitle.includes(name))
-    || terms.demonyms.some((demonym) => demonym && rawTitle.includes(demonym));
+    || terms.demonyms.some((demonym) => demonym && rawTitle.includes(demonym))
+    // "US tariffs on steel": the shared matcher accepts allowlisted codes.
+    || (CODE_TOKEN_ALLOWLIST.has(terms.code) && rawTitle.includes(terms.code));
   return candidate && mentionsCountry(rawTitle, terms);
 }
 
@@ -230,7 +268,7 @@ export function matchPlaces(scope: GeoScope, title: string, category: string | u
     if (namesRegion || region.members.some((terms) => mentions(title, normalized, terms))) {
       regions.add(region.label);
       score += 1;
-    } else if (category && category === region.category) {
+    } else if (region.bucketCounts && category && category === region.category) {
       regions.add(region.label);
       score += 0.5;
     }

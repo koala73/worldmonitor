@@ -1027,15 +1027,31 @@ function scoreArticle(title: string, keywords: string[]): number {
   return (hasAdjacentPair ? 3 : 1) * hits;
 }
 
-// "… grows to 22 - AP News", "… | Defense News Weekly": the outlet, not the
-// story. Up to five words after the last dash or bar.
-// Words are whitespace-separated so a long token cannot be split across the
-// repetition (polynomial backtracking on untrusted titles).
-const SOURCE_SUFFIX = /\s+[-–—|]\s+[^\s\-–—|]+(?:\s+[^\s\-–—|]+){0,4}\s*$/u;
+// "… grows to 22 - AP News": Google News appends the outlet after a spaced
+// hyphen (or a bar). Strip that tail for keyword scoring only, and only when
+// it reads as a name: up to five words, each capitalized or a joining word
+// ("Times of India"). "Markets rally - Brazil cuts rates" keeps its tail.
+// Places are matched on the full title, so a stripped tail can never hide one.
+// Hand-scanned rather than a regex: a title is untrusted feed text, and an
+// anchored whitespace pattern backtracks quadratically on long runs.
+const SOURCE_SEPARATORS = [' - ', ' | '];
+const SOURCE_JOINING_WORDS = new Set(['of', 'the', 'and', 'de', 'la', 'el', 'du', 'des', '&']);
 
 function stripSourceSuffix(title: string): string {
-  const stripped = title.replace(SOURCE_SUFFIX, '');
-  return stripped || title;
+  let cut = -1;
+  let sepLength = 0;
+  for (const sep of SOURCE_SEPARATORS) {
+    const at = title.lastIndexOf(sep);
+    if (at > cut) {
+      cut = at;
+      sepLength = sep.length;
+    }
+  }
+  if (cut <= 0) return title;
+  const words = title.slice(cut + sepLength).trim().split(' ').filter(Boolean);
+  if (words.length === 0 || words.length > 5) return title;
+  const nameLike = words.every((word) => SOURCE_JOINING_WORDS.has(word) || /^[\p{Lu}\p{N}]/u.test(word));
+  return nameLike ? title.slice(0, cut) : title;
 }
 
 // Slots kept for topic-only headlines when a question names places, so
@@ -1075,7 +1091,7 @@ export function selectRelevantArticles(items: DigestItem[], query: string, curre
       const kwScore = keywords.length > 0 ? scoreArticle(scoringTitle, keywords) : 0;
       let placeScore = 0;
       if (scoped) {
-        const places = matchPlaces(scope, scoringTitle, safeStr(item.category) || undefined);
+        const places = matchPlaces(scope, title, safeStr(item.category) || undefined);
         for (const code of places.countries) coveredCountries.add(code);
         for (const label of places.regions) coveredRegions.add(label);
         placeScore = places.score;
