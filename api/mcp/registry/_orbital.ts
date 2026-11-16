@@ -176,7 +176,7 @@ function maneuverArgs(params: Record<string, unknown>): number {
 const ELEMENT_SET_SCHEMA = {
   type: 'object',
   properties: {
-    epoch: { type: 'string', description: 'Element epoch, ISO 8601 UTC.' },
+    epoch: { type: 'integer', description: 'Element epoch, Unix epoch milliseconds.' },
     meanMotion: { type: 'number', description: 'Revolutions per day.' },
     semiMajorAxisKm: { type: 'number' },
     eccentricity: { type: 'number' },
@@ -193,9 +193,9 @@ const MANEUVER_SCHEMA = {
     element: { type: 'string', enum: ['semiMajorAxis', 'inclination', 'raan'], description: 'raan is the node left after J2 nodal regression.' },
     unit: { type: 'string', enum: ['km', 'deg'] },
     regime: { type: 'string', enum: ['leo', 'meo', 'geo', 'heo'] },
-    fromEpoch: { type: 'string' },
-    toEpoch: { type: 'string' },
-    confirmedByEpoch: { type: 'string', description: 'Following epoch that kept at least half of the step.' },
+    fromEpoch: { type: 'integer', description: 'Epoch before the step, Unix epoch milliseconds.' },
+    toEpoch: { type: 'integer', description: 'Epoch after the step, Unix epoch milliseconds.' },
+    confirmedByEpoch: { type: 'integer', description: 'Following epoch that kept at least half of the step, Unix epoch milliseconds.' },
     expected: { type: 'number', description: 'Value the baseline trend predicts at toEpoch.' },
     observed: { type: 'number' },
     residual: { type: 'number' },
@@ -314,7 +314,7 @@ export const ORBITAL_TOOLS: ToolDef[] = [
     title: 'Candidate orbit manoeuvres of imaging satellites',
     _subscriptionOnly: true,
     _outputBudgetBytes: 131072,
-    description: 'Return candidate orbit manoeuvres of the profiled imaging satellites (military, government, commercial and open missions), newest first. A candidate is a step in semi-major axis, inclination or the J2-corrected node that left the satellite\'s own 10-day trend by more than the threshold shown and that the next element set confirmed; each carries both element sets, expected and observed values, the threshold and the orbit regime. It is never a confirmed manoeuvre. satellites says per satellite whether it was evaluated or why not (insufficient-baseline, stale, decaying, no-history): no candidate for an unevaluated satellite means nothing was judged, not that it did not manoeuvre. Falls in LEO semi-major axis are not flagged while drag is unknown (methodNote). stale true means the list is missing or older than 24 hours. Pass norad_id for one satellite. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.',
+    description: 'Return candidate orbit manoeuvres of the profiled imaging satellites (military, government, commercial and open missions), newest first. A candidate is a step in semi-major axis, inclination or the J2-corrected node that left the satellite\'s own 10-day trend by more than the threshold shown and that the next element set confirmed; each carries both element sets, expected and observed values, the threshold and the orbit regime. It is never a confirmed manoeuvre. satellites says per satellite whether its newest step was evaluated or why not (gap, insufficient-baseline, stale, decaying, no-history): no candidate for an unevaluated satellite means nothing was judged, not that it did not manoeuvre. Falls in LEO semi-major axis are not flagged while drag is unknown (methodNote). stale true means the list is missing or older than 24 hours. Pass norad_id for one satellite. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -328,7 +328,7 @@ export const ORBITAL_TOOLS: ToolDef[] = [
         candidates: { type: 'array', items: MANEUVER_SCHEMA, description: 'Candidate manoeuvres, newest first.' },
         satellites: {
           type: 'array',
-          items: { type: 'object', properties: { noradId: { type: 'integer' }, status: { type: 'string', enum: ['evaluated', 'insufficient-baseline', 'stale', 'decaying', 'no-history'] }, regime: { type: 'string' }, candidateCount: { type: 'integer' } } },
+          items: { type: 'object', properties: { noradId: { type: 'integer' }, status: { type: 'string', enum: ['evaluated', 'gap', 'insufficient-baseline', 'stale', 'decaying', 'no-history'] }, regime: { type: 'string' }, candidateCount: { type: 'integer' } } },
         },
         evaluatedSatellites: { type: 'integer' },
         generatedAt: { type: 'integer', description: 'When the list was computed, Unix epoch milliseconds; 0 with no list.' },

@@ -578,16 +578,16 @@ paths:
                                     - "after":
                                         "bstar": 1.5
                                         "eccentricity": 1.5
-                                        "epoch": "example"
+                                        "epoch": 1
                                         "inclination": 1.5
                                         "meanMotion": 1.5
                                       "before":
                                           "bstar": 1.5
                                           "eccentricity": 1.5
-                                          "epoch": "example"
+                                          "epoch": 1
                                           "inclination": 1.5
                                           "meanMotion": 1.5
-                                      "confirmedByEpoch": "example"
+                                      "confirmedByEpoch": 1
                                       "element": "example"
                                       "expected": 1.5
                                 "detectionVersion": 1
@@ -1452,14 +1452,17 @@ components:
                     type: string
                     description: leo, meo, geo or heo; selects the threshold floor.
                 fromEpoch:
-                    type: string
-                    description: Epoch before the step, ISO 8601 UTC.
+                    type: integer
+                    format: int64
+                    description: 'Epoch before the step, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
                 toEpoch:
-                    type: string
-                    description: Epoch after the step, ISO 8601 UTC.
+                    type: integer
+                    format: int64
+                    description: 'Epoch after the step, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
                 confirmedByEpoch:
-                    type: string
-                    description: Following epoch that kept at least half of the step, ISO 8601 UTC.
+                    type: integer
+                    format: int64
+                    description: 'Following epoch that kept at least half of the step, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
                 expected:
                     type: number
                     format: double
@@ -1485,8 +1488,9 @@ components:
             type: object
             properties:
                 epoch:
-                    type: string
-                    description: Element epoch, ISO 8601 UTC.
+                    type: integer
+                    format: int64
+                    description: 'Element epoch, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
                 meanMotion:
                     type: number
                     format: double
@@ -1519,7 +1523,7 @@ components:
                     format: int32
                 status:
                     type: string
-                    description: evaluated, insufficient-baseline, stale, decaying or no-history.
+                    description: evaluated, gap (the newest step could not be compared across a gap), insufficient-baseline, stale, decaying or no-history.
                 regime:
                     type: string
                     description: leo, meo, geo or heo; empty when the satellite was not classified.

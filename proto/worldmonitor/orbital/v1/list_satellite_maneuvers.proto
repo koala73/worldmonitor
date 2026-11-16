@@ -12,8 +12,8 @@ message ListSatelliteManeuversRequest {
 
 // ManeuverElementSet is one epoch's mean elements as the detector compared them.
 message ManeuverElementSet {
-  // Element epoch, ISO 8601 UTC.
-  string epoch = 1;
+  // Element epoch, as Unix epoch milliseconds.
+  int64 epoch = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Revolutions per day.
   double mean_motion = 2;
   // Semi-major axis derived from the mean motion, km.
@@ -36,12 +36,12 @@ message ManeuverCandidate {
   string unit = 3;
   // leo, meo, geo or heo; selects the threshold floor.
   string regime = 4;
-  // Epoch before the step, ISO 8601 UTC.
-  string from_epoch = 5;
-  // Epoch after the step, ISO 8601 UTC.
-  string to_epoch = 6;
-  // Following epoch that kept at least half of the step, ISO 8601 UTC.
-  string confirmed_by_epoch = 7;
+  // Epoch before the step, as Unix epoch milliseconds.
+  int64 from_epoch = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Epoch after the step, as Unix epoch milliseconds.
+  int64 to_epoch = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Following epoch that kept at least half of the step, as Unix epoch milliseconds.
+  int64 confirmed_by_epoch = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Value the baseline trend predicts at to_epoch.
   double expected = 8;
   // Value observed at to_epoch.
@@ -57,7 +57,7 @@ message ManeuverCandidate {
 // SatelliteManeuverStatus says whether the detector could judge a satellite, so no candidate is never read as no manoeuvre.
 message SatelliteManeuverStatus {
   int32 norad_id = 1;
-  // evaluated, insufficient-baseline, stale, decaying or no-history.
+  // evaluated, gap (the newest step could not be compared across a gap), insufficient-baseline, stale, decaying or no-history.
   string status = 2;
   // leo, meo, geo or heo; empty when the satellite was not classified.
   string regime = 3;

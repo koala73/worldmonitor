@@ -291,7 +291,7 @@ Returns candidate orbit manoeuvres of the profiled imaging satellites, newest fi
 
 - **API endpoint:** `GET /api/orbital/v1/list-satellite-maneuvers` (takes the number as `norad_id`)
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
-- **Freshness:** `stale: true` when the list is missing or older than 24 hours. `satellites` says for each satellite whether it was `evaluated` or why not (`insufficient-baseline`, `stale`, `decaying`, `no-history`); no candidate for a satellite that was not evaluated means nothing was judged. Falls in LEO semi-major axis are not flagged while drag is unknown (`methodNote`).
+- **Freshness:** `stale: true` when the list is missing or older than 24 hours. `satellites` says for each satellite whether its newest step was `evaluated` or why not (`gap`, `insufficient-baseline`, `stale`, `decaying`, `no-history`); no candidate for a satellite that was not evaluated means nothing was judged. Falls in LEO semi-major axis are not flagged while drag is unknown (`methodNote`).
 
 ```bash curl
 curl -s https://worldmonitor.app/mcp \

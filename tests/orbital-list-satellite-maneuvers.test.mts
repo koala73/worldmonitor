@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
+  noradIdFilter,
   ORBITAL_MANEUVERS_MAX_STALE_MINUTES,
   toManeuversResponse,
 } from '../server/worldmonitor/orbital/v1/list-satellite-maneuvers.ts';
@@ -68,6 +69,44 @@ describe('toManeuversResponse', () => {
     const value = stored();
     value.candidates.push({ ...value.candidates[0], kind: 'confirmed' }, { ...value.candidates[0], after: null });
     assert.equal(toManeuversResponse(value, NOW).candidates.length, 2);
+  });
+});
+
+const refusesNoradId = (error: unknown) => (error as { violations?: Array<{ field: string; description: string }> }).violations?.[0]?.field === 'norad_id';
+
+describe('review round 2 (#10868)', () => {
+  it('serves every epoch as Unix milliseconds', () => {
+    const [first] = toManeuversResponse(stored(), NOW).candidates;
+    for (const value of [first.fromEpoch, first.toEpoch, first.confirmedByEpoch, first.before!.epoch, first.after!.epoch]) {
+      assert.equal(typeof value, 'number');
+      assert.ok(value > T0 && value <= NOW);
+    }
+    assert.equal(first.after!.epoch, first.toEpoch);
+  });
+
+  it('drops a candidate whose element sets or epochs are incomplete instead of serving zeros', () => {
+    const value = stored();
+    const good = value.candidates[0];
+    value.candidates.push(
+      { ...good, before: {}, after: {} },
+      { ...good, after: { ...good.after, raan: null } },
+      { ...good, after: { ...good.after, inclination: '98.5' } },
+      { ...good, toEpoch: 'soon' },
+    );
+    assert.equal(toManeuversResponse(value, NOW).candidates.length, 2);
+    const unknownDrag = { ...good, after: { ...good.after, bstar: null } };
+    assert.equal(toManeuversResponse({ ...value, candidates: [unknownDrag] }, NOW).candidates[0].after!.bstar, 0);
+  });
+
+  it('refuses a norad_id that is not a positive integer, never reading it as every satellite', () => {
+    const at = (q: string) => `https://www.worldmonitor.app/api/orbital/v1/list-satellite-maneuvers${q}`;
+    assert.equal(noradIdFilter(at('')), 0);
+    assert.equal(noradIdFilter(at('?norad_id=0')), 0);
+    assert.equal(noradIdFilter(at('?norad_id=40697')), 40697);
+    for (const bad of ['abc', '-1', '2.5', '', '1e3', '040697', '1234567890']) {
+      assert.throws(() => noradIdFilter(at(`?norad_id=${encodeURIComponent(bad)}`)), refusesNoradId, bad);
+    }
+    assert.throws(() => noradIdFilter(at('?norad_id=1&norad_id=2')), refusesNoradId);
   });
 });
 

@@ -234,9 +234,9 @@ export interface ManeuverCandidate {
   element: string;
   unit: string;
   regime: string;
-  fromEpoch: string;
-  toEpoch: string;
-  confirmedByEpoch: string;
+  fromEpoch: number;
+  toEpoch: number;
+  confirmedByEpoch: number;
   expected: number;
   observed: number;
   residual: number;
@@ -246,7 +246,7 @@ export interface ManeuverCandidate {
 }
 
 export interface ManeuverElementSet {
-  epoch: string;
+  epoch: number;
   meanMotion: number;
   semiMajorAxisKm: number;
   eccentricity: number;
