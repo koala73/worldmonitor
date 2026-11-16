@@ -27,8 +27,6 @@ export const TERMS_VERSION = '2026-11-02';
 export const EULA_PATH = '/docs/eula';
 export const TERMS_PATH = '/docs/terms';
 export const PRIVACY_PATH = '/docs/privacy';
-/** Data Processing Addendum — entered separately by customers who need one. */
-export const DPA_PATH = '/docs/dpa';
 export const LICENSE_PATH = '/docs/license';
 export const TRADEMARK_PATH = '/docs/trademark-policy';
 

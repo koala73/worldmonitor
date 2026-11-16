@@ -38,13 +38,9 @@ export const THE_ATLANTIC_URL =
 export const EL_PAIS_URL =
   'https://elpais.com/tecnologia/2026-03-16/el-riesgo-de-seguir-en-directo-el-conflicto-de-oriente-proximo-en-plataformas-hechas-con-ia-hacen-que-parezca-casi-como-un-videojuego.html';
 
-export const GITHUB_REPO_URL = 'https://github.com/koala73/worldmonitor';
-
 /** shields.io badge that reads stargazers_count from the GitHub API. */
 export const GITHUB_STARS_BADGE_URL =
   'https://img.shields.io/github/stars/koala73/worldmonitor';
-
-export const GITHUB_STARGAZERS_URL = `${GITHUB_REPO_URL}/stargazers`;
 
 export const ABOUT_DOCS_PATH = '/docs/about';
 

@@ -38,7 +38,6 @@ export const COVERED_MARKETS: readonly CoveredMarket[] = [
 /** Monthly 10Y benchmark (ECB IRS or OECD MEI), keyed per market without a covered daily curve. */
 export const OECD_LT_KEY = `${GOV_YIELD_KEY_PREFIX}:oecd-lt:v1`;
 export const OECD_LT_LATEST_KEY = `${GOV_YIELD_KEY_PREFIX}:oecd-lt:v1:latest`;
-export const OECD_LT_RESOURCE = 'oecd-lt-rates';
 /** Provenance of payloads seeded before per-market sources were recorded. */
 export const OECD_LT_DEFAULT_SOURCE = 'oecd-mei-monthly';
 
