@@ -49,6 +49,6 @@ The bundle runner counts a member's exit 75 as a graceful skip, so a source that
 
 ## Prevention
 
-- When a bundle exits on `stalled:N`, grep the stalled section's own lines in the previous ticks' logs (`railway logs <deploymentId> -d`, including REMOVED deployments) before touching budget or order. Repeated `Failed gracefully` means a dead source, not starvation.
+- When a bundle exits on `stalled:N`, grep the stalled section's own lines in the previous ticks' logs (`railway logs <deploymentId> -d`, including REMOVED deployments) before touching budget or order. Read the admitted/deferred sequence across those ticks. If the section was admitted and ended `Failed gracefully` on the most recent ticks, the source is dead. If it has been deferred on every recent tick, it is starved, whatever its older failures were, and fixing the source alone will not restore its data.
 - For ASP.NET postback scrapers, don't depend on the landing GET carrying data. Treat it as a source of form state only. A regression test now covers a landing page with no dated report (`tests/food-prices-amman.test.mjs`).
 - A POST for a date with no report still returns the dated title with "لا يوجد نتائج" (no results), so `parseAmman` returns `[]` and the five-day search continues. Do not wrap per-date errors in a catch-all; that would hide a real layout change.
