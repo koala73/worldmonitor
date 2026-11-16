@@ -62,6 +62,7 @@ async function fixture(options: {
   href?: string;
   responses?: Response[];
   onGetToken?: (state: { user: unknown }) => void;
+  createdAt?: Date;
 }) {
   mock.method(console, 'error', () => {});
   mock.timers.enable({ apis: ['setTimeout'] });
@@ -69,7 +70,7 @@ async function fixture(options: {
   browser = new Window({ url: href });
   const state = {
     user: options.browserUser
-      ? { id: options.browserUser, primaryEmailAddress: { emailAddress: 'b@example.com' } }
+      ? { id: options.browserUser, primaryEmailAddress: { emailAddress: 'b@example.com' }, createdAt: options.createdAt }
       : null,
   };
   const navigations: string[] = [];
@@ -77,6 +78,7 @@ async function fixture(options: {
   const bodies: Array<Record<string, unknown>> = [];
   let signOuts = 0;
   const replacedUrls: string[] = [];
+  const analyticsEvents: Array<{ event: string; data?: Record<string, unknown> }> = [];
   const globals: Record<string, unknown> = {
     document: browser.document,
     requestAnimationFrame: (callback: () => void) => { callback(); return 1; },
@@ -92,7 +94,7 @@ async function fixture(options: {
       },
       history: { replaceState: (_s: unknown, _t: string, url: string) => { replacedUrls.push(url); } },
       sessionStorage: browser.sessionStorage,
-      umami: { track() {} },
+      umami: { track: (event: string, data?: Record<string, unknown>) => { analyticsEvents.push({ event, data }); } },
       setTimeout: (...args: Parameters<typeof setTimeout>) => setTimeout(...args),
       clearTimeout: (id: ReturnType<typeof setTimeout>) => clearTimeout(id),
       setInterval: browser.setInterval.bind(browser), clearInterval: browser.clearInterval.bind(browser),
@@ -119,7 +121,7 @@ async function fixture(options: {
     Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   }
   const checkout = await import(`${moduleUrl}#${Math.random()}`);
-  return { checkout, navigations, signIns, bodies, signOuts: () => signOuts, state, replacedUrls };
+  return { checkout, navigations, signIns, bodies, signOuts: () => signOuts, state, replacedUrls, analyticsEvents };
 }
 
 const dialog = () => document.querySelector('[role="dialog"]');
@@ -330,3 +332,21 @@ it('checks the account again when another tab switches it while checkout fetches
   await waitFor(() => f.bodies.length === 1, 'checkout continues once the new account is confirmed');
   assert.doesNotMatch(String(f.bodies[0]!.returnUrl), /wm_src=desktop/);
 });
+
+for (const [name, createdAt, expected] of [
+  ['an account created a minute ago', new Date(Date.now() - 60_000), true],
+  ['an account created a day ago', new Date(Date.now() - 86_400_000), false],
+  ['an account with no creation time', undefined, false],
+] as const) {
+  it(`marks the resumed checkout newAccount:${expected} for ${name}`, async () => {
+    const f = await fixture({
+      browserUser: BROWSER_USER,
+      createdAt,
+      href: 'https://www.worldmonitor.app/pro?wm_checkout_product=synthetic-product#pricing',
+    });
+    assert.equal(await f.checkout.tryResumeCheckoutFromUrl(), true);
+    const resume = f.analyticsEvents.find((item) => item.event === 'checkout-start');
+    assert.equal(resume?.data?.surface, 'pro-resume');
+    assert.equal(resume?.data?.newAccount, expected);
+  });
+}

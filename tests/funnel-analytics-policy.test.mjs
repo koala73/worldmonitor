@@ -221,6 +221,16 @@ test('checkout-start product ids are bucketed on both surfaces (round-4 F2)', ()
   }
 });
 
+test('/pro checkout auth-step events are emitted with a bucketed productId', () => {
+  const pro = read('pro-test/src/services/checkout.ts');
+  for (const event of ['checkout-auth-shown', 'checkout-auth-dismissed']) {
+    const emissions = pro.match(new RegExp(`trackFunnelEvent\\(\\s*'${event}'[\\s\\S]{0,300}?\\}\\s*\\)`, 'g')) ?? [];
+    assert.equal(emissions.length, 1, `expected one /pro ${event} emission`);
+    assert.ok(emissions[0].includes('bucketProductIdForAnalytics(productId)'),
+      `/pro ${event} emission no longer buckets productId`);
+  }
+});
+
 test('/pro funnel events queue until the async tracker loads (round-4 F3)', () => {
   const pro = read('pro-test/src/services/checkout.ts');
   assert.ok(pro.includes('pendingFunnelEvents'),
