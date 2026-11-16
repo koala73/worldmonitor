@@ -168,13 +168,46 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     const box = await line.boundingBox();
     if (box.height > 30 || box.y + box.height > (mobile ? 844 : 900)) throw new Error(`privacy line is clipped or wraps: ${JSON.stringify(box)}`);
   };
+  // Where the map drew the target: the centroid of its accent-green pixels, clear of anything painted over the map.
+  const drawnTargetAt = async () => {
+    const map = await page.locator('#mapContainer').boundingBox();
+    const png = (await page.screenshot({ clip: map })).toString('base64');
+    return page.evaluate(async ({ png, renderer }) => {
+      const map = document.getElementById('mapContainer').getBoundingClientRect();
+      // Page elements that paint over the map (the sheet, controls, the time range) are left out; an SVG map is the drawing.
+      const paints = (el) => {
+        const css = getComputedStyle(el);
+        if (el.closest('svg') || css.visibility !== 'visible' || css.opacity === '0') return false;
+        return el.tagName === 'IMG' || css.backgroundImage !== 'none' || !/^(transparent|rgba\(.*, 0\))$/.test(css.backgroundColor);
+      };
+      const holes = [...document.body.querySelectorAll('*')].filter((el) => el.tagName !== 'CANVAS' && !el.querySelector('canvas') && paints(el))
+        .map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0 && r.right > map.left && r.left < map.right && r.bottom > map.top && r.top < map.bottom);
+      const green = getComputedStyle(document.documentElement).getPropertyValue('--green').trim().replace(/^#(.)(.)(.)$/, '#$1$1$2$2$3$3');
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(green.slice(i, i + 2), 16));
+      const bitmap = await createImageBitmap(new Blob([Uint8Array.from(atob(png), (c) => c.charCodeAt(0))], { type: 'image/png' }));
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bitmap, 0, 0);
+      const { data, width, height } = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+      const scale = width / map.width;
+      let n = 0, sx = 0, sy = 0;
+      for (let py = 0; py < height; py++) for (let px = 0; px < width; px++) {
+        const i = (py * width + px) * 4;
+        if (Math.abs(data[i] - r) > 12 || Math.abs(data[i + 1] - g) > 12 || Math.abs(data[i + 2] - b) > 12) continue;
+        const x = map.left + px / scale, y = map.top + py / scale;
+        if (holes.some((h) => x >= h.left && x <= h.right && y >= h.top && y <= h.bottom)) continue;
+        n++; sx += x; sy += y;
+      }
+      return n >= 20 ? { x: Math.round(sx / n), y: Math.round(sy / n), onMap: true, underSheet: false, drawnBy: renderer, pixels: n } : null;
+    }, { png, renderer });
+  };
   // Where the reticle sits once the map has stopped flying; it must sit on the map, clear of the sheet.
-  // A map that draws the target itself hides the sheet's DOM reticle.
+  // A map that draws the target itself hides the sheet's DOM reticle, so the target is found in the map's drawing.
   const markAt = async () => {
-    if (await page.locator('.ies-mapmark').isHidden()) return { drawnByMap: renderer };
+    const drawn = await page.locator('.ies-mapmark').isHidden();
     let prev = null;
     for (let tries = 0; tries < 60; tries++) {
-      const now = await page.evaluate(() => {
+      const now = drawn ? await drawnTargetAt() : await page.evaluate(() => {
         const mark = document.querySelector('.ies-mapmark');
         if (!mark || mark.hidden) return null;
         const ring = mark.querySelector('.ies-mapmark-ring').getBoundingClientRect();
@@ -185,7 +218,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
         return { x, y, onMap: x >= map.left && x <= map.right && y >= map.top && y <= map.bottom,
           underSheet: x >= panel.left && x <= panel.right && y >= panel.top && y <= panel.bottom };
       });
-      if (now && prev && now.x === prev.x && now.y === prev.y) {
+      if (now && prev && Math.abs(now.x - prev.x) <= 1 && Math.abs(now.y - prev.y) <= 1) {
         if (!now.onMap || now.underSheet) throw new Error(`reticle is off the visible map: ${JSON.stringify(now)}`);
         return now;
       }
@@ -394,7 +427,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const directSrc = pointImgs();
   if (directSrc.length) throw new Error(`point-bearing archive URL in img src: ${directSrc.join(', ')}`);
   checkLcp('shared link');
-  if (landed.x !== undefined && later.x !== undefined && (Math.abs(later.x - landed.x) > 4 || Math.abs(later.y - landed.y) > 4)) throw new Error('the map drifted off a shared point');
+  if (Math.abs(later.x - landed.x) > 4 || Math.abs(later.y - landed.y) > 4) throw new Error('the map drifted off a shared point');
   await shot('shared-link');
   return { mobile, picked, rows: rows.length, tiers, leaks: leaks.length, vendorLeaks: vendorLeaks.length, lcp: lcpUrls.filter(Boolean).length };
 }
