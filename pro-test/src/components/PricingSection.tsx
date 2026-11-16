@@ -390,7 +390,8 @@ export function PricingSection({
             Enterprise renders below as a band, not as a sixth column.
             Each card spans three subgrid rows (header, CTA, features), spaced
             by the grid's row gap, so the CTAs sit above the feature lists and
-            still line up across a row.
+            still line up across a row. The card's own gap-y-6 matches that gap
+            and keeps the spacing where subgrid is unsupported.
             Below md the highlighted tier moves first via CSS order only, so
             DOM, tab and prerender order stay unchanged (#10843). */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
@@ -429,7 +430,7 @@ export function PricingSection({
               <motion.div
                 key={tier.name}
                 id={`plan-${tierKey(tier)}`}
-                className={`relative bg-zinc-900 rounded-lg p-6 row-span-3 grid grid-cols-1 grid-rows-subgrid ${
+                className={`relative bg-zinc-900 rounded-lg p-6 row-span-3 grid grid-cols-1 grid-rows-subgrid gap-y-6 ${
                   tier.highlighted
                     ? 'border-2 border-wm-green shadow-lg shadow-wm-green/10 order-first md:order-none'
                     : 'border border-wm-border'
