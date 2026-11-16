@@ -174,7 +174,7 @@ The criteria, thresholds, clustering, lower-median selection and copied magnitud
 
 The owner chose option 1 on 2026-11-16, with a margin below the volume floors. This amendment is registered before any in-window count is read. The only in-window bytes fetched so far are 20 quarter-hour exports for 2024-03-15, downloaded by a throughput test that recorded their byte size and never unzipped or parsed them.
 
-**Why the registered gate failed.** On 2026-11-10, GB's daily-file article count was 5.1% above the 2.0 rebuild, against a 5% limit. The two sources hold the same events. The daily file flags 2.3% more of them `IsRootEvent=1`, and the seeder counts root events only (see "Validation results"). Article counts in both the week and the norm rise by a few percent together, so protest share falls slightly in both and the ratio between them barely moves.
+**Why the registered gate failed.** On 2026-11-10, GB's daily-file article count was 5.1% above the 2.0 rebuild, against a 5% limit. The daily file and the 2.0 rebuild hold the same events. The daily file flags 2.3% more of them `IsRootEvent=1`, and the seeder counts root events only (see "Validation results"). Article counts in both the week and the norm rise by a few percent together, so protest share falls slightly in both and the ratio between them barely moves.
 
 **The daily file only screens.** No episode is selected from daily-file counts, and no magnitude is copied from them.
 
