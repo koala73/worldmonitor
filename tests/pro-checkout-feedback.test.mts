@@ -181,6 +181,26 @@ it('asks a signed-out buyer to create an account or sign in before Clerk opens',
   assert.equal(document.querySelector('[role="alert"]'), null);
 });
 
+it('returns keyboard focus to the clicked checkout button when the chooser is cancelled', async () => {
+  const f = await fixture({ signedOut: true, authChoice: null });
+  // Stand-in for PricingSection: the clicked CTA is disabled while auth loads,
+  // and a disabled control loses focus (browser focus fixup).
+  const cta = document.createElement('button');
+  document.body.appendChild(cta);
+  f.checkout.subscribeCheckoutPhase((phase: { kind: string }) => {
+    cta.disabled = phase.kind === 'loading_auth';
+    if (cta.disabled && document.activeElement === cta) cta.blur();
+  });
+  cta.focus();
+  const attempt = f.checkout.startCheckout('synthetic-product');
+  for (let i = 0; i < 100 && !chooser(); i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(chooser());
+  assert.equal(cta.disabled, false, 'the CTA is re-enabled behind the chooser so focus can return to it');
+  chooserButton(/cancel/i)?.click();
+  assert.equal(await attempt, false);
+  assert.equal(document.activeElement, cta);
+});
+
 for (const [label, form] of [[/create account/i, 'sign-up'], [/sign in/i, 'sign-in']] as const) {
   it(`opens only ${form} for that choice, with the intent on both return URLs`, async () => {
     const f = await fixture({ signedOut: true, authChoice: label });

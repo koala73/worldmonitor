@@ -26,7 +26,7 @@ describe('/pro checkout auth form', () => {
 
   it('opens the chosen form with both return URLs for a signed-out click', () => {
     const inner = body('startCheckoutInner');
-    assert.match(inner, /askCheckoutAuthForm\(\)/);
+    assert.match(inner, /askCheckoutAuthForm\(trigger\)/);
     assert.match(inner, /c\.openSignUp\(\{\s*afterSignUpUrl:\s*returnUrl,\s*afterSignInUrl:\s*returnUrl\s*\}\)/);
     assert.match(inner, /c\.openSignIn\(\{\s*afterSignInUrl:\s*returnUrl,\s*afterSignUpUrl:\s*returnUrl\s*\}\)/);
   });

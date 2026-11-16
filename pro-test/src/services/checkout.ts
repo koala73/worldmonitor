@@ -270,10 +270,13 @@ export async function startCheckout(
   if (checkoutInFlight) return false;
   if (startCheckoutEntryInFlight) return false;
   startCheckoutEntryInFlight = true;
+  // Captured before loading_auth disables the clicked CTA (which drops its
+  // focus), so the auth chooser can hand focus back on cancel.
+  const trigger = (document.activeElement as HTMLElement | null) ?? null;
   document.getElementById('wm-checkout-error-toast')?.remove();
   if (_phase.kind === 'idle') setPhase({ kind: 'loading_auth', productId });
   try {
-    return await startCheckoutInner(productId, options);
+    return await startCheckoutInner(productId, options, trigger);
   } finally {
     startCheckoutEntryInFlight = false;
     if (_phase.kind === 'loading_auth') setPhase({ kind: 'idle' });
@@ -290,6 +293,7 @@ async function startCheckoutInner(
     desktopHandoff?: DesktopCheckoutHandoff;
     bypassPendingGuard?: boolean;
   },
+  trigger: HTMLElement | null = null,
 ): Promise<boolean> {
   let c: LoadedClerk;
   try {
@@ -328,7 +332,10 @@ async function startCheckoutInner(
     // link in either form still resumes via tryResumeCheckoutFromUrl. Never
     // Clerk's combined sign-in/sign-up flow: it hid new-email sign-ups under
     // strict enumeration protection (#10493).
-    const form = await askCheckoutAuthForm();
+    // Auth has loaded: release the CTA so focus can return to it on cancel.
+    // The chooser's backdrop blocks clicks and the entry guard blocks re-entry.
+    if (_phase.kind === 'loading_auth') setPhase({ kind: 'idle' });
+    const form = await askCheckoutAuthForm(trigger);
     if (form === 'cancel') return false;
     const returnUrl = buildCheckoutReturnUrl(window.location.href, productId, options);
     try {
@@ -1258,7 +1265,12 @@ function askChoice<T extends string>(
   titleHtml: string,
   bodyHtml: string,
   buttons: ChoiceButton<T>[],
-  { dismiss, focus, stacked = false }: { dismiss: T; focus: T; stacked?: boolean },
+  { dismiss, focus, stacked = false, returnFocusTo = document.activeElement as HTMLElement | null }: {
+    dismiss: T;
+    focus: T;
+    stacked?: boolean;
+    returnFocusTo?: HTMLElement | null;
+  },
 ): Promise<T> {
   return new Promise((resolve) => {
     document.getElementById(id)?.remove();
@@ -1292,7 +1304,6 @@ function askChoice<T extends string>(
     `;
     document.body.appendChild(backdrop);
 
-    const returnFocusTo = document.activeElement as HTMLElement | null;
     const buttonEls = Array.from(backdrop.querySelectorAll<HTMLButtonElement>('button'));
     const finish = (choice: T) => {
       document.removeEventListener('keydown', onKey, true);
@@ -1343,7 +1354,7 @@ function askDesktopAccountChoice(browserAccount: string, desktopAccountKnown: bo
 const PRO_AUTH_FORM_DIALOG_ID = 'wm-pro-auth-form-dialog';
 
 /** Which Clerk form a signed-out buyer needs; see startCheckoutInner (#10842). */
-function askCheckoutAuthForm(): Promise<CheckoutAuthForm | 'cancel'> {
+function askCheckoutAuthForm(returnFocusTo: HTMLElement | null): Promise<CheckoutAuthForm | 'cancel'> {
   return askChoice<CheckoutAuthForm | 'cancel'>(
     PRO_AUTH_FORM_DIALOG_ID,
     'Continue to checkout',
@@ -1353,7 +1364,7 @@ function askCheckoutAuthForm(): Promise<CheckoutAuthForm | 'cancel'> {
       { choice: 'sign-in', label: 'Have an account? Sign in', style: SECONDARY_CHOICE_STYLE },
       { choice: 'cancel', label: 'Cancel', style: CANCEL_CHOICE_STYLE },
     ],
-    { dismiss: 'cancel', focus: 'sign-up', stacked: true },
+    { dismiss: 'cancel', focus: 'sign-up', stacked: true, returnFocusTo },
   );
 }
 
