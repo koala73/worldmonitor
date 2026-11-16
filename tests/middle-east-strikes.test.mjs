@@ -170,6 +170,10 @@ describe('gazetteer', () => {
       assert.equal(place?.key, 'IL:eilat', String(iso2));
     }
     assert.equal(gazetteer.resolvePlace({ place: 'Haifa port, Israel', iso2: 'LB' })?.iso2, 'IL');
+    // Short names (under four letters) are not searched inside strings, so the
+    // country qualifier is stripped before the exact lookup.
+    for (const iso2 of ['YE', 'IR', undefined]) assert.equal(gazetteer.resolvePlace({ place: 'Qom, Iran', iso2 })?.key, 'IR:qom', String(iso2));
+    assert.equal(gazetteer.resolvePlace({ place: 'Ibb, Yemen', iso2: 'SA' })?.iso2, 'YE');
     // A name that matches places in two other countries stays ambiguous.
     assert.equal(gazetteer.resolvePlace({ place: 'Haifa and Jizan', iso2: 'YE' }).iso2, 'YE');
   });
@@ -1112,9 +1116,24 @@ describe('strike pressure tally (conflict:strike-pressure:v1)', () => {
   });
 
   it('shows days whole only after the late-report reach of a store cut at its cap', () => {
-    assert.equal(strikes.pressureCoverStart(NOW, [], []), NOW - 72 * HOUR);
+    assert.equal(strikes.storeCutAt([]), null);
     const capped = Array.from({ length: 4000 }, (_, i) => ({ ts: NOW - 60 * HOUR + i * MIN }));
-    assert.equal(strikes.pressureCoverStart(NOW, capped, []), NOW - 60 * HOUR + 24 * HOUR);
+    assert.equal(strikes.storeCutAt(capped), NOW - 60 * HOUR + 24 * HOUR);
+  });
+
+  it('remembers a store cut after the store shrinks below its cap', () => {
+    // The cut lost reports from 10-18; the next cycle's store is under the cap
+    // (pending GDELT rows expired), but those reports are still gone.
+    const stored = { version: 2, days: { '2026-10-18': { SA: [0, 3, 0, 0] } }, updatedAt: NOW - 10 * MIN };
+    const cut = Date.parse('2026-10-19T02:00:00Z');
+    const window = [ev('tg:SA:SA:riyadh:9', 'SA', 'high', 20 * HOUR)];
+    const capped = strikes.mergeStrikePressure(stored, window, NOW, cut);
+    assert.deepEqual(capped.days['2026-10-18'], { SA: [0, 3, 0, 0] });
+    const after = strikes.mergeStrikePressure(capped, window, NOW + 10 * MIN, null);
+    assert.deepEqual(after.days['2026-10-18'], { SA: [0, 3, 0, 0] }, 'the earlier cut still applies');
+    // Once the cut leaves the window it no longer matters.
+    const later = strikes.mergeStrikePressure(after, [], cut + 72 * HOUR + MIN, null);
+    assert.equal(later.storeCutAt, undefined);
   });
 
   it('moves an event to its higher severity when later reports raise it, and never lowers it', () => {
