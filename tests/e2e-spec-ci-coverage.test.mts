@@ -62,18 +62,40 @@ function listSpecs(dir = resolve(root, 'e2e')): string[] {
   });
 }
 
-// Each `${{ matrix.<key> }}` in a run command expands to that job's values for
-// the key, including `include` entries.
-function expandMatrix(command: string, matrix: Record<string, unknown> = {}): string[] {
-  const match = /\$\{\{\s*matrix\.([\w-]+)\s*\}\}/.exec(command);
-  if (!match) return [command];
-  const key = match[1];
-  const values = new Set<string>();
-  if (Array.isArray(matrix[key])) for (const value of matrix[key] as unknown[]) values.add(String(value));
-  if (Array.isArray(matrix.include)) {
-    for (const entry of matrix.include as Record<string, unknown>[]) if (key in entry) values.add(String(entry[key]));
+type Row = Record<string, unknown>;
+const matches = (row: Row, entry: Row) => Object.entries(entry).every(([key, value]) => row[key] === value);
+
+// The job rows GitHub runs: the product of the matrix arrays, minus `exclude`
+// matches, then each `include` entry merged into the rows it does not
+// contradict on the original keys, or added as its own row.
+function matrixRows(matrix: Record<string, unknown> = {}): Row[] {
+  const keys = Object.keys(matrix).filter((key) => key !== 'include' && key !== 'exclude' && Array.isArray(matrix[key]));
+  let rows: Row[] = [{}];
+  for (const key of keys) rows = rows.flatMap((row) => (matrix[key] as unknown[]).map((value) => ({ ...row, [key]: value })));
+  const excludes = (Array.isArray(matrix.exclude) ? matrix.exclude : []) as Row[];
+  rows = rows.filter((row) => !excludes.some((entry) => matches(row, entry)));
+  if (keys.length === 0) rows = [];
+  for (const entry of (Array.isArray(matrix.include) ? matrix.include : []) as Row[]) {
+    const original = Object.fromEntries(Object.entries(entry).filter(([key]) => keys.includes(key)));
+    const targets = rows.filter((row) => matches(row, original));
+    if (targets.length && Object.keys(original).length) targets.forEach((row) => Object.assign(row, entry));
+    else rows.push({ ...entry });
   }
-  return [...values].flatMap((value) => expandMatrix(command.replace(match[0], value), matrix));
+  return rows.length ? rows : [{}];
+}
+
+// Each row substitutes its own values into every `${{ matrix.<key> }}`, so
+// fields from one include entry stay together.
+function expandMatrix(command: string, matrix?: Record<string, unknown>): string[] {
+  if (!/\$\{\{\s*matrix\./.test(command)) return [command];
+  return matrixRows(matrix).flatMap((row) => {
+    let missing = false;
+    const text = command.replace(/\$\{\{\s*matrix\.([\w-]+)\s*\}\}/g, (_, key: string) => {
+      if (!(key in row)) missing = true;
+      return String(row[key]);
+    });
+    return missing ? [] : [text];
+  });
 }
 
 // Only `run:` steps count, with shell comments removed: a spec named in a
@@ -136,7 +158,7 @@ describe('e2e spec CI coverage', () => {
     const workflow: Workflow = {
       jobs: {
         e2e: {
-          strategy: { matrix: { part: ['a'], include: [{ part: 'b' }] } },
+          strategy: { matrix: { part: ['a', 'excluded'], exclude: [{ part: 'excluded' }], include: [{ part: 'b' }] } },
           steps: [{ run: 'npm run test:e2e:${{ matrix.part }}' }, { run: '# npm run test:e2e:commented' }],
         },
       },
@@ -146,6 +168,7 @@ describe('e2e spec CI coverage', () => {
       'test:e2e:b': 'npm run test:e2e:nested',
       'test:e2e:nested': 'playwright test e2e/sub/nested.spec.ts',
       'test:e2e:uncalled': 'playwright test e2e/uncalled.spec.ts',
+      'test:e2e:excluded': 'playwright test e2e/excluded.spec.ts',
       'test:e2e:commented': 'playwright test e2e/commented.spec.ts',
     };
     const result = scriptsAndSpecsRunByCi([workflow], probe);
