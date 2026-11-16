@@ -5281,6 +5281,7 @@
     "counts": {},
     "tier": {
       "checking": "kontrola archivu",
+      "notInArchive": "není v archivu",
       "confirmed": "potvrzeno",
       "likely": "pravděpodobné",
       "unmatchedImage": "snímek bez vypočítaného průletu",

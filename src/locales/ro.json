@@ -5253,6 +5253,7 @@
     "counts": {},
     "tier": {
       "checking": "se verifică arhiva",
+      "notInArchive": "nu e în arhivă",
       "confirmed": "confirmat",
       "likely": "probabil",
       "unmatchedImage": "imagine fără trecere calculată",

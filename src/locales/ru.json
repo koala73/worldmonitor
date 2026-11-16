@@ -5281,6 +5281,7 @@
     "counts": {},
     "tier": {
       "checking": "проверка архива",
+      "notInArchive": "нет в архиве",
       "confirmed": "подтверждено",
       "likely": "вероятно",
       "unmatchedImage": "снимок без вычисленного прохода",

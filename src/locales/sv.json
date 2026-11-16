@@ -5225,6 +5225,7 @@
     "counts": {},
     "tier": {
       "checking": "kontrollerar arkiv",
+      "notInArchive": "finns inte i arkivet",
       "confirmed": "bekräftad",
       "likely": "sannolikt",
       "unmatchedImage": "bild utan beräknad passage",

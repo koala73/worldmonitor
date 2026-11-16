@@ -5225,6 +5225,7 @@
     "counts": {},
     "tier": {
       "checking": "archief controleren",
+      "notInArchive": "niet in archief",
       "confirmed": "bevestigd",
       "likely": "waarschijnlijk",
       "unmatchedImage": "beeld zonder berekende passage",

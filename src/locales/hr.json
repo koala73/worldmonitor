@@ -5263,6 +5263,7 @@
     "counts": {},
     "tier": {
       "checking": "provjera arhiva",
+      "notInArchive": "nije u arhivu",
       "confirmed": "potvrđeno",
       "likely": "vjerojatno",
       "unmatchedImage": "snimka bez izračunatog prolaska",

@@ -10823,6 +10823,10 @@ a.prediction-link:hover {
   font-size: calc(9px * var(--wm-panel-effective-scale, 1));
 }
 
+.popup-imagery-credit {
+  margin-bottom: 6px;
+}
+
 .popup-stat.popup-imagery-stale .stat-value {
   color: var(--semantic-elevated-text, var(--semantic-elevated));
 }

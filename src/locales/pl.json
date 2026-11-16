@@ -5281,6 +5281,7 @@
     "counts": {},
     "tier": {
       "checking": "sprawdzanie archiwum",
+      "notInArchive": "brak w archiwum",
       "confirmed": "potwierdzone",
       "likely": "prawdopodobne",
       "unmatchedImage": "obraz bez obliczonego przejścia",

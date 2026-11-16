@@ -5197,6 +5197,7 @@
     "counts": {},
     "tier": {
       "checking": "아카이브 확인 중",
+      "notInArchive": "아카이브에 없음",
       "confirmed": "확인됨",
       "likely": "가능성 높음",
       "unmatchedImage": "계산된 통과 없는 영상",

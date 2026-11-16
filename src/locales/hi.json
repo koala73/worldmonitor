@@ -5225,6 +5225,7 @@
     "counts": {},
     "tier": {
       "checking": "अभिलेखागार जाँच",
+      "notInArchive": "अभिलेखागार में नहीं",
       "confirmed": "पुष्ट",
       "likely": "संभावित",
       "unmatchedImage": "गणना किए गए पास के बिना छवि",

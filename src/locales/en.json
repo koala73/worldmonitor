@@ -4722,6 +4722,7 @@
       "mosaic": "mosaic",
       "upcoming": "upcoming",
       "checking": "checking archive",
+      "notInArchive": "not in archive",
       "unmatchedImage": "image without computed pass",
       "weatherFrame": "weather frame",
       "unavailable": "unavailable"

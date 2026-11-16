@@ -642,6 +642,9 @@ const HEALTH_REGISTRY_ACCOUNTED_MUTATIONS = [
   // -1: the strike-pressure tally (since CII v12) is produced by the same relay loop,
   // so the same switch drops it from STANDALONE_KEYS.
   'delete STANDALONE_KEYS.strikePressure;',
+  // -1: the v2 strike tally (CII v15 B3 shadow) runs in the same relay loop's
+  // shadow twin under the same switch.
+  'delete STANDALONE_KEYS.strikePressureV2;',
 ];
 
 const normalizeMutation = (line) => line.trim().replace(/\s+/g, ' ');
@@ -803,13 +806,15 @@ function parseHealthProbedKeys(rawSource = read('api/health.js')) {
   // key missed, one phantom invented) net to an identical count but not to an
   // identical set. computeStats stores only the counts: dumping 256 key names
   // into the committed stats.json would bury the claims it actually publishes.
-  if (!standaloneKeys.includes('strikePressure')) {
-    throw new Error('docs-stats: STANDALONE_KEYS no longer declares strikePressure, so the sunset delete subtracts twice');
+  for (const gated of ['strikePressure', 'strikePressureV2']) {
+    if (!standaloneKeys.includes(gated)) {
+      throw new Error(`docs-stats: STANDALONE_KEYS no longer declares ${gated}, so the sunset delete subtracts twice`);
+    }
   }
   const effectiveBootstrap = [...bootstrapKeys, ...addedNames].filter((k) => k !== 'iranEvents');
-  const effectiveStandalone = standaloneKeys.filter((k) => k !== 'strikePressure');
+  const effectiveStandalone = standaloneKeys.filter((k) => k !== 'strikePressure' && k !== 'strikePressureV2');
   const bootstrap = bootstrapKeys.length + addedMarkets - 1;
-  const standalone = standaloneKeys.length - 1;
+  const standalone = standaloneKeys.length - 2;
   if (effectiveBootstrap.length !== bootstrap) {
     throw new Error(`docs-stats: internal — bootstrap arithmetic (${bootstrap}) disagrees with its key list (${effectiveBootstrap.length})`);
   }

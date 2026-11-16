@@ -5225,6 +5225,7 @@
     "counts": {},
     "tier": {
       "checking": "arşiv kontrol ediliyor",
+      "notInArchive": "arşivde yok",
       "confirmed": "teyitli",
       "likely": "muhtemel",
       "unmatchedImage": "hesaplanmış geçiş olmayan görüntü",
