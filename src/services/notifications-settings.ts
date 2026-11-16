@@ -221,7 +221,7 @@ function applyWebPushRowState(
 ): void {
   rowEl.dataset.webPushState = state;
   rowEl.querySelector('.us-notif-error')?.remove();
-  const sub = rowEl.querySelector<HTMLElement>('.us-notif-ch-sub');
+  const sub = rowEl.querySelector<HTMLElement>('.us-notif-ch-sub:not([data-delivery-disabled])');
   if (sub) {
     // Role FIRST: a live region that is created already-populated has no
     // content change for assistive tech to announce.
@@ -469,7 +469,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const icon = channelIcon(type);
         const name = CHANNEL_LABELS[type];
         const disabledNotice = channel?.deliveryFailure?.disabledAt !== undefined && !channel.verified
-          ? '<div class="us-notif-ch-sub us-notif-ch-sub-wrap us-notif-ch-sub-warn" role="status">Disabled after repeated delivery failures</div>'
+          ? '<div class="us-notif-ch-sub us-notif-ch-sub-wrap us-notif-ch-sub-warn" data-delivery-disabled role="status">Disabled after repeated delivery failures</div>'
           : '';
         // #4273: a channel type outside the plan's ladder renders locked
         // behind the upgrade CTA instead of a Connect button. A row that is
