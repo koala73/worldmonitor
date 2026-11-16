@@ -80,14 +80,14 @@ describe('watched-site imagery read (KTD16)', () => {
     }
   });
 
-  it('flags an unreadable radar summary instead of reading it as no water reading', async () => {
+  it('flags an unreadable or missing radar summary instead of reading it as no water reading', async () => {
     const env = { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN };
     const realFetch = globalThis.fetch;
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
-    const call = async (summaryStatus: number) => {
+    const call = async (summaryStatus: number, result: unknown = null) => {
       globalThis.fetch = (async (input: RequestInfo | URL) => String(input).includes('water-extent')
-        ? new Response(summaryStatus === 200 ? JSON.stringify({ result: null }) : 'down', { status: summaryStatus })
+        ? new Response(summaryStatus === 200 ? JSON.stringify({ result }) : 'down', { status: summaryStatus })
         : new Response(JSON.stringify({ result: null }))) as typeof fetch;
       const res = await route(new Request(`https://api.worldmonitor.app${PATH}?site_id=reservoir%3Akariba`));
       assert.equal(res.status, 200);
@@ -97,7 +97,11 @@ describe('watched-site imagery read (KTD16)', () => {
       const failed = await call(500);
       assert.equal(failed.waterExtentUnavailable, true);
       assert.equal(failed.waterExtent, undefined);
-      const empty = await call(200);
+      // No summary key yet (before the first publish, or a lost write) is not "this reservoir has no reading".
+      const missing = await call(200);
+      assert.equal(missing.waterExtentUnavailable, true);
+      assert.equal(missing.waterExtent, undefined);
+      const empty = await call(200, JSON.stringify({ reservoirs: {} }));
       assert.equal(empty.waterExtentUnavailable, undefined);
       assert.equal(empty.waterExtent, undefined);
     } finally {

@@ -90,7 +90,8 @@ export async function getWatchedSiteImagery(
     getCachedJson(`${ORBITAL_SITE_KEY_PREFIX}${siteId}`, true),
     RESERVOIR_SITE.test(siteId) ? readCachedJson(ORBITAL_WATER_EXTENT_LATEST_KEY, true) : null,
   ]);
-  const summaryFailed = summary?.status === 'error';
+  // A missing summary (before the first publish, or a lost write) is not "this reservoir has no reading".
+  const summaryFailed = summary?.status === 'error' || summary?.status === 'miss';
   const waterExtent = summary?.status === 'hit' ? toWaterExtent(siteId, summary.value) : null;
   const response = {
     ...toWatchedSiteImagery(siteId, record, Date.now()),
