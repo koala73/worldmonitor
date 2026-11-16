@@ -37,7 +37,6 @@ import {
 } from './reservoir-levels-view';
 import { reservoirCard } from './reservoir-card';
 import { fillWaterExtentRow, renderWaterExtentRow, WATER_UNAVAILABLE } from './water-card';
-import { loadReservoirWaterExtent } from '@/services/orbital/object-imagery';
 import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticle } from '@/services/gdelt-intel';
 import { getWingbitsLiveFlight } from '@/services/wingbits';
 import { isFeatureAvailable } from '@/services/runtime-config';
@@ -2460,7 +2459,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
     }
     const scan = this.reservoirScan;
     if (waterExtent && scan) {
-      void loadReservoirWaterExtent(waterExtent.dataset.wlWaterExtent!, scan.signal).catch(() => WATER_UNAVAILABLE).then((extent) => {
+      void import('@/services/orbital/object-imagery').then(({ loadReservoirWaterExtent }) => loadReservoirWaterExtent(waterExtent.dataset.wlWaterExtent!, scan.signal)).catch(() => WATER_UNAVAILABLE).then((extent) => {
         if (scan.signal.aborted || !waterExtent.isConnected) return;
         fillWaterExtentRow(waterExtent, extent, { t, locale, nowMs: Date.now() });
         this.clampPopupToViewport();

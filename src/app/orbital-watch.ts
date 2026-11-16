@@ -3,7 +3,8 @@ import { getOrbitalPassClient, type PointPassLookup } from '@/services/orbital/p
 import type { PointPass } from '@/services/orbital/pass-job';
 import { profileFor } from '@/services/orbital/pass-query';
 import { loadOrbitalCatalog } from '@/services/orbital/catalog';
-import { buildPassTrack, framingBounds, type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
+import { buildPassTrack } from '@/services/orbital/pass-track';
+import { framingBounds, type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import { ARCHIVE_SEARCHES, findArchiveEvidence, type MatchedAcquisition, type OrbitalEvidence } from '@/services/orbital/match';
 import { setOrbitalLookupOpen } from '@/services/orbital/lookup-host';
 import type { OrbitalEventCompareDetail } from '@/services/orbital/evidence-event';

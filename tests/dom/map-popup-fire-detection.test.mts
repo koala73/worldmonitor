@@ -237,7 +237,8 @@ describe('MapPopup with a fire detection', () => {
     expect(root.textContent).toContain('VIIRS Suomi NPP');
     expect(root.querySelector('[data-fire-mosaic]')).not.toBeNull();
     expect(root.querySelector('[data-orbital-imagery]')).not.toBeNull();
-    expect(harness.imagery).toHaveLength(1);
+    // The imagery loader is imported on demand, so the lookup starts a few ticks after show().
+    await vi.waitFor(() => expect(harness.imagery).toHaveLength(1));
     expect(harness.imagery[0]!.target).toEqual({ kind: 'point', point: { lat: 48.5, lon: 37.25 } });
     const signal = harness.imagery[0]!.signal!;
     popup.hide();

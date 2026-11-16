@@ -59,6 +59,8 @@ describe('who may open before and after from a popup', () => {
 
   const show = async () => {
     popup.show({ type: 'news', data: news as never, x: 10, y: 10 });
+    // The imagery loader is imported on demand, so the row paints a few ticks after show().
+    await vi.waitFor(() => expect(compareButton() ?? lockedLink()).not.toBeNull());
     await flush();
   };
   const compareButton = () => document.querySelector('[data-orbital-event-compare]');
@@ -81,8 +83,7 @@ describe('who may open before and after from a popup', () => {
     await show();
     gate.premium = true;
     for (const listener of [...gate.auth]) listener({});
-    await flush();
-    expect(compareButton()).not.toBeNull();
+    await vi.waitFor(() => expect(compareButton()).not.toBeNull());
     expect(lockedLink()).toBeNull();
   });
 
@@ -90,8 +91,7 @@ describe('who may open before and after from a popup', () => {
     await show();
     gate.premium = true;
     for (const listener of [...gate.entitlement]) listener({});
-    await flush();
-    expect(compareButton()).not.toBeNull();
+    await vi.waitFor(() => expect(compareButton()).not.toBeNull());
     expect(lockedLink()).toBeNull();
   });
 
