@@ -75,3 +75,375 @@ Enumerate distinct unordered country pairs on each calibration date. A disagreem
 Randomise presentation order and left/right position with a recorded seed held by the coordinator. Judges use their own knowledge, consistent with the owner's invitation. They receive only the country names, assessment date, R21 construct and the options left higher, right higher, tie or insufficient evidence. No coordinator-authored evidence packets or model-input summaries are supplied. The ballot reveals no formula, scores, ranks, model identity, predicted winner or control label. Lock ballots separately before discussion.
 
 A pair is decided only when at least two thirds of all participating judges choose the same strict ordering. Ties, abstentions and unresolved pairs remain in the report but not the denominator. The candidate passes when it matches **at least two thirds of decided disagreement pairs**. Zero decided pairs is undefined, never a pass. Report decided and undecided counts, judge agreement, all disagreement outcomes and control outcomes separately. Controls cannot inflate the primary pass fraction. Preserve ballots and the selection seed for audit. This is a reported measurement only and ends at the owner-ruling stop, even if it fails.
+
+## Frozen inputs (2026-11-15, before any candidate evaluation)
+
+Frozen at `cii-v15@b28c37a312` after the second U21 capture landed (#10618). Nothing in this section was chosen after a candidate score was computed; this commit precedes every candidate result.
+
+### Calibration fixtures
+
+| Fixture | `capturedAt` | SHA-256 of the parsed fixture (first 16 hex) |
+|---|---|---|
+| `tests/fixtures/cii/2026-11-13T0952Z.json` | 2026-11-13T09:52:18.324Z | `cd68ab468c563866` |
+| `tests/fixtures/cii/2026-11-14T0556Z.json` | 2026-11-14T05:56:53.049Z | `423d2076d6538c28` |
+
+Both are marked `calibration: true` and hold the full UCDP window (2025-09-30 to 2026-09-30, 365 days, `complete: true`, no missing releases), the party-month table, the prior map (208 countries) and the economic key (199 rows). No other fixture is eligible.
+
+### GPI benchmark
+
+Read GET-only from production `resilience:static:<ISO2>` at 2026-11-15T14:48:57Z for all 31 scored countries: source `gpi-voh`, vintage 2026, no country missing. Every score and rank is identical to the snapshot preserved in `cii-v15-calibration.md` (read 2026-11-12), so that table is the pinned benchmark payload. Intersection: all 31.
+
+### Episode manifest
+
+Selection follows the rules above exactly. Ties did not arise. Country names identify evidence, never score targets.
+
+| Anchor | Episode | Selection statistic | Candidates considered |
+|---|---|---|---|
+| Quiet week | US on 2026-11-13T0952Z | protest share 312 / 41,456 = 0.00753, the lowest | 14 complete stable-democracy weeks (7 countries × 2 captures) |
+| Sustained unrest above norm | KR on 2026-11-13T0952Z | protest share 12 / 662 = 0.01813, the greatest eligible | DE 11-13 (4.8 vs 3), KR 11-13 (2.6 vs 1), PL 11-13 (1.2 vs 1), DE 11-14 (3.8 vs 3), JP 11-14 (1.8 vs 1), KR 11-14 (1.5 vs 1) |
+| Strike campaign | **Unavailable** | no fresh confirmed tally | see blocker below |
+| Chronic war | MX on 2026-11-13T0952Z | 24.80 factual territorial deaths per million per year, position 6 of 13 | IN 0.22, BR 1.99, RU 2.78, IQ 4.92, PK 19.31, AF 20.69, **MX 24.80**, SY 26.03, MM 33.80, YE 125.63, IR 254.02, LB 771.02, UA 2263.15 (all 12/12 positive months) |
+| Full-scale war | UA on 2026-11-13T0952Z | 2263.15 per million per year, the greatest | same 13 |
+
+Copied magnitudes, exactly as recorded:
+
+- **Quiet week (US, 2026-11-13T0952Z).** GDELT conflict current 727.3 against median 769.5 (coded articles per day); protest current 40.9 against median 65.5; week of 41,456 articles, 4,671 conflict-coded and 312 protest-coded; the recorded GDELT strike day counts (23 days from 2026-10-19 to 2026-11-12, at most 8 strike-coded of 4,099 articles on one day). Economic readings: inflation acceleration +0.7250 percentage points (IMF, observed 2026-09-30, fresh), 10-year yield +0.6942 percentage points against its trailing 12-month mean (OECD, observed 2026-09-30, fresh), currency absent as not applicable (dollar numeraire). Applied to each of DE, FR, GB, JP, KR, PL and US, with the US economic availability states, positive readings unclipped.
+- **Sustained unrest (KR, 2026-11-13T0952Z).** GDELT protest current 2.6 against median 1 coded articles per day; week of 662 articles, 12 protest-coded (and 30 conflict-coded, carried as recorded in the week object). Applied to the same seven. The AE9 check repeats this week's level for eight weeks with current equal to median.
+- **Chronic war (MX, 2026-11-13T0952Z).** Population 133 million (`CII_POPULATION_MILLIONS`). Factual deaths per million per calendar month, 2025-10 to 2026-09: 5.1203, 2.3308, 1.1429, 3.0150, 1.1278, 1.9850, 2.1278, 1.8045, 1.3459, 1.2030, 1.6090, 1.9699 (sum 24.78; the selection statistic, 24.80, also counts the window's single day of 2025-09-30). Annualisation factor 365 / 365 = 1. Scaled by each destination's population, for all 31.
+- **Full-scale war (UA, 2026-11-13T0952Z).** Population 39.54 million. Per million per month, 2025-10 to 2026-09: 128.1234, 270.9408, 255.6146, 338.1892, 188.0627, 196.5604, 173.4193, 168.3359, 119.4992, 123.1411, 142.8680, 156.8538. Copied to all 31.
+
+Each monthly profile keeps its dates relative to the episode's capture clock (`nowMs` 1794563535410).
+
+### Blocker: no strike-campaign episode
+
+Both calibration captures hold a `conflict:strike-pressure:v1` tally with `version: 1`, the relay writer on `main` (`scripts/lib/middle-east-strikes.cjs`). The integration branch reads only `CII_STRIKE_TALLY_VERSION = 2` (Stage B3, #9592), because a v1 tally counts retrospective reposts, duplicates and interceptions, and rejects v1 as unusable. So neither capture has a fresh confirmed feed and the rule selects nothing. Per the rule, no synthetic magnitude is substituted and no other source (the 72-hour event window or the GDELT backstop) is promoted into the selection. The strike anchor (P15c, and AE12) is unmeasurable until B3's v2 tally writer ships to `main` as a producer-only change and a third calibration capture holds a fresh v2 tally.
+
+## Results (2026-11-15)
+
+Measured on the two frozen calibration captures with the manifest above. The exploration code stays outside the repository, as the plan requires. Every number below comes from one run per grid and is reproducible from the frozen fixtures and the constants listed.
+
+**Finding: no candidate design passes the must-pass list.** No point in either grid passes every must-pass property. U4 must not start. The study stops here for owner rulings on OQ1 to OQ6, OQ8 and OQ10, and on the further amendments proposed at the end of this section.
+
+### Candidate family
+
+`z = a − b·PV + V + U + E` and `S = 100·sigmoid(z)`, emitted to one decimal (`combined_score` is a double).
+
+- `PV` is WGI PV.EST from `inputs.structuralPrior`.
+- Violence family `V` has five members:
+  - strikes: `ks` times decayed weighted units, with a five-day half-life over a 21-day window. Each day takes the maximum of the confirmed tally, the 72-hour events and the GDELT backstop. Sources are never added together.
+  - territorial UCDP: `ku·ln(1 + rate/1.25)`, deaths per million per year over the full B6 window. The extension grid also tests `ku·sqrt(rate/1.25)`.
+  - war burden: `w·ku·` the same transform, applied to the deaths a state party carries outside its own borders, per million of its own population (the OQ8 proposal).
+  - GDELT conflict spike.
+  - OREF: `orefBoost/50`.
+- Unrest family `U` has three members:
+  - GDELT protest spike.
+  - protest level: `kl·cred·max(0, (share − fp)/0.06)`.
+  - outages: `ko·points/50`.
+- GDELT spike: `kg·cred·max(0, ln((current + s)/(median + s)))`.
+  - `s = max(smin, φ·weekly articles/7)`.
+  - `cred = n/(n + n0)`, where `n` is weekly articles.
+- Family merge:
+  - bounded union `C·(1 − exp(−Σ/C))` (the OQ2 proposal), or
+  - capped maximum `C·(1 − exp(−max/C))`.
+- Economic family `E`: `ke·max(1 − exp(−x/τ))` over fresh members only. The τ values are currency 10%, inflation 3 pp and yield 1 pp.
+- News and headlines are context-only (the OQ1 proposal).
+
+For each combination, `a` is solved analytically as the interval that keeps every anchor inside its band. With interval width `h = hi − lo`, properties are measured at `k + 1` evenly spaced values of `a` from `lo` to `hi` inclusive, where `k = max(1, min(m, floor(h/0.05)))`. `m` is 8 on the main grid (at most nine points) and 4 on the extension grids (at most five points).
+
+### Grids
+
+| Grid | Constants | Combinations | Anchor-feasible | Points measured | Pass every must-pass |
+|---|---|---|---|---|---|
+| Main | merge union / max; b 0–0.8 step 0.1; ks 0.03 / 0.05 / 0.08 / 0.12; ku 0.25 / 0.5 / 1 / 1.5 / 2; w 0 / 0.5 / 1; kg 0.5 / 1 / 2 / 4 / 8; φ 0.02 / 0.05 / 0.1; (kl, fp) in (0, 0.02), (1, 0.005), (1, 0.01), (1, 0.02), (2, 0.005), (2, 0.01), (2, 0.02), (4, 0.005), (4, 0.01), (4, 0.02); ke 0 / 0.5 / 1 / 2; C 4 / 8; n0 200; ko 2; smin 1; log UCDP | 1,296,000 | 7,968 | 38,808 | 0 |
+| Extension | merge union / max; b 0–0.8 step 0.1; ks 0.05 / 0.12; ku 0.1 / 0.25 / 0.5 / 1 / 1.5 / 2; w 0 / 1; kg 1 / 2 / 4 / 8; φ 0.02 / 0.1; (kl, fp) in (0, 0.02), (1, 0.005), (1, 0.01), (2, 0.005), (2, 0.01), (4, 0.01); ke 0 / 1; smin 1 / 5; UCDP log / square root; C 8; n0 200; ko 2 | 165,888 | 2,468 | 9,768 | 0 |
+| Extension without P15b (diagnostic only) | same as the extension; P15b dropped from the anchor set and counted as passing | 165,888 | 36,736 (5,248 sampled) | 24,176 | 0 |
+
+When an extension run has more than 6,000 anchor-feasible combinations, it keeps every `ceil(N/6000)`-th combination in enumeration order, starting with the first. Enumeration nests merge, b, ks, ku, w, kg, φ, (kl, fp), ke, smin and the UCDP transform, in the listed value order, with the last varying fastest. The main grid and the registered extension measure every anchor-feasible combination.
+
+**Anchor conflicts on the main grid.** For each infeasible combination, the binding pair is the anchor with the highest lower bound on `a` against the anchor with the lowest upper bound:
+
+| Binding pair | Combinations |
+|---|---|
+| P15b lower vs P15a upper | 587,028 |
+| P15d lower vs P15a upper | 544,272 |
+| P15e lower vs P15a upper | 127,764 |
+| P15d lower vs P15b upper | 27,132 |
+| P15e lower vs P15b upper | 1,836 |
+
+**Feasible region per constant (main grid, anchor-feasible combinations):**
+
+| Constant | Count per value |
+|---|---|
+| b | 0: 3,696; 0.1: 1,704; 0.2: 936; 0.3: 732; 0.4: 576; 0.5: 324; 0.6 to 0.8: none |
+| ku | 1.5: 1,512; 2: 6,456; 0.25 to 1: none |
+| kg | 4: 1,104; 8: 6,864; 0.5 to 2: none |
+| φ | 0.02: 5,940; 0.05: 1,968; 0.1: 60 |
+| C | 4: 1,152; 8: 6,816 |
+| ke | 0: 4,296; 0.5: 2,316; 1: 1,140; 2: 216 |
+| merge | union: 4,284; max: 3,684 |
+| ks, w | every value equal (the scenarios carry no strikes or burden) |
+
+The anchors alone cap `b` at 0.5, as the brief's OQ6 analysis predicted for 20-point bands. The sustained-unrest anchor requires `kg ≥ 4`.
+
+**Must-pass failures on the main grid,** as points failing each property out of 38,808: P1 38,808; P3c 38,808; P8a 38,808; AE8v 38,544; GPI 38,516; P5b 22,515; P2 22,473; P3b 15,709; AE9 15,552; P5a 5,026. Every other must-pass property passes everywhere.
+
+**On the extension grid:**
+
+- P3c, P8a and AE8v never pass at any point, and neither do the targets P4, P12a and P12b.
+- P1 and P5b never pass together, and P5b and GPI never pass together.
+- Without P15b, no pair of must-pass properties is mutually exclusive, yet still no point passes all of them. The common failing sets are P3c, P5b and P8a together, and P1, P3c, P8a and GPI together.
+- P13a passes at every point of every grid.
+
+### Representative design
+
+The representative is chosen by a rule fixed before any pair selection: fewest failing must-pass properties, then fewest failing P1 cases, then the highest minimum GPI ρ, then the lowest P12a p99.
+
+Its constants are: union merge, b 0.2, ks 0.03, ku 1.5 (log), w 1, kg 4, φ 0.02, kl 2, fp 0.005, ke 0, C 8, n0 200, ko 2, smin 1, a −1.88992.
+
+This section gives aggregates only. Blind judges must see no country-level candidate table before the ballots are locked.
+
+| Property | Tier | Result | Measured |
+|---|---|---|---|
+| P15a quiet week | must | pass | range 11.3–14.9; 0 of 7 outside 0–15 |
+| P15b sustained unrest | must | pass | range 35.0–42.4; 0 of 7 outside 35–55 |
+| P15c strike campaign | must | unmeasurable | no strike-campaign episode (see the blocker above) |
+| P15d chronic war (per capita, OQ4) | must | pass | range 70.4–90.6; 0 of 31 below 70 |
+| P15e full-scale war | must | pass | range 97.6–98.8; 0 of 31 below 85 |
+| P1 | must | **fail** | 14 of 294 (country, channel, feed, date) cases move less than 0.5. All are the violence and strike channels in countries already near the ceiling or with high per-capita violence. Headlines move 0. |
+| P2 | must | pass | spread in Δz for +5 strike units: 0.114 with the feed present and 0.114 with it absent (limit 0.25) |
+| P3a | must | pass | largest step 0.8 per unit (limit 3) |
+| P3b | must | pass | largest 3-hour drop 0.7 (limit 5) |
+| P3c | must | **fail** | half-life 4.63–6.38 days (want 4–6); 14 of 62 cases show less than 1 point. Under the proposed wording below, 1 case below 95 stays silent. |
+| P5a | must | pass | at most 2 countries share a score (limit 2) |
+| P5b | must | pass | worst five-point band holds 7 of 31 on the first capture and 6 of 31 on the second (limit 7) |
+| P5c (OQ3 form) | must | pass | 0 pairs |
+| P7a | must | pass | 0 of 110 nulled-input cases keep their coverage |
+| P7b | must | pass | reader-level and independent of the candidate; `tests/cii-outages-input.test.mts` passes, 37 of 37 |
+| P8a | must | **fail** | largest move per failed input: UCDP −81.3, GDELT −57.8, Iran events −3.8, OREF −0.2; outages, strikes and economic 0 (limit 10) |
+| P9 | must | pass | on both located fixtures |
+| P14 (OQ3 form) | must | pass | ≤0.05 |
+| AE9 | must | pass | unrest term 0.33 after 8 weeks at median |
+| AE8v | must | **fail** | the same proportional rise at 10 times the article volume moves the unrest term by up to 0.35 (parity 0.25) |
+| AE10 | must | pass | a party's deaths abroad add burden, territorial violence is unchanged, and deaths inside the party's own borders count once, as territorial |
+| AE11 / OQ9 fairness | must | pass | at ke 0.5 and 1, equal readings give equal terms regardless of GDP; three members at the same stress score no higher than one; a country with no members scores 0 and is labelled not measured |
+| GPI | must | pass | ρ 0.772 on both captures (v14 0.730 and 0.786) |
+| P13a | target | pass | 94.2% and 94.0% (v14 14.8% and 16.0%). Var(S) 1112.3 and 1123.5; Var(B) 7.3 and 7.3; Cov(L,S) 1047.4 and 1056.4. |
+| P4 | target | fail | 5 units a day: minimum +0.6 at 48 hours (32 of 49 cases below +5) and +1.0 at seven days (15 of 49 below +10) |
+| P10b | target | pass | 0 |
+| P11a | target | pass | 0 |
+| P12a | target | fail | median 0.5, p99 9.8 (limits 2 and 6) |
+| P12b | target | fail | up to 39.9 (limit 1) |
+
+**The representative sits on a knife edge.** Each constant was varied one at a time, with `a` re-solved to the middle of its interval. Most constants keep every property the representative passes only at the representative's own value:
+
+- `ks` holds from 0.01 to 0.03; `fp` holds at 0.005 and 0.0075; `n0` holds at 100 and 200; `smin` holds at 0.5 and 1.
+- Every other constant loses GPI, P5b or anchor feasibility at its nearest grid neighbour.
+
+This design is not a basis for U4 even after rulings that remove its four failures.
+
+**Legacy scenarios,** run unchanged with absolute deaths and reported separately as the pre-registration requires:
+
+- P15d legacy (150 events × 10 deaths over 700 days): 20.4–95.4, with the most populous country lowest.
+- P15e legacy (400 × 50 over 180 days, plus 20 strike units a day for 14 days): 96.5–99.5.
+
+### v14 baselines (released formula, same captures)
+
+- The released v14 reproduces `expected.v14` on all 31 countries on both captures.
+- GPI ρ: 0.7302 and 0.7859.
+- P13a under the same definition: 14.78% and 16.01%.
+
+### Root causes
+
+1. **The recorded unrest episode is at noise level.** The KR week has about 2.6 protest-coded articles a day against a median of 1. Scoring 35–55 on it needs `kg ≥ 4`. At that weight, small counts in thin-coverage countries (0.8 against 0, or 3 against 1) produce large terms, which drives P12a's p99 to about 10 and puts pressure on GPI and P5b. Removing P15b multiplies the anchor-feasible set by about 15, but no design passes even then.
+2. **P8a conflicts with a high live share.** When live evidence explains about 94% of score variance, losing one input moves countries a long way. A null UCDP read moves a high-violence country by 81 points, and a null GDELT read moves another by 58. B2 gave advisories a last-good snapshot; UCDP and GDELT have none.
+3. **P3c fails near the ceiling.** In countries scoring above 95, the sigmoid flattens a campaign's contribution below 1 point. P1 and P2 already exclude scores of 95 and above; P3c does not.
+4. **The per-capita log transform mutes violence where it is already high.** The violence and strike channels in populous, already-violent countries move less than 0.5, which is P1's failing set.
+5. **The credibility weight conflicts with volume invariance.** R14/KTD-8's `n/(n + n0)` makes the unrest term depend on article volume by design, so P12b (thin-coverage country at 4 times volume: 39.9) and AE8v (0.35 against 0.25) cannot both pass with it.
+6. **No strike episode.** Both captures hold only the version 1 tally; `cii-v15` reads version 2 (B3, #9592), so P15c and AE12 are unmeasurable.
+
+### Blind pairwise selection
+
+- 72 distinct disagreement pairs meet the rule (opposite strict order and at least 5 points apart in both tables). Thirty were selected, plus ten controls.
+- The sealed key (seed, scores, control labels) and the ballot (country names, date, R21 construct and the four options only) are held by the owner as coordinator. Neither is committed.
+- Judging is pending. It needs at least three unexposed judges, and it cannot change the finding above, because the representative already fails the must-pass list.
+
+### Proposed amendments for owner ruling
+
+These are proposals only. None is applied, and every threshold in the brief stays fixed until the owner rules.
+
+- **OQ1 (adopt as proposed).** P1 measures the scored families only. The ten-headline injection becomes an assertion that the score moves by exactly 0. Measured: headlines move 0 at every grid point.
+- **OQ2 (adopt as proposed).** Allow the bounded union `C·(1 − exp(−Σ/C))` inside a family, alongside incident deduplication. It rises with every member and never exceeds the sum. Measured: both are anchor-feasible (union 4,284 combinations, max 3,684). The representative uses the union. P1 fails under both merges for the reasons in root cause 4, so this ruling alone does not make P1 pass.
+- **OQ3 (adopt as proposed).** P14: `|S − 100·sigmoid(z_prior + Σ emitted terms)| ≤ 0.05`. P5c counts pairs where a country with an equal or higher prior and every family term at least as high scores lower. Measured: both pass at every point.
+- **OQ4 (adopt as proposed).** The P15d scenario copies a recorded chronic war's monthly deaths-per-million profile (MX, 24.80 per million a year, manifest above). It replaces the absolute-death scenario, which still spans 20.4–95.4 because the most populous countries bind it.
+- **OQ6.** The registered 20-point bands cap `b` at 0.5, and P15a against P15b binds 587,028 combinations. A 30-point band does not fix the cause, which is the noise-level unrest episode (root cause 1). Proposed instead (a new rule, not measured here): change the unrest selection rule to require at least 20 protest-coded articles in the week's current day and at least 200 weekly articles, matching OQ11's volume floor. Keep the 35–55 band. Re-freeze the manifest on new captures if no current capture qualifies.
+- **OQ8 (adopt as proposed, with weight w = 1).** A state party carries a conflict's deaths outside its own borders, per million of its own population, through the same transform as territorial violence, at `w = 1`. Deaths inside its borders score once, as territorial. Measured: AE10 passes, and `w < 1` loses GPI at the representative.
+- **OQ10 (adopt as registered).** P13a is defined over the full source window, at 50% and above v14. Measured: 94% against v14's 15–16% at every grid point.
+- **P8a.** Give UCDP and GDELT a B2-style last-good snapshot, read through the real path with the existing honesty checks. Keep K = 10, measured with the snapshot present, plus a separate report of the no-snapshot move. Without a snapshot, no tested design passes P8a: it fails at all 38,808 main-grid points and all 9,768 extension points. This is a result for the tested family, not a proof for every design. Any design that keeps a high live share still has to bound the move when its largest live input reads null.
+- **P3c.** Exclude countries whose score is at or above 95 before the campaign, as P1 and P2 already do. Measured: 1 silent case remains at the representative and 0 of 9,768 extension points pass, so this is necessary but not sufficient.
+- **P12b and R14/KTD-8.** The credibility weight and the volume invariance cannot both hold. The owner chooses between them:
+  - keep credibility and redefine P12b to apply only at or above the OQ11 volume floor (200 weekly articles); or
+  - drop credibility and rely on the OQ11 volume floor alone.
+- **P15c and AE12.** Ship B3's version 2 tally writer to `main`, then capture a third calibration fixture holding a fresh version 2 tally before any rerun.
+
+After these rulings, the next study needs new captures (for the unrest and strike episodes) and a fresh pre-registration of the changed rules. Re-running this grid against amended thresholds would be selecting rules from results.
+
+## Diagnostic addendum (2026-11-15, after the results)
+
+Everything in this section is post hoc. It was run on the same two captures after the results above were known, so it registers nothing and proves nothing about a future design. Its purpose is to tell the owner which rulings would change the outcome. Any design or rule taken from it must be confirmed on new captures under a fresh pre-registration.
+
+### Three corrections to the proposals above
+
+1. **The unrest anchor is not an unrest episode.** The selected KR week has a protest share of 1.81%. FR's ordinary week on the same capture has 2.96%, and was ineligible only because its current count was not above its own median. The selection rule takes the largest eligible week without requiring that any week be unusual. The OQ6 proposal above (a volume floor) does not fix this.
+
+   Proposed instead: rule the unrest anchor unavailable on these captures, as the strike anchor already is. Rebuild it from a recorded historical episode, using GDELT's archived event exports and the seeder's own day-rebuild code (`rebuildCountryEventsDay` in `scripts/_gdelt-country-events.mjs`).
+
+2. **The structural prior double-counts violence.** WGI PV.EST is itself a lagged measure of political violence. Adding it to the UCDP term stacks the same evidence twice, and puts ten war countries in one band above 95. That is the P5b failure.
+
+   Proposed instead: make the prior a member of the violence union, `P = b·max(0, 1.5 − PV)`, under the brief's own rule of deduplicating and never summing. The score becomes `z = a + union(P, strikes, UCDP, burden, GDELT conflict, OREF) + U + E`.
+
+3. **P1 and P3c inject fixed amounts.** Twenty-five deaths, or fifteen strike units, added to a country that already carries hundreds, move the score by less than the threshold. That is correct behaviour, and excluding scores of 95 and above does not cover it.
+
+   Proposed instead, in two parts:
+
+   - P1's violence injection is stated per capita, as OQ4 does for the war anchor. The runs below use 25 deaths at the median population of the 31 countries, which is 0.4845 per million.
+   - P1 and P3c count only cases where the injection raises the country's existing level in that channel by at least a stated fraction. The runs below use 25%; the owner sets the number before any rerun.
+
+### What the corrections change
+
+Each run drops P15b, measures P8a with a last-good snapshot for UCDP and GDELT, and excludes scores of 95 and above from P3c.
+
+| Run | Design and rules | Points | Pass all | Closest miss |
+|---|---|---|---|---|
+| A | additive prior; per-capita P1 | 38,922 | 0 | 23 points fail only P5b (12 to 15 quiet countries in one band) |
+| B | additive prior, b 0.4 to 1.2 | 1,512 | 0 | P5b fails at every point (ten war countries above 95) |
+| C | prior in the union; knee and C varied | 5,670 | 0 | P5b passes at 381 points; P1 and P3c fail everywhere |
+| C2 | as C, with the relative-increment rule for P1 and P3c | 5,670 | 0 | 4 points fail only P5b, by one or two countries |
+| E | as C2, finer grid | 67,068 | 3 | 547 points fail one property |
+
+Run E's grid: b 0.3 / 0.4 / 0.5 / 0.6 / 0.8; ks 0.03 / 0.04 / 0.05 / 0.06; ku 0.75 / 1 / 1.25 / 1.5; knee 0.1 / 0.3 / 1; w 0.5 / 0.75 / 1; kg 0.5 / 1 / 2; φ 0.02; (kl, fp) in (0, 0.02), (1, 0.01), (2, 0.02); ke 0 / 0.5; C 5 / 6 / 8 / 10; union merge; n0 200; ko 2; strike half-life 5 days. That is 51,840 combinations, of which 16,632 are anchor-feasible. Each is measured at `k + 1` values of `a`, with `k = max(1, min(4, floor(h/0.1)))`.
+
+Run E's failures per property, out of 67,068 points: P3c (amended) 63,771; P5b 63,393; P1 (amended) 48,962; AE9 44,712; P3b 25,560; P2 7,617; P5a 6,207; GPI 30.
+
+**Three points pass every amended must-pass property, and they are isolated.** They are three different combinations, with no two adjacent on the grid. All three use kg 2, kl 1 and ke 0. On the first of them:
+
+- GPI ρ is 0.800 and 0.819 (v14: 0.730 and 0.786).
+- P13a is 90.8% on both captures.
+- P12a passes (median 0.3, p99 4.7).
+- P4 and P12b still miss (P12b: 22.8 at four times the volume).
+- The worst P5b band holds exactly 7, the limit.
+
+This is not a design to build on. It shows the amended rule set is satisfiable, and that two properties now bind:
+
+- **P5b at the quiet end.** Seven to nine countries with no live evidence and similar priors sit within five points of each other. The passing points separate them with a GDELT weight of 2, which means small-count noise is doing the separating. The owner should decide whether P5b applies to countries whose live families are all empty.
+- **P3c's window.** The 4 to 6 day window is measured on the score, and the sigmoid and the union stretch the apparent half-life as a country nears saturation. Measuring the half-life on the latent strike term would test the decay the formula actually applies.
+
+GPI stops binding once the unrest anchor is removed: it fails at 30 of 67,068 points, against 38,516 of 38,808 in the registered main grid.
+
+### Revised list for owner ruling
+
+- Stand as proposed: OQ1, OQ2, OQ3, OQ4, OQ8 (the weight `w` is no longer pinned at 1; passing points use 0.5 and 0.75), OQ10, the P8a snapshot, and shipping B3's version 2 tally writer to `main`.
+- Replace the OQ6 proposal with correction 1.
+- Add corrections 2 and 3.
+- New questions: whether P5b covers countries with no live evidence, and whether P3c's half-life is measured on the latent term.
+- Unchanged: the P12b and R14/KTD-8 conflict.
+
+## Owner rulings and rerun (2026-11-15)
+
+The owner ruled on three questions on 2026-11-15, after the diagnostic addendum. The reruns below use the same two captures, so they remain diagnostic. A design is accepted only after it passes on new captures under a fresh pre-registration.
+
+### Rulings
+
+1. **P5b exemption.** Countries whose every live family term is exactly zero are exempt from the band count. The exempt set is reported on every run, and those countries carry the label "structural estimate, no live inputs". The limit stays at 7 of 31.
+2. **P3c measurement.** The half-life is measured on the latent strike term and must fall in 4 to 6 days. P3b stays on the score. A new check requires that a finished campaign's contribution to the score never rises by more than 0.2 between 3-hour samples.
+3. **Strike half-life.** Five days, as the brief's P3 row states. The live constant `CII_STRIKE_HALF_LIFE_DAYS` is 3 and the public methodology page says 3; v15 changes both.
+
+The relative-increment fraction for P1 and P3c is 25% in these runs. The owner has not ruled on that number.
+
+### Rerun
+
+Design: the prior inside the violence union, as in the addendum. Rules: the rulings above, P15b dropped, P8a with a last-good snapshot for UCDP and GDELT, P1 violence injected per capita, and the 25% relative-increment rule.
+
+Grid: b 0.3 / 0.4 / 0.5 / 0.6 / 0.8; ks 0.03 / 0.05 / 0.08 / 0.12; ku 0.75 / 1 / 1.25 / 1.5; w 0.5 / 1; kg 0.25 / 0.5 / 1 / 2; knee 0.1 / 0.3 / 1; (kl, fp) in (0, 0.02), (1, 0.01); ke 0 / 0.5; C 6 / 8 / 10; φ 0.02; n0 200; ko 2. That is 23,040 combinations, of which 8,512 are anchor-feasible. Every fourth anchor-feasible combination in enumeration order is measured (2,128), at up to five values of `a`.
+
+| Run | P5b exemption | Points | Pass all | Distinct combinations |
+|---|---|---|---|---|
+| G0 | as ruled: every live term exactly zero | 9,008 | 10 | 8 |
+| G1 | not ruled: live evidence moves the score by less than 1 point | 9,008 | 59 | 36 |
+
+Findings:
+
+- **The exemption as ruled covers two countries per capture.** The other quiet countries carry small non-zero terms and still share a band. Under G1 the exemption covers five or six countries, and the passing set grows about sixfold. The owner should decide whether the exemption is "exactly zero" or "under 1 point".
+- **The G1 passing set is a region, not a point.** It spans b 0.3 to 0.6, ku 1 to 1.5, every knee value, C 8 and 10, and kg 0.25 to 2. Most passes use kg 0.25 or 0.5, so GDELT noise is no longer doing the separating.
+- **Three constants are pinned.**
+  - ks is 0.05 in 55 of 59 passes, on a grid with steps at 0.03 and 0.08.
+  - kl is 1 in every pass.
+  - ke is 0 in every pass, which means the economic family carries no weight. OQ7 puts economic stress inside the construct, so a rerun needs values of ke between 0 and 0.5.
+- **Targets on a typical G1 pass:**
+  - P13a is 89.4% and 89.5% (v14: 14.8% and 16.0%).
+  - P12a passes (median 0.1, p99 5.0).
+  - P12b misses at 7.2 (limit 1).
+  - P4 misses: the smallest response is +0.8 at 48 hours.
+- **GPI on that pass.** ρ is 0.828 on both captures, against v14's 0.730 and 0.786.
+- **The latent half-life is 5.13 to 5.25 days.** Eight cases fall under the relative increment. They are countries where the GDELT backstop already reports more strikes on the day than the injected campaign, and the formula takes the larger source.
+
+### Fourth ruling and full grid (2026-11-15)
+
+4. **P5b exemption threshold.** The owner ruled that a country is exempt when live evidence moves its score by less than 1 point, measured as the score minus the prior-only score. This replaces "exactly zero" in ruling 1. The exempt set is still reported and labelled.
+
+The full grid measures every anchor-feasible combination under rulings 2 to 4, and adds in-between economic and strike weights.
+
+Grid: b 0.3 / 0.4 / 0.5 / 0.6 / 0.8; ks 0.03 / 0.04 / 0.05 / 0.06 / 0.08; ku 0.75 / 1 / 1.25 / 1.5; w 0.5 / 1; kg 0.25 / 0.5 / 1 / 2; knee 0.1 / 0.3 / 1; (kl, fp) in (1, 0.01), (2, 0.02); ke 0 / 0.1 / 0.25 / 0.5; C 8 / 10 / 12; φ 0.02; n0 200; ko 2. Other rules are as in the rerun above.
+
+| Measure | Count |
+|---|---|
+| Combinations | 57,600 |
+| Anchor-feasible | 25,520 |
+| Points measured | 110,960 |
+| Points passing every amended must-pass property | 1,691 |
+| Distinct passing combinations | 1,055 |
+
+**The passing set is a connected region.** A neighbour is the same combination with one constant moved one grid step.
+
+- The best combination has 12 of its 14 neighbours passing.
+- 426 of the 1,055 passing combinations have at least half their neighbours passing; the median is 45%.
+
+**Passing combinations per constant value:**
+
+| Constant | Passing combinations |
+|---|---|
+| b | 0.3: 394; 0.4: 315; 0.5: 191; 0.6: 137; 0.8: 18 |
+| ks | 0.03: 66; 0.04: 195; 0.05: 375; 0.06: 419; 0.08: none |
+| ku | 0.75: 58; 1: 360; 1.25: 350; 1.5: 287 |
+| w | 0.5: 874; 1: 181 |
+| kg | 0.25: 378; 0.5: 348; 1: 176; 2: 153 |
+| knee | 0.1: 365; 0.3: 552; 1: 138 |
+| ke | 0: 518; 0.1: 479; 0.25: 58; 0.5: none |
+| C | 8: 260; 10: 430; 12: 365 |
+| (kl, fp) | (1, 0.01): 1,055; (2, 0.02): none |
+
+- The economic family can carry weight: 537 passing combinations have ke above 0, up to 0.25.
+- The strike weight is no longer pinned; it passes from 0.03 to 0.06.
+
+**Failures per property,** out of 110,960 points: P5b (as ruled) 93,153; AE9 55,480; P3c (as ruled) 49,417; P1 (amended) 43,310; P2 25,628; P3b 22,042; P5a 15,182; P8a (with snapshots) 1,376; GPI 26.
+
+**The most robust combination** is b 0.4, ks 0.05, ku 1.25, w 0.5, kg 0.25, knee 0.3, kl 1, fp 0.01, ke 0, C 10. It passes at four values of `a`; at a −2.74309:
+
+- GPI ρ is 0.832 and 0.829 (v14: 0.730 and 0.786).
+- P13a is 91.1% on both captures (v14: 14.8% and 16.0%).
+- Anchors: quiet week 6.6 to 11.4; chronic war 76.1 to 92.1; full-scale war 97.8 to 98.6.
+- P2 spread is 0.196 (limit 0.25).
+- The worst P5b band holds 6. Seven countries are exempt on each capture.
+- P12a: median 0.1, p99 5.3 (limits 2 and 6).
+- P12b misses at 8.1 (limit 1).
+- P4 misses: the smallest response is +0.9 at 48 hours.
+
+Across all passing points, P13a passes at every one and P12a at 1,659 of 1,691. P4 and P12b pass at none. Both need an owner sign-off or a design change before release.
+
+This is still a diagnostic on the two captures the rules were adjusted against. It shows that a robust design exists under the rulings. It does not select the constants.
+
+### What still blocks U4
+
+- The unrest and strike anchors are unavailable on these captures. Both need new evidence: a historical unrest episode rebuilt from GDELT's archive, and a capture holding seven days of the version 2 strike tally.
+- Rulings are still open on OQ1 to OQ4, OQ8 and OQ10, the P8a snapshot, the prior inside the violence union, the per-capita and relative-increment forms of P1 (including the 25% fraction), and the P12b and R14/KTD-8 conflict.
+- P4 and P12b miss at every passing point.
+- Nothing here has been confirmed on captures the design has not seen.
