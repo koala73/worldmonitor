@@ -48,6 +48,7 @@ describe('eventTimeFor', () => {
   it('reads the date of conflict events, wildfires, satellite fire detections and located news', () => {
     expect(eventTimeFor('iranEvent', { latitude: 35.69, longitude: 51.39, timestamp: '2026-11-10T08:00:00Z' })).toBe(Date.UTC(2026, 10, 10, 8));
     expect(eventTimeFor('iranEvent', { latitude: 35.69, longitude: 51.39, timestamp: NOW })).toBe(NOW);
+    expect(eventTimeFor('iranEvent', { latitude: 35.69, longitude: 51.39, timestamp: String(NOW) })).toBe(NOW);
     expect(eventTimeFor('natEvent', { category: 'wildfires', lat: 38, lon: -120, date: new Date(NOW) })).toBe(NOW);
     const fire = { lat: 38, lon: -120, brightness: 330, frp: 12, confidence: 95, region: 'US', acq_date: '2026-11-12', daynight: 'D', satellite: 'N20' };
     expect(eventTimeFor('fireDetection', { ...fire, detected_at: NOW - DAY })).toBe(NOW - DAY);

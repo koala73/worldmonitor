@@ -8,7 +8,7 @@
 import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 import { t, getCurrentLanguageTag } from '@/services/i18n';
 import { loadArchiveImage } from '@/services/orbital/archive-image';
-import { findEventPair, type EventPair } from '@/services/orbital/event-imagery';
+import type { EventPair } from '@/services/orbital/event-imagery';
 import { isFirmsDetection, type FireDetectionPopupData } from '@/services/orbital/fire-mosaic';
 import { loadObjectImagery, type ImageryTarget, type ObjectImagery } from '@/services/orbital/object-imagery';
 import type { ConflictZone, MilitaryBase, NaturalEvent, NewsLocationMarker, NuclearFacility, Port, StrategicWaterway } from '@/types';
@@ -83,7 +83,7 @@ export function eventTimeFor(type: string, data: unknown): number | null {
   switch (type) {
     case 'iranEvent': {
       const { timestamp } = data as EventPointData;
-      return timestamp === undefined ? null : validTime(typeof timestamp === 'number' ? timestamp : Date.parse(timestamp));
+      return timestamp === undefined ? null : validTime(typeof timestamp === 'number' || /^\d+$/.test(timestamp) ? Number(timestamp) : Date.parse(timestamp));
     }
     case 'natEvent':
       return validTime(new Date((data as NaturalEvent).date).getTime());
@@ -171,11 +171,17 @@ export function renderImageryDetails(imagery: ObjectImagery, nowMs: number, show
     </div>`;
 }
 
+type FindEventPair = typeof import('@/services/orbital/event-imagery').findEventPair;
+
+/** Loaded on the first click, so the archive search code stays out of the popup's chunk. */
+const loadFindEventPair: FindEventPair = (...args) =>
+  import('@/services/orbital/event-imagery').then(({ findEventPair }) => findEventPair(...args));
+
 export interface EventCompareHooks {
   eventMs: number;
   access: EventCompareAccess;
   onOpen: (target: ImageryTarget, eventMs: number, pair: Extract<EventPair, { status: 'ok' }>) => void;
-  findPair?: typeof findEventPair;
+  findPair?: FindEventPair;
 }
 
 export interface ImageryRowHooks {
@@ -202,7 +208,7 @@ function bindEventCompare(body: HTMLElement, target: ImageryTarget, hooks: Image
   button.addEventListener('click', () => {
     button.disabled = true;
     say(t('orbitalWatch.popup.compareSearching', { date }));
-    const find = compare.findPair ?? findEventPair;
+    const find = compare.findPair ?? loadFindEventPair;
     void find(target.point, compare.eventMs, (hooks.now ?? Date.now)(), { signal }).catch((): EventPair => ({ status: 'failed' })).then((pair) => {
       if (signal.aborted) return;
       button.disabled = false;
