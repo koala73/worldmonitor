@@ -129,7 +129,10 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await viewer.locator('[data-action="mode"][data-mode="change"]').click();
   await page.waitForFunction(() => {
     const stage = document.querySelector('.oiv-dialog .oiv-compare .oiv-stage');
-    return stage && !stage.classList.contains('oiv-skeleton');
+    if (!stage || stage.classList.contains('oiv-skeleton')) return false;
+    // A found pair must also have decoded both images; a stage without a slider is the no-pair state.
+    const images = [...document.querySelectorAll('.oiv-dialog .oiv-slider img.oiv-image')];
+    return !document.querySelector('.oiv-dialog .oiv-slider') || (images.length === 2 && images.every((img) => img.complete && img.naturalWidth > 0));
   }, null, { timeout: 120_000 });
   const searches = requests.slice(openedAt).filter(({ url }) => isSearch(url));
   log('history searches since the viewer opened', searches.length, [...new Set(searches.map(({ url }) => new URL(url).host))]);
