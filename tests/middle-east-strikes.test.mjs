@@ -1115,10 +1115,27 @@ describe('strike pressure tally (conflict:strike-pressure:v1)', () => {
     assert.deepEqual(out.days['2026-10-18'].SA, [0, 2, 0, 0]);
   });
 
-  it('shows days whole only after the late-report reach of a store cut at its cap', () => {
-    assert.equal(strikes.storeCutAt([]), null);
-    const capped = Array.from({ length: 4000 }, (_, i) => ({ ts: NOW - 60 * HOUR + i * MIN }));
-    assert.equal(strikes.storeCutAt(capped), NOW - 60 * HOUR + 24 * HOUR);
+  it('records a store cut in the store, and keeps it after the store shrinks below its cap', () => {
+    const base = NOW - 90 * HOUR;
+    const over = Array.from({ length: 4001 }, (_, i) => riyadh(`c${i}`, base + i * MIN));
+    const capped = strikes.mergeCandidateStore(null, over, NOW);
+    assert.equal(capped.candidates.length, 4000);
+    // The oldest kept report is c1; a dropped report could re-date incidents up to 24h later.
+    assert.equal(strikes.storeCutAt(capped), base + MIN + 24 * HOUR);
+    assert.equal(strikes.storeCutAt(strikes.mergeCandidateStore(null, over.slice(1), NOW)), null, 'exactly at the cap, nothing was cut');
+    const shrunk = strikes.mergeCandidateStore({ ...capped, candidates: capped.candidates.slice(0, 10) }, [], NOW + 10 * MIN);
+    assert.equal(strikes.storeCutAt(shrunk), base + MIN + 24 * HOUR);
+    // It expires once it leaves the 72h window.
+    assert.equal(strikes.storeCutAt(strikes.mergeCandidateStore(shrunk, [], base + MIN + 96 * HOUR + MIN)), null);
+  });
+
+  it('keeps a cut day when the tally write failed in the capped cycle', () => {
+    // Cycle 1 cut the store but its tally write failed, so the tally has no
+    // storeCutAt; cycle 2's store is under the cap but still carries the cut.
+    const stored = { version: 2, days: { '2026-10-18': { SA: [0, 3, 0, 0] } }, updatedAt: NOW - 20 * MIN };
+    const store = { version: 1, candidates: [], gdeltExports: [], cutAt: Date.parse('2026-10-19T02:00:00Z'), updatedAt: NOW - 10 * MIN };
+    const out = strikes.mergeStrikePressure(stored, [ev('tg:SA:SA:riyadh:9', 'SA', 'high', 20 * HOUR)], NOW, strikes.storeCutAt(strikes.mergeCandidateStore(store, [], NOW)));
+    assert.deepEqual(out.days['2026-10-18'], { SA: [0, 3, 0, 0] });
   });
 
   it('remembers a store cut after the store shrinks below its cap', () => {
