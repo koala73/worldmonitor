@@ -147,8 +147,8 @@ Component details that are easy to miss:
   - **confirmed strikes** from the Middle East strike feed, each incident
     weighted by severity (`critical 4`, `high 2`, `elevated 1`,
     `moderate 0.5`). The relay keeps 30 days of per-country counts by the UTC
-    day each incident happened (`conflict:strike-pressure:v1`); the 72h
-    window it is built from (`conflict:iran-events:v1`) is read too, and the
+    day each incident happened (`conflict:strike-pressure:v2`); the 72h
+    window it is built from (`conflict:iran-events:v2`) is read too, and the
     larger per day wins. Only a tally of the current version (`version: 2`)
     is read; an older one is reported unusable, not calm, and the window alone
     carries the feed until the relay's new tally refills.
@@ -202,10 +202,11 @@ Component details that are easy to miss:
   minutes) and ignored after that, when GDELT carries every country. The GDELT
   summary is ignored when it is more than 6 hours old, and a GDELT day not yet
   measured for strikes (stored before v12, until the materializer rebuilds it
-  from the archive) is unknown, not quiet. The relay keeps, per country and
-  day, the largest severity count any published window has shown for that
-  day, so an incident whose id changes between cycles is never counted
-  twice.
+  from the archive) is unknown, not quiet. The relay counts each day from the
+  window while the window shows that whole day, and keeps the larger of the
+  stored and the window count for the oldest, partly shown day. An incident
+  whose id changes between cycles is never counted twice, and one re-dated
+  across midnight by an earlier report counts only on its new day.
 - **GDELT escalation terms (Conflict and Unrest)**: each component carries a
   GDELT term for every country, read from `gdelt:bulk:country-events:v1`, which the bulk materializer builds from the
   15-minute GDELT event exports for every country. Conflict counts distinct
