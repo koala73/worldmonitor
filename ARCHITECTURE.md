@@ -259,7 +259,7 @@ Tauri 2.x (Rust) manages the app lifecycle, system tray, and IPC commands:
 
 - **Secret management**: Read/write platform keyring (macOS Keychain, Windows Credential Manager, Linux keyring)
 - **Sidecar control**: Spawn Node.js process, probe port, inject environment variables
-- **Window management**: Three trusted windows (main, settings, live-channels) with Edit menu for macOS clipboard shortcuts
+- **Window management**: Two trusted windows (main, settings) with Edit menu for macOS clipboard shortcuts
 
 ### Node.js Sidecar
 
