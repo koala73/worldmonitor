@@ -80,10 +80,22 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     return route.continue();
   });
 
+  // Only the page loads this recipe starts are exempt from the leak checks; an app-initiated navigation is checked.
+  const harnessNavs = [];
+  const expectNavigation = (url) => {
+    harnessNavs.push(url.replace(/#.*/, ''));
+    return url;
+  };
   const requests = [];
-  page.on('request', (req) => requests.push({
-    url: req.url(), body: req.postData() ?? '', harnessNavigation: req.isNavigationRequest() && req.frame() === page.mainFrame(),
-  }));
+  page.on('request', (req) => {
+    const at = req.isNavigationRequest() && req.frame() === page.mainFrame() ? harnessNavs.indexOf(req.url()) : -1;
+    if (at >= 0) harnessNavs.splice(at, 1);
+    requests.push({ url: req.url(), body: req.postData() ?? '', harnessNavigation: at >= 0 });
+  });
+  const reload = () => {
+    expectNavigation(page.url());
+    return page.reload({ waitUntil: 'domcontentloaded' });
+  };
 
   // Every LCP URL and every <img> src, kept across page loads.
   const lcpUrls = [];
@@ -129,7 +141,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   // WM_VERIFY_ORBITAL_LAYERS=conflicts boots with a dashboard layer over the point.
   const bootLayers = process.env.WM_VERIFY_ORBITAL_LAYERS || 'none';
   // Boot far from the point, so a centre in the page URL near it could only have come from the lookup.
-  await page.goto(`${base}/dashboard?view=global&layers=${bootLayers}&lat=${START.lat}&lon=${START.lon}&zoom=${START.zoom}`, { waitUntil: 'domcontentloaded' });
+  await page.goto(expectNavigation(`${base}/dashboard?view=global&layers=${bootLayers}&lat=${START.lat}&lon=${START.lon}&zoom=${START.zoom}`), { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
   const renderer = await waitForMap(page);
   log('renderer', renderer);
@@ -333,7 +345,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
 
   // Partial: a failed archive is named, with Retry. Archive answers are kept for the page's life, so start a fresh page.
   failing.add('earth-search.aws.element84.com');
-  await page.reload({ waitUntil: 'domcontentloaded' });
+  await reload();
   await waitForBoot(page, { data: true });
   await waitForMap(page);
   await openAtPlace();
@@ -351,20 +363,24 @@ export default async function ({ page, base, shot, log, expectVisible }) {
 
   if (fixture) {
     catalog = { ...fixture, stale: true, fetchedAt: Date.now() - 9 * 24 * HOUR };
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await reload();
     await waitForBoot(page, { data: true });
     await waitForMap(page);
     await openAtPlace();
-    await sheet.locator('.ies-stale').first().waitFor({ timeout: 90_000 });
+    // The catalogue warning, not an orbit-age cell or the too-old-satellites note, which share .ies-stale.
+    const staleNote = sheet.locator('.ies-note.ies-stale[role="note"]');
+    await staleNote.waitFor({ timeout: 90_000 });
     await privacy();
-    log('stale note', await sheet.locator('.ies-stale').first().innerText());
+    const staleText = await staleNote.innerText();
+    log('stale note', staleText);
+    if (!/^Catalogue is .+ old; predicted times can drift\.$/.test(staleText.trim())) throw new Error(`stale-catalogue note says: ${staleText}`);
     await shot('stale-orbit-data');
     await close();
 
     // Himawari-9 sits over 140.7°E, below Dubai's horizon, so the catalog loads but no pass reaches the point.
     catalog = { ...fixture, satellites: fixture.satellites.filter((s) => s.profileId === 'himawari') };
     emptyArchives = true;
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await reload();
     await waitForBoot(page, { data: true });
     await waitForMap(page);
     await openAtPlace();
@@ -392,6 +408,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
       && leaking(`${url} ${body}`));
     log(label, 'requests', requests.length, 'archive requests', requests.filter(({ url }) => ARCHIVE_HOSTS.includes(new URL(url).hostname)).length);
     if (leaks.length) throw new Error(`picked point left the browser: ${leaks.map((l) => l.url).join(', ')}`);
+    log('harness page loads exempt from the leak check', requests.filter((r) => r.harnessNavigation).length, 'unmatched', harnessNavs.length);
+    if (harnessNavs.length) throw new Error(`harness page loads never seen as requests: ${harnessNavs.join(', ')}`);
     // Archives get the point, some as a crop box in the path; telemetry keeps an archive URL only after
     // its coordinate params and path segments are scrubbed, so nothing of the point may survive that.
     const pathLeaks = requests.filter(({ url }) => ARCHIVE_HOSTS.includes(new URL(url).hostname) && leaking(archiveUrlAfterScrub(url)));
@@ -420,7 +438,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
 
   // A shared link opens with no click on the map, so nothing else stops the map drifting off the point.
   catalog = fixture;
-  await page.goto(`${base}/dashboard?view=global&layers=${bootLayers}#orbital=${PLACE.lat.toFixed(2)},${PLACE.lon.toFixed(2)}`, { waitUntil: 'domcontentloaded' });
+  await page.goto(expectNavigation(`${base}/dashboard?view=global&layers=${bootLayers}#orbital=${PLACE.lat.toFixed(2)},${PLACE.lon.toFixed(2)}`), { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
   await waitForMap(page);
   await expectVisible(SHEET);

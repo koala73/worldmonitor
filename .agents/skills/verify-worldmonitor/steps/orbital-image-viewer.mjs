@@ -31,10 +31,18 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const [lat, lon] = (process.env.WM_VERIFY_ORBITAL_POINT || '25.11,55.14').split(',').map(Number);
   await page.route(`**${CATALOG_PATH}*`, (route) => route.fulfill({ json: fixtureCatalog() }));
 
+  // Only the page loads this recipe starts are exempt from the leak checks; an app-initiated navigation is checked.
+  const harnessNavs = [];
+  const expectNavigation = (url) => {
+    harnessNavs.push(url.replace(/#.*/, ''));
+    return url;
+  };
   const requests = [];
-  page.on('request', (req) => requests.push({
-    url: req.url(), body: req.postData() ?? '', harnessNavigation: req.isNavigationRequest() && req.frame() === page.mainFrame(),
-  }));
+  page.on('request', (req) => {
+    const at = req.isNavigationRequest() && req.frame() === page.mainFrame() ? harnessNavs.indexOf(req.url()) : -1;
+    if (at >= 0) harnessNavs.splice(at, 1);
+    requests.push({ url: req.url(), body: req.postData() ?? '', harnessNavigation: at >= 0 });
+  });
   const lcpUrls = [];
   const imgSrcs = [];
   await page.exposeFunction('__wmRecordLcp', (url) => { lcpUrls.push(url); });
@@ -57,7 +65,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   });
   const theme = process.env.WM_VERIFY_ORBITAL_THEME === 'light' ? 'light' : 'dark';
   await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': JSON.stringify('flat'), 'worldmonitor-theme': theme } });
-  await page.goto(`${base}/dashboard?view=global&layers=none&lat=${START.lat}&lon=${START.lon}&zoom=${START.zoom}`, { waitUntil: 'domcontentloaded' });
+  await page.goto(expectNavigation(`${base}/dashboard?view=global&layers=none&lat=${START.lat}&lon=${START.lon}&zoom=${START.zoom}`), { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
   log('renderer', await waitForMap(page));
 
@@ -181,6 +189,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const leaks = requests.filter(({ url, body, harnessNavigation }) => !harnessNavigation && !ARCHIVE_HOSTS.includes(new URL(url).hostname) && leaking(`${url} ${body}`));
   log('requests', requests.length, 'archive', requests.filter(({ url }) => ARCHIVE_HOSTS.includes(new URL(url).hostname)).length, 'leaking the point', leaks.length);
   if (leaks.length) throw new Error(`the point left the browser: ${leaks.map((l) => l.url).join(', ')}`);
+  log('harness page loads exempt from the leak check', requests.filter((r) => r.harnessNavigation).length, 'unmatched', harnessNavs.length);
+  if (harnessNavs.length) throw new Error(`harness page loads never seen as requests: ${harnessNavs.join(', ')}`);
   const pathLeaks = requests.filter(({ url }) => ARCHIVE_HOSTS.includes(new URL(url).hostname) && leaking(archiveUrlAfterScrub(url)));
   if (pathLeaks.length) throw new Error(`the point survives the telemetry scrub: ${pathLeaks.map((l) => l.url).join(', ')}`);
   const vendorLeaks = requests.filter(({ url, body }) => VENDOR_URL.test(url) && leaking(`${url} ${body}`));
