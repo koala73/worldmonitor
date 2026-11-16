@@ -132,10 +132,15 @@ const maxOf = (values: Array<number | null>) => {
   return present.length ? Math.max(...present) : null;
 };
 
-function acquisitionImage(acquisition: Acquisition, box: CropBox): string | null {
+/**
+ * A crop at the point when Planetary Computer can serve one, else the archive's own preview.
+ * Planetary Computer holds the same Sentinel-1 GRD products under the same IDs, so radar found only on
+ * Earth Search is cropped there too, but only while Planetary Computer has not answered: it ingests
+ * hours after Earth Search, and when it answered without the scene, its crop is a 404 (#10850).
+ */
+function acquisitionImage(acquisition: Acquisition, box: CropBox, planetaryComputerAnswered: boolean): string | null {
   for (const item of acquisition.items) {
-    // Planetary Computer holds the same Sentinel-1 GRD products under the same IDs, so radar is cropped there too.
-    const crop = item.archive === 'planetary-computer' || item.profileId === 'sentinel-1'
+    const crop = item.archive === 'planetary-computer' || (item.profileId === 'sentinel-1' && !planetaryComputerAnswered)
       ? planetaryComputerCropUrl(item, box)
       : null;
     if (crop) return crop;
@@ -193,7 +198,7 @@ export function assembleEvidence(input: EvidenceInput): OrbitalEvidence {
       cloudCoverPct: isOptical(acquisition.profileId) ? minOf(acquisition.items.map((i) => i.cloudCoverPct)) : null,
       sunElevationDeg: maxOf(acquisition.items.map((i) => i.sunElevationDeg)),
       resolutionM: Math.min(...acquisition.items.map((i) => i.resolutionM)),
-      imageUrl: acquisitionImage(acquisition, box),
+      imageUrl: acquisitionImage(acquisition, box, answered.has('planetary-computer')),
     };
   }).sort((a, b) => b.endMs - a.endMs);
 
