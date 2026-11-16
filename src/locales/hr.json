@@ -5330,7 +5330,8 @@
       "metaSpot": "Oblak na točki",
       "metaScene": "Oblaci scene",
       "metaSun": "Visina sunca",
-      "showCloudy": "Uključi oblačne datume ({{count}})"
+      "showCloudy": "Uključi oblačne datume ({{count}})",
+      "eventMark": "Događaj {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5579,6 +5580,13 @@
       "noImage": "Nije pronađena nedavna snimka",
       "noPass": "Nema preleta u sljedeća 72 sata",
       "openEvidence": "Otvori dokaze",
+      "compareEvent": "Prije / poslije",
+      "compareEventLocked": "Prije / poslije · Pro",
+      "compareSearching": "Traže se snimke prije i poslije {{date}}…",
+      "compareNoAfter": "Još nema jasne snimke nakon {{date}}.",
+      "compareNoAfterWindow": "Nema jasne snimke u {{days}} dana nakon {{date}}.",
+      "compareNoBefore": "Nema jasne snimke prije {{date}} u razdoblju arhive.",
+      "compareFailed": "Pretraga arhive nije uspjela. Pokušajte ponovno.",
       "imageAlt": "Satelitski prikaz iz {{source}}",
       "unavailable": "Satelitske snimke nisu se učitale.",
       "fire": {

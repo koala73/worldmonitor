@@ -5264,7 +5264,8 @@
       "metaSpot": "該點雲量",
       "metaScene": "場景雲量",
       "metaSun": "太陽高度",
-      "showCloudy": "包含多雲日期（{{count}}）"
+      "showCloudy": "包含多雲日期（{{count}}）",
+      "eventMark": "事件 {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5497,6 +5498,13 @@
       "noImage": "未找到近期影像",
       "noPass": "72 小時內無過境",
       "openEvidence": "開啟證據",
+      "compareEvent": "前後對比",
+      "compareEventLocked": "前後對比 · Pro",
+      "compareSearching": "正在搜尋 {{date}} 前後的影像…",
+      "compareNoAfter": "{{date}} 之後尚無晴空影像。",
+      "compareNoAfterWindow": "{{date}} 之後 {{days}} 天內沒有晴空影像。",
+      "compareNoBefore": "存檔時段內沒有 {{date}} 之前的晴空影像。",
+      "compareFailed": "存檔搜尋失敗，請重試。",
       "imageAlt": "來自 {{source}} 的衛星檢視",
       "unavailable": "衛星影像載入失敗。",
       "fire": {

@@ -5320,7 +5320,8 @@
       "metaSpot": "Nori la punct",
       "metaScene": "Nori în scenă",
       "metaSun": "Înălțime soare",
-      "showCloudy": "Include datele înnorite ({{count}})"
+      "showCloudy": "Include datele înnorite ({{count}})",
+      "eventMark": "Eveniment {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5569,6 +5570,13 @@
       "noImage": "Nu s-a găsit nicio imagine recentă",
       "noPass": "Nicio trecere în următoarele 72 de ore",
       "openEvidence": "Deschide dovezile",
+      "compareEvent": "Înainte / după",
+      "compareEventLocked": "Înainte / după · Pro",
+      "compareSearching": "Se caută imagini înainte și după {{date}}…",
+      "compareNoAfter": "Încă nu există o imagine clară după {{date}}.",
+      "compareNoAfterWindow": "Nicio imagine clară în cele {{days}} de zile după {{date}}.",
+      "compareNoBefore": "Nicio imagine clară înainte de {{date}} în intervalul arhivei.",
+      "compareFailed": "Căutarea în arhivă a eșuat. Încercați din nou.",
       "imageAlt": "Vedere din satelit de la {{source}}",
       "unavailable": "Imaginile din satelit nu s-au încărcat.",
       "fire": {

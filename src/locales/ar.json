@@ -5404,7 +5404,8 @@
       "metaSpot": "السحب عند النقطة",
       "metaScene": "غيوم المشهد",
       "metaSun": "ارتفاع الشمس",
-      "showCloudy": "تضمين التواريخ الغائمة ({{count}})"
+      "showCloudy": "تضمين التواريخ الغائمة ({{count}})",
+      "eventMark": "الحدث {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5677,6 +5678,13 @@
       "noImage": "لم يُعثر على صورة حديثة",
       "noPass": "لا مرور متوقع خلال 72 ساعة",
       "openEvidence": "فتح الأدلة",
+      "compareEvent": "قبل / بعد",
+      "compareEventLocked": "قبل / بعد · Pro",
+      "compareSearching": "جارٍ البحث عن مشاهد قبل {{date}} وبعده…",
+      "compareNoAfter": "لا يوجد مشهد واضح منذ {{date}} حتى الآن.",
+      "compareNoAfterWindow": "لا يوجد مشهد واضح خلال {{days}} يومًا بعد {{date}}.",
+      "compareNoBefore": "لا يوجد مشهد واضح قبل {{date}} ضمن فترة الأرشيف.",
+      "compareFailed": "تعذّر البحث في الأرشيف. حاول مرة أخرى.",
       "imageAlt": "منظر فضائي من {{source}}",
       "unavailable": "تعذّر تحميل صور الأقمار الصناعية.",
       "fire": {

@@ -5264,7 +5264,8 @@
       "metaSpot": "Mây tại điểm",
       "metaScene": "Mây của cảnh",
       "metaSun": "Độ cao Mặt Trời",
-      "showCloudy": "Bao gồm ngày có mây ({{count}})"
+      "showCloudy": "Bao gồm ngày có mây ({{count}})",
+      "eventMark": "Sự kiện {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5497,6 +5498,13 @@
       "noImage": "Không tìm thấy ảnh gần đây",
       "noPass": "Không có lượt bay qua trong 72 giờ",
       "openEvidence": "Mở bằng chứng",
+      "compareEvent": "Trước / sau",
+      "compareEventLocked": "Trước / sau · Pro",
+      "compareSearching": "Đang tìm ảnh trước và sau {{date}}…",
+      "compareNoAfter": "Chưa có ảnh rõ nào kể từ {{date}}.",
+      "compareNoAfterWindow": "Không có ảnh rõ nào trong {{days}} ngày sau {{date}}.",
+      "compareNoBefore": "Không có ảnh rõ trước {{date}} trong khoảng lưu trữ.",
+      "compareFailed": "Tìm kiếm kho lưu trữ thất bại. Hãy thử lại.",
       "imageAlt": "Ảnh vệ tinh từ {{source}}",
       "unavailable": "Không tải được ảnh vệ tinh.",
       "fire": {

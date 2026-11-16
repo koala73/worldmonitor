@@ -5292,7 +5292,8 @@
       "metaSpot": "Moln vid punkt",
       "metaScene": "Moln i scenen",
       "metaSun": "Solhöjd",
-      "showCloudy": "Inkludera molniga datum ({{count}})"
+      "showCloudy": "Inkludera molniga datum ({{count}})",
+      "eventMark": "Händelse {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5533,6 +5534,13 @@
       "noImage": "Ingen ny bild hittades",
       "noPass": "Ingen överflygning inom 72 timmar",
       "openEvidence": "Öppna bevis",
+      "compareEvent": "Före / efter",
+      "compareEventLocked": "Före / efter · Pro",
+      "compareSearching": "Söker bilder före och efter {{date}}…",
+      "compareNoAfter": "Ingen klar bild sedan {{date}} ännu.",
+      "compareNoAfterWindow": "Ingen klar bild under de {{days}} dagarna efter {{date}}.",
+      "compareNoBefore": "Ingen klar bild före {{date}} i arkivperioden.",
+      "compareFailed": "Arkivsökningen misslyckades. Försök igen.",
       "imageAlt": "Satellitvy från {{source}}",
       "unavailable": "Satellitbilderna kunde inte läsas in.",
       "fire": {

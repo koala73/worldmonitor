@@ -5292,7 +5292,8 @@
       "metaSpot": "Bewolking op punt",
       "metaScene": "Bewolking van de scène",
       "metaSun": "Zonhoogte",
-      "showCloudy": "Bewolkte datums opnemen ({{count}})"
+      "showCloudy": "Bewolkte datums opnemen ({{count}})",
+      "eventMark": "Gebeurtenis {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5533,6 +5534,13 @@
       "noImage": "Geen recent beeld gevonden",
       "noPass": "Geen overkomst binnen 72 uur",
       "openEvidence": "Bewijs openen",
+      "compareEvent": "Voor / na",
+      "compareEventLocked": "Voor / na · Pro",
+      "compareSearching": "Opnamen voor en na {{date}} zoeken…",
+      "compareNoAfter": "Nog geen heldere opname sinds {{date}}.",
+      "compareNoAfterWindow": "Geen heldere opname in de {{days}} dagen na {{date}}.",
+      "compareNoBefore": "Geen heldere opname vóór {{date}} in de archiefperiode.",
+      "compareFailed": "Zoeken in het archief mislukt. Probeer opnieuw.",
       "imageAlt": "Satellietbeeld van {{source}}",
       "unavailable": "Satellietbeelden konden niet worden geladen.",
       "fire": {

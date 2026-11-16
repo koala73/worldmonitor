@@ -136,7 +136,7 @@ function acquisitionImage(acquisition: Acquisition, box: CropBox): string | null
   for (const item of acquisition.items) {
     // Planetary Computer holds the same Sentinel-1 GRD products under the same IDs, so radar is cropped there too.
     const crop = item.archive === 'planetary-computer' || item.profileId === 'sentinel-1'
-      ? planetaryComputerCropUrl(item.collection, item.itemId, box)
+      ? planetaryComputerCropUrl(item, box)
       : null;
     if (crop) return crop;
   }

@@ -5320,7 +5320,8 @@
       "metaSpot": "Nuages au point",
       "metaScene": "Nuages de la scène",
       "metaSun": "Élév. solaire",
-      "showCloudy": "Inclure les dates nuageuses ({{count}})"
+      "showCloudy": "Inclure les dates nuageuses ({{count}})",
+      "eventMark": "Événement {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5569,6 +5570,13 @@
       "noImage": "Aucune image récente",
       "noPass": "Aucun passage prévu sous 72 heures",
       "openEvidence": "Ouvrir les preuves",
+      "compareEvent": "Avant / après",
+      "compareEventLocked": "Avant / après · Pro",
+      "compareSearching": "Recherche de scènes avant et après le {{date}}…",
+      "compareNoAfter": "Pas encore de scène dégagée depuis le {{date}}.",
+      "compareNoAfterWindow": "Aucune scène dégagée dans les {{days}} jours suivant le {{date}}.",
+      "compareNoBefore": "Aucune scène dégagée avant le {{date}} dans la fenêtre d’archive.",
+      "compareFailed": "La recherche d’archive a échoué. Réessayez.",
       "imageAlt": "Vue satellite de {{source}}",
       "unavailable": "L’imagerie satellite n’a pas pu être chargée.",
       "fire": {

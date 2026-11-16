@@ -5348,7 +5348,8 @@
       "metaSpot": "Oblačnost v bodě",
       "metaScene": "Oblačnost scény",
       "metaSun": "Výška Slunce",
-      "showCloudy": "Zahrnout zatažené dny ({{count}})"
+      "showCloudy": "Zahrnout zatažené dny ({{count}})",
+      "eventMark": "Událost {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5605,6 +5606,13 @@
       "noImage": "Žádný nedávný snímek nenalezen",
       "noPass": "Během 72 hodin není plánován žádný přelet",
       "openEvidence": "Otevřít důkazy",
+      "compareEvent": "Před / po",
+      "compareEventLocked": "Před / po · Pro",
+      "compareSearching": "Hledají se snímky před a po {{date}}…",
+      "compareNoAfter": "Od {{date}} zatím není jasný snímek.",
+      "compareNoAfterWindow": "Během {{days}} dní po {{date}} není jasný snímek.",
+      "compareNoBefore": "Před {{date}} není v okně archivu jasný snímek.",
+      "compareFailed": "Hledání v archivu selhalo. Zkuste to znovu.",
       "imageAlt": "Satelitní pohled z {{source}}",
       "unavailable": "Satelitní snímky se nepodařilo načíst.",
       "fire": {

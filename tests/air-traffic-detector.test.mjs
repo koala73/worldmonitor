@@ -147,3 +147,44 @@ test('a market window cannot enter on bins recorded while its coverage was lost'
   assert.deepEqual(events, [], verdicts.join(','));
   assert.equal(verdicts[4], 'blocked-coverage');
 });
+
+test('a timetable change that last week already shows does not read as a collapse', () => {
+  const DE = detector.MARKETS.find((m) => m.code === 'DE');
+  const t0 = Date.parse('2026-11-06T21:30:00Z');
+  const de = (dep) => ({ status: 'ok', usSeen: 3000, euAirborne: 2000, usLowClimbingAirline: 100, usAirborne: 2000, markets: { DE: { seen: 100, dep } } });
+  const points = new Map();
+  // Three summer-schedule weeks still departing late in the evening, then the
+  // first winter-schedule week, which winds down earlier like tonight.
+  for (let w = 1; w <= 4; w += 1) for (let i = -8; i < 16; i += 1) points.set(detector.sameLocalBin(t0 + i * BIN, w, DE.tz), de(w === 1 ? 10 : 30));
+  const now = Array.from({ length: 10 }, () => de(8));
+  now.forEach((p, i) => points.set(t0 + i * BIN, p));
+  const getPoint = (t) => points.get(t);
+  let state = null;
+  const events = [];
+  now.forEach((point, i) => {
+    const result = evaluateCollapse(state, { t: t0 + i * BIN, point, getPoint, market: DE, peakBaseline: 80 });
+    state = result.state;
+    if (result.event) events.push(result.event);
+  });
+  assert.deepEqual(events, []);
+  assert.equal(state.verdict, 'normal');
+});
+
+test('a collapse still enters when last week was ordinary', () => {
+  const DE = detector.MARKETS.find((m) => m.code === 'DE');
+  const t0 = Date.parse('2026-11-06T12:00:00Z');
+  const de = (dep) => ({ status: 'ok', usSeen: 3000, euAirborne: 2000, usLowClimbingAirline: 100, usAirborne: 2000, markets: { DE: { seen: 100, dep } } });
+  const points = new Map();
+  for (let w = 1; w <= 4; w += 1) for (let i = -8; i < 16; i += 1) points.set(detector.sameLocalBin(t0 + i * BIN, w, DE.tz), de(w === 1 ? 12 : 10));
+  const now = Array.from({ length: 10 }, () => de(2));
+  now.forEach((p, i) => points.set(t0 + i * BIN, p));
+  const getPoint = (t) => points.get(t);
+  let state = null;
+  const events = [];
+  now.forEach((point, i) => {
+    const result = evaluateCollapse(state, { t: t0 + i * BIN, point, getPoint, market: DE, peakBaseline: 80 });
+    state = result.state;
+    if (result.event) events.push(result.event);
+  });
+  assert.deepEqual(events.map((e) => e.kind), ['collapse']);
+});

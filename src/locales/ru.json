@@ -5348,7 +5348,8 @@
       "metaSpot": "Облачность в точке",
       "metaScene": "Облачность сцены",
       "metaSun": "Высота солнца",
-      "showCloudy": "Включить облачные даты ({{count}})"
+      "showCloudy": "Включить облачные даты ({{count}})",
+      "eventMark": "Событие {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5605,6 +5606,13 @@
       "noImage": "Недавних снимков не найдено",
       "noPass": "Пролётов в ближайшие 72 часа нет",
       "openEvidence": "Открыть доказательства",
+      "compareEvent": "До / после",
+      "compareEventLocked": "До / после · Pro",
+      "compareSearching": "Поиск снимков до и после {{date}}…",
+      "compareNoAfter": "После {{date}} ясного снимка пока нет.",
+      "compareNoAfterWindow": "Нет ясного снимка в течение {{days}} дней после {{date}}.",
+      "compareNoBefore": "В окне архива нет ясного снимка до {{date}}.",
+      "compareFailed": "Поиск в архиве не удался. Повторите попытку.",
       "imageAlt": "Спутниковый вид от {{source}}",
       "unavailable": "Не удалось загрузить спутниковые снимки.",
       "fire": {

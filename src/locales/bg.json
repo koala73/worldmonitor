@@ -5292,7 +5292,8 @@
       "metaSpot": "Облачност в точката",
       "metaScene": "Облачност на сцената",
       "metaSun": "Височина на слънцето",
-      "showCloudy": "Включване на облачни дати ({{count}})"
+      "showCloudy": "Включване на облачни дати ({{count}})",
+      "eventMark": "Събитие {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5533,6 +5534,13 @@
       "noImage": "Няма скорошно изображение",
       "noPass": "Няма преминаване през следващите 72 часа",
       "openEvidence": "Отвори доказателствата",
+      "compareEvent": "Преди / след",
+      "compareEventLocked": "Преди / след · Pro",
+      "compareSearching": "Търсят се снимки преди и след {{date}}…",
+      "compareNoAfter": "Все още няма ясна снимка след {{date}}.",
+      "compareNoAfterWindow": "Няма ясна снимка в рамките на {{days}} дни след {{date}}.",
+      "compareNoBefore": "Няма ясна снимка преди {{date}} в периода на архива.",
+      "compareFailed": "Търсенето в архива не успя. Опитайте отново.",
       "imageAlt": "Сателитен изглед от {{source}}",
       "unavailable": "Сателитните изображения не се заредиха.",
       "fire": {

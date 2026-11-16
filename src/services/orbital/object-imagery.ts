@@ -71,7 +71,7 @@ export function resolveWatchedSiteId(origin: WatchedSiteOrigin): Promise<string 
 export function fromSiteRecord(response: GetWatchedSiteImageryResponse, nowMs: number): ObjectImagery | null {
   if (response.stale) return null;
   const image = response.latestImage;
-  const url = image ? planetaryComputerCropUrl(image.collection, image.itemId, cropBox({ lat: response.lat, lon: response.lon })) : null;
+  const url = image ? planetaryComputerCropUrl(image, cropBox({ lat: response.lat, lon: response.lon })) : null;
   const passMs = response.nextPass ? Date.parse(response.nextPass.time) : NaN;
   return {
     latest: image && url ? { datetime: image.datetime, profileId: image.profileId, archive: 'planetary-computer', candidates: [url] } : null,
