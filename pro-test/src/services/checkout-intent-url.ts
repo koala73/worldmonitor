@@ -1,10 +1,10 @@
 /**
  * Pure helpers for the checkout-intent-via-URL flow.
  *
- * Intent is bound to the specific sign-in attempt via Clerk's
- * afterSignInUrl / afterSignUpUrl. On successful sign-in from our
- * openSignIn call, Clerk navigates to a return URL carrying these
- * params. On page load, we parse, consume, and strip them.
+ * Intent is bound to the specific auth attempt via Clerk's
+ * afterSignInUrl / afterSignUpUrl. On successful sign-up or sign-in
+ * from our openSignUp call, Clerk navigates to a return URL carrying
+ * these params. On page load, we parse, consume, and strip them.
  *
  * Extracted as a pure module (no DOM, no Clerk, no dodopayments
  * import) so tests can exercise the parse/strip/build logic without

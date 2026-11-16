@@ -95,6 +95,16 @@ async function loadClerk(): Promise<LoadedClerk> {
   const stopTranslatorProtection = protectClerkDomFromTranslators();
   try {
     await instance.load({
+      // Signed-out checkout opens sign-up (#10842). English only, like the rest
+      // of the modal; sign-in strings stay Clerk's defaults for the nav button.
+      localization: {
+        signUp: {
+          start: {
+            title: 'Create your account',
+            subtitle: 'If you picked a plan, secure checkout opens next.',
+          },
+        },
+      },
       appearance: {
         // Sign-up carries the same assent line as checkout (#6976): Clerk renders
         // Terms/Privacy links in the auth card footer when these are set, so the
