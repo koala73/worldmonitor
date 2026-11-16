@@ -12,7 +12,7 @@ import type { ImageryTarget, ObjectImagery } from '@/services/orbital/object-ima
 vi.mock('@/config/orbital-watch-flag', () => ({ ORBITAL_WATCH_ENABLED: true }));
 vi.mock('@/services/orbital/archive-image', () => ({ loadArchiveImage: vi.fn(() => new Promise(() => {})) }));
 
-import { eventTimeFor, mountImageryRow, renderImageryRow, type EventCompareHooks } from '@/components/map-popup-imagery';
+import { eventTimeFor, imageryTargetFor, mountImageryRow, renderImageryRow, type EventCompareHooks } from '@/components/map-popup-imagery';
 
 const NOW = Date.UTC(2026, 10, 15, 12);
 const DAY = 86_400_000;
@@ -45,20 +45,30 @@ afterEach(() => {
 });
 
 describe('eventTimeFor', () => {
-  it('reads the date of conflict events, wildfires and satellite fire detections', () => {
+  it('reads the date of conflict events, wildfires, satellite fire detections and located news', () => {
     expect(eventTimeFor('iranEvent', { latitude: 35.69, longitude: 51.39, timestamp: '2026-11-10T08:00:00Z' })).toBe(Date.UTC(2026, 10, 10, 8));
     expect(eventTimeFor('iranEvent', { latitude: 35.69, longitude: 51.39, timestamp: NOW })).toBe(NOW);
     expect(eventTimeFor('natEvent', { category: 'wildfires', lat: 38, lon: -120, date: new Date(NOW) })).toBe(NOW);
     const fire = { lat: 38, lon: -120, brightness: 330, frp: 12, confidence: 95, region: 'US', acq_date: '2026-11-12', daynight: 'D', satellite: 'N20' };
     expect(eventTimeFor('fireDetection', { ...fire, detected_at: NOW - DAY })).toBe(NOW - DAY);
+    expect(eventTimeFor('news', { lat: 50.45, lon: 30.52, title: 'Strike on Kyiv', threatLevel: 'high', timestamp: new Date(NOW - DAY) })).toBe(NOW - DAY);
   });
 
   it('gives no date to sites, undated events, or popups without an imagery row', () => {
     expect(eventTimeFor('base', { id: 'b', lat: 1, lon: 2 })).toBeNull();
     expect(eventTimeFor('iranEvent', { latitude: 35.69, longitude: 51.39, timestamp: 'not a date' })).toBeNull();
     expect(eventTimeFor('natEvent', { category: 'volcanoes', lat: 1, lon: 2, date: new Date(NOW) })).toBeNull();
+    expect(eventTimeFor('conflict', { id: 'c', name: 'Zone', center: [30, 50], startDate: '2022-02-24' })).toBeNull();
     expect(eventTimeFor('outage', { lat: 1, lon: 2, pubDate: new Date(NOW) })).toBeNull();
-    expect(eventTimeFor('news', { lat: 1, lon: 2, pubDate: new Date(NOW) })).toBeNull();
+    expect(eventTimeFor('news', { lat: 1, lon: 2, title: 'Undated', threatLevel: 'info' })).toBeNull();
+    expect(eventTimeFor('news', { lat: Number.NaN, lon: 2, title: 'Nowhere', threatLevel: 'info', timestamp: new Date(NOW) })).toBeNull();
+  });
+});
+
+describe('which events carry the imagery row', () => {
+  it('gives a located news item a row at its point, and an outage none', () => {
+    expect(imageryTargetFor('news', { lat: 50.45, lon: 30.52, title: 'Strike on Kyiv', threatLevel: 'high' })).toEqual({ kind: 'point', point: { lat: 50.45, lon: 30.52 } });
+    expect(imageryTargetFor('outage', { lat: 50.45, lon: 30.52, pubDate: new Date(NOW) })).toBeNull();
   });
 });
 

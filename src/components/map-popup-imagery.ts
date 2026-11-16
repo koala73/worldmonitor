@@ -11,7 +11,7 @@ import { loadArchiveImage } from '@/services/orbital/archive-image';
 import { findEventPair, type EventPair } from '@/services/orbital/event-imagery';
 import { isFirmsDetection, type FireDetectionPopupData } from '@/services/orbital/fire-mosaic';
 import { loadObjectImagery, type ImageryTarget, type ObjectImagery } from '@/services/orbital/object-imagery';
-import type { ConflictZone, MilitaryBase, NaturalEvent, NuclearFacility, Port, StrategicWaterway } from '@/types';
+import type { ConflictZone, MilitaryBase, NaturalEvent, NewsLocationMarker, NuclearFacility, Port, StrategicWaterway } from '@/types';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { escapeHtml } from '@/utils/sanitize';
 
@@ -62,6 +62,10 @@ export function imageryTargetFor(type: string, data: unknown): ImageryTarget | n
       const f = data as PointData;
       return isFirmsDetection(data) ? { kind: 'point', point: { lat: f.lat, lon: f.lon } } : null;
     }
+    case 'news': {
+      const n = data as PointData;
+      return Number.isFinite(n.lat) && Number.isFinite(n.lon) ? { kind: 'point', point: { lat: n.lat, lon: n.lon } } : null;
+    }
     default:
       return null;
   }
@@ -71,7 +75,8 @@ const validTime = (ms: number): number | null => (Number.isFinite(ms) && ms > 0 
 
 /**
  * The time a dated event happened, for the before/after around it (#10713 unit 2), or null for objects
- * with no single date: sites, and every popup without an imagery row.
+ * with no single date: sites (conflict zones included), and every popup without an imagery row. Outages
+ * have no row: their point is the country's centroid, not the place that went dark.
  */
 export function eventTimeFor(type: string, data: unknown): number | null {
   if (!imageryTargetFor(type, data)) return null;
@@ -84,6 +89,10 @@ export function eventTimeFor(type: string, data: unknown): number | null {
       return validTime(new Date((data as NaturalEvent).date).getTime());
     case 'fireDetection':
       return validTime((data as FireDetectionPopupData).detected_at!);
+    case 'news': {
+      const { timestamp } = data as NewsLocationMarker;
+      return timestamp ? validTime(new Date(timestamp).getTime()) : null;
+    }
     default:
       return null;
   }
