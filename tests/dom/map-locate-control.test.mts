@@ -289,7 +289,7 @@ describe('locate menu entries', () => {
     expect(openBrief).toHaveBeenCalledWith('AE', 'United Arab Emirates');
   });
 
-  it('adds imagery evidence for the rounded point when Orbital Watch is on', async () => {
+  it('adds imagery evidence for the rounded point, marked as the user\'s own position, when Orbital Watch is on', async () => {
     flag.ORBITAL_WATCH_ENABLED = true;
     geometry.getCountryNearCoordinates.mockReturnValue({ code: 'AE', name: 'United Arab Emirates' });
     const mapEl = document.createElement('div');
@@ -298,7 +298,7 @@ describe('locate menu entries', () => {
     const { map } = await setUp();
     expect(menuLabels()).toEqual(['Open Country Brief', 'Imagery evidence here']);
     menuItem('Imagery evidence here')!.click();
-    await vi.waitFor(() => expect(openOrbitalWatch).toHaveBeenCalledExactlyOnceWith(ROUNDED, mapEl, map));
+    await vi.waitFor(() => expect(openOrbitalWatch).toHaveBeenCalledExactlyOnceWith(ROUNDED, mapEl, map, { located: true }));
   });
 
   it('points to Search outside any country while Orbital Watch is off', async () => {

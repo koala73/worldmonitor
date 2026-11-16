@@ -6,8 +6,8 @@ import { roundShareCoordinate } from '@/utils/urlState';
 import { h, replaceChildren } from '@/utils/dom-utils';
 
 export interface OrbitalPlaceToolsCallbacks {
-  /** `name` is the searched place, or null for coordinates and the device location. */
-  onPick: (point: GeoPoint, name: string | null) => void;
+  /** `name` is the searched place, or null for coordinates and the device location; `located` marks the device location. */
+  onPick: (point: GeoPoint, name: string | null, located: boolean) => void;
   /** The link for the open lookup, or null when no place is open. */
   shareLink: () => string | null;
 }
@@ -81,12 +81,12 @@ export class OrbitalPlaceTools {
     this.clearShare();
   }
 
-  private pick(point: GeoPoint, name: string | null = null): void {
+  private pick(point: GeoPoint, name: string | null = null, located = false): void {
     this.search?.abort();
     this.search = null;
     replaceChildren(this.results);
     this.status.textContent = '';
-    this.callbacks.onPick(point, name);
+    this.callbacks.onPick(point, name, located);
   }
 
   private async submit(): Promise<void> {
@@ -144,7 +144,7 @@ export class OrbitalPlaceTools {
     this.search = null;
     if (position.ok) {
       // The full-view route keeps the point in the address bar, so a device fix is cut to the share grid first.
-      this.pick({ lat: roundShareCoordinate(position.lat), lon: roundShareCoordinate(position.lon) });
+      this.pick({ lat: roundShareCoordinate(position.lat), lon: roundShareCoordinate(position.lon) }, null, true);
       return;
     }
     this.status.textContent = t(position.reason === 'denied' ? 'orbitalWatch.search.locationDenied' : 'orbitalWatch.search.locationUnavailable');
