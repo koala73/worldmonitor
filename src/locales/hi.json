@@ -5292,7 +5292,8 @@
       "metaSpot": "बिंदु पर बादल",
       "metaScene": "दृश्य के बादल",
       "metaSun": "सूर्य की ऊँचाई",
-      "showCloudy": "बादल वाली तारीखें शामिल करें ({{count}})"
+      "showCloudy": "बादल वाली तारीखें शामिल करें ({{count}})",
+      "eventMark": "घटना {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5533,6 +5534,13 @@
       "noImage": "कोई हालिया चित्र नहीं मिला",
       "noPass": "72 घंटों में कोई गुज़रना नहीं",
       "openEvidence": "साक्ष्य खोलें",
+      "compareEvent": "पहले / बाद",
+      "compareEventLocked": "पहले / बाद · Pro",
+      "compareSearching": "{{date}} से पहले और बाद के दृश्य खोजे जा रहे हैं…",
+      "compareNoAfter": "{{date}} के बाद अभी तक कोई साफ़ दृश्य नहीं।",
+      "compareNoAfterWindow": "{{date}} के बाद {{days}} दिनों में कोई साफ़ दृश्य नहीं।",
+      "compareNoBefore": "संग्रह अवधि में {{date}} से पहले कोई साफ़ दृश्य नहीं।",
+      "compareFailed": "संग्रह खोज विफल रही। फिर से कोशिश करें।",
       "imageAlt": "{{source}} से उपग्रह दृश्य",
       "unavailable": "उपग्रह चित्र लोड नहीं हुए।",
       "fire": {

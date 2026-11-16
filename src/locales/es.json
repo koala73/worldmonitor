@@ -5320,7 +5320,8 @@
       "metaSpot": "Nubes en el punto",
       "metaScene": "Nubes de la escena",
       "metaSun": "Elev. solar",
-      "showCloudy": "Incluir fechas nubladas ({{count}})"
+      "showCloudy": "Incluir fechas nubladas ({{count}})",
+      "eventMark": "Evento {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5569,6 +5570,13 @@
       "noImage": "No se encontró ninguna imagen reciente",
       "noPass": "Ningún paso previsto en 72 horas",
       "openEvidence": "Abrir evidencias",
+      "compareEvent": "Antes / después",
+      "compareEventLocked": "Antes / después · Pro",
+      "compareSearching": "Buscando escenas antes y después del {{date}}…",
+      "compareNoAfter": "Aún no hay escena despejada desde el {{date}}.",
+      "compareNoAfterWindow": "No hay escena despejada en los {{days}} días posteriores al {{date}}.",
+      "compareNoBefore": "No hay escena despejada antes del {{date}} en la ventana del archivo.",
+      "compareFailed": "La búsqueda en el archivo falló. Inténtalo de nuevo.",
       "imageAlt": "Vista satelital de {{source}}",
       "unavailable": "No se pudieron cargar las imágenes satelitales.",
       "fire": {

@@ -5348,7 +5348,8 @@
       "metaSpot": "Хмарність у точці",
       "metaScene": "Хмарність сцени",
       "metaSun": "Висота сонця",
-      "showCloudy": "Включити хмарні дати ({{count}})"
+      "showCloudy": "Включити хмарні дати ({{count}})",
+      "eventMark": "Подія {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5605,6 +5606,13 @@
       "noImage": "Нещодавніх знімків не знайдено",
       "noPass": "Прольотів у найближчі 72 години немає",
       "openEvidence": "Відкрити докази",
+      "compareEvent": "До / після",
+      "compareEventLocked": "До / після · Pro",
+      "compareSearching": "Пошук знімків до і після {{date}}…",
+      "compareNoAfter": "Після {{date}} чіткого знімка ще немає.",
+      "compareNoAfterWindow": "Немає чіткого знімка протягом {{days}} днів після {{date}}.",
+      "compareNoBefore": "У вікні архіву немає чіткого знімка до {{date}}.",
+      "compareFailed": "Пошук в архіві не вдався. Спробуйте ще раз.",
       "imageAlt": "Супутниковий вигляд від {{source}}",
       "unavailable": "Не вдалося завантажити супутникові знімки.",
       "fire": {

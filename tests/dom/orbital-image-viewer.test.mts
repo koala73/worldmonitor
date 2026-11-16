@@ -11,6 +11,7 @@ import {
   openOrbitalImageViewer,
   sceneFromAcquisition,
   scenesFromFrame,
+  subjectForEvent,
   subjectForImage,
   type ViewerDependencies,
 } from '@/components/OrbitalImageViewer';
@@ -482,5 +483,37 @@ describe('opening the viewer from the lookup sheet', () => {
     document.querySelector<HTMLButtonElement>('.oiv-close')!.click();
     expect(released.size, 'closing the viewer leaves the sheet\'s copy alone').toBe(0);
     page.close();
+  });
+});
+
+describe('before and after anchored on a map event', () => {
+  it('opens on the pair either side of the event, searches the window ending after it, and marks the event among the dates', async () => {
+    const eventMs = NOW - 40 * DAY;
+    const before = scene(45, 3);
+    const after = scene(35, 2);
+    const scenes = [scene(20, 1), after, before, scene(55, 4)];
+    const searchHistory = history(scenes);
+    const windowEndMs = eventMs + 30 * DAY;
+    openOrbitalImageViewer(subjectForEvent(point, eventMs, { status: 'ok', profileId: 'sentinel-2', windowEndMs, scenes, before, after }, NOW), null,
+      { loadImage: loaded, searchHistory }, { compareKey: before.key });
+    await settle();
+    await settle();
+
+    expect(searchHistory).toHaveBeenCalledWith(point, 'sentinel-2', windowEndMs, expect.anything());
+    expect(srcOf('img.oiv-before')).toBe(before.imageUrl);
+    expect(srcOf('img.oiv-after')).toBe(after.imageUrl);
+    expect(viewer()!.querySelector('.oiv-event')!.textContent).toBe('Event 4 OCT 2026');
+    const list = [...viewer()!.querySelectorAll('.oiv-dates > li')].map((li) => li.classList.contains('oiv-date-event') ? 'event' : li.textContent!.slice(0, 11));
+    expect(list).toEqual(['24 OCT 2026', 'event', '29 SEP 2026', '19 SEP 2026']);
+  });
+
+  it('shows no event mark on a compare opened from the lookup sheet', async () => {
+    open(scene(2, 1), { searchHistory: history([scene(40, 2)]) });
+    await settle();
+    showChange();
+    await settle();
+    await settle();
+    expect(viewer()!.querySelector('.oiv-event')).toBeNull();
+    expect(viewer()!.querySelector('.oiv-date-event')).toBeNull();
   });
 });

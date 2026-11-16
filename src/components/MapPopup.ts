@@ -13,9 +13,9 @@ import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { assessCorroboration, corroborationLabelHtml, evidenceFromItem } from '@/utils/corroboration-flag';
 import { isMobileDevice, getCSSColor } from '@/utils';
 import { TransitChart } from '@/utils/transit-chart';
-import { hasImageryRow, imageryTargetFor, mountImageryRow, renderImageryRow } from './map-popup-imagery';
+import { eventTimeFor, hasImageryRow, imageryTargetFor, mountImageryRow, renderImageryRow, type EventCompareHooks } from './map-popup-imagery';
 import { mountFireMosaic, renderFireDetectionPopup, type FireDetectionPopupData } from './map-popup-fire';
-import { ORBITAL_EVIDENCE_EVENT } from '@/services/orbital/evidence-event';
+import { ORBITAL_EVENT_COMPARE_EVENT, ORBITAL_EVIDENCE_EVENT, type OrbitalEventCompareDetail } from '@/services/orbital/evidence-event';
 import { HS2RingChart } from '@/utils/hs2-ring-chart';
 import type { GetChokepointStatusResponse, TransitDayCount } from '@/services/supply-chain';
 import { fetchChokepointHistory } from '@/services/supply-chain';
@@ -47,7 +47,8 @@ import { getCableHealthRecord } from '@/services/cable-health';
 import { nameToCountryCode } from '@/services/country-geometry';
 import { sparkline } from '@/utils/sparkline';
 import { vesselTypeLabel } from '@/utils/vessel-type-label';
-import { getAuthState } from '@/services/auth-state';
+import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { onEntitlementChange } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
 import { bindCyberNetworkSection, renderCyberNetworkSection } from './cyber-network-info';
@@ -334,20 +335,57 @@ export class MapPopup {
     const popup = this.popup;
     if (!target || !popup) return;
     const host = popup.querySelector<HTMLElement>('.popup-body') ?? popup;
-    const holder = document.createElement('div');
-    setTrustedHtml(holder, trustedHtml(renderImageryRow(), 'static locale strings'));
-    const row = holder.firstElementChild as HTMLElement | null;
-    if (!row) return;
-    host.appendChild(row);
-    this.disposeImagery = mountImageryRow(row, target, {
-      onLayout: () => {
-        if (this.popup === popup && !this.isMobileSheet) this.clampPopupToViewport();
-      },
-      onOpenEvidence: (picked) => {
-        this.hide();
-        window.dispatchEvent(new CustomEvent(ORBITAL_EVIDENCE_EVENT, { detail: picked.point }));
-      },
-    });
+    const mountRow = (): void => {
+      const holder = document.createElement('div');
+      setTrustedHtml(holder, trustedHtml(renderImageryRow(), 'static locale strings'));
+      const row = holder.firstElementChild as HTMLElement | null;
+      if (!row) return;
+      host.appendChild(row);
+      const eventMs = eventTimeFor(data.type, data.data);
+      let eventCompare: EventCompareHooks | undefined;
+      let unsubscribeAuth: (() => void) | null = null;
+      if (eventMs !== null) {
+        const access = hasPremiumAccess(getAuthState()) ? 'open' : 'locked';
+        if (access === 'locked') trackGateHit('orbital-event-compare');
+        eventCompare = {
+          eventMs,
+          access,
+          onOpen: (picked, anchorMs, pair) => {
+            this.hide();
+            const detail: OrbitalEventCompareDetail = { point: picked.point, eventMs: anchorMs, pair };
+            window.dispatchEvent(new CustomEvent(ORBITAL_EVENT_COMPARE_EVENT, { detail }));
+          },
+        };
+        // Access confirmed after the popup opened (sign-in or entitlements still loading) unlocks the row in place.
+        if (access === 'locked') {
+          const unlock = (state = getAuthState()) => {
+            if (this.popup !== popup || !hasPremiumAccess(state)) return;
+            this.disposeImagery?.();
+            this.disposeImagery = null;
+            row.remove();
+            mountRow();
+          };
+          const unsubscribeSignIn = subscribeAuthState((state) => unlock(state));
+          const unsubscribeEntitlement = onEntitlementChange(() => unlock());
+          unsubscribeAuth = () => { unsubscribeSignIn(); unsubscribeEntitlement(); };
+        }
+      }
+      const disposeRow = mountImageryRow(row, target, {
+        eventCompare,
+        onLayout: () => {
+          if (this.popup === popup && !this.isMobileSheet) this.clampPopupToViewport();
+        },
+        onOpenEvidence: (picked) => {
+          this.hide();
+          window.dispatchEvent(new CustomEvent(ORBITAL_EVIDENCE_EVENT, { detail: picked.point }));
+        },
+      });
+      this.disposeImagery = () => {
+        unsubscribeAuth?.();
+        disposeRow();
+      };
+    };
+    mountRow();
   }
 
   private disposeFireMosaic: (() => void) | null = null;

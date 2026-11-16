@@ -10849,6 +10849,45 @@ a.prediction-link:hover {
   filter: brightness(1.1);
 }
 
+/* Event popups: before/after around the event date sits beside Open evidence (#10713 unit 2). */
+.popup-imagery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.popup-imagery-compare {
+  background: transparent;
+  color: var(--green-text, var(--green));
+}
+
+.popup-imagery-compare:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.popup-imagery-compare-locked {
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 4px 10px;
+  text-decoration: none;
+}
+
+.popup-imagery-compare-locked:hover,
+.popup-imagery-compare-locked:focus-visible {
+  border-color: var(--green);
+  color: var(--green-text, var(--green));
+}
+
+.popup-imagery-actions [data-orbital-event-status] {
+  flex-basis: 100%;
+}
+
 /* Fire detection popup: the daily mosaic block sits above the imagery row (#10713). */
 .popup-fire-mosaic {
   margin-top: 8px;

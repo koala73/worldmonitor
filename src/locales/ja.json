@@ -5264,7 +5264,8 @@
       "metaSpot": "地点の雲",
       "metaScene": "シーンの雲",
       "metaSun": "太陽仰角",
-      "showCloudy": "曇りの日を含める ({{count}})"
+      "showCloudy": "曇りの日を含める ({{count}})",
+      "eventMark": "イベント {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5497,6 +5498,13 @@
       "noImage": "最近の画像は見つかりません",
       "noPass": "72 時間以内に通過予定はありません",
       "openEvidence": "証拠を開く",
+      "compareEvent": "前後比較",
+      "compareEventLocked": "前後比較 · Pro",
+      "compareSearching": "{{date}} の前後のシーンを検索中…",
+      "compareNoAfter": "{{date}} 以降の晴天シーンはまだありません。",
+      "compareNoAfterWindow": "{{date}} から {{days}} 日以内の晴天シーンはありません。",
+      "compareNoBefore": "アーカイブ期間内に {{date}} より前の晴天シーンがありません。",
+      "compareFailed": "アーカイブ検索に失敗しました。再試行してください。",
       "imageAlt": "{{source}} による衛星画像",
       "unavailable": "衛星画像を読み込めませんでした。",
       "fire": {

@@ -2,7 +2,7 @@ import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
 import type { OrbitalTrackSurface } from '@/app/orbital-watch';
 import { takeOrbitalShareLink } from '@/app/orbital-share-link';
 import { buildOrbitalShareFragment, parseOrbitalShareFragment } from '@/utils/urlState';
-import { ORBITAL_EVIDENCE_EVENT } from '@/services/orbital/evidence-event';
+import { ORBITAL_EVENT_COMPARE_EVENT, ORBITAL_EVIDENCE_EVENT, type OrbitalEventCompareDetail } from '@/services/orbital/evidence-event';
 
 export interface OrbitalRoute {
   point: GeoPoint;
@@ -70,7 +70,7 @@ export function watchOrbitalRoute(map: () => OrbitalTrackSurface | null = () => 
   return () => window.removeEventListener('hashchange', onHashChange);
 }
 
-/** Opens the point lookup's sheet when a map popup's "Open evidence" sends its object's point. */
+/** Opens the point lookup's sheet when a map popup's "Open evidence" sends its object's point, and Compare on its "Before / after". */
 export function watchOrbitalEvidence(map: () => OrbitalTrackSurface | null = () => null): () => void {
   const onEvidence = (event: Event) => {
     const point = (event as CustomEvent<GeoPoint>).detail;
@@ -78,6 +78,15 @@ export function watchOrbitalEvidence(map: () => OrbitalTrackSurface | null = () 
     void import('@/app/orbital-watch').then(({ openOrbitalWatch }) =>
       openOrbitalWatch({ lat: point.lat, lon: point.lon }, document.getElementById('mapContainer'), map()));
   };
+  const onEventCompare = (event: Event) => {
+    const detail = (event as CustomEvent<OrbitalEventCompareDetail>).detail;
+    if (!detail?.pair) return;
+    void import('@/app/orbital-watch').then(({ openOrbitalEventCompare }) => openOrbitalEventCompare(detail));
+  };
   window.addEventListener(ORBITAL_EVIDENCE_EVENT, onEvidence);
-  return () => window.removeEventListener(ORBITAL_EVIDENCE_EVENT, onEvidence);
+  window.addEventListener(ORBITAL_EVENT_COMPARE_EVENT, onEventCompare);
+  return () => {
+    window.removeEventListener(ORBITAL_EVIDENCE_EVENT, onEvidence);
+    window.removeEventListener(ORBITAL_EVENT_COMPARE_EVENT, onEventCompare);
+  };
 }

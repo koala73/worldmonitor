@@ -5292,7 +5292,8 @@
       "metaSpot": "Bewölkung am Punkt",
       "metaScene": "Wolken der Szene",
       "metaSun": "Sonnenhöhe",
-      "showCloudy": "Bewölkte Tage einbeziehen ({{count}})"
+      "showCloudy": "Bewölkte Tage einbeziehen ({{count}})",
+      "eventMark": "Ereignis {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5533,6 +5534,13 @@
       "noImage": "Keine aktuelle Aufnahme gefunden",
       "noPass": "Kein Überflug in den nächsten 72 Stunden",
       "openEvidence": "Belege öffnen",
+      "compareEvent": "Vorher / nachher",
+      "compareEventLocked": "Vorher / nachher · Pro",
+      "compareSearching": "Suche Aufnahmen vor und nach dem {{date}}…",
+      "compareNoAfter": "Seit dem {{date}} noch keine klare Aufnahme.",
+      "compareNoAfterWindow": "Keine klare Aufnahme in den {{days}} Tagen nach dem {{date}}.",
+      "compareNoBefore": "Keine klare Aufnahme vor dem {{date}} im Archivzeitraum.",
+      "compareFailed": "Archivsuche fehlgeschlagen. Erneut versuchen.",
       "imageAlt": "Satellitenansicht von {{source}}",
       "unavailable": "Satellitenbilder konnten nicht geladen werden.",
       "fire": {
