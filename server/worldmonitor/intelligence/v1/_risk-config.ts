@@ -140,8 +140,8 @@ export const CII_GDELT_LEVEL_PROTEST_SATURATION = 0.08;
  *
  * x_d = max(confirmed_d, gdelt_d), never the sum (one strike, several
  * reporters):
- *  - confirmed_d, from the Middle East strike feed (conflict:strike-pressure:v1,
- *    and the 72h conflict:iran-events:v1 window it is built from), is each
+ *  - confirmed_d, from the Middle East strike feed (CII_STRIKE_TALLY_KEY,
+ *    and the 72h CII_STRIKE_EVENTS_KEY window it is built from), is each
  *    incident weighted by severity (SEVERITY_WEIGHTS).
  *  - gdelt_d, worldwide (gdelt:bulk:country-events:v1), is CAMEO 194/195
  *    coverage of strikes on the country as a share of its coverage that day: GDELT_SCALE * max(0, s / (a + GDELT_SMOOTHING) -
@@ -178,13 +178,21 @@ export const CII_STRIKE_SEVERITY_WEIGHTS = { critical: 4, high: 2, elevated: 1, 
  */
 export const CII_STRIKE_CONFIRMED_MAX_AGE_MS = 72 * 60 * 60 * 1000;
 /**
- * The relay tally version the scorer reads (conflict:strike-pressure:v1
+ * The relay tally version the scorer reads (CII_STRIKE_TALLY_KEY
  * `version`). v2 counts only deduplicated, current strikes that landed in the
  * country (CII v15 B3); a v1 tally counted retrospective posts, duplicates and
  * interceptions, so it is rejected as unusable, never read as calm. Pinned to
  * the relay's PRESSURE_VERSION by tests/cii-strike-pressure.test.mts.
  */
 export const CII_STRIKE_TALLY_VERSION = 2;
+/**
+ * The relay keys v15 reads its strikes from. The relay writes the v2 rules
+ * (B3) to these keys beside the v1 feed (conflict:strike-pressure:v1 and
+ * conflict:iran-events:v1), which v14 reads, so production accumulates v2
+ * days before v15 ships and a calibration capture can use them.
+ */
+export const CII_STRIKE_TALLY_KEY = 'conflict:strike-pressure:v2';
+export const CII_STRIKE_EVENTS_KEY = 'conflict:iran-events:v2';
 export const CII_STRIKE_GDELT_SMOOTHING = 50;
 export const CII_STRIKE_GDELT_NOISE_FLOOR = 0.005;
 export const CII_STRIKE_GDELT_SCALE = 300;

@@ -370,6 +370,18 @@ function lookupExact(name, iso2) {
   return index.get(normalized) || index.get(stripArticle(normalized)) || null;
 }
 
+// "Qom, Iran" -> { name: 'Qom', iso2: 'IR' } when the last comma part names a
+// theater country; null otherwise. A name under four letters is never searched
+// inside a string, so the qualifier must come off before the exact lookup.
+function splitCountryQualifier(place) {
+  const comma = String(place || '').lastIndexOf(',');
+  if (comma <= 0) return null;
+  const suffix = normalizePlaceName(place.slice(comma + 1));
+  const iso2 = FOCUS_COUNTRIES.find((code) => COUNTRY_TERMS[code].some((term) => normalizePlaceName(term) === suffix));
+  const name = place.slice(0, comma).trim();
+  return iso2 && name ? { name, iso2 } : null;
+}
+
 function countryPlace(iso2) {
   const [lat, lon] = COUNTRY_CENTROIDS[iso2];
   return { iso2, name: COUNTRY_NAMES[iso2], key: `${iso2}:*`, lat, lon, countryLevel: true };
@@ -391,14 +403,20 @@ function resolvePlace({ place, iso2, text } = {}) {
   // there ("Tripoli, LY"); it is not a hint to search the theater for the name.
   if (!country && typeof iso2 === 'string' && /^[A-Z]{2}$/.test(iso2)) return null;
   if (place && namesPalestinianPlace(place)) return null;
+  // A place qualified with its country ("Qom, Iran") says which country was hit.
+  const qualified = place ? splitCountryQualifier(place) : null;
+  const qualifiedHit = qualified && lookupExact(qualified.name, qualified.iso2);
+  if (qualifiedHit) return qualifiedHit;
   if (place) {
     if (country) {
       const hit = lookupExact(place, country) || findPlaceInText(place, country);
       if (hit) return hit;
     }
+    // "Eilat, Israel" has no exact key, so a qualified name is also searched
+    // for inside the string, as for the reported country.
     const elsewhere = FOCUS_COUNTRIES
       .filter((code) => code !== country)
-      .map((code) => lookupExact(place, code))
+      .map((code) => lookupExact(place, code) || findPlaceInText(place, code))
       .filter(Boolean);
     if (elsewhere.length === 1) return elsewhere[0];
   }
@@ -450,6 +468,7 @@ module.exports = {
   resolvePlace,
   countryPlace,
   nearestPlace,
+  namesPalestinianPlace,
   distanceKm,
   gazetteerPlaces: () => INDEX.places.slice(),
 };

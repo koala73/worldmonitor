@@ -13,14 +13,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 import {
   CII_STRIKE_BOOST_CAP,
   CII_STRIKE_CONFIRMED_MAX_AGE_MS,
+  CII_STRIKE_EVENTS_KEY,
   CII_STRIKE_FLOOR_CAP,
   CII_STRIKE_FLOOR_MIN_PRESSURE,
   CII_STRIKE_GDELT_SUSTAINED_DAYS,
   CII_STRIKE_HALF_LIFE_DAYS,
   CII_STRIKE_SEVERITY_WEIGHTS,
+  CII_STRIKE_TALLY_KEY,
   CII_STRIKE_TALLY_VERSION,
   CII_STRIKE_WINDOW_DAYS,
 } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
@@ -126,6 +129,18 @@ describe('strike pressure floor and boost', () => {
 });
 
 describe('confirmed strike days', () => {
+  it('reads the v2 strike keys the relay writes beside the live v14 feed', () => {
+    // The relay's v2 shadow loop on main (scripts/lib/middle-east-strikes-v2.cjs,
+    // koala73/worldmonitor#10795) writes these; v14 keeps reading the v1 keys.
+    assert.equal(CII_STRIKE_TALLY_KEY, 'conflict:strike-pressure:v2');
+    assert.equal(CII_STRIKE_EVENTS_KEY, 'conflict:iran-events:v2');
+    for (const path of ['../server/worldmonitor/intelligence/v1/get-risk-scores.ts', '../scripts/cii-capture-fixture.mts']) {
+      const source = readFileSync(new URL(path, import.meta.url), 'utf8');
+      assert.ok(source.includes('CII_STRIKE_TALLY_KEY') && source.includes('CII_STRIKE_EVENTS_KEY'), path);
+      assert.ok(!/'conflict:(iran-events|strike-pressure):v1'/.test(source), `${path} reads no v1 strike key`);
+    }
+  });
+
   it('the relay tally ranks a day by the same severity weights the scorer applies', () => {
     const require = createRequire(import.meta.url);
     const strikes = require('../scripts/lib/middle-east-strikes.cjs');

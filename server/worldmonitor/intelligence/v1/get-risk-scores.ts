@@ -60,6 +60,8 @@ import {
   CII_STRIKE_GDELT_SUSTAINED_DAYS,
   CII_STRIKE_HALF_LIFE_DAYS,
   CII_STRIKE_SEVERITY_WEIGHTS,
+  CII_STRIKE_EVENTS_KEY,
+  CII_STRIKE_TALLY_KEY,
   CII_STRIKE_TALLY_VERSION,
   CII_STRIKE_WINDOW_DAYS,
   CII_POPULATION_MILLIONS,
@@ -1046,7 +1048,7 @@ function strikeTallyWeight(tally: unknown): number | null {
 
 /**
  * Weighted confirmed strikes per Tier-1 country and day from the relay's
- * 30-day tally (conflict:strike-pressure:v1), or null when it is missing,
+ * 30-day tally (CII_STRIKE_TALLY_KEY), or null when it is missing,
  * malformed, of another version than CII_STRIKE_TALLY_VERSION, or older than
  * CII_STRIKE_CONFIRMED_MAX_AGE_MS (the 72h window and GDELT then carry every
  * country). A non-Tier-1 country or territory (PS, Gaza and the West Bank) scores nowhere.
@@ -1077,7 +1079,7 @@ export function isInterceptStrikeEvent(event: unknown): boolean {
 
 /**
  * The same weights read straight from the 72h strike window
- * (conflict:iran-events:v1). The 30-day tally is built from these events, so
+ * (CII_STRIKE_EVENTS_KEY). The 30-day tally is built from these events, so
  * the scorer takes the larger of the two per day: the window covers the tally's
  * first cycles after a deploy, or a relay whose tally write failed. Like the
  * tally, it skips interceptions.
@@ -1211,7 +1213,7 @@ export interface AuxiliarySources {
   // scored for every country. A country with ACLED rows takes the larger of the two.
   gdeltCountryEvents: GdeltCountryEvents | null;
   // Weighted confirmed strikes per country and day from the relay's 30-day tally
-  // (conflict:strike-pressure:v1); null when missing or stale.
+  // (CII_STRIKE_TALLY_KEY); null when missing or stale.
   confirmedStrikes?: Record<string, StrikeDays> | null;
   // What each Redis-backed input's read returned, for health only; never scored.
   inputReads?: Partial<Record<CiiInputId, CiiInputRead>>;
@@ -1321,7 +1323,7 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   const [ucdpRaw, outagesRaw, iranRaw, orefRaw, advisoriesRaw, displacementCurrentRaw, insightsRaw, threatSummaryRaw, temporalRaw, countryEventsRaw, strikePressureRaw] = await readRiskInputs([
     { key: 'conflict:ucdp-events:v1', raw: true },
     { key: 'infra:outages:v1', raw: true },
-    IRAN_EVENTS_ENABLED ? { key: 'conflict:iran-events:v1', raw: true } : null,
+    IRAN_EVENTS_ENABLED ? { key: CII_STRIKE_EVENTS_KEY, raw: true } : null,
     { key: 'relay:oref:history:v1', raw: true },
     { key: 'intelligence:advisories:v1', raw: true },
     { key: `displacement:summary:v1:${currentYear}`, raw: true },
@@ -1336,7 +1338,7 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     // Per-country GDELT conflict/protest counts and baselines (seed-gdelt-bulk-materializer.mjs).
     { key: 'gdelt:bulk:country-events:v1', raw: true },
     // 30-day per-country strike tally built by the relay from the strike feed (v12).
-    IRAN_EVENTS_ENABLED ? { key: 'conflict:strike-pressure:v1', raw: true } : null,
+    IRAN_EVENTS_ENABLED ? { key: CII_STRIKE_TALLY_KEY, raw: true } : null,
   ]);
   // The previous year covers a year not yet seeded. An errored current-year
   // read has already thrown above, so it never masquerades as that.
