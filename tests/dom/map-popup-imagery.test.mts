@@ -204,15 +204,19 @@ describe('#10768: the imagery row credits its sources', () => {
 
   it('adds the CelesTrak credit when the next pass fills in after the image', async () => {
     let finish!: (value: ObjectImagery) => void;
+    const full = imagery();
     const { row, dispose } = mountRow((_target, _signal, onImageReady) => {
-      onImageReady?.({ ...imagery(), nextPass: null, nextPassPending: true });
+      onImageReady?.({ ...full, nextPass: null, nextPassPending: true });
       return new Promise<ObjectImagery>((resolve) => { finish = resolve; });
     });
     await flush();
+    const creditCell = row.querySelector('[data-orbital-credit]');
     expect(credit(row)).not.toContain(IMAGE_CREDIT.celestrak);
-    finish(imagery());
+    finish(full);
     await flush();
+    expect(row.querySelector('[data-orbital-credit]')).toBe(creditCell);
     expect(credit(row)).toContain(IMAGE_CREDIT.celestrak);
+    expect(loadArchiveImage).toHaveBeenCalledTimes(1);
     dispose();
   });
 
