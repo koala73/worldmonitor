@@ -5502,6 +5502,7 @@
       "compareEventLocked": "Trước / sau · Pro",
       "compareSearching": "Đang tìm ảnh trước và sau {{date}}…",
       "compareNoAfter": "Chưa có ảnh rõ nào kể từ {{date}}.",
+      "compareNoAfterWindow": "Không có ảnh rõ nào trong {{days}} ngày sau {{date}}.",
       "compareNoBefore": "Không có ảnh rõ trước {{date}} trong khoảng lưu trữ.",
       "compareFailed": "Tìm kiếm kho lưu trữ thất bại. Hãy thử lại.",
       "imageAlt": "Ảnh vệ tinh từ {{source}}",

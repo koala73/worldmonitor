@@ -5538,6 +5538,7 @@
       "compareEventLocked": "पहले / बाद · Pro",
       "compareSearching": "{{date}} से पहले और बाद के दृश्य खोजे जा रहे हैं…",
       "compareNoAfter": "{{date}} के बाद अभी तक कोई साफ़ दृश्य नहीं।",
+      "compareNoAfterWindow": "{{date}} के बाद {{days}} दिनों में कोई साफ़ दृश्य नहीं।",
       "compareNoBefore": "संग्रह अवधि में {{date}} से पहले कोई साफ़ दृश्य नहीं।",
       "compareFailed": "संग्रह खोज विफल रही। फिर से कोशिश करें।",
       "imageAlt": "{{source}} से उपग्रह दृश्य",

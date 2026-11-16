@@ -5584,6 +5584,7 @@
       "compareEventLocked": "Prije / poslije · Pro",
       "compareSearching": "Traže se snimke prije i poslije {{date}}…",
       "compareNoAfter": "Još nema jasne snimke nakon {{date}}.",
+      "compareNoAfterWindow": "Nema jasne snimke u {{days}} dana nakon {{date}}.",
       "compareNoBefore": "Nema jasne snimke prije {{date}} u razdoblju arhive.",
       "compareFailed": "Pretraga arhive nije uspjela. Pokušajte ponovno.",
       "imageAlt": "Satelitski prikaz iz {{source}}",

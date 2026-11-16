@@ -5610,6 +5610,7 @@
       "compareEventLocked": "До / після · Pro",
       "compareSearching": "Пошук знімків до і після {{date}}…",
       "compareNoAfter": "Після {{date}} чіткого знімка ще немає.",
+      "compareNoAfterWindow": "Немає чіткого знімка протягом {{days}} днів після {{date}}.",
       "compareNoBefore": "У вікні архіву немає чіткого знімка до {{date}}.",
       "compareFailed": "Пошук в архіві не вдався. Спробуйте ще раз.",
       "imageAlt": "Супутниковий вигляд від {{source}}",

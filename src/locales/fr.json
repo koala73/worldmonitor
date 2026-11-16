@@ -5574,6 +5574,7 @@
       "compareEventLocked": "Avant / après · Pro",
       "compareSearching": "Recherche de scènes avant et après le {{date}}…",
       "compareNoAfter": "Pas encore de scène dégagée depuis le {{date}}.",
+      "compareNoAfterWindow": "Aucune scène dégagée dans les {{days}} jours suivant le {{date}}.",
       "compareNoBefore": "Aucune scène dégagée avant le {{date}} dans la fenêtre d’archive.",
       "compareFailed": "La recherche d’archive a échoué. Réessayez.",
       "imageAlt": "Vue satellite de {{source}}",

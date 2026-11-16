@@ -3043,6 +3043,7 @@
   "orbitalWatch.popup.compareEventLocked": "Before / after · Pro",
   "orbitalWatch.popup.compareSearching": "Searching scenes either side of {{date}}…",
   "orbitalWatch.popup.compareNoAfter": "No clear scene since {{date}} yet.",
+  "orbitalWatch.popup.compareNoAfterWindow": "No clear scene in the {{days}} days after {{date}}.",
   "orbitalWatch.popup.compareNoBefore": "No clear scene before {{date}} in the archive window.",
   "orbitalWatch.popup.compareFailed": "Archive search failed. Try again.",
   "orbitalWatch.popup.title": "Satellite imagery",

@@ -5574,6 +5574,7 @@
       "compareEventLocked": "Prima / dopo · Pro",
       "compareSearching": "Ricerca di scene prima e dopo il {{date}}…",
       "compareNoAfter": "Ancora nessuna scena nitida dal {{date}}.",
+      "compareNoAfterWindow": "Nessuna scena nitida nei {{days}} giorni dopo il {{date}}.",
       "compareNoBefore": "Nessuna scena nitida prima del {{date}} nella finestra d’archivio.",
       "compareFailed": "Ricerca nell’archivio non riuscita. Riprova.",
       "imageAlt": "Vista satellitare da {{source}}",

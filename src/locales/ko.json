@@ -5502,6 +5502,7 @@
       "compareEventLocked": "전 / 후 · Pro",
       "compareSearching": "{{date}} 전후 장면을 찾는 중…",
       "compareNoAfter": "{{date}} 이후 맑은 장면이 아직 없습니다.",
+      "compareNoAfterWindow": "{{date}} 이후 {{days}}일 동안 맑은 장면이 없습니다.",
       "compareNoBefore": "아카이브 기간에 {{date}} 이전 맑은 장면이 없습니다.",
       "compareFailed": "아카이브 검색에 실패했습니다. 다시 시도하세요.",
       "imageAlt": "{{source}} 위성 화면",

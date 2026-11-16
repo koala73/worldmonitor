@@ -5538,6 +5538,7 @@
       "compareEventLocked": "Kabla / baada · Pro",
       "compareSearching": "Inatafuta picha kabla na baada ya {{date}}…",
       "compareNoAfter": "Bado hakuna picha safi tangu {{date}}.",
+      "compareNoAfterWindow": "Hakuna picha safi katika siku {{days}} baada ya {{date}}.",
       "compareNoBefore": "Hakuna picha safi kabla ya {{date}} katika kipindi cha kumbukumbu.",
       "compareFailed": "Utafutaji wa kumbukumbu umeshindwa. Jaribu tena.",
       "imageAlt": "Mwonekano wa setilaiti kutoka {{source}}",

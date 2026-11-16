@@ -5538,6 +5538,7 @@
       "compareEventLocked": "Voor / na · Pro",
       "compareSearching": "Opnamen voor en na {{date}} zoeken…",
       "compareNoAfter": "Nog geen heldere opname sinds {{date}}.",
+      "compareNoAfterWindow": "Geen heldere opname in de {{days}} dagen na {{date}}.",
       "compareNoBefore": "Geen heldere opname vóór {{date}} in de archiefperiode.",
       "compareFailed": "Zoeken in het archief mislukt. Probeer opnieuw.",
       "imageAlt": "Satellietbeeld van {{source}}",

@@ -5610,6 +5610,7 @@
       "compareEventLocked": "Před / po · Pro",
       "compareSearching": "Hledají se snímky před a po {{date}}…",
       "compareNoAfter": "Od {{date}} zatím není jasný snímek.",
+      "compareNoAfterWindow": "Během {{days}} dní po {{date}} není jasný snímek.",
       "compareNoBefore": "Před {{date}} není v okně archivu jasný snímek.",
       "compareFailed": "Hledání v archivu selhalo. Zkuste to znovu.",
       "imageAlt": "Satelitní pohled z {{source}}",

@@ -5538,6 +5538,7 @@
       "compareEventLocked": "Före / efter · Pro",
       "compareSearching": "Söker bilder före och efter {{date}}…",
       "compareNoAfter": "Ingen klar bild sedan {{date}} ännu.",
+      "compareNoAfterWindow": "Ingen klar bild under de {{days}} dagarna efter {{date}}.",
       "compareNoBefore": "Ingen klar bild före {{date}} i arkivperioden.",
       "compareFailed": "Arkivsökningen misslyckades. Försök igen.",
       "imageAlt": "Satellitvy från {{source}}",

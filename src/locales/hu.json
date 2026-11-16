@@ -5538,6 +5538,7 @@
       "compareEventLocked": "Előtte / utána · Pro",
       "compareSearching": "Felvételek keresése {{date}} előtt és után…",
       "compareNoAfter": "{{date}} óta még nincs tiszta felvétel.",
+      "compareNoAfterWindow": "{{date}} után {{days}} napon belül nincs tiszta felvétel.",
       "compareNoBefore": "{{date}} előtt nincs tiszta felvétel az archív időszakban.",
       "compareFailed": "Az archívumkeresés sikertelen. Próbálja újra.",
       "imageAlt": "Műholdas nézet innen: {{source}}",

@@ -204,6 +204,16 @@ export interface ImageryRowHooks {
   eventCompare?: EventCompareHooks;
 }
 
+/**
+ * What is missing from the pair. An older event's window stops some days after it, so a missing
+ * after side says how far the search looked rather than that nothing has come since.
+ */
+function noPairText(pair: Extract<EventPair, { status: 'none' }>, eventMs: number, nowMs: number, date: string): string {
+  if (pair.missing === 'before') return t('orbitalWatch.popup.compareNoBefore', { date });
+  if (pair.windowEndMs >= nowMs) return t('orbitalWatch.popup.compareNoAfter', { date });
+  return t('orbitalWatch.popup.compareNoAfterWindow', { date, days: Math.round((pair.windowEndMs - eventMs) / 86_400_000) });
+}
+
 /** Searches the archive around the event from the popup, then hands the pair to the viewer, or says in place what is missing. */
 function bindEventCompare(body: HTMLElement, target: ImageryTarget, hooks: ImageryRowHooks, signal: AbortSignal): void {
   const compare = hooks.eventCompare;
@@ -220,7 +230,8 @@ function bindEventCompare(body: HTMLElement, target: ImageryTarget, hooks: Image
     button.disabled = true;
     say(t('orbitalWatch.popup.compareSearching', { date }));
     const find = compare.findPair ?? loadFindEventPair;
-    void find(target.point, compare.eventMs, (hooks.now ?? Date.now)(), { signal }).catch((): EventPair => ({ status: 'failed' })).then((pair) => {
+    const nowMs = (hooks.now ?? Date.now)();
+    void find(target.point, compare.eventMs, nowMs, { signal }).catch((): EventPair => ({ status: 'failed' })).then((pair) => {
       if (signal.aborted) return;
       button.disabled = false;
       if (pair.status === 'ok') {
@@ -228,9 +239,7 @@ function bindEventCompare(body: HTMLElement, target: ImageryTarget, hooks: Image
         compare.onOpen(target, compare.eventMs, pair);
         return;
       }
-      say(pair.status === 'none'
-        ? t(pair.missing === 'after' ? 'orbitalWatch.popup.compareNoAfter' : 'orbitalWatch.popup.compareNoBefore', { date })
-        : t('orbitalWatch.popup.compareFailed'));
+      say(pair.status === 'none' ? noPairText(pair, compare.eventMs, nowMs, date) : t('orbitalWatch.popup.compareFailed'));
     });
   });
 }

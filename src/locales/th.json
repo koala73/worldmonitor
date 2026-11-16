@@ -5502,6 +5502,7 @@
       "compareEventLocked": "ก่อน / หลัง · Pro",
       "compareSearching": "กำลังค้นหาภาพก่อนและหลัง {{date}}…",
       "compareNoAfter": "ยังไม่มีภาพที่ชัดหลัง {{date}}",
+      "compareNoAfterWindow": "ไม่มีภาพที่ชัดภายใน {{days}} วันหลัง {{date}}",
       "compareNoBefore": "ไม่มีภาพที่ชัดก่อน {{date}} ในช่วงคลังข้อมูล",
       "compareFailed": "ค้นหาคลังข้อมูลไม่สำเร็จ ลองอีกครั้ง",
       "imageAlt": "ภาพจากดาวเทียม {{source}}",

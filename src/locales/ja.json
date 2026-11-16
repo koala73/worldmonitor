@@ -5502,6 +5502,7 @@
       "compareEventLocked": "前後比較 · Pro",
       "compareSearching": "{{date}} の前後のシーンを検索中…",
       "compareNoAfter": "{{date}} 以降の晴天シーンはまだありません。",
+      "compareNoAfterWindow": "{{date}} から {{days}} 日以内の晴天シーンはありません。",
       "compareNoBefore": "アーカイブ期間内に {{date}} より前の晴天シーンがありません。",
       "compareFailed": "アーカイブ検索に失敗しました。再試行してください。",
       "imageAlt": "{{source}} による衛星画像",

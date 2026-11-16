@@ -31,6 +31,13 @@ describe('event window', () => {
 });
 
 describe('pickEventPair', () => {
+  it('counts a scene taken exactly at the event as after it', () => {
+    const eventMs = NOW - 10 * DAY;
+    const { before, after } = pickEventPair(eventMs, [scene(10, 5), scene(12, 5)]);
+    assert.equal(after?.startMs, eventMs);
+    assert.equal(before?.startMs, NOW - 12 * DAY);
+  });
+
   it('takes the last clear scene before the event and the first clear one at or after it', () => {
     const eventMs = NOW - 10 * DAY;
     const { before, after } = pickEventPair(eventMs, [scene(2, 5), scene(8, 60), scene(9, 10), scene(12, 0), scene(20, 1)]);
@@ -82,12 +89,12 @@ describe('findEventPair', () => {
 
   it('says no scene has come after the event yet when neither mission has one', async () => {
     const { deps } = searches({ 'sentinel-2': { status: 'ok', scenes: [scene(3, 1)] }, 'sentinel-1': { status: 'ok', scenes: [radar(4)] } });
-    assert.deepEqual(await findEventPair(point, NOW - DAY, NOW, {}, deps), { status: 'none', missing: 'after' });
+    assert.deepEqual(await findEventPair(point, NOW - DAY, NOW, {}, deps), { status: 'none', missing: 'after', windowEndMs: NOW });
   });
 
   it('says the before side is missing when only scenes after the event exist', async () => {
     const { deps } = searches({ 'sentinel-2': { status: 'ok', scenes: [scene(1, 1)] } });
-    assert.deepEqual(await findEventPair(point, NOW - 3 * DAY, NOW, {}, deps), { status: 'none', missing: 'before' });
+    assert.deepEqual(await findEventPair(point, NOW - 3 * DAY, NOW, {}, deps), { status: 'none', missing: 'before', windowEndMs: NOW });
   });
 
   it('fails rather than naming a missing side when one archive could not answer', async () => {

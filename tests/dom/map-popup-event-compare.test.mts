@@ -116,13 +116,22 @@ describe('before and after in the imagery row', () => {
 
   it('says in place which side of the event has no clear scene', async () => {
     const onOpen = vi.fn();
-    const { row } = mount({ eventMs: NOW - DAY, access: 'open', onOpen, findPair: async () => ({ status: 'none', missing: 'after' }) });
+    const { row } = mount({ eventMs: NOW - DAY, access: 'open', onOpen, findPair: async () => ({ status: 'none', missing: 'after', windowEndMs: NOW }) });
     await flush();
     row.querySelector<HTMLButtonElement>('[data-orbital-event-compare]')!.click();
     await flush();
     expect(row.querySelector('[data-orbital-event-status]')!.textContent).toBe('No clear scene since Nov 14, 2026 yet.');
     expect(row.querySelector<HTMLButtonElement>('[data-orbital-event-compare]')!.disabled).toBe(false);
     expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('says how far it looked after an older event, instead of implying nothing has come since', async () => {
+    const eventMs = NOW - 90 * DAY;
+    const { row } = mount({ eventMs, access: 'open', onOpen: vi.fn(), findPair: async () => ({ status: 'none', missing: 'after', windowEndMs: eventMs + 30 * DAY }) });
+    await flush();
+    row.querySelector<HTMLButtonElement>('[data-orbital-event-compare]')!.click();
+    await flush();
+    expect(row.querySelector('[data-orbital-event-status]')!.textContent).toBe('No clear scene in the 30 days after Aug 17, 2026.');
   });
 
   it('stops the search and opens nothing once the popup closes', async () => {

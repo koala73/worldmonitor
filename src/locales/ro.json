@@ -5574,6 +5574,7 @@
       "compareEventLocked": "Înainte / după · Pro",
       "compareSearching": "Se caută imagini înainte și după {{date}}…",
       "compareNoAfter": "Încă nu există o imagine clară după {{date}}.",
+      "compareNoAfterWindow": "Nicio imagine clară în cele {{days}} de zile după {{date}}.",
       "compareNoBefore": "Nicio imagine clară înainte de {{date}} în intervalul arhivei.",
       "compareFailed": "Căutarea în arhivă a eșuat. Încercați din nou.",
       "imageAlt": "Vedere din satelit de la {{source}}",

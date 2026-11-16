@@ -21,7 +21,7 @@ export const EVENT_PROFILES: readonly ImagingProfileId[] = ['sentinel-2', 'senti
 
 export type EventPair =
   | { status: 'ok'; profileId: ImagingProfileId; windowEndMs: number; scenes: MatchedAcquisition[]; before: MatchedAcquisition; after: MatchedAcquisition }
-  | { status: 'none'; missing: 'before' | 'after' }
+  | { status: 'none'; missing: 'before' | 'after'; windowEndMs: number }
   | { status: 'failed' };
 
 /** The event time, never later than now: a feed's clock skew must not push the window into the future. */
@@ -82,5 +82,5 @@ export async function findEventPair(
   }
   // A missing side is only reported when every archive answered; otherwise a retry may still find the pair.
   // No scene since the event is the usual gap for a recent event, so it is named first.
-  return answered && !anyFailed ? { status: 'none', missing: anyAfter ? 'before' : 'after' } : { status: 'failed' };
+  return answered && !anyFailed ? { status: 'none', missing: anyAfter ? 'before' : 'after', windowEndMs } : { status: 'failed' };
 }

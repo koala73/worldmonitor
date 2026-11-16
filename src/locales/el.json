@@ -5538,6 +5538,7 @@
       "compareEventLocked": "Πριν / μετά · Pro",
       "compareSearching": "Αναζήτηση λήψεων πριν και μετά τις {{date}}…",
       "compareNoAfter": "Δεν υπάρχει ακόμη καθαρή λήψη μετά τις {{date}}.",
+      "compareNoAfterWindow": "Καμία καθαρή λήψη στις {{days}} ημέρες μετά τις {{date}}.",
       "compareNoBefore": "Δεν υπάρχει καθαρή λήψη πριν τις {{date}} στο διάστημα του αρχείου.",
       "compareFailed": "Η αναζήτηση στο αρχείο απέτυχε. Δοκιμάστε ξανά.",
       "imageAlt": "Δορυφορική όψη από {{source}}",

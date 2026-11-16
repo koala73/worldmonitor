@@ -5502,6 +5502,7 @@
       "compareEventLocked": "前后对比 · Pro",
       "compareSearching": "正在搜索 {{date}} 前后的影像…",
       "compareNoAfter": "{{date}} 之后尚无晴空影像。",
+      "compareNoAfterWindow": "{{date}} 之后 {{days}} 天内没有晴空影像。",
       "compareNoBefore": "存档时段内没有 {{date}} 之前的晴空影像。",
       "compareFailed": "存档搜索失败，请重试。",
       "imageAlt": "来自 {{source}} 的卫星视图",

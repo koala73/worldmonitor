@@ -4975,6 +4975,7 @@
       "compareEventLocked": "Before / after · Pro",
       "compareSearching": "Searching scenes either side of {{date}}…",
       "compareNoAfter": "No clear scene since {{date}} yet.",
+      "compareNoAfterWindow": "No clear scene in the {{days}} days after {{date}}.",
       "compareNoBefore": "No clear scene before {{date}} in the archive window.",
       "compareFailed": "Archive search failed. Try again.",
       "imageAlt": "Satellite view from {{source}}",

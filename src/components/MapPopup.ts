@@ -48,6 +48,7 @@ import { nameToCountryCode } from '@/services/country-geometry';
 import { sparkline } from '@/utils/sparkline';
 import { vesselTypeLabel } from '@/utils/vessel-type-label';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { onEntitlementChange } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
 import { bindCyberNetworkSection, renderCyberNetworkSection } from './cyber-network-info';
@@ -355,15 +356,18 @@ export class MapPopup {
             window.dispatchEvent(new CustomEvent(ORBITAL_EVENT_COMPARE_EVENT, { detail }));
           },
         };
-        // Access confirmed after the popup opened (auth still loading) unlocks the row in place.
+        // Access confirmed after the popup opened (sign-in or entitlements still loading) unlocks the row in place.
         if (access === 'locked') {
-          unsubscribeAuth = subscribeAuthState((state) => {
+          const unlock = (state = getAuthState()) => {
             if (this.popup !== popup || !hasPremiumAccess(state)) return;
             this.disposeImagery?.();
             this.disposeImagery = null;
             row.remove();
             mountRow();
-          });
+          };
+          const unsubscribeSignIn = subscribeAuthState((state) => unlock(state));
+          const unsubscribeEntitlement = onEntitlementChange(() => unlock());
+          unsubscribeAuth = () => { unsubscribeSignIn(); unsubscribeEntitlement(); };
         }
       }
       const disposeRow = mountImageryRow(row, target, {

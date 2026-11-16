@@ -5574,6 +5574,7 @@
       "compareEventLocked": "Antes / después · Pro",
       "compareSearching": "Buscando escenas antes y después del {{date}}…",
       "compareNoAfter": "Aún no hay escena despejada desde el {{date}}.",
+      "compareNoAfterWindow": "No hay escena despejada en los {{days}} días posteriores al {{date}}.",
       "compareNoBefore": "No hay escena despejada antes del {{date}} en la ventana del archivo.",
       "compareFailed": "La búsqueda en el archivo falló. Inténtalo de nuevo.",
       "imageAlt": "Vista satelital de {{source}}",

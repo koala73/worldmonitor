@@ -5538,6 +5538,7 @@
       "compareEventLocked": "Önce / sonra · Pro",
       "compareSearching": "{{date}} öncesi ve sonrası görüntüler aranıyor…",
       "compareNoAfter": "{{date}} sonrasında henüz net görüntü yok.",
+      "compareNoAfterWindow": "{{date}} sonrasındaki {{days}} gün içinde net görüntü yok.",
       "compareNoBefore": "Arşiv aralığında {{date}} öncesine ait net görüntü yok.",
       "compareFailed": "Arşiv araması başarısız oldu. Tekrar deneyin.",
       "imageAlt": "{{source}} uydu görünümü",

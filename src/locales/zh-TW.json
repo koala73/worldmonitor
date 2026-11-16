@@ -5502,6 +5502,7 @@
       "compareEventLocked": "前後對比 · Pro",
       "compareSearching": "正在搜尋 {{date}} 前後的影像…",
       "compareNoAfter": "{{date}} 之後尚無晴空影像。",
+      "compareNoAfterWindow": "{{date}} 之後 {{days}} 天內沒有晴空影像。",
       "compareNoBefore": "存檔時段內沒有 {{date}} 之前的晴空影像。",
       "compareFailed": "存檔搜尋失敗，請重試。",
       "imageAlt": "來自 {{source}} 的衛星檢視",

@@ -546,13 +546,13 @@ export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null
   lookAt(at, null, { recentre: false, map, located });
 }
 
-/** Opens the lookup with no place yet, focused on its search field. */
 /** Opens the image viewer in Compare on the pair found around a map event (#10713 unit 2). */
 export function openOrbitalEventCompare({ point, eventMs, pair }: OrbitalEventCompareDetail): void {
   void import('@/components/OrbitalImageViewer').then(({ openOrbitalImageViewer, subjectForEvent }) =>
-    openOrbitalImageViewer(subjectForEvent(point, eventMs, pair, Date.now()), null, undefined, { compareKey: pair.before.key }));
+    openOrbitalImageViewer(subjectForEvent(point, eventMs, pair, Date.now()), document.getElementById('mapContainer'), undefined, { compareKey: pair.before.key }));
 }
 
+/** Opens the lookup with no place yet, focused on its search field. */
 export function openOrbitalWatchSearch(returnFocusTo: HTMLElement | null, map?: OrbitalTrackSurface | null): void {
   const sheet = ensurePage();
   if (useSurface(map) && point) drawTarget(targetFor(point, null));

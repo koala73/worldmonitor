@@ -5610,6 +5610,7 @@
       "compareEventLocked": "Przed / po · Pro",
       "compareSearching": "Szukanie zdjęć przed i po {{date}}…",
       "compareNoAfter": "Od {{date}} nie ma jeszcze czystego zdjęcia.",
+      "compareNoAfterWindow": "Brak czystego zdjęcia w ciągu {{days}} dni po {{date}}.",
       "compareNoBefore": "Brak czystego zdjęcia przed {{date}} w okresie archiwum.",
       "compareFailed": "Wyszukiwanie w archiwum nie powiodło się. Spróbuj ponownie.",
       "imageAlt": "Widok satelitarny z {{source}}",

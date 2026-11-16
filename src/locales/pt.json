@@ -5574,6 +5574,7 @@
       "compareEventLocked": "Antes / depois · Pro",
       "compareSearching": "Procurando cenas antes e depois de {{date}}…",
       "compareNoAfter": "Ainda não há cena limpa desde {{date}}.",
+      "compareNoAfterWindow": "Nenhuma cena limpa nos {{days}} dias após {{date}}.",
       "compareNoBefore": "Não há cena limpa antes de {{date}} na janela do arquivo.",
       "compareFailed": "A busca no arquivo falhou. Tente novamente.",
       "imageAlt": "Vista de satélite de {{source}}",
