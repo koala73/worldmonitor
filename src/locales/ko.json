@@ -4259,7 +4259,7 @@
         "return": "귀환",
         "arrival": "도착",
         "death": "사망",
-        "encounter": "적발"
+        "encounter": "국경 기록 건수"
       }
     }
   },

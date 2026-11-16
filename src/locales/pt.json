@@ -3917,7 +3917,7 @@
         "return": "Retornos",
         "arrival": "Chegadas",
         "death": "Mortes",
-        "encounter": "Interceções"
+        "encounter": "Registos na fronteira"
       }
     }
   },

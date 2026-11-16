@@ -7589,7 +7589,7 @@ body.playback-mode .status-dot {
 }
 
 .popup-header.displacement .popup-title {
-  color: var(--semantic-info);
+  color: var(--semantic-low-text, var(--semantic-info));
 }
 
 .popup-badge.displacement-refugees,

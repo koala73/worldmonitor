@@ -4281,7 +4281,7 @@
         "return": "Geri dönüşler",
         "arrival": "Varışlar",
         "death": "Ölümler",
-        "encounter": "Yakalamalar"
+        "encounter": "Sınırda kayıtlı vakalar"
       }
     }
   },

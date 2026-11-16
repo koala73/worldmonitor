@@ -4350,7 +4350,7 @@
         "return": "Visszatérők",
         "arrival": "Érkezők",
         "death": "Halálesetek",
-        "encounter": "Feltartóztatások"
+        "encounter": "Határon rögzített esetek"
       }
     }
   },
