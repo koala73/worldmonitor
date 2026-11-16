@@ -87,6 +87,14 @@ describe('evaluateCall', () => {
     assert.equal(evaluateCall({ error: 'ECONNRESET' }).kind, 'transport');
   });
 
+  it('fails a budget-exceeded stub, which carries no data even though it answers 200 (#10849)', () => {
+    const stub = { _budget_exceeded: true, budget_bytes: 262144, actual_bytes: 1240632, hint: 'Response exceeds tool output budget.' };
+    const v = evaluateCall({ status: 200, body: rpcResult({ content: [{ type: 'text', text: JSON.stringify(stub) }], structuredContent: stub }) }, () => true);
+    assert.equal(v.ok, false);
+    assert.equal(v.kind, 'budget_exceeded');
+    assert.match(v.detail, /1240632 bytes over a 262144-byte budget/);
+  });
+
   it('accepts only the JSON-RPC error codes a fixture names', () => {
     const body = JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32002, message: 'user-bound' } });
     assert.equal(evaluateCall({ status: 200, body }, null, { acceptRpcErrorCodes: [-32002] }).ok, true);

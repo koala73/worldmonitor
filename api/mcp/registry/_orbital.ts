@@ -3,6 +3,7 @@ import { buildAuthHeaders } from '../auth';
 import { assertToolFetchOk, RpcValidationError } from '../billing-denial';
 import { fetchMcpDownstream } from '../downstream';
 import type { ToolDef } from '../types';
+import { utf8ByteLength } from '../utils';
 
 const POINT_PASSES_PATH = '/api/orbital/v1/get-point-passes';
 export const COUNTRY_EVIDENCE_PATH = '/api/orbital/v1/get-country-imagery-evidence';
@@ -27,6 +28,73 @@ export async function readOrbital(path: string, query: URLSearchParams, label: s
 }
 
 const TIERS = ['confirmed-image', 'likely-imaged', 'within-reach', 'capability-overhead', 'daily-mosaic', 'passed-overhead', 'opportunity'];
+
+/**
+ * A point's full answer lists every pass in a 10-day window: about 2,600 to 11,500 passes,
+ * 0.8 to 4 MB in production (#10849). The tool lists the evidence tiers by default and the
+ * passes nearest the computation time in each tier, and counts everything else.
+ */
+const DEFAULT_TIERS = ['confirmed-image', 'likely-imaged', 'daily-mosaic', 'opportunity'];
+const DEFAULT_PASS_LIMIT = 50;
+const MAX_PASS_LIMIT = 500;
+
+interface PassFilter { tiers: string[]; limit: number }
+
+function passFilter(params: Record<string, unknown>): PassFilter {
+  const { tiers = DEFAULT_TIERS, limit = DEFAULT_PASS_LIMIT } = params;
+  if (!Array.isArray(tiers) || tiers.length === 0 || tiers.some((t) => typeof t !== 'string' || !TIERS.includes(t))) {
+    throw new RpcValidationError('get-point-passes', [{ field: 'tiers', description: `tiers must be a non-empty list of: ${TIERS.join(', ')}.` }]);
+  }
+  if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > MAX_PASS_LIMIT) {
+    throw new RpcValidationError('get-point-passes', [{ field: 'limit', description: `limit must be a whole number from 1 to ${MAX_PASS_LIMIT}.` }]);
+  }
+  return { tiers: [...new Set(tiers as string[])], limit };
+}
+
+interface ListedPass { tier?: unknown; timeMs?: unknown }
+
+/** Keeps at most `limit` passes per tier, nearest `computedAt` first, in their original (oldest first) order. */
+function capPerTier(passes: ListedPass[], computedAt: number, limit: number): ListedPass[] {
+  const byTier = new Map<unknown, ListedPass[]>();
+  for (const pass of passes) {
+    const group = byTier.get(pass.tier);
+    if (group) group.push(pass);
+    else byTier.set(pass.tier, [pass]);
+  }
+  const kept = new Set<ListedPass>();
+  const distance = (pass: ListedPass) => Math.abs(Number(pass.timeMs) - computedAt);
+  for (const group of byTier.values()) {
+    for (const pass of group.sort((a, b) => distance(a) - distance(b)).slice(0, limit)) kept.add(pass);
+  }
+  return passes.filter((pass) => kept.has(pass));
+}
+
+function listPasses(result: Record<string, unknown>, passCounts: Record<string, number>, listed: ListedPass[], tiers: string[], limit: number) {
+  const total = Object.values(passCounts).reduce((sum, n) => sum + n, 0);
+  return { ...result, passes: listed, passCounts, listedTiers: tiers, passLimit: limit, omittedPasses: total - listed.length };
+}
+
+export function presentPointPasses(result: Record<string, unknown>, { tiers, limit }: PassFilter): Record<string, unknown> {
+  const passes = Array.isArray(result.passes) ? (result.passes as ListedPass[]) : [];
+  const passCounts: Record<string, number> = {};
+  for (const pass of passes) passCounts[String(pass.tier)] = (passCounts[String(pass.tier)] ?? 0) + 1;
+  const wanted = passes.filter((pass) => tiers.includes(String(pass.tier)));
+  return listPasses(result, passCounts, capPerTier(wanted, Number(result.computedAt), limit), tiers, limit);
+}
+
+/** An explicit request for many tiers can still be too large: halve the per-tier limit until it fits. */
+function fitPointPasses(result: Record<string, unknown>, budgetBytes: number): Record<string, unknown> {
+  const passes = Array.isArray(result.passes) ? (result.passes as ListedPass[]) : [];
+  const passCounts = (result.passCounts ?? {}) as Record<string, number>;
+  const tiers = (result.listedTiers ?? []) as string[];
+  let limit = Number(result.passLimit) || MAX_PASS_LIMIT;
+  let presented = result;
+  while (limit > 1 && utf8ByteLength(JSON.stringify(presented)) > budgetBytes) {
+    limit = Math.max(1, Math.floor(limit / 2));
+    presented = listPasses(result, passCounts, capPerTier(passes, Number(result.computedAt), limit), tiers, limit);
+  }
+  return presented;
+}
 
 const POINT_PASS_SCHEMA = {
   type: 'object',
@@ -117,12 +185,14 @@ export const ORBITAL_TOOLS: ToolDef[] = [
     _subscriptionOnly: true,
     // Measured 76 KB for 17 satellites over Denver on the 2026-11-13 fixture; leaves room for a larger catalog.
     _outputBudgetBytes: 262144,
-    description: 'Return every imaging-satellite pass whose footprint covers a point over the last 7 days and the next 72 hours, each with exactly one tier (confirmed-image, likely-imaged, within-reach, capability-overhead, daily-mosaic, passed-overhead, opportunity), plus the Sentinel-2, Sentinel-1 and Landsat acquisitions found in the open archives with a public image URL. Tiers match the WorldMonitor point lookup. The point is rounded to 0.01 degrees and point names the one used. Military passes read capability-overhead, never an image. stale is true when the orbit catalog is missing or old; archiveStatus partial with failedSources means an archive failed and its passes keep geometry tiers. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.',
+    description: 'Return imaging-satellite passes whose footprint covers a point over the last 7 days and the next 72 hours, each with exactly one tier (confirmed-image, likely-imaged, within-reach, capability-overhead, daily-mosaic, passed-overhead, opportunity). By default it lists confirmed-image, likely-imaged, daily-mosaic and opportunity, at most 50 per tier nearest now; tiers and limit change that, and passCounts counts every tier. It also returns the Sentinel-2, Sentinel-1 and Landsat acquisitions found in the open archives with a public image URL. Tiers match the WorldMonitor point lookup. The point is rounded to 0.01 degrees and point names the one used. Military passes read capability-overhead, never an image. stale is true when the orbit catalog is missing or old; archiveStatus partial with failedSources means an archive failed and its passes keep geometry tiers. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
         lat: { type: 'number', minimum: -90, maximum: 90, description: 'Latitude in decimal degrees.' },
         lon: { type: 'number', minimum: -180, maximum: 180, description: 'Longitude in decimal degrees.' },
+        tiers: { type: 'array', items: { type: 'string', enum: TIERS }, minItems: 1, description: 'Tiers to list. Default: confirmed-image, likely-imaged, daily-mosaic, opportunity.' },
+        limit: { type: 'integer', minimum: 1, maximum: MAX_PASS_LIMIT, description: 'Most passes listed per tier, nearest now first (default 50). Lowered if the answer would exceed the output budget.' },
       },
       required: ['lat', 'lon'],
     },
@@ -136,7 +206,11 @@ export const ORBITAL_TOOLS: ToolDef[] = [
         inventoryVersion: { type: 'string' },
         catalogFetchedAt: { type: 'integer' },
         stale: { type: 'boolean' },
-        passes: { type: 'array', items: POINT_PASS_SCHEMA, description: 'Passes covering the point, oldest first.' },
+        passes: { type: 'array', items: POINT_PASS_SCHEMA, description: 'Listed passes covering the point, oldest first: the listed tiers, at most passLimit per tier, nearest computedAt.' },
+        passCounts: { type: 'object', additionalProperties: { type: 'integer' }, description: 'Every pass covering the point, counted by tier, listed or not.' },
+        listedTiers: { type: 'array', items: { type: 'string', enum: TIERS } },
+        passLimit: { type: 'integer', description: 'Most passes listed per tier in this answer.' },
+        omittedPasses: { type: 'integer', description: 'Passes covering the point that are counted in passCounts but not listed.' },
         outOfFootprintPasses: { type: 'integer', description: 'Passes in range whose footprint misses the point and that no archive image confirms; counted, not listed.' },
         acquisitions: { type: 'array', items: ACQUISITION_SCHEMA, description: 'Archive acquisitions at the point, newest first; tiles of one acquisition count once.' },
         archiveStatus: { type: 'string', enum: ['complete', 'partial'] },
@@ -146,11 +220,14 @@ export const ORBITAL_TOOLS: ToolDef[] = [
       required: ['point', 'computedAt', 'stale', 'passes', 'acquisitions', 'archiveStatus'],
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
-    _validateArgs: (params) => { pointArgs(params); },
+    _validateArgs: (params) => { pointArgs(params); passFilter(params); },
     _execute: async (params, base, context, execution) => {
       const { lat, lon } = pointArgs(params);
-      return readOrbital(POINT_PASSES_PATH, new URLSearchParams({ lat: String(lat), lon: String(lon) }), 'get-point-passes', base, context, execution);
+      const filter = passFilter(params);
+      const result = await readOrbital(POINT_PASSES_PATH, new URLSearchParams({ lat: String(lat), lon: String(lon) }), 'get-point-passes', base, context, execution);
+      return result && typeof result === 'object' ? presentPointPasses(result as Record<string, unknown>, filter) : result;
     },
+    _fitToBudget: (result, budgetBytes) => fitPointPasses(result, budgetBytes),
     _coverageKeys: ['orbital:catalog:v1'],
     _apiPaths: [`GET ${POINT_PASSES_PATH}`],
   },
