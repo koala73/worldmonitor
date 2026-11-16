@@ -102,6 +102,9 @@ export interface AppContext {
   signalModal: import('@/components/SignalModal').SignalModal | null;
   ensureSignalModal: () => Promise<import('@/components/SignalModal').SignalModal>;
   statusPanel: import('@/components').StatusPanel | null;
+  // The last news coverage summary. StatusPanel loads lazily and can arrive
+  // after the first digest; it replays this so the coverage row still mounts.
+  digestCoverage: import('@/components/StatusPanel').DigestCoverageSummary | null;
   searchModal: import('@/components').SearchModal | null;
   findingsBadge: import('@/components').IntelligenceGapBadge | null;
   breakingBanner: import('@/components/BreakingNewsBanner').BreakingNewsBanner | null;

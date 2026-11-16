@@ -1,4 +1,5 @@
 import { devices, expect, test, type Page } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 const { defaultBrowserType: mobileDefaultBrowserType, ...mobileDevice } = devices['iPhone 14 Pro Max'];
 void mobileDefaultBrowserType;
@@ -278,6 +279,28 @@ test.describe('dashboard LCP attribution debug', () => {
     expect(latest!.context.viewport.width).toBeGreaterThan(0);
     expect(latest!.url).not.toContain('wms_');
     expect(latest!.url).not.toContain('token=');
+  });
+
+  // StatusPanel is a lazy chunk. When the first digest landed before it
+  // loaded, its coverage report went to nobody and the row never mounted
+  // (CI runs 43792956961 and 43794135730, retried by Playwright).
+  test('mounts the coverage row when the status panel loads after the first digest', async ({ page }, testInfo) => {
+    let digestServed!: () => void;
+    const served = new Promise<void>((resolve) => { digestServed = resolve; });
+    page.on('requestfinished', (request) => {
+      if (request.url().includes('/api/news/v1/list-feed-digest')) digestServed();
+    });
+    let heldPanelModule = false;
+    await page.route('**/src/components/StatusPanel.ts*', async (route) => {
+      await served;
+      heldPanelModule = true;
+      await route.continue();
+    });
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    const coverageRow = page.getByRole('status', { name: 'News coverage status' });
+    await expect(coverageRow).toHaveText(PARTIAL_DIGEST_COVERAGE_TEXT, { timeout: 30000 });
+    expect(heldPanelModule, 'the StatusPanel module request must be held until the digest is served').toBe(true);
+    await evidenceScreenshot(page.locator('.site-footer'), { path: testInfo.outputPath('coverage-row-late-status-panel.png') });
   });
 });
 

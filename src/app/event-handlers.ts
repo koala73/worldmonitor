@@ -2153,6 +2153,8 @@ export class EventHandlerManager implements AppModule {
       .then(({ StatusPanel }) => {
         if (this.ctx.isDestroyed) return;
         this.ctx.statusPanel = new StatusPanel();
+        // A digest that landed before this chunk loaded reported to nobody.
+        if (this.ctx.digestCoverage) this.ctx.statusPanel.updateDigestCoverage(this.ctx.digestCoverage);
       })
       .catch((err) => {
         console.error('[status-panel] failed to lazy-load StatusPanel', err);
