@@ -5446,7 +5446,14 @@
       "count_other": "{{count}} siti all'interno dell'impronta {{family}}",
       "passes_one": "{{count}} passaggio",
       "passes_many": "{{count}} passaggi",
-      "passes_other": "{{count}} passaggi"
+      "passes_other": "{{count}} passaggi",
+      "maneuver": "Possibile manovra {{date}}: {{change}}",
+      "maneuverRaised": "orbita alzata di {{km}} km",
+      "maneuverLowered": "orbita abbassata di {{km}} km",
+      "maneuverInclination": "inclinazione cambiata di {{deg}}°",
+      "maneuverPlane": "piano orbitale spostato di {{deg}}°",
+      "maneuverHint": "I suoi elementi orbitali si sono discostati dalla tendenza propria del satellite. È una manovra possibile, non confermata.",
+      "maneuverShort": "possibile manovra {{date}}"
     },
     "siteSatellites": {
       "heading": "Satelliti tracciati sopra questo sito · prossime {{hours}} h",

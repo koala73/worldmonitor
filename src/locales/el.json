@@ -5414,7 +5414,14 @@
       "count_one": "{{count}} τοποθεσία εντός της περιοχής κάλυψης {{family}}",
       "count_other": "{{count}} τοποθεσίες εντός της περιοχής κάλυψης {{family}}",
       "passes_one": "{{count}} διέλευση",
-      "passes_other": "{{count}} διελεύσεις"
+      "passes_other": "{{count}} διελεύσεις",
+      "maneuver": "Πιθανός ελιγμός {{date}}: {{change}}",
+      "maneuverRaised": "η τροχιά ανυψώθηκε {{km}} km",
+      "maneuverLowered": "η τροχιά χαμήλωσε {{km}} km",
+      "maneuverInclination": "η κλίση άλλαξε {{deg}}°",
+      "maneuverPlane": "το επίπεδο τροχιάς μετατοπίστηκε {{deg}}°",
+      "maneuverHint": "Τα τροχιακά του στοιχεία απέκλιναν από την τάση του ίδιου του δορυφόρου. Πρόκειται για πιθανό, όχι επιβεβαιωμένο ελιγμό.",
+      "maneuverShort": "πιθανός ελιγμός {{date}}"
     },
     "siteSatellites": {
       "heading": "Παρακολουθούμενοι δορυφόροι πάνω από αυτή την τοποθεσία · επόμενες {{hours}} ώρες",

@@ -5478,7 +5478,14 @@
       "passes_one": "{{count}} пролёт",
       "passes_few": "{{count}} пролёта",
       "passes_many": "{{count}} пролётов",
-      "passes_other": "{{count}} пролёта"
+      "passes_other": "{{count}} пролёта",
+      "maneuver": "Возможный манёвр {{date}}: {{change}}",
+      "maneuverRaised": "орбита поднята на {{km}} км",
+      "maneuverLowered": "орбита понижена на {{km}} км",
+      "maneuverInclination": "наклонение изменено на {{deg}}°",
+      "maneuverPlane": "плоскость орбиты смещена на {{deg}}°",
+      "maneuverHint": "Элементы орбиты отклонились от собственного тренда спутника. Это возможный, а не подтверждённый манёвр.",
+      "maneuverShort": "возможный манёвр {{date}}"
     },
     "siteSatellites": {
       "heading": "Отслеживаемые спутники над объектом · ближайшие {{hours}} ч",

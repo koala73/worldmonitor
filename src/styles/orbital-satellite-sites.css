@@ -47,6 +47,15 @@
   color: var(--yellow-text, var(--yellow));
 }
 
+/* A candidate manoeuvre (#9110): a fact about the orbit, amber like other caveats, never an alert colour. */
+.osat-sites-maneuver {
+  margin-bottom: 4px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--yellow-text, var(--yellow));
+  overflow-wrap: anywhere;
+}
+
 .osat-sites-list {
   list-style: none;
   margin: 4px 0 0;

@@ -5478,7 +5478,14 @@
       "passes_one": "{{count}} przelot",
       "passes_few": "{{count}} przeloty",
       "passes_many": "{{count}} przelotów",
-      "passes_other": "{{count}} przelotu"
+      "passes_other": "{{count}} przelotu",
+      "maneuver": "Możliwy manewr {{date}}: {{change}}",
+      "maneuverRaised": "orbita podniesiona o {{km}} km",
+      "maneuverLowered": "orbita obniżona o {{km}} km",
+      "maneuverInclination": "nachylenie zmienione o {{deg}}°",
+      "maneuverPlane": "płaszczyzna orbity przesunięta o {{deg}}°",
+      "maneuverHint": "Elementy orbitalne odbiegły od własnego trendu satelity. To możliwy, a nie potwierdzony manewr.",
+      "maneuverShort": "możliwy manewr {{date}}"
     },
     "siteSatellites": {
       "heading": "Śledzone satelity nad tym miejscem · kolejne {{hours}} h",

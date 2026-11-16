@@ -5414,7 +5414,14 @@
       "count_one": "Eneo {{count}} ndani ya eneo la ufunikaji la {{family}}",
       "count_other": "Maeneo {{count}} ndani ya eneo la ufunikaji la {{family}}",
       "passes_one": "Pito {{count}}",
-      "passes_other": "Mapito {{count}}"
+      "passes_other": "Mapito {{count}}",
+      "maneuver": "Uendeshaji unaowezekana {{date}}: {{change}}",
+      "maneuverRaised": "obiti imepandishwa km {{km}}",
+      "maneuverLowered": "obiti imeshushwa km {{km}}",
+      "maneuverInclination": "mwinamo umebadilika {{deg}}°",
+      "maneuverPlane": "bapa la obiti limehamishwa {{deg}}°",
+      "maneuverHint": "Vipengele vya obiti yake vimeacha mwelekeo wa setilaiti yenyewe. Huu ni uendeshaji unaowezekana, si uliothibitishwa.",
+      "maneuverShort": "uendeshaji unaowezekana {{date}}"
     },
     "siteSatellites": {
       "heading": "Setilaiti zinazofuatiliwa juu ya eneo hili · saa {{hours}} zijazo",

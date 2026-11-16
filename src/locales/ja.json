@@ -5382,7 +5382,14 @@
       },
       "tooOld_other": "軌道要素が{{count}}日前のもので、通過の計算には古すぎます。",
       "count_other": "{{family}}の観測範囲内に{{count}}地点",
-      "passes_other": "{{count}}回の通過"
+      "passes_other": "{{count}}回の通過",
+      "maneuver": "マヌーバの可能性 {{date}}: {{change}}",
+      "maneuverRaised": "軌道を {{km}} km 上昇",
+      "maneuverLowered": "軌道を {{km}} km 下降",
+      "maneuverInclination": "軌道傾斜角が {{deg}}° 変化",
+      "maneuverPlane": "軌道面が {{deg}}° 移動",
+      "maneuverHint": "軌道要素がこの衛星自身の傾向から外れました。確認されたマヌーバではなく、その可能性です。",
+      "maneuverShort": "マヌーバの可能性 {{date}}"
     },
     "siteSatellites": {
       "heading": "この地点上空の追跡衛星 · 今後{{hours}}時間",

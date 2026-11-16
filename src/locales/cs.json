@@ -5478,7 +5478,14 @@
       "passes_one": "{{count}} přelet",
       "passes_few": "{{count}} přelety",
       "passes_many": "{{count}} přeletu",
-      "passes_other": "{{count}} přeletů"
+      "passes_other": "{{count}} přeletů",
+      "maneuver": "Možný manévr {{date}}: {{change}}",
+      "maneuverRaised": "dráha zvýšena o {{km}} km",
+      "maneuverLowered": "dráha snížena o {{km}} km",
+      "maneuverInclination": "sklon změněn o {{deg}}°",
+      "maneuverPlane": "rovina dráhy posunuta o {{deg}}°",
+      "maneuverHint": "Dráhové elementy se odchýlily od vlastního trendu družice. Jde o možný, nikoli potvrzený manévr.",
+      "maneuverShort": "možný manévr {{date}}"
     },
     "siteSatellites": {
       "heading": "Sledované satelity nad tímto místem · dalších {{hours}} h",

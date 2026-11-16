@@ -5446,7 +5446,14 @@
       "count_other": "{{count}} sitios dentro de la huella {{family}}",
       "passes_one": "{{count}} paso",
       "passes_many": "{{count}} pasos",
-      "passes_other": "{{count}} pasos"
+      "passes_other": "{{count}} pasos",
+      "maneuver": "Posible maniobra {{date}}: {{change}}",
+      "maneuverRaised": "órbita elevada {{km}} km",
+      "maneuverLowered": "órbita descendida {{km}} km",
+      "maneuverInclination": "inclinación cambiada {{deg}}°",
+      "maneuverPlane": "plano orbital desplazado {{deg}}°",
+      "maneuverHint": "Sus elementos orbitales se apartaron de la tendencia propia del satélite. Es una maniobra posible, no confirmada.",
+      "maneuverShort": "posible maniobra {{date}}"
     },
     "siteSatellites": {
       "heading": "Satélites rastreados sobre este sitio · próximas {{hours}} h",

@@ -18,6 +18,7 @@ import { loadWaterCard } from '@/components/water-card';
 import { reservoirAtPoint } from '@/services/climate/reservoir-context';
 import { markSiteSatelliteSelected, siteSatellitesSection, type SiteSatellitesState } from '@/components/orbital-site-satellites-view';
 import { satellitesCoveringSite, type CoverageSite } from '@/services/orbital/satellite-site-coverage';
+import { loadRecentManeuvers, type ManeuverCandidate } from '@/services/orbital/satellite-maneuvers';
 import { fetchSatelliteTLEs, getTrackedSatelliteTles } from '@/services/satellites';
 import { confirmShareLinkCopied } from '@/components/share-link-button';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
@@ -47,6 +48,8 @@ let timelinePasses: Pick<OrbitalTimelineInput, 'lookup' | 'passes' | 'acquisitio
 let pointContext: PointContextState = { kind: 'loading' };
 /** The watched site at the open point and the tracked satellites over it, or null for any other point. */
 let siteSatellites: { site: CoverageSite; state: SiteSatellitesState } | null = null;
+/** Recent candidate manoeuvres for the site's satellite rows (#9110); empty until loaded or when unavailable. */
+let siteManeuvers: ReadonlyMap<string, ManeuverCandidate> = new Map();
 const SITE_SATELLITES_TICK_MS = 30_000;
 let markFrame: number | null = null;
 let centredFor: string | null = null;
@@ -256,6 +259,7 @@ function drawSiteSatellites(): void {
     passKey: lookupPassKey,
     selectedKey: selectedKey(),
     expanded,
+    maneuvers: siteManeuvers,
   }));
   if (refocus) slot.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
 }
@@ -276,6 +280,11 @@ async function loadSiteSatellites(found: PointPassLookup, signal: AbortSignal): 
     drawSiteSatellites();
   };
   draw({ kind: 'projecting' });
+  void loadRecentManeuvers().then((maneuvers) => {
+    if (signal.aborted) return;
+    siteManeuvers = maneuvers;
+    drawSiteSatellites();
+  });
   try {
     let tles = getTrackedSatelliteTles();
     if (tles.length === 0) tles = (await fetchSatelliteTLEs()) ?? [];

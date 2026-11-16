@@ -4878,7 +4878,14 @@
           "sigint": "SIGINT",
           "signals": "Signals"
         }
-      }
+      },
+      "maneuver": "Candidate maneuver {{date}}: {{change}}",
+      "maneuverRaised": "orbit raised {{km}} km",
+      "maneuverLowered": "orbit lowered {{km}} km",
+      "maneuverInclination": "inclination changed {{deg}}°",
+      "maneuverPlane": "orbit plane shifted {{deg}}°",
+      "maneuverHint": "Its orbit elements left the satellite's own trend. This is a candidate, not a confirmed maneuver.",
+      "maneuverShort": "candidate maneuver {{date}}"
     },
     "siteSatellites": {
       "heading": "Tracked satellites over this site · next {{hours}} h",

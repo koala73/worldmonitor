@@ -1,6 +1,7 @@
 import { t } from '@/services/i18n';
 import { h } from '@/utils/dom-utils';
 import { COVERAGE_WINDOW_HOURS, type CoverageSite, type SiteSatellite } from '@/services/orbital/satellite-site-coverage';
+import { maneuverDay, type ManeuverCandidate } from '@/services/orbital/satellite-maneuvers';
 import { untilLabel, utcTime } from './orbital-satellite-sites-view';
 
 const KEY = 'orbitalWatch.siteSatellites';
@@ -20,24 +21,28 @@ export interface SiteSatellitesOptions {
   selectedKey: string | null;
   /** Whether the list shows every satellite rather than the first SITE_SATELLITE_ROWS. */
   expanded?: boolean;
+  /** Recent candidate manoeuvres by NORAD id (#9110); a satellite with one says so in its row. */
+  maneuvers?: ReadonlyMap<string, ManeuverCandidate>;
 }
 
 function cell(label: string, value: string, className = ''): HTMLElement {
   return h('span', { className: `ies-cell ${className}`.trim(), dataset: { label } }, value);
 }
 
-function satelliteRow(satellite: SiteSatellite, { nowMs, passKey, selectedKey }: SiteSatellitesOptions): HTMLElement {
+function satelliteRow(satellite: SiteSatellite, { nowMs, passKey, selectedKey, maneuvers }: SiteSatellitesOptions): HTMLElement {
   const first = satellite.passes[0]!;
   const key = passKey(satellite.noradId, first.timeMs);
   const detail = [t('orbitalWatch.satelliteSites.offTrack', { km: Math.round(first.groundDistanceKm) })];
   if (first.edgeOfSwath) detail.push(t('orbitalWatch.satelliteSites.swathEdge'));
   if (satellite.passes.length > 1) detail.push(t('orbitalWatch.satelliteSites.passes', { count: satellite.passes.length }));
+  const maneuver = maneuvers?.get(satellite.noradId);
+  if (maneuver) detail.push(t('orbitalWatch.satelliteSites.maneuverShort', { date: maneuverDay(maneuver) }));
   // A row the lookup also lists selects that pass, which draws its track over the site; any other row only reads.
   return h('li', {
     className: key ? 'ies-row' : 'ies-static-row',
     tabindex: key ? '0' : null,
     'aria-current': key && key === selectedKey ? 'true' : null,
-    dataset: { key: key ? `pass:${key}` : `satellite:${satellite.noradId}`, noradId: satellite.noradId },
+    dataset: { key: key ? `pass:${key}` : `satellite:${satellite.noradId}`, noradId: satellite.noradId, ...(maneuver ? { maneuver: maneuver.element } : {}) },
   },
   cell(t('orbitalWatch.row.time'), utcTime(first.timeMs)),
   cell(t('orbitalWatch.row.in'), untilLabel(first.timeMs, nowMs)),

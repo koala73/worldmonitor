@@ -5414,7 +5414,14 @@
       "count_one": "{{family}} kapsama alanında {{count}} konum",
       "count_other": "{{family}} kapsama alanında {{count}} konum",
       "passes_one": "{{count}} geçiş",
-      "passes_other": "{{count}} geçiş"
+      "passes_other": "{{count}} geçiş",
+      "maneuver": "Olası manevra {{date}}: {{change}}",
+      "maneuverRaised": "yörünge {{km}} km yükseltildi",
+      "maneuverLowered": "yörünge {{km}} km alçaltıldı",
+      "maneuverInclination": "eğim {{deg}}° değişti",
+      "maneuverPlane": "yörünge düzlemi {{deg}}° kaydı",
+      "maneuverHint": "Yörünge elemanları uydunun kendi eğiliminden ayrıldı. Bu doğrulanmış değil, olası bir manevradır.",
+      "maneuverShort": "olası manevra {{date}}"
     },
     "siteSatellites": {
       "heading": "Bu konum üzerindeki izlenen uydular · önümüzdeki {{hours}} sa",

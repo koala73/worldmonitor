@@ -5382,7 +5382,14 @@
       },
       "tooOld_other": "Các phần tử quỹ đạo đã có từ {{count}} ngày trước, quá cũ để tính các lượt bay qua.",
       "count_other": "{{count}} địa điểm trong vùng quan sát của {{family}}",
-      "passes_other": "{{count}} lượt bay qua"
+      "passes_other": "{{count}} lượt bay qua",
+      "maneuver": "Khả năng điều chỉnh quỹ đạo {{date}}: {{change}}",
+      "maneuverRaised": "quỹ đạo nâng {{km}} km",
+      "maneuverLowered": "quỹ đạo hạ {{km}} km",
+      "maneuverInclination": "độ nghiêng thay đổi {{deg}}°",
+      "maneuverPlane": "mặt phẳng quỹ đạo dịch {{deg}}°",
+      "maneuverHint": "Các yếu tố quỹ đạo đã lệch khỏi xu hướng riêng của vệ tinh. Đây là khả năng, chưa phải điều chỉnh đã xác nhận.",
+      "maneuverShort": "khả năng điều chỉnh quỹ đạo {{date}}"
     },
     "siteSatellites": {
       "heading": "Vệ tinh được theo dõi trên địa điểm này · {{hours}} giờ tới",

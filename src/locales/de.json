@@ -5414,7 +5414,14 @@
       "count_one": "{{count}} Ort innerhalb des {{family}}-Footprints",
       "count_other": "{{count}} Orte innerhalb des {{family}}-Footprints",
       "passes_one": "{{count}} Überflug",
-      "passes_other": "{{count}} Überflüge"
+      "passes_other": "{{count}} Überflüge",
+      "maneuver": "Mögliches Manöver {{date}}: {{change}}",
+      "maneuverRaised": "Bahn um {{km}} km angehoben",
+      "maneuverLowered": "Bahn um {{km}} km abgesenkt",
+      "maneuverInclination": "Inklination um {{deg}}° geändert",
+      "maneuverPlane": "Bahnebene um {{deg}}° verschoben",
+      "maneuverHint": "Die Bahnelemente weichen vom eigenen Verlauf des Satelliten ab. Das ist ein mögliches, kein bestätigtes Manöver.",
+      "maneuverShort": "mögliches Manöver {{date}}"
     },
     "siteSatellites": {
       "heading": "Verfolgte Satelliten über diesem Ort · nächste {{hours}} h",

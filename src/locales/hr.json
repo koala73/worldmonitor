@@ -5456,7 +5456,14 @@
       "count_other": "{{count}} praćenih mjesta unutar područja snimanja {{family}}",
       "passes_one": "{{count}} prelet",
       "passes_few": "{{count}} preleta",
-      "passes_other": "{{count}} preleta"
+      "passes_other": "{{count}} preleta",
+      "maneuver": "Mogući manevar {{date}}: {{change}}",
+      "maneuverRaised": "orbita podignuta za {{km}} km",
+      "maneuverLowered": "orbita spuštena za {{km}} km",
+      "maneuverInclination": "nagib promijenjen za {{deg}}°",
+      "maneuverPlane": "ravnina orbite pomaknuta za {{deg}}°",
+      "maneuverHint": "Orbitalni elementi odstupili su od vlastitog trenda satelita. Riječ je o mogućem, a ne potvrđenom manevru.",
+      "maneuverShort": "mogući manevar {{date}}"
     },
     "siteSatellites": {
       "heading": "Praćeni sateliti iznad ovog mjesta · sljedećih {{hours}} h",

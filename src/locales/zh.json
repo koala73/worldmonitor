@@ -5382,7 +5382,14 @@
       },
       "tooOld_other": "轨道根数已有 {{count}} 天，过旧，无法计算过境。",
       "count_other": "{{family}} 覆盖范围内有 {{count}} 个地点",
-      "passes_other": "{{count}} 次过境"
+      "passes_other": "{{count}} 次过境",
+      "maneuver": "疑似机动 {{date}}：{{change}}",
+      "maneuverRaised": "轨道抬升 {{km}} 公里",
+      "maneuverLowered": "轨道降低 {{km}} 公里",
+      "maneuverInclination": "倾角变化 {{deg}}°",
+      "maneuverPlane": "轨道面偏移 {{deg}}°",
+      "maneuverHint": "其轨道根数偏离了该卫星自身的趋势。这是疑似机动，并非已确认的机动。",
+      "maneuverShort": "疑似机动 {{date}}"
     },
     "siteSatellites": {
       "heading": "此地点上空的跟踪卫星 · 未来 {{hours}} 小时",
