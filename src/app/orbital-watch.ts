@@ -188,7 +188,7 @@ function loadContext(found: PointPassLookup, signal: AbortSignal): void {
 function loadWatchedSite(at: GeoPoint): void {
   siteRun?.abort();
   siteFailed = false;
-  if (pointIsLocated) { siteRun = null; return; }
+  if (pointIsLocated) { siteRun = null; page?.setWatchedSite({ kind: 'none' }); return; }
   const controller = new AbortController();
   siteRun = controller;
   const { signal } = controller;
@@ -331,7 +331,7 @@ function showSearchRow(open: boolean): void {
 }
 
 function ensurePage(): OrbitalWatchPage {
-  tools ??= new OrbitalPlaceTools({ onPick: (at, name) => lookAt(at, name, { recentre: true }), shareLink });
+  tools ??= new OrbitalPlaceTools({ onPick: (at, name, located) => lookAt(at, name, { recentre: true, located }), shareLink });
   if (!page) {
     page = new OrbitalWatchPage({
       onClose: () => {
@@ -401,7 +401,13 @@ function lookAt(at: GeoPoint, name: string | null, { recentre, map, located = fa
   if (sheet.isOpen && samePoint(point, at)) {
     if (moved) drawTarget(targetFor(at, null));
     sheet.setPlaceName(name);
-    if (siteFailed && !located) loadWatchedSite(at);
+    // The same point reopened as the located position drops a pending read; reopened as a picked point it reads.
+    if (pointIsLocated !== located) {
+      pointIsLocated = located;
+      loadWatchedSite(at);
+    } else if (siteFailed && !located) {
+      loadWatchedSite(at);
+    }
     if (recentre) focusMap();
     // A second link to the open point selects its pass now if the archives have answered, else when they do.
     if (evidenceReady && lookup) applyLinkedPass(lookup);

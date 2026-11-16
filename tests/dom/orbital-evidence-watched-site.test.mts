@@ -192,6 +192,27 @@ describe('opening the lookup on a watched site', () => {
     expect(siteSection()).toBeNull();
   });
 
+  it('reads no site record for a device fix from the sheet\'s own My location button', async () => {
+    vi.stubGlobal('navigator', { ...navigator, geolocation: { getCurrentPosition: (ok: PositionCallback) => ok({ coords: { latitude: onSite.lat, longitude: onSite.lon } } as GeolocationPosition) } });
+    openOrbitalWatch(offSite, null);
+    await vi.waitFor(() => expect(harness.lookup).toHaveBeenCalled());
+    sheet().querySelector<HTMLButtonElement>('.ow-locate')!.click();
+    await vi.waitFor(() => expect(harness.lookup).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(harness.siteRead).not.toHaveBeenCalled();
+    expect(siteSection()).toBeNull();
+  });
+
+  it('drops a pending site read when the open point is reopened as the located position', async () => {
+    let signal: AbortSignal | undefined;
+    harness.siteRead.mockImplementationOnce((_request, options) => { signal = options?.signal; return new Promise(() => {}); });
+    openOrbitalWatch(onSite, null);
+    await vi.waitFor(() => expect(signal).toBeDefined());
+    openOrbitalWatch(onSite, null, null, { located: true });
+    expect(signal!.aborted).toBe(true);
+    expect(siteSection()).toBeNull();
+  });
+
   it('reads the record again when the failed point is reopened, as the failure text says', async () => {
     harness.siteRead.mockRejectedValueOnce(new Error('503'));
     openOrbitalWatch(onSite, null);
