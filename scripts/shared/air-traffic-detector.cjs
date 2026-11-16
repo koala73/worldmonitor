@@ -146,10 +146,14 @@ function windowSum(read, end, getPoint, size) {
 }
 
 // Same-local-time median of the windowed `read` over the prior weeks, or null
-// when fewer than MIN_BASELINE_DAYS weeks have a usable window.
-function baselineAt(t, read, getPoint, timeZone, size = 1) {
+// when fewer than MIN_BASELINE_DAYS weeks have a usable window. With
+// `capAtLatest` it never exceeds the most recent usable week: a timetable
+// change (the 2026-10-25 winter schedule moved German evenings and mornings)
+// shows in last week first, while a real collapse still meets an ordinary week.
+function baselineAt(t, read, getPoint, timeZone, size = 1, capAtLatest = false) {
   const values = baselineBins(t, timeZone).map((bin) => windowSum(read, bin, getPoint, size)).filter((v) => v !== null);
-  return values.length >= MIN_BASELINE_DAYS ? median(values) : null;
+  if (values.length < MIN_BASELINE_DAYS) return null;
+  return capAtLatest ? Math.min(median(values), values[0]) : median(values);
 }
 
 // The UTC instant of local midnight starting local day `day` (days since the
@@ -193,7 +197,7 @@ function evaluateCollapse(state, { t, point, wingbits, getPoint, peakBaseline, m
   if (signalNow === null || seenNow === null || !usable(point, control.read)) {
     return { state: next('gap', { covered: 0 }), event: null };
   }
-  const base = baselineAt(t, signal, getPoint, market.tz, size);
+  const base = baselineAt(t, signal, getPoint, market.tz, size, true);
   const controlBase = baselineAt(t, control.read, getPoint, control.tz);
   const seenBase = baselineAt(t, seen, getPoint, market.tz, size);
   if (base === null || controlBase === null || seenBase === null || !(peakBaseline > 0)) {

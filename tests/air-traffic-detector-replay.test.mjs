@@ -81,16 +81,16 @@ test('one US recovery follows, once the next morning\'s departures are back near
   // The stop was lifted at 01:15Z, but with 2,500 more cancellations departures
   // stayed near half of normal through the night.
   const { recoveries } = byCode.US;
-  assert.deepEqual(recoveries.map((e) => iso(e.t)), ['2026-11-14T12:25']);
+  assert.deepEqual(recoveries.map((e) => iso(e.t)), ['2026-11-14T12:20']);
   assert.ok(recoveries[0].ratio > 0.7);
 });
 
 // Days the archive extraction recorded with the European market counts.
 const europeDays = Object.keys(fixture.days).filter((day) => fixture.days[day].some((row) => row && row[fixture.fields.indexOf('GB.dep')] !== null));
 
-test('the European replay covers the 2026-09-08 NATS failure and at least 60 days', () => {
-  assert.ok(europeDays.length >= 60, `${europeDays.length} days`);
-  assert.ok(europeDays.includes('2026-09-08') && europeDays.includes('2026-09-30'));
+test('the European replay covers the 2026-09-08 NATS failure, the winter timetable change and at least 90 days', () => {
+  assert.ok(europeDays.length >= 90, `${europeDays.length} days`);
+  for (const day of ['2026-09-08', '2026-09-30', '2026-10-25', '2026-11-06', '2026-11-10']) assert.ok(europeDays.includes(day), day);
   assert.ok(byCode.GB.verdicts.get('normal') > 5_000, JSON.stringify(Object.fromEntries(byCode.GB.verdicts)));
 });
 
@@ -101,8 +101,11 @@ test('the UK NATS flight-plan failure of 2026-09-08 raises one GB collapse and o
   assert.deepEqual(recoveries.map((e) => iso(e.t)), ['2026-09-08T18:35']);
 });
 
-test('France, Germany, Spain and Italy raise nothing, Italy\'s partial ATC strike of 2026-09-30 included', () => {
+test('France, Germany, Spain and Italy raise nothing, Italy\'s partial ATC strike of 2026-09-30 and the winter timetable included', () => {
   // Italy reaches the 30-departure window floor only around its daily peaks.
+  // Germany's evenings and mornings shifted with the 2026-10-25 winter
+  // timetable; without the latest-week cap they raised collapses on
+  // 2026-11-06 and 2026-11-10.
   for (const code of ['FR', 'DE', 'ES', 'IT']) {
     assert.deepEqual(byCode[code].events, [], code);
     assert.ok(byCode[code].verdicts.get('normal') > 3_000, `${code} ${JSON.stringify(Object.fromEntries(byCode[code].verdicts))}`);
