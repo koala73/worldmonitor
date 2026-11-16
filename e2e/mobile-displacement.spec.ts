@@ -97,7 +97,9 @@ for (const width of [390, 1280]) {
 // and 43794884414).
 test.describe('SVG marker press across a rebuild', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
-  for (const input of ['touch', 'mouse'] as const) {
+  // 'mouse+finger' lifts a second pointer mid-press: only the pressing pointer
+  // may end the hold.
+  for (const input of ['touch', 'mouse', 'mouse+finger'] as const) {
     test(`a ${input} press opens the popup when a render lands before release`, async ({ page }, testInfo) => {
       await page.goto('/tests/mobile-map-integration-harness.html?mobile=1');
       await page.waitForFunction(() => (window as unknown as { __mobileMapIntegrationHarness: Harness }).__mobileMapIntegrationHarness?.ready);
@@ -123,12 +125,13 @@ test.describe('SVG marker press across a rebuild', () => {
       else { await page.mouse.move(point.x, point.y); await page.mouse.down(); }
       // Render while the press is held, past the 100ms render throttle so the
       // render is not just coalesced into a later frame.
-      await page.evaluate(async () => {
+      await page.evaluate(async (otherPointerLifts) => {
         const h = (window as unknown as { __mobileMapIntegrationHarness: Harness }).__mobileMapIntegrationHarness;
+        if (otherPointerLifts) document.dispatchEvent(new PointerEvent('pointerup', { pointerId: 99, pointerType: 'touch', bubbles: true }));
         await new Promise(resolve => setTimeout(resolve, 150));
         h.forceRender();
         await new Promise(resolve => setTimeout(resolve, 150));
-      });
+      }, input === 'mouse+finger');
       if (input === 'touch') await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       else await page.mouse.up();
       const popup = page.locator('.map-popup');

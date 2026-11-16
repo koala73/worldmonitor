@@ -339,7 +339,7 @@ export class MapComponent {
   // sent the click to the map and the press opened nothing. While a press on a
   // marker is down the rebuild waits, and runs once the press ends. Touch is
   // exempt: Chromium hit-tests a tap at release, so it reaches the new marker.
-  private markerPressActive = false;
+  private markerPressPointer: number | null = null;
   private dynamicRebuildDeferred = false;
   private lastTruncationLabelKey = '';
   private labelVisibilityScheduled = false;
@@ -1130,13 +1130,16 @@ export class MapComponent {
 
   private setupZoomHandlers(): void {
     const signal = this.listenerAbort.signal;
-    this.wrapper.addEventListener('pointerdown', (e) => {
+    this.container.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'touch' || !(e.target instanceof Node)) return;
-      if (this.overlays.contains(e.target) || this.dynamicLayerGroup?.node()?.contains(e.target)) this.markerPressActive = true;
+      if (this.overlays?.contains(e.target) || this.dynamicLayerGroup?.node()?.contains(e.target)) this.markerPressPointer = e.pointerId;
     }, { capture: true, signal });
-    const endMarkerPress = () => {
-      if (!this.markerPressActive) return;
-      this.markerPressActive = false;
+    // Only the pointer that pressed the marker ends the hold; a finger lifted
+    // elsewhere on a touch laptop must not release a mouse press.
+    const endMarkerPress = (e: Event) => {
+      if (typeof this.markerPressPointer !== 'number') return;
+      if (e instanceof PointerEvent && e.pointerId !== this.markerPressPointer) return;
+      this.markerPressPointer = null;
       // The click follows pointerup in the same task; scheduleRender() waits for
       // a frame, so the click reaches the marker it was pressed on.
       if (this.dynamicRebuildDeferred) {
@@ -1618,7 +1621,7 @@ export class MapComponent {
   // reached, so it runs synchronously. The re-entrancy token lets a chunked pass bail once a
   // newer render (which bumps the token and rebuilds) has superseded it.
   private async renderDynamicLayers(width: number, height: number, chunk = false): Promise<void> {
-    if (this.markerPressActive) {
+    if (typeof this.markerPressPointer === 'number') {
       this.dynamicRebuildDeferred = true;
       return;
     }
