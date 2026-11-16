@@ -11,10 +11,10 @@ import { OrbitalWatchPage, type OrbitalWatchState } from '@/components/OrbitalWa
 import { OrbitalTimeline, type OrbitalTimelineInput, type PointContextState } from '@/components/OrbitalTimeline';
 import { formatAcquiredLine, formatTargetCoordinates } from '@/components/orbital-target-label';
 import { loadPointContext } from '@/services/orbital/point-context';
-import { loadWatchedSiteRecord, watchedSiteAt as watchedSiteRecordAt } from '@/services/orbital/watched-site-at';
+import { loadWatchedSiteRecord, watchedSiteAt } from '@/services/orbital/watched-site-at';
 import { OrbitalPlaceTools } from '@/components/OrbitalPlaceTools';
 import { markSiteSatelliteSelected, siteSatellitesSection, type SiteSatellitesState } from '@/components/orbital-site-satellites-view';
-import { loadWatchedSites, satellitesCoveringSite, watchedSiteAt, type CoverageSite } from '@/services/orbital/satellite-site-coverage';
+import { satellitesCoveringSite, type CoverageSite } from '@/services/orbital/satellite-site-coverage';
 import { fetchSatelliteTLEs, getTrackedSatelliteTles } from '@/services/satellites';
 import { confirmShareLinkCopied } from '@/components/share-link-button';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
@@ -200,7 +200,7 @@ function loadWatchedSite(at: GeoPoint): void {
   const controller = new AbortController();
   siteRun = controller;
   const { signal } = controller;
-  void watchedSiteRecordAt(at).then(async (site) => {
+  void watchedSiteAt(at).then(async (site) => {
     if (signal.aborted || !site) return;
     page?.setWatchedSite({ kind: 'loading', site });
     try {
@@ -248,7 +248,8 @@ function drawSiteSatellites(): void {
 async function loadSiteSatellites(found: PointPassLookup, signal: AbortSignal): Promise<void> {
   siteSatellites = null;
   drawSiteSatellites();
-  const site = watchedSiteAt(found.point, await loadWatchedSites().catch(() => []));
+  // The same cell match as the monitored-site block, so the two agree on which site this is.
+  const site = await watchedSiteAt(found.point).catch(() => null);
   if (!site || signal.aborted) return;
   const draw = (state: SiteSatellitesState) => {
     siteSatellites = { site, state };

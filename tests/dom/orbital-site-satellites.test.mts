@@ -21,9 +21,16 @@ vi.mock('@/services/orbital/match', async (importOriginal) => ({
   findArchiveEvidence: evidenceMock,
 }));
 vi.mock('@/services/orbital/catalog', () => ({ loadOrbitalCatalog: async () => ({ satellites: [] }) }));
+vi.mock('@/services/orbital/watched-site-at', () => ({
+  watchedSiteAt: async (point: { lat: number; lon: number }) => {
+    const cell = (lat: number, lon: number) => `${Math.round(lat * 100)},${Math.round(lon * 100)}`;
+    const found = ((await coverage.sites()) as { lat: number; lon: number }[]).find((s) => cell(s.lat, s.lon) === cell(point.lat, point.lon));
+    return found ? { ...found, origins: [] } : null;
+  },
+  loadWatchedSiteRecord: () => new Promise(() => {}),
+}));
 vi.mock('@/services/orbital/satellite-site-coverage', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/orbital/satellite-site-coverage')>()),
-  loadWatchedSites: coverage.sites,
   satellitesCoveringSite: coverage.covering,
 }));
 vi.mock('@/services/satellites', async (importOriginal) => ({
@@ -102,7 +109,7 @@ describe('#10713 unit 3: a watched site links back to the satellites covering it
   it('lists the tracked satellites over the site, and a row selects its pass in the sheet and on the map', async () => {
     openOrbitalWatch(sitePoint, null, surface);
     await vi.waitFor(() => expect(section()?.dataset.state).toBe('ok'));
-    expect(coverage.covering).toHaveBeenCalledWith(expect.objectContaining({ site, tles: [tle] }));
+    expect(coverage.covering).toHaveBeenCalledWith(expect.objectContaining({ site: expect.objectContaining(site), tles: [tle] }));
     expect(section()!.querySelector('.ies-section-title')!.textContent).toBe(tt('orbitalWatch.siteSatellites.heading', { hours: 24 }));
 
     const linked = section()!.querySelector<HTMLElement>(`.ies-row[data-key="pass:40697:${sentinelPass.timeMs}"]`)!;

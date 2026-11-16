@@ -218,26 +218,6 @@ export async function sitesCoveredBySatellite(input: {
   return coverageAt(coverage, input.nowMs);
 }
 
-/** Half a 0.01° grid cell, with float slack: a looked-up point this close to a site's coordinates is that site. */
-const SITE_MATCH_DEG = 0.005 + 1e-9;
-
-/** The watched site at a looked-up point, nearest first; matched in the browser, so the point never leaves it. */
-export function watchedSiteAt(point: { lat: number; lon: number }, sites: readonly CoverageSite[]): CoverageSite | null {
-  let best: CoverageSite | null = null;
-  let bestOffset = Infinity;
-  for (const site of sites) {
-    const dLat = Math.abs(site.lat - point.lat);
-    const dLon = Math.abs(((site.lon - point.lon + 540) % 360) - 180);
-    if (dLat > SITE_MATCH_DEG || dLon > SITE_MATCH_DEG) continue;
-    const offset = dLat + dLon;
-    if (offset < bestOffset) {
-      best = site;
-      bestOffset = offset;
-    }
-  }
-  return best;
-}
-
 export interface SiteSatellite {
   noradId: string;
   name: string;
