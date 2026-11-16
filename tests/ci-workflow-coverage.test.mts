@@ -3569,22 +3569,36 @@ describe('evidence uploads never decide a test verdict', () => {
   // already fails the job. The screenshot gallery is the chrome-gallery job's
   // product rather than evidence for another step, so losing it stays red.
   const deliverables = new Set(['chrome-gallery: Upload screenshot gallery']);
+  type UploadStep = { name?: string; uses?: string; 'continue-on-error'?: unknown; parallel?: UploadStep[] };
+  const uploadsIn = (file: string) => {
+    const workflow = YAML.parse(read(resolve(workflowsDir, file))) as {
+      jobs: Record<string, { steps?: UploadStep[] }>;
+    };
+    // `parallel:` groups nest steps; an upload inside one must not escape.
+    const expand = (steps: UploadStep[]): UploadStep[] => steps.flatMap((step) => [step, ...expand(step.parallel ?? [])]);
+    return Object.entries(workflow.jobs).flatMap(([job, { steps = [] }]) =>
+      expand(steps)
+        .filter((step) => step.uses?.startsWith('actions/upload-artifact@'))
+        .map((step) => ({ id: `${job}: ${step.name ?? step.uses}`, step })),
+    );
+  };
+
   for (const file of ['test.yml', 'e2e-visual.yml']) {
-    it(`${file}: every upload-artifact step continues on error`, () => {
-      const workflow = YAML.parse(read(resolve(workflowsDir, file))) as {
-        jobs: Record<string, { steps?: { name?: string; uses?: string; 'continue-on-error'?: unknown }[] }>;
-      };
-      const uploads = Object.entries(workflow.jobs).flatMap(([job, { steps = [] }]) =>
-        steps
-          .filter((step) => step.uses?.startsWith('actions/upload-artifact@'))
-          .map((step) => ({ job, step })),
-      );
+    it(`${file}: every evidence upload continues on error`, () => {
+      const uploads = uploadsIn(file);
       assert.ok(uploads.length > 0, `${file} must still upload test evidence`);
       const strict = uploads
-        .map(({ job, step }) => ({ id: `${job}: ${step.name ?? step.uses}`, step }))
         .filter(({ id, step }) => !deliverables.has(id) && step['continue-on-error'] !== true)
         .map(({ id }) => id);
       assert.deepEqual(strict, [], 'an upload outage would fail a job whose tests passed');
     });
   }
+
+  it('the screenshot gallery upload stays strict', () => {
+    const gallery = uploadsIn('e2e-visual.yml').filter(({ id }) => deliverables.has(id));
+    assert.equal(gallery.length, deliverables.size, 'the chrome-gallery job must still upload its gallery');
+    for (const { id, step } of gallery) {
+      assert.equal(step['continue-on-error'], undefined, `${id} is the job's product; losing it must fail the job`);
+    }
+  });
 });
