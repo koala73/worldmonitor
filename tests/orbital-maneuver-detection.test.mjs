@@ -279,3 +279,42 @@ describe('detectCandidateManeuvers', () => {
     assert.deepEqual(result.candidates.map((c) => [c.noradId, c.element]), [[1, 'inclination'], [3, 'semiMajorAxis']]);
   });
 });
+
+describe('review round 2 (#10865)', () => {
+  const daily = (days, at) => Array.from({ length: days + 1 }, (_, d) => ({ noradId: 7, epoch: T0 + d * DAY_MS, eccentricity: 0.001, raan: 0, bstar: 0, ...at(d) }));
+
+  it('does not read a slower decay as a raise: the orbit has to rise', () => {
+    let a = 6800;
+    const entries = daily(20, (d) => { const e = { meanMotion: meanMotionFor(a), inclination: 51.6 }; a += d < 15 ? -0.3 : -0.02; return e; });
+    assert.deepEqual(run(entries).candidates, []);
+  });
+
+  it('compares the node only where every epoch it uses is inclined enough', () => {
+    // Near-equatorial GEO until day 19: the node jump on day 12 is not judged, the inclination step on day 19 is.
+    const entries = daily(22, (d) => ({ meanMotion: meanMotionFor(42_164), eccentricity: 0.0002, inclination: d >= 19 ? 2 : 0.5, raan: d >= 12 ? 0.5 : 0 }));
+    assert.deepEqual(run(entries).candidates.map((c) => c.element), ['inclination']);
+  });
+
+  it('checks the coverage of the baseline actually fitted, not the oldest epoch held', () => {
+    const entries = [0, 10, 11, 12, 13, 14, 15, 16].map((d) => ({ noradId: 7, epoch: T0 + d * DAY_MS, meanMotion: meanMotionFor(6900 + (d >= 15 ? 1.5 : 0)), eccentricity: 0.001, inclination: 97.4, raan: 0, bstar: 0 }));
+    const result = run(entries);
+    assert.deepEqual(result.candidates, []);
+    assert.equal(result.status, 'gap');
+  });
+
+  it('says gap, not evaluated, when the newest step could not be compared', () => {
+    const entries = [...Array(17).keys(), 20].map((d) => ({ noradId: 7, epoch: T0 + d * DAY_MS, meanMotion: meanMotionFor(6900), eccentricity: 0.001, inclination: 97.4, raan: 0, bstar: 0 }));
+    assert.equal(run(entries).status, 'gap');
+    assert.equal(run(entries.slice(0, 17)).status, 'evaluated');
+  });
+
+  it('rejects an impossible calendar day and non-numeric values', () => {
+    assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, EPOCH: '2026-02-30T00:00:00' }), null);
+    assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, EPOCH: '2026-02-28T23:59:59.999999' }).epoch, Date.parse('2026-02-28T23:59:59.999Z'));
+    for (const field of ['ECCENTRICITY', 'INCLINATION', 'RA_OF_ASC_NODE']) {
+      assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, [field]: true }), null, field);
+      assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, [field]: false }), null, field);
+    }
+    assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, BSTAR: true }).bstar, null);
+  });
+});

@@ -50,18 +50,29 @@ export const REGIME_FLOORS = Object.freeze({
 
 const ELEMENT_UNITS = Object.freeze({ semiMajorAxis: 'km', inclination: 'deg', raan: 'deg' });
 
-/** A finite number, or null for a missing value: null, undefined and blank strings never become 0. */
+/** A finite number from a number or a numeric string; null for anything else, so a missing value never becomes 0. */
 function finite(value) {
-  if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
 
+const ZONED = /[zZ]|[+-]\d\d:\d\d$/;
+
 function parseEpochMs(epoch) {
   if (typeof epoch === 'number') return Number.isFinite(epoch) ? epoch : null;
   if (typeof epoch !== 'string' || epoch.length === 0) return null;
-  const ms = Date.parse(/[zZ]|[+-]\d\d:\d\d$/.test(epoch) ? epoch : `${epoch}Z`);
-  return Number.isFinite(ms) ? ms : null;
+  const ms = Date.parse(ZONED.test(epoch) ? epoch : `${epoch}Z`);
+  if (!Number.isFinite(ms)) return null;
+  // Date.parse rolls an impossible day over (2026-02-30 becomes 2 March): a zone-less OMM
+  // epoch must name the UTC calendar day it parses to.
+  const day = /^(\d{4})-(\d{2})-(\d{2})/.exec(epoch);
+  if (day && !ZONED.test(epoch)) {
+    const parsed = new Date(ms);
+    if (parsed.getUTCFullYear() !== Number(day[1]) || parsed.getUTCMonth() + 1 !== Number(day[2]) || parsed.getUTCDate() !== Number(day[3])) return null;
+  }
+  return ms;
 }
 
 /**
@@ -221,9 +232,12 @@ export function detectSatelliteManeuvers(entries, { nowMs, dragDisturbed, option
   const series = buildSeries(history);
   const candidates = [];
   let comparedSteps = 0;
+  // The newest step that can be judged is the one the newest epoch confirms.
+  const latestK = history.length - 2;
+  let latestJudged = false;
+  let latestBlockedByGap = false;
 
   for (const element of Object.keys(ELEMENT_UNITS)) {
-    if (element === 'raan' && newest.inclination < floors.raanMinInclinationDeg) continue;
     const points = series[element];
     // The baseline never reaches back across a flagged step: the trend restarts after a burn.
     let baselineStart = 0;
@@ -231,13 +245,30 @@ export function detectSatelliteManeuvers(entries, { nowMs, dragDisturbed, option
     const refits = new Set();
     for (let k = 1; k + 1 < points.length; k++) {
       const prevT = points[k - 1].t;
-      if (points[k].t - prevT > options.maxGapDays || points[k + 1].t - points[k].t > options.maxGapDays) continue;
-      if (points[baselineStart].t > prevT - options.baselineDays) continue;
-      const baseline = [];
-      for (let i = baselineStart; i < k; i++) if (!refits.has(i) && points[i].t >= prevT - options.baselineDays) baseline.push(points[i]);
-      if (baseline.length < options.minBaselineEpochs) continue;
+      const windowStart = prevT - options.baselineDays;
+      if (points[k].t - prevT > options.maxGapDays || points[k + 1].t - points[k].t > options.maxGapDays) {
+        if (k === latestK) latestBlockedByGap = true;
+        continue;
+      }
+      if (points[baselineStart].t > windowStart) continue;
+      const indices = [];
+      for (let i = baselineStart; i < k; i++) if (!refits.has(i) && points[i].t >= windowStart) indices.push(i);
+      if (indices.length < options.minBaselineEpochs) continue;
+      // The fitted baseline itself must cover the window: no gap at its start, inside it, or before the step.
+      const times = [...indices.map((i) => points[i].t), prevT];
+      if (times[0] - windowStart > options.maxGapDays || times.some((t, i) => i > 0 && t - times[i - 1] > options.maxGapDays)) {
+        if (k === latestK) latestBlockedByGap = true;
+        continue;
+      }
+      // The node is compared only where every epoch the comparison uses is inclined enough to define it.
+      if (element === 'raan') {
+        const used = [...indices, k - 1, k, k + 1];
+        if (used.some((i) => history[i].inclination < floors.raanMinInclinationDeg)) continue;
+      }
+      const baseline = indices.map((i) => points[i]);
 
       comparedSteps++;
+      if (k === latestK) latestJudged = true;
       const fit = fitLine(baseline);
       const sigma = robustSigma(baseline.map((p) => p.y - fit.predict(p.t)));
       const threshold = Math.max(floors[element], options.sigmaMultiplier * sigma);
@@ -252,9 +283,14 @@ export function detectSatelliteManeuvers(entries, { nowMs, dragDisturbed, option
 
       const from = history[k - 1];
       const to = history[k];
-      if (element === 'semiMajorAxis' && residual < 0 && regime === 'leo') {
-        const disturbed = typeof dragDisturbed === 'function' ? dragDisturbed(from.epoch, to.epoch) : null;
-        if (disturbed !== false) continue;
+      if (element === 'semiMajorAxis' && regime === 'leo') {
+        if (residual < 0) {
+          const disturbed = typeof dragDisturbed === 'function' ? dragDisturbed(from.epoch, to.epoch) : null;
+          if (disturbed !== false) continue;
+        } else if (points[k].y <= points[k - 1].y) {
+          // Above the trend but still falling: decay slowed (quieter drag), the orbit was not raised.
+          continue;
+        }
       }
 
       candidates.push({
@@ -277,9 +313,13 @@ export function detectSatelliteManeuvers(entries, { nowMs, dragDisturbed, option
     }
   }
 
+  // 'evaluated' only when the newest judgeable step was compared; otherwise say what stopped it,
+  // so an empty candidate list is never read as covering the latest change.
+  let status = 'evaluated';
+  if (!latestJudged) status = latestBlockedByGap ? 'gap' : 'insufficient-baseline';
   return {
     noradId,
-    status: comparedSteps > 0 ? 'evaluated' : 'insufficient-baseline',
+    status,
     regime,
     candidates: candidates.sort((a, b) => a.toEpoch.localeCompare(b.toEpoch) || a.element.localeCompare(b.element)),
   };
