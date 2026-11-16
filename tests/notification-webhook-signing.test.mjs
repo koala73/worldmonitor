@@ -180,7 +180,7 @@ describe('notification-relay sendWebhook', () => {
       const reports = [];
       globalThis.fetch = async (url, init) => {
         assert.ok(String(url).endsWith('/relay/delivery-result'));
-        reports.push(JSON.parse(init.body));
+        reports.push(...JSON.parse(init.body).results);
         return Response.json({ ok: true });
       };
       const channel = { _id: 'channel-1', linkedAt: 123 };

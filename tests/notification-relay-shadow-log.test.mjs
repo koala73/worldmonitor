@@ -23,7 +23,7 @@ const relaySrc = readFileSync(
 );
 
 function extractProcessEvent(src) {
-  const idx = src.indexOf('async function processEvent(');
+  const idx = src.indexOf('async function processEventDelivery(');
   assert.ok(idx !== -1, 'processEvent not found in notification-relay.cjs');
   const openIdx = src.indexOf('{', idx);
   let depth = 1;

@@ -1,5 +1,6 @@
 'use strict';
 
+const { AsyncLocalStorage } = require('node:async_hooks');
 const { createHash, randomUUID } = require('node:crypto');
 const { Resend } = require('resend');
 const { appendUnsubscribeText, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
@@ -360,19 +361,42 @@ function deliveryErrorClass(error, fallback = 'Delivery failed') {
   return fallback;
 }
 
-async function recordDelivery(userId, channelType, channel, error = null) {
-  if (!channel?._id || !Number.isFinite(channel.linkedAt)) return error === null;
+const deliveryReports = new AsyncLocalStorage();
+
+async function submitDeliveryReports(results) {
   try {
     const response = await fetch(`${CONVEX_SITE_URL}/relay/delivery-result`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RELAY_SECRET}`, 'User-Agent': 'worldmonitor-relay/1.0' },
-      body: JSON.stringify({ userId, channelType, delivery: { channelId: channel._id, linkedAt: channel.linkedAt, error } }),
+      body: JSON.stringify({ results }),
       signal: AbortSignal.timeout(10000),
     });
-    if (!response.ok) console.warn(`[relay] Delivery result not recorded: ${channelType} HTTP ${response.status}`);
+    if (!response.ok) console.warn(`[relay] Delivery results not recorded: HTTP ${response.status}`);
   } catch {
-    console.warn(`[relay] Delivery result not recorded: ${channelType}`);
+    console.warn('[relay] Delivery results not recorded');
   }
+}
+
+async function withDeliveryReports(deliver) {
+  if (deliveryReports.getStore()) return deliver();
+  const results = [];
+  return deliveryReports.run(results, async () => {
+    try {
+      return await deliver();
+    } finally {
+      for (let i = 0; i < results.length; i += 100) {
+        await submitDeliveryReports(results.slice(i, i + 100));
+      }
+    }
+  });
+}
+
+async function recordDelivery(userId, channelType, channel, error = null) {
+  if (!channel?._id || !Number.isFinite(channel.linkedAt)) return error === null;
+  const result = { userId, channelType, delivery: { channelId: channel._id, linkedAt: channel.linkedAt, error } };
+  const results = deliveryReports.getStore();
+  if (results) results.push(result);
+  else await submitDeliveryReports([result]);
   return error === null;
 }
 
@@ -800,6 +824,10 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
 // whose quiet hours have ended. Self-contained — fetches its own rules.
 // No-op when QUIET_HOURS_BATCH_ENABLED=0 — held events will expire via TTL.
 async function drainBatchOnWake() {
+  return withDeliveryReports(drainBatchOnWakeDelivery);
+}
+
+async function drainBatchOnWakeDelivery() {
   if (!QUIET_HOURS_BATCH_ENABLED) return;
   let allRules;
   try {
@@ -1797,6 +1825,10 @@ function formatSubject(event) {
 }
 
 async function processWelcome(event) {
+  return withDeliveryReports(() => processWelcomeDelivery(event));
+}
+
+async function processWelcomeDelivery(event) {
   const { userId, channelType, welcomeId } = event;
   if (!userId || !channelType) return;
   // Telegram welcome is sent directly by Convex; no relay send needed.
@@ -2074,6 +2106,10 @@ async function releaseRealtimeClaim(dedupDecision, claim) {
 }
 
 async function processEvent(event) {
+  return withDeliveryReports(() => processEventDelivery(event));
+}
+
+async function processEventDelivery(event) {
   if (event.eventType === 'channel_welcome') { await processWelcome(event); return; }
   if (event.eventType === 'flush_quiet_held') { await processFlushQuietHeld(event); return; }
   const eventLog = JSON.stringify({ eventType: event.eventType, severity: event.severity ?? 'high' })

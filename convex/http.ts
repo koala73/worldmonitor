@@ -1025,21 +1025,24 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
     if (unauthorized) return unauthorized;
-    const body = await parseJsonObjectBody<{
-      userId?: string; channelType?: string;
-      delivery?: { channelId?: string; linkedAt?: number; error?: string | null };
-    }>(request);
-    const delivery = body?.delivery;
-    if (!body || typeof body.userId !== "string" || !body.userId || !isChannelType(body.channelType)
-      || !delivery || typeof delivery.channelId !== "string" || !delivery.channelId
-      || typeof delivery.linkedAt !== "number" || !Number.isFinite(delivery.linkedAt)
-      || (delivery.error !== null && !isDeliveryError(delivery.error))) {
+    const body = await parseJsonObjectBody<Record<string, unknown>>(request);
+    const inputs = body && Array.isArray(body.results) ? body.results : [body];
+    if (inputs.length === 0 || inputs.length > 100) {
       return Response.json({ error: "INVALID_DELIVERY_RESULT" }, { status: 400 });
     }
-    await ctx.runMutation(internal.notificationChannels.recordDeliveryResult, {
-      userId: body.userId, channelType: body.channelType,
-      delivery: { channelId: delivery.channelId, linkedAt: delivery.linkedAt, error: delivery.error },
-    });
+    const results = [];
+    for (const input of inputs) {
+      const delivery = input?.delivery;
+      if (!input || typeof input.userId !== "string" || !input.userId || !isChannelType(input.channelType)
+        || !delivery || typeof delivery.channelId !== "string" || !delivery.channelId
+        || typeof delivery.linkedAt !== "number" || !Number.isFinite(delivery.linkedAt)
+        || (delivery.error !== null && !isDeliveryError(delivery.error))) {
+        return Response.json({ error: "INVALID_DELIVERY_RESULT" }, { status: 400 });
+      }
+      results.push({ userId: input.userId, channelType: input.channelType,
+        delivery: { channelId: delivery.channelId, linkedAt: delivery.linkedAt, error: delivery.error } });
+    }
+    await ctx.runMutation(internal.notificationChannels.recordDeliveryResult, { results });
     return Response.json({ ok: true });
   }),
 });

@@ -308,7 +308,7 @@ describe('realtime relay Teams dispatch', () => {
         userId: 'owner', variant: 'full', sensitivity: 'all', eventTypes: ['conflict_escalation'], channels: ['teams'], ...rule,
       }]);
       if (url.endsWith('/relay/channels')) return Response.json([channel]);
-      if (url.endsWith('/relay/delivery-result')) { deactivations.push(JSON.parse(String(init?.body))); return Response.json({ ok: true }); }
+      if (url.endsWith('/relay/delivery-result')) { deactivations.push(...JSON.parse(String(init?.body)).results); return Response.json({ ok: true }); }
       if (url.includes('/GET/relay%3Aentitlement')) return Response.json({ result: '1' });
       if (url.includes('/RPUSH/') || url.includes('/LPUSH/')) { held.push(url); return Response.json({ result: 1 }); }
       if (url.includes('/LLEN/')) return Response.json({ result: 1 });

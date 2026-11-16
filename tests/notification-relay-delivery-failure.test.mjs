@@ -69,7 +69,7 @@ for (const channelType of Object.keys(targets)) {
       globalThis.fetch = async (url, init) => {
         if (String(url).endsWith('/relay/channels')) return Response.json([channel]);
         assert.ok(String(url).endsWith('/relay/delivery-result'));
-        results.push(JSON.parse(init.body));
+        results.push(...JSON.parse(init.body).results);
         return Response.json({ ok: true });
       };
       await relay.processWelcome({ userId: 'user-test', channelType, welcomeId: 'channel-1' });
@@ -83,3 +83,48 @@ for (const channelType of Object.keys(targets)) {
     });
   }
 }
+
+
+test('a slow result report cannot hold up later recipients of the same event', async () => {
+  status = 200;
+  networkError = undefined;
+  sends = 0;
+  let release;
+  const waiting = new Promise(resolve => { release = resolve; });
+  let reporting;
+  const started = new Promise(resolve => { reporting = resolve; });
+  const reports = [];
+  globalThis.fetch = async (url, init) => {
+    const path = new URL(String(url)).pathname;
+    if (path.endsWith('/relay/enabled-rules')) return Response.json(['first', 'second'].map(userId => ({
+      userId, digestMode: 'realtime', eventTypes: [], sensitivity: 'critical', channels: ['slack'], variant: 'full',
+    })));
+    if (path.endsWith('/relay/entitlement')) return Response.json({ tier: 1 });
+    if (path.endsWith('/relay/channels')) {
+      const { userId } = JSON.parse(init.body);
+      return Response.json([{ _id: userId, linkedAt: 1, channelType: 'slack', verified: true,
+        webhookEnvelope: encrypt(targets.slack) }]);
+    }
+    if (path.endsWith('/relay/delivery-result')) {
+      reports.push(...JSON.parse(init.body).results);
+      reporting();
+      await waiting;
+      return Response.json({ ok: true });
+    }
+    if (String(url).startsWith('https://redis.test')) {
+      const command = init?.body ? JSON.parse(init.body)[0] : path.split('/')[1];
+      return Response.json({ result: command === 'SET' ? 'OK' : null });
+    }
+    return Response.json({ result: null });
+  };
+  const pending = relay.processEvent({ eventType: 'rss_alert', severity: 'critical',
+    payload: { title: 'Batch delivery regression', source: 'Reuters' } });
+  try {
+    await started;
+    assert.equal(sends, 2, 'both providers must be attempted before reporting waits');
+    assert.deepEqual(reports.map(result => result.userId), ['first', 'second']);
+  } finally {
+    release();
+    await pending;
+  }
+});

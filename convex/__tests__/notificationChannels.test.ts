@@ -93,6 +93,22 @@ describe("delivery failure lifecycle", () => {
     expect((await row())?.verified).toBe(true);
   });
 
+  test("batches preserve failure/success order and reject invalid batches before writing", async () => {
+    const { t, id, row } = await setup();
+    const send = (results: unknown[]) => t.fetch("/relay/delivery-result", {
+      method: "POST", headers: { Authorization: "Bearer delivery-secret", "Content-Type": "application/json" },
+      body: JSON.stringify({ results }),
+    });
+    const result = (error: string | null) => ({ userId: USER.subject, channelType: "webhook",
+      delivery: { channelId: id, linkedAt: 1, error } });
+    expect((await send([result("HTTP 503"), result(null), result("Request timed out")])).status).toBe(200);
+    expect((await row())?.deliveryFailure).toMatchObject({ count: 1, lastError: "Request timed out" });
+    for (const invalid of [[], Array(101).fill(result(null)), [result(null), result("private host")]]) {
+      expect((await send(invalid)).status).toBe(400);
+      expect((await row())?.deliveryFailure?.count).toBe(1);
+    }
+  });
+
   test("rejects untrusted callers and unsanitized error details", async () => {
     const { t, report, row } = await setup();
     const response = await t.fetch("/relay/delivery-result", {

@@ -604,37 +604,44 @@ export const deactivateChannelForUser = internalMutation({
 });
 
 export const recordDeliveryResult = internalMutation({
-  args: { userId: v.string(), channelType: channelTypeValidator, delivery: deliveryResultValidator },
-  handler: async (ctx, { userId, channelType, delivery }) => {
-    if (delivery.error !== null && !isDeliveryError(delivery.error)) throw new Error("INVALID_DELIVERY_ERROR");
-    const channel = await ctx.db.query("notificationChannels")
-      .withIndex("by_user_channel", q => q.eq("userId", userId).eq("channelType", channelType)).unique();
-    if (!channel?.verified || String(channel._id) !== delivery.channelId || channel.linkedAt !== delivery.linkedAt) return;
-    if (delivery.error === null) {
-      if (channel.deliveryFailure) await ctx.db.patch(channel._id, { deliveryFailure: undefined });
-      return;
-    }
-    const now = Date.now();
-    const failure = {
-      count: (channel.deliveryFailure?.count ?? 0) + 1,
-      firstFailedAt: channel.deliveryFailure?.firstFailedAt ?? now,
-      lastError: delivery.error,
-    };
-    const terminal = /^HTTP (401|403|404|410)$/.test(delivery.error);
-    const disable = terminal || (failure.count >= 10 && now - failure.firstFailedAt >= 24 * 60 * 60 * 1000);
-    await ctx.db.patch(channel._id, {
-      deliveryFailure: { ...failure, ...(disable ? { disabledAt: now } : {}) },
-      ...(disable ? { verified: false } : {}),
-    });
-    if (disable) {
-      await ctx.scheduler.runAfter(0, internal.notificationChannels.sendDisabledChannelNotice, {
-        userId, channelType, firstFailedAt: failure.firstFailedAt, error: failure.lastError,
-        noticeId: `${channel._id}-${channel.linkedAt}-${now}`,
-      });
-      console.log(JSON.stringify({ metric: "notification_channel_disabled", count: 1, channelType, errorClass: failure.lastError }));
-    }
+  args: { results: v.array(v.object({ userId: v.string(), channelType: channelTypeValidator, delivery: deliveryResultValidator })) },
+  handler: async (ctx, { results }) => {
+    if (results.length > 100) throw new Error("DELIVERY_BATCH_TOO_LARGE");
+    for (const result of results) await applyDeliveryResult(ctx, result);
   },
 });
+
+async function applyDeliveryResult(ctx: MutationCtx, { userId, channelType, delivery }: {
+  userId: string; channelType: ChannelType; delivery: Infer<typeof deliveryResultValidator>;
+}) {
+  if (delivery.error !== null && !isDeliveryError(delivery.error)) throw new Error("INVALID_DELIVERY_ERROR");
+  const channel = await ctx.db.query("notificationChannels")
+    .withIndex("by_user_channel", q => q.eq("userId", userId).eq("channelType", channelType)).unique();
+  if (!channel?.verified || String(channel._id) !== delivery.channelId || channel.linkedAt !== delivery.linkedAt) return;
+  if (delivery.error === null) {
+    if (channel.deliveryFailure) await ctx.db.patch(channel._id, { deliveryFailure: undefined });
+    return;
+  }
+  const now = Date.now();
+  const failure = {
+    count: (channel.deliveryFailure?.count ?? 0) + 1,
+    firstFailedAt: channel.deliveryFailure?.firstFailedAt ?? now,
+    lastError: delivery.error,
+  };
+  const terminal = /^HTTP (401|403|404|410)$/.test(delivery.error);
+  const disable = terminal || (failure.count >= 10 && now - failure.firstFailedAt >= 24 * 60 * 60 * 1000);
+  await ctx.db.patch(channel._id, {
+    deliveryFailure: { ...failure, ...(disable ? { disabledAt: now } : {}) },
+    ...(disable ? { verified: false } : {}),
+  });
+  if (disable) {
+    await ctx.scheduler.runAfter(0, internal.notificationChannels.sendDisabledChannelNotice, {
+      userId, channelType, firstFailedAt: failure.firstFailedAt, error: failure.lastError,
+      noticeId: `${channel._id}-${channel.linkedAt}-${now}`,
+    });
+    console.log(JSON.stringify({ metric: "notification_channel_disabled", count: 1, channelType, errorClass: failure.lastError }));
+  }
+}
 
 export const sendDisabledChannelNotice = internalAction({
   args: {
