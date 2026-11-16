@@ -62,6 +62,40 @@ function mountRow(load: (target: ImageryTarget, signal?: AbortSignal, onImageRea
 describe('mountImageryRow', () => {
   afterEach(() => { document.body.replaceChildren(); });
 
+  describe('a crop the archive has not served yet', () => {
+    const radar = (datetime: string): ObjectImagery => ({ ...imagery(datetime), latest: { ...imagery(datetime).latest!, profileId: 'sentinel-1' } });
+    const failed = (httpStatus: number): ArchiveImageResult => ({ status: 'failed', failure: { archive: 'planetary-computer', reason: 'http-status', httpStatus } });
+    const show = async (found: ObjectImagery, result: ArchiveImageResult) => {
+      const { row } = mountRow(async () => found);
+      await flush();
+      harness.archive[0]!.resolve(result);
+      await flush();
+      return row;
+    };
+    const processing = (row: HTMLElement) => row.querySelector('[data-orbital-image-processing]');
+
+    it('reads as still processing for a Sentinel-1 scene under a day old that answers 404', async () => {
+      const row = await show(radar('2026-11-15T09:00:00Z'), failed(404));
+      expect(processing(row)?.textContent).toBe('Scene still processing. Try again later.');
+      expect(row.querySelector('[data-orbital-image]')).toBeNull();
+    });
+
+    it('drops the image as before for an older Sentinel-1 404, a fresh Sentinel-1 non-404 and a fresh 404 from another mission', async () => {
+      for (const [found, result] of [
+        [radar('2026-11-14T09:00:00Z'), failed(404)],
+        [radar('2026-11-15T09:00:00Z'), failed(500)],
+        [radar('2026-11-15T09:00:00Z'), { status: 'failed', failure: { archive: 'planetary-computer', reason: 'network' } }],
+        [imagery('2026-11-15T09:00:00Z'), failed(404)],
+      ] as Array<[ObjectImagery, ArchiveImageResult]>) {
+        harness.archive.length = 0;
+        const row = await show(found, result);
+        expect(processing(row)).toBeNull();
+        expect(row.querySelector('[data-orbital-image]')).toBeNull();
+        row.remove();
+      }
+    });
+  });
+
   it('aborts its lookup on dispose and paints nothing when the answer arrives late', async () => {
     let seen: AbortSignal | undefined;
     let answer!: (v: ObjectImagery) => void;

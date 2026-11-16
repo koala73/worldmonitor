@@ -5521,6 +5521,7 @@
     "tile": {
       "failed": "Scen laddades inte · {{archive}}",
       "noPreview": "Ingen förhandsvisning publicerad för denna scen ännu",
+      "processing": "Scenen bearbetas fortfarande. Försök igen senare.",
       "radar": "radar"
     },
     "target": {

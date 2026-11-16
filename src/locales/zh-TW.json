@@ -5485,6 +5485,7 @@
     "tile": {
       "failed": "場景載入失敗 · {{archive}}",
       "noPreview": "尚未釋出此場景的預覽",
+      "processing": "場景仍在處理中，請稍後再試。",
       "radar": "雷達"
     },
     "target": {

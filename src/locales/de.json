@@ -5521,6 +5521,7 @@
     "tile": {
       "failed": "Szene konnte nicht geladen werden · {{archive}}",
       "noPreview": "Noch keine Vorschau für diese Szene veröffentlicht",
+      "processing": "Szene wird noch verarbeitet. Später erneut versuchen.",
       "radar": "Radar"
     },
     "target": {

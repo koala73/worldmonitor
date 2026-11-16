@@ -4821,6 +4821,7 @@
     "tile": {
       "failed": "Scene did not load · {{archive}}",
       "noPreview": "No preview published for this scene yet",
+      "processing": "Scene still processing. Try again later.",
       "radar": "radar"
     },
     "satelliteSites": {

@@ -12,6 +12,7 @@ import { IMAGE_CREDIT, sceneCredit } from '@/services/orbital/credits';
 import type { EventPair } from '@/services/orbital/event-imagery';
 import { isFirmsDetection, type FireDetectionPopupData } from '@/services/orbital/fire-mosaic';
 import { loadObjectImagery, type ImageryTarget, type ObjectImagery } from '@/services/orbital/object-imagery';
+import { isSceneStillProcessing } from '@/services/orbital/scene-processing';
 import type { ConflictZone, MilitaryBase, NaturalEvent, NewsLocationMarker, NuclearFacility, Port, StrategicWaterway } from '@/types';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { escapeHtml } from '@/utils/sanitize';
@@ -260,16 +261,26 @@ export function mountImageryRow(root: HTMLElement, target: ImageryTarget, hooks:
     hooks.onLayout();
     const frame = body.querySelector<HTMLElement>('[data-orbital-image]');
     if (!frame || !imagery.latest) return;
-    const result = await loadArchiveImage(imagery.latest.archive, imagery.latest.candidates, { signal: controller.signal });
+    const { latest } = imagery;
+    const result = await loadArchiveImage(latest.archive, latest.candidates, { signal: controller.signal });
     if (result.status !== 'ok') {
-      frame.remove();
+      if (controller.signal.aborted) return;
+      if (isSceneStillProcessing(result.failure, { profileId: latest.profileId, acquiredMs: Date.parse(latest.datetime) }, (hooks.now ?? Date.now)())) {
+        const note = document.createElement('span');
+        note.className = 'popup-imagery-status';
+        note.dataset.orbitalImageProcessing = '';
+        note.textContent = t('orbitalWatch.tile.processing');
+        frame.replaceWith(note);
+      } else {
+        frame.remove();
+      }
       hooks.onLayout();
       return;
     }
     if (controller.signal.aborted) return result.image.release();
     release = result.image.release;
     const img = document.createElement('img');
-    img.alt = t('orbitalWatch.popup.imageAlt', { source: profileName(imagery.latest.profileId) });
+    img.alt = t('orbitalWatch.popup.imageAlt', { source: profileName(latest.profileId) });
     img.decoding = 'async';
     img.src = result.image.objectUrl;
     frame.appendChild(img);

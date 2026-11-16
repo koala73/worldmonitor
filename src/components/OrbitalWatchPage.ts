@@ -5,9 +5,10 @@ import type { GetWatchedSiteImageryResponse } from '@/generated/client/worldmoni
 import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { EvidenceProgress, MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
-import { ARCHIVE_REQUEST_TIMEOUT_MS, type ArchiveId } from '@/services/orbital/archive-result';
+import { ARCHIVE_REQUEST_TIMEOUT_MS, type ArchiveFailure, type ArchiveId } from '@/services/orbital/archive-result';
 import { ArchiveImageError, loadArchiveImage, type ArchiveImageResult, type LoadedArchiveImage } from '@/services/orbital/archive-image';
 import { noDataAtPoint } from '@/services/orbital/image-no-data';
+import { isSceneStillProcessing } from '@/services/orbital/scene-processing';
 import { MOSAIC_FALLBACK_DAYS, type CropPosition, type DailyMosaicRow } from '@/services/orbital/archive-gibs';
 import { DEFAULT_CROP_HALF_SIZE_KM } from '@/services/orbital/crop-url';
 import { imageGrid, isClearScene } from '@/services/orbital/scene-history';
@@ -211,6 +212,14 @@ interface TileFallbacks {
 
 const CROP_CENTRE: CropPosition = { x: 0.5, y: 0.5 };
 
+/** The acquisition a tile shows, so a crop not served yet reads as processing rather than failed. */
+interface TileScene {
+  profileId: string;
+  acquiredMs: number;
+}
+
+const acquisitionScene = (acquisition: MatchedAcquisition): TileScene => ({ profileId: acquisition.profileId, acquiredMs: acquisition.startMs });
+
 /**
  * The open lookup's images, painted from `blob:` URLs: archive image URLs carry the point,
  * and DebugBear reports the largest painted image's URL. Each image is fetched once per
@@ -319,7 +328,7 @@ const tileRetries = new WeakMap<HTMLElement, () => void>();
 /** The archive URL of the frame a tile shows; its `img` holds only a `blob:` URL. */
 const tileShownUrls = new WeakMap<HTMLElement, () => string>();
 
-function imageTile(url: string | null, alt: string, sensor: string, size: TileSize, overlays: DomChild[] = [], fallbacks: TileFallbacks | null = null): HTMLElement {
+function imageTile(url: string | null, alt: string, sensor: string, size: TileSize, overlays: DomChild[] = [], fallbacks: TileFallbacks | null = null, scene: TileScene | null = null): HTMLElement {
   const archive = archiveHost(url);
   if (!url || !isAllowedPreviewUrl(url)) {
     return h('div', { className: `ow-tile ow-tile-${size}`, dataset: { state: 'none' } },
@@ -335,10 +344,11 @@ function imageTile(url: string | null, alt: string, sensor: string, size: TileSi
     if (index !== frame && built) fallbacks?.show(index);
     frame = index;
   };
-  const failed = () => {
-    tile.dataset.state = 'failed';
+  const failed = (failure: ArchiveFailure | null = null) => {
+    const processing = scene !== null && isSceneStillProcessing(failure, scene, Date.now());
+    tile.dataset.state = processing ? 'processing' : 'failed';
     replaceChildren(status,
-      t('orbitalWatch.tile.failed', { archive: archive.name.toUpperCase() }),
+      processing ? t('orbitalWatch.tile.processing') : t('orbitalWatch.tile.failed', { archive: archive.name.toUpperCase() }),
       size === 'hero' ? h('button', { type: 'button', className: 'ow-tile-retry', dataset: { action: 'retry-image' } }, t('countryBrief.retryBtn')) : null);
   };
   const noPreview = () => {
@@ -359,7 +369,7 @@ function imageTile(url: string | null, alt: string, sensor: string, size: TileSi
     showFrame(indices[0]!);
     void lookupImages.load(archive.id, indices.map((i) => frames[i]!), Math.max(1, deadline - Date.now())).then((result) => {
       if (token !== attempt) return;
-      if (result.status === 'failed') { if (result.failure.reason !== 'aborted') failed(); return; }
+      if (result.status === 'failed') { if (result.failure.reason !== 'aborted') failed(result.failure); return; }
       showFrame(indices[result.image.index]!);
       img.setAttribute('src', result.image.objectUrl);
     });
@@ -552,6 +562,7 @@ interface ThumbSpec {
   noDataAt?: CropPosition;
   /** Radar backscatter, drawn in greyscale so it never reads as a photo. */
   radar?: boolean;
+  scene?: TileScene;
 }
 
 function thumbSpecs(confirmed: MatchedAcquisition[], latest: MatchedAcquisition | null, evidence: OrbitalEvidence | null): ThumbSpec[] {
@@ -565,6 +576,7 @@ function thumbSpecs(confirmed: MatchedAcquisition[], latest: MatchedAcquisition 
       sensor: sensorName(acquisition.platform),
       view: { kind: 'acquisition', key: acquisition.key },
       radar: isRadar(acquisition),
+      scene: acquisitionScene(acquisition),
     });
   }
   for (const mosaic of evidence?.mosaics ?? []) {
@@ -991,7 +1003,7 @@ export class OrbitalWatchPage {
         h('select', { className: 'ies-select', 'aria-label': t('orbitalWatch.sheet.compareDate'), dataset: { role: 'compare-date' } },
           ...others.map((acquisition) => h('option', { value: acquisition.key, selected: acquisition.key === this.compareKey }, formatStamp(acquisition.startMs)))))
       : null;
-    const hero = imageTile(latest.imageUrl, alt, sensor, 'hero', [...imageOverlays(), viewButton(view, alt)]);
+    const hero = imageTile(latest.imageUrl, alt, sensor, 'hero', [...imageOverlays(), viewButton(view, alt)], null, acquisitionScene(latest));
     hero.classList.toggle('is-radar', isRadar(latest));
     const newerWithoutPreview = newest && newest !== latest
       ? h('p', { className: 'ies-note' }, t('orbitalWatch.sheet.newestNoPreview', { when: formatStamp(newest.startMs) }))
@@ -1051,7 +1063,7 @@ export class OrbitalWatchPage {
         const fallbacks = spec.fallbacks?.length || spec.noDataAt
           ? { urls: spec.fallbacks ?? [], show, noDataAt: spec.noDataAt }
           : null;
-        const tile = imageTile(spec.url, spec.caption, spec.sensor, 'thumb', [viewButton(spec.view, spec.caption)], fallbacks);
+        const tile = imageTile(spec.url, spec.caption, spec.sensor, 'thumb', [viewButton(spec.view, spec.caption)], fallbacks, spec.scene ?? null);
         tile.classList.toggle('is-radar', !!spec.radar);
         return h('li', { className: 'ies-thumb', dataset: { key: spec.key } }, tile, caption);
       }));

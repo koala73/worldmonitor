@@ -5593,6 +5593,7 @@
     "tile": {
       "failed": "Scena nie załadowała się · {{archive}}",
       "noPreview": "Podgląd dla tej sceny jeszcze nie opublikowany",
+      "processing": "Scena jest wciąż przetwarzana. Spróbuj ponownie później.",
       "radar": "radar"
     },
     "target": {
