@@ -3249,6 +3249,19 @@
         "latestPass": "último paso de ICESat-2 {{date}}",
         "sparkline": "Nivel de 36 meses con la base estacional como línea discontinua",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Niveles de superficie del agua por lidar de pasos fechados, no lecturas en vivo ni volúmenes."
+      },
+      "water": {
+        "heading": "Agua en {{name}}",
+        "level": "Nivel por lídar",
+        "extent": "Extensión de agua por radar",
+        "extentValue": "{{percent}} % de agua abierta ({{area}} km²) el {{date}}",
+        "extentChange": "{{delta}} puntos desde el {{date}} en la misma órbita",
+        "extentNoComparison": "Sin lectura anterior en la misma órbita para comparar",
+        "extentNone": "Aún no hay lectura de radar",
+        "unavailable": "No se pudo cargar; vuelve a abrir para reintentar",
+        "optical": "Última imagen óptica",
+        "opticalNone": "Ninguna imagen óptica en 30 días",
+        "note": "Cada fila es una medición fechada de un paso distinto, no una lectura en directo. El radar mide el agua abierta en la zona central del embalse; el agua rizada por el viento puede leerse como tierra."
       }
     },
     "gridDisruptionClock": {

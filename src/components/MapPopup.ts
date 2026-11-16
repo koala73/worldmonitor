@@ -36,6 +36,8 @@ import {
   reservoirNextPassText,
 } from './reservoir-levels-view';
 import { reservoirCard } from './reservoir-card';
+import { fillWaterExtentRow, renderWaterExtentRow, WATER_UNAVAILABLE } from './water-card';
+import { loadReservoirWaterExtent } from '@/services/orbital/object-imagery';
 import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticle } from '@/services/gdelt-intel';
 import { getWingbitsLiveFlight } from '@/services/wingbits';
 import { isFeatureAvailable } from '@/services/runtime-config';
@@ -2373,12 +2375,19 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
             ${stat(t('components.reservoirLevels.popup.change365'), signed(r.change365dM))}
             ${stat(t('components.reservoirLevels.popup.measured'), escapeHtml(reservoirMeasured(r, ctx, true)))}
           </div>
+          ${this.renderReservoirWaterExtent(r)}
           ${this.renderReservoirNextPass(r)}
           ${spark ? `<div class="wl-popup-spark" role="img" aria-label="${escapeHtml(t('components.reservoirLevels.popup.sparkline'))}">${spark}</div>` : ''}
           <p class="wl-popup-source">${escapeHtml(t('components.reservoirLevels.source'))} <a href="${RESERVOIR_SOURCE_URL}" target="_blank" rel="noopener noreferrer">NASA ICESat-2 ATL13</a> / <a href="${RESERVOIR_ATL06_SOURCE_URL}" target="_blank" rel="noopener noreferrer">ATL06</a> (NSIDC) · ${escapeHtml(t('components.reservoirLevels.processedWith'))} <a href="${RESERVOIR_PROCESSING_URL}" target="_blank" rel="noopener noreferrer">SlideRule Earth</a></p>
         </div>
       </div>
     `;
+  }
+
+  // Radar water extent of the lake's core box (#10714), seeded from Sentinel-1; held to the same flag as the crossing.
+  private renderReservoirWaterExtent(r: ReservoirLevel): string {
+    if (!ORBITAL_WATCH_ENABLED || !STRATEGIC_RESERVOIR_SITES.some(site => site.id === r.id)) return '';
+    return renderWaterExtentRow(r.id, t);
   }
 
   // Next ICESat-2 crossing of the lake. Orbital pass geometry, so absent unless Orbital Watch is on;
@@ -2404,12 +2413,23 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
 
   private hydrateReservoirSections(popup: HTMLElement): void {
     const nextPass = popup.querySelector<HTMLElement>('[data-wl-next-pass]');
+    const waterExtent = popup.querySelector<HTMLElement>('[data-wl-water-extent]');
     const site = popup.querySelector<HTMLElement>('[data-wl-site-context]');
     const locale = getLocale();
-    if (nextPass) {
-      const id = nextPass.dataset.wlNextPass!;
+    if (nextPass || waterExtent) {
       this.reservoirScan?.abort();
-      const scan = this.reservoirScan = new AbortController();
+      this.reservoirScan = new AbortController();
+    }
+    const scan = this.reservoirScan;
+    if (waterExtent && scan) {
+      void loadReservoirWaterExtent(waterExtent.dataset.wlWaterExtent!, scan.signal).catch(() => WATER_UNAVAILABLE).then((extent) => {
+        if (scan.signal.aborted || !waterExtent.isConnected) return;
+        fillWaterExtentRow(waterExtent, extent, { t, locale, nowMs: Date.now() });
+        this.clampPopupToViewport();
+      });
+    }
+    if (nextPass && scan) {
+      const id = nextPass.dataset.wlNextPass!;
       void loadReservoirNextPasses(STRATEGIC_RESERVOIR_SITES, { signal: scan.signal }).then((passes) => {
         const value = nextPass.querySelector('.wl-next-pass-value');
         if (!value || !nextPass.isConnected) return;
@@ -2420,7 +2440,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
     }
     if (site) {
       const id = site.dataset.wlSiteContext!;
-      void loadReservoirLevelsById().then((levels) => {
+      void loadReservoirLevelsById().catch(() => new Map<string, ReservoirLevel>()).then((levels) => {
         const line = site.querySelector('.wl-site-context-level');
         if (!line || !site.isConnected) return;
         const level = levels.get(id);

@@ -49,7 +49,7 @@ const SITE_LIST_KEY: Record<WatchedSiteOriginList, string> = {
 };
 
 /** Empty mount points other surfaces fill: the place search and the timeline. */
-export type OrbitalSlot = 'search' | 'timeline' | 'satellites';
+export type OrbitalSlot = 'search' | 'timeline' | 'water' | 'satellites';
 
 /** The mobile bottom sheet's three heights; the docked desktop sheet ignores it. */
 export type SheetHeight = 'collapsed' | 'half' | 'full';
@@ -644,6 +644,7 @@ export class OrbitalWatchPage {
     this.slots = {
       search: h('div', { className: 'ies-slot', dataset: { slot: 'search' }, hidden: true }),
       timeline: h('div', { className: 'ies-slot', dataset: { slot: 'timeline' } }),
+      water: h('div', { className: 'ies-slot', dataset: { slot: 'water' } }),
       satellites: h('div', { className: 'ies-slot', dataset: { slot: 'satellites' } }),
     };
     this.panel = h('div', { className: 'ies-panel' },
@@ -886,7 +887,7 @@ export class OrbitalWatchPage {
   private renderState(state: OrbitalWatchState): DomChild[] {
     if (state.kind === 'idle') return [h('p', { className: 'ies-empty' }, t('orbitalWatch.search.idle'))];
     if (state.kind === 'unavailable') {
-      return [h('div', { className: 'ies-empty' }, h('p', null, t('orbitalWatch.status.unavailable')), this.retryButton()), this.siteSection()];
+      return [h('div', { className: 'ies-empty' }, h('p', null, t('orbitalWatch.status.unavailable')), this.retryButton()), this.siteSection(), this.slots.water];
     }
     if (state.kind === 'computing') {
       return [h('p', { className: 'ies-status', role: 'status' }, state.total > 0
@@ -907,6 +908,7 @@ export class OrbitalWatchPage {
       this.evidenceBlock(lookup, archives, summary, evidence),
       this.latestImage(summary, evidence, archives),
       this.siteSection(),
+      this.slots.water,
       this.slots.timeline,
       this.eventsSection(lookup),
       this.capabilitySection(lookup, passes, isPending),

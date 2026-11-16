@@ -7,11 +7,14 @@ import { fetchReservoirLevels } from './index';
 
 let levels: Promise<Map<string, ReservoirLevel>> | null = null;
 
-/** Seeded Strategic Water Levels by reservoir id, fetched once per page. Empty when unavailable. */
+/** Seeded Strategic Water Levels by reservoir id, fetched once per page. Rejects when the source could not be read. */
 export function loadReservoirLevelsById(): Promise<Map<string, ReservoirLevel>> {
   levels ??= fetchReservoirLevels()
-    .then(result => new Map((result.snapshot?.reservoirs ?? []).map(r => [r.id, r])))
-    .then(map => { if (map.size === 0) levels = null; return map; }, () => { levels = null; return new Map(); });
+    .then((result) => {
+      if (!result.ok) throw new Error('reservoir levels unavailable');
+      return new Map((result.snapshot?.reservoirs ?? []).map(r => [r.id, r]));
+    })
+    .then(map => { if (map.size === 0) levels = null; return map; }, (error: unknown) => { levels = null; throw error; });
   return levels;
 }
 

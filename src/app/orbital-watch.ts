@@ -13,6 +13,8 @@ import { formatAcquiredLine, formatTargetCoordinates } from '@/components/orbita
 import { loadPointContext } from '@/services/orbital/point-context';
 import { loadWatchedSiteRecord, watchedSiteAt } from '@/services/orbital/watched-site-at';
 import { OrbitalPlaceTools } from '@/components/OrbitalPlaceTools';
+import { loadWaterCard } from '@/components/water-card';
+import { reservoirAtPoint } from '@/services/climate/reservoir-context';
 import { markSiteSatelliteSelected, siteSatellitesSection, type SiteSatellitesState } from '@/components/orbital-site-satellites-view';
 import { satellitesCoveringSite, type CoverageSite } from '@/services/orbital/satellite-site-coverage';
 import { fetchSatelliteTLEs, getTrackedSatelliteTles } from '@/services/satellites';
@@ -68,6 +70,23 @@ const MINUTE_MS = 60_000;
 const LINKED_PASS_TOLERANCE_MS = 2 * MINUTE_MS;
 
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
+
+let waterRun: AbortController | null = null;
+
+/** The water card (#10714) when the point lies on a strategic reservoir's open water. */
+function drawWater(at: GeoPoint | null): void {
+  waterRun?.abort();
+  waterRun = null;
+  const slot = page?.slot('water');
+  if (!slot) return;
+  slot.replaceChildren();
+  const site = at ? reservoirAtPoint(at.lat, at.lon) : null;
+  if (!site) return;
+  const controller = waterRun = new AbortController();
+  void loadWaterCard(site, controller.signal).then((card) => {
+    if (!controller.signal.aborted) slot.replaceChildren(card);
+  }).catch(() => {});
+}
 
 function cancel(): void {
   run?.abort();
@@ -441,6 +460,7 @@ function ensurePage(): OrbitalWatchPage {
         returnFocus = null;
         timelinePasses = null;
         drawTimeline();
+        drawWater(null);
         tools!.reset();
         showSearchRow(false);
         setOrbitalLookupOpen(false);
@@ -491,6 +511,7 @@ function lookAt(at: GeoPoint, name: string | null, { recentre, map, located = fa
     if (pointIsLocated !== located) {
       pointIsLocated = located;
       loadWatchedSite(at);
+      drawWater(located ? null : at);
     } else if (siteFailed && !located) {
       loadWatchedSite(at);
     }
@@ -512,6 +533,8 @@ function lookAt(at: GeoPoint, name: string | null, { recentre, map, located = fa
   pointIsLocated = located;
   loadWatchedSite(at);
   focusMap();
+  // The water card reads its reservoir by site id, which would name where a located user is.
+  drawWater(located ? null : at);
   void start();
 }
 

@@ -96,6 +96,8 @@ export const CLIMATE_RESERVOIR_LEVELS_KEY = 'climate:reservoir-levels:v1';
 export const ORBITAL_CATALOG_KEY = 'orbital:catalog:v1';
 export const ORBITAL_SITES_KEY = 'orbital:sites:v1';
 export const ORBITAL_SITE_KEY_PREFIX = 'orbital:site:v1:';
+/** Newest radar water-extent reading per reservoir site (scripts/seed-orbital-water-extent.mjs). */
+export const ORBITAL_WATER_EXTENT_LATEST_KEY = 'orbital:water-extent:latest:v1';
 export const ORBITAL_COUNTRY_KEY_PREFIX = 'orbital:country:v1:';
 export const HEALTH_AIR_QUALITY_KEY = 'health:air-quality:v1';
 export const CHINA_COVERAGE_HEALTH_KEY = 'health:china-coverage:v1';

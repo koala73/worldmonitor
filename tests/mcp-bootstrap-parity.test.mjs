@@ -338,7 +338,7 @@ const EXCLUDED_FROM_MCP = new Map([
   ['orbital:sites:v1',
     'deferred: get_country_imagery_evidence reads this key but stays unlisted while Orbital Watch is dark (#10721).'],
   ['orbital:water-extent:v1',
-    'deferred: the reservoir water-extent series has no reader until the water evidence card (#10714 item 1), and Orbital Watch is dark (#10721).'],
+    'deferred: the water card (#10714 item 1) reads its compact orbital:water-extent:latest:v1 summary through get-watched-site-imagery; the full series has no MCP tool while Orbital Watch is dark (#10721).'],
   ['intelligence:satellites:tle:v1',
     'deferred to a future space-domain tool. Not in v1 brainstorm inventory.'],
   ['intelligence:pizzint:seed:v1',

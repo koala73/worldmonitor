@@ -2844,6 +2844,19 @@
         "latestPass": "laatste ICESat-2-overkomst {{date}}",
         "sparkline": "Peil over 36 maanden met de seizoensbasis als stippellijn",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidar-waterstanden uit gedateerde overkomsten, geen live metingen of opslagvolumes."
+      },
+      "water": {
+        "heading": "Water bij {{name}}",
+        "level": "Lidarpeil",
+        "extent": "Wateroppervlak via radar",
+        "extentValue": "{{percent}}% open water ({{area}} km²) op {{date}}",
+        "extentChange": "{{delta}} punten sinds {{date}} op dezelfde baan",
+        "extentNoComparison": "Geen eerdere meting op dezelfde baan om te vergelijken",
+        "extentNone": "Nog geen radarmeting",
+        "unavailable": "Laden mislukt; open opnieuw om het nog eens te proberen",
+        "optical": "Nieuwste optische beeld",
+        "opticalNone": "Geen optisch beeld binnen 30 dagen",
+        "note": "Elke rij is een gedateerde meting van een afzonderlijke overkomst, geen actuele waarde. De radar meet open water in het kerngebied van het stuwmeer; door wind gerimpeld water kan als land worden gelezen."
       }
     },
     "gridDisruptionClock": {

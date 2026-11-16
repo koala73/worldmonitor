@@ -3249,6 +3249,19 @@
         "latestPass": "ultimo passaggio ICESat-2 {{date}}",
         "sparkline": "Livello a 36 mesi con la base stagionale tratteggiata",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Livelli della superficie dell’acqua via lidar da passaggi datati, non letture in tempo reale né volumi."
+      },
+      "water": {
+        "heading": "Acqua a {{name}}",
+        "level": "Livello lidar",
+        "extent": "Estensione dell’acqua via radar",
+        "extentValue": "{{percent}}% di acqua libera ({{area}} km²) il {{date}}",
+        "extentChange": "{{delta}} punti dal {{date}} sulla stessa orbita",
+        "extentNoComparison": "Nessuna misura precedente sulla stessa orbita da confrontare",
+        "extentNone": "Ancora nessuna misura radar",
+        "unavailable": "Caricamento non riuscito; riapri per riprovare",
+        "optical": "Ultima immagine ottica",
+        "opticalNone": "Nessuna immagine ottica entro 30 giorni",
+        "note": "Ogni riga è una misura datata di un passaggio distinto, non una lettura in tempo reale. Il radar misura l’acqua libera nell’area centrale del bacino; l’acqua increspata dal vento può risultare come terra."
       }
     },
     "gridDisruptionClock": {

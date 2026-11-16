@@ -3207,6 +3207,19 @@
         "latestPass": "最新の ICESat-2 通過 {{date}}",
         "sparkline": "36か月の水位（季節基準は破線）",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC)。日付付き通過のライダー水面高で、リアルタイム値や貯水量ではありません。"
+      },
+      "water": {
+        "heading": "{{name}}の水",
+        "level": "ライダー水位",
+        "extent": "レーダー水域面積",
+        "extentValue": "{{date}}時点で開水面 {{percent}}%（{{area}} km²）",
+        "extentChange": "同じ軌道の{{date}}から{{delta}}ポイント",
+        "extentNoComparison": "比較できる同じ軌道の過去の観測はありません",
+        "extentNone": "レーダー観測はまだありません",
+        "unavailable": "読み込めませんでした。開き直して再試行してください",
+        "optical": "最新の光学画像",
+        "opticalNone": "30日以内の光学画像はありません",
+        "note": "各行は別々の通過による日付付きの測定値で、リアルタイムの値ではありません。レーダーは貯水池の中心区域の開水面を測定します。風で波立った水面は陸地と判定されることがあります。"
       }
     },
     "gridDisruptionClock": {

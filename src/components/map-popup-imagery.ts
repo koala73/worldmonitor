@@ -46,7 +46,8 @@ export function imageryTargetFor(type: string, data: unknown): ImageryTarget | n
     case 'reservoirLevel': {
       const r = data as PointData;
       // The reservoir card names its next ICESat-2 crossing; a second "next pass" would compete with it.
-      return { kind: 'point', point: { lat: r.lat, lon: r.lon }, ownNextPass: true };
+      // Its radar water extent has its own row, so the image here is the latest optical one.
+      return { kind: 'point', point: { lat: r.lat, lon: r.lon }, ownNextPass: true, optical: true };
     }
     case 'iranEvent': {
       const e = data as EventPointData;

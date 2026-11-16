@@ -180,12 +180,18 @@ describe('imagery evidence sheet', () => {
     expect(sheet().dataset.height).toBe('half');
   });
 
-  it('lays the sheet out image first: evidence, latest image, timeline, events, capability, windows, site satellites, alert', () => {
+  it('lays the sheet out image first: evidence, latest image, water card slot, timeline, events, capability, windows, site satellites, alert', () => {
     const { all, confirmedNew } = tiered();
     mounted(answered(all, { acquisitions: [acquisition(confirmedNew)] }));
     const order = [...sheet().querySelector('.ies-body')!.children].map((el) => (el as HTMLElement).dataset.section ?? (el as HTMLElement).dataset.slot);
-    expect(order).toEqual(['evidence', 'latest', 'timeline', 'events', 'capability', 'windows', 'satellites', 'alert']);
+    expect(order).toEqual(['evidence', 'latest', 'water', 'timeline', 'events', 'capability', 'windows', 'satellites', 'alert']);
     expect(sectionOf('alert').querySelector('a')!.getAttribute('href')).toBe('/pro#pricing');
+  });
+
+  it('keeps the water card slot when pass data is unavailable', () => {
+    const page = mounted({ kind: 'unavailable' });
+    page.slot('water').append(Object.assign(document.createElement('section'), { className: 'wl-water-card' }));
+    expect(sheet().querySelector('.ies-body .wl-water-card')).not.toBeNull();
   });
 
   it('lists computed passes at once, reading "checking archive" until their archive answers, then moves them to their tier', () => {

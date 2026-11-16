@@ -147,6 +147,10 @@ describe('next-pass stat', () => {
     return [...row.querySelectorAll('.stat-label')].map((el) => el.textContent);
   };
 
+  it('asks for the latest optical image of a reservoir, whose radar extent has its own row', () => {
+    expect(imageryTargetFor('reservoirLevel', { lat: 10, lon: 20 })).toEqual({ kind: 'point', point: { lat: 10, lon: 20 }, ownNextPass: true, optical: true });
+  });
+
   it('is left out of a reservoir popup, whose own card names the next ICESat-2 crossing', async () => {
     const labels = await statLabels('reservoirLevel', { lat: 10, lon: 20 });
     expect(labels).toEqual([en.orbitalWatch.popup.latest]);

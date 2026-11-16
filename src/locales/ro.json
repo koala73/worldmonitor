@@ -3249,6 +3249,19 @@
         "latestPass": "ultima trecere ICESat-2 {{date}}",
         "sparkline": "Nivel pe 36 de luni, cu baza sezonieră punctată",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Niveluri lidar ale suprafeței apei din treceri datate, nu citiri live sau volume stocate."
+      },
+      "water": {
+        "heading": "Apa la {{name}}",
+        "level": "Nivel lidar",
+        "extent": "Suprafața apei prin radar",
+        "extentValue": "{{percent}}% apă deschisă ({{area}} km²) pe {{date}}",
+        "extentChange": "{{delta}} puncte din {{date}} pe aceeași orbită",
+        "extentNoComparison": "Nicio măsurătoare anterioară pe aceeași orbită pentru comparație",
+        "extentNone": "Încă nicio măsurătoare radar",
+        "unavailable": "Nu s-a putut încărca; redeschideți pentru a reîncerca",
+        "optical": "Cea mai recentă imagine optică",
+        "opticalNone": "Nicio imagine optică în 30 de zile",
+        "note": "Fiecare rând este o măsurătoare datată dintr-o trecere separată, nu o citire în timp real. Radarul măsoară apa deschisă din zona centrală a lacului de acumulare; apa încrețită de vânt poate fi citită ca uscat."
       }
     },
     "gridDisruptionClock": {

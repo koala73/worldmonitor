@@ -3297,6 +3297,19 @@
         "latestPass": "utolsó ICESat-2 áthaladás: {{date}}",
         "sparkline": "36 havi szint, a szezonális alapvonal szaggatott vonallal",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidaros vízfelszín-szintek dátumozott áthaladásokból, nem élő értékek vagy tárolt térfogatok."
+      },
+      "water": {
+        "heading": "Víz: {{name}}",
+        "level": "Lidaros vízszint",
+        "extent": "Radaros vízfelület",
+        "extentValue": "{{percent}}% nyílt víz ({{area}} km²), {{date}}",
+        "extentChange": "{{delta}} pont {{date}} óta ugyanazon a pályán",
+        "extentNoComparison": "Nincs korábbi mérés ugyanazon a pályán az összevetéshez",
+        "extentNone": "Még nincs radaros mérés",
+        "unavailable": "Nem sikerült betölteni; nyissa meg újra a próbálkozáshoz",
+        "optical": "Legújabb optikai kép",
+        "opticalNone": "Nincs optikai kép 30 napon belül",
+        "note": "Minden sor egy külön átvonulásból származó, dátummal ellátott mérés, nem élő adat. A radar a víztározó magterületén méri a nyílt vizet; a szél által fodrozott víz szárazföldnek tűnhet."
       }
     },
     "gridDisruptionClock": {

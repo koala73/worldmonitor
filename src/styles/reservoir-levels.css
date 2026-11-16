@@ -404,3 +404,48 @@
 .wl-panel .wl-next-label {
   color: var(--text-secondary);
 }
+
+.wl-popup .wl-water-extent .wl-next-pass-value {
+  display: flex;
+  flex-direction: column;
+}
+
+.wl-water-card {
+  margin: 0;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.wl-water-title {
+  color: var(--text);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.wl-water-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 34%) 1fr;
+  gap: 2px 10px;
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+}
+
+.wl-water-label {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
+.wl-water-value {
+  display: flex;
+  flex-direction: column;
+  color: var(--text-secondary);
+}
+
+.wl-water-note {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}

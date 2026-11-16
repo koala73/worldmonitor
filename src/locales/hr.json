@@ -3321,6 +3321,19 @@
         "latestPass": "zadnji prelet ICESat-2 {{date}}",
         "sparkline": "Razina kroz 36 mjeseci sa sezonskom osnovicom kao isprekidanom crtom",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidarske razine vodene površine iz datiranih preleta, ne trenutna očitanja ni volumeni."
+      },
+      "water": {
+        "heading": "Voda na {{name}}",
+        "level": "Razina prema lidaru",
+        "extent": "Površina vode prema radaru",
+        "extentValue": "{{percent}} % otvorene vode ({{area}} km²) dana {{date}}",
+        "extentChange": "{{delta}} bodova od {{date}} na istoj orbiti",
+        "extentNoComparison": "Nema ranijeg mjerenja na istoj orbiti za usporedbu",
+        "extentNone": "Još nema radarskog mjerenja",
+        "unavailable": "Učitavanje nije uspjelo; ponovno otvorite za novi pokušaj",
+        "optical": "Najnovija optička snimka",
+        "opticalNone": "Nema optičke snimke unutar 30 dana",
+        "note": "Svaki je redak datirano mjerenje s zasebnog preleta, a ne očitanje uživo. Radar mjeri otvorenu vodu u središnjem području akumulacije; voda koju je vjetar namreškao može se očitati kao kopno."
       }
     },
     "gridDisruptionClock": {

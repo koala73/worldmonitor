@@ -3394,6 +3394,19 @@
         "latestPass": "latest ICESat-2 pass {{date}}",
         "sparkline": "36-month water level; dashed line marks the seasonal baseline",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidar water-surface levels from dated passes, not live readings or storage volumes."
+      },
+      "water": {
+        "heading": "Water at {{name}}",
+        "level": "Lidar level",
+        "extent": "Radar water extent",
+        "extentValue": "{{percent}}% open water ({{area}} km²) on {{date}}",
+        "extentChange": "{{delta}} points since {{date}} on the same orbit",
+        "extentNoComparison": "No earlier reading on the same orbit to compare",
+        "extentNone": "No radar reading yet",
+        "unavailable": "Couldn't load; reopen to retry",
+        "optical": "Latest optical image",
+        "opticalNone": "No optical image within 30 days",
+        "note": "Each row is a dated measurement from a separate pass, not a live reading. Radar reads open water in the reservoir's core box; wind-roughened water can read as land."
       }
     }
   },

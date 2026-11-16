@@ -3228,6 +3228,19 @@
         "latestPass": "son ICESat-2 geçişi {{date}}",
         "sparkline": "36 aylık seviye, mevsimsel taban kesikli çizgi",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Tarihli geçişlerden lidar su yüzeyi seviyeleri; canlı okuma veya depolama hacmi değildir."
+      },
+      "water": {
+        "heading": "{{name}} suyu",
+        "level": "Lidar seviyesi",
+        "extent": "Radar su alanı",
+        "extentValue": "{{date}} itibarıyla %{{percent}} açık su ({{area}} km²)",
+        "extentChange": "Aynı yörüngede {{date}} tarihinden bu yana {{delta}} puan",
+        "extentNoComparison": "Karşılaştırılacak aynı yörüngede önceki ölçüm yok",
+        "extentNone": "Henüz radar ölçümü yok",
+        "unavailable": "Yüklenemedi; yeniden denemek için tekrar açın",
+        "optical": "En son optik görüntü",
+        "opticalNone": "30 gün içinde optik görüntü yok",
+        "note": "Her satır ayrı bir geçişten alınmış tarihli bir ölçümdür, canlı değer değildir. Radar, rezervuarın çekirdek alanındaki açık suyu ölçer; rüzgârla dalgalanan su kara olarak okunabilir."
       }
     },
     "gridDisruptionClock": {

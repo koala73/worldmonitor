@@ -2863,6 +2863,19 @@
         "latestPass": "última passagem do ICESat-2 {{date}}",
         "sparkline": "Nível de 36 meses com a base sazonal tracejada",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Níveis da superfície da água por lidar de passagens datadas, não leituras ao vivo nem volumes."
+      },
+      "water": {
+        "heading": "Água em {{name}}",
+        "level": "Nível por lidar",
+        "extent": "Extensão de água por radar",
+        "extentValue": "{{percent}}% de água aberta ({{area}} km²) em {{date}}",
+        "extentChange": "{{delta}} pontos desde {{date}} na mesma órbita",
+        "extentNoComparison": "Nenhuma leitura anterior na mesma órbita para comparar",
+        "extentNone": "Ainda sem leitura de radar",
+        "unavailable": "Não foi possível carregar; reabra para tentar novamente",
+        "optical": "Imagem óptica mais recente",
+        "opticalNone": "Nenhuma imagem óptica em 30 dias",
+        "note": "Cada linha é uma medição datada de uma passagem distinta, não uma leitura ao vivo. O radar mede a água aberta na área central do reservatório; água encrespada pelo vento pode ser lida como terra."
       }
     },
     "gridDisruptionClock": {

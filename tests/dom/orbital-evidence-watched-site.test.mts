@@ -11,6 +11,11 @@ type WithSignal = { signal?: AbortSignal };
 const harness = vi.hoisted(() => ({
   lookup: null as unknown as Mock<(query: unknown, options?: WithSignal) => Promise<unknown>>,
   siteRead: null as unknown as Mock<(request: unknown, options?: WithSignal) => Promise<unknown>>,
+  waterCard: null as unknown as Mock<(site: unknown, signal: AbortSignal) => Promise<HTMLElement>>,
+}));
+vi.mock('@/components/water-card', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/components/water-card')>()),
+  loadWaterCard: (site: unknown, signal: AbortSignal) => harness.waterCard(site, signal),
 }));
 
 vi.mock('@/services/orbital/pass-client', () => ({
@@ -34,6 +39,7 @@ import type { WatchedSite } from '../../shared/watched-sites';
 import { OrbitalWatchPage, type OrbitalWatchState } from '@/components/OrbitalWatchPage';
 import { watchedSiteAt } from '@/services/orbital/watched-site-at';
 import { openOrbitalWatch } from '@/app/orbital-watch';
+import { STRATEGIC_RESERVOIR_SITES } from '@/services/climate/reservoir-context';
 
 const NOW = Date.UTC(2026, 10, 13, 12);
 const HOUR = 3_600_000;
@@ -77,6 +83,7 @@ beforeAll(async () => { await initTestI18n(); });
 beforeEach(() => {
   harness.lookup = vi.fn(async (query: unknown) => passLookup((query as { point: { lat: number; lon: number } }).point));
   harness.siteRead = vi.fn(async () => record());
+  harness.waterCard = vi.fn(async () => document.createElement('section'));
   vi.stubGlobal('IntersectionObserver', class { observe() {} disconnect() {} });
   vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
 });
@@ -201,6 +208,17 @@ describe('opening the lookup on a watched site', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(harness.siteRead).not.toHaveBeenCalled();
     expect(siteSection()).toBeNull();
+  });
+
+  it('loads no water card for the user\'s own located position on a reservoir, since it reads by site id', async () => {
+    const reservoir = STRATEGIC_RESERVOIR_SITES[0]!;
+    const at = { lat: Math.round(reservoir.lat * 100) / 100, lon: Math.round(reservoir.lon * 100) / 100 };
+    openOrbitalWatch(at, null, null, { located: true });
+    await vi.waitFor(() => expect(harness.lookup).toHaveBeenCalled());
+    expect(harness.waterCard).not.toHaveBeenCalled();
+    document.querySelector<HTMLButtonElement>('.ies-close')!.click();
+    openOrbitalWatch(at, null);
+    expect(harness.waterCard).toHaveBeenCalledTimes(1);
   });
 
   it('drops a pending site read when the open point is reopened as the located position', async () => {

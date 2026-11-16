@@ -3270,6 +3270,19 @@
         "latestPass": "ostatni przelot ICESat-2 {{date}}",
         "sparkline": "Poziom z 36 miesięcy z bazą sezonową jako linią przerywaną",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidarowe poziomy lustra wody z datowanych przelotów, nie odczyty na żywo ani objętości."
+      },
+      "water": {
+        "heading": "Woda: {{name}}",
+        "level": "Poziom z lidaru",
+        "extent": "Powierzchnia wody z radaru",
+        "extentValue": "{{percent}}% otwartej wody ({{area}} km²) w dniu {{date}}",
+        "extentChange": "{{delta}} pkt od {{date}} na tej samej orbicie",
+        "extentNoComparison": "Brak wcześniejszego pomiaru na tej samej orbicie do porównania",
+        "extentNone": "Brak jeszcze pomiaru radarowego",
+        "unavailable": "Nie udało się wczytać; otwórz ponownie, aby spróbować jeszcze raz",
+        "optical": "Najnowszy obraz optyczny",
+        "opticalNone": "Brak obrazu optycznego w ciągu 30 dni",
+        "note": "Każdy wiersz to datowany pomiar z osobnego przelotu, a nie odczyt na żywo. Radar mierzy otwartą wodę w obszarze centralnym zbiornika; woda pomarszczona przez wiatr może zostać odczytana jako ląd."
       }
     },
     "gridDisruptionClock": {
