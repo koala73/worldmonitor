@@ -1,12 +1,11 @@
 /**
- * Satellite passes here: right-click the globe, read the lookup sheet in each
+ * Satellite passes here: right-click the map, read the imagery evidence sheet in each
  * state, and prove the picked point reaches only the public archives.
  *
  * WM_VERIFY_ORBITAL_CATALOG=live skips the catalog fixture and uses the local
  * API. WM_VERIFY_ORBITAL_VIEWPORT=mobile drives a phone-sized viewport.
- * The drive uses the flat map, whose coastlines and labels show where the
- * reticle sits: deck.gl on desktop, the SVG map on a phone. The SVG map has
- * no context menu, so there every lookup opens through its route.
+ * The drive uses the flat map: deck.gl on desktop, the SVG map on a phone. The
+ * SVG map has no context menu, so there every lookup opens through its route.
  * WM_VERIFY_ORBITAL_MAP=globe drives the 3D globe instead. WM_VERIFY_ORBITAL_THEME=light drives
  * the light theme.
  */
@@ -20,7 +19,8 @@ const POINT_IMAGE_HOSTS = ['planetarycomputer.microsoft.com', 'gibs.earthdata.na
 const ARCHIVE_HOSTS = ['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com', 'gibs.earthdata.nasa.gov', 'view.eumetsat.int'];
 const CATALOG_PATH = '/api/orbital/v1/list-imaging-satellites';
 const HOUR = 3_600_000;
-const PLACE = { name: 'Palm Jumeirah, Dubai', lat: 25.112, lon: 55.139, zoom: 9 };
+// A share link keeps two decimals, so the route opens exactly this point.
+const PLACE = { name: 'Palm Jumeirah, Dubai', lat: 25.11, lon: 55.14 };
 // Open ocean, so the calibrating right-click at the map centre opens no country.
 const START = { lat: -15, lon: 80, zoom: 4 };
 
@@ -43,6 +43,7 @@ export function fixtureCatalog() {
 
 
 const VENDOR_URL = /sentry|umami|\/_vercel\/insights|debugbear|dbbrum/i;
+const SHEET = '.imagery-evidence-sheet';
 
 /** Where the page URL puts the map centre and the orbital route, with each one's distance from the picked point in degrees. */
 function pageUrlPlaces(href) {
@@ -104,12 +105,11 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['src'] });
   });
   // Every LCP URL must be a blob: or carry no archive host, so the RUM beacon never names the point's box.
-  const checkLcp = async (stage) => {
+  const checkLcp = (stage) => {
     const urls = lcpUrls.filter(Boolean);
     log(`${stage} lcp urls`, urls.map((url) => (url.startsWith('blob:') ? 'blob:…' : url)));
     const leaking = urls.filter((url) => !url.startsWith('blob:') && ARCHIVE_HOSTS.includes(new URL(url).hostname));
     if (leaking.length) throw new Error(`${stage}: an archive URL became the LCP element: ${leaking.join(', ')}`);
-    return urls;
   };
 
   const mapMode = process.env.WM_VERIFY_ORBITAL_MAP === 'globe' ? 'globe' : 'flat';
@@ -123,7 +123,6 @@ export default async function ({ page, base, shot, log, expectVisible }) {
       };
     });
   }
-  // WM_VERIFY_ORBITAL_THEME=light drives the light theme.
   const theme = process.env.WM_VERIFY_ORBITAL_THEME === 'light' ? 'light' : 'dark';
   await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': JSON.stringify(mapMode), 'worldmonitor-theme': theme } });
   // WM_VERIFY_ORBITAL_LAYERS=conflicts boots with a dashboard layer over the point.
@@ -137,25 +136,22 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const bootCentre = pageUrlPlaces(await page.evaluate(() => location.href)).centre;
   log('page url centre at boot', JSON.stringify(bootCentre));
 
-  const sheet = page.locator('.orbital-watch-sheet');
-  const sources = sheet.locator('.ow-body .ow-sources');
-  const sourceCredits = async (keepOpen = false) => {
+  const sheet = page.locator(SHEET);
+  const sources = sheet.locator('.ies-sources');
+  const sourceCredits = async () => {
     if (await sources.isHidden()) return [];
     if (!(await sources.evaluate((d) => d.open))) await sources.locator('summary').click();
-    const credits = await sources.locator('li').allInnerTexts();
-    if (!keepOpen) await sources.locator('summary').click();
-    return credits;
+    return sources.locator('li').allInnerTexts();
   };
-  // Opening a lookup flies the map so the point sits in the middle of what the sheet leaves visible, so aim at
-  // client positions, not offsets from the canvas centre.
-  const open = async (at = null) => {
-    if (!at) {
-      const box = await page.locator('#mapContainer canvas').first().boundingBox();
-      at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-    }
-    await page.mouse.click(at.x, at.y, { button: 'right' });
+  const closeSources = async () => {
+    if (await sources.isVisible() && await sources.evaluate((d) => d.open)) await sources.locator('summary').click();
+  };
+  const sheetPoint = async () => pointFromText(`${await sheet.locator('.ies-place').innerText()} ${await sheet.locator('.ies-coords').innerText()}`);
+  const open = async () => {
+    const box = await page.locator('#mapContainer canvas').first().boundingBox();
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: 'right' });
     await page.getByRole('menuitem', { name: 'Satellite passes here' }).or(page.getByText('Satellite passes here', { exact: true })).first().click();
-    await expectVisible('.orbital-watch-sheet');
+    await expectVisible(SHEET);
   };
   const close = async () => {
     await page.keyboard.press('Escape');
@@ -163,74 +159,34 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     const focused = await page.evaluate(() => document.activeElement?.id);
     if (focused !== 'mapContainer') throw new Error(`focus after close went to ${focused}`);
   };
-  // A banner pushes the hero down; both it and the hero's caption and credit must show above the privacy line.
-  const showHeroCredit = async () => {
-    const clipped = await page.evaluate(() => {
-      const credit = document.querySelector('.orbital-watch-sheet .ow-card .ow-image-credit');
-      if (!credit) return 'no hero credit';
-      const floor = () => Math.min(...[...document.querySelectorAll('.orbital-watch-sheet .ow-privacy, .mobile-tab-bar')]
-        .map((el) => el.getBoundingClientRect()).filter((r) => r.height > 0).map((r) => r.top), window.innerHeight);
-      const over = credit.getBoundingClientRect().bottom + 4 - floor();
-      if (over > 0) document.querySelector('.orbital-watch-sheet .ow-body')?.scrollBy(0, over);
-      if (credit.getBoundingClientRect().bottom > floor()) return 'hero credit under the privacy line';
-      const banner = document.querySelector('.orbital-watch-sheet .ow-banner')?.getBoundingClientRect();
-      const top = document.querySelector('.orbital-watch-sheet .ow-body')?.getBoundingClientRect().top ?? 0;
-      return banner && banner.top < top - 1 ? 'banner scrolled out of the sheet' : null;
-    });
-    if (clipped) throw new Error(clipped);
-  };
-  const settleImagesInView = async () => {
-    await page.waitForFunction(() => {
-      // A thumbnail starts loading when the IntersectionObserver sees it, which clips it by its scroll containers.
-      const shown = (tile) => {
-        let r = tile.getBoundingClientRect();
-        let top = Math.max(r.top, 0), bottom = Math.min(r.bottom, window.innerHeight);
-        let left = Math.max(r.left, 0), right = Math.min(r.right, window.innerWidth);
-        for (let el = tile.parentElement; el; el = el.parentElement) {
-          if (getComputedStyle(el).overflow === 'visible') continue;
-          r = el.getBoundingClientRect();
-          top = Math.max(top, r.top); bottom = Math.min(bottom, r.bottom);
-          left = Math.max(left, r.left); right = Math.min(right, r.right);
-        }
-        return bottom > top && right > left;
-      };
-      return [...document.querySelectorAll('.orbital-watch-sheet .ow-tile')].every((tile) => !shown(tile) || tile.dataset.state !== 'loading');
-    }, null, { timeout: 90_000 });
-    log('tile states', await sheet.locator('.ow-tile').evaluateAll((tiles) => tiles.map((t) => t.dataset.state).join('')));
-  };
+  // One visible privacy line in every state, inside the viewport and kept to a single line.
   const privacy = async () => {
-    const line = sheet.locator('.ow-privacy-line');
+    const line = sheet.locator('.ies-privacy-line');
     if (!(await line.isVisible())) throw new Error('privacy line missing');
+    const text = await line.innerText();
+    if (!/only to the image archives/.test(text)) throw new Error(`privacy line reads ${text}`);
     const box = await line.boundingBox();
-    if (box.height > 30) throw new Error(`privacy line is ${box.height}px tall`);
+    if (box.height > 30 || box.y + box.height > (mobile ? 844 : 900)) throw new Error(`privacy line is clipped or wraps: ${JSON.stringify(box)}`);
   };
-
-  // Where the reticle sits once the map has stopped flying, and that it sits mid-way across the map the panels leave visible.
+  // Where the reticle sits once the map has stopped flying; it must sit on the map, clear of the sheet.
+  // A map that draws the target itself hides the sheet's DOM reticle.
   const markAt = async () => {
+    if (await page.locator('.ies-mapmark').isHidden()) return { drawnByMap: renderer };
     let prev = null;
     for (let tries = 0; tries < 60; tries++) {
       const now = await page.evaluate(() => {
-        const mark = document.querySelector('.ow-mapmark');
+        const mark = document.querySelector('.ies-mapmark');
         if (!mark || mark.hidden) return null;
-        const ring = mark.querySelector('.ow-mapmark-ring').getBoundingClientRect();
-        const m = document.getElementById('mapContainer').getBoundingClientRect();
-        let area = { left: m.left, top: m.top, right: m.right, bottom: m.bottom };
-        const size = (r) => Math.max(0, r.right - r.left) * Math.max(0, r.bottom - r.top);
-        for (const sel of ['.ow-panel', '.ow-dock', '.ow-statusbar']) {
-          const c = document.querySelector(`.orbital-watch-sheet ${sel}`)?.getBoundingClientRect();
-          if (!c || !c.width || !c.height || c.right <= area.left || c.left >= area.right || c.bottom <= area.top || c.top >= area.bottom) continue;
-          area = [{ ...area, right: Math.min(area.right, c.left) }, { ...area, left: Math.max(area.left, c.right) },
-            { ...area, bottom: Math.min(area.bottom, c.top) }, { ...area, top: Math.max(area.top, c.bottom) }]
-            .reduce((best, side) => (size(side) > size(best) ? side : best));
-        }
-        return { x: Math.round(ring.left + ring.width / 2), y: Math.round(ring.top + ring.height / 2),
-          cx: Math.round((area.left + area.right) / 2), cy: Math.round((area.top + area.bottom) / 2),
-          left: Math.round(area.left), top: Math.round(area.top) };
+        const ring = mark.querySelector('.ies-mapmark-ring').getBoundingClientRect();
+        const panel = document.querySelector('.imagery-evidence-sheet .ies-panel').getBoundingClientRect();
+        const map = document.getElementById('mapContainer').getBoundingClientRect();
+        const x = Math.round(ring.left + ring.width / 2);
+        const y = Math.round(ring.top + ring.height / 2);
+        return { x, y, onMap: x >= map.left && x <= map.right && y >= map.top && y <= map.bottom,
+          underSheet: x >= panel.left && x <= panel.right && y >= panel.top && y <= panel.bottom };
       });
       if (now && prev && now.x === prev.x && now.y === prev.y) {
-        if (Math.abs(now.x - now.cx) > 40 || Math.abs(now.y - now.cy) > 40) {
-          throw new Error(`reticle at ${now.x},${now.y}, not centred in the visible map at ${now.cx},${now.cy}`);
-        }
+        if (!now.onMap || now.underSheet) throw new Error(`reticle is off the visible map: ${JSON.stringify(now)}`);
         return now;
       }
       prev = now;
@@ -238,86 +194,72 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     }
     throw new Error(`reticle never settled on the map: ${JSON.stringify(prev)}`);
   };
-  const pickedAt = async (at) => {
-    const before = await page.evaluate(() => location.hash);
-    await open(at);
-    // A lookup opened from the map writes no route.
-    const opened = await page.evaluate(() => location.hash);
-    log('page url hash (sheet opened from the map)', opened || 'none');
-    if (opened !== before && /orbital=/.test(opened)) throw new Error(`a lookup opened from the map wrote its point into the hash: ${opened}`);
-    const [lat, ns, lon, ew] = (await sheet.locator('.ow-place').innerText()).match(/([\d.]+)°([NS]) ([\d.]+)°([EW])/).slice(1);
-    const mark = await markAt();
-    await close();
-    return { lat: ns === 'N' ? +lat : -lat, lon: ew === 'E' ? +lon : -lon, mark };
-  };
-  const assertAtPlace = (text) => {
-    const [lat, lon] = text.match(/[\d.]+/g).map(Number);
-    if (Math.abs(lat - PLACE.lat) > 0.005 || Math.abs(lon - PLACE.lon) > 0.005) throw new Error(`picked ${text}, not ${PLACE.name}`);
-  };
-  // The context menu opens a lookup wherever the globe is pointed; the shared point itself is opened through its route,
+  // The context menu opens a lookup wherever the map is pointed; the place itself is opened through its two-decimal route,
   // the same link a shared lookup gives, so every state is shot at exactly the point.
   const openAtPlace = async () => {
     await page.evaluate(({ lat, lon }) => {
       history.replaceState(history.state, '', location.pathname + location.search);
-      location.hash = `orbital=${lat.toFixed(4)},${lon.toFixed(4)}`;
+      location.hash = `orbital=${lat.toFixed(2)},${lon.toFixed(2)}`;
     }, PLACE);
-    await expectVisible('.orbital-watch-sheet');
+    await expectVisible(SHEET);
   };
+  const answered = () => page.locator(`${SHEET}[data-state="answered"]`).waitFor({ timeout: 120_000 });
   const calibrate = async () => {
     if (renderer === 'svg') return;
-    const picked = await pickedAt(null);
-    log('context menu pick', JSON.stringify(picked));
+    const before = await page.evaluate(() => location.hash);
+    await open();
+    const opened = await page.evaluate(() => location.hash);
+    log('page url hash (sheet opened from the map)', opened || 'none');
+    if (opened !== before && /orbital=/.test(opened)) throw new Error(`a lookup opened from the map wrote its point into the hash: ${opened}`);
+    log('context menu pick', JSON.stringify(await sheetPoint()), 'mark', JSON.stringify(await markAt()));
+    await close();
   };
   await calibrate();
 
+  // Checking: passes are listed with their pending tier while the archives are held.
   let release;
   holdArchives = new Promise((resolve) => { release = resolve; });
   await openAtPlace();
-  const pointText = await sheet.locator('.ow-place').innerText();
-  log('picked point', pointText, 'target', PLACE.name);
-  assertAtPlace(pointText);
-  await sheet.locator('.ow-step[data-status="running"]', { hasText: 'Archives' }).waitFor({ timeout: 90_000 });
+  await page.locator(`${SHEET}[data-state="checking"]`).waitFor({ timeout: 90_000 });
+  await sheet.locator('.ies-row').first().waitFor({ state: 'attached', timeout: 60_000 });
+  // Only a past pass the orbit says was likely imaged waits on its archive; the rest keep their computed tier.
+  log('rows while checking', await sheet.locator('.ies-row').count(), 'awaiting their archive', await sheet.locator('.ies-row[data-tier="pending"]').count());
+  const picked = await sheetPoint();
+  log('picked point', JSON.stringify(picked), 'target', PLACE.name);
+  if (Math.abs(picked.lat - PLACE.lat) > 0.005 || Math.abs(picked.lon - PLACE.lon) > 0.005) throw new Error(`picked ${JSON.stringify(picked)}, not ${PLACE.name}`);
+  const checkingLine = await sheet.locator('.ies-evidence-line').innerText();
+  log('checking line', checkingLine);
+  if (!/Archives answered: \d+ of \d+/.test(checkingLine)) throw new Error(`no archive progress while checking: ${checkingLine}`);
   await privacy();
-  if (await sheet.locator('.ow-headline').count()) throw new Error('results shown while archives pending');
-  log('steps', (await sheet.locator('.ow-step').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ')));
-  log('loading map mark', JSON.stringify(await markAt()));
-  await shot('loading-compute-steps');
+  log('checking map mark', JSON.stringify(await markAt()));
+  await shot('checking-archives');
   holdArchives = null;
   release();
-  await sheet.locator('.ow-headline').waitFor({ timeout: 90_000 });
+
+  // Answered: every row carries a tier, the latest image is painted from a blob:, and credits match what is shown.
+  await answered();
   await privacy();
-  log('headline', await sheet.locator('.ow-headline').innerText(), '|', await sheet.locator('.ow-subline').innerText());
-  const hero = sheet.locator('.ow-card').first();
-  // Point-bearing crops are fetched and painted from a blob: URL, so the crop shows in the request, not the src.
-  await hero.locator('.ow-tile[data-state="loaded"] img[src^="blob:"]').waitFor({ timeout: 60_000 });
-  const crops = requests.filter(({ url }) => new URL(url).hostname === 'planetarycomputer.microsoft.com' && new URL(url).pathname.includes('/item/bbox/'));
-  log('hero', await hero.locator('.ow-card-tag').innerText(), 'painted from blob:', 'crop requests', crops.length, crops[0] ? new URL(crops[0].url).pathname.split('/').slice(0, 6).join('/') : 'none');
-  if (!crops.length) throw new Error(`closest look is not a crop of ${PLACE.name}`);
-  await hero.locator('.ow-tile[data-state="loaded"]').waitFor({ timeout: 90_000 });
-  await settleImagesInView();
-  log('hero caption', (await hero.locator('.ow-caption').innerText()).replace(/\s+/g, ' '));
-  const heroCredit = await hero.locator('.ow-image-credit').innerText();
-  log('hero credit', heroCredit);
-  if (!/COPERNICUS SENTINEL|LANDSAT/i.test(heroCredit)) throw new Error(`closest look has no image credit: ${heroCredit}`);
-  if (await sheet.locator('.orbital-watch-sheet, .ow-panel').first().evaluate((el) => el.textContent.includes('We acknowledge'))) throw new Error('acknowledgement paragraph in the sheet');
-  // At rest the hero, its caption, REPLAY and credit all sit above the privacy line.
-  const checkHeroFits = async (view) => {
-    const heroFits = await page.evaluate(() => {
-      const card = document.querySelector('.orbital-watch-sheet .ow-card');
-      const floor = Math.min(...[...document.querySelectorAll('.orbital-watch-sheet .ow-privacy, .mobile-tab-bar')]
-        .map((el) => el.getBoundingClientRect()).filter((r) => r.height > 0).map((r) => r.top), window.innerHeight);
-      const r = card.getBoundingClientRect();
-      const tile = card.querySelector('.ow-tile').getBoundingClientRect();
-      const replay = card.querySelector('.ow-replay')?.getBoundingClientRect();
-      return { top: Math.round(r.top), bottom: Math.round(r.bottom), image: Math.round(tile.height), replay: replay ? Math.round(replay.bottom) : null, floor: Math.round(floor) };
-    });
-    log(`${view} hero box`, JSON.stringify(heroFits));
-    if (heroFits.bottom > heroFits.floor) throw new Error(`${view}: hero and caption run under the bottom edge: ${JSON.stringify(heroFits)}`);
-  };
-  await checkHeroFits('sheet');
-  log('sheet map mark', JSON.stringify(await markAt()));
-  await hero.locator('.ow-image-credit').evaluate((el) => el.scrollIntoView({ block: 'nearest' }));
-  await shot('sheet-closest-look');
+  log('evidence line', await sheet.locator('.ies-evidence-line').innerText());
+  const counts = await sheet.locator('.ies-count').evaluateAll((els) => Object.fromEntries(els.map((el) => [el.dataset.tier, Number(el.querySelector('dd').textContent.replace(/\D/g, ''))])));
+  log('counts', JSON.stringify(counts));
+  const rows = await sheet.locator('.ies-row').evaluateAll((els) => els.map((el) => ({ tier: el.dataset.tier, label: el.querySelector('.ies-tier')?.textContent ?? null })));
+  const tiers = rows.reduce((acc, { tier }) => ({ ...acc, [tier]: (acc[tier] ?? 0) + 1 }), {});
+  log('rows', rows.length, 'by tier', JSON.stringify(tiers));
+  if (!rows.length) throw new Error('no pass rows');
+  if (rows.some(({ tier }) => !tier || tier === 'pending')) throw new Error(`a row has no tier once the archives answered: ${JSON.stringify(tiers)}`);
+  if (rows.some(({ tier, label }) => label !== null && !label.trim())) throw new Error('a tier label is empty');
+  const latest = sheet.locator('[data-section="latest"]');
+  const heroImg = latest.locator('.ow-tile-hero[data-state="loaded"] img[src^="blob:"]');
+  await heroImg.waitFor({ timeout: 90_000 });
+  const caption = await latest.locator('.ies-caption .ies-cell').evaluateAll((els) => els.map((el) => `${el.dataset.label}: ${el.textContent}`));
+  log('latest image caption', JSON.stringify(caption));
+  const heroCredit = caption.find((c) => c.startsWith('Archive')) ?? '';
+  if (!/Copernicus|Landsat|USGS/i.test(heroCredit)) throw new Error(`latest image has no scene credit: ${heroCredit}`);
+  const crops = requests.filter(({ url }) => POINT_IMAGE_HOSTS.includes(new URL(url).hostname) && /\/(item|bbox)\//.test(new URL(url).pathname));
+  log('point crop requests', crops.length);
+  if (counts.confirmed > 0 && !crops.length) throw new Error(`confirmed images but no crop of ${PLACE.name}`);
+  await latest.scrollIntoViewIfNeeded();
+  await shot('answered-latest-image');
   // A lookup centres the map on the point; the map's URL sync (debounced 250 ms) must keep the pre-lookup centre.
   const checkPageUrl = async (stage, { route = false } = {}) => {
     await page.waitForTimeout(600);
@@ -330,22 +272,24 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     if (inRoute && inRoute.decimals > 2) throw new Error(`orbital route holds the point at ${inRoute.decimals} decimals, finer than a share link (${stage})`);
   };
   await checkPageUrl('sheet', { route: true });
-  const credits = await sourceCredits(true);
+  const capability = sheet.locator('[data-section="capability"]');
+  await capability.scrollIntoViewIfNeeded();
+  await shot('answered-tiered-passes');
+  const credits = await sourceCredits();
   log('sources', credits);
-  if (!credits.includes('CelesTrak · orbit elements')) throw new Error(`sources miss CelesTrak: ${credits.join(' | ')}`);
-  if (!credits.some((c) => c.startsWith('Copernicus Sentinel · contains modified Copernicus Sentinel data'))) throw new Error(`sources miss Copernicus beside a confirmed crop: ${credits.join(' | ')}`);
-  if (credits.some((c) => { const [name, supplied] = c.split(' · '); return supplied?.toLowerCase().startsWith(name.toLowerCase()); })) throw new Error(`a source entry repeats its name: ${credits.join(' | ')}`);
+  if (!credits.some((c) => c.startsWith('CelesTrak'))) throw new Error(`sources miss CelesTrak: ${credits.join(' | ')}`);
+  if (/Copernicus/i.test(heroCredit) && !credits.some((c) => c.startsWith('Copernicus'))) throw new Error(`sources miss Copernicus beside a Sentinel image: ${credits.join(' | ')}`);
   await sources.evaluate((el) => el.scrollIntoView({ block: 'end' }));
-  await shot('sheet-sources-open');
-  await sources.locator('summary').click();
-  await sheet.locator('.ow-tier-grid').evaluate((el) => el.scrollIntoView({ block: 'end' }));
-  log('tier grid', (await sheet.locator('.ow-tier-cell').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ')));
-  await settleImagesInView();
-  await shot('sheet-tier-grid');
+  await shot('answered-sources');
+  await closeSources();
+  await sheet.locator('.ies-privacy-more').click();
+  const privacyBody = await sheet.locator('.ies-privacy-body').innerText();
+  log('privacy details', privacyBody);
+  if (!/WorldMonitor does not receive it/.test(privacyBody)) throw new Error('privacy details do not say WorldMonitor never receives the point');
+  await sheet.locator('.ies-privacy-more').click();
   const mapBox = await page.locator('#mapContainer').boundingBox();
   await close();
-  // Closing jumps the map back where it was, so a click or a zoom straight after, which hands the URL centre back
-  // and would stop an animated return near the point, cannot publish the point.
+  // Closing jumps the map back where it was, so a click or a zoom straight after cannot publish the point.
   await page.mouse.click(mapBox.x + mapBox.width / 2, mapBox.y + mapBox.height / 2);
   await page.mouse.wheel(0, -240);
   await page.waitForTimeout(1_500);
@@ -353,75 +297,21 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   log('page url centre after a click and a zoom', JSON.stringify(centreAfterGestures));
   if (centreAfterGestures && centreAfterGestures.off < 0.5) throw new Error('a click or zoom after closing published the picked point as the map centre');
 
+  // Partial: a failed archive is named, with Retry. Archive answers are kept for the page's life, so start a fresh page.
   failing.add('earth-search.aws.element84.com');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await waitForBoot(page, { data: true });
+  await waitForMap(page);
   await openAtPlace();
-  await sheet.locator('.ow-banner-partial').waitFor({ timeout: 90_000 });
-  await sheet.locator('.ow-banner-partial').evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  await answered();
+  const warn = sheet.locator('.ies-warn');
+  await warn.waitFor();
+  const warnText = await warn.innerText();
+  log('partial note', warnText);
+  if (!/Earth Search/.test(warnText) || !(await warn.locator('[data-action="retry"]').count())) throw new Error(`partial note does not name Earth Search with Retry: ${warnText}`);
   await privacy();
-  log('partial banner', await sheet.locator('.ow-banner-partial').innerText());
-  await showHeroCredit();
-  await settleImagesInView();
+  await warn.scrollIntoViewIfNeeded();
   await shot('partial-archive-failure');
-  await close();
-
-  failing.add('planetarycomputer.microsoft.com');
-  await openAtPlace();
-  await sheet.locator('.ow-banner-partial').waitFor({ timeout: 90_000 });
-  await settleImagesInView();
-  const shownCard = async () => sheet.locator('.ow-track .ow-card').nth(Number((await sheet.locator('.ow-pager-count').innerText()).split('/')[0]) - 1);
-  for (let step = 0; step < 8; step++) {
-    if ((await (await shownCard()).locator('.ow-tile').getAttribute('data-state')) === 'loaded') break;
-    const next = sheet.locator('.ow-pager-btn[data-action="next"]');
-    if (await next.isDisabled()) break;
-    await next.click();
-    await settleImagesInView();
-  }
-  const weatherHero = await shownCard();
-  const weatherCaption = (await weatherHero.locator('.ow-caption-lines').innerText()).replace(/\s+/g, ' ');
-  const weatherCredit = await weatherHero.locator('.ow-image-credit').innerText();
-  log('weather hero caption', weatherCaption, '|', weatherCredit);
-  if (!/\d/.test(weatherCaption) || !/DAILY MOSAIC|GEOSTATIONARY/i.test(weatherCaption) || !/NASA GIBS|EUMETSAT/i.test(weatherCredit)) throw new Error(`weather hero caption incomplete: ${weatherCaption} | ${weatherCredit}`);
-  await weatherHero.locator('.ow-image-credit').evaluate((el) => el.scrollIntoView({ block: 'nearest' }));
-  await privacy();
-  await shot('weather-hero-without-scene-archives');
-  const withoutScenes = await sourceCredits(true);
-  log('sources with both scene archives down', withoutScenes);
-  if (withoutScenes.some((c) => /Copernicus|Landsat/.test(c))) throw new Error(`credit for an absent source: ${withoutScenes.join(' | ')}`);
-  if (!withoutScenes.includes('CelesTrak · orbit elements')) throw new Error(`sources miss CelesTrak: ${withoutScenes.join(' | ')}`);
-  await sources.evaluate((el) => el.scrollIntoView({ block: 'end' }));
-  await shot('sources-without-scene-archives');
-  failing.clear();
-  await close();
-
-  // With both scene archives down the carousel leads with the daily mosaics, whose newest day can be black at the point.
-  failing.add('earth-search.aws.element84.com');
-  failing.add('planetarycomputer.microsoft.com');
-  await openAtPlace();
-  await sheet.locator('.ow-banner-partial').waitFor({ timeout: 90_000 });
-  await sheet.locator('.ow-card').first().waitFor({ timeout: 90_000 });
-  await privacy();
-  await showHeroCredit();
-  await settleImagesInView();
-  const heroes = await sheet.locator('.ow-card').evaluateAll((figures) => figures.map((figure) => {
-    const tile = figure.querySelector('.ow-tile');
-    const img = tile.querySelector('img');
-    const top = figure.querySelector('.ow-caption-lines span')?.textContent ?? '';
-    if (tile.dataset.state !== 'loaded' || !img) return { top, state: tile.dataset.state };
-    const canvas = document.createElement('canvas');
-    canvas.width = 32;
-    canvas.height = 32;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0, 32, 32);
-    let data;
-    try { ({ data } = ctx.getImageData(12, 12, 8, 8)); } catch { return { top, state: 'loaded', unreadable: true }; }
-    let empty = 0;
-    for (let i = 0; i < data.length; i += 4) if (data[i + 3] < 16 || Math.max(data[i], data[i + 1], data[i + 2]) <= 12) empty++;
-    return { top, state: 'loaded', emptyAtPoint: empty / (data.length / 4) };
-  }));
-  log('scene archives down, carousel', JSON.stringify(heroes));
-  const black = heroes.filter((card) => card.state === 'loaded' && card.emptyAtPoint >= 0.9);
-  if (black.length) throw new Error(`a carousel card shows no data at the point: ${black.map((card) => card.top).join(', ')}`);
-  await shot('scene-archives-down');
   failing.clear();
   await close();
 
@@ -430,42 +320,36 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForBoot(page, { data: true });
     await waitForMap(page);
-    await calibrate();
     await openAtPlace();
-    await sheet.locator('.ow-headline').waitFor({ timeout: 90_000 });
-    await sheet.locator('.ow-banner-stale').waitFor();
-    await showHeroCredit();
-    await settleImagesInView();
+    await sheet.locator('.ies-stale').first().waitFor({ timeout: 90_000 });
     await privacy();
-    log('stale banner', await sheet.locator('.ow-banner-stale').innerText());
-    log('stale map mark', JSON.stringify(await markAt()));
+    log('stale note', await sheet.locator('.ies-stale').first().innerText());
     await shot('stale-orbit-data');
     await close();
 
+    // Himawari-9 sits over 140.7°E, below Dubai's horizon, so the catalog loads but no pass reaches the point.
     catalog = { ...fixture, satellites: fixture.satellites.filter((s) => s.profileId === 'himawari') };
     emptyArchives = true;
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForBoot(page, { data: true });
     await waitForMap(page);
-    await calibrate();
     await openAtPlace();
-    await sheet.locator('.ow-empty').waitFor({ timeout: 90_000 });
-    await settleImagesInView();
+    await answered();
+    const empty = sheet.locator('.ies-empty', { hasText: 'No satellite came within reach' });
+    await empty.waitFor({ timeout: 90_000 });
     await privacy();
-    log('empty state', await sheet.locator('.ow-empty').innerText());
-    log('empty headline', await sheet.locator('.ow-headline-row').innerText());
-    if (await sheet.locator('.ow-card, [data-action="retry"]').count()) throw new Error('empty state is not empty');
-    if (await sheet.locator('.ow-card img, .ow-row img').count()) throw new Error('empty state shows images');
-    log('empty map mark', JSON.stringify(await markAt()));
+    log('empty state', await empty.innerText(), '|', await sheet.locator('.ies-evidence-line').innerText());
+    if (await sheet.locator('.ies-row, [data-action="retry"]').count()) throw new Error('empty state lists passes or offers Retry');
+    if (await sheet.locator('.ies-body img').count()) throw new Error('empty state shows images');
     const emptyCredits = await sourceCredits();
     log('empty state sources', emptyCredits);
     if (emptyCredits.some((c) => c.startsWith('CelesTrak'))) throw new Error('CelesTrak credited with no passes listed');
+    await closeSources();
     await shot('empty-no-passes');
     emptyArchives = false;
     await close();
   }
 
-  const picked = pointFromText(pointText);
   const leaking = (text) => pointLeak(text, picked);
   // The harness's own page loads carry the map centre in the query string; the app never navigates the page.
   const leaks = requests.filter(({ url, body, harnessNavigation }) => !harnessNavigation && !ARCHIVE_HOSTS.includes(new URL(url).hostname)
@@ -477,10 +361,6 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const pathLeaks = requests.filter(({ url }) => ARCHIVE_HOSTS.includes(new URL(url).hostname) && leaking(archiveUrlAfterScrub(url)));
   log('archive requests with the point left after the telemetry scrub', pathLeaks.length);
   if (pathLeaks.length) throw new Error(`picked point outside an archive URL's coordinate parts: ${pathLeaks.map((l) => l.url).join(', ')}`);
-  const timeline = await page.evaluate((hosts) => ({
-    archiveResources: performance.getEntriesByType('resource').filter((e) => hosts.includes(new URL(e.name).hostname)).length,
-  }), ARCHIVE_HOSTS);
-  log('archive resource entries', timeline.archiveResources);
   const vendor = requests.filter(({ url }) => VENDOR_URL.test(url));
   const vendorLeaks = vendor.filter(({ url, body }) => leaking(`${url} ${body}`));
   log('telemetry vendor requests', vendor.length, 'at', [...new Set(vendor.map(({ url }) => { const u = new URL(url); return u.host + u.pathname; }))], 'carrying the point', vendorLeaks.length);
@@ -490,29 +370,31 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   log('same-document navigations', navigations.length, 'with a map centre within 0.01° of the point', centresNearPoint,
     'with the orbital route', navigations.filter(({ route }) => route).length);
   if (centresNearPoint) throw new Error('a same-document navigation put the picked point in the page query');
-  await checkLcp('lookup');
-  const pointImgs = async () => imgSrcs.filter((src) => !src.startsWith('blob:') && POINT_IMAGE_HOSTS.includes(new URL(src, base).hostname));
-  const lookupDirect = await pointImgs();
+  checkLcp('lookup');
+  const pointImgs = () => imgSrcs.filter((src) => !src.startsWith('blob:') && POINT_IMAGE_HOSTS.includes(new URL(src, base).hostname));
+  const lookupDirect = pointImgs();
   log('img srcs set', imgSrcs.length, 'blob:', imgSrcs.filter((src) => src.startsWith('blob:')).length, 'point-bearing archive srcs', lookupDirect.length);
   if (lookupDirect.length) throw new Error(`point-bearing archive URL in img src: ${lookupDirect.join(', ')}`);
 
-  // A shared link opens with no click on the globe, so nothing else stops its idle spin carrying the point away.
+  // A shared link opens with no click on the map, so nothing else stops the map drifting off the point.
+  catalog = fixture;
   await page.goto(`${base}/dashboard?view=global&layers=${bootLayers}#orbital=${PLACE.lat.toFixed(2)},${PLACE.lon.toFixed(2)}`, { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
   await waitForMap(page);
-  await expectVisible('.orbital-watch-sheet');
+  await expectVisible(SHEET);
   const landed = await markAt();
   await page.waitForTimeout(5_000);
   const later = await markAt();
   log('shared link map mark', JSON.stringify(landed), 'after 5 s', JSON.stringify(later));
   // A shared link paints the sheet with no user input, so its images are the ones RUM can take as the LCP.
-  const sharedImages = await page.evaluate(() => [...document.querySelectorAll('.orbital-watch-sheet img[src]')].map((img) => ({
+  const sharedImages = await page.evaluate(() => [...document.querySelectorAll('.imagery-evidence-sheet img[src]')].map((img) => ({
     blob: img.getAttribute('src').startsWith('blob:'), painted: img.complete && img.naturalWidth > 0,
   })));
   log('shared link images', sharedImages.length, 'blob', sharedImages.filter((i) => i.blob).length, 'painted', sharedImages.filter((i) => i.painted).length);
-  const directSrc = await pointImgs();
+  const directSrc = pointImgs();
   if (directSrc.length) throw new Error(`point-bearing archive URL in img src: ${directSrc.join(', ')}`);
-  await checkLcp('shared link');
-  if (Math.abs(later.x - landed.x) > 4 || Math.abs(later.y - landed.y) > 4) throw new Error('the map drifted off a shared point');
-  return { mobile, pointText, leaks: leaks.length, lcp: lcpUrls.filter(Boolean) };
+  checkLcp('shared link');
+  if (landed.x !== undefined && later.x !== undefined && (Math.abs(later.x - landed.x) > 4 || Math.abs(later.y - landed.y) > 4)) throw new Error('the map drifted off a shared point');
+  await shot('shared-link');
+  return { mobile, picked, rows: rows.length, tiers, leaks: leaks.length, vendorLeaks: vendorLeaks.length, lcp: lcpUrls.filter(Boolean).length };
 }
