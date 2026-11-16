@@ -19,7 +19,8 @@ const VENDOR_URL = /sentry|umami|\/_vercel\/insights|debugbear|dbbrum/i;
 const SHEET = '.imagery-evidence-sheet';
 const START = { lat: -15, lon: 80, zoom: 4 };
 const isSearch = (url) => ['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com'].includes(new URL(url).hostname) && new URL(url).pathname.endsWith('/search');
-const unsafeSrcs = (srcs) => srcs.filter((src) => !src.startsWith('blob:') && /^https?:/.test(src) && POINT_IMAGE_HOSTS.includes(new URL(src).hostname));
+// Sheet and viewer srcs that are neither a blob: nor a scene-wide archive preview: a point-bearing or off-allowlist URL.
+const unsafeSrcs = (srcs) => srcs.filter((src) => /^https?:/.test(src) && (POINT_IMAGE_HOSTS.includes(new URL(src).hostname) || !ARCHIVE_HOSTS.includes(new URL(src).hostname)));
 
 export default async function ({ page, base, shot, log, expectVisible }) {
   const mobile = process.env.WM_VERIFY_ORBITAL_VIEWPORT === 'mobile';
@@ -42,7 +43,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     new MutationObserver((records) => {
       for (const record of records) {
         const nodes = record.type === 'attributes' ? [record.target] : [...record.addedNodes].flatMap((n) => (n.nodeType === 1 ? [n, ...n.querySelectorAll('img')] : []));
-        for (const node of nodes) if (node.tagName === 'IMG' && node.getAttribute('src')) window.__wmRecordSrc(node.getAttribute('src'));
+        for (const node of nodes) if (node.tagName === 'IMG' && node.getAttribute('src') && node.closest('.imagery-evidence-sheet, .oiv-dialog')) window.__wmRecordSrc(node.getAttribute('src'));
       }
     }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['src'] });
     // MapContainer refuses deck.gl on a software GL renderer, and this VM only has SwiftShader.
@@ -180,7 +181,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const vendorLeaks = requests.filter(({ url, body }) => VENDOR_URL.test(url) && leaking(`${url} ${body}`));
   if (vendorLeaks.length) throw new Error(`the point in a telemetry payload: ${vendorLeaks.map((l) => l.url).join(', ')}`);
   const direct = unsafeSrcs(imgSrcs);
-  log('img srcs', imgSrcs.length, 'blob:', imgSrcs.filter((s) => s.startsWith('blob:')).length, 'point-bearing archive srcs', direct.length);
+  log('img srcs', imgSrcs.length, 'blob:', imgSrcs.filter((s) => s.startsWith('blob:')).length, 'point-bearing or off-allowlist srcs', direct.length);
   if (direct.length) throw new Error(`a point-bearing archive URL in an img src: ${direct.join(', ')}`);
   const lcpArchive = lcpUrls.filter((url) => url && !url.startsWith('blob:') && ARCHIVE_HOSTS.includes(new URL(url).hostname));
   if (lcpArchive.length) throw new Error(`an archive URL became the LCP element: ${lcpArchive.join(', ')}`);

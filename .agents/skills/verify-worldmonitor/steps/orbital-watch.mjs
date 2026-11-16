@@ -17,6 +17,7 @@ import { seedProfile, waitForBoot, waitForMap } from './_profile.mjs';
 // The archives whose image URLs carry the box around the point; the page must paint those from blob: URLs.
 const POINT_IMAGE_HOSTS = ['planetarycomputer.microsoft.com', 'gibs.earthdata.nasa.gov', 'view.eumetsat.int'];
 const ARCHIVE_HOSTS = ['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com', 'gibs.earthdata.nasa.gov', 'view.eumetsat.int'];
+const PREVIEW_HOSTS = [...ARCHIVE_HOSTS, 'sentinel-cogs.s3.us-west-2.amazonaws.com', 'sentinel-s1-l1c.s3.amazonaws.com'];
 const CATALOG_PATH = '/api/orbital/v1/list-imaging-satellites';
 const HOUR = 3_600_000;
 // A share link keeps two decimals, so the route opens exactly this point.
@@ -96,11 +97,11 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     // DebugBear reports the largest paint's URL; `getEntriesByType` returns no LCP entries, so observe them.
     new PerformanceObserver((list) => { for (const entry of list.getEntries()) window.__wmRecordLcp(entry.url); })
       .observe({ type: 'largest-contentful-paint', buffered: true });
-    // Every src an <img> is ever given, so a point-bearing URL painted for a moment is still caught.
+    // Every src a sheet or viewer <img> is ever given, so a point-bearing URL painted for a moment is still caught.
     new MutationObserver((records) => {
       for (const record of records) {
         const nodes = record.type === 'attributes' ? [record.target] : [...record.addedNodes].flatMap((n) => (n.nodeType === 1 ? [n, ...n.querySelectorAll('img')] : []));
-        for (const node of nodes) if (node.tagName === 'IMG' && node.getAttribute('src')) window.__wmRecordSrc(node.getAttribute('src'));
+        for (const node of nodes) if (node.tagName === 'IMG' && node.getAttribute('src') && node.closest('.imagery-evidence-sheet, .oiv-dialog')) window.__wmRecordSrc(node.getAttribute('src'));
       }
     }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['src'] });
   });
@@ -404,9 +405,10 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     'with the orbital route', navigations.filter(({ route }) => route).length);
   if (centresNearPoint) throw new Error('a same-document navigation put the picked point in the page query');
   checkLcp('lookup');
-  const pointImgs = () => imgSrcs.filter((src) => !src.startsWith('blob:') && POINT_IMAGE_HOSTS.includes(new URL(src, base).hostname));
+  // A sheet image is a blob: or a scene-wide archive preview; anything else is point-bearing or off the allowlist.
+  const pointImgs = () => imgSrcs.filter((src) => /^https?:/.test(src) && (POINT_IMAGE_HOSTS.includes(new URL(src).hostname) || !PREVIEW_HOSTS.includes(new URL(src).hostname)));
   const lookupDirect = pointImgs();
-  log('img srcs set', imgSrcs.length, 'blob:', imgSrcs.filter((src) => src.startsWith('blob:')).length, 'point-bearing archive srcs', lookupDirect.length);
+  log('img srcs set', imgSrcs.length, 'blob:', imgSrcs.filter((src) => src.startsWith('blob:')).length, 'point-bearing or off-allowlist srcs', lookupDirect.length);
   if (lookupDirect.length) throw new Error(`point-bearing archive URL in img src: ${lookupDirect.join(', ')}`);
 
   // A shared link opens with no click on the map, so nothing else stops the map drifting off the point.
