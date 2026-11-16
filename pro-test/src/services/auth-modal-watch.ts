@@ -12,6 +12,9 @@ export const AUTH_MODAL_SELECTOR =
 export const AUTH_CODE_STEP_SELECTOR = '.cl-otpCodeField, input[autocomplete="one-time-code"]';
 
 const APPEAR_TIMEOUT_MS = 5_000;
+// Clerk removes the modal and activates the session as separate steps, so a
+// close is judged only after the modal has stayed gone this long.
+export const DISMISS_SETTLE_MS = 750;
 const DEFAULT_MAX_MS = 30 * 60_000;
 
 let stopActive: (() => void) | null = null;
@@ -30,6 +33,7 @@ export function watchAuthModalDismissal(opts: {
   let reachedCodeStep = false;
   let stopped = false;
   const timers: ReturnType<typeof setTimeout>[] = [];
+  let settleTimer: ReturnType<typeof setTimeout> | null = null;
 
   const observer = new MutationObserver(() => check());
   const stop = () => {
@@ -37,6 +41,7 @@ export function watchAuthModalDismissal(opts: {
     stopped = true;
     observer.disconnect();
     for (const timer of timers) clearTimeout(timer);
+    if (settleTimer) clearTimeout(settleTimer);
     window.removeEventListener('pagehide', stop);
     if (stopActive === stop) stopActive = null;
   };
@@ -47,14 +52,24 @@ export function watchAuthModalDismissal(opts: {
       const modalPresent = document.querySelector(AUTH_MODAL_SELECTOR) !== null;
       if (modalPresent) {
         open = true;
+        if (settleTimer) clearTimeout(settleTimer);
+        settleTimer = null;
         if (!reachedCodeStep && document.querySelector(AUTH_CODE_STEP_SELECTOR)) reachedCodeStep = true;
         return;
       }
-      if (!open) return;
-      stop();
-      if (!opts.isSignedIn()) opts.onDismissed({ reachedCodeStep });
+      if (open && !settleTimer) settleTimer = setTimeout(report, DISMISS_SETTLE_MS);
     } catch {
       stop();
+    }
+  }
+
+  function report(): void {
+    if (stopped) return;
+    stop();
+    try {
+      if (!opts.isSignedIn()) opts.onDismissed({ reachedCodeStep });
+    } catch {
+      /* analytics only */
     }
   }
 

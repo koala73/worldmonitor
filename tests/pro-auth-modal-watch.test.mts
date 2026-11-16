@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, it, mock } from 'node:test';
 import { Window } from 'happy-dom';
 
-import { watchAuthModalDismissal } from '../pro-test/src/services/auth-modal-watch.ts';
+import { DISMISS_SETTLE_MS, watchAuthModalDismissal } from '../pro-test/src/services/auth-modal-watch.ts';
 
 let browser: Window;
 const GLOBALS = ['window', 'document', 'MutationObserver'] as const;
@@ -32,6 +32,14 @@ afterEach(async () => {
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
+beforeEach(() => mock.timers.enable({ apis: ['setTimeout'] }));
+
+async function closeModal(modal: HTMLElement): Promise<void> {
+  modal.remove();
+  await settle();
+  mock.timers.tick(DISMISS_SETTLE_MS);
+}
+
 function openModal(withCodeStep = false): HTMLElement {
   const modal = browser.document.createElement('div');
   modal.className = 'cl-modalBackdrop';
@@ -54,10 +62,8 @@ it('reports a close without sign-in once', async () => {
   const calls = watch(() => false);
   const modal = openModal();
   await settle();
-  modal.remove();
-  await settle();
-  openModal().remove();
-  await settle();
+  await closeModal(modal);
+  await closeModal(openModal());
   assert.deepEqual(calls, [{ reachedCodeStep: false }]);
 });
 
@@ -65,19 +71,16 @@ it('reports nothing when the modal closes after a sign-in', async () => {
   const calls = watch(() => true);
   const modal = openModal();
   await settle();
-  modal.remove();
-  await settle();
+  await closeModal(modal);
   assert.deepEqual(calls, []);
 });
 
 it('stops without a report when the modal never appears', async () => {
-  mock.timers.enable({ apis: ['setTimeout'] });
   const calls = watch(() => false);
   mock.timers.tick(5_000);
   const modal = openModal();
   await settle();
-  modal.remove();
-  await settle();
+  await closeModal(modal);
   assert.deepEqual(calls, []);
 });
 
@@ -89,19 +92,16 @@ it('records that the email-code step was reached', async () => {
   code.setAttribute('autocomplete', 'one-time-code');
   modal.appendChild(code as unknown as Node);
   await settle();
-  modal.remove();
-  await settle();
+  await closeModal(modal);
   assert.deepEqual(calls, [{ reachedCodeStep: true }]);
 });
 
 it('disconnects after maxMs', async () => {
-  mock.timers.enable({ apis: ['setTimeout'] });
   const calls = watch(() => false, 1_000);
   const modal = openModal(true);
   await settle();
   mock.timers.tick(1_000);
-  modal.remove();
-  await settle();
+  await closeModal(modal);
   assert.deepEqual(calls, []);
 });
 
@@ -111,8 +111,33 @@ it('stops the previous watcher when a new one starts', async () => {
   await settle();
   const second = watch(() => false);
   await settle();
-  modal.remove();
-  await settle();
+  await closeModal(modal);
   assert.deepEqual(first, []);
   assert.deepEqual(second, [{ reachedCodeStep: false }]);
+});
+
+it('reports nothing when the session activates just after the modal closes', async () => {
+  let signedIn = false;
+  const calls = watch(() => signedIn);
+  const modal = openModal(true);
+  await settle();
+  modal.remove();
+  await settle();
+  signedIn = true;
+  mock.timers.tick(DISMISS_SETTLE_MS);
+  assert.deepEqual(calls, []);
+});
+
+it('treats a modal remount within the settle window as still open', async () => {
+  const calls = watch(() => false);
+  const first = openModal();
+  await settle();
+  first.remove();
+  await settle();
+  const second = openModal(true);
+  await settle();
+  mock.timers.tick(DISMISS_SETTLE_MS);
+  assert.deepEqual(calls, []);
+  await closeModal(second);
+  assert.deepEqual(calls, [{ reachedCodeStep: true }]);
 });
