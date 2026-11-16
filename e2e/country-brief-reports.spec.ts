@@ -33,7 +33,10 @@ for (const action of ['Create story', 'Decision brief']) {
 // Split from country-brief.spec.ts so the CI smoke shards can balance: that
 // file alone was 387 of shard 1's 390 test-seconds. Same fixture, same
 // recording policy.
-const recording = process.env.CI ? 'on-first-retry' : 'retain-on-failure';
+// Recording every test was most of this file's runtime (#8347), so CI records
+// nothing and a failure leaves its error, screenshot and evidence files.
+// Locally, failures keep a trace and video.
+const recording = process.env.CI ? 'off' : 'retain-on-failure';
 test.use({ trace: recording, video: recording, serviceWorkers: 'block' });
 for (const mobile of [false, true]) {
   test(`operational worksheet ${mobile ? 'mobile' : 'desktop'} edits day 8/day 10 and imports actual downloads`, async ({ page, countryBrief }, testInfo) => {

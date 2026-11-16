@@ -1157,11 +1157,11 @@ jobs:
             sample_memory >> "$DIAGNOSTICS_DIR/memory-samples.log"
             mkdir -p test-results/browser-loss
             cp "$DIAGNOSTICS_DIR/"*.log test-results/browser-loss/
-            # A browser crash is not a flake. With retries at 1 a single crash
-            # is absorbed and the job reports `flaky`, which is how these went
-            # unnoticed from #5685 until #8447. Report every crash whatever the
-            # job outcome, and do not change the exit code while the rate is
-            # still around one crash per run.
+            # A browser crash is not a flake. While CI retried once, a single
+            # crash was absorbed and the job reported `flaky`, which is how
+            # these went unnoticed from #5685 until #8447. Playwright no longer
+            # retries, so a crash fails its test; this step still names the
+            # cause, and leaves the exit code to Playwright.
             CRASHES=$(grep -ac "signal=SIGTRAP" "$DIAGNOSTICS_DIR/playwright.log" 2>/dev/null || true)
             if [ "${CRASHES:-0}" -gt 0 ]; then
               echo "::error title=Browser crashed::chrome-headless-shell exited with SIGTRAP ${CRASHES} time(s) on ci-smoke shard ${{ matrix.shard }}. A green job does not mean no crash. See the browser-loss artifact."
@@ -1205,7 +1205,7 @@ jobs:
     # server and Chrome, and more workers did not shorten it (bench run
     # 40097331565), so the gates moved off its path instead. Both parts keep the
     # full setup: each builds /pro (the legacy WebMCP tests load
-    # /pro/welcome.html) and a retry records video with Playwright's ffmpeg.
+    # /pro/welcome.html).
     #
     # The plugin parts run the MCP Apps view specs (news and country views) on
     # the built views in dist/plugin. No other job ran them, so a change could

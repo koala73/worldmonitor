@@ -216,8 +216,6 @@ const prepareVisualScenario = async (
 };
 
 test.describe('DeckGL map harness', () => {
-  test.describe.configure({ retries: 1 });
-
   test('serves requested runtime variant for this test run', async ({ page }) => {
     await waitForHarnessReady(page);
 
