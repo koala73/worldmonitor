@@ -239,10 +239,12 @@ async function executeDashboardToolObserved(
   name: string,
   input: Record<string, unknown>,
 ): Promise<{ output: unknown; targetCancellationSupported: boolean }> {
-  // switch_monitor may call location.reload()/assign before executeTool's
-  // promise settles back through Playwright's bridge. Persist the observation
-  // in sessionStorage (survives same-origin reload) so a destroyed evaluate
-  // context is recoverable from the next document instead of racing sleeps.
+  // switch_monitor calls location.reload() before it returns. Chrome hands
+  // the result back to executeTool in a later task, and when the reload
+  // commits first the old document never receives it. The recorder from
+  // installToolResultRecorder writes the observation from inside the tool
+  // callback instead, in the same task as the reload, so the next document
+  // can read it from sessionStorage (which survives a same-origin reload).
   const storageKey = `__wmWebMcpObserved:${name}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
 
   type ObservedToolResult = { output: unknown; targetCancellationSupported: boolean };
@@ -276,6 +278,7 @@ async function executeDashboardToolObserved(
       }
       const tool = (await provider.getTools()).find((candidate) => candidate.name === toolName);
       if (!tool) throw new Error(`${toolName} was not discovered.`);
+      sessionStorage.setItem(`__wmWebMcpObserve:${toolName}`, key);
       const raw = await window.__wmExecuteWebMcpTool(provider, tool, payload);
       let output: unknown = raw;
       if (typeof raw === 'string') {
@@ -304,21 +307,12 @@ async function executeDashboardToolObserved(
           `missing targetCancellationSupported mark for ${toolName}; install the LCP debug recorder before navigation`,
         );
       }
-      const observed = { output, targetCancellationSupported: supported };
-      try {
-        sessionStorage.setItem(key, JSON.stringify(observed));
-      } catch {
-        // Private mode / quota: return path may still win the race.
-      }
-      return observed;
+      return { output, targetCancellationSupported: supported };
     }, { toolName: name, payload: input, storageKey });
-    await page.evaluate((key) => {
-      try {
-        sessionStorage.removeItem(key);
-      } catch {
-        /* ignore */
-      }
-    }, storageKey).catch(() => undefined);
+    await page.evaluate(({ key, toolName }) => {
+      sessionStorage.removeItem(key);
+      sessionStorage.removeItem(`__wmWebMcpObserve:${toolName}`);
+    }, { key: storageKey, toolName: name });
     return result;
   } catch (error) {
     if (!isEvaluateNavigationDestroyedError(error)) throw error;
@@ -347,6 +341,39 @@ async function executeDashboardToolObserved(
 
 async function installReadinessRecorder(page: Page): Promise<void> {
   await page.addInitScript(() => localStorage.setItem('wm_lcp_debug', '1'));
+}
+
+// Wraps each registered tool's callback so that, when the test has armed
+// `__wmWebMcpObserve:<tool>` with a storage key, the callback's own result is
+// saved before it returns. See executeDashboardToolObserved.
+async function installToolResultRecorder(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    type Tool = { name: string; execute: (...args: unknown[]) => unknown };
+    const provider = document.modelContext as unknown as { registerTool?: unknown } | undefined;
+    if (!provider) return;
+    const owner = Object.getPrototypeOf(provider) as { registerTool?: (tool: Tool, ...rest: unknown[]) => unknown };
+    const registerTool = owner.registerTool;
+    if (typeof registerTool !== 'function') return;
+    owner.registerTool = function (tool: Tool, ...rest: unknown[]) {
+      const execute = tool.execute;
+      return registerTool.call(this, {
+        ...tool,
+        async execute(...args: unknown[]) {
+          const output = await execute.apply(this, args);
+          const key = sessionStorage.getItem(`__wmWebMcpObserve:${tool.name}`);
+          const supported = (window as unknown as {
+            __wmLcpDebug?: { getSnapshot?: () => { marks: Array<{ detail?: { targetCancellationSupported?: boolean; tool?: string }; name: string }> } };
+          }).__wmLcpDebug?.getSnapshot?.().marks
+            ?.filter((mark) => mark.name === 'wm:webmcp:tool-start' && mark.detail?.tool === tool.name)
+            .at(-1)?.detail?.targetCancellationSupported;
+          if (key && typeof supported === 'boolean') {
+            sessionStorage.setItem(key, JSON.stringify({ output, targetCancellationSupported: supported }));
+          }
+          return output;
+        },
+      }, ...rest);
+    };
+  });
 }
 
 async function installSignalCapableModelContext(page: Page): Promise<void> {
@@ -1455,6 +1482,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
     test.skip(productionSmoke, 'Must not execute switch_monitor against a production origin.');
     testInfo.setTimeout(120_000);
     await installReadinessRecorder(page);
+    await installToolResultRecorder(page);
     const response = await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
     expect(response).not.toBeNull();
     await expect.poll(async () => page.evaluate(async () => (
