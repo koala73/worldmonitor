@@ -278,7 +278,9 @@ export class OrbitalImageViewer {
       await afterDebugBearRequestWindow(signal);
       result = await this.deps.searchHistory(this.subject.point, profileId, this.subject.nowMs, { signal });
     } catch {
-      return;
+      if (signal.aborted) return;
+      // An unexpected throw would otherwise leave Compare searching forever with no retry.
+      result = { status: 'failed', failure: { archive: archiveHost(this.subject.selected.imageUrl).id, reason: 'invalid-response' } };
     }
     if (signal.aborted) return;
     if (result.status === 'failed') {

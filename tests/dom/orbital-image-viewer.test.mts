@@ -329,6 +329,22 @@ describe('orbital image viewer', () => {
     expect(viewer()!.querySelector('.oiv-slider')).not.toBeNull();
   });
 
+  it('offers a retry instead of searching forever when the history search throws', async () => {
+    const searchHistory = vi.fn(async (): Promise<SceneHistory> => { throw new Error('unexpected'); });
+    open(scene(1, 5), { searchHistory });
+    await settle();
+    showChange();
+    await settle();
+    expect(compareStatus()).not.toBe('Searching 60 days of archive scenes');
+    expect(compareStatus()).toContain('returned an error; older scenes are missing.');
+    searchHistory.mockResolvedValueOnce({ status: 'ok', scenes: [scene(1, 5), scene(40, 3)] });
+    viewer()!.querySelector<HTMLButtonElement>('[data-action="retry-history"]')!.click();
+    await settle();
+    await settle();
+    expect(searchHistory).toHaveBeenCalledTimes(2);
+    expect(viewer()!.querySelector('.oiv-slider')).not.toBeNull();
+  });
+
   it('never renders an image from a host outside the archive allowlist', async () => {
     const selected = scene(1, 5);
     open(selected, { searchHistory: history([selected, scene(40, 3, { imageUrl: 'https://evil.example/x.png' })]) });
