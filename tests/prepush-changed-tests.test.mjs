@@ -119,12 +119,23 @@ function partition(mode, { cwd, changed = CHANGED } = {}) {
   return out.split('\0').filter(Boolean);
 }
 
+// The probe catches a config error and prints it rather than dying on it. On
+// Linux, a tsx child that exits on an uncaught error sometimes deadlocks in
+// exit with its loader thread (futex_wait, 5 in 4000 runs on Node 24.22.2;
+// none in 2400 with the error caught), and the call then sits out the full
+// CHILD_TIMEOUT_MS (CI runs 43812543197, 43737436237).
 function loadDomTestConfig(env = {}) {
   const probe = join(fixtureDir('wm-dom-config-probe-'), 'probe.mts');
   writeFileSync(
     probe,
-    `const m = await import(${JSON.stringify(join(REPO_ROOT, 'vitest.dom.config.mts'))});\n` +
-      'console.log(JSON.stringify(m.default?.test ?? null));\n',
+    'let result;\n' +
+      'try {\n' +
+      `  const m = await import(${JSON.stringify(join(REPO_ROOT, 'vitest.dom.config.mts'))});\n` +
+      '  result = { test: m.default?.test ?? null };\n' +
+      '} catch (error) {\n' +
+      '  result = { error: error instanceof Error ? error.message : String(error) };\n' +
+      '}\n' +
+      'console.log(JSON.stringify(result));\n',
   );
   const childEnv = { ...process.env };
   delete childEnv.VITEST_MAX_THREADS;
@@ -137,7 +148,9 @@ function loadDomTestConfig(env = {}) {
     timeout: CHILD_TIMEOUT_MS,
     killSignal: 'SIGKILL',
   });
-  return JSON.parse(out.trim().split('\n').at(-1));
+  const result = JSON.parse(out.trim().split('\n').at(-1));
+  if ('error' in result) throw new Error(result.error);
+  return result.test;
 }
 
 describe('pre-push changed-test partition', () => {
