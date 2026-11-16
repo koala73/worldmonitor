@@ -312,7 +312,11 @@ async function executeDashboardToolObserved(
     await page.evaluate(({ key, toolName }) => {
       sessionStorage.removeItem(key);
       sessionStorage.removeItem(`__wmWebMcpObserve:${toolName}`);
-    }, { key: storageKey, toolName: name });
+    }, { key: storageKey, toolName: name }).catch((error: unknown) => {
+      // The result is already in hand; a reload that commits during this
+      // cleanup only leaves two unused sessionStorage entries behind.
+      if (!isEvaluateNavigationDestroyedError(error)) throw error;
+    });
     return result;
   } catch (error) {
     if (!isEvaluateNavigationDestroyedError(error)) throw error;
