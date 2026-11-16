@@ -26,7 +26,15 @@ import {
   type DigestMode,
 } from '@/services/notification-channels';
 import { getCurrentClerkUser } from '@/services/clerk';
-import { hasTier } from '@/services/entitlements';
+import {
+  getEntitlementState,
+  getEntitlementVerificationStatus,
+  hasTier,
+  onEntitlementChange,
+  onEntitlementVerificationChange,
+  type EntitlementVerificationStatus,
+} from '@/services/entitlements';
+import { resolveAlertCapabilities } from '../../shared/alert-capabilities';
 import { t } from '@/services/i18n';
 import { getMarketWatchlistEntries } from '@/services/market-watchlist';
 import { SITE_VARIANT } from '@/config/variant';
@@ -273,26 +281,60 @@ function getTelegramBotUsername(): string {
 }
 
 /**
- * Settings → Notifications: channel and alert-rule controls for signed-in Pro
- * users, otherwise an "Upgrade to Pro" prompt that opens the /pro plan picker.
- * `attach` wires the rendered markup and returns its cleanup function.
+ * Settings → Notifications: channel and alert-rule controls for signed-in
+ * users. Free accounts get the free alert ladder (#4273) — critical-only
+ * alerts for up to 3 countries over browser push and email — with every paid
+ * rung rendered locked behind an upgrade CTA; paid accounts keep the full
+ * surface. Signed-out users get a sign-in prompt. The panel re-renders in
+ * place when the entitlement snapshot flips (upgrade mid-session unlocks
+ * live). `attach` wires the rendered markup and returns its cleanup function.
  */
 export function renderNotificationsSettings(host: NotificationsSettingsHost): NotificationsSettingsResult {
-  const isPro = !!host.isSignedIn && hasTier(1);
+  const signedIn = !!host.isSignedIn;
+  // The account this markup is rendered for. The abort-time flush below
+  // re-reads form state from this DOM and would otherwise send it under
+  // whatever Clerk session is current when the panel tears down — and a
+  // direct A -> B multi-session switch re-renders the host, aborting this
+  // panel while its DOM still holds A's values (Strix review, CWE-488).
+  const renderedUserId = getCurrentClerkUser()?.id ?? null;
+  const isPro = signedIn && hasTier(1);
+  // The ladder the panel clamps to (#4273). Mirrors the server's resolver: a
+  // missing entitlement resolves to the free ladder. `null` state alone is
+  // ambiguous, though — a free account, or a paid one whose snapshot is still
+  // hydrating — and clamping during that window would let an early autosave
+  // narrow a paid account's stored scope to the free cap with nothing left to
+  // restore from. While verification is 'pending' or 'unavailable' (the
+  // snapshot never arrived: auth timeout, blocked socket, query error), hold
+  // the loading state; attach below re-renders once a snapshot settles it.
+  // Rendering the free ladder for 'unavailable' let a paid account's next
+  // autosave persist the free clamp (disabled rule, stripped channels, three
+  // countries), which is valid for a paid account and so was accepted.
+  const verificationStatus = signedIn ? getEntitlementVerificationStatus() : 'idle';
+  const entitlementsUnavailable = verificationStatus === 'unavailable';
+  const entitlementsPending = signedIn && (verificationStatus === 'pending' || entitlementsUnavailable);
+  const caps = resolveAlertCapabilities(signedIn ? (getEntitlementState()?.features ?? null) : null);
   const preselectCountry = normalizePreselectCountry(host.preselectCountry);
 
   let html = '';
-  if (isPro) {
+  if (signedIn) {
     html += `<div class="wm-pref-group-content wm-notif-tab-content">`;
-    html += `<div class="us-notif-loading" id="usNotifLoading">Loading...</div>`;
+    if (!isPro && !entitlementsPending) {
+      html += `<div class="us-notif-ladder-banner">`;
+      html += `<div class="us-notif-ladder-banner-text">Free plan: critical alerts for up to ${caps.maxCountries} countries over browser push and email. Pro unlocks Slack, Discord, Telegram, Teams and webhooks, all sensitivities, digests and worldwide scope.</div>`;
+      html += `<button type="button" class="panel-locked-cta us-notif-ladder-cta" data-ladder-upgrade>Upgrade</button>`;
+      html += `</div>`;
+    }
+    html += `<div class="us-notif-loading" id="usNotifLoading">${entitlementsUnavailable
+      ? 'Could not confirm your plan. Notification settings will load once it is confirmed.'
+      : 'Loading...'}</div>`;
     html += `<div class="us-notif-content" id="usNotifContent" style="display:none"></div>`;
     html += `</div>`;
   } else {
     html += `<div class="wm-pref-group-content wm-notif-tab-content panel-locked-state settings-access-gate">`;
     html += `<h3>Intelligence alerts</h3>`;
     html += `<p class="panel-locked-desc">Get alerts in Telegram, Slack, Discord or email. Choose your sensitivity, quiet hours and digest schedule.</p>`;
-    html += `<p class="panel-locked-desc">${host.isSignedIn ? 'Notifications require Pro.' : 'Sign in to configure notifications. Notifications require Pro.'}</p>`;
-    html += `<button type="button" class="panel-locked-cta" id="usNotifUpgradeBtn">${host.isSignedIn ? 'Upgrade to Pro' : 'Sign In'}</button>`;
+    html += `<p class="panel-locked-desc">Sign in to configure notifications. Free accounts get critical alerts for up to 3 countries over browser push and email.</p>`;
+    html += `<button type="button" class="panel-locked-cta" id="usNotifUpgradeBtn">Sign In</button>`;
     html += `</div>`;
   }
 
@@ -301,24 +343,100 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
     attach(container: HTMLElement): () => void {
       const ac = new AbortController();
       const { signal } = ac;
+      // Set by renderNotifContent, read by afterRuleSave (#4273). Declared here so
+      // a synchronous first content render can never hit its TDZ. Stays true
+      // until the conversion's digest write SUCCEEDS, so a failed rule save or
+      // digest write leaves it for a later rule save to retry; the in-flight
+      // flag keeps concurrent rule saves from double-sending the conversion.
+      let legacyDigestPending = false;
+      let legacyDigestConversionInFlight = false;
 
-      if (!isPro) {
+      if (!signedIn) {
         const upgradeBtn = container.querySelector<HTMLButtonElement>('#usNotifUpgradeBtn');
         if (upgradeBtn) {
           upgradeBtn.addEventListener('click', () => {
-            if (!host.isSignedIn) {
-              import('@/services/clerk').then(m => m.openSignIn()).catch(() => {
-                void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
-              });
-              return;
-            }
-            import('@/services/upgrade-flow').then(m => m.openUpgradePlans()).catch(() => {
+            import('@/services/clerk').then(m => m.openSignIn()).catch(() => {
               void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
             });
           }, { signal });
         }
         return () => ac.abort();
       }
+
+      // #4273: the snapshot is still hydrating, so which ladder to render is
+      // not yet known (see the render-time comment above). Keep the loading
+      // state on screen and rebuild once verification settles, through the
+      // same replacement mechanism as the entitlement flip below.
+      if (entitlementsPending) {
+        let replacementCleanup: (() => void) | null = null;
+        // onEntitlementVerificationChange replays the current status
+        // synchronously on subscribe — same let-handle pattern as
+        // onEntitlementFlip below, for the same TDZ reason.
+        let offVerification: (() => void) | null = null;
+        const onVerificationSettled = (status: EntitlementVerificationStatus): void => {
+          // Re-render on any change from the status this render was built
+          // against: pending -> unavailable swaps in the notice, either ->
+          // ready renders the resolved ladder. The synchronous replay of the
+          // same status is a no-op, so 'unavailable' cannot loop.
+          if (status === verificationStatus || replacementCleanup !== null || signal.aborted) return;
+          offVerification?.();
+          ac.abort();
+          const next = renderNotificationsSettings(host);
+          setTrustedHtml(container, trustedHtml(next.html, 'entitlement verification settled re-render (#4273)'));
+          replacementCleanup = next.attach(container);
+        };
+        offVerification = onEntitlementVerificationChange(onVerificationSettled);
+        if (signal.aborted) {
+          offVerification();
+        } else {
+          signal.addEventListener('abort', offVerification);
+        }
+        return () => {
+          ac.abort();
+          if (replacementCleanup) replacementCleanup();
+        };
+      }
+
+      // #4273 live unlock: when the entitlement snapshot flips the paid-ness
+      // this panel was rendered against (checkout completes mid-session, or a
+      // paid snapshot hydrates after a free first paint), tear this render
+      // down and rebuild against the new ladder. The returned cleanup
+      // delegates to the replacement's, so the host's single cleanup handle
+      // stays valid across any number of flips.
+      let replacementCleanup: (() => void) | null = null;
+      // onEntitlementChange replays the current snapshot synchronously on
+      // subscribe, so this handler can run before the subscription returns
+      // (panel rendered against one paid-ness, snapshot flipped before a
+      // deferred attach). Keep the unsubscribe handle in a `let` the handler
+      // reads optionally, and settle the subscription up after it returns —
+      // a `const` self-reference would throw a ReferenceError in that replay.
+      let offEntitlement: (() => void) | null = null;
+      const onEntitlementFlip = (): void => {
+        if (replacementCleanup !== null || signal.aborted) return;
+        if ((signedIn && hasTier(1)) === isPro) return;
+        offEntitlement?.();
+        ac.abort();
+        const next = renderNotificationsSettings(host);
+        setTrustedHtml(container, trustedHtml(next.html, 'entitlement flip re-render (#4273)'));
+        replacementCleanup = next.attach(container);
+      };
+      offEntitlement = onEntitlementChange(onEntitlementFlip);
+      if (signal.aborted) {
+        // The synchronous replay already flipped and replaced this attach:
+        // the abort event fired before a listener could be added, so
+        // unsubscribe directly.
+        offEntitlement();
+      } else {
+        signal.addEventListener('abort', offEntitlement);
+      }
+
+      // Every locked rung routes here — the per-rung CTA is the upsell.
+      container.addEventListener('click', (e) => {
+        if (!(e.target as HTMLElement).closest('[data-ladder-upgrade]')) return;
+        import('@/services/upgrade-flow').then(m => m.openUpgradePlans()).catch(() => {
+          void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
+        });
+      }, { signal });
 
       let notifPollInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -353,6 +471,24 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const disabledNotice = channel?.deliveryFailure?.disabledAt !== undefined && !channel.verified
           ? '<div class="us-notif-ch-sub us-notif-ch-sub-wrap us-notif-ch-sub-warn" role="status">Disabled after repeated delivery failures</div>'
           : '';
+        // #4273: a channel type outside the plan's ladder renders locked
+        // behind the upgrade CTA instead of a Connect button. A row that is
+        // already connected (written while the account was paid) keeps its
+        // connected presentation below so it can be removed — and resumes on
+        // upgrade — but the server clamps its delivery meanwhile.
+        const locked = !caps.channels.has(type);
+        if (locked && !channel?.verified) {
+          return `<div class="us-notif-ch-row us-notif-ch-locked" data-channel-type="${type}">
+            <div class="us-notif-ch-icon">${icon}</div>
+            <div class="us-notif-ch-body">
+              <div class="us-notif-ch-name">${name}</div>${disabledNotice}
+              <div class="us-notif-ch-sub">Available on Pro</div>
+            </div>
+            <div class="us-notif-ch-actions">
+              <button type="button" class="us-notif-ch-btn us-notif-ladder-chip" data-ladder-upgrade>Upgrade</button>
+            </div>
+          </div>`;
+        }
 
         if (type === 'web_push' && webPushState === 'denied') {
           // Push permission is per-BROWSER; the web_push channel record is
@@ -424,6 +560,13 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             if (channel.slackConfigurationUrl) {
               manageLink = `<a href="${escapeHtml(channel.slackConfigurationUrl)}" target="_blank" rel="noopener noreferrer" class="us-notif-manage-link">Manage</a>`;
             }
+          }
+          if (locked) {
+            // "Send test" drives the Teams path the edge denies on this plan
+            // (#4273), so drop it; Remove stays — a downgraded account can
+            // always disconnect a legacy paid channel.
+            manageLink = '';
+            installHint += `<div class="us-notif-ch-sub us-notif-ch-sub-wrap us-notif-ch-sub-warn">Delivery paused on your plan — upgrade to resume.</div>`;
           }
           return `<div class="us-notif-ch-row us-notif-ch-on" data-channel-type="${type}">
             <div class="us-notif-ch-icon">${icon}</div>
@@ -562,6 +705,8 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const channelTypes: ChannelType[] = ['telegram', 'email', 'slack', 'discord', 'teams', 'webhook', 'web_push'];
         const alertRule = data.alertRules?.[0] ?? null;
         const sensitivity = alertRule?.sensitivity ?? 'all';
+        legacyDigestPending = DIGEST_CRON_ENABLED && !caps.digestModes.has('daily')
+          && alertRule !== null && (alertRule.digestMode ?? 'realtime') !== 'realtime';
 
         let html = '<div class="ai-flow-section-label">Channels</div>';
         for (const type of channelTypes) {
@@ -579,10 +724,14 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const aiDigestEnabled = alertRule?.aiDigestEnabled ?? true;
         const chokepointAlertsOn = alertRule?.eventTypes?.includes(CHOKEPOINT_DISRUPTION_EVENT_TYPE) ?? false;
         const chokepointScope = alertRule?.chokepoints ?? [];
-        const orbitalWindowsOn = alertRule?.eventTypes?.includes(ORBITAL_WINDOW_EVENT_TYPE) ?? false;
-        const orbitalChangesOn = alertRule?.eventTypes?.includes(ORBITAL_CHANGE_EVENT_TYPE) ?? false;
+        // #4273: watched-site and reservoir alerts are Pro-only; free renders
+        // their toggles off and disabled whatever a downgraded row stores.
+        const proOnlyLock = isPro ? '' : ' disabled';
+        const proOnlyMark = isPro ? '' : ' (Pro)';
+        const orbitalWindowsOn = isPro && (alertRule?.eventTypes?.includes(ORBITAL_WINDOW_EVENT_TYPE) ?? false);
+        const orbitalChangesOn = isPro && (alertRule?.eventTypes?.includes(ORBITAL_CHANGE_EVENT_TYPE) ?? false);
         const orbitalSites = alertRule?.orbitalSites ?? [];
-        const reservoirAlertOn = alertRule?.eventTypes?.includes(RESERVOIR_ALERT_EVENT_TYPE) ?? false;
+        const reservoirAlertOn = isPro && (alertRule?.eventTypes?.includes(RESERVOIR_ALERT_EVENT_TYPE) ?? false);
         const reservoirSettings: ReservoirAlertSettings = alertRule?.reservoirAlert ?? { reservoirs: [] };
 
         const hourOptions = Array.from({ length: 24 }, (_, h) => {
@@ -621,7 +770,16 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           return list.map(tz => `<option value="${tz}"${tz === current ? ' selected' : ''}>${tz}</option>`).join('');
         };
 
-        const isRealtime = !DIGEST_CRON_ENABLED || digestMode === 'realtime';
+        // #4273 ladder clamps. Digest cadences and non-critical sensitivities
+        // are paid rungs: free renders them disabled with a "(Pro)" marker and
+        // an upgrade CTA, and a legacy digest-mode row presents as realtime
+        // (the write path narrows it on the next save; the relay already
+        // delivers it as critical-realtime).
+        const digestLocked = !caps.digestModes.has('daily');
+        const sensitivityLocked = !caps.sensitivities.has('all');
+        const scopeRequired = caps.requireCountryScope;
+
+        const isRealtime = !DIGEST_CRON_ENABLED || digestLocked || digestMode === 'realtime';
         const sharedTz = isRealtime
           ? (alertRule?.quietHoursTimezone ?? alertRule?.digestTimezone ?? detectedTz)
           : (alertRule?.digestTimezone ?? alertRule?.quietHoursTimezone ?? detectedTz);
@@ -630,10 +788,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           ${!DIGEST_CRON_ENABLED ? '<div class="ai-flow-toggle-desc" style="margin-bottom:4px">Digest delivery is not yet active.</div>' : ''}
           <select class="unified-settings-select" id="usDigestMode" aria-label="Delivery mode"${!DIGEST_CRON_ENABLED ? ' disabled' : ''}>
             <option value="realtime"${isRealtime ? ' selected' : ''}>Real-time (immediate)</option>
-            ${DIGEST_CRON_ENABLED ? `<option value="daily"${digestMode === 'daily' ? ' selected' : ''}>Daily digest</option>
-            <option value="twice_daily"${digestMode === 'twice_daily' ? ' selected' : ''}>Twice daily</option>
-            <option value="weekly"${digestMode === 'weekly' ? ' selected' : ''}>Weekly digest</option>` : ''}
+            ${DIGEST_CRON_ENABLED ? `<option value="daily"${digestLocked ? ' disabled' : ''}${!digestLocked && digestMode === 'daily' ? ' selected' : ''}>Daily digest${digestLocked ? ' (Pro)' : ''}</option>
+            <option value="twice_daily"${digestLocked ? ' disabled' : ''}${!digestLocked && digestMode === 'twice_daily' ? ' selected' : ''}>Twice daily${digestLocked ? ' (Pro)' : ''}</option>
+            <option value="weekly"${digestLocked ? ' disabled' : ''}${!digestLocked && digestMode === 'weekly' ? ' selected' : ''}>Weekly digest${digestLocked ? ' (Pro)' : ''}</option>` : ''}
           </select>
+          ${digestLocked && DIGEST_CRON_ENABLED ? `<div class="ai-flow-toggle-desc" style="margin-top:4px">Digest delivery is available on Pro. <button type="button" class="us-notif-ch-btn us-notif-ladder-chip" data-ladder-upgrade>Upgrade</button></div>` : ''}
           <!--
             Sensitivity lives OUTSIDE usRealtimeSection so digest-mode users can
             see and change it. The 'all' option is disabled when delivery mode is
@@ -642,11 +801,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           -->
           <div class="ai-flow-section-label" style="margin-top:8px">Sensitivity</div>
           <select class="unified-settings-select" id="usNotifSensitivity" aria-label="Notification sensitivity">
-            <option value="all"${isRealtime ? ' disabled' : ''}${sensitivity === 'all' && !isRealtime ? ' selected' : ''}>All events${isRealtime ? ' (digest only)' : ''}</option>
-            <option value="high"${isRealtime ? ' disabled' : ''}${sensitivity === 'high' && !isRealtime ? ' selected' : ''}>High &amp; critical${isRealtime ? ' (digest only)' : ''}</option>
+            <option value="all"${isRealtime || sensitivityLocked ? ' disabled' : ''}${sensitivity === 'all' && !isRealtime ? ' selected' : ''}>All events${sensitivityLocked ? ' (Pro)' : isRealtime ? ' (digest only)' : ''}</option>
+            <option value="high"${isRealtime || sensitivityLocked ? ' disabled' : ''}${sensitivity === 'high' && !isRealtime ? ' selected' : ''}>High &amp; critical${sensitivityLocked ? ' (Pro)' : isRealtime ? ' (digest only)' : ''}</option>
             <option value="critical"${sensitivity === 'critical' || ((sensitivity === 'all' || sensitivity === 'high') && isRealtime) ? ' selected' : ''}>Critical only</option>
           </select>
-          <div class="ai-flow-toggle-desc" id="usSensitivityHint" style="margin-top:4px;${isRealtime ? '' : 'display:none'}">Real-time delivery is for Critical events only. To receive High or All events, switch to a digest cadence.</div>
+          <div class="ai-flow-toggle-desc" id="usSensitivityHint" style="margin-top:4px;${isRealtime ? '' : 'display:none'}">${sensitivityLocked ? 'The free plan alerts on Critical events. Upgrade to Pro for High or All events. ' : 'Real-time delivery is for Critical events only. To receive High or All events, switch to a digest cadence.'}</div>
           <div id="usRealtimeSection" style="${isRealtime ? '' : 'display:none'}">
             <div class="ai-flow-section-label" style="margin-top:8px">Alert Rules</div>
             <div class="ai-flow-toggle-row">
@@ -688,21 +847,21 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             </div>
             <div class="ai-flow-toggle-row">
               <div class="ai-flow-toggle-label-wrap">
-                <div class="ai-flow-toggle-label">Satellite imaging windows</div>
+                <div class="ai-flow-toggle-label">Satellite imaging windows${proOnlyMark}</div>
                 <div class="ai-flow-toggle-desc">Alert when an open optical or radar satellite will image one of your watched sites within 24 hours</div>
               </div>
               <label class="ai-flow-switch">
-                <input type="checkbox" id="usOrbitalWindowAlerts"${orbitalWindowsOn ? ' checked' : ''}>
+                <input type="checkbox" id="usOrbitalWindowAlerts"${orbitalWindowsOn ? ' checked' : ''}${proOnlyLock}>
                 <span class="ai-flow-slider"></span>
               </label>
             </div>
             <div class="ai-flow-toggle-row">
               <div class="ai-flow-toggle-label-wrap">
-                <div class="ai-flow-toggle-label">Confirmed imagery changes</div>
+                <div class="ai-flow-toggle-label">Confirmed imagery changes${proOnlyMark}</div>
                 <div class="ai-flow-toggle-desc">Alert when radar imagery of one of your watched sites changes and a later pass confirms it. Held while change detection is under review.</div>
               </div>
               <label class="ai-flow-switch">
-                <input type="checkbox" id="usOrbitalChangeAlerts"${orbitalChangesOn ? ' checked' : ''}>
+                <input type="checkbox" id="usOrbitalChangeAlerts"${orbitalChangesOn ? ' checked' : ''}${proOnlyLock}>
                 <span class="ai-flow-slider"></span>
               </label>
             </div>
@@ -716,11 +875,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             </div>
             <div class="ai-flow-toggle-row">
               <div class="ai-flow-toggle-label-wrap">
-                <div class="ai-flow-toggle-label">${escapeHtml(t('settings.reservoirAlert.title'))}</div>
+                <div class="ai-flow-toggle-label">${escapeHtml(t('settings.reservoirAlert.title'))}${proOnlyMark}</div>
                 <div class="ai-flow-toggle-desc">${escapeHtml(t('settings.reservoirAlert.description'))}</div>
               </div>
               <label class="ai-flow-switch">
-                <input type="checkbox" id="usReservoirAlerts" aria-label="${escapeHtml(t('settings.reservoirAlert.title'))}"${reservoirAlertOn ? ' checked' : ''}>
+                <input type="checkbox" id="usReservoirAlerts" aria-label="${escapeHtml(t('settings.reservoirAlert.title'))}"${reservoirAlertOn ? ' checked' : ''}${proOnlyLock}>
                 <span class="ai-flow-slider"></span>
               </label>
             </div>
@@ -791,18 +950,21 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             <div id="usTwiceDailyHint" class="ai-flow-toggle-desc" style="margin-top:4px;${digestMode === 'twice_daily' ? '' : 'display:none'}">Also sends at ${((digestHour + 12) % 24) === 0 ? '12 AM' : ((digestHour + 12) % 24) < 12 ? `${(digestHour + 12) % 24} AM` : ((digestHour + 12) % 24) === 12 ? '12 PM' : `${((digestHour + 12) % 24) - 12} PM`}</div>
             <div class="ai-flow-toggle-row" style="margin-top:8px">
               <div class="ai-flow-toggle-label-wrap">
-                <div class="ai-flow-toggle-label">AI executive summary</div>
+                <div class="ai-flow-toggle-label">AI executive summary${caps.aiDigestAccess ? '' : ' (Pro)'}</div>
                 <div class="ai-flow-toggle-desc">Prepend a personalized intelligence brief tailored to your watchlist and interests</div>
               </div>
               <label class="ai-flow-switch">
-                <input type="checkbox" id="usAiDigestEnabled" aria-label="AI executive summary"${aiDigestEnabled ? ' checked' : ''}>
+                <input type="checkbox" id="usAiDigestEnabled" aria-label="AI executive summary"${caps.aiDigestAccess && aiDigestEnabled ? ' checked' : ''}${caps.aiDigestAccess ? '' : ' disabled'}>
                 <span class="ai-flow-slider"></span>
               </label>
             </div>
           </div>
           <div class="ai-flow-section-label" style="margin-top:8px">Country scope</div>
-          <div class="ai-flow-toggle-desc" style="margin-bottom:6px">Restrict alerts to specific countries (ISO-3166 alpha-2). Leave empty to receive alerts from all countries. When set, global alerts without a country (markets, shipping stress) are excluded; breaking-news and chokepoint alerts are still delivered.</div>
+          <div class="ai-flow-toggle-desc" style="margin-bottom:6px">${scopeRequired
+            ? `Pick 1–${caps.maxCountries} countries (ISO-3166 alpha-2) to follow for alerts — the free plan needs an explicit country scope. Worldwide alerts are available on Pro.`
+            : 'Restrict alerts to specific countries (ISO-3166 alpha-2). Leave empty to receive alerts from all countries. When set, global alerts without a country (markets, shipping stress) are excluded; breaking-news and chokepoint alerts are still delivered.'}</div>
           <div id="usNotifCountryPicker"></div>
+          ${scopeRequired ? '<div id="usCountryScopeWarn" class="us-notif-ch-sub-warn us-notif-scope-warn" role="status" hidden>Alerts are paused until you pick at least one country.</div>' : ''}
           <div class="ai-flow-section-label" style="margin-top:8px">Timezone</div>
           <select class="unified-settings-select" id="usSharedTimezone" aria-label="Timezone" style="width:100%">${makeTzOptions(sharedTz)}</select>`;
         return html;
@@ -821,6 +983,13 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       let alertRuleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
       let qhDebounceTimer: ReturnType<typeof setTimeout> | null = null;
       let digestDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+      // The close-time flush target for digestDebounceTimer: hour/timezone
+      // saves flush through sendDigestSettingsNow, a pending delivery-mode
+      // change through its atomic setNotificationConfig closure (flushing the
+      // latter through setDigestSettings would drop the snapped sensitivity
+      // and be rejected as INCOMPATIBLE_DELIVERY for realtime). Set wherever
+      // the timer is armed, cleared when it fires.
+      let digestFlushNow: ((flush?: boolean) => unknown) | null = null;
 
       // Last web-push state actually rendered, so the permission watchers below
       // only re-render when it really changed.
@@ -833,6 +1002,38 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // hits a transient network error is expected and non-fatal — swallow it
       // here so it never reaches window.onunhandledrejection (WORLDMONITOR-SN).
       // Logged for local debugging only; the setting simply isn't persisted.
+      // #4273: a downgraded account's legacy digest row renders as Real-time
+      // (the free ladder has no digests), but set-alert-rules never writes
+      // digestMode, the relay delivers only realtime rows and the digest cron
+      // skips tier 0, so that rule would deliver nothing anywhere. After the
+      // first alert-rule save lands (it narrows sensitivity to critical, the
+      // realtime precondition), write the realtime mode the panel shows.
+      function afterRuleSave<T>(p: Promise<T>, flush = false): Promise<T> {
+        if (!legacyDigestPending || legacyDigestConversionInFlight) return p;
+        legacyDigestConversionInFlight = true;
+        return p.then(
+          (result) => {
+            if (!flush && signal.aborted) {
+              // The panel tore down while this non-flush save was in flight.
+              // Don't dispatch a new write from here: the abort listener owns
+              // the close-time flush, and a post-teardown dispatch could run
+              // under a switched Clerk session (Strix review 17).
+              legacyDigestConversionInFlight = false;
+              return result;
+            }
+            void sendDigestSettingsNow(flush).then(
+              () => { legacyDigestPending = false; },
+              () => { /* keep pending — a later rule save retries the conversion */ },
+            ).then(() => { legacyDigestConversionInFlight = false; });
+            return result;
+          },
+          (err) => {
+            legacyDigestConversionInFlight = false;
+            throw err;
+          },
+        );
+      }
+
       function fireForgetSave(p: Promise<unknown>, label: string): void {
         void p.catch((err) => {
           if (signal.aborted) return;
@@ -907,18 +1108,55 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             }
           }
 
+          // #4273: the free plan requires an explicit 1..maxCountries scope —
+          // the warning below the picker says so the moment it is empty,
+          // before the server's ALERT_COUNTRY_SCOPE_REQUIRED would.
+          const refreshScopeWarn = (): void => {
+            if (!caps.requireCountryScope) return;
+            const warn = contentEl.querySelector<HTMLElement>('#usCountryScopeWarn');
+            if (warn) warn.hidden = (countryPicker?.getValue().length ?? 0) > 0;
+          };
           countryPicker = mountCountryChipPicker(pickerRoot, {
             initial,
             // The section description above already carries the empty-state hint.
             showAllHint: false,
+            // The plan's country rung (#4273): free caps at 3, enforced where
+            // the user clicks instead of as a 402 after the save.
+            max: caps.maxCountries,
+            maxMessage: caps.requireCountryScope
+              ? `Your plan follows up to ${caps.maxCountries} countries for alerts — upgrade to Pro for up to 50.`
+              : undefined,
             onChange: () => {
+              refreshScopeWarn();
               // Debounced save through the existing alertRule pipeline.
               if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
               alertRuleDebounceTimer = setTimeout(() => {
+                alertRuleDebounceTimer = null;
                 saveCurrentAlertRule();
               }, 800);
             },
           });
+          refreshScopeWarn();
+
+          // #4273: a free-account autosave keeps paid channels out of the
+          // stored rule (the server rejects them), so after an upgrade the
+          // stored `channels` can lag the rendered Connected rows and the
+          // relay would keep skipping them. Connected rows ARE the selection
+          // everywhere else in this panel, so on a paid load re-sync once
+          // when a connected row is missing from the stored rule.
+          if (isPro && existingRule) {
+            const storedChannels = new Set(
+              Array.isArray(existingRule.channels) ? existingRule.channels : [],
+            );
+            const connectedNow = Array.from(
+              contentEl.querySelectorAll<HTMLElement>('[data-channel-type]'),
+            )
+              .filter((el) => el.classList.contains('us-notif-ch-on'))
+              .map((el) => el.dataset.channelType as ChannelType);
+            if (connectedNow.some((type) => !storedChannels.has(type))) {
+              saveCurrentAlertRule();
+            }
+          }
         }).catch((err) => {
           if (signal.aborted || generation !== notifReloadGeneration) return;
           requestedWebPushState = null;
@@ -946,12 +1184,12 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         eventTypes: string[];
         sensitivity: 'all' | 'high' | 'critical';
         channels: ChannelType[];
-        aiDigestEnabled: boolean;
+        aiDigestEnabled: boolean | undefined;
         countries: string[] | undefined;
         tickers: string[];
         chokepoints: string[];
-        orbitalSites: string[];
-        reservoirAlert: ReservoirAlertSettings;
+        orbitalSites: string[] | undefined;
+        reservoirAlert: ReservoirAlertSettings | undefined;
       } {
         const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
         const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
@@ -965,7 +1203,12 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           container.querySelectorAll<HTMLElement>('[data-channel-type]'),
         )
           .filter(el => el.classList.contains('us-notif-ch-on'))
-          .map(el => el.dataset.channelType as ChannelType);
+          .map(el => el.dataset.channelType as ChannelType)
+          // #4273: a legacy paid channel row on a free account stays rendered
+          // as connected (it resumes on upgrade — this list derives from the
+          // DOM on every save), but the save payload keeps to the plan's
+          // channel set, or every autosave would be a structured 402.
+          .filter(type => caps.channels.has(type));
         // Picker may be absent during async mount or gated render. In that
         // case send undefined so insert-capable APIs preserve-on-omit instead
         // of accidentally clearing the stored country scope.
@@ -980,10 +1223,15 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         // selected means every chokepoint; OFF clears the scope.
         const chokepointOn = chokepointEl?.checked ?? false;
         // Watched-site alerts: either toggle keeps the site list; both OFF clear it.
-        const orbitalWindowsOn = orbitalWindowsEl?.checked ?? false;
-        const orbitalChangesOn = orbitalChangesEl?.checked ?? false;
+        // #4273: these two families are Pro-only on every writer (a 402
+        // PRO_REQUIRED), so a free save never asks for them, or a downgraded
+        // account with stored toggles could not save anything at all. Their
+        // stored site and reservoir lists are left untouched (omitted below,
+        // preserve-on-omit) so an upgrade gets them back.
+        const orbitalWindowsOn = isPro && (orbitalWindowsEl?.checked ?? false);
+        const orbitalChangesOn = isPro && (orbitalChangesEl?.checked ?? false);
         // Reservoir level alert: the toggle is the opt-in; OFF clears the reservoir list.
-        const reservoirOn = reservoirEl?.checked ?? false;
+        const reservoirOn = isPro && (reservoirEl?.checked ?? false);
         const eventTypes = [
           ...(reservoirOn ? [RESERVOIR_ALERT_EVENT_TYPE] : []),
           ...(watchlistOn ? [WATCHLIST_STORY_EVENT_TYPE] : []),
@@ -991,12 +1239,25 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           ...(orbitalWindowsOn ? [ORBITAL_WINDOW_EVENT_TYPE] : []),
           ...(orbitalChangesOn ? [ORBITAL_CHANGE_EVENT_TYPE] : []),
         ];
+        // #4273: the free rung requires an explicit scope, so an enabled save
+        // with an empty picker would be rejected server-side (ALERT_COUNTRY_
+        // SCOPE_REQUIRED) and silently leave the OLD stored scope delivering
+        // while the panel says "alerts are paused". Persist the pause instead:
+        // a disabled rule with countries [] passes the gate, and picking a
+        // country re-enables because the toggle still reads on.
+        const scopeEmptyOnFreePlan = caps.requireCountryScope
+          && alertRuleCountries !== undefined
+          && alertRuleCountries.length === 0;
         return {
-          enabled: enabledEl?.checked ?? false,
+          enabled: (enabledEl?.checked ?? false) && !scopeEmptyOnFreePlan,
           eventTypes,
           sensitivity: (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical',
           channels: connectedChannelTypes,
-          aiDigestEnabled: aiDigestEl?.checked ?? true,
+          // #4273: free renders this checkbox unchecked and disabled, so its
+          // value is not a choice. Omit it (the server preserves on omit), or
+          // every free save would store `false`, which reads as an explicit
+          // opt-out of the AI summary once the account upgrades.
+          aiDigestEnabled: caps.aiDigestAccess ? (aiDigestEl?.checked ?? true) : undefined,
           countries: alertRuleCountries,
           tickers: watchlistOn ? getMarketWatchlistEntries().map((e) => e.symbol) : [],
           chokepoints: chokepointOn
@@ -1004,8 +1265,8 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               .map((el) => el.dataset.chokepointId ?? '')
               .filter(Boolean)
             : [],
-          orbitalSites: orbitalWindowsOn || orbitalChangesOn ? selectedOrbitalSites() : [],
-          reservoirAlert: reservoirOn ? readReservoirSettings() : { reservoirs: [] },
+          orbitalSites: !isPro ? undefined : orbitalWindowsOn || orbitalChangesOn ? selectedOrbitalSites() : [],
+          reservoirAlert: !isPro ? undefined : reservoirOn ? readReservoirSettings() : { reservoirs: [] },
         };
       }
 
@@ -1120,12 +1381,14 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // Read all current alert-rule fields off the DOM and POST through the
       // existing saveAlertRules pipeline. Sources its full payload from
       // getCurrentAlertRuleFormState so `countries` flows through every time.
-      function saveCurrentAlertRule(): void {
+      function saveCurrentAlertRule(opts?: { flush?: boolean }): void {
         const state = getCurrentAlertRuleFormState();
-        fireForgetSave(saveAlertRules({
+        // flush: the panel is closing and `signal` is already aborted —
+        // passing it would cancel the very request the flush exists to send.
+        fireForgetSave(afterRuleSave(saveAlertRules({
           variant: SITE_VARIANT,
           ...state,
-        }, signal), 'save alert rules');
+        }, opts?.flush ? undefined : signal), opts?.flush ?? false), 'save alert rules');
       }
 
       reloadNotifSection();
@@ -1174,63 +1437,96 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const state = getCurrentAlertRuleFormState();
         // Augment channels with the newly connected one (set semantics).
         const channels = [...new Set([...state.channels, newChannel])];
-        fireForgetSave(saveAlertRules({
+        fireForgetSave(afterRuleSave(saveAlertRules({
           variant: SITE_VARIANT,
           ...state,
           channels,
-        }, signal), 'save alert rules');
+        }, signal)), 'save alert rules');
       }
 
-      signal.addEventListener('abort', () => {
-        if (alertRuleDebounceTimer !== null) {
-          clearTimeout(alertRuleDebounceTimer);
-          alertRuleDebounceTimer = null;
-        }
-        if (qhDebounceTimer !== null) {
-          clearTimeout(qhDebounceTimer);
-          qhDebounceTimer = null;
-        }
-        if (digestDebounceTimer !== null) {
-          clearTimeout(digestDebounceTimer);
-          digestDebounceTimer = null;
-        }
-      });
+      const sendQuietHoursNow = (flush = false): void => {
+        const enabledEl = container.querySelector<HTMLInputElement>('#usQhEnabled');
+        const startEl = container.querySelector<HTMLSelectElement>('#usQhStart');
+        const endEl = container.querySelector<HTMLSelectElement>('#usQhEnd');
+        const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
+        const overrideEl = container.querySelector<HTMLSelectElement>('#usQhOverride');
+        fireForgetSave(setQuietHours({
+          variant: SITE_VARIANT,
+          quietHoursEnabled: enabledEl?.checked ?? false,
+          quietHoursStart: startEl ? Number(startEl.value) : 22,
+          quietHoursEnd: endEl ? Number(endEl.value) : 7,
+          quietHoursTimezone: tzEl?.value || detectedTz,
+          quietHoursOverride: (overrideEl?.value ?? 'critical_only') as QuietHoursOverride,
+          countries: countryPicker ? countryPicker.getValue() : undefined,
+        }, flush ? undefined : signal), 'save quiet hours');
+      };
 
       const saveQuietHours = () => {
         if (qhDebounceTimer) clearTimeout(qhDebounceTimer);
         qhDebounceTimer = setTimeout(() => {
-          const enabledEl = container.querySelector<HTMLInputElement>('#usQhEnabled');
-          const startEl = container.querySelector<HTMLSelectElement>('#usQhStart');
-          const endEl = container.querySelector<HTMLSelectElement>('#usQhEnd');
-          const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
-          const overrideEl = container.querySelector<HTMLSelectElement>('#usQhOverride');
-          fireForgetSave(setQuietHours({
-            variant: SITE_VARIANT,
-            quietHoursEnabled: enabledEl?.checked ?? false,
-            quietHoursStart: startEl ? Number(startEl.value) : 22,
-            quietHoursEnd: endEl ? Number(endEl.value) : 7,
-            quietHoursTimezone: tzEl?.value || detectedTz,
-            quietHoursOverride: (overrideEl?.value ?? 'critical_only') as QuietHoursOverride,
-            countries: countryPicker ? countryPicker.getValue() : undefined,
-          }, signal), 'save quiet hours');
+          qhDebounceTimer = null;
+          sendQuietHoursNow();
         }, 800);
+      };
+
+      const sendDigestSettingsNow = (flush = false): Promise<unknown> => {
+        const modeEl = container.querySelector<HTMLSelectElement>('#usDigestMode');
+        const hourEl = container.querySelector<HTMLSelectElement>('#usDigestHour');
+        const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
+        const p = setDigestSettings({
+          variant: SITE_VARIANT,
+          digestMode: (modeEl?.value ?? 'realtime') as DigestMode,
+          digestHour: hourEl ? Number(hourEl.value) : 8,
+          digestTimezone: tzEl?.value || detectedTz,
+          countries: countryPicker ? countryPicker.getValue() : undefined,
+        }, flush ? undefined : signal);
+        fireForgetSave(p, 'save digest settings');
+        return p;
       };
 
       const saveDigestSettings = () => {
         if (digestDebounceTimer) clearTimeout(digestDebounceTimer);
         digestDebounceTimer = setTimeout(() => {
-          const modeEl = container.querySelector<HTMLSelectElement>('#usDigestMode');
-          const hourEl = container.querySelector<HTMLSelectElement>('#usDigestHour');
-          const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
-          fireForgetSave(setDigestSettings({
-            variant: SITE_VARIANT,
-            digestMode: (modeEl?.value ?? 'realtime') as DigestMode,
-            digestHour: hourEl ? Number(hourEl.value) : 8,
-            digestTimezone: tzEl?.value || detectedTz,
-            countries: countryPicker ? countryPicker.getValue() : undefined,
-          }, signal), 'save digest settings');
+          digestDebounceTimer = null;
+          digestFlushNow = null;
+          sendDigestSettingsNow();
         }, 800);
+        digestFlushNow = sendDigestSettingsNow;
       };
+
+      // A pending debounced autosave is the user's last edit: dropping it on
+      // close would un-save a change the panel already shows as applied (the
+      // free-ladder pause save among them, #4273). Flush it instead — without
+      // the panel's signal, which is aborting as this listener runs. The host
+      // tears the DOM down only after this cleanup, so the reads above still
+      // see the final form state.
+      signal.addEventListener('abort', () => {
+        // The timers are ALWAYS cancelled here, before the account check: a
+        // debounce callback that outlives the panel fires after a possible
+        // A -> B account switch, and authFetch pins identity at dispatch
+        // time, so the stale callback would write A's form state under B's
+        // session (Strix review 17). Flush only while the Clerk session
+        // still belongs to the account this panel was rendered for; on a
+        // switch or sign-out, dropping the last sub-second edit is the safe
+        // trade.
+        const sameAccount = renderedUserId === (getCurrentClerkUser()?.id ?? null);
+        if (alertRuleDebounceTimer !== null) {
+          clearTimeout(alertRuleDebounceTimer);
+          alertRuleDebounceTimer = null;
+          if (sameAccount) saveCurrentAlertRule({ flush: true });
+        }
+        if (qhDebounceTimer !== null) {
+          clearTimeout(qhDebounceTimer);
+          qhDebounceTimer = null;
+          if (sameAccount) sendQuietHoursNow(true);
+        }
+        if (digestDebounceTimer !== null) {
+          clearTimeout(digestDebounceTimer);
+          digestDebounceTimer = null;
+          if (sameAccount) (digestFlushNow ?? sendDigestSettingsNow)(true);
+        }
+        digestFlushNow = null;
+      });
 
       container.addEventListener('change', (e) => {
         const target = e.target as HTMLInputElement;
@@ -1293,8 +1589,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
 
           const hourEl = container.querySelector<HTMLSelectElement>('#usDigestHour');
           const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
-          if (digestDebounceTimer) clearTimeout(digestDebounceTimer);
-          digestDebounceTimer = setTimeout(() => {
+          const sendModeChangeNow = (flush = false): void => {
             void (async () => {
               try {
                 const state = getCurrentAlertRuleFormState();
@@ -1305,7 +1600,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                   digestHour: hourEl ? Number(hourEl.value) : 8,
                   digestTimezone: tzEl?.value || detectedTz,
                   ...(snappedSensitivity ? { sensitivity: snappedSensitivity } : {}),
-                }, undefined, signal);
+                }, undefined, flush ? undefined : signal);
               } catch (err) {
                 if (err instanceof IncompatibleDeliveryError) {
                   const hint = container.querySelector<HTMLElement>('#usSensitivityHint');
@@ -1323,7 +1618,14 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 console.warn('[notifications] save digest mode failed (not saved):', err);
               }
             })();
+          };
+          if (digestDebounceTimer) clearTimeout(digestDebounceTimer);
+          digestDebounceTimer = setTimeout(() => {
+            digestDebounceTimer = null;
+            digestFlushNow = null;
+            sendModeChangeNow();
           }, 800);
+          digestFlushNow = sendModeChangeNow;
 
           if (!isRt) {
             const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
@@ -1351,16 +1653,17 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         if (target.id === 'usAiDigestEnabled') {
           if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
           alertRuleDebounceTimer = setTimeout(() => {
+            alertRuleDebounceTimer = null;
             // Source from the centralized helper so `countries` flows through.
             // Override aiDigestEnabled with the just-toggled value (the helper
             // reads from the DOM, which has already been updated by the time
             // the debounce fires, but explicit override avoids any race).
             const state = getCurrentAlertRuleFormState();
-            fireForgetSave(saveAlertRules({
+            fireForgetSave(afterRuleSave(saveAlertRules({
               variant: SITE_VARIANT,
               ...state,
               aiDigestEnabled: target.checked,
-            }, signal), 'save alert rules');
+            }, signal)), 'save alert rules');
           }, 500);
           return;
         }
@@ -1387,12 +1690,13 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity' || target.id === 'usWatchlistAlerts' || target.id === 'usChokepointAlerts' || target.id === 'usOrbitalWindowAlerts' || target.id === 'usOrbitalChangeAlerts' || target.id === 'usReservoirAlerts' || target.id === 'usReservoirBelowPercent' || target.id === 'usReservoirSeasonal') {
           if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
           alertRuleDebounceTimer = setTimeout(() => {
+            alertRuleDebounceTimer = null;
             // Source from the centralized helper so `countries` flows through.
             const state = getCurrentAlertRuleFormState();
-            fireForgetSave(saveAlertRules({
+            fireForgetSave(afterRuleSave(saveAlertRules({
               variant: SITE_VARIANT,
               ...state,
-            }, signal), 'save alert rules');
+            }, signal)), 'save alert rules');
           }, 1000);
         }
       }, { signal });
@@ -1431,6 +1735,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           chokepointChip.setAttribute('aria-pressed', String(on));
           if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
           alertRuleDebounceTimer = setTimeout(() => {
+            alertRuleDebounceTimer = null;
             saveCurrentAlertRule();
           }, 800);
           return;
@@ -1865,7 +2170,10 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       };
       window.addEventListener('message', onMessage, { signal });
 
-      return () => ac.abort();
+      return () => {
+        ac.abort();
+        if (replacementCleanup) replacementCleanup();
+      };
     },
   };
 }

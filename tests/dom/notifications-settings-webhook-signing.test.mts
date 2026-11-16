@@ -4,6 +4,8 @@ import type { ChannelsData } from '@/services/notification-channels';
 
 import { initTestI18n } from './helpers/i18n.mts';
 
+const plan = vi.hoisted(() => ({ tier: 1 }));
+
 const pushState = vi.hoisted(() => ({
   supported: true,
   permission: 'default' as 'default' | 'granted' | 'denied' | 'unsupported',
@@ -46,7 +48,14 @@ vi.mock('@/services/clerk', () => ({
 }));
 
 vi.mock('@/services/entitlements', () => ({
-  hasTier: () => true,
+  hasTier: () => plan.tier >= 1,
+  getEntitlementState: () => ({ features: { tier: plan.tier } }),
+  onEntitlementChange: () => () => {},
+  getEntitlementVerificationStatus: () => 'ready',
+  onEntitlementVerificationChange: (cb: (status: string) => void) => {
+    cb('ready');
+    return () => {};
+  },
 }));
 
 vi.mock('@/services/market-watchlist', () => ({
@@ -97,6 +106,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  plan.tier = 1;
   while (cleanups.length) cleanups.pop()?.();
   document.body.replaceChildren();
   channelMocks.getChannelsData.mockReset();
@@ -114,15 +124,21 @@ afterAll(() => {
 });
 
 describe('notification settings webhook signing', () => {
-  it('explains automatic disabling and offers the existing reconnect flow', async () => {
+  it.each([0, 1])('explains automatic disabling under tier %s', async tier => {
+    plan.tier = tier;
     const data = webhookChannel(true);
     data.channels[0]!.verified = false;
     data.channels[0]!.deliveryFailure = { count: 1, firstFailedAt: 1, lastError: 'HTTP 401', disabledAt: 2 };
     const container = await mount(data);
     expect(webhookRow(container).textContent).toContain('Disabled after repeated delivery failures');
     expect(webhookRow(container).classList.contains('us-notif-ch-on')).toBe(false);
-    container.querySelector<HTMLButtonElement>('#usConnectWebhook')!.click();
-    expect(container.querySelector('#usWebhookUrl')).not.toBeNull();
+    if (tier >= 1) {
+      container.querySelector<HTMLButtonElement>('#usConnectWebhook')!.click();
+      expect(container.querySelector('#usWebhookUrl')).not.toBeNull();
+    } else {
+      expect(webhookRow(container).querySelector('[data-ladder-upgrade]')).not.toBeNull();
+      expect(container.querySelector('#usConnectWebhook')).toBeNull();
+    }
   });
 
   it('marks a webhook with a signing secret as signed', async () => {

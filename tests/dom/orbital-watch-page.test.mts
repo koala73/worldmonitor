@@ -552,6 +552,15 @@ describe('imagery evidence sheet', () => {
   });
 });
 
+describe('the close button', () => {
+  it('sits in the header, outside the action row, so it never wraps below the chips', () => {
+    mounted();
+    const close = sheet().querySelector('.ies-close');
+    expect(close?.parentElement?.classList.contains('ies-header')).toBe(true);
+    expect(close?.closest('.ies-actions')).toBeNull();
+  });
+});
+
 describe('a crop the archive has not served yet', () => {
   const hero = () => sheet().querySelector<HTMLElement>('.ow-tile-hero')!;
   const showFailing = async (p: PointPass, status: number) => {
