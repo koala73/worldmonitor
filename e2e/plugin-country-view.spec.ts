@@ -1234,6 +1234,10 @@ test('built country defense view and report preserve independent producer clocks
   await expect(military).toContainText('Supplier data retained');
   await expect(military).toContainText('Mapped coverage');
   await expect(military).not.toContainText('2026-10-05T07:00:00.000Z');
+  // Flights and vessels are a separate producer. When they land, the military
+  // body is rebuilt, defense mount included, so the nodes the loop scrolls to
+  // are replaced. Wait for that render first.
+  await expect(military).toContainText('Own Flights');
   for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 844]] as const) {
     await page.setViewportSize({ width, height });
     await military.getByText('World Bank snapshot assembled 2026-10-02T06:00:00.000Z', { exact: true }).scrollIntoViewIfNeeded();
