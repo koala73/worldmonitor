@@ -65,13 +65,24 @@ function toDailyRow(line) {
   return [...f.slice(0, 39), ...f.slice(40, 47), ...f.slice(48, 55), ...f.slice(56)].join('\t');
 }
 
-function fakeArchive({ date, missing = [], corrupt = [] }) {
+// A published but empty export: one stored entry with zero sizes, as GDELT
+// served 20170628173000.export.CSV.zip (200 bytes, MD5-valid, 0-byte CSV).
+function emptyZipOf(name) {
+  const nameBytes = Buffer.from(name);
+  const header = Buffer.alloc(30);
+  header.writeUInt32LE(0x04034b50, 0);
+  header.writeUInt16LE(10, 4);
+  header.writeUInt16LE(nameBytes.length, 26);
+  return Buffer.concat([header, nameBytes]);
+}
+
+function fakeArchive({ date, missing = [], corrupt = [], empty = [] }) {
   const cacheDir = mkdtempSync(join(tmpdir(), 'gdelt-archive-test-'));
   const files = new Map();
   const lines = [];
   for (const stamp of countryEventsDayStamps(date)) {
     if (missing.includes(stamp)) continue;
-    const zip = zipOf(`${stamp}.export.CSV`, SAMPLE);
+    const zip = empty.includes(stamp) ? emptyZipOf(`${stamp}.export.CSV`) : zipOf(`${stamp}.export.CSV`, SAMPLE);
     files.set(`${stamp}.export.CSV.zip`, zip);
     const md5 = corrupt.includes(stamp) ? '0'.repeat(32) : createHash('md5').update(zip).digest('hex');
     lines.push(`${zip.length} ${md5} http://data.gdeltproject.org/gdeltv2/${stamp}.export.CSV.zip`);
@@ -167,6 +178,19 @@ describe('GDELT archive rebuild', () => {
     days[date] = day;
     const summary = summarizeCountryEvents({ cursor: '20261113234500', days }, Date.parse('2026-11-13T23:59:59.999Z'));
     assert.equal(summary.weekDays, 6, 'the short day is excluded from the week');
+  });
+
+  it('counts a published but empty export as missing, never as a quiet quarter-hour', async () => {
+    const date = '2017-06-28';
+    const archive = fakeArchive({ date, empty: ['20170628173000'] });
+    const descriptors = await loadMasterDescriptors({ cacheDir: archive.cacheDir, fetchImpl: archive.fetchImpl });
+    const day = await rebuildV2Day(date, { descriptors, cacheDir: archive.cacheDir, fetchImpl: archive.fetchImpl });
+    assert.equal(day.cohorts, 95);
+    assert.deepEqual(day.missingExports, ['20170628173000']);
+    const fetched = archive.calls.length;
+    const again = await rebuildV2Day(date, { descriptors, cacheDir: archive.cacheDir, fetchImpl: archive.fetchImpl });
+    assert.equal(archive.calls.length, fetched, 'the empty export is cached');
+    assert.deepEqual(again.missingExports, ['20170628173000']);
   });
 
   it('reads a daily-file ZIP by its dated entry name and rejects any other entry', async () => {

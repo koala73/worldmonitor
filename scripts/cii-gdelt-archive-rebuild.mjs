@@ -130,6 +130,12 @@ async function fetchBuffer(fetchImpl, url, maxBytes) {
   throw lastError;
 }
 
+/** A ZIP whose first entry has zero compressed and uncompressed size and no data descriptor. */
+export function isEmptyExportZip(zip) {
+  return zip.length >= 30 && zip.readUInt32LE(0) === 0x04034b50 && !(zip.readUInt16LE(6) & 0x8)
+    && zip.readUInt32LE(18) === 0 && zip.readUInt32LE(22) === 0;
+}
+
 /** The object's MD5 from Cloud Storage's `x-goog-hash` header, as hex, or null. */
 export function storageMd5(headers) {
   const value = headers?.get?.('x-goog-hash') ?? '';
@@ -177,6 +183,8 @@ export async function rebuildV2Day(date, { descriptors, cacheDir, fetchImpl = gl
   for (const stamp of stamps) {
     const cachePath = join(dir, `${stamp}.json`);
     let countries = readJson(cachePath);
+    // null marks a published but empty export, which counts as missing.
+    if (countries === null) { missing.push(stamp); continue; }
     if (countries === undefined) {
       const descriptor = descriptors.get(stamp);
       if (!descriptor) { missing.push(stamp); continue; }
@@ -184,6 +192,13 @@ export async function rebuildV2Day(date, { descriptors, cacheDir, fetchImpl = gl
       if (!zip) { missing.push(stamp); continue; }
       if (zip.length !== descriptor.size || createHash('md5').update(zip).digest('hex') !== descriptor.md5) {
         throw new Error(`GDELT export ${stamp} failed size/MD5 verification`);
+      }
+      if (isEmptyExportZip(zip)) {
+        // The seeder's extractor rejects a zero-size entry, so production never
+        // counts this quarter-hour either.
+        writeJson(cachePath, null);
+        missing.push(stamp);
+        continue;
       }
       countries = parseCountryEventsExport(extractGdeltExportCsv(zip, stamp));
       writeJson(cachePath, countries);
