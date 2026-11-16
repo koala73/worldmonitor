@@ -3525,6 +3525,7 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
       'e2e/pro-hero-animation.spec.ts',
       'e2e/pro-hero-lcp.spec.ts',
       'e2e/pro-pricing-anchor.spec.ts',
+      'e2e/pro-pricing-cta-reach.spec.ts',
       'e2e/panel-gate-analytics.spec.ts',
       'e2e/welcome-nav-fit.spec.ts',
     ];
