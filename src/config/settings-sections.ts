@@ -166,10 +166,6 @@ export function isAvailable(id: SettingsSectionId, f: SettingsFacts): boolean {
   return def !== undefined && (def.available?.(f) ?? true);
 }
 
-export function sectionSummary(id: SettingsSectionId, f: SettingsFacts): RowSummary | null {
-  return isAvailable(id, f) ? SECTIONS.get(id)?.summary?.(f) ?? null : null;
-}
-
 export type NavRow =
   | {
     readonly kind: 'section';

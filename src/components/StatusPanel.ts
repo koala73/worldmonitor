@@ -111,7 +111,6 @@ function staleExplanation(coverage: DigestCoverageSummary): string {
 export class StatusPanel extends Panel {
   private feeds: Map<string, FeedStatus> = new Map();
   private apis: Map<string, ApiStatus> = new Map();
-  private digestCoverage: DigestCoverageSummary | null = null;
   private digestCoverageRow: HTMLElement | null = null;
   private allowedFeeds!: Set<string>;
   private allowedApis!: Set<string>;
@@ -148,7 +147,6 @@ export class StatusPanel extends Panel {
    * an accessible name and a short explanation, announced politely.
    */
   public updateDigestCoverage(coverage: DigestCoverageSummary): void {
-    this.digestCoverage = coverage;
     const explanation = coverage.state === 'stale'
       ? staleExplanation(coverage)
       : DIGEST_COVERAGE_EXPLANATIONS[coverage.state];
@@ -194,10 +192,6 @@ export class StatusPanel extends Panel {
     document.querySelector('.site-footer')?.appendChild(this.element);
   }
 
-  public getDigestCoverage(): DigestCoverageSummary | null {
-    return this.digestCoverage;
-  }
-
   public updateFeed(name: string, status: Partial<FeedStatus>): void {
     if (!this.allowedFeeds.has(name)) return;
     const existing = this.feeds.get(name) || { name, lastUpdate: null, status: 'ok' as const, itemCount: 0 };
@@ -210,22 +204,6 @@ export class StatusPanel extends Panel {
     const existing = this.apis.get(name) || { name, status: 'ok' as const };
     this.apis.set(name, { ...existing, ...status });
     this.onUpdate?.();
-  }
-
-  public setFeedDisabled(name: string): void {
-    const existing = this.feeds.get(name);
-    if (existing) {
-      this.feeds.set(name, { ...existing, status: 'disabled', itemCount: 0, lastUpdate: null });
-      this.onUpdate?.();
-    }
-  }
-
-  public setApiDisabled(name: string): void {
-    const existing = this.apis.get(name);
-    if (existing) {
-      this.apis.set(name, { ...existing, status: 'disabled' });
-      this.onUpdate?.();
-    }
   }
 
   public formatTime(date: Date): string {

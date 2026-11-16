@@ -437,10 +437,6 @@ export function matchCountryNamesInText(text: string): string[] {
   return matched;
 }
 
-export function getAllCountryCodes(): string[] {
-  return [...countryIndex.keys()];
-}
-
 export function getCountryBbox(code: string): [number, number, number, number] | null {
   const entry = countryIndex.get(code.toUpperCase());
   return entry?.bbox ?? null;

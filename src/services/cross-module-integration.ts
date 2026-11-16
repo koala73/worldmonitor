@@ -2,7 +2,7 @@ import { getLocationName, type GeoConvergenceAlert } from './geo-convergence';
 import type { CountryScore } from './country-instability';
 import { getLatestSanctionsPressure, type SanctionsPressureResult } from './sanctions-pressure';
 import { getLatestRadiationWatch, type RadiationObservation } from './radiation';
-import type { CascadeResult, CascadeImpactLevel } from '@/types';
+import type { CascadeImpactLevel } from '@/types';
 import { isInLearningMode } from './country-instability';
 import { getCachedCountryScores, isElevatedCiiScore } from './cached-risk-scores';
 import { getCountryAtCoordinates, getCountryNameByCode } from './country-geometry';
@@ -110,11 +110,6 @@ function getAuthoritativeCIIScores(): CountryScore[] {
   return getCachedCountryScores();
 }
 
-let alertIdCounter = 0;
-function generateAlertId(): string {
-  return `alert-${Date.now()}-${++alertIdCounter}`;
-}
-
 function haversineDistance(
   lat1: number,
   lon1: number,
@@ -140,13 +135,6 @@ function getPriorityFromCIIChange(change: number, level: CountryScore['level']):
   if (level === 'critical') return 'critical';
   if (level === 'high' || absChange >= 30) return 'high';
   if (level === 'elevated' || absChange >= 15) return 'medium';
-  return 'low';
-}
-
-function getPriorityFromCascadeImpact(impact: CascadeImpactLevel, count: number): AlertPriority {
-  if (impact === 'critical' || (impact === 'high' && count >= 3)) return 'critical';
-  if (impact === 'high' || count >= 5) return 'high';
-  if (impact === 'medium' || count >= 3) return 'medium';
   return 'low';
 }
 
@@ -237,35 +225,6 @@ export function createCIIAlert(
     summary: t(summaryKey, { from: previousScore, to: currentScore, change: changeStr, driver }),
     components: { ciiChange },
     countries: [country],
-    timestamp: new Date(),
-  };
-
-  return addAndMergeAlert(alert);
-}
-
-export function createCascadeAlert(cascade: CascadeResult): UnifiedAlert | null {
-  if (cascade.countriesAffected.length === 0) return null;
-
-  const highestImpact = cascade.countriesAffected[0]?.impactLevel || 'low';
-  const cascadeAlert: CascadeAlert = {
-    sourceId: cascade.source.id,
-    sourceName: cascade.source.name,
-    sourceType: cascade.source.type,
-    countriesAffected: cascade.countriesAffected.length,
-    highestImpact,
-  };
-
-  const alert: UnifiedAlert = {
-    id: generateAlertId(),
-    type: 'cascade',
-    priority: getPriorityFromCascadeImpact(highestImpact, cascade.countriesAffected.length),
-    title: t('alerts.infraAlert', { name: cascade.source.name }),
-    summary: t('alerts.countriesAffected', { count: cascade.countriesAffected.length, impact: highestImpact }),
-    components: { cascade: cascadeAlert },
-    location: cascade.source.coordinates
-      ? { lat: cascade.source.coordinates[1], lon: cascade.source.coordinates[0] }
-      : undefined,
-    countries: cascade.countriesAffected.map(c => c.country),
     timestamp: new Date(),
   };
 

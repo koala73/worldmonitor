@@ -281,7 +281,3 @@ function buildUSNIClusters(vessels: MilitaryVessel[]): MilitaryVesselCluster[] {
 
   return clusters;
 }
-
-export function getUSNIFleetStatus(): string {
-  return breaker.getStatus();
-}

@@ -108,7 +108,6 @@ const panel = new Panel(options);
 | `toggle()` | `(): void` | Toggles between show/hide. |
 | `setNewBadge()` | `(): void` | Adds the "NEW" pill next to the title. |
 | `clearNewBadge()` | `(): void` | Removes the "NEW" pill. |
-| `getId()` | `(): string` | Returns the panel id. |
 | `resetHeight()` | `(): void` | Clears any user-set height override. |
 | `destroy()` | `(): void` | Removes element, cleans up listeners. |
 

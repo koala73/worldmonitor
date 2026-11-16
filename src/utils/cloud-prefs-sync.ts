@@ -1469,12 +1469,6 @@ function schedulePrefUpload(variant: string): void {
   }, 5000);
 }
 
-export function onPrefChange(variant: string): void {
-  if (!isEnabled()) return;
-  _currentVariant = variant;
-  schedulePrefUpload(variant);
-}
-
 export async function syncNow(): Promise<void> {
   if (!isEnabled()) return;
   if (_debounceTimer !== null) {

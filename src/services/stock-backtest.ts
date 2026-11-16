@@ -30,13 +30,6 @@ export async function fetchStockBacktestsForTargets(
   });
 }
 
-export async function fetchStockBacktests(
-  limitOverride?: number,
-  evalWindowDays = DEFAULT_EVAL_WINDOW_DAYS,
-): Promise<StockBacktestResult[]> {
-  return fetchStockBacktestsForTargets(await getTargets(limitOverride), evalWindowDays);
-}
-
 export async function fetchStoredStockBacktests(
   limitOverride?: number,
   evalWindowDays = DEFAULT_EVAL_WINDOW_DAYS,

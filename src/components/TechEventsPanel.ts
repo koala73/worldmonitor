@@ -251,13 +251,4 @@ export class TechEventsPanel extends Panel {
   public refresh(): void {
     void this.fetchEvents();
   }
-
-  public getConferencesForMap(): TechEvent[] {
-    return this.events.filter(e =>
-      e.type === 'conference' &&
-      e.coords &&
-      !e.coords.virtual &&
-      new Date(e.startDate) >= new Date()
-    );
-  }
 }

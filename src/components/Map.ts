@@ -16,8 +16,6 @@ import type { MapLayers, Hotspot, NewsItem, NewsLocationMarker, InternetOutage, 
 import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import type { Earthquake } from '@/services/earthquakes';
 import { type IranEvent, getIranEventCssColor, getIranEventSize } from '@/services/conflict';
-import type { TechHubActivity } from '@/services/tech-activity';
-import type { GeoHubActivity } from '@/services/geo-activity';
 import { getNaturalEventIcon } from '@/services/eonet';
 import type { WeatherAlert } from '@/services/weather';
 import type { RadiationObservation } from '@/services/radiation';
@@ -270,15 +268,11 @@ export class MapComponent {
   private displacementEvents: DisplacementMarker[] = [];
   private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string; detected_at?: number; satellite?: string; source?: string }> = [];
   private techEvents: TechEventMarker[] = [];
-  private techActivities: TechHubActivity[] = [];
-  private geoActivities: GeoHubActivity[] = [];
   private iranEvents: IranEvent[] = [];
   private aptGroups: import('@/types').APTGroup[] = [];
   private aptGroupsLoaded = false;
   private webcamData: Array<WebcamEntry | WebcamCluster> = [];
   private news: NewsItem[] = [];
-  private onTechHubClick?: (hub: TechHubActivity) => void;
-  private onGeoHubClick?: (hub: GeoHubActivity) => void;
   private popup: MapPopup;
   private onNewsClick?: (item: Pick<NewsLocationMarker, 'article' | 'title'>) => void;
   private onHotspotClick?: (hotspot: Hotspot) => void;
@@ -2155,11 +2149,6 @@ export class MapComponent {
       add('fires', slices.fires, { rank: (m) => (m as { brightness?: number }).brightness ?? 0 });
     }
     if (layers.webcams && this.state.zoom >= 2) add('webcams', this.webcamData);
-    // Variant hub overlays have no layer-toggle row, so a truncation here would
-    // have nowhere to be disclosed — exempt like the globe's `news` group. Both
-    // are bounded by the hub registry, not by an upstream feed.
-    if (SITE_VARIANT === 'tech') add('techHubs', this.techActivities, { exempt: true });
-    if (SITE_VARIANT === 'full') add('geoHubs', this.geoActivities, { exempt: true });
 
     // Layers with no severity signal rank by nearness to the centre of the
     // current view rather than by raw feed order, so a capped reference layer
@@ -3469,80 +3458,6 @@ export class MapComponent {
           this.popup.show({
             type: 'commodityHub',
             data: hub,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-          });
-        });
-
-        this.appendOverlay(div);
-      });
-    }
-
-    // Tech Hub Activity Markers (shows activity heatmap for tech hubs with news activity)
-    if (SITE_VARIANT === 'tech' && this.techActivities.length > 0) {
-      this.techActivities.forEach((activity) => {
-        const pos = projection([activity.lon, activity.lat]);
-        if (!pos) return;
-
-        // Only show markers for hubs with actual activity
-        if (activity.newsCount === 0) return;
-
-        const div = document.createElement('div');
-        div.className = `tech-activity-marker ${activity.activityLevel}`;
-        div.style.left = `${pos[0]}px`;
-        div.style.top = `${pos[1]}px`;
-        div.style.zIndex = activity.activityLevel === 'high' ? '60' : activity.activityLevel === 'elevated' ? '50' : '40';
-        div.title = `${activity.city}: ${activity.newsCount} stories`;
-
-        div.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.onTechHubClick?.(activity);
-          const rect = this.container.getBoundingClientRect();
-          this.popup.show({
-            type: 'techActivity',
-            data: activity,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-          });
-        });
-
-        this.appendOverlay(div);
-
-        // Add label for high/elevated activity hubs at sufficient zoom
-        if ((activity.activityLevel === 'high' || (activity.activityLevel === 'elevated' && this.state.zoom >= 2)) && this.state.zoom >= 1.5) {
-          const label = document.createElement('div');
-          label.className = 'tech-activity-label';
-          label.textContent = activity.city;
-          label.style.left = `${pos[0]}px`;
-          label.style.top = `${pos[1] + 14}px`;
-          this.appendOverlay(label);
-        }
-      });
-    }
-
-    // Geo Hub Activity Markers (shows activity heatmap for geopolitical hubs - full variant)
-    if (SITE_VARIANT === 'full' && this.geoActivities.length > 0) {
-      this.geoActivities.forEach((activity) => {
-        const pos = projection([activity.lon, activity.lat]);
-        if (!pos) return;
-
-        // Only show markers for hubs with actual activity
-        if (activity.newsCount === 0) return;
-
-        const div = document.createElement('div');
-        div.className = `geo-activity-marker ${activity.activityLevel}`;
-        div.style.left = `${pos[0]}px`;
-        div.style.top = `${pos[1]}px`;
-        div.style.zIndex = activity.activityLevel === 'high' ? '60' : activity.activityLevel === 'elevated' ? '50' : '40';
-        div.title = `${activity.name}: ${activity.newsCount} stories`;
-
-        div.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.onGeoHubClick?.(activity);
-          const rect = this.container.getBoundingClientRect();
-          this.popup.show({
-            type: 'geoActivity',
-            data: activity,
             x: e.clientX - rect.left,
             y: e.clientY - rect.top,
           });
@@ -5748,24 +5663,6 @@ export class MapComponent {
   public setNewsLocations(data: NewsLocationMarker[]): void {
     this.newsLocations = data;
     this.render();
-  }
-
-  public setTechActivity(activities: TechHubActivity[]): void {
-    this.techActivities = activities;
-    this.render();
-  }
-
-  public setOnTechHubClick(handler: (hub: TechHubActivity) => void): void {
-    this.onTechHubClick = handler;
-  }
-
-  public setGeoActivity(activities: GeoHubActivity[]): void {
-    this.geoActivities = activities;
-    this.render();
-  }
-
-  public setOnGeoHubClick(handler: (hub: GeoHubActivity) => void): void {
-    this.onGeoHubClick = handler;
   }
 
   private getCableAdvisory(cableId: string): CableAdvisory | undefined {

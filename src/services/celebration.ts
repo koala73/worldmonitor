@@ -136,10 +136,3 @@ export function checkMilestones(data: MilestoneData): void {
     }
   }
 }
-
-/**
- * Clear the celebrated set. Exported for testing purposes.
- */
-export function resetCelebrations(): void {
-  celebrated.clear();
-}

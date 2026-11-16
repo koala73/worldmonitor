@@ -262,25 +262,8 @@ export class CascadePanel extends Panel {
     }
   }
 
-  public selectNode(nodeId: string): void {
-    this.selectedNode = nodeId;
-    const nodeType = nodeId.split(':')[0] as NodeFilter;
-    if (['cable', 'pipeline', 'port', 'chokepoint'].includes(nodeType)) {
-      this.filter = nodeType;
-    }
-    this.runAnalysis();
-  }
-
   public onSelect(callback: (nodeId: string | null) => void): void {
     this.onSelectCallback = callback;
-  }
-
-  public getSelectedNode(): string | null {
-    return this.selectedNode;
-  }
-
-  public getCascadeResult(): CascadeResult | null {
-    return this.cascadeResult;
   }
 
   public refresh(): void {
