@@ -18,7 +18,9 @@ import type { ArchiveId } from './archive-result';
 import { searchStacArchive } from './archive-stac';
 import { cropBox, planetaryComputerCropUrl } from './crop-url';
 import { assembleEvidence } from './match';
+import { loadOrbitalCatalog } from './catalog';
 import { createOrbitalPassClient, type OrbitalPassClient, type PointPassLookup } from './pass-client';
+import { BoundedCache, shareWork, type SharedWork } from './request-cache';
 
 export type ImageryTarget =
   | { kind: 'site'; origin: WatchedSiteOrigin; point: GeoPoint }
@@ -40,7 +42,12 @@ export interface ObjectImagery {
   /** True when `latest` is null because an archive did not answer, not because it has no image. */
   imageSearchFailed?: boolean;
   nextPass: ObjectPass | null;
+  /** Set on an early answer whose image is ready while the next pass is still computing. */
+  nextPassPending?: true;
 }
+
+/** Called with the image as soon as it is known, while the next pass is still computing. */
+export type OnImageReady = (early: ObjectImagery) => void;
 
 const getOrbitalClient = createLazyClient(() => new OrbitalServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) }));
 
@@ -75,15 +82,60 @@ const archiveOf = (url: string): ArchiveId =>
   new URL(url).hostname === 'planetarycomputer.microsoft.com' ? 'planetary-computer' : 'earth-search';
 
 let passClient: OrbitalPassClient | null = null;
+/** The next-pass stat needs only the future part of a pass lookup. */
+export const NEXT_PASS_HOURS = 72;
+const HOUR_MS = 3_600_000;
+/** How long "no pass within the window" stands before the window has slid enough to look again. */
+const NO_PASS_FRESH_MS = HOUR_MS;
+
 // The client is shared, and a new lookup cancels the running one, so a closed popup must not start one.
 const lookupPasses = async (point: GeoPoint, signal?: AbortSignal) => {
   signal?.throwIfAborted();
-  return (passClient ??= createOrbitalPassClient()).lookup({ point }, { signal });
+  return (passClient ??= createOrbitalPassClient()).lookup({ point, pastDays: 0, futureHours: NEXT_PASS_HOURS }, { signal });
 };
 
 function nextPassOf(passes: PointPassLookup['passes'], nowMs: number): ObjectPass | null {
   const next = passes.filter((p) => p.inFootprint && p.timeMs > nowMs).sort((a, b) => a.timeMs - b.timeMs)[0];
   return next ? { satellite: next.name, profileId: next.profileId, timeMs: next.timeMs } : null;
+}
+
+interface NextPassAnswer { pass: ObjectPass | null; revision: string }
+const catalogRevision = (catalog: { fetchedAt: number; inventoryVersion: string }) => `${catalog.inventoryVersion}@${catalog.fetchedAt}`;
+const nextPasses = new BoundedCache<SharedWork<NextPassAnswer>>(32);
+/** Forgets every remembered next pass. */
+export function forgetNextPasses(): void {
+  for (const [key] of nextPasses.live(Number.NEGATIVE_INFINITY)) nextPasses.delete(key);
+}
+const aborted = () => { throw new DOMException('Aborted', 'AbortError'); };
+
+/**
+ * The next in-footprint pass over a point, from the local pass worker. Kept in
+ * browser memory by point and catalog revision until that pass happens, and
+ * shared by popups that ask at the same time.
+ */
+async function nextPassAt(point: GeoPoint, signal?: AbortSignal): Promise<ObjectPass | null> {
+  signal?.throwIfAborted();
+  const key = `${point.lat},${point.lon}`;
+  const cached = nextPasses.get(key, Date.now());
+  if (cached && !cached.abandoned) {
+    const answer = await cached.join(signal, aborted);
+    const current = await loadOrbitalCatalog().then(catalogRevision, () => answer.revision);
+    signal?.throwIfAborted();
+    if (current === answer.revision && (!answer.pass || answer.pass.timeMs > Date.now())) return answer.pass;
+    nextPasses.delete(key, cached);
+    const installed = nextPasses.get(key, Date.now());
+    if (installed && !installed.abandoned) return (await installed.join(signal, aborted)).pass;
+  }
+  const work = shareWork(async (shared) => {
+    const lookup = await lookupPasses(point, shared);
+    return { pass: nextPassOf(lookup.passes, Date.now()), revision: catalogRevision(lookup.catalog) };
+  });
+  nextPasses.set(key, work, Date.now() + NEXT_PASS_HOURS * HOUR_MS);
+  work.done.then(
+    (answer) => { if (nextPasses.get(key, Date.now()) === work) nextPasses.set(key, work, answer.pass?.timeMs ?? Date.now() + NO_PASS_FRESH_MS); },
+    () => nextPasses.delete(key, work),
+  );
+  return (await work.join(signal, aborted)).pass;
 }
 
 /**
@@ -93,38 +145,53 @@ function nextPassOf(passes: PointPassLookup['passes'], nowMs: number): ObjectPas
 export const LATEST_IMAGE_DAYS = 30;
 const DAY_MS = 86_400_000;
 
-/** Answered entirely in the browser: the point goes to the pass worker and the public archives only. */
-export async function lookupPointImagery(point: GeoPoint, signal?: AbortSignal): Promise<ObjectImagery> {
-  signal?.throwIfAborted();
+type LatestImage = Pick<ObjectImagery, 'latest' | 'imageSearchFailed'>;
+
+/** The newest scene at the point; a failed archive reads as unavailable, not as no image. */
+async function latestImageAt(point: GeoPoint, signal?: AbortSignal): Promise<LatestImage> {
   const nowMs = Date.now();
-  // The archive search has its own window, so a pass worker that fails to start still leaves the latest image.
   const window = { startMs: nowMs - LATEST_IMAGE_DAYS * DAY_MS, endMs: nowMs };
-  const [lookup, stac] = await Promise.all([
-    lookupPasses(point, signal).catch((error: unknown) => {
-      if (signal?.aborted || (error instanceof Error && error.name === 'AbortError')) throw error;
-      return null;
-    }),
-    Promise.all((['earth-search', 'planetary-computer'] as const).map((archive) => searchStacArchive(archive, { point, window, signal }))),
-  ]);
-  const evidence = assembleEvidence({ lookup: lookup ?? noPasses(point, window, nowMs), stac });
+  const stac = await Promise.all((['earth-search', 'planetary-computer'] as const).map((archive) => searchStacArchive(archive, { point, window, signal })));
+  signal?.throwIfAborted();
+  // The image of an acquisition does not depend on its pass, so no pass lookup is needed here.
+  const evidence = assembleEvidence({ lookup: { point, nowMs, passes: [] }, stac });
   const newest = evidence.acquisitions.find((a) => a.imageUrl);
   return {
     latest: newest?.imageUrl
       ? { datetime: new Date(newest.startMs).toISOString(), profileId: newest.profileId, archive: archiveOf(newest.imageUrl), candidates: [newest.imageUrl] }
       : null,
     imageSearchFailed: !newest && evidence.failures.length > 0,
-    nextPass: lookup ? nextPassOf(lookup.passes, Date.now()) : null,
   };
 }
 
-/** Matching needs a lookup; without passes every scene stands alone and no pass is named. */
-const noPasses = (point: GeoPoint, window: PointPassLookup['window'], nowMs: number): PointPassLookup => ({
-  point, window, nowMs,
-  catalog: { status: 'empty', fetchedAt: 0, inventoryVersion: '' },
-  passes: [], satellites: [], daylight: [], computedOn: 'none',
-});
+const isAbort = (error: unknown, signal?: AbortSignal) => signal?.aborted || (error instanceof Error && error.name === 'AbortError');
 
-export async function loadObjectImagery(target: ImageryTarget, signal?: AbortSignal): Promise<ObjectImagery> {
+/** Waits for the next pass after the image is known, handing the image over early when the pass is slower. */
+async function withNextPass(image: LatestImage, pass: Promise<ObjectPass | null>, onImageReady: OnImageReady | undefined, signal?: AbortSignal): Promise<ObjectImagery> {
+  let passDone = false;
+  const settledPass = pass.then(
+    (nextPass) => { passDone = true; return nextPass; },
+    (error: unknown) => { passDone = true; if (isAbort(error, signal)) throw error; return null; },
+  );
+  await Promise.resolve();
+  if (!passDone) onImageReady?.({ ...image, nextPass: null, nextPassPending: true });
+  const nextPass = await settledPass;
+  return { ...image, nextPass: nextPass && nextPass.timeMs > Date.now() ? nextPass : null };
+}
+
+/**
+ * Answered entirely in the browser: the point goes to the pass worker and the
+ * public archives only. `wantNextPass: false` starts no pass job at all.
+ */
+export async function lookupPointImagery(point: GeoPoint, signal?: AbortSignal, options: { wantNextPass?: boolean; onImageReady?: OnImageReady } = {}): Promise<ObjectImagery> {
+  signal?.throwIfAborted();
+  if (options.wantNextPass === false) return { ...(await latestImageAt(point, signal)), nextPass: null };
+  const pass = nextPassAt(point, signal);
+  pass.catch(() => {});
+  return withNextPass(await latestImageAt(point, signal), pass, options.onImageReady, signal);
+}
+
+export async function loadObjectImagery(target: ImageryTarget, signal?: AbortSignal, onImageReady?: OnImageReady): Promise<ObjectImagery> {
   if (target.kind === 'site') {
     const siteId = await resolveWatchedSiteId(target.origin);
     if (siteId) {
@@ -132,11 +199,15 @@ export async function loadObjectImagery(target: ImageryTarget, signal?: AbortSig
       const imagery = record ? fromSiteRecord(record, Date.now()) : null;
       // A CDN-cached record can name a pass that has since happened; the pass worker finds the next one locally.
       if (imagery && !imagery.nextPass) {
-        const lookup = await lookupPasses(target.point, signal).catch(() => null);
-        return { ...imagery, nextPass: lookup ? nextPassOf(lookup.passes, Date.now()) : null };
+        if (signal?.aborted) return imagery;
+        // Only this popup closing is an abort: a newer lookup superseding this one on the shared client keeps the record image.
+        return withNextPass(imagery, nextPassAt(target.point, signal), onImageReady, signal).catch((error: unknown) => {
+          if (signal?.aborted) throw error;
+          return imagery;
+        });
       }
       if (imagery) return imagery;
     }
   }
-  return lookupPointImagery(target.point, signal);
+  return lookupPointImagery(target.point, signal, { wantNextPass: !(target.kind === 'point' && target.ownNextPass), onImageReady });
 }

@@ -1743,7 +1743,14 @@
     "map": {
       "showMap": "Kaart tonen",
       "hideMap": "Kaart verbergen",
-      "clearTrails": "Sporen wissen"
+      "clearTrails": "Sporen wissen",
+      "locate": "Mijn locatie tonen"
+    },
+    "mapLocate": {
+      "locating": "Locatie bepalen…",
+      "denied": "Locatietoegang geweigerd. Gebruik Zoeken om een plaats te vinden.",
+      "unavailable": "Locatie niet gevonden. Gebruik Zoeken om een plaats te vinden.",
+      "noCountry": "Geen land op uw locatie. Gebruik Zoeken om een plaats te vinden."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Internetstoringen</strong> Realtime internetstoringen, DDoS-aanvallen en verkeersafwijkingen uit wereldwijde netwerkmonitoring:<ul><li><strong>Storingen</strong>: via BGP gedetecteerde verbindingsstoringen per land</li><li><strong>DDoS</strong>: meldingen van volumetrische aanvallen per protocol en vector</li><li><strong>Afwijkingen</strong>: ongebruikelijke verkeerspatronen van Cloudflare Radar</li></ul>",
@@ -1959,7 +1966,7 @@
       "proLocked": "Upgrade naar PRO voor scorebepaling van grondstofgevoeligheid"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz-handelstracker</strong> WTO DataLab dagelijkse verzendingsindexen voor de Straat van Hormuz: ruwe olie, LNG en kunstmest die de Golf verlaten, landbouwproducten die aankomen. Op volume, gemiddelde januari–maart 2025 = 100, alleen AIS-zichtbare vaartuigen. Status en datum komen van WTO's nieuwste analyse.",
+      "infoTooltip": "<strong>Hormuz-handelstracker</strong> WTO DataLab dagelijkse verzendingsindexen voor de Straat van Hormuz: ruwe olie, LNG en kunstmest die de Golf verlaten, landbouwproducten die aankomen. Op volume, gemiddelde januari–maart 2025 = 100, alleen AIS-zichtbare vaartuigen. Grafieken zijn dagelijks; status komt uit WTO-commentaar.",
       "title": "Hormuz-handelstracker",
       "noData": "Geen gegevens",
       "notAvailable": "N/A",
@@ -1972,8 +1979,10 @@
         "unavailable": "Hormuz-gegevens niet beschikbaar",
         "failedToLoad": "Laden mislukt"
       },
-      "analysisDate": "WTO-analyse {{date}}",
-      "indexNote": "Verzendingsindex op volume, gemiddelde januari–maart 2025 = 100"
+      "analysisDate": "WTO-toelichting {{date}}",
+      "indexNote": "Verzendingsindex op volume, gemiddelde januari–maart 2025 = 100",
+      "dataThrough": "Dagelijkse gegevens tot {{date}}",
+      "noShipments": "Geen zendingen geregistreerd van {{from}} tot {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Live webcams</strong> Livestreams van geopolitiek significante locaties wereldwijd: conflictzones, hoofdsteden, grensovergangen en strategische knelpunten. Streams van YouTube en openbare netwerken."
@@ -4495,7 +4504,8 @@
   "contextMenu": {
     "openCountryBrief": "Landenoverzicht openen",
     "copyCoordinates": "Coördinaten kopiëren",
-    "satellitePasses": "Satellietpassages hier"
+    "satellitePasses": "Satellietpassages hier",
+    "imageryEvidenceHere": "Bewijsmateriaal uit satellieten hier"
   },
   "shell": {
     "documentTitle": "World Monitor — Realtime wereldwijd inlichtingendashboard",
@@ -5394,8 +5404,6 @@
       "dailyMosaic": "dagelijks mozaïek",
       "weatherFrame": "weerbeeld",
       "change": "Locatie wijzigen",
-      "share": "Link kopiëren",
-      "shareCopied": "Link gekopieerd",
       "showUtc": "UTC",
       "showLocal": "Lokale tijd",
       "alert": "Waarschuwen vóór elke open passage boven het punt, en bij elk nieuw wolkenvrij beeld.",
@@ -5506,7 +5514,28 @@
       "noPass": "Geen overkomst binnen 72 uur",
       "openEvidence": "Bewijs openen",
       "imageAlt": "Satellietbeeld van {{source}}",
-      "unavailable": "Satellietbeelden konden niet worden geladen."
+      "unavailable": "Satellietbeelden konden niet worden geladen.",
+      "fire": {
+        "title": "Satellietbranddetectie",
+        "detected": "Gedetecteerd",
+        "satellite": "Satelliet",
+        "confidence": "Betrouwbaarheid",
+        "confidenceHigh": "Hoog",
+        "confidenceNominal": "Gemiddeld",
+        "confidenceLow": "Laag",
+        "power": "Brandvermogen",
+        "powerValue": "{{value}} MW",
+        "region": "Regio",
+        "source": "Bron",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Dagelijks mozaïek",
+        "mosaicLoading": "NASA GIBS controleren…",
+        "mosaicCaption": "Een samengesteld beeld van de {{source}}-passes van {{date}}; het vuur kan verborgen zijn door wolken of rook.",
+        "mosaicNone": "NASA GIBS heeft geen {{source}}-mozaïek voor {{date}}.",
+        "mosaicNoLayer": "Er is geen dagelijks mozaïek beschikbaar voor deze satelliet.",
+        "mosaicUnavailable": "Het dagelijks mozaïek is niet geladen.",
+        "mosaicAlt": "Dagelijks NASA GIBS-mozaïek ({{source}}) voor {{date}}"
+      }
     }
   },
   "settings": {

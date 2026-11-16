@@ -5,7 +5,8 @@ import type { PointPass } from '@/services/orbital/pass-job';
 import type { EvidenceProgress, MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
 import { ARCHIVE_REQUEST_TIMEOUT_MS, type ArchiveId } from '@/services/orbital/archive-result';
 import { ArchiveImageError, loadArchiveImage, type ArchiveImageResult, type LoadedArchiveImage } from '@/services/orbital/archive-image';
-import { hasNoDataAtPoint, MOSAIC_FALLBACK_DAYS, type CropPosition, type DailyMosaicRow } from '@/services/orbital/archive-gibs';
+import { noDataAtPoint } from '@/services/orbital/image-no-data';
+import { MOSAIC_FALLBACK_DAYS, type CropPosition, type DailyMosaicRow } from '@/services/orbital/archive-gibs';
 import { DEFAULT_CROP_HALF_SIZE_KM } from '@/services/orbital/crop-url';
 import { imageGrid, isClearScene } from '@/services/orbital/scene-history';
 import { acquisitionCredit, ORBITAL_WATCH_DOCS_URL, resultCredits, type ResultCredit } from '@/services/orbital/credits';
@@ -14,6 +15,7 @@ import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
 import { iso2ToCountryName } from '@/utils/country-codes';
+import { createShareLinkButton, resetShareLinkButton } from './share-link-button';
 import type { SensorCategory } from '../../shared/orbital/sensor-profiles.js';
 import { ORBIT_ELEMENTS_MAX_AGE_DAYS } from '../../shared/orbital/pass-geometry.js';
 import { EVENT_RADIUS_KM, type EventSourceId, type LiveSourceId } from '@/services/orbital/point-context';
@@ -193,23 +195,7 @@ interface TileFallbacks {
   noDataAt?: CropPosition;
 }
 
-const NO_DATA_SAMPLE_PX = 32;
 const CROP_CENTRE: CropPosition = { x: 0.5, y: 0.5 };
-
-/** Unreadable pixels count as data, so a failed check never hides a real image. */
-function noDataAtPoint(img: HTMLImageElement, at: CropPosition): boolean {
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = NO_DATA_SAMPLE_PX;
-    canvas.height = NO_DATA_SAMPLE_PX;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return false;
-    ctx.drawImage(img, 0, 0, NO_DATA_SAMPLE_PX, NO_DATA_SAMPLE_PX);
-    return hasNoDataAtPoint(ctx.getImageData(0, 0, NO_DATA_SAMPLE_PX, NO_DATA_SAMPLE_PX).data, NO_DATA_SAMPLE_PX, NO_DATA_SAMPLE_PX, at);
-  } catch {
-    return false;
-  }
-}
 
 /**
  * The open lookup's images, painted from `blob:` URLs: archive image URLs carry the point,
@@ -628,7 +614,8 @@ export class OrbitalWatchPage {
     this.place = h('h2', { id: titleId, className: 'ies-place cdp-country-name' });
     this.coords = h('span', { className: 'ies-coords' });
     this.zone = h('button', { type: 'button', className: 'ies-chip', dataset: { action: 'zone' } });
-    this.shareButton = h('button', { type: 'button', className: 'ies-chip', dataset: { action: 'share' } });
+    this.shareButton = createShareLinkButton(t('components.countryBrief.shareLink'));
+    this.shareButton.dataset.action = 'share';
     this.handle = h('button', { type: 'button', className: 'ies-handle', dataset: { action: 'height' } });
     this.kicker = h('span', { className: 'ies-kicker' });
     this.changeButton = h('button', { type: 'button', className: 'ies-chip', dataset: { action: 'change' } });
@@ -734,7 +721,7 @@ export class OrbitalWatchPage {
     this.placeZone = point ? placeTimeZone(point) : null;
     this.applyZone();
     this.shareButton.hidden = !this.callbacks.onShare || !point;
-    this.shareButton.textContent = t('orbitalWatch.sheet.share');
+    resetShareLinkButton(this.shareButton, t('components.countryBrief.shareLink'));
     // Fixed labels are set on every open, so a language chosen since the last one shows.
     this.sheet.setAttribute('aria-label', t('orbitalWatch.sheet.heading'));
     this.kicker.textContent = t('orbitalWatch.sheet.heading');

@@ -2473,7 +2473,14 @@
     "map": {
       "showMap": "Onyesha Ramani",
       "hideMap": "Ficha Ramani",
-      "clearTrails": "Njia wazi"
+      "clearTrails": "Njia wazi",
+      "locate": "Onyesha mahali nilipo"
+    },
+    "mapLocate": {
+      "locating": "Inatafuta mahali…",
+      "denied": "Ufikiaji wa mahali umekataliwa. Tumia Tafuta kupata mahali.",
+      "unavailable": "Mahali hapakupatikana. Tumia Tafuta kupata mahali.",
+      "noCountry": "Hakuna nchi mahali ulipo. Tumia Tafuta kupata mahali."
     },
     "climateNews": {
       "infoTooltip": "<strong>Habari za Hali ya Hewa</strong> Taarifa za hivi punde za mazingira na hali ya hewa kutoka Carbon Brief, UNEP, NASA, The Guardian, na vyanzo vingine vya mamlaka. Inasasishwa kila baada ya dakika 30.",
@@ -2630,7 +2637,7 @@
       "proLocked": "Boreshaji hadi PRO kwa alama ya kufa kwa kilicho haraka cha bidhaa"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Kifuatiliaji cha Biashara cha Hormuz</strong> Fahirisi za kila siku za usafirishaji kupitia Mlango-bahari wa Hormuz kutoka WTO DataLab: mafuta ghafi, LNG na mbolea zinazoondoka Ghuba, na bidhaa za kilimo zinazowasili. Kwa kiasi, wastani wa Januari–Machi 2025 = 100, meli zinazoonekana kupitia AIS pekee. Hali na tarehe zinatoka kwenye uchambuzi wa hivi karibuni wa WTO.",
+      "infoTooltip": "<strong>Kifuatiliaji cha Biashara cha Hormuz</strong> Fahirisi za kila siku za usafirishaji kupitia Mlango-bahari wa Hormuz kutoka WTO DataLab: mafuta ghafi, LNG na mbolea zinazoondoka Ghuba, na bidhaa za kilimo zinazowasili. Kwa kiasi, wastani wa Januari–Machi 2025 = 100, meli zinazoonekana kupitia AIS pekee. Chati ni za kila siku; hali inatoka kwa maoni ya WTO.",
       "title": "Kifuatiliaji cha Biashara cha Hormuz",
       "noData": "Hakuna data",
       "notAvailable": "N/A",
@@ -2640,11 +2647,13 @@
         "unavailable": "Data ya Hormuz haipatikani",
         "failedToLoad": "Imeshindwa kupakia"
       },
-      "analysisDate": "Uchambuzi wa WTO {{date}}",
+      "analysisDate": "Maoni ya WTO {{date}}",
       "indexNote": "Fahirisi ya mizigo kwa kiasi, wastani wa Januari–Machi 2025 = 100",
       "units": {
         "index": "fahirisi"
-      }
+      },
+      "dataThrough": "Data ya kila siku hadi {{date}}",
+      "noShipments": "Hakuna mizigo iliyorekodiwa {{from}} hadi {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Kamera za Wavuti za Moja kwa Moja</strong> Mipasho ya moja kwa moja kutoka maeneo muhimu ya kijiografia duniani kote: maeneo ya migogoro, miji mikuu, vivuko vya mipaka, na maeneo ya kimkakati ya kukokota. Mitiririko kutoka kwa YouTube na mitandao ya umma."
@@ -4585,7 +4594,8 @@
   "contextMenu": {
     "openCountryBrief": "Fungua Muhtasari wa Nchi",
     "copyCoordinates": "Nakili Viratibu",
-    "satellitePasses": "Satelaiti zinazopita hapa"
+    "satellitePasses": "Satelaiti zinazopita hapa",
+    "imageryEvidenceHere": "Ushahidi wa picha za satelaiti hapa"
   },
   "auth": {
     "signIn": "Ingia",
@@ -5394,8 +5404,6 @@
       "dailyMosaic": "mozaiki ya kila siku",
       "weatherFrame": "fremu ya satelaiti ya hali ya hewa",
       "change": "Badilisha mahali",
-      "share": "Nakili kiungo",
-      "shareCopied": "Kiungo kimenakiliwa",
       "showUtc": "UTC",
       "showLocal": "Saa ya ndani",
       "alert": "Tahadhari kabla ya kila kupita kwa satelaiti ya data wazi juu ya nukta, na kwa kila picha mpya isiyo na mawingu.",
@@ -5506,7 +5514,28 @@
       "noPass": "Hakuna mpito ndani ya saa 72",
       "openEvidence": "Fungua ushahidi",
       "imageAlt": "Mwonekano wa setilaiti kutoka {{source}}",
-      "unavailable": "Picha za setilaiti hazikupakia."
+      "unavailable": "Picha za setilaiti hazikupakia.",
+      "fire": {
+        "title": "Utambuzi wa moto kwa setilaiti",
+        "detected": "Iligundulika",
+        "satellite": "Sateliti",
+        "confidence": "Ujitikisiko",
+        "confidenceHigh": "Juu",
+        "confidenceNominal": "Kawaida",
+        "confidenceLow": "Chini",
+        "power": "Nguvu ya moto",
+        "powerValue": "{{value}} MW",
+        "region": "Eneo",
+        "source": "Chanzo",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Mozaiki ya kila siku",
+        "mosaicLoading": "Kuangalia NASA GIBS…",
+        "mosaicCaption": "Picha iliyounganishwa ya mizunguko ya {{source}} ya siku ya {{date}}; moto unaweza kufichwa na mawingu au moshi.",
+        "mosaicNone": "NASA GIBS haina mozaiki ya {{source}} kwa {{date}}.",
+        "mosaicNoLayer": "Hakuna mozaiki ya kila siku inayopatikana kwa sateliti hii.",
+        "mosaicUnavailable": "Imeshindwa kupakia mozaiki ya kila siku.",
+        "mosaicAlt": "Mozaiki ya kila siku ya NASA GIBS {{source}} kwa {{date}}"
+      }
     }
   },
   "settings": {

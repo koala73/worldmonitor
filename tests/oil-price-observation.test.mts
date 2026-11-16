@@ -16,6 +16,21 @@ describe('oil price observation freshness', () => {
     assert.equal(eiaWeeklySpotProvenance(at('2026-10-30'), at('2026-11-13T17:00:00.001Z')).stale, true);
   });
 
+  it('keeps the preceding EIA week fresh through the MLK 2027 shifted release plus 24 hours', () => {
+    // EIA's published schedule: week ending January 15 releases January 21 at 12:00 ET.
+    // https://www.eia.gov/petroleum/supply/weekly/schedule.php (checked 2026-11-15)
+    const precedingWeek = at('2027-01-08');
+    for (const now of [
+      '2027-01-21T15:30:00.001Z', // Just after the unshifted Wednesday release + 24h.
+      '2027-01-21T17:00:00Z', // Shifted release.
+      '2027-01-22T16:59:59.999Z',
+      '2027-01-22T17:00:00Z', // Inclusive 24-hour refresh grace.
+    ]) {
+      assert.equal(eiaWeeklySpotProvenance(precedingWeek, at(now)).stale, false, now);
+    }
+    assert.equal(eiaWeeklySpotProvenance(precedingWeek, at('2027-01-22T17:00:00.001Z')).stale, true);
+  });
+
   it('waits for the shifted Christmas 2025 release plus a daily refresh grace', () => {
     for (const now of ['2025-12-26T00:01Z', '2025-12-28T12:00Z', '2025-12-29T21:59Z', '2025-12-30T22:00Z']) {
       assert.equal(eiaWeeklySpotProvenance(at('2025-12-12'), at(now)).stale, false, now);

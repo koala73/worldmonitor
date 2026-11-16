@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 for (const refreshed of [false, true]) {
   test(`population exposure handles ${refreshed ? 'current' : 'legacy'} bootstrap fields`, async ({ page }, testInfo) => {
@@ -53,7 +54,7 @@ for (const refreshed of [false, true]) {
       await page.setViewportSize({ width, height: 844 });
       await panel.scrollIntoViewIfNeeded();
       expect(await panel.locator('.panel-content').evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
-      await panel.screenshot({ path: testInfo.outputPath(`exposure-${refreshed ? 'current' : 'legacy'}-${width}.png`) });
+      await evidenceScreenshot(panel, { path: testInfo.outputPath(`exposure-${refreshed ? 'current' : 'legacy'}-${width}.png`) });
     }
   });
 }
@@ -93,7 +94,7 @@ test('population exposure keeps Eilat and Gaza densities without borrowing for n
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 844 });
     await panel.scrollIntoViewIfNeeded();
-    await panel.screenshot({ path: testInfo.outputPath(`atlas-regressions-${width}.png`) });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath(`atlas-regressions-${width}.png`) });
   }
 });
 
@@ -143,12 +144,12 @@ test('focused exposure loads beyond the worldwide cut and Show all restores othe
     await page.setViewportSize({ width, height: 844 });
     await panel.scrollIntoViewIfNeeded();
     expect(await panel.locator('.panel-content').evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
-    await panel.screenshot({ path: testInfo.outputPath(`exposure-focus-${width}.png`) });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath(`exposure-focus-${width}.png`) });
   }
   await panel.locator('button[data-scope-action="show-all"]').click();
   await expect(panel.locator('.popexp-card')).toHaveCount(10);
   await expect(panel).toContainText('Ukraine location');
-  await panel.screenshot({ path: testInfo.outputPath('exposure-show-all.png') });
+  await evidenceScreenshot(panel, { path: testInfo.outputPath('exposure-show-all.png') });
   await panel.locator('button[data-scope-action="apply"]').click();
   await expect(panel.locator('.popexp-card')).toHaveCount(1);
   expect(fullRequests).toBe(1);

@@ -2600,7 +2600,14 @@
     "map": {
       "showMap": "Show Map",
       "hideMap": "Hide Map",
-      "clearTrails": "Clear trails"
+      "clearTrails": "Clear trails",
+      "locate": "Show my location"
+    },
+    "mapLocate": {
+      "locating": "Locating…",
+      "denied": "Location access denied. Use Search to find a place.",
+      "unavailable": "Location not found. Use Search to find a place.",
+      "noCountry": "No country at your location. Use Search to find a place."
     },
     "climateNews": {
       "infoTooltip": "<strong>Climate News</strong> Latest environment and climate intelligence from Carbon Brief, UNEP, NASA, The Guardian, and other authoritative sources. Updated every 30 minutes.",
@@ -2757,13 +2764,15 @@
       "proLocked": "Upgrade to PRO for commodity vulnerability scoring"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> WTO DataLab daily shipment indexes for the Strait of Hormuz: crude oil, LNG and fertilizer leaving the Gulf, farm goods arriving. By volume, Jan–Mar 2025 average = 100, AIS-visible vessels only. Status and date come from WTO's latest analysis.",
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> WTO DataLab daily shipment indexes for the Strait of Hormuz: crude oil, LNG and fertilizer leaving the Gulf, farm goods arriving. By volume, Jan–Mar 2025 average = 100, AIS-visible vessels only. Charts are daily; status is from WTO commentary.",
       "title": "Hormuz Trade Tracker",
       "noData": "No data",
       "notAvailable": "N/A",
       "chartUnavailable": "Chart data unavailable",
       "sourcePrefix": "Source:",
-      "analysisDate": "WTO analysis {{date}}",
+      "analysisDate": "WTO commentary {{date}}",
+      "dataThrough": "Daily data to {{date}}",
+      "noShipments": "No shipments recorded {{from}} to {{to}}",
       "indexNote": "Shipment index by volume, Jan–Mar 2025 average = 100",
       "units": {
         "index": "index"
@@ -4681,8 +4690,6 @@
       "dailyMosaic": "daily mosaic",
       "weatherFrame": "weather frame",
       "change": "Change place",
-      "share": "Copy link",
-      "shareCopied": "Link copied",
       "showUtc": "UTC",
       "showLocal": "Local time",
       "alert": "Alert before each open pass overhead, and on each new clear image.",
@@ -4944,13 +4951,35 @@
       "noPass": "No pass due within 72 hours",
       "openEvidence": "Open evidence",
       "imageAlt": "Satellite view from {{source}}",
-      "unavailable": "Satellite imagery did not load."
+      "unavailable": "Satellite imagery did not load.",
+      "fire": {
+        "title": "Satellite fire detection",
+        "detected": "Detected",
+        "satellite": "Satellite",
+        "confidence": "Confidence",
+        "confidenceHigh": "High",
+        "confidenceNominal": "Nominal",
+        "confidenceLow": "Low",
+        "power": "Fire power",
+        "powerValue": "{{value}} MW",
+        "region": "Region",
+        "source": "Source",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Daily mosaic",
+        "mosaicLoading": "Checking NASA GIBS…",
+        "mosaicCaption": "A composite of the day's {{source}} passes for {{date}}; the fire may be hidden by cloud or smoke.",
+        "mosaicNone": "NASA GIBS has no {{source}} mosaic for {{date}}.",
+        "mosaicNoLayer": "No daily mosaic is available for this satellite.",
+        "mosaicUnavailable": "The daily mosaic did not load.",
+        "mosaicAlt": "NASA GIBS {{source}} daily mosaic for {{date}}"
+      }
     }
   },
   "contextMenu": {
     "openCountryBrief": "Open Country Brief",
     "copyCoordinates": "Copy Coordinates",
-    "satellitePasses": "Satellite passes here"
+    "satellitePasses": "Satellite passes here",
+    "imageryEvidenceHere": "Imagery evidence here"
   },
   "auth": {
     "signIn": "Sign In",

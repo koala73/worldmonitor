@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // The energy registry tables gave their long name column most of the width, so
 // short values broke mid-value: "2025-11-" over "01", "Crude" over "hub",
@@ -176,7 +177,7 @@ test('energy table values and names stay whole inside their column', async ({ br
           return panel.locator('tbody tr').count();
         }, { message: `${key} rows at ${variant}`, timeout: 90_000 })
         .toBe(rows);
-      await panel.screenshot({ path: testInfo.outputPath(`${key}-${variant}.png`) });
+      await evidenceScreenshot(panel, { path: testInfo.outputPath(`${key}-${variant}.png`) });
       const fit = await measure(page, key, valueColumns, words, stackEm);
       const label = `${key} at ${variant} (panel ${fit.panel}px)`;
       expect.soft(fit.split, `${label}: values broken across lines`).toEqual([]);

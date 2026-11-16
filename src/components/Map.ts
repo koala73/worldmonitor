@@ -50,6 +50,7 @@ import { mountWebcamPinButton } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { tokenizeForMatch, matchKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { MapPopup } from './MapPopup';
+import { fireDetectionPopupData } from './map-popup-fire';
 import type { CrossBorderData, CrossBorderPoint, DisplacementFlow, DisplacementEventsData, InternalDisplacementData } from '@/services/displacement';
 import { createCrossBorderMarker, crossBorderMarkerOffsets } from './cross-border-marker';
 import { createDisplacementMarker, displacementFlowMarkers, displacementEventMarkers, internalDisplacementMarkers, type DisplacementMarker } from './displacement-marker';
@@ -210,6 +211,8 @@ export class MapComponent {
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
   private wrapper: HTMLElement;
   private overlays: HTMLElement;
+  private controlsEl: HTMLElement | null = null;
+  private mountedMapControl: HTMLElement | null = null;
   private markerSettleTimer: ReturnType<typeof setTimeout> | null = null;
   private clusterCanvas: HTMLCanvasElement;
   private clusterGl: WebGLRenderingContext | null = null;
@@ -263,7 +266,7 @@ export class MapComponent {
   private displacementFlows: DisplacementMarker[] = [];
   private internalDisplacement: DisplacementMarker[] = [];
   private displacementEvents: DisplacementMarker[] = [];
-  private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }> = [];
+  private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string; detected_at?: number; satellite?: string; source?: string }> = [];
   private techEvents: TechEventMarker[] = [];
   private iranEvents: IranEvent[] = [];
   private aptGroups: import('@/types').APTGroup[] = [];
@@ -541,6 +544,8 @@ export class MapComponent {
     this.controlDisclosureCleanups.forEach(cleanup => cleanup());
     this.controlDisclosureCleanups = [];
     this.destroyed = true;
+    // The popup is appended to document.body, so removing the map container leaves it open.
+    this.popup.hide();
     this.listenerAbort.abort();
     if (this.markerSettleTimer !== null) {
       clearTimeout(this.markerSettleTimer);
@@ -567,9 +572,16 @@ export class MapComponent {
     }
   }
 
+  /** Adds a control below the zoom buttons, kept across a late controls build. */
+  public mountMapControl(el: HTMLElement): void {
+    this.mountedMapControl = el;
+    this.controlsEl?.append(el);
+  }
+
   private createControls(): HTMLElement {
     const controls = document.createElement('div');
     controls.className = 'map-controls';
+    this.controlsEl = controls;
     setTrustedHtml(controls, trustedHtml(`
       <button class="map-control-btn" data-action="zoom-in" aria-label="Zoom in">+</button>
       <button class="map-control-btn" data-action="zoom-out" aria-label="Zoom out">−</button>
@@ -584,6 +596,7 @@ export class MapComponent {
       else if (action === 'reset') this.reset();
     });
 
+    if (this.mountedMapControl) controls.append(this.mountedMapControl);
     return controls;
   }
 
@@ -2196,6 +2209,40 @@ export class MapComponent {
   ): LatLng {
     const centre = projection.invert?.(projectionPointAtScreenCentre(width, height, this.state.pan));
     return { lat: centre?.[1] ?? 0, lng: centre?.[0] ?? 0 };
+  }
+
+  /** A fire dot; a satellite detection is a button that opens its popup when Orbital Watch is on (#10713). */
+  private createFireDot(fire: MapComponent['firmsFireData'][number], pos: [number, number]): HTMLElement {
+    const color = fire.brightness > 400 ? getCSSColor('--semantic-critical') : fire.brightness > 350 ? getCSSColor('--semantic-high') : getCSSColor('--semantic-elevated');
+    const size = Math.max(4, Math.min(10, (fire.frp || 1) * 0.5));
+
+    const detection = fireDetectionPopupData(fire);
+    const dot = document.createElement(detection ? 'button' : 'div');
+    dot.className = 'fire-dot';
+    dot.style.left = `${pos[0]}px`;
+    dot.style.top = `${pos[1]}px`;
+    dot.style.width = `${size}px`;
+    dot.style.height = `${size}px`;
+    dot.style.backgroundColor = color;
+    dot.title = `${fire.region} — ${Math.round(fire.brightness)}K, ${fire.frp}MW`;
+
+    if (detection) {
+      dot.classList.add('fire-dot-popup');
+      (dot as HTMLButtonElement).type = 'button';
+      dot.setAttribute('aria-label', dot.title);
+      dot.addEventListener('click', (event) => {
+        const e = event as MouseEvent;
+        e.stopPropagation();
+        const rect = this.container.getBoundingClientRect();
+        // Enter and Space click with no pointer position, so anchor on the dot itself.
+        const at = e.detail === 0 ? dot.getBoundingClientRect() : null;
+        this.popup.show({
+          type: 'fireDetection', data: detection,
+          x: (at ? at.left + at.width / 2 : e.clientX) - rect.left, y: (at ? at.top + at.height / 2 : e.clientY) - rect.top,
+        });
+      });
+    }
+    return dot;
   }
 
   /** True when this render pass withheld `marker` under the overlay budget (#7112). */
@@ -3847,18 +3894,7 @@ export class MapComponent {
         const pos = projection([fire.lon, fire.lat]);
         if (!pos) return;
 
-        const color = fire.brightness > 400 ? getCSSColor('--semantic-critical') : fire.brightness > 350 ? getCSSColor('--semantic-high') : getCSSColor('--semantic-elevated');
-        const size = Math.max(4, Math.min(10, (fire.frp || 1) * 0.5));
-
-        const dot = document.createElement('div');
-        dot.className = 'fire-dot';
-        dot.style.left = `${pos[0]}px`;
-        dot.style.top = `${pos[1]}px`;
-        dot.style.width = `${size}px`;
-        dot.style.height = `${size}px`;
-        dot.style.backgroundColor = color;
-        dot.title = `${fire.region} — ${Math.round(fire.brightness)}K, ${fire.frp}MW`;
-
+        const dot = this.createFireDot(fire, pos);
         this.appendOverlay(dot);
       });
     }
@@ -3889,7 +3925,7 @@ export class MapComponent {
         dot.style.opacity = '0.75';
         dot.style.cursor = 'pointer';
         dot.title = isCluster ? `${(cam as WebcamCluster).count} webcams` : ((cam as WebcamEntry).title || 'Webcam');
-        dot.addEventListener('click', (e) => {
+        dot.addEventListener('click', (e: MouseEvent) => {
           e.stopPropagation();
           if (isCluster) {
             this.showWebcamClusterPopup(cam as WebcamCluster, e.clientX, e.clientY);
@@ -5600,7 +5636,7 @@ export class MapComponent {
     this.render();
   }
 
-  public setFires(fires: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }>): void {
+  public setFires(fires: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string; detected_at?: number; satellite?: string; source?: string }>): void {
     this.firmsFireData = fires;
     this.render();
   }

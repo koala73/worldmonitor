@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // A panel header holds the title, status badges and controls in one row. In a
 // 248px dashboard column (a 1366px laptop) the fixed-size badges spilled under
@@ -274,7 +275,7 @@ test('panel headers keep the title readable with nothing overlapping', async ({ 
     // measuring, so the title competes with everything that crowds it in prod.
     const badges = await measureBadges(page);
     const counters = await measureCounters(page);
-    await panel.locator('.panel-header').screenshot({ path: testInfo.outputPath(`header-${viewport.width}.png`) });
+    await evidenceScreenshot(panel.locator('.panel-header'), { path: testInfo.outputPath(`header-${viewport.width}.png`) });
     const m = await measure(page);
     const label = `politics header at ${viewport.width}px (panel ${m.panel}px)`;
     expect.soft(m.titleClipped, `${label}: title "${m.title}" is clipped`).toBe(false);
@@ -299,7 +300,7 @@ test('panel headers keep the title readable with nothing overlapping', async ({ 
     }
     // A long title takes a second line instead of losing its end.
     await setTitle(page, LONG_TITLE);
-    await panel.locator('.panel-header').screenshot({ path: testInfo.outputPath(`header-${viewport.width}-long-title.png`) });
+    await evidenceScreenshot(panel.locator('.panel-header'), { path: testInfo.outputPath(`header-${viewport.width}-long-title.png`) });
     const long = await measure(page);
     expect.soft(long.titleClipped, `${label}: title "${LONG_TITLE}" is clipped`).toBe(false);
     expect.soft(long.titleLines, `${label}: title "${LONG_TITLE}" takes at most two lines`).toBeLessThanOrEqual(2);
@@ -310,7 +311,7 @@ test('panel headers keep the title readable with nothing overlapping', async ({ 
     // The dots move under a title they would otherwise push onto a third line.
     await addInfoButton(page);
     await setTitle(page, WRAP_TITLE);
-    await panel.locator('.panel-header').screenshot({ path: testInfo.outputPath(`header-${viewport.width}-wrap-title.png`) });
+    await evidenceScreenshot(panel.locator('.panel-header'), { path: testInfo.outputPath(`header-${viewport.width}-wrap-title.png`) });
     const wrap = await measure(page);
     expect.soft(wrap.titleClipped, `${label}: title "${WRAP_TITLE}" is clipped`).toBe(false);
     expect.soft(wrap.titleLines, `${label}: title "${WRAP_TITLE}" takes at most two lines`).toBeLessThanOrEqual(2);
@@ -430,7 +431,7 @@ test('a header with a watchlist button keeps a long title readable beside a cach
       badge.title = 'Showing cached data for 12 symbols';
       badge.style.display = 'inline-flex';
     }, WATCHLIST_TITLE);
-    await panel.locator('.panel-header').screenshot({ path: testInfo.outputPath(`watchlist-header-${viewport.width}.png`) });
+    await evidenceScreenshot(panel.locator('.panel-header'), { path: testInfo.outputPath(`watchlist-header-${viewport.width}.png`) });
     const m = await measure(page, 'markets');
     const label = `markets header at ${viewport.width}px (panel ${m.panel}px)`;
     expect(m.panel, `${label}: a phone panel or a 375px column`).toBeLessThanOrEqual(420);

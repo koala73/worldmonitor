@@ -31,6 +31,8 @@ Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/orbital-watch-t
 
 Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/orbital-map-popups.mjs --name orbital-popups` for the imagery row in map-object popups. It clicks Al Udeid air base, serves `/api/orbital/v1/get-watched-site-imagery` from the base's real newest Planetary Computer scene, reads the row and presses Open evidence. It fails if the site read carries anything but `site_id`, if the popup image is not a `blob:` URL, if a change-flag row renders, or if a non-archive request carries the base's coordinates. `WM_VERIFY_ORBITAL_VIEWPORT=mobile` and `WM_VERIFY_ORBITAL_THEME=light` work as above. Handles: `[data-orbital-imagery]`, `[data-orbital-image] img`, `[data-orbital-open-evidence]`.
 
+Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/orbital-fire-popup.mjs --name orbital-fire` for the FIRMS fire detection popup. It serves one test detection from the wildfire list route, dated on the newest day GIBS holds a VIIRS Suomi NPP mosaic for, and clicks it on the deck.gl map (the SVG dot on phones). It reads the facts, the daily mosaic and the imagery row, and fails if the mosaic is not a `blob:` image, if the fire's coordinates reach a non-archive host, or, with `WM_VERIFY_FIRE_STATE=none` (GIBS time domain emptied), if an image still shows. Handles: `[data-fire-mosaic]`, `[data-fire-mosaic-image] img`, `.fire-dot-popup`.
+
 ## Proof limits
 
 - The point check covers requests the page makes. Sentry breadcrumb scrubbing is covered by `tests/orbital-privacy.test.mts`, because the dev server does not start Sentry.

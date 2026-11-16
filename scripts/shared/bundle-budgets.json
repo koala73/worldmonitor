@@ -97,7 +97,7 @@
   },
   "deferred": {
     "total": {
-      "raw": 1620235
+      "raw": 1621965
     },
     "chunks": {
       "App": {
@@ -202,6 +202,10 @@
       },
       "pinned-webcams": {
         "raw": 2183,
+        "files": 1
+      },
+      "referral-capture": {
+        "raw": 1730,
         "files": 1
       },
       "sanitize": {

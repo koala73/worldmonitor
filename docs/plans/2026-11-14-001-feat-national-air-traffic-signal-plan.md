@@ -133,7 +133,7 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 
 ## Alert on a US departure collapse (PR B)
 
-**Depends on.** PR A. PR A's live series must also hold the OpenSky ground-stop evidence that Appendix A requires. Without it PR B does not start.
+**Depends on.** PR A and #10764, which records the airline-only counts the detector reads. The validation gate is the archive replay in Appendix A, not a live ground stop.
 
 **Files.**
 
@@ -145,27 +145,30 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 
 **Build.**
 
-- [ ] Model the detector as a state machine with states `normal`, `collapsed`, and `insufficient-baseline`. Persist the state in `aviation:traffic:detector:v1`.
-- [ ] Baseline each bin as the median `usLowClimbing` at the same UTC bin on the last four same weekdays with `ok` points. Fewer than two such days puts the detector in `insufficient-baseline`, and it never alerts.
-- [ ] Enter `collapsed` when two consecutive `ok` points read below 30% of baseline while `euAirborne` is at least 80% of its own baseline and two coverage gates hold. `usSeen` is at least 50% of its own baseline, which catches a national receiver outage. At least 16 of the 20 hubs keep `air + ground` at or above 50% of their own baseline, which catches a regional outage around the departure airports that the national total hides. Grounded aircraft stay visible at the hubs during a ground stop, so both gates hold for a real collapse. PR B sets both 50% thresholds from the OpenSky evidence in Appendix A, not from these starting values. Leave it when two consecutive points read above 70%.
-- [ ] On entry, publish `aviation_traffic_collapse` with severity `critical`. On exit, publish the same type with severity `high` and a recovery title. Both payloads carry `countryCode` `US`, the ratio, and the onset bin.
+- [ ] Model the detector as a state machine with states `normal` and `collapsed`, and per-bin verdicts `gap`, `quiet`, `insufficient-baseline`, `blocked-feed` and `blocked-coverage`. Persist the state in `aviation:traffic:detector:v1`.
+- [ ] Signal `usLowClimbingAirline`. The all-aircraft count fell only to 0.58 an hour into the 2026-11-13 stop, because general aviation keeps flying.
+- [ ] Baseline each bin as the median at the same local wall-clock time on the last four same weekdays, US time for the signal and coverage and Paris time for Europe. The same UTC bin raised ten false collapses after the 2026-11-01 DST change. Fewer than two usable weeks means `insufficient-baseline`, which never alerts.
+- [ ] Bins whose baseline is under 25% of the local day's peak baseline are `quiet`. They neither count toward nor break a run.
+- [ ] Enter `collapsed` when two consecutive evaluated bins read below 0.40, with Europe at least 0.30 of its baseline (the feed is alive) and coverage holding. Coverage is OpenSky `usSeen` at least 0.80 of Wingbits `usSeen` for the same bin, or, without a Wingbits point, at least 0.60 of its own baseline. The feed checks guard entry only, because parked aircraft switch transponders off and the national count falls during a real stop.
+- [ ] Leave it when two consecutive bins read above 0.70.
+- [ ] On entry, publish `aviation_traffic_collapse` with severity `critical`. On exit, publish the same type with severity `high` and a recovery title. A `shouldNotify` bypass delivers it to the realtime rules that got the alert, and quiet hours silence or hold it because it is not critical. Both payloads carry `countryCode` `US`, the ratio, and the onset bin. The state moves only after the event is queued.
 - [ ] Cover the new type in the payload audit and the country-scope test.
 
 **You see.**
 
-- [ ] On the 2026-11-13 replay the relay logs `[AirTraffic] collapse entered ratio=<r> onset=20:40Z` and queues one critical event.
-- [ ] On the 2026-11-06 replay the relay queues nothing.
+- [ ] On the archive replay the detector raises one collapse, at 2026-11-13 21:10Z with onset 21:05Z, and one recovery, at 2026-11-14 12:25Z. No other day raises anything.
+- [ ] The relay logs `[AirTraffic] collapse entered ratio=<r> onset=<HH:MM>Z` and queues one critical event.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
 - [ ] `tests/air-traffic-detector.test.mjs` gains cases for each transition, a `gap` point inside the window, a Europe-control drop that blocks the alert, a `usSeen` drop that blocks the alert, a hub-coverage drop with `usSeen` above 50% that blocks the alert, and fewer than two baseline days. Run `node --test tests/air-traffic-detector.test.mjs`.
-- [ ] `tests/air-traffic-detector-replay.test.mjs` replays committed 5-minute series derived from the adsb.lol archives for 2026-11-13 and 2026-11-06. Run `node --test tests/air-traffic-detector-replay.test.mjs`.
+- [ ] `tests/air-traffic-detector-replay.test.mjs` replays every bin of the committed archive fixture (`tests/fixtures/air-traffic-archive-series.json.gz`, built by `scripts/air-traffic-archive-extract.py`). Run `node --test tests/air-traffic-detector-replay.test.mjs`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `opus` at the PR head, per the boot recipe.
 
-- [ ] Lane 1. Regression lane against trunk. Replay the 2026-11-13 series at trunk and head. Trunk lacks the detector, so record that and gate the head queueing one critical event by 20:50Z. Save `lane1-trunk-vs-head.txt`. Pass when trunk queues no traffic event and head queues one with onset 20:40Z or 20:45Z.
+- [ ] Lane 1. Regression lane against trunk. Replay the 2026-11-13 series at trunk and head. Trunk lacks the detector, so record that and gate the head queueing one critical event by 21:10Z. Save `lane1-trunk-vs-head.txt`. Pass when trunk queues no traffic event and head queues one with onset 21:05Z.
 - [ ] Lane 2. Replay the 2026-11-06 series. Save `lane2-normal-friday.json`. Pass when no event is queued.
-- [ ] Lane 3. Replay 2026-11-13 through 02:00Z on 2026-11-14. Save `lane3-recovery.json`. Pass when one recovery event follows the stop's lift at 01:15Z.
+- [ ] Lane 3. Replay 2026-11-13 through 12:30Z on 2026-11-14. Save `lane3-recovery.json`. Pass when one recovery event follows the stop's lift at 01:15Z and lands at 12:25Z.
 - [ ] Lane 4. Replay with a fresh Redis and one baseline day. Save `lane4-cold-start.json`. Pass when the state is `insufficient-baseline` and nothing is queued.
 - [ ] Lane 5. Replay 2026-11-13 with Europe counts scaled to 50%. Save `lane5-feed-loss.json`. Pass when nothing is queued and the log names the control-region block.
 - [ ] Lane 6. Replay with three `gap` points at 20:40Z to 20:50Z. Save `lane6-gaps.json`. Pass when the detector waits for two `ok` points before it enters `collapsed`.
@@ -190,6 +193,20 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 - [ ] Rebased onto current trunk after the verdict, patch-id unchanged.
 - [ ] The root appends PR B to the base-branch stack and the operator lands it bottom-up.
 
+## Alert on a European departure collapse (PR C, stacked on PR B)
+
+Goal. The same alert for the UK, France, Germany, Spain and Italy, validated on adsb.lol archive days before it ships. A market the archive cannot validate does not ship.
+
+- [x] Count each aircraft once per market when it is within 48 km of any of the market's main airports, inside the Europe box: `markets.<code>.seen` and `markets.<code>.dep` (airline callsign, under 3,000 m, climbing). Wingbits has no vertical rate, so its series stores `seen` only.
+- [x] Generalize the detector to a market table. Each market names its signal, coverage and control reads, time zone, window, entry ratio and floors. The US market is unchanged. A European market's control is the US airborne count in New York time.
+- [x] Keep every market's state in one key, `aviation:traffic:detector:v2`, keyed by market code. A failed publish keeps that market's old state, so the next bin retries.
+- [x] Extract 60 or more archive days from 2026-08-10, the 2026-09-08 NATS failure and the 2026-09-30 Italian ATC strike included, into the shared fixture.
+- [x] Tune from the replay. A market has 4 to 17 departures per bin, so the ratio is summed over a 4-bin (20-minute) window. Entry is 0.30. The NATS failure reads 0.24 at entry and ordinary windows reach 0.42 at the lowest. A window under 30 departures is quiet. Coverage needs 0.40 of the market's own baseline, because the UK read 0.62 at entry and 0.42 at the lowest.
+- [x] Drop the Netherlands. About 4 departures a bin never fill the window floor, so it was never evaluated.
+- [x] `tests/air-traffic-detector-replay.test.mjs` asserts one GB collapse at 12:10Z on 2026-09-08, one recovery at 18:35Z, and no event in France, Germany, Spain or Italy. Relay lane 30 queues one GB critical event while the US stays normal.
+
+Evidence. With a 3-bin window and entry at 0.40, the UK flapped (recovered at 12:50Z and re-entered at 13:05Z) and Spain fired on the NATS day, probably because flights to the UK were held at Spanish airports. With a 6-bin window, Italy fired on a 2026-09-10 afternoon dip with no reported cause. Italy's 2026-09-30 strike kept protected flights and read 0.47: a partial strike is not a collapse.
+
 ## Close the program
 
 - [ ] Every box above is checked with its evidence.
@@ -202,12 +219,21 @@ The adsb.lol archive analysis on 2026-11-14 is the evidence for the signal. It r
 - Airline departures over CONUS fell from 106 to 20 per 5 minutes at 20:40Z on 2026-11-13. The previous Friday held between 102 and 136 for the same bins. The official ground stop started at 20:54Z.
 - Airline aircraft airborne over CONUS fell to 0.14 of the previous Friday by 23:45Z, while the Europe control region stayed between 0.85 and 1.0.
 
-Three questions stay unproven. Third, whether OpenSky keeps reporting grounded aircraft during a ground stop, so that `usSeen` and hub coverage hold above their thresholds. The adsb.lol replays cannot answer this, because they measure adsb.lol receivers. The evidence must come from PR A's live OpenSky series. PR B stays blocked until that series covers at least one FAA ground stop at a tracked hub, confirmed in the FAA ATCSCC advisory record. PR B reads the stopped hub's `air + ground` and the national `usSeen` against their baselines across the stop, sets both coverage thresholds below the lowest ratio observed, and cites the stop and the ratios in its description. If no such stop occurs, PR B does not ship. First, whether the stateless `usLowClimbing` count from 5-minute snapshots tracks true departures as sharply as the trace-based count. PR A lane 2 answers it. Second, how OpenSky coverage compares with adsb.lol coverage. The archive counted 1,314 aircraft airborne over CONUS at 23:30Z, and a public OpenSky count near that time was 1,083.
+The detector was validated on the archive instead of waiting for a live stop (2026-11-15). The extractor replays each archive day through `aggregateStates` semantics and matched `aggregateStates` field for field on 2026-11-13 20:30Z. The replay covers May to November 2026, including July 4, Memorial Day, Labor Day, the 2026-11-01 DST change, the 2026-08-06 Minneapolis Center outage and the 2026-09-21 East Coast outage.
+
+- The fixture holds 111 days, 93 of them with enough baseline to evaluate. 2026-05-04 was dropped after its download stalled twice. It only adds baseline for 2026-05-18 and 2026-05-25.
+- No ordinary day crosses 0.40 for two evaluated bins. The lowest ordinary two-bin ratio was 0.49, on July 4 evening (22:40Z) and Halloween evening (2026-11-01 02:40Z). Single bins dipped to 0.44 on Halloween and 0.47 on July 4.
+- The 2026-11-13 stop enters at 21:10Z, 16 minutes after the official 20:54Z stop. A 0.45 threshold entered at 20:55Z, but a single Halloween bin already read under it.
+- An archive hole (2026-08-13, 7.5 hours with zero states) is blocked by the Europe check.
+- The regional outages stay above 0.80 nationally. A national detector should not fire on them, and a hub-level detector is a separate question.
+- Live OpenSky against Wingbits on 2026-11-15 read 0.91 to 1.02 for `usSeen` over 79 bins, which sets the 0.80 coverage floor. Per-hub totals read 0.72 to 1.09, too noisy to gate on.
+
+The archive measures adsb.lol receivers, not OpenSky. The ratios are within one source, so the thresholds carry over, but absolute counts do not, which is why every threshold is a ratio or a share of the day's peak.
 
 ## Appendix B. Alternatives rejected
 
 - Counting departures from aircraft state across snapshots. It needs the previous snapshot in memory and breaks on relay restarts. The stateless low-and-climbing count needs neither.
-- Backfilling the baseline from adsb.lol archives. Their coverage differs from OpenSky, so a ratio across the two sources is not valid.
+- Backfilling the live baseline from adsb.lol archives. Their coverage differs from OpenSky, so a ratio across the two sources is not valid. The archive validates thresholds, which are ratios within one source.
 - Using adsb.lol or Wingbits as the national fallback. adsb.lol `/v2/mil` is military only and Wingbits answers regional boxes. A gap point is more honest than a partial count.
 - Reviving the disabled OpenSky path in `scripts/seed-military-flights.mjs`. That path was turned off on purpose in #6224, and the relay already owns the account cooldown.
 

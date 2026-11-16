@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 declare global {
   interface Window {
@@ -116,7 +117,7 @@ test('loader refreshes retain one poll and translation subscriber and reject lat
   await expect(page.locator('.oref-alert-title')).toHaveText('Translated test alert');
   await page.clock.runFor(133_000);
   await expect.poll(() => page.evaluate(() => ({ panel: window.__orefFixture.panelUpdates, cache: window.__orefFixture.cacheUpdates }))).toEqual({ panel: 12, cache: 12 });
-  await page.screenshot({ path: testInfo.outputPath('oref-single-subscription.png'), fullPage: true, animations: 'disabled' });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('oref-single-subscription.png'), fullPage: true, animations: 'disabled' });
 
   await page.clock.runFor(9_000);
   await page.evaluate(() => window.__orefFixture.beginPending());

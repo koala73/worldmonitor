@@ -393,7 +393,7 @@ describe('HormuzPanel dates from a tracker payload stored before the ISO seeder 
 });
 
 describe('HormuzPanel shipment index labels', () => {
-  it('labels the WTO series as a Jan–Mar 2025-based index and dates the WTO analysis', async () => {
+  it('labels the WTO series as a Jan–Mar 2025-based index and dates the WTO commentary', async () => {
     serviceMocks.fetchTracker.mockResolvedValue({
       ...tracker,
       updatedDate: '2026-09-21',
@@ -413,7 +413,55 @@ describe('HormuzPanel shipment index labels', () => {
     const text = panel.getElement().textContent ?? '';
     expect(text, 'the WTO series are an index, not tonnage').not.toMatch(/kt\/day|\bunits\b/);
     expect(text, 'WTO bases the index on January–March 2025').toContain('Jan–Mar 2025 average = 100');
-    expect(text).toContain('WTO analysis 2026-09-21');
+    expect(text).toContain('WTO commentary 2026-09-21');
+  });
+
+  it('dates the header by the daily series, not by the WTO commentary', async () => {
+    serviceMocks.fetchTracker.mockResolvedValue({
+      ...tracker,
+      updatedDate: '2026-09-21',
+      status: 'disrupted' as const,
+      charts: [
+        { label: 'crude_oil_outbound', title: 'Crude Oil Outbound Shipments', series: [{ date: '2026-11-13', value: 0 }, { date: '2026-11-14', value: 0 }] },
+        { label: 'agriculture_inbound', title: 'Agriculture Inbound Shipments', series: [{ date: '2026-11-14', value: 93 }, { date: '2026-11-15', value: 0 }] },
+      ],
+    });
+    serviceMocks.fetchDependencies.mockResolvedValue(dependencyResponse);
+
+    const panel = new HormuzPanel();
+    document.body.append(panel.getElement());
+    await panel.fetchData();
+
+    await vi.waitFor(() => expect(panel.getElement().textContent).toContain('Crude Oil Outbound Shipments'));
+    const text = panel.getElement().textContent ?? '';
+    expect(text).toContain('Daily data to 2026-11-15');
+    expect(text).toContain('WTO commentary 2026-09-21');
+    panel.destroy();
+  });
+
+  it('says a series with no shipments has none, instead of drawing an empty chart', async () => {
+    serviceMocks.fetchTracker.mockResolvedValue({
+      ...tracker,
+      status: 'disrupted' as const,
+      charts: [
+        { label: 'crude_oil_outbound', title: 'Crude Oil Outbound Shipments', series: [{ date: '2026-10-17', value: 0 }, { date: '2026-11-14', value: 0 }] },
+        { label: 'agriculture_inbound', title: 'Agriculture Inbound Shipments', series: [{ date: '2026-10-17', value: 81 }, { date: '2026-11-15', value: 0 }] },
+      ],
+    });
+    serviceMocks.fetchDependencies.mockResolvedValue(dependencyResponse);
+
+    const panel = new HormuzPanel();
+    document.body.append(panel.getElement());
+    await panel.fetchData();
+
+    await vi.waitFor(() => expect(panel.getElement().textContent).toContain('Crude Oil Outbound Shipments'));
+    const charts = [...panel.getElement().querySelectorAll<HTMLElement>('.hz-chart')];
+    expect(charts).toHaveLength(2);
+    expect(charts[0]!.textContent).toContain('No shipments recorded 10-17 to 11-14');
+    expect(charts[0]!.querySelector('svg'), 'an all-zero series draws no bars').toBeNull();
+    expect(charts[1]!.textContent).not.toContain('No shipments recorded');
+    expect(charts[1]!.querySelector('svg')).not.toBeNull();
+    panel.destroy();
   });
 
   it('relabels the tracker when the full English catalog lands after it rendered', async () => {
@@ -434,7 +482,7 @@ describe('HormuzPanel shipment index labels', () => {
     i18nMocks.catalogLoaded = true;
     window.dispatchEvent(new CustomEvent(I18N_RESOURCES_LOADED_EVENT, { detail: { language: 'en' } }));
 
-    await vi.waitFor(() => expect(panel.getElement().textContent).toContain('WTO analysis 2026-09-21'));
+    await vi.waitFor(() => expect(panel.getElement().textContent).toContain('WTO commentary 2026-09-21'));
     expect(panel.getElement().textContent).not.toContain('components.hormuzTracker.');
     panel.destroy();
   });

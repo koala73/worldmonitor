@@ -2132,7 +2132,14 @@
     "map": {
       "showMap": "Mostra mappa",
       "hideMap": "Nascondi mappa",
-      "clearTrails": "Cancella tracce"
+      "clearTrails": "Cancella tracce",
+      "locate": "Mostra la mia posizione"
+    },
+    "mapLocate": {
+      "locating": "Localizzazione…",
+      "denied": "Accesso alla posizione negato. Usa Cerca per trovare un luogo.",
+      "unavailable": "Posizione non trovata. Usa Cerca per trovare un luogo.",
+      "noCountry": "Nessun paese nella tua posizione. Usa Cerca per trovare un luogo."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Interruzioni Internet</strong> Disservizi internet in tempo reale, attacchi DDoS e anomalie di traffico dal monitoraggio di rete globale:<ul><li><strong>Disservizi</strong>: Interruzioni di connettività rilevate tramite BGP per paese</li><li><strong>DDoS</strong>: Rapporti di attacchi volumetrici per protocollo e vettore</li><li><strong>Anomalie</strong>: Pattern di traffico anomali da Cloudflare Radar</li></ul>",
@@ -2353,7 +2360,7 @@
       "proLocked": "Esegui l'upgrade a PRO per la valutazione della vulnerabilità delle materie prime"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Tracker Commerciale Hormuz</strong> – indici giornalieri di spedizioni WTO DataLab per lo Stretto di Hormuz: petrolio greggio, GNL e fertilizzanti in uscita dal Golfo, merci agricole in ingresso. Per volume, media gennaio–marzo 2025 = 100, solo navi visibili su AIS. Stato e data provengono dall'ultima analisi WTO.",
+      "infoTooltip": "<strong>Tracker Commerciale Hormuz</strong> – indici giornalieri di spedizioni WTO DataLab per lo Stretto di Hormuz: petrolio greggio, GNL e fertilizzanti in uscita dal Golfo, merci agricole in ingresso. Per volume, media gennaio–marzo 2025 = 100, solo navi visibili su AIS. I grafici sono giornalieri; lo stato è tratto dal commento WTO.",
       "title": "Tracker Commerciale Hormuz",
       "noData": "Nessun dato",
       "notAvailable": "N/D",
@@ -2366,8 +2373,10 @@
         "unavailable": "Dati Hormuz non disponibili",
         "failedToLoad": "Caricamento non riuscito"
       },
-      "analysisDate": "Analisi WTO {{date}}",
-      "indexNote": "Indice dei carichi per volume, media gennaio–marzo 2025 = 100"
+      "analysisDate": "Commento WTO {{date}}",
+      "indexNote": "Indice dei carichi per volume, media gennaio–marzo 2025 = 100",
+      "dataThrough": "Dati giornalieri fino al {{date}}",
+      "noShipments": "Nessuna spedizione registrata da {{from}} a {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Webcam in diretta</strong> Feed in diretta da luoghi geopoliticamente significativi in tutto il mondo: zone di conflitto, capitali, valichi di frontiera e punti di strozzatura strategici. Stream da YouTube e reti pubbliche."
@@ -4517,7 +4526,8 @@
   "contextMenu": {
     "openCountryBrief": "Apri scheda paese",
     "copyCoordinates": "Copia coordinate",
-    "satellitePasses": "Passaggi satellitari qui"
+    "satellitePasses": "Passaggi satellitari qui",
+    "imageryEvidenceHere": "Prove da immagini satellitari qui"
   },
   "shell": {
     "documentTitle": "World Monitor — Dashboard di intelligence globale in tempo reale",
@@ -5426,8 +5436,6 @@
       "dailyMosaic": "mosaico giornaliero",
       "weatherFrame": "fotogramma meteo",
       "change": "Cambia posizione",
-      "share": "Copia collegamento",
-      "shareCopied": "Collegamento copiato",
       "showUtc": "UTC",
       "showLocal": "Ora locale",
       "alert": "Avviso prima di ogni passaggio aperto sopra il punto e a ogni nuova immagine senza nuvole.",
@@ -5542,7 +5550,28 @@
       "noPass": "Nessun passaggio previsto entro 72 ore",
       "openEvidence": "Apri le prove",
       "imageAlt": "Vista satellitare da {{source}}",
-      "unavailable": "Impossibile caricare le immagini satellitari."
+      "unavailable": "Impossibile caricare le immagini satellitari.",
+      "fire": {
+        "title": "Rilevamento incendi da satellite",
+        "detected": "Rilevato",
+        "satellite": "Satellite",
+        "confidence": "Affidabilità",
+        "confidenceHigh": "Alta",
+        "confidenceNominal": "Normale",
+        "confidenceLow": "Bassa",
+        "power": "Potenza dell'incendio",
+        "powerValue": "{{value}} MW",
+        "region": "Regione",
+        "source": "Fonte",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Mosaico giornaliero",
+        "mosaicLoading": "Controllo NASA GIBS…",
+        "mosaicCaption": "Composito dei passaggi {{source}} della giornata per {{date}}; l'incendio potrebbe essere nascosto da nuvole o fumo.",
+        "mosaicNone": "NASA GIBS non dispone di un mosaico {{source}} per {{date}}.",
+        "mosaicNoLayer": "Nessun mosaico giornaliero è disponibile per questo satellite.",
+        "mosaicUnavailable": "Il mosaico giornaliero non è stato caricato.",
+        "mosaicAlt": "Mosaico giornaliero NASA GIBS {{source}} per {{date}}"
+      }
     }
   },
   "settings": {

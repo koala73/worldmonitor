@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 type HarnessWindow = Window & {
   __mobileMapIntegrationHarness?: {
@@ -32,7 +33,7 @@ for (const width of [1280, 390]) {
       expect(await popup.evaluate(element => element.scrollTop)).toBeCloseTo(scroll, 0);
       await expect(member).toBeFocused();
       await expect(member).toBeInViewport();
-      await popup.screenshot({ path: testInfo.outputPath(`scroll-restored-${width}.png`) });
+      await evidenceScreenshot(popup, { path: testInfo.outputPath(`scroll-restored-${width}.png`) });
     });
 
     test('opens details without map movement and returns to expanded group', async ({ page }, testInfo) => {
@@ -53,7 +54,7 @@ for (const width of [1280, 390]) {
       await page.keyboard.press('Tab');
       await expect(popup.locator('[data-vessel-index="0"]')).toBeFocused();
       await expect(popup.locator('[data-vessel-index="5"]')).toBeHidden();
-      await popup.screenshot({ path: testInfo.outputPath(`group-${width}.png`) });
+      await evidenceScreenshot(popup, { path: testInfo.outputPath(`group-${width}.png`) });
       await popup.locator('.cluster-toggle').click();
       const member = popup.locator('[data-vessel-index="5"]');
       await member.focus();
@@ -63,7 +64,7 @@ for (const width of [1280, 390]) {
       await expect(popup).not.toContainText('0 kts');
       await expect(popup.locator('.popup-stat').filter({ hasText: 'HEADING' })).toContainText('Unknown');
       await expect(popup.locator('.popup-back')).toBeFocused();
-      await popup.screenshot({ path: testInfo.outputPath(`details-${width}.png`) });
+      await evidenceScreenshot(popup, { path: testInfo.outputPath(`details-${width}.png`) });
       await page.keyboard.press('Space');
       await expect(popup.locator('.popup-title')).toContainText('Indian Ocean Naval Group');
       await expect(member).toBeFocused();

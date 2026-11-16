@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { acceptTesterKeySession } from './helpers/accept-tester-key-session';
+import { evidenceScreenshot } from './evidence-screenshot';
 const fixture = JSON.parse(readFileSync(new URL('../tests/fixtures/food-prices/card.json', import.meta.url), 'utf8'));
 const additions = JSON.parse(readFileSync(new URL('../tests/fixtures/food-prices/batches-4-5-card.json', import.meta.url), 'utf8'));
 
@@ -36,7 +37,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       await expect(panel.locator('.food-prices-table').first()).toContainText(currency!);
     }
     await panel.locator('.food-prices-card h3').scrollIntoViewIfNeeded();
-    await page.screenshot({ path: testInfo.outputPath(`food-prices-${viewport.width}-daily.png`) });
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`food-prices-${viewport.width}-daily.png`) });
     const contextMarket = panel.getByLabel('Sudan · FEWS NET monthly market prices · Market', { exact: true });
     const markets = await contextMarket.locator('option').evaluateAll(options => options.map(option => (option as HTMLOptionElement).value));
     await contextMarket.selectOption(markets[1]!);
@@ -44,13 +45,13 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await expect(panel.locator('[data-price-table="context:fewssd"]')).toContainText('SDG');
     await expect(panel.locator('[data-price-table="context:fewssd"]')).not.toContainText('Week over week');
     await contextMarket.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: testInfo.outputPath(`food-prices-${viewport.width}-monthly.png`) });
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`food-prices-${viewport.width}-monthly.png`) });
     await expect(panel.locator('details')).toContainText('2026-06-01');
     await expect(panel.locator('details')).toContainText('CPI: 0.0% month-on-month');
     await expect(panel.locator('details')).toContainText('indices, not prices');
     await expect(panel.locator('[data-price-table="context:makstat"]')).toHaveCount(0);
     await panel.getByRole('heading', { name: 'North Macedonia · North Macedonia MakStat food CPI', exact: true }).scrollIntoViewIfNeeded();
-    await page.screenshot({ path: testInfo.outputPath(`food-prices-${viewport.width}-indices.png`) });
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`food-prices-${viewport.width}-indices.png`) });
     await panel.getByLabel('Country', { exact: true }).selectOption('da');
     await panel.locator('.food-prices-card h3').scrollIntoViewIfNeeded();
     await expect(panel.getByLabel('Country', { exact: true })).toBeVisible();

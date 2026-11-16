@@ -28,6 +28,7 @@ import type { PointPass } from '@/services/orbital/pass-job';
 import type { OrbitalEvidence } from '@/services/orbital/match';
 import { openOrbitalWatch, openOrbitalWatchSearch } from '@/app/orbital-watch';
 import { scheduleOrbitalShareLink, takeOrbitalShareLink } from '@/app/orbital-share-link';
+import { SHARE_COPIED_MS } from '@/components/share-link-button';
 import { watchOrbitalRoute } from '@/app/orbital-route';
 import { EventHandlerManager } from '@/app/event-handlers';
 import { SearchSelectionDispatcher } from '@/app/search-selection-dispatcher';
@@ -104,7 +105,7 @@ beforeEach(() => {
   evidenceMock.mockImplementation(async (found: PointPassLookup) => answered(found.passes));
   mapCentre = null;
   connectOrbitalLookupMap(() => ({ getCenter: () => mapCentre }));
-  releaseMapView = setOrbitalMapView({ rect: () => new DOMRect(0, 0, 1440, 900), center, project: () => null, hold: () => {}, suppressLayers: () => {}, camera: () => null, capZoom: () => {}, restore: () => {} });
+  releaseMapView = setOrbitalMapView({ rect: () => new DOMRect(0, 0, 1440, 900), center, project: () => null, hold: () => {}, camera: () => null, capZoom: () => {}, restore: () => {} });
 });
 
 afterEach(() => {
@@ -266,6 +267,26 @@ describe('satellite pass share link', () => {
     expect(link.search).toBe('');
     expect(link.hash).toBe('#orbital=48.86,2.29');
     expect(text()).toContain('Link copied');
+  });
+
+  it('uses the dashboard share-link button and confirms a copy on it', async () => {
+    openOrbitalWatch(EXACT, null);
+    await vi.waitFor(() => expect(sheet()!.querySelector('.ies-evidence-line')).not.toBeNull());
+    const share = button('[data-action="share"]');
+    expect(share.classList.contains('cdp-share-btn')).toBe(true);
+    expect(share.getAttribute('aria-label')).toBe('Share link');
+    expect(share.textContent).toBe('');
+    vi.useFakeTimers();
+    try {
+      share.click();
+      await vi.waitFor(() => expect(share.getAttribute('aria-label')).toBe('Link copied'));
+      expect(share.querySelector('polyline')?.getAttribute('points')).toBe('20 6 9 17 4 12');
+      await vi.advanceTimersByTimeAsync(SHARE_COPIED_MS);
+      expect(share.getAttribute('aria-label')).toBe('Share link');
+      expect(share.querySelector('polyline')?.getAttribute('points')).toBe('16 6 12 2 8 6');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows the link to copy by hand when the clipboard refuses', async () => {

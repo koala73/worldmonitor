@@ -2122,7 +2122,14 @@
     "map": {
       "showMap": "Hiển thị bản đồ",
       "hideMap": "Ẩn bản đồ",
-      "clearTrails": "Xóa dấu vết"
+      "clearTrails": "Xóa dấu vết",
+      "locate": "Hiển thị vị trí của tôi"
+    },
+    "mapLocate": {
+      "locating": "Đang định vị…",
+      "denied": "Quyền truy cập vị trí bị từ chối. Dùng Tìm kiếm để tìm địa điểm.",
+      "unavailable": "Không tìm thấy vị trí. Dùng Tìm kiếm để tìm địa điểm.",
+      "noCountry": "Không có quốc gia tại vị trí của bạn. Dùng Tìm kiếm để tìm địa điểm."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Gián đoạn Internet</strong> Cắt internet, tấn công DDoS và bất thường lưu lượng thời gian thực từ giám sát mạng toàn cầu:<ul><li><strong>Cắt mạng</strong>: Lỗi kết nối BGP theo quốc gia</li><li><strong>DDoS</strong>: Báo cáo tấn công thể tích theo giao thức và vector</li><li><strong>Bất thường</strong>: Mẫu lưu lượng bất thường từ Cloudflare Radar</li></ul>",
@@ -2333,7 +2340,7 @@
       "proLocked": "Nâng cấp lên PRO để xem điểm số lỗ hổng hàng hóa"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Theo dõi Thương mại Hormuz</strong> chỉ số lưu lượng hàng ngày từ WTO DataLab cho Eo biển Hormuz: dầu thô, LNG và phân bón rời khỏi Vịnh, hàng nông sản đến. Theo khối lượng, trung bình tháng 1–3 năm 2025 = 100, chỉ các tàu có tín hiệu AIS. Trạng thái và ngày tháng từ phân tích mới nhất của WTO.",
+      "infoTooltip": "<strong>Theo dõi Thương mại Hormuz</strong> chỉ số lưu lượng hàng ngày từ WTO DataLab cho Eo biển Hormuz: dầu thô, LNG và phân bón rời khỏi Vịnh, hàng nông sản đến. Theo khối lượng, trung bình tháng 1–3 năm 2025 = 100, chỉ các tàu có tín hiệu AIS. Biểu đồ là hàng ngày; trạng thái được lấy từ bình luận của WTO.",
       "title": "Theo dõi Thương mại Hormuz",
       "noData": "Không có dữ liệu",
       "notAvailable": "N/A",
@@ -2346,8 +2353,10 @@
         "unavailable": "Dữ liệu Hormuz không khả dụng",
         "failedToLoad": "Không tải được"
       },
-      "analysisDate": "Phân tích WTO {{date}}",
-      "indexNote": "Chỉ số lượng hàng hóa, mức trung bình tháng 1–3 năm 2025 = 100"
+      "analysisDate": "Bình luận WTO {{date}}",
+      "indexNote": "Chỉ số lượng hàng hóa, mức trung bình tháng 1–3 năm 2025 = 100",
+      "dataThrough": "Dữ liệu hàng ngày đến {{date}}",
+      "noShipments": "Không có lô hàng được ghi nhận {{from}} đến {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Webcam trực tiếp</strong> Luồng phát trực tiếp từ các địa điểm có ý nghĩa địa chính trị trên toàn thế giới: vùng xung đột, thủ đô, cửa khẩu biên giới và các điểm nghẽn chiến lược. Luồng từ YouTube và mạng công cộng."
@@ -4473,7 +4482,8 @@
   "contextMenu": {
     "openCountryBrief": "Mở tổng quan quốc gia",
     "copyCoordinates": "Sao chép tọa độ",
-    "satellitePasses": "Vệ tinh bay qua đây"
+    "satellitePasses": "Vệ tinh bay qua đây",
+    "imageryEvidenceHere": "Bằng chứng ảnh vệ tinh tại đây"
   },
   "shell": {
     "documentTitle": "World Monitor — Bảng điều khiển tình báo toàn cầu theo thời gian thực",
@@ -5362,8 +5372,6 @@
       "dailyMosaic": "ghép ảnh hàng ngày",
       "weatherFrame": "ảnh thời tiết",
       "change": "Thay đổi vị trí",
-      "share": "Sao chép liên kết",
-      "shareCopied": "Đã sao chép liên kết",
       "showUtc": "UTC",
       "showLocal": "Giờ địa phương",
       "alert": "Cảnh báo trước mỗi lượt vệ tinh dữ liệu mở bay qua trên đầu, và khi có ảnh không mây mới.",
@@ -5470,7 +5478,28 @@
       "noPass": "Không có lượt bay qua trong 72 giờ",
       "openEvidence": "Mở bằng chứng",
       "imageAlt": "Ảnh vệ tinh từ {{source}}",
-      "unavailable": "Không tải được ảnh vệ tinh."
+      "unavailable": "Không tải được ảnh vệ tinh.",
+      "fire": {
+        "title": "Phát hiện cháy từ vệ tinh",
+        "detected": "Được phát hiện",
+        "satellite": "Vệ tinh",
+        "confidence": "Độ tin cậy",
+        "confidenceHigh": "Cao",
+        "confidenceNominal": "Trung bình",
+        "confidenceLow": "Thấp",
+        "power": "Công suất cháy",
+        "powerValue": "{{value}} MW",
+        "region": "Khu vực",
+        "source": "Nguồn",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Ảnh ghép hàng ngày",
+        "mosaicLoading": "Đang kiểm tra NASA GIBS…",
+        "mosaicCaption": "Ảnh ghép từ các lượt quét {{source}} trong ngày {{date}}; cháy có thể bị che khuất bởi mây hoặc khói.",
+        "mosaicNone": "NASA GIBS không có ảnh ghép {{source}} cho {{date}}.",
+        "mosaicNoLayer": "Không có ảnh ghép hàng ngày cho vệ tinh này.",
+        "mosaicUnavailable": "Ảnh ghép hàng ngày không tải được.",
+        "mosaicAlt": "Ảnh ghép hàng ngày NASA GIBS {{source}} cho {{date}}"
+      }
     }
   },
   "settings": {

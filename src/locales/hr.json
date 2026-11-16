@@ -2479,7 +2479,14 @@
     "map": {
       "showMap": "Prikaži mapu",
       "hideMap": "Sakrij mapu",
-      "clearTrails": "Očisti tragove"
+      "clearTrails": "Očisti tragove",
+      "locate": "Prikaži moju lokaciju"
+    },
+    "mapLocate": {
+      "locating": "Određivanje lokacije…",
+      "denied": "Pristup lokaciji odbijen. Upotrijebite Pretragu da biste pronašli mjesto.",
+      "unavailable": "Lokacija nije pronađena. Upotrijebite Pretragu da biste pronašli mjesto.",
+      "noCountry": "Na vašoj lokaciji nema države. Upotrijebite Pretragu da biste pronašli mjesto."
     },
     "climateNews": {
       "infoTooltip": "<strong>Climate News</strong> Najnovije vijesti o okolišu i klimi od Carbon Brief, UNEP, NASA, The Guardian i drugih pouzdanih izvora. Ažurirano svakih 30 minuta.",
@@ -2641,7 +2648,7 @@
       "proLocked": "Nadogradi na PRO za bodovanje ranjivosti roba"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Praćenje trgovine kroz Hormuz</strong> WTO DataLab dnevni indeksi pošiljki za Tjesnac Hormuz: sirova nafta, UPP i gnojivo koja napuštaju Perzijski zaljev, poljoprivredni proizvodi koji stižu. Po količini, prosječna vrijednost za siječanj–ožujak 2025. = 100, samo brodovi vidljivi na AIS-u. Status i datum dolaze iz najnovije WTO analize.",
+      "infoTooltip": "<strong>Praćenje trgovine kroz Hormuz</strong> WTO DataLab dnevni indeksi pošiljki za Tjesnac Hormuz: sirova nafta, UPP i gnojivo koja napuštaju Perzijski zaljev, poljoprivredni proizvodi koji stižu. Po količini, prosječna vrijednost za siječanj–ožujak 2025. = 100, samo brodovi vidljivi na AIS-u. Grafikoni su dnevni; status je iz WTO komentara.",
       "title": "Praćenje trgovine kroz Hormuz",
       "noData": "Nema podataka",
       "notAvailable": "N/A",
@@ -2651,11 +2658,13 @@
         "unavailable": "Hormuz podaci nisu dostupni",
         "failedToLoad": "Učitavanje nije uspjelo"
       },
-      "analysisDate": "WTO analiza {{date}}",
+      "analysisDate": "WTO komentar {{date}}",
       "indexNote": "Indeks pošiljki po količini, prosjek za siječanj–ožujak 2025. = 100",
       "units": {
         "index": "indeks"
-      }
+      },
+      "dataThrough": "Dnevni podaci do {{date}}",
+      "noShipments": "Nema zabilježenih otprema {{from}} do {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Live Webcams</strong> Živući prijenos iz geopolitički važnih lokacija diljem svijeta: područja sukoba, glavnih gradova, graničnih prijelaza i strateških tjesnaca. Tokovi iz YouTubea i javnih mreža."
@@ -4617,7 +4626,8 @@
   "contextMenu": {
     "openCountryBrief": "Otvori Sažetak Zemlje",
     "copyCoordinates": "Kopiraj Koordinate",
-    "satellitePasses": "Preleti satelita ovdje"
+    "satellitePasses": "Preleti satelita ovdje",
+    "imageryEvidenceHere": "Dokazi iz snimaka ovdje"
   },
   "auth": {
     "signIn": "Prijava",
@@ -5436,8 +5446,6 @@
       "dailyMosaic": "dnevni mozaik",
       "weatherFrame": "vremenski kadar",
       "change": "Promijeni lokaciju",
-      "share": "Kopiraj poveznicu",
-      "shareCopied": "Poveznica kopirana",
       "showUtc": "UTC",
       "showLocal": "Lokalno vrijeme",
       "alert": "Upozorenje prije svakog otvorenog prolaska iznad točke i kod svake nove snimke bez oblaka.",
@@ -5552,7 +5560,28 @@
       "noPass": "Nema preleta u sljedeća 72 sata",
       "openEvidence": "Otvori dokaze",
       "imageAlt": "Satelitski prikaz iz {{source}}",
-      "unavailable": "Satelitske snimke nisu se učitale."
+      "unavailable": "Satelitske snimke nisu se učitale.",
+      "fire": {
+        "title": "Detekcija požara iz satelita",
+        "detected": "Detektirano",
+        "satellite": "Satelit",
+        "confidence": "Pouzdanost",
+        "confidenceHigh": "Visoka",
+        "confidenceNominal": "Nominalna",
+        "confidenceLow": "Niska",
+        "power": "Snaga požara",
+        "powerValue": "{{value}} MW",
+        "region": "Regija",
+        "source": "Izvor",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Dnevni mozaik",
+        "mosaicLoading": "Provjera NASA GIBS…",
+        "mosaicCaption": "Kompozit dnevnih prolaza {{source}} za {{date}}; požar može biti skriven oblacima ili dimom.",
+        "mosaicNone": "NASA GIBS nema {{source}} mozaika za {{date}}.",
+        "mosaicNoLayer": "Dnevni mozaik nije dostupan za ovaj satelit.",
+        "mosaicUnavailable": "Dnevni mozaik se nije učitao.",
+        "mosaicAlt": "NASA GIBS {{source}} dnevni mozaik za {{date}}"
+      }
     }
   },
   "settings": {

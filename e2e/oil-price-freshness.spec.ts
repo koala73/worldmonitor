@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // Real panel rendering with fixed source dates and clocks. No live feed or cache.
 for (const scenario of [
@@ -38,9 +39,9 @@ for (const scenario of [
     if (scenario.stale) await expect(panel).toContainText('Stale');
     else await expect(panel).not.toContainText('Stale');
     await expect(panel).toContainText(scenario.week ?? '2026-12-24');
-    await page.screenshot({ path: testInfo.outputPath('desktop.png') });
+    await evidenceScreenshot(page, { path: testInfo.outputPath('desktop.png') });
     await page.setViewportSize({ width: 393, height: 852 });
     await expect(panel).toBeVisible();
-    await page.screenshot({ path: testInfo.outputPath('mobile.png') });
+    await evidenceScreenshot(page, { path: testInfo.outputPath('mobile.png') });
   });
 }

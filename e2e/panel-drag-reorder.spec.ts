@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 const DASHBOARD_VIEWPORT = { width: 1700, height: 900 };
 
@@ -288,7 +289,7 @@ test.describe('monitor panel reload', () => {
     await expect(panel.locator('.monitor-tag')).toHaveCount(2);
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('worldmonitor-monitors')!)))
       .toHaveLength(2);
-    await panel.screenshot({ path: testInfo.outputPath('monitor-tags-after-reload.png') });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath('monitor-tags-after-reload.png') });
   });
 
   test('keeps My Monitors in its saved position after refresh', async ({ page }, testInfo) => {
@@ -300,7 +301,7 @@ test.describe('monitor panel reload', () => {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect.poll(visibleOrder).toEqual(order);
     expect(await storedPanelOrder(page)).toEqual(order);
-    await page.screenshot({ path: testInfo.outputPath('monitor-position-after-reload.png') });
+    await evidenceScreenshot(page, { path: testInfo.outputPath('monitor-position-after-reload.png') });
   });
 
   test('excludes My Monitors from saved Happy layouts after refresh', async ({ page }) => {

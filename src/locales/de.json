@@ -2106,7 +2106,14 @@
     "map": {
       "showMap": "Karte anzeigen",
       "hideMap": "Karte ausblenden",
-      "clearTrails": "Spuren löschen"
+      "clearTrails": "Spuren löschen",
+      "locate": "Meinen Standort anzeigen"
+    },
+    "mapLocate": {
+      "locating": "Standort wird ermittelt…",
+      "denied": "Standortzugriff verweigert. Nutzen Sie die Suche, um einen Ort zu finden.",
+      "unavailable": "Standort nicht gefunden. Nutzen Sie die Suche, um einen Ort zu finden.",
+      "noCountry": "An Ihrem Standort liegt kein Land. Nutzen Sie die Suche, um einen Ort zu finden."
     },
     "positiveNewsFeed": {
       "noStories": "Noch keine Beiträge in dieser Kategorie"
@@ -2343,7 +2350,7 @@
       "proLocked": "Upgraden Sie auf PRO für Rohstoff-Anfälligkeitsbewertung"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz-Handels-Tracker</strong> – tägliche Versandindizes der WTO DataLab für die Straße von Hormuz: Rohöl, LNG und Düngemittel, das den Golf verlässt, sowie landwirtschaftliche Waren, die ankommen. Nach Volumen, Durchschnitt Januar–März 2025 = 100, nur AIS-sichtbare Schiffe. Status und Datum stammen aus der neuesten Analyse der WTO.",
+      "infoTooltip": "<strong>Hormuz-Handels-Tracker</strong> – tägliche Versandindizes der WTO DataLab für die Straße von Hormuz: Rohöl, LNG und Düngemittel, das den Golf verlässt, sowie landwirtschaftliche Waren, die ankommen. Nach Volumen, Durchschnitt Januar–März 2025 = 100, nur AIS-sichtbare Schiffe. Charts sind täglich; Status basiert auf WTO-Kommentaren.",
       "title": "Hormuz-Handels-Tracker",
       "noData": "Keine Daten",
       "notAvailable": "N/V",
@@ -2356,8 +2363,10 @@
         "unavailable": "Hormuz-Daten nicht verfügbar",
         "failedToLoad": "Fehler beim Laden"
       },
-      "analysisDate": "WTO-Analyse {{date}}",
-      "indexNote": "Versandindex nach Volumen, Durchschnitt Januar–März 2025 = 100"
+      "analysisDate": "WTO-Kommentar {{date}}",
+      "indexNote": "Versandindex nach Volumen, Durchschnitt Januar–März 2025 = 100",
+      "dataThrough": "Tägliche Daten bis {{date}}",
+      "noShipments": "Keine Lieferungen erfasst {{from}} bis {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Live-Webcams</strong> Liveübertragungen von geopolitisch bedeutsamen Orten weltweit: Konfliktzonen, Hauptstädte, Grenzübergänge und strategische Engpässe. Streams von YouTube und öffentlichen Netzwerken."
@@ -4495,7 +4504,8 @@
   "contextMenu": {
     "openCountryBrief": "Länderübersicht öffnen",
     "copyCoordinates": "Koordinaten kopieren",
-    "satellitePasses": "Satellitenüberflüge hier"
+    "satellitePasses": "Satellitenüberflüge hier",
+    "imageryEvidenceHere": "Bildbelege hier"
   },
   "shell": {
     "documentTitle": "World Monitor — Dashboard für globale Echtzeitinformationen",
@@ -5394,8 +5404,6 @@
       "dailyMosaic": "Tagesmosaik",
       "weatherFrame": "Wetterbild",
       "change": "Ort ändern",
-      "share": "Link kopieren",
-      "shareCopied": "Link kopiert",
       "showUtc": "UTC",
       "showLocal": "Ortszeit",
       "alert": "Warnung vor jedem offenen Überflug über dem Punkt und bei jeder neuen wolkenfreien Aufnahme.",
@@ -5506,7 +5514,28 @@
       "noPass": "Kein Überflug in den nächsten 72 Stunden",
       "openEvidence": "Belege öffnen",
       "imageAlt": "Satellitenansicht von {{source}}",
-      "unavailable": "Satellitenbilder konnten nicht geladen werden."
+      "unavailable": "Satellitenbilder konnten nicht geladen werden.",
+      "fire": {
+        "title": "Satellitenerkennung von Bränden",
+        "detected": "Erkannt",
+        "satellite": "Satellit",
+        "confidence": "Zuverlässigkeit",
+        "confidenceHigh": "Hoch",
+        "confidenceNominal": "Mittel",
+        "confidenceLow": "Niedrig",
+        "power": "Brandleistung",
+        "powerValue": "{{value}} MW",
+        "region": "Region",
+        "source": "Quelle",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Tägliches Mosaik",
+        "mosaicLoading": "NASA GIBS wird überprüft…",
+        "mosaicCaption": "Zusammengesetztes Bild der {{source}}-Überflüge des Tages ({{date}}); das Feuer kann durch Wolken oder Rauch verdeckt sein.",
+        "mosaicNone": "NASA GIBS hat kein {{source}}-Mosaik für {{date}}.",
+        "mosaicNoLayer": "Für diesen Satelliten ist kein tägliches Mosaik verfügbar.",
+        "mosaicUnavailable": "Das tägliche Mosaik konnte nicht geladen werden.",
+        "mosaicAlt": "Tägliches NASA-GIBS-Mosaik ({{source}}) für {{date}}"
+      }
     }
   },
   "settings": {

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // The sidebar grid is repeat(auto-fill, minmax(270px, 1fr)). When it is too
 // narrow for the span a wide or resized panel asks for, CSS adds implicit
@@ -174,6 +175,6 @@ for (const width of [820, 940, 1180, 1439]) {
     expect(result.contentHeight).toBeLessThanOrEqual(result.rootHeight + 1);
     await page.locator('[data-panel="plugin-b"]').scrollIntoViewIfNeeded();
     await expect(page.locator('[data-panel="plugin-b"]')).toBeInViewport();
-    await page.screenshot({ path: testInfo.outputPath(`plugin-stacked-${width}.png`) });
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`plugin-stacked-${width}.png`) });
   });
 }

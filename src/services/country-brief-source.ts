@@ -62,7 +62,6 @@ function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void; 
     intelligence,
     market: new MarketServiceClient(base, options),
     economic: new EconomicServiceClient(base, options),
-    climate: new ClimateServiceClient(base, options),
     trade: new TradeServiceClient(base, options),
     military: new MilitaryServiceClient(base, options),
     vessels: new MaritimeServiceClient(base, options),

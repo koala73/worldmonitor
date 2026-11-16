@@ -1743,7 +1743,14 @@
     "map": {
       "showMap": "Visa karta",
       "hideMap": "Dölj karta",
-      "clearTrails": "Rensa spår"
+      "clearTrails": "Rensa spår",
+      "locate": "Visa min plats"
+    },
+    "mapLocate": {
+      "locating": "Hämtar plats…",
+      "denied": "Platsåtkomst nekad. Använd Sök för att hitta en plats.",
+      "unavailable": "Platsen hittades inte. Använd Sök för att hitta en plats.",
+      "noCountry": "Inget land på din plats. Använd Sök för att hitta en plats."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Internetstörningar</strong> Internetavbrott, DDoS-attacker och trafikavvikelser i realtid från global nätverksövervakning:<ul><li><strong>Avbrott</strong>: BGP-upptäckta anslutningsfel per land</li><li><strong>DDoS</strong>: rapporter om volymetriska attacker per protokoll och vektor</li><li><strong>Avvikelser</strong>: ovanliga trafikmönster från Cloudflare Radar</li></ul>",
@@ -1959,7 +1966,7 @@
       "proLocked": "Uppgradera till PRO för råvarusårbarhetsbedömning"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz-handelsspårare</strong> Dagliga fraktindex från WTO DataLab för Hormuzsundet: råolja, LNG och gödsel som lämnar Persiska viken samt jordbruksvaror som anländer. Volymbaserat index, genomsnittet för januari–mars 2025 = 100, endast AIS-synliga fartyg. Status och datum kommer från WTO:s senaste analys.",
+      "infoTooltip": "<strong>Hormuz-handelsspårare</strong> Dagliga fraktindex från WTO DataLab för Hormuzsundet: råolja, LNG och gödsel som lämnar Persiska viken samt jordbruksvaror som anländer. Volymbaserat index, genomsnittet för januari–mars 2025 = 100, endast AIS-synliga fartyg. Diagram är dagliga; status är från WTO-kommentarer.",
       "title": "Hormuz-handelsspårare",
       "noData": "Ingen data",
       "notAvailable": "Ej tillgänglig",
@@ -1969,11 +1976,13 @@
         "unavailable": "Hormuz-data är inte tillgänglig",
         "failedToLoad": "Det gick inte att läsa in"
       },
-      "analysisDate": "WTO-analys {{date}}",
+      "analysisDate": "WTO-kommentar {{date}}",
       "indexNote": "Fraktindex baserat på volym, genomsnitt januari–mars 2025 = 100",
       "units": {
         "index": "index"
-      }
+      },
+      "dataThrough": "Daglig data till {{date}}",
+      "noShipments": "Ingen sjöfart registrerad {{from}} till {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Livewebbkameror</strong> Livesändningar från geopolitiskt betydelsefulla platser världen över: konfliktzoner, huvudstäder, gränsövergångar och strategiska flaskhalsar. Strömmar från YouTube och offentliga nätverk."
@@ -4495,7 +4504,8 @@
   "contextMenu": {
     "openCountryBrief": "Öppna landsöversikt",
     "copyCoordinates": "Kopiera koordinater",
-    "satellitePasses": "Satellitpassager här"
+    "satellitePasses": "Satellitpassager här",
+    "imageryEvidenceHere": "Bildbevis här"
   },
   "shell": {
     "documentTitle": "World Monitor — Realtidsinstrumentpanel för global underrättelse",
@@ -5394,8 +5404,6 @@
       "dailyMosaic": "daglig mosaik",
       "weatherFrame": "väderram",
       "change": "Ändra plats",
-      "share": "Kopiera länk",
-      "shareCopied": "Länk kopierad",
       "showUtc": "UTC",
       "showLocal": "Lokal tid",
       "alert": "Meddela före varje öppen passage över punkten och vid varje ny molnfri bild.",
@@ -5506,7 +5514,28 @@
       "noPass": "Ingen överflygning inom 72 timmar",
       "openEvidence": "Öppna bevis",
       "imageAlt": "Satellitvy från {{source}}",
-      "unavailable": "Satellitbilderna kunde inte läsas in."
+      "unavailable": "Satellitbilderna kunde inte läsas in.",
+      "fire": {
+        "title": "Upptäckning av satellielbränder",
+        "detected": "Upptäckt",
+        "satellite": "Satellit",
+        "confidence": "Säkerhet",
+        "confidenceHigh": "Hög",
+        "confidenceNominal": "Normal",
+        "confidenceLow": "Låg",
+        "power": "Eldstyrka",
+        "powerValue": "{{value}} MW",
+        "region": "Region",
+        "source": "Källa",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Daglig mosaik",
+        "mosaicLoading": "Kontrollerar NASA GIBS…",
+        "mosaicCaption": "En sammanställning av dagens {{source}}-passager för {{date}}; branden kan vara dold av moln eller rök.",
+        "mosaicNone": "NASA GIBS har ingen {{source}}-mosaik för {{date}}.",
+        "mosaicNoLayer": "Ingen daglig mosaik är tillgänglig för denna satellit.",
+        "mosaicUnavailable": "Den dagliga mosaiken laddades inte.",
+        "mosaicAlt": "NASA GIBS {{source}} daglig mosaik för {{date}}"
+      }
     }
   },
   "settings": {

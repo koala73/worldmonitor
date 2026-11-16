@@ -53,10 +53,11 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS_DIR = join(resolve(__dirname, '..'), 'scripts');
 
-// Railway hard-kills a cron container at 10 minutes. Every wall budget exists
-// to keep a section from being SIGKILLed mid-publish by that limit, so a budget
-// at or above it is not a budget.
-const RAILWAY_CONTAINER_CAP_MS = 600_000;
+// Project policy: configured admission budgets stay under 10 minutes. This is not
+// a Railway limit — Railway does not kill cron runs, it skips the next tick
+// while one is still active (see scripts/_bundle-runner.mjs). A budget at or
+// above the cap violates this policy; tick duration is not bounded here.
+const BUNDLE_WALL_CAP_MS = 600_000;
 
 /**
  * Parse every bundle once. Throws rather than skipping on any unresolvable
@@ -112,11 +113,11 @@ function readBudgetedBundles() {
     // The budget only means anything if it is under the ceiling it exists to
     // stay beneath. Nothing else in the repo checks this: a bundle declaring
     // maxBundleMs 900_000 would satisfy every per-section assertion below and
-    // still be hard-killed by Railway at 10 minutes, mid-publish.
+    // still violate the admission budget policy.
     assert.ok(
-      maxBundleMs < RAILWAY_CONTAINER_CAP_MS,
-      `${name}: maxBundleMs ${maxBundleMs}ms is at or above Railway's ${RAILWAY_CONTAINER_CAP_MS}ms container kill. `
-      + 'The container dies before the budget is reached, so the budget shapes nothing.',
+      maxBundleMs < BUNDLE_WALL_CAP_MS,
+      `${name}: maxBundleMs ${maxBundleMs}ms is at or above the ${BUNDLE_WALL_CAP_MS}ms bundle wall cap. `
+      + 'Keep configured admission budgets under the cap.',
     );
 
     const sections = extractBundleSections(src);
@@ -193,8 +194,8 @@ test('every budgeted bundle section fits its own bundle budget', () => {
         `${bundle.name} / ${section.label}: needs ${section.worstCaseMs + ADMISSION_HEADROOM_MS}ms `
         + `(timeoutMs ${section.timeoutMs} + ${KILL_GRACE_MS}ms kill grace + ${ADMISSION_HEADROOM_MS}ms admission headroom) `
         + `but maxBundleMs is ${bundle.maxBundleMs}ms — it can never be admitted. Lower timeoutMs to <= `
-        + `${bundle.maxBundleMs - KILL_GRACE_MS - ADMISSION_HEADROOM_MS}, or raise the budget below Railway's `
-        + '10-minute container cap.',
+        + `${bundle.maxBundleMs - KILL_GRACE_MS - ADMISSION_HEADROOM_MS}, or raise the budget below the `
+        + '600s bundle wall cap.',
       );
     }
   }
@@ -280,7 +281,7 @@ test('#6806: static-ref light fits together and heavy ordering stays starvation-
     'the bounded preflight in the simultaneous-fit arithmetic must be enabled at runtime',
   );
 
-  // The heavy half CANNOT have that property — Railway's 10-minute kill means no
+  // The heavy half CANNOT have that property — the 570s budget means no
   // two of these members share a tick. Each must at least be individually
   // admissible, and the rotation below is what stops one of them monopolising
   // the lead slot.

@@ -38,8 +38,10 @@ import {
 import {
   canonicalizeCountryCode,
   getCountryAtCoordinates,
+  getCountryNearCoordinates,
   getCountryCentroid,
   hasCountryGeometry,
+  isCountryGeometryLoaded,
   ME_STRIKE_BOUNDS,
   preloadCountryGeometry,
 } from '@/services/country-geometry';
@@ -56,7 +58,9 @@ import { collectStoryData } from '@/services/story-data';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
-import { showMapContextMenu } from '@/components/MapContextMenu';
+import { showMapContextMenu, type MapContextMenuItem } from '@/components/MapContextMenu';
+import { MapLocateControl } from '@/components/MapLocateControl';
+import { claimMapUrlCentre, releaseMapUrlCentreOnUserMove } from '@/app/orbital-map-focus';
 import { BETA_MODE } from '@/config/beta';
 import { mlWorker } from '@/services/ml-worker';
 import { isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
@@ -151,6 +155,10 @@ type CountryPresentation = {
 };
 
 const AVIATION_SIGNAL_TIMEOUT_MS = 2500;
+/** Town scale: the share grid's 0.01° cell stays well inside the view. */
+const LOCATE_ZOOM = 9;
+// About 5 km: absorbs simplified coastlines without crossing a strait into the neighbour of an outline-less state like Singapore.
+const LOCATE_COAST_TOLERANCE_DEG = 0.05;
 
 export class CountryIntelManager implements AppModule {
   private ctx: AppContext;
@@ -168,6 +176,7 @@ export class CountryIntelManager implements AppModule {
   // don't re-hammer fetchProSections.
   private authUnsubscribe: (() => void) | null = null;
   private orbitalRouteUnsubscribe: (() => void) | null = null;
+  private locateControl: MapLocateControl | null = null;
   private orbitalEvidenceUnsubscribe: (() => void) | null = null;
   private orbitalMapFocusUnsubscribe: (() => void) | null = null;
   private entitlementUnsubscribe: (() => void) | null = null;
@@ -213,6 +222,8 @@ export class CountryIntelManager implements AppModule {
   }
 
   destroy(): void {
+    this.locateControl?.destroy();
+    this.locateControl = null;
     this.orbitalRouteUnsubscribe?.();
     this.orbitalRouteUnsubscribe = null;
     this.orbitalEvidenceUnsubscribe?.();
@@ -355,6 +366,58 @@ export class CountryIntelManager implements AppModule {
       items.push({ label: t('contextMenu.copyCoordinates'), action: () => navigator.clipboard.writeText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`).catch(() => {}) });
       showMapContextMenu(payload.screenX, payload.screenY, items);
     });
+
+    const map = this.ctx.map;
+    this.locateControl?.destroy();
+    this.locateControl = new MapLocateControl({
+      centre: (point) => {
+        // The URL sync would write the user's own position into the address bar,
+        // which shared links and analytics read. Keep the previous centre there
+        // until the map's centre actually leaves the located point.
+        // A globe or WebGL flight still reads a centre short of the point, so the
+        // claim cannot judge the centre until the flight has landed or stopped.
+        let token: number | null = null;
+        let landed = false;
+        claimMapUrlCentre(
+          () => token === null || map.isViewportActionCurrent(token),
+          { point, read: () => (landed ? map.getCenter() : null) },
+        );
+        token = map.setCenter(point.lat, point.lon, LOCATE_ZOOM);
+        const land = () => { landed = true; };
+        map.whenViewportSettled(token).then(land, land);
+        releaseMapUrlCentreOnUserMove(document.getElementById('mapContainer'));
+      },
+      actions: (point) => this.locatedActions(point),
+    });
+    map.addMapControl(this.locateControl.element);
+  }
+
+  /**
+   * The locate menu. The point is the user's own position cut to the share grid, so
+   * the country comes from the local outlines only, never the reverse-geocode API.
+   */
+  private async locatedActions(point: { lat: number; lon: number }): Promise<MapContextMenuItem[]> {
+    const items: MapContextMenuItem[] = [];
+    // A failed outline load must read as "location unavailable", not as "no country here".
+    await preloadCountryGeometry();
+    // The loader catches its own fetch failure and resolves with no outlines.
+    if (!isCountryGeometryLoaded()) throw new Error('country outlines unavailable');
+    const country = getCountryNearCoordinates(point.lat, point.lon, LOCATE_COAST_TOLERANCE_DEG);
+    if (country) items.push({
+      label: t('contextMenu.openCountryBrief'),
+      action: () => {
+        void this.openCountryBriefByCode(country.code, country.name)
+          .catch((err) => this.handleCountryBriefOpenError(err));
+      },
+    });
+    if (ORBITAL_WATCH_ENABLED) items.push({
+      label: t('contextMenu.imageryEvidenceHere'),
+      action: () => {
+        void import('@/app/orbital-watch').then(({ openOrbitalWatch }) =>
+          openOrbitalWatch(point, document.getElementById('mapContainer'), this.ctx.map));
+      },
+    });
+    return items;
   }
 
   private getCountryController(page: NonNullable<AppContext['countryBriefPage']>): CountryBriefController {

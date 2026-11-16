@@ -2116,7 +2116,14 @@
     "map": {
       "showMap": "Zobrazit mapu",
       "hideMap": "Skrýt mapu",
-      "clearTrails": "Vymazat stopy"
+      "clearTrails": "Vymazat stopy",
+      "locate": "Zobrazit moji polohu"
+    },
+    "mapLocate": {
+      "locating": "Zjišťování polohy…",
+      "denied": "Přístup k poloze byl odepřen. Místo najdete pomocí Hledat.",
+      "unavailable": "Poloha nebyla nalezena. Místo najdete pomocí Hledat.",
+      "noCountry": "Ve vaší poloze není žádná země. Místo najdete pomocí Hledat."
     },
     "positiveNewsFeed": {
       "noStories": "V této kategorii zatím nejsou žádné příběhy"
@@ -2363,7 +2370,7 @@
       "proLocked": "Upgradujte na PRO pro skórování zranitelnosti komodit"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Sledování obchodu v Hormuzu</strong> denní indexy zásilek WTO DataLab pro Hormuzský průliv: surová ropa, LNG a hnojiva vyvážená z Perského zálivu, zemědělské produkty přicházející. Dle objemu, průměr za leden–březen 2025 = 100, pouze AIS-viditelné lodě. Stav a datum pochází z nejnovější analýzy WTO.",
+      "infoTooltip": "<strong>Sledování obchodu v Hormuzu</strong> denní indexy zásilek WTO DataLab pro Hormuzský průliv: surová ropa, LNG a hnojiva vyvážená z Perského zálivu, zemědělské produkty přicházející. Dle objemu, průměr za leden–březen 2025 = 100, pouze AIS-viditelné lodě. Grafy jsou denní; stav je z komentářů WTO.",
       "title": "Sledování obchodu v Hormuzu",
       "noData": "Žádná data",
       "notAvailable": "N/A",
@@ -2373,11 +2380,13 @@
         "unavailable": "Data Hormuz není dostupná",
         "failedToLoad": "Načtení se nezdařilo"
       },
-      "analysisDate": "WTO analýza {{date}}",
+      "analysisDate": "Komentář WTO {{date}}",
       "indexNote": "Index přepravy podle objemu, průměr za leden–březen 2025 = 100",
       "units": {
         "index": "index"
-      }
+      },
+      "dataThrough": "Denní data do {{date}}",
+      "noShipments": "Žádné zásilky zaznamenány {{from}} až {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Živé kamery</strong> Živé přenosy z geopoliticky významných míst po celém světě: konfliktní zóny, hlavní města, hraniční přechody a strategické úzké profily. Streamy z YouTube a veřejných sítí."
@@ -4539,7 +4548,8 @@
   "contextMenu": {
     "openCountryBrief": "Otevřít přehled země",
     "copyCoordinates": "Kopírovat souřadnice",
-    "satellitePasses": "Přelety satelitů zde"
+    "satellitePasses": "Přelety satelitů zde",
+    "imageryEvidenceHere": "Důkazy ze snímků zde"
   },
   "shell": {
     "documentTitle": "World Monitor — Přehled reálných globálních informací",
@@ -5458,8 +5468,6 @@
       "dailyMosaic": "denní mozaika",
       "weatherFrame": "snímek meteorologické družice",
       "change": "Změnit polohu",
-      "share": "Kopírovat odkaz",
-      "shareCopied": "Odkaz zkopírován",
       "showUtc": "UTC",
       "showLocal": "Místní čas",
       "alert": "Upozornění před každým otevřeným průletem nad bodem a u každého nového bezoblačného snímku.",
@@ -5578,7 +5586,28 @@
       "noPass": "Během 72 hodin není plánován žádný přelet",
       "openEvidence": "Otevřít důkazy",
       "imageAlt": "Satelitní pohled z {{source}}",
-      "unavailable": "Satelitní snímky se nepodařilo načíst."
+      "unavailable": "Satelitní snímky se nepodařilo načíst.",
+      "fire": {
+        "title": "Detekce požáru ze satelitu",
+        "detected": "Detekováno",
+        "satellite": "Satelit",
+        "confidence": "Spolehlivost",
+        "confidenceHigh": "Vysoká",
+        "confidenceNominal": "Normální",
+        "confidenceLow": "Nízká",
+        "power": "Výkon požáru",
+        "powerValue": "{{value}} MW",
+        "region": "Oblast",
+        "source": "Zdroj",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Denní mozaika",
+        "mosaicLoading": "Kontrola NASA GIBS…",
+        "mosaicCaption": "Kompozice {{source}} snímků ze dne {{date}}; požár může být skryt mrakem nebo kouřem.",
+        "mosaicNone": "NASA GIBS nemá {{source}} mozaiku pro {{date}}.",
+        "mosaicNoLayer": "Pro tento satelit není dostupná denní mozaika.",
+        "mosaicUnavailable": "Denní mozaika se nenačetla.",
+        "mosaicAlt": "NASA GIBS {{source}} denní mozaika pro {{date}}"
+      }
     }
   },
   "settings": {

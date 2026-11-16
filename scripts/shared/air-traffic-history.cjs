@@ -16,12 +16,13 @@ const MEASURES = Object.freeze([
 ]);
 const CLIMB_MEASURES = new Set(['usLowClimbing', 'usLowClimbingAirline']);
 const HUB_MEASURES = Object.freeze(['air', 'ground', 'dep']);
+const MARKET_MEASURES = Object.freeze(['seen', 'dep']);
 
 // Each source keeps its own day hashes, heartbeat and activation marker, so the
 // series never mix and a ratio is only ever taken within one source. `measures`
 // lists the counts a source can observe and therefore stores.
 const SERIES = Object.freeze({
-  opensky: Object.freeze({ prefix: PREFIX, heartbeatKey: HEARTBEAT_KEY, activationKey: ACTIVATION_KEY, measures: MEASURES, hubMeasures: HUB_MEASURES }),
+  opensky: Object.freeze({ prefix: PREFIX, heartbeatKey: HEARTBEAT_KEY, activationKey: ACTIVATION_KEY, measures: MEASURES, hubMeasures: HUB_MEASURES, marketMeasures: MARKET_MEASURES }),
   // Wingbits /v1/flights carries no vertical rate, so it cannot count climbers
   // or hub departures. Storing 0 there would read as a departure collapse.
   wingbits: Object.freeze({
@@ -30,6 +31,7 @@ const SERIES = Object.freeze({
     activationKey: 'seed-activated:aviation:traffic-history-wingbits',
     measures: Object.freeze(MEASURES.filter((field) => !CLIMB_MEASURES.has(field))),
     hubMeasures: Object.freeze(HUB_MEASURES.filter((field) => field !== 'dep')),
+    marketMeasures: Object.freeze(MARKET_MEASURES.filter((field) => field !== 'dep')),
   }),
 });
 
@@ -40,9 +42,15 @@ function validPoint(point, series) {
   if (point.status === 'gap') return Object.keys(point).length === 2;
   if (point.status !== 'ok') return false;
   if (![...series.measures, 'statesTotal'].every((field) => isCount(point[field]))) return false;
-  return point.hubs && typeof point.hubs === 'object'
-    && Object.values(point.hubs).every((hub) => hub && series.hubMeasures.every((field) => isCount(hub[field])));
+  const countsOk = (group, fields) => group && typeof group === 'object'
+    && Object.values(group).every((entry) => entry && fields.every((field) => isCount(entry[field])));
+  return countsOk(point.hubs, series.hubMeasures)
+    && (point.markets === undefined || countsOk(point.markets, series.marketMeasures));
 }
+
+const pick = (group, fields) => Object.fromEntries(Object.entries(group).map(([id, entry]) => [
+  id, Object.fromEntries(fields.map((field) => [field, entry[field]])),
+]));
 
 // An ok point uses HSET, so a later fetch of the same bin replaces it and an ok
 // point replaces a gap. A gap uses HSETNX, so it never overwrites anything. Two
@@ -60,9 +68,8 @@ function buildTrafficPointWrite(point, fetchedAt = point?.t, series = SERIES.ope
       t: point.t,
       status: 'ok',
       ...Object.fromEntries(series.measures.map((field) => [field, point[field]])),
-      hubs: Object.fromEntries(Object.entries(point.hubs).map(([iata, hub]) => [
-        iata, Object.fromEntries(series.hubMeasures.map((field) => [field, hub[field]])),
-      ])),
+      hubs: pick(point.hubs, series.hubMeasures),
+      ...(point.markets ? { markets: pick(point.markets, series.marketMeasures) } : {}),
     };
   const commands = [
     [point.status === 'gap' ? 'HSETNX' : 'HSET', key, String(point.t), JSON.stringify(stored)],

@@ -2137,7 +2137,14 @@
     "map": {
       "showMap": "Pokaż mapę",
       "hideMap": "Ukryj mapę",
-      "clearTrails": "Wyczyść trasy"
+      "clearTrails": "Wyczyść trasy",
+      "locate": "Pokaż moją lokalizację"
+    },
+    "mapLocate": {
+      "locating": "Ustalanie lokalizacji…",
+      "denied": "Odmówiono dostępu do lokalizacji. Użyj wyszukiwania, aby znaleźć miejsce.",
+      "unavailable": "Nie znaleziono lokalizacji. Użyj wyszukiwania, aby znaleźć miejsce.",
+      "noCountry": "W Twojej lokalizacji nie ma kraju. Użyj wyszukiwania, aby znaleźć miejsce."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Zakłócenia internetu</strong> Awarie internetu, ataki DDoS i anomalie ruchu w czasie rzeczywistym z globalnego monitoringu sieci:<ul><li><strong>Awarie</strong>: wykryte przez BGP przerwy w łączności według krajów</li><li><strong>DDoS</strong>: raporty o atakach wolumetrycznych według protokołu i wektora</li><li><strong>Anomalie</strong>: nietypowe wzorce ruchu z Cloudflare Radar</li></ul>",
@@ -2363,7 +2370,7 @@
       "proLocked": "Uaktualnij do PRO, aby zobaczyć ocenę podatności surowców"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Tracker Handlu przez Hormuz</strong> — codzienne indeksy wysyłek WTO DataLab dla Cieśniny Hormuz: ropa naftowa, LNG i nawozy opuszczające Zatokę, towary rolne przybywające. Według objętości, średnia ze stycznia–marca 2025 = 100, tylko statki widoczne w AIS. Status i data pochodzą z najnowszej analizy WTO.",
+      "infoTooltip": "<strong>Tracker Handlu przez Hormuz</strong> — codzienne indeksy wysyłek WTO DataLab dla Cieśniny Hormuz: ropa naftowa, LNG i nawozy opuszczające Zatokę, towary rolne przybywające. Według objętości, średnia ze stycznia–marca 2025 = 100, tylko statki widoczne w AIS. Wykresy są dzienne; status pochodzi z komentarzy WTO.",
       "title": "Tracker Handlu przez Hormuz",
       "noData": "Brak danych",
       "notAvailable": "Niedostępne",
@@ -2376,8 +2383,10 @@
         "unavailable": "Dane Hormuz niedostępne",
         "failedToLoad": "Nie udało się załadować"
       },
-      "analysisDate": "Analiza WTO {{date}}",
-      "indexNote": "Indeks wysyłek według objętości, średnia ze stycznia–marca 2025 = 100"
+      "analysisDate": "Komentarz WTO {{date}}",
+      "indexNote": "Indeks wysyłek według objętości, średnia ze stycznia–marca 2025 = 100",
+      "dataThrough": "Dane dzienne do {{date}}",
+      "noShipments": "Brak zarejestrowanych przesyłek {{from}} do {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Kamery na żywo</strong> Transmisje na żywo z geopolitycznie istotnych miejsc na całym świecie: strefy konfliktu, stolice, przejścia graniczne i strategiczne wąskie gardła. Transmisje z YouTube i sieci publicznych."
@@ -4539,7 +4548,8 @@
   "contextMenu": {
     "openCountryBrief": "Otwórz przegląd kraju",
     "copyCoordinates": "Kopiuj współrzędne",
-    "satellitePasses": "Przeloty satelitów tutaj"
+    "satellitePasses": "Przeloty satelitów tutaj",
+    "imageryEvidenceHere": "Dowody ze zdjęć satelitarnych tutaj"
   },
   "shell": {
     "documentTitle": "World Monitor — Tablica bieżącej analizy globalnej",
@@ -5458,8 +5468,6 @@
       "dailyMosaic": "mozaika dzienna",
       "weatherFrame": "kadr satelity pogodowego",
       "change": "Zmień lokalizację",
-      "share": "Kopiuj link",
-      "shareCopied": "Link skopiowany",
       "showUtc": "UTC",
       "showLocal": "Czas lokalny",
       "alert": "Alert przed każdym otwartym przejściem nad punktem i przy każdym nowym bezchmurnym zdjęciu.",
@@ -5578,7 +5586,28 @@
       "noPass": "Brak przelotu w ciągu 72 godzin",
       "openEvidence": "Otwórz dowody",
       "imageAlt": "Widok satelitarny z {{source}}",
-      "unavailable": "Nie udało się wczytać zdjęć satelitarnych."
+      "unavailable": "Nie udało się wczytać zdjęć satelitarnych.",
+      "fire": {
+        "title": "Detekcja pożarów z satelity",
+        "detected": "Wykryto",
+        "satellite": "Satelita",
+        "confidence": "Pewność",
+        "confidenceHigh": "Wysoka",
+        "confidenceNominal": "Nominalna",
+        "confidenceLow": "Niska",
+        "power": "Moc pożaru",
+        "powerValue": "{{value}} MW",
+        "region": "Region",
+        "source": "Źródło",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Mozaika dzienna",
+        "mosaicLoading": "Sprawdzanie NASA GIBS…",
+        "mosaicCaption": "Kompozyt przejść {{source}} z dnia {{date}}; pożar może być ukryty przez chmury lub dym.",
+        "mosaicNone": "NASA GIBS nie ma mozaiki {{source}} dla {{date}}.",
+        "mosaicNoLayer": "Dla tego satelity nie ma dostępnej mozaiki dziennej.",
+        "mosaicUnavailable": "Mozaika dzienna nie została załadowana.",
+        "mosaicAlt": "Mozaika dzienna NASA GIBS {{source}} dla {{date}}"
+      }
     }
   },
   "settings": {

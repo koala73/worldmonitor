@@ -102,6 +102,7 @@ import { toApiUrl } from '@/services/runtime';
 import type { ComputeEnergyShockScenarioResponse, CrudeShareBaseline, ImageryChangeContext, ProductImpact, RegionalEnergyFeed } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { IMAGERY_CONTEXT_EXCLUSION, IMAGERY_CONTEXT_METHODOLOGY_HREF, imageryChangeSummary } from './_risk-imagery-context';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { confirmShareLinkCopied, createShareLinkButton } from './share-link-button';
 import { overlayHistory, type OverlayCloseOrigin } from '@/utils/overlay-history';
 import type { GetDefenseIndustrialBaseResponse } from '@/generated/client/worldmonitor/military/v1/service_client';
 import { regionalFeedStatusNote, regionalFeedTitle, regionalLatestPeriod, regionalSeriesRows } from './regional-energy-presentation';
@@ -3663,18 +3664,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     });
     this.maximizeButton = maxBtn;
 
-    const shareBtn = this.el('button', 'cdp-action-btn cdp-share-btn') as HTMLButtonElement;
-    shareBtn.setAttribute('type', 'button');
-    shareBtn.setAttribute('aria-label', t('components.countryBrief.shareLink'));
-    setTrustedHtml(shareBtn, trustedHtml('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>', "legacy direct innerHTML migration"));
+    const shareBtn = createShareLinkButton(t('components.countryBrief.shareLink'));
     shareBtn.addEventListener('click', () => {
       if (!this.currentCode || !this.currentName) return;
       const url = `${this.source?.mode === 'host' ? 'https://www.worldmonitor.app' : window.location.origin}/dashboard?c=${encodeURIComponent(this.currentCode)}`;
-      navigator.clipboard.writeText(url).then(() => {
-        const orig = shareBtn.innerHTML;
-        setTrustedHtml(shareBtn, trustedHtml('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>', "legacy direct innerHTML migration"));
-        setTimeout(() => { setTrustedHtml(shareBtn, trustedHtml(orig, "legacy direct innerHTML migration")); }, 1500);
-      }).catch(() => {});
+      navigator.clipboard.writeText(url).then(() => confirmShareLinkCopied(shareBtn)).catch(() => {});
     });
 
     const storyButton = this.el('button', 'cdp-action-btn', 'Create story') as HTMLButtonElement;

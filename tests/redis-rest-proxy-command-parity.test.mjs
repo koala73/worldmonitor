@@ -28,6 +28,7 @@ import {
   PUBLISH_PHYSICAL_PREMIUM_LUA,
   PUBLISH_DIVERGENCE_LUA,
 } from '../scripts/seed-physical-premiums.mjs';
+import { PUBLISH_NO2_ACTIVITY_LUA } from '../scripts/seed-no2-activity.mjs';
 import {
   RESERVE_LUA,
   SETTLE_LUA,
@@ -62,7 +63,10 @@ function extract(pattern, label) {
 }
 
 const allowedCommandsSrc = extract(/const ALLOWED_COMMANDS = new Set\(\[[\s\S]*?\]\);/, 'ALLOWED_COMMANDS');
-const scriptConstsSrc = [...proxySrc.matchAll(/const [A-Z_]+_SCRIPT = \[[\s\S]*?\]\.join\('\\n'\);/g)].map((m) => m[0]);
+// `[A-Z0-9_]+`, not `[A-Z_]+`: a pinned script whose name carries a digit
+// (NO2_ACTIVITY_PUBLISH_SCRIPT) was silently dropped from the harness, so the
+// gate under test threw ReferenceError instead of evaluating it.
+const scriptConstsSrc = [...proxySrc.matchAll(/const [A-Z0-9_]+_SCRIPT = \[[\s\S]*?\]\.join\('\\n'\);/g)].map((m) => m[0]);
 const allowedEvalSrc = extract(/const ALLOWED_EVAL_SCRIPTS = new Set\(\[[\s\S]*?\]\);/, 'ALLOWED_EVAL_SCRIPTS');
 const legacyReplacementsSrc = extract(/const LEGACY_EVAL_REPLACEMENTS = new Map\(\[[\s\S]*?\]\);/, 'LEGACY_EVAL_REPLACEMENTS');
 const isAllowedEvalSrc = extract(/function isAllowedEval\([\s\S]*?\n\}/, 'isAllowedEval');
@@ -329,6 +333,20 @@ describe('redis-rest-proxy command gate', () => {
     );
     assert.equal(
       accepts(gate, ['EVAL', `${PUBLISH_DIVERGENCE_LUA} `, '2', 'snapshot', 'meta']),
+      false,
+      'a one-character script variant must stay blocked',
+    );
+  });
+
+  it('pins the atomic NO2 activity publication by exact bytes', () => {
+    const gate = buildGate();
+    assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(PUBLISH_NO2_ACTIVITY_LUA), true);
+    assert.equal(
+      accepts(gate, ['EVAL', PUBLISH_NO2_ACTIVITY_LUA, '2', 'economic:no2-activity:v1', 'activation', '{}', '604800']),
+      true,
+    );
+    assert.equal(
+      accepts(gate, ['EVAL', `${PUBLISH_NO2_ACTIVITY_LUA} `, '2', 'economic:no2-activity:v1', 'activation', '{}', '604800']),
       false,
       'a one-character script variant must stay blocked',
     );

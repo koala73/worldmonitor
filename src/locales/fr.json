@@ -2132,7 +2132,14 @@
     "map": {
       "showMap": "Afficher la carte",
       "hideMap": "Masquer la carte",
-      "clearTrails": "Effacer les traces"
+      "clearTrails": "Effacer les traces",
+      "locate": "Afficher ma position"
+    },
+    "mapLocate": {
+      "locating": "Localisation…",
+      "denied": "Accès à la position refusé. Utilisez Recherche pour trouver un lieu.",
+      "unavailable": "Position introuvable. Utilisez Recherche pour trouver un lieu.",
+      "noCountry": "Aucun pays à votre position. Utilisez Recherche pour trouver un lieu."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Perturbations Internet</strong> Pannes Internet, attaques DDoS et anomalies de trafic en temps réel issues de la surveillance mondiale des réseaux :<ul><li><strong>Pannes</strong> : défaillances de connectivité détectées via BGP, par pays</li><li><strong>DDoS</strong> : rapports d’attaques volumétriques par protocole et vecteur</li><li><strong>Anomalies</strong> : schémas de trafic inhabituels issus de Cloudflare Radar</li></ul>",
@@ -2353,7 +2360,7 @@
       "proLocked": "Passez à PRO pour l'évaluation de vulnérabilité des matières premières"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Suivi du commerce du Détroit d'Ormuz</strong> Indices de chargements quotidiens du WTO DataLab pour le détroit d'Ormuz : pétrole brut, GNL et engrais quittant le Golfe, produits agricoles arrivant. Par volume, moyenne janvier–mars 2025 = 100, navires visibles en AIS uniquement. Le statut et la date proviennent de la dernière analyse du WTO.",
+      "infoTooltip": "<strong>Suivi du commerce du Détroit d'Ormuz</strong> Indices de chargements quotidiens du WTO DataLab pour le détroit d'Ormuz : pétrole brut, GNL et engrais quittant le Golfe, produits agricoles arrivant. Par volume, moyenne janvier–mars 2025 = 100, navires visibles en AIS uniquement. Les graphiques sont quotidiens ; le statut provient du commentaire du WTO.",
       "title": "Suivi du commerce du Détroit d'Ormuz",
       "noData": "Aucune donnée",
       "notAvailable": "N/D",
@@ -2366,8 +2373,10 @@
         "unavailable": "Données d'Ormuz indisponibles",
         "failedToLoad": "Échec du chargement"
       },
-      "analysisDate": "Analyse OMC {{date}}",
-      "indexNote": "Indice d'expédition par volume, moyenne janvier–mars 2025 = 100"
+      "analysisDate": "Commentaire OMC {{date}}",
+      "indexNote": "Indice d'expédition par volume, moyenne janvier–mars 2025 = 100",
+      "dataThrough": "Données quotidiennes jusqu'au {{date}}",
+      "noShipments": "Aucun transport enregistré de {{from}} à {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Webcams en direct</strong> Flux en direct depuis des lieux géopolitiquement significatifs dans le monde : zones de conflit, capitales, postes frontières et points de passage stratégiques. Flux provenant de YouTube et réseaux publics."
@@ -4517,7 +4526,8 @@
   "contextMenu": {
     "openCountryBrief": "Ouvrir la fiche pays",
     "copyCoordinates": "Copier les coordonnées",
-    "satellitePasses": "Passages de satellites ici"
+    "satellitePasses": "Passages de satellites ici",
+    "imageryEvidenceHere": "Preuves d'imagerie ici"
   },
   "shell": {
     "documentTitle": "World Monitor — Tableau de Bord de Renseignement Mondial en Temps Réel",
@@ -5426,8 +5436,6 @@
       "dailyMosaic": "mosaïque quotidienne",
       "weatherFrame": "image météo",
       "change": "Changer de lieu",
-      "share": "Copier le lien",
-      "shareCopied": "Lien copié",
       "showUtc": "UTC",
       "showLocal": "Heure locale",
       "alert": "Alerte avant chaque passage ouvert au-dessus du point, et à chaque nouvelle image sans nuages.",
@@ -5542,7 +5550,28 @@
       "noPass": "Aucun passage prévu sous 72 heures",
       "openEvidence": "Ouvrir les preuves",
       "imageAlt": "Vue satellite de {{source}}",
-      "unavailable": "L’imagerie satellite n’a pas pu être chargée."
+      "unavailable": "L’imagerie satellite n’a pas pu être chargée.",
+      "fire": {
+        "title": "Détection d'incendies par satellite",
+        "detected": "Détecté",
+        "satellite": "Satellite",
+        "confidence": "Confiance",
+        "confidenceHigh": "Élevée",
+        "confidenceNominal": "Moyenne",
+        "confidenceLow": "Faible",
+        "power": "Puissance de l'incendie",
+        "powerValue": "{{value}} MW",
+        "region": "Région",
+        "source": "Source",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Mosaïque quotidienne",
+        "mosaicLoading": "Vérification de NASA GIBS…",
+        "mosaicCaption": "Composite des passages {{source}} du jour pour {{date}} ; l'incendie peut être masqué par les nuages ou la fumée.",
+        "mosaicNone": "NASA GIBS n'a pas de mosaïque {{source}} pour {{date}}.",
+        "mosaicNoLayer": "Aucune mosaïque quotidienne n'est disponible pour ce satellite.",
+        "mosaicUnavailable": "La mosaïque quotidienne n'a pas pu être chargée.",
+        "mosaicAlt": "Mosaïque quotidienne NASA GIBS {{source}} pour {{date}}"
+      }
     }
   },
   "settings": {

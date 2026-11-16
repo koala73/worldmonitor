@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 for (const { label, width, height } of [
   { label: 'desktop', width: 1280, height: 720 },
@@ -34,7 +35,6 @@ for (const { label, width, height } of [
     await expect(row).toContainText('+2.0%');
     await expect(row).toContainText('2026');
     const screenshot = testInfo.outputPath(`imf-partial-${label}.png`);
-    await panel.screenshot({ path: screenshot, animations: 'disabled' });
-    await testInfo.attach(`imf-partial-${label}`, { path: screenshot, contentType: 'image/png' });
+    await evidenceScreenshot(panel, { path: screenshot, animations: 'disabled' }, { testInfo, name: `imf-partial-${label}` });
   });
 }

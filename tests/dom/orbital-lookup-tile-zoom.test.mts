@@ -315,7 +315,7 @@ describe('the map while the satellite pass lookup is open', () => {
   const ways: [string, () => Promise<void>, { hash?: string }][] = [
     ['the map context menu', async () => { await openFromContextMenu(); }, {}],
     ['a share link', async () => {
-      openOrbitalShareLink({ point: POINT, pass: null, view: 'sheet' }, document.getElementById('mapContainer'), null);
+      openOrbitalShareLink({ point: POINT, pass: null }, document.getElementById('mapContainer'), null);
       await settle();
     }, {}],
     ['a map-object popup evidence row', async () => {

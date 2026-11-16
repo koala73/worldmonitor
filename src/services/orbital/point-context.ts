@@ -68,7 +68,6 @@ export interface PointContextSources {
   countryAt: (point: GeoPoint) => Promise<string | null>;
 }
 
-const COMPASS: ReadonlyArray<[number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
 const startOfUtcDay = (ms: number) => Math.floor(ms / DAY_MS) * DAY_MS;
 
@@ -231,15 +230,8 @@ const defaultSources: PointContextSources = {
     },
   },
   countryAt: async (point) => {
-    const { getCountryAtCoordinates, preloadCountryGeometry } = await import('@/services/country-geometry');
+    const { getCountryNearCoordinates, preloadCountryGeometry } = await import('@/services/country-geometry');
     await preloadCountryGeometry();
-    // Coastlines are simplified, so a point on reclaimed land or a pier can sit just outside its country.
-    for (const step of [0, 0.05, 0.1, 0.2]) {
-      for (const [dLat, dLon] of step === 0 ? [[0, 0]] : COMPASS) {
-        const hit = getCountryAtCoordinates(point.lat + dLat * step, point.lon + dLon * step);
-        if (hit) return hit.code;
-      }
-    }
-    return null;
+    return getCountryNearCoordinates(point.lat, point.lon)?.code ?? null;
   },
 };

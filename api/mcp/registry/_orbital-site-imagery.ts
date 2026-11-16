@@ -84,7 +84,7 @@ export const WATCHED_SITE_IMAGERY_TOOL: ToolDef = {
     // While dark, fail with the same 404 the other orbital tools get from the dark REST endpoint.
     if (!isOrbitalWatchEnabled()) await assertToolFetchOk(orbitalWatchDarkResponse(), TOOL);
     const evidence = await readOrbital(COUNTRY_EVIDENCE_PATH, new URLSearchParams({ country_code: countryCode }), TOOL, base, context, execution) as GetCountryImageryEvidenceResponse;
-    const { credits: _credits, ...imagery } = countrySiteImagery({ ...evidence, sites: Array.isArray(evidence?.sites) ? evidence.sites : [] }, Date.now());
+    const imagery = countrySiteImagery({ ...evidence, sites: Array.isArray(evidence?.sites) ? evidence.sites : [] }, Date.now());
     const sites = query ? imagery.sites.filter((site) => site.name.toLowerCase().includes(query) || site.siteId.toLowerCase().includes(query)) : imagery.sites;
     return { ...imagery, sites, attribution: imageryCredits(sites) };
   },
