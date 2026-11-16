@@ -150,7 +150,7 @@ describe('a free lookup keeps the exact point to the archives', () => {
     const bodies: string[] = [];
     await readPointCondition(item, nearZero, { fetch: async (url: string, init?: RequestInit) => { urls.push(url); bodies.push(String(init?.body)); return new Response('{"properties":{"statistics":{"b1":{"majority":4}}}}'); } });
     const box = cropBox(nearZero, 0.00001);
-    urls.push(planetaryComputerCropUrl(item.collection, item.itemId, box)!, gibsSnapshotUrl('MODIS_Terra_CorrectedReflectance_TrueColor', '2026-11-12', box)!);
+    urls.push(planetaryComputerCropUrl(item, box)!, gibsSnapshotUrl('MODIS_Terra_CorrectedReflectance_TrueColor', '2026-11-12', box)!);
     for (const body of bodies) assert.doesNotMatch(body, /\d[eE][-+]?\d/, `${body} has no exponent`);
     for (const url of urls) {
       assert.doesNotMatch(decodeURIComponent(url), /\d[eE][-+]?\d/, `${url} has no exponent`);
