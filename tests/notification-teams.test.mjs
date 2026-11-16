@@ -297,7 +297,7 @@ describe('realtime relay Teams dispatch', () => {
     const posts = [];
     const loaded = loadRelayWithTeamsStub(posts, { status });
     restore = loaded.restore;
-    const channel = { _id: 'teams-channel', channelType: 'teams', webhookEnvelope: crypto.encrypt(TEAMS_URL), verified: true };
+    const channel = { _id: 'teams-channel', linkedAt: 1, channelType: 'teams', webhookEnvelope: crypto.encrypt(TEAMS_URL), verified: true };
     const deactivations = [];
     const held = [];
     const deletedHeld = [];
@@ -308,7 +308,7 @@ describe('realtime relay Teams dispatch', () => {
         userId: 'owner', variant: 'full', sensitivity: 'all', eventTypes: ['conflict_escalation'], channels: ['teams'], ...rule,
       }]);
       if (url.endsWith('/relay/channels')) return Response.json([channel]);
-      if (url.endsWith('/relay/deactivate')) { deactivations.push(JSON.parse(String(init?.body))); return Response.json({ ok: true }); }
+      if (url.endsWith('/relay/delivery-result')) { deactivations.push(JSON.parse(String(init?.body))); return Response.json({ ok: true }); }
       if (url.includes('/GET/relay%3Aentitlement')) return Response.json({ result: '1' });
       if (url.includes('/RPUSH/') || url.includes('/LPUSH/')) { held.push(url); return Response.json({ result: 1 }); }
       if (url.includes('/LLEN/')) return Response.json({ result: 1 });
@@ -346,10 +346,11 @@ describe('realtime relay Teams dispatch', () => {
     assert.equal(posts.length, 0);
   });
 
-  it('deactivates the channel when the workflow is gone', async () => {
+  it('reports the terminal status and channel version when the workflow is gone', async () => {
     const { relay, deactivations } = setup({ status: 404 });
     await relay.processEvent({ eventType: 'conflict_escalation', severity: 'critical', payload: { title: 'Gone' } });
-    assert.deepEqual(deactivations, [{ userId: 'owner', channelType: 'teams' }]);
+    assert.deepEqual(deactivations, [{ userId: 'owner', channelType: 'teams',
+      delivery: { channelId: 'teams-channel', linkedAt: 1, error: 'HTTP 404' } }]);
   });
 
   it('sends the connect/test welcome card to the exact Teams channel', async () => {

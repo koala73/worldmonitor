@@ -214,6 +214,8 @@
 *Could not find public function for 'notificationChannels:deleteChannelForUser'*
 *Could not find public function for 'notificationChannels:getChannelsByUserId'*
 *Could not find public function for 'notificationChannels:queueChannelWelcome'*
+*Could not find public function for 'notificationChannels:recordDeliveryResult'*
+*Could not find public function for 'notificationChannels:sendDisabledChannelNotice'*
 *Could not find public function for 'notificationChannels:setChannel'*
 *Could not find public function for 'notificationChannels:setChannelForUser'*
 *Could not find public function for 'notificationChannels:setDiscordOAuthChannelForUser'*

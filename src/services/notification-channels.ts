@@ -15,6 +15,7 @@ export interface NotificationChannel {
   channelType: ChannelType;
   verified: boolean;
   linkedAt: number;
+  deliveryFailure?: { count: number; firstFailedAt: number; lastError: string; disabledAt?: number };
   chatId?: string;
   email?: string;
   slackChannelName?: string;

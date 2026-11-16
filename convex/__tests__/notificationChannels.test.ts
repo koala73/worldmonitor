@@ -27,6 +27,114 @@ const USER = {
   emailVerified: true,
 };
 
+describe("delivery failure lifecycle", () => {
+  async function setup() {
+    vi.useFakeTimers();
+    process.env.CONVEX_NOTIFICATION_RELAY_SECRET = "delivery-secret";
+    const t = convexTest(schema, modules);
+    const id = await t.run(ctx => ctx.db.insert("notificationChannels", {
+      userId: USER.subject, channelType: "webhook", webhookEnvelope: "encrypted",
+      verified: true, linkedAt: 1,
+    }));
+    const report = (error?: string, linkedAt = 1) => t.fetch("/relay/delivery-result", {
+      method: "POST",
+      headers: { Authorization: "Bearer delivery-secret", "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: USER.subject, channelType: "webhook",
+        delivery: { channelId: id, linkedAt, error: error ?? null } }),
+    });
+    return { t, id, report, row: () => t.run(ctx => ctx.db.get(id)) };
+  }
+
+  test("transient failures need both ten attempts and a 24 hour streak", async () => {
+    vi.useFakeTimers();
+    const { report, row } = await setup();
+    for (let i = 0; i < 10; i++) expect((await report("DNS lookup failed")).status).toBe(200);
+    expect(await row()).toMatchObject({ verified: true, deliveryFailure: { count: 10 } });
+    vi.setSystemTime(Date.now() + 24 * 60 * 60 * 1000);
+    await report("DNS lookup failed");
+    expect(await row()).toMatchObject({ verified: false, deliveryFailure: { count: 11 } });
+  });
+
+  test("a success clears the streak and an old result cannot disable a re-saved channel", async () => {
+    const { t, id, report, row } = await setup();
+    await report("HTTP 503");
+    await report();
+    expect((await row())?.verified).toBe(true);
+    expect((await row())?.deliveryFailure).toBeUndefined();
+    await t.run(ctx => ctx.db.patch(id, { linkedAt: 2 }));
+    await report("HTTP 401");
+    expect((await row())?.verified).toBe(true);
+  });
+
+  test.each([401, 403, 404, 410])("HTTP %s disables once and schedules one notice", async status => {
+    const { t, report, row } = await setup();
+    await report(`HTTP ${status}`);
+    expect((await row())?.verified).toBe(false);
+    const first = await row();
+    await report(`HTTP ${status}`);
+    expect(await row()).toEqual(first);
+    const scheduled = await t.run(ctx => ctx.db.system.query("_scheduled_functions").collect());
+    expect(scheduled).toHaveLength(1);
+  });
+
+  test("elapsed time alone does not disable, and saving clears failure state", async () => {
+    const { t, report, row } = await setup();
+    await report("HTTP 503");
+    vi.setSystemTime(Date.now() + 25 * 60 * 60 * 1000);
+    await report("HTTP 503");
+    expect((await row())?.verified).toBe(true);
+    await seedEntitlement(t);
+    await t.mutation(notificationChannelFns.setChannelForUser, {
+      userId: USER.subject, channelType: "webhook", webhookEnvelope: "new-envelope",
+    });
+    expect((await row())?.verified).toBe(true);
+    expect((await row())?.deliveryFailure).toBeUndefined();
+    await report("HTTP 401");
+    expect((await row())?.verified).toBe(true);
+  });
+
+  test("rejects untrusted callers and unsanitized error details", async () => {
+    const { t, report, row } = await setup();
+    const response = await t.fetch("/relay/delivery-result", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+    });
+    expect(response.status).toBe(401);
+    expect((await report("DNS failure at private.example?token=secret")).status).toBe(400);
+    expect((await row())?.verified).toBe(true);
+    expect((await row())?.deliveryFailure).toBeUndefined();
+  });
+
+  test("scheduled notice uses the verified account address and a stable provider idempotency key", async () => {
+    const { t, report } = await setup();
+    const oldKey = process.env.RESEND_API_KEY;
+    process.env.CLERK_SECRET_KEY = "test-clerk";
+    process.env.RESEND_API_KEY = "test-resend";
+    const sends: Array<{ headers: Headers; body: Record<string, unknown> }> = [];
+    globalThis.fetch = vi.fn(async (url, init) => {
+      if (String(url).startsWith("https://api.clerk.com/")) return Response.json({
+        id: USER.subject, primary_email_address_id: "primary",
+        email_addresses: [{ id: "primary", email_address: "account@example.com", verification: { status: "verified" } }],
+      });
+      expect(String(url)).toBe("https://api.resend.com/emails");
+      sends.push({ headers: new Headers(init?.headers), body: JSON.parse(String(init?.body)) });
+      return Response.json({ id: "email-1" });
+    });
+    try {
+      await report("HTTP 401");
+      await report("HTTP 401");
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+      expect(sends).toHaveLength(1);
+      expect(sends[0].body.to).toEqual(["account@example.com"]);
+      expect(sends[0].body.text).toContain("HTTP 401");
+      expect(sends[0].body.text).toContain("/dashboard?settings=notifications");
+      expect(sends[0].headers.get("Idempotency-Key")).toMatch(/^channel-disabled-/);
+    } finally {
+      if (oldKey === undefined) delete process.env.RESEND_API_KEY;
+      else process.env.RESEND_API_KEY = oldKey;
+    }
+  });
+});
+
 describe("notificationChannels legacy alert-rule delivery validation", () => {
   test.each(["all", "high"])("returns recovery guidance without saving realtime + %s", async sensitivity => {
     process.env.CONVEX_TENANT_RELAY_SECRET = "relay-secret";

@@ -3,6 +3,7 @@ import type { Infer } from "convex/values";
 import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { lookupVerifiedAccountEmail, requireVerifiedAccountEmail } from "./lib/notificationEmail";
+import { isDeliveryError } from "./lib/notificationDelivery";
 import { timingSafeEqualStrings } from "./lib/svixVerify";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import { briefOnlyUserIds, type BriefRuleFlags } from "./alertRules";
@@ -991,6 +992,31 @@ const CHANNEL_TYPES: ReadonlySet<string> = new Set(channelTypeValidator.members.
 function isChannelType(value: unknown): value is Infer<typeof channelTypeValidator> {
   return typeof value === "string" && CHANNEL_TYPES.has(value);
 }
+
+http.route({
+  path: "/relay/delivery-result",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+    if (unauthorized) return unauthorized;
+    const body = await parseJsonObjectBody<{
+      userId?: string; channelType?: string;
+      delivery?: { channelId?: string; linkedAt?: number; error?: string | null };
+    }>(request);
+    const delivery = body?.delivery;
+    if (!body || typeof body.userId !== "string" || !body.userId || !isChannelType(body.channelType)
+      || !delivery || typeof delivery.channelId !== "string" || !delivery.channelId
+      || typeof delivery.linkedAt !== "number" || !Number.isFinite(delivery.linkedAt)
+      || (delivery.error !== null && !isDeliveryError(delivery.error))) {
+      return Response.json({ error: "INVALID_DELIVERY_RESULT" }, { status: 400 });
+    }
+    await ctx.runMutation(internal.notificationChannels.recordDeliveryResult, {
+      userId: body.userId, channelType: body.channelType,
+      delivery: { channelId: delivery.channelId, linkedAt: delivery.linkedAt, error: delivery.error },
+    });
+    return Response.json({ ok: true });
+  }),
+});
 
 http.route({
   path: "/relay/deactivate",

@@ -114,6 +114,17 @@ afterAll(() => {
 });
 
 describe('notification settings webhook signing', () => {
+  it('explains automatic disabling and offers the existing reconnect flow', async () => {
+    const data = webhookChannel(true);
+    data.channels[0]!.verified = false;
+    data.channels[0]!.deliveryFailure = { count: 1, firstFailedAt: 1, lastError: 'HTTP 401', disabledAt: 2 };
+    const container = await mount(data);
+    expect(webhookRow(container).textContent).toContain('Disabled after repeated delivery failures');
+    expect(webhookRow(container).classList.contains('us-notif-ch-on')).toBe(false);
+    container.querySelector<HTMLButtonElement>('#usConnectWebhook')!.click();
+    expect(container.querySelector('#usWebhookUrl')).not.toBeNull();
+  });
+
   it('marks a webhook with a signing secret as signed', async () => {
     const container = await mount(webhookChannel(true));
     expect(webhookRow(container).querySelector('.us-notif-ch-sub')?.textContent).toBe('Ops · Signed');

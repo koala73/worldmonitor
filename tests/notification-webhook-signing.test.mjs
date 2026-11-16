@@ -92,16 +92,24 @@ describe('notification-relay sendWebhook', () => {
   let relay;
   let crypto;
   let posts;
+  let deliveryStatus = 200;
+  let urlError;
+  let sendError;
+  const originalFetch = globalThis.fetch;
 
   before(() => {
     process.env.NOTIFICATION_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
     crypto = require('../scripts/lib/crypto.cjs');
     // The relay destructures these at load time, so stub before requiring it.
     const ssrf = require('../scripts/lib/notification-webhook-ssrf.cjs');
-    ssrf.assertNotificationWebhookDeliveryUrlSafe = async (url) => ({ url, resolvedAddresses: ['93.184.216.34'] });
+    ssrf.assertNotificationWebhookDeliveryUrlSafe = async (url) => {
+      if (urlError) throw urlError;
+      return { url, resolvedAddresses: ['93.184.216.34'] };
+    };
     ssrf.postJsonWithPinnedAddress = async (url, body, headers) => {
       posts.push({ url, body, headers });
-      return { ok: true, status: 200 };
+      if (sendError) throw sendError;
+      return { ok: deliveryStatus >= 200 && deliveryStatus < 300, status: deliveryStatus };
     };
     process.env.UPSTASH_REDIS_REST_URL ??= 'https://stub.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN ??= 'stub-token';
@@ -120,7 +128,7 @@ describe('notification-relay sendWebhook', () => {
     }
   });
 
-  afterEach(() => { posts = []; });
+  afterEach(() => { posts = []; deliveryStatus = 200; urlError = undefined; sendError = undefined; globalThis.fetch = originalFetch; });
   posts = [];
 
   it('signs a delivery when the channel has a secret', async () => {
@@ -154,6 +162,36 @@ describe('notification-relay sendWebhook', () => {
     if (originalKey === undefined) delete process.env.NOTIFICATION_ENCRYPTION_KEY;
     else process.env.NOTIFICATION_ENCRYPTION_KEY = originalKey;
   });
+
+  for (const scenario of [
+    { status: 401, expected: 'HTTP 401' },
+    { status: 503, expected: 'HTTP 503' },
+    { url: new Error('getaddrinfo ENOTFOUND private.example'), expected: 'DNS lookup failed' },
+    { url: new Error('Blocked address 127.0.0.1'), expected: 'URL rejected' },
+    { send: new Error('ETIMEDOUT secret.example'), expected: 'Request timed out' },
+    { corrupt: true, expected: 'Decrypt failed' },
+    { expected: null },
+  ]) {
+    it(`reports sanitized delivery result ${scenario.expected ?? 'success'} with channel identity`, async () => {
+      process.env.NOTIFICATION_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
+      deliveryStatus = scenario.status ?? 200;
+      urlError = scenario.url;
+      sendError = scenario.send;
+      const reports = [];
+      globalThis.fetch = async (url, init) => {
+        assert.ok(String(url).endsWith('/relay/delivery-result'));
+        reports.push(JSON.parse(init.body));
+        return Response.json({ ok: true });
+      };
+      const channel = { _id: 'channel-1', linkedAt: 123 };
+      const ok = await relay.sendWebhook('user-1', scenario.corrupt ? 'invalid' : crypto.encrypt('https://hooks.example.com/in'),
+        { eventType: 'rss_alert' }, undefined, channel);
+      assert.equal(ok, scenario.expected === null);
+      assert.deepEqual(reports, [{ userId: 'user-1', channelType: 'webhook', delivery: {
+        channelId: 'channel-1', linkedAt: 123, error: scenario.expected,
+      } }]);
+    });
+  }
 });
 
 describe('both producers pass the channel secret', () => {
@@ -165,7 +203,7 @@ describe('both producers pass the channel secret', () => {
   it('every relay webhook call site passes ch.webhookSecret', () => {
     const calls = relaySrc.match(/await sendWebhook\([\s\S]*?\);/g) ?? [];
     assert.ok(calls.length >= 2);
-    for (const call of calls) assert.match(call, /ch\.webhookSecret\)/);
+    for (const call of calls) assert.match(call, /ch\.webhookSecret, ch\)/);
   });
 
   it('the digest producer signs with the shared helper', () => {
