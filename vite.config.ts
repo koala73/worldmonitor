@@ -5,6 +5,7 @@ import { appChunkRuntimeCache, createDashboardPrecache } from './shared/pwa-prec
 import type { OutputBundle } from 'rollup';
 import { resolve, dirname, extname, basename, posix } from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
+import { statSync } from 'fs';
 import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
 import pkg from './package.json';
@@ -516,6 +517,40 @@ function polymarketPlugin(): Plugin {
           res.setHeader('Cache-Control', 'public, max-age=300');
           res.end('[]');
         }
+      });
+    },
+  };
+}
+
+/**
+ * Dev server only: answer an /api/* request that no dev handler or proxy rule
+ * took with a JSON 404, instead of letting Vite serve the matching api/ source
+ * file as a JavaScript module. Serving it handed the app source text where it
+ * expected JSON, and transforming it made Vite's dependency optimizer discover
+ * server-only packages (@upstash/redis, aws4fetch, ...) mid-session, rebuild
+ * its pre-bundle and reload, which left other open pages requesting chunks
+ * that no longer existed (blank map harness in e2e runs).
+ */
+function devApiSourceGuardPlugin(): Plugin {
+  let proxyKeys: string[] = [];
+  return {
+    name: 'wm-dev-api-source-guard',
+    apply: 'serve',
+    configResolved(config) {
+      proxyKeys = Object.keys(config.server.proxy ?? {});
+    },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const path = (req.url ?? '').split('?')[0]!;
+        if (!path.startsWith('/api/')) return next();
+        if (proxyKeys.some((key) => (key.startsWith('^') ? new RegExp(key).test(path) : path.startsWith(key)))) return next();
+        const file = resolve(__dirname, `.${decodeURIComponent(path)}`);
+        if (!file.startsWith(resolve(__dirname, 'api') + '/')) return next();
+        const isSource = ['', '.js', '.ts', '.mjs'].some((ext) => statSync(file + ext, { throwIfNoEntry: false })?.isFile());
+        if (!isSource) return next();
+        res.statusCode = 404;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'Not served by the Vite dev server', path }));
       });
     },
   };
@@ -1122,6 +1157,8 @@ export default defineConfig(({ mode }) => {
       miitNewsPlugin(),
       gpsjamDevPlugin(),
       sebufApiPlugin(),
+      // Must stay after every plugin that serves /api/* in dev.
+      devApiSourceGuardPlugin(),
       brotliPrecompressPlugin(),
       ...(emitPublicSourceMaps ? [] : [stripPrivateSourceMapsPlugin()]),
       VitePWA({
