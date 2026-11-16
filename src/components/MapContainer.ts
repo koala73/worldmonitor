@@ -2204,10 +2204,6 @@ export class MapContainer {
     return this.useDeckGL;
   }
 
-  public isMobileMode(): boolean {
-    return this.isMobile;
-  }
-
   public destroy(): void {
     this.mapControl = null;
     this.emergencyLayer.destroy();

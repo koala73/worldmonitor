@@ -273,10 +273,6 @@ export function getCurrentLanguageTag(): string {
   return normalizeLanguage(i18next.language || 'en');
 }
 
-export function isRTL(): boolean {
-  return RTL_LANGUAGES.has(getCurrentLanguage());
-}
-
 export function getLocale(): string {
   // Script-sensitive: zh-TW formats dates, numbers and relative times differently
   // from zh-CN. Tags that are already full BCP-47 locales fall through the map

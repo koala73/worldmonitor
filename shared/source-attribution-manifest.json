@@ -1671,9 +1671,6 @@
       "references": [
         {
           "path": "scripts/seed-supply-chain-trade.mjs"
-        },
-        {
-          "path": "server/worldmonitor/trade/v1/_shared.ts"
         }
       ]
     },
@@ -7094,9 +7091,6 @@
       "references": [
         {
           "path": "scripts/seed-aviation.mjs"
-        },
-        {
-          "path": "server/worldmonitor/aviation/v1/_shared.ts"
         }
       ]
     },

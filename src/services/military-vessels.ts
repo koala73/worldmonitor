@@ -684,13 +684,6 @@ export async function fetchMilitaryVessels(): Promise<VesselSnapshot & {
 }
 
 /**
- * Get status string for circuit breaker
- */
-export function getMilitaryVesselsStatus(): string {
-  return breaker.getStatus();
-}
-
-/**
  * Get vessel by MMSI
  */
 export function getVesselByMmsi(mmsi: string): MilitaryVessel | undefined {

@@ -730,8 +730,8 @@ export class PanelLayoutManager implements AppModule {
 
     // Defer Convex subscriptions until a real Clerk identity exists.
     //
-    // `getUserId()` (user-identity.ts) always returns truthy for browser
-    // users — it falls back to an auto-generated `wm-anon-id` UUID — so the
+    // The old browser getUserId() helper always returned truthy for browser
+    // users. It fell back to an auto-generated `wm-anon-id` UUID, so the
     // previous `if (userId)` gate never short-circuited. That meant every
     // anonymous visitor opened a Convex WebSocket via getConvexClient()
     // with `setAuth(getClerkToken)` returning null, which the Convex SDK

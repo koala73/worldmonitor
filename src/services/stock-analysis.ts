@@ -62,7 +62,3 @@ export async function fetchStockAnalysesForTargets(targets: StockAnalysisTarget[
     });
   });
 }
-
-export async function fetchStockAnalyses(limitOverride?: number): Promise<StockAnalysisResult[]> {
-  return fetchStockAnalysesForTargets(getStockAnalysisTargets(limitOverride));
-}

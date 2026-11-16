@@ -78,7 +78,7 @@ the Strategic Risk panel label as a display mapping of `StrategicRisk.score`.
 
 ### Unified Alert System
 
-Alerts from all modules are merged using **temporal and spatial deduplication**:
+Convergence, CII, sanctions, and radiation alerts are merged using **temporal and spatial deduplication**:
 
 - **Time window**: Alerts within 2 hours may be merged
 - **Distance threshold**: Alerts within 200km may be merged
@@ -88,13 +88,16 @@ When alerts merge, they become **composite alerts** that show the full picture:
 
 ```
 Type: Composite Alert
-Title: Convergence + CII + Infrastructure: Ukraine
+Title: Convergence + CII: Ukraine
 Components:
   - Geographic Convergence: 4 event types in Kyiv region
   - CII Spike: Ukraine +15 points (Critical)
-  - Infrastructure: Black Sea cables at risk
 Priority: Critical
 ```
+
+Cascade analysis models the potential impact of a selected infrastructure failure.
+Running a cascade scenario does not generate a unified alert or establish that
+the failure has occurred.
 
 ### Alert Priority
 
@@ -105,9 +108,9 @@ Index country-score bands documented in
 
 | Priority | Criteria |
 |----------|----------|
-| **Critical** | CII country Critical band (81-100), convergence has 4+ types or score ≥90, cascade critical impact, high-impact radiation/sanctions signal |
-| **High** | CII country High band (66-80) or ≥30-point CII move, convergence has 3+ types or score ≥70, cascade affecting ≥5 countries |
-| **Medium** | CII country Elevated band or ≥15-point CII move, convergence score ≥50, cascade medium impact or ≥3 countries |
+| **Critical** | CII country Critical band (81-100), convergence has 4+ types or score ≥90, high-impact radiation/sanctions signal |
+| **High** | CII country High band (66-80) or ≥30-point CII move, convergence has 3+ types or score ≥70 |
+| **Medium** | CII country Elevated band or ≥15-point CII move, convergence score ≥50 |
 | **Low** | Minor changes and low-impact events |
 
 ### Trend Detection
