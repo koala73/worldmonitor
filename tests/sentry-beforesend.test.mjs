@@ -1136,6 +1136,39 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     assert.equal(beforeSend(event), null);
   });
 
+  // WORLDMONITOR-1F5: the same insertion path, but the injected source parses
+  // and then redeclares a top-level binding it already declared on an earlier
+  // insertion. Chrome folds that into the same appendChild prefix. Our bundle
+  // is ES modules, so no first-party top-level `const` lands in the global
+  // lexical scope, and a duplicate inside one module fails the build.
+  it("suppresses an injected script's appendChild redeclaration with only <anonymous> frames", () => {
+    const event = makeEvent(
+      "Failed to execute 'appendChild' on 'Node': Identifier 'API_URL' has already been declared",
+      'SyntaxError',
+      [{ filename: '<anonymous>', lineno: 6 }, { filename: '<anonymous>', lineno: 7 }],
+    );
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('lets through an appendChild redeclaration attributed to a first-party script loader', () => {
+    const event = makeEvent(
+      "Failed to execute 'appendChild' on 'Node': Identifier 'API_URL' has already been declared",
+      'SyntaxError',
+      [{ filename: 'src/services/analytics.ts', lineno: 494, function: 'loadUmamiScript' },
+        { filename: '<anonymous>', lineno: 1 }],
+    );
+    assert.ok(beforeSend(event) !== null);
+  });
+
+  it('keeps a bare redeclaration (no appendChild prefix) frame-blind rules cannot attribute', () => {
+    // Only the DOM-insertion prefix ties the error to an inserted script; a
+    // bare redeclaration of an identifier the ignoreErrors list does not name
+    // still reports.
+    const event = makeEvent("Identifier 'API_URL' has already been declared", 'SyntaxError',
+      [{ filename: '<anonymous>', lineno: 6 }]);
+    assert.ok(beforeSend(event) !== null);
+  });
+
   it("suppresses an injected script's Unexpected identifier with only <anonymous> frames", () => {
     const event = makeEvent("Unexpected identifier 'm'", 'SyntaxError',
       [{ filename: '<anonymous>', lineno: 1 }]);

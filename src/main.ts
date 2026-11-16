@@ -456,6 +456,16 @@ function shouldSuppressCspViolation(
       // Exact host + `.css` path, like the 6ppn rule; unpkg under script-src
       // still surfaces, which matters because it is a general npm CDN.
       if (url.protocol === 'https:' && url.hostname === 'unpkg.com' && cssFile.test(url.pathname)) return true;
+      // A Bloomberg page's own stylesheet set (its font service on bwbx.io, the
+      // corporate theme on bloomberg.com, the bbthat.com frontend), all blocked
+      // within one minute of one Safari 27.2 session: a page's <link> tags
+      // copied into ours by an extension. We load no Bloomberg stylesheet;
+      // bloomberg.com appears in src/ only as an HLS manifest, which these
+      // style-src rules do not touch (WORLDMONITOR-J0 round 8, every blocked
+      // URI since round 7 apart from one first-party maplibre sheet).
+      if (url.protocol === 'https:'
+          && (url.hostname === 'assets.bwbx.io' || url.hostname === 'www.bloomberg.com' || url.hostname === 'www.bbthat.com')
+          && cssFile.test(url.pathname)) return true;
     } catch { /* unparseable values fall through */ }
     // Extension bug: a literal unsubstituted `[email]` template placeholder as
     // the stylesheet URL. Not a parseable host; can never be first-party.

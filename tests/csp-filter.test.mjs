@@ -587,6 +587,25 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(!suppress('enforce', 'style-src-elem', 'http://price.dianxiaobao.net/ext/assets/style.abc.css', '', false));
     });
 
+    it("suppresses a Bloomberg page's stylesheet set injected into the dashboard (WORLDMONITOR-J0 round 8)", () => {
+      // Verbatim production values, 2026-11-11, Safari 27.2: one session,
+      // three hosts, every blocked URI since round 7 shipped. We load no
+      // Bloomberg stylesheet (bloomberg.com appears only as an HLS manifest).
+      assert.ok(suppress('enforce', 'style-src-elem', 'https://assets.bwbx.io/font-service/css/AvenirNextPForBBG:400,600/styled-font-face.css', '', false));
+      assert.ok(suppress('enforce', 'style-src-elem', 'https://assets.bwbx.io/font-service/css/AvenirNextPForBBG:400,400i,600,600i/styled-font-face.css', '', false));
+      assert.ok(suppress('enforce', 'style-src-elem', 'https://www.bloomberg.com/company/content/themes/company2019/dist/main.ed873a38.css', '', false));
+      assert.ok(suppress('enforce', 'style-src-elem', 'https://www.bbthat.com/assets/v2.7.0/that.css?h=cd78e550', '', false));
+    });
+
+    it('does NOT suppress Bloomberg hosts outside the stylesheet shape', () => {
+      // Lookalike hosts, http, non-css paths and other directives still surface.
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://assets.bwbx.io.evil.com/font-service/css/x.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'http://www.bloomberg.com/company/x.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://www.bbthat.com/assets/v2.7.0/that.js', '', false));
+      assert.ok(!suppress('enforce', 'script-src-elem', 'https://www.bloomberg.com/company/content/themes/company2019/dist/main.js', '', false));
+      assert.ok(!suppress('enforce', 'connect-src', 'https://www.bloomberg.com/media-manifest/streams/us.m3u8', '', false));
+    });
+
     it('suppresses literal [email] placeholder stylesheet URL from a broken extension template', () => {
       assert.ok(suppress('enforce', 'style-src-elem', 'https://[email]', '', false));
     });
