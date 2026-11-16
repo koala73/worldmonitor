@@ -334,51 +334,54 @@ export class MapPopup {
     const popup = this.popup;
     if (!target || !popup) return;
     const host = popup.querySelector<HTMLElement>('.popup-body') ?? popup;
-    const holder = document.createElement('div');
-    setTrustedHtml(holder, trustedHtml(renderImageryRow(), 'static locale strings'));
-    const row = holder.firstElementChild as HTMLElement | null;
-    if (!row) return;
-    host.appendChild(row);
-    const eventMs = eventTimeFor(data.type, data.data);
-    let eventCompare: EventCompareHooks | undefined;
-    let unsubscribeAuth: (() => void) | null = null;
-    if (eventMs !== null) {
-      const access = hasPremiumAccess(getAuthState()) ? 'open' : 'locked';
-      if (access === 'locked') trackGateHit('orbital-event-compare');
-      eventCompare = {
-        eventMs,
-        access,
-        onOpen: (picked, anchorMs, pair) => {
-          this.hide();
-          const detail: OrbitalEventCompareDetail = { point: picked.point, eventMs: anchorMs, pair };
-          window.dispatchEvent(new CustomEvent(ORBITAL_EVENT_COMPARE_EVENT, { detail }));
-        },
-      };
-      // Access confirmed after the popup opened (auth still loading) unlocks the row in place.
-      if (access === 'locked') {
-        unsubscribeAuth = subscribeAuthState((state) => {
-          if (this.popup !== popup || !hasPremiumAccess(state)) return;
-          this.disposeImagery?.();
-          this.disposeImagery = null;
-          row.remove();
-          this.mountImagery(data);
-        });
+    const mountRow = (): void => {
+      const holder = document.createElement('div');
+      setTrustedHtml(holder, trustedHtml(renderImageryRow(), 'static locale strings'));
+      const row = holder.firstElementChild as HTMLElement | null;
+      if (!row) return;
+      host.appendChild(row);
+      const eventMs = eventTimeFor(data.type, data.data);
+      let eventCompare: EventCompareHooks | undefined;
+      let unsubscribeAuth: (() => void) | null = null;
+      if (eventMs !== null) {
+        const access = hasPremiumAccess(getAuthState()) ? 'open' : 'locked';
+        if (access === 'locked') trackGateHit('orbital-event-compare');
+        eventCompare = {
+          eventMs,
+          access,
+          onOpen: (picked, anchorMs, pair) => {
+            this.hide();
+            const detail: OrbitalEventCompareDetail = { point: picked.point, eventMs: anchorMs, pair };
+            window.dispatchEvent(new CustomEvent(ORBITAL_EVENT_COMPARE_EVENT, { detail }));
+          },
+        };
+        // Access confirmed after the popup opened (auth still loading) unlocks the row in place.
+        if (access === 'locked') {
+          unsubscribeAuth = subscribeAuthState((state) => {
+            if (this.popup !== popup || !hasPremiumAccess(state)) return;
+            this.disposeImagery?.();
+            this.disposeImagery = null;
+            row.remove();
+            mountRow();
+          });
+        }
       }
-    }
-    const disposeRow = mountImageryRow(row, target, {
-      eventCompare,
-      onLayout: () => {
-        if (this.popup === popup && !this.isMobileSheet) this.clampPopupToViewport();
-      },
-      onOpenEvidence: (picked) => {
-        this.hide();
-        window.dispatchEvent(new CustomEvent(ORBITAL_EVIDENCE_EVENT, { detail: picked.point }));
-      },
-    });
-    this.disposeImagery = () => {
-      unsubscribeAuth?.();
-      disposeRow();
+      const disposeRow = mountImageryRow(row, target, {
+        eventCompare,
+        onLayout: () => {
+          if (this.popup === popup && !this.isMobileSheet) this.clampPopupToViewport();
+        },
+        onOpenEvidence: (picked) => {
+          this.hide();
+          window.dispatchEvent(new CustomEvent(ORBITAL_EVIDENCE_EVENT, { detail: picked.point }));
+        },
+      });
+      this.disposeImagery = () => {
+        unsubscribeAuth?.();
+        disposeRow();
+      };
     };
+    mountRow();
   }
 
   private disposeFireMosaic: (() => void) | null = null;
