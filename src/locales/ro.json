@@ -4290,6 +4290,21 @@
       "yellowWarning": "Cod galben",
       "orangeWarning": "Cod portocaliu",
       "redWarning": "Cod roșu"
+    },
+    "displacement": {
+      "event": "Eveniment",
+      "cause": "Cauză",
+      "date": "Dată",
+      "operation": "Operațiune",
+      "reportDate": "Data raportului",
+      "measure": "Măsură",
+      "kinds": {
+        "outflow": "Plecări",
+        "return": "Întoarceri",
+        "arrival": "Sosiri",
+        "death": "Decese",
+        "encounter": "Interceptări"
+      }
     }
   },
   "signals": {

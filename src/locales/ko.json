@@ -4246,6 +4246,21 @@
       "yellowWarning": "황색 경보",
       "orangeWarning": "주황색 경보",
       "redWarning": "적색 경보"
+    },
+    "displacement": {
+      "event": "사건",
+      "cause": "원인",
+      "date": "날짜",
+      "operation": "작전",
+      "reportDate": "보고일",
+      "measure": "측정 기준",
+      "kinds": {
+        "outflow": "유출",
+        "return": "귀환",
+        "arrival": "도착",
+        "death": "사망",
+        "encounter": "적발"
+      }
     }
   },
   "signals": {

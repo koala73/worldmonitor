@@ -4369,7 +4369,22 @@
     "common": {},
     "conflict": {},
     "apt": {},
-    "buttons": {}
+    "buttons": {},
+    "displacement": {
+      "event": "Događaj",
+      "cause": "Uzrok",
+      "date": "Datum",
+      "operation": "Operacija",
+      "reportDate": "Datum izvješća",
+      "measure": "Mjera",
+      "kinds": {
+        "outflow": "Odlasci",
+        "return": "Povratci",
+        "arrival": "Dolasci",
+        "death": "Smrti",
+        "encounter": "Presretanja"
+      }
+    }
   },
   "signals": {
     "context": {

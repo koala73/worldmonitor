@@ -4290,6 +4290,21 @@
       "yellowWarning": "Allerta gialla",
       "orangeWarning": "Allerta arancione",
       "redWarning": "Allerta rossa"
+    },
+    "displacement": {
+      "event": "Evento",
+      "cause": "Causa",
+      "date": "Data",
+      "operation": "Operazione",
+      "reportDate": "Data del rapporto",
+      "measure": "Misura",
+      "kinds": {
+        "outflow": "Partenze",
+        "return": "Rientri",
+        "arrival": "Arrivi",
+        "death": "Morti",
+        "encounter": "Intercettazioni"
+      }
     }
   },
   "signals": {

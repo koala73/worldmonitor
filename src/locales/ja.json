@@ -4246,6 +4246,21 @@
       "yellowWarning": "黄色警報",
       "orangeWarning": "オレンジ警報",
       "redWarning": "赤色警報"
+    },
+    "displacement": {
+      "event": "事象",
+      "cause": "原因",
+      "date": "日付",
+      "operation": "オペレーション",
+      "reportDate": "報告日",
+      "measure": "指標",
+      "kinds": {
+        "outflow": "流出",
+        "return": "帰還",
+        "arrival": "到着",
+        "death": "死亡",
+        "encounter": "遭遇"
+      }
     }
   },
   "signals": {

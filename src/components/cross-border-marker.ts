@@ -1,6 +1,7 @@
 import type { CrossBorderPoint } from '@/services/displacement';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
+import { popupStat } from './displacement-marker';
 import { renderPopupSourceLinks } from './map-popup-source-links';
 
 export function crossBorderMarkerOffsets(points: CrossBorderPoint[]): Map<CrossBorderPoint, [number, number]> {
@@ -59,4 +60,38 @@ export function renderCrossBorderDetails(point: CrossBorderPoint): string {
     + `<br>${escapeHtml(point.source || t('components.deckgl.tooltip.sourceUnhcrOdp'))}`
     + `${point.accelerating ? `<br><strong>${t('components.displacement.accelerating')}</strong>` : ''}`
     + renderPopupSourceLinks(point.sourceUrl ? [point.sourceUrl] : []);
+}
+
+const signedCount = (value: number): string => `${value > 0 ? '+' : ''}${value.toLocaleString()}`;
+
+/** The map popup of a cross-border report, in the layout every map popup shares. */
+export function renderCrossBorderPopup(point: CrossBorderPoint): string {
+  const changePct = point.changePct !== undefined ? ` · ${point.changePct > 0 ? '+' : ''}${point.changePct.toFixed(0)}%` : '';
+  const stats = [
+    popupStat(t('components.displacement.reported'), point.individuals.toLocaleString()),
+    popupStat(t('popups.type'), t(`popups.displacement.kinds.${point.kind}`)),
+    point.measure ? popupStat(t('popups.displacement.measure'), point.measure) : '',
+    point.last30Days !== undefined
+      ? popupStat(t('components.displacement.last30Days'), `${point.last30Days.toLocaleString()}${changePct}`)
+      : point.period ? popupStat(t('components.displacement.period'), `${point.period}${changePct}`) : '',
+    point.change !== null
+      ? popupStat(t('components.displacement.latestChange'), point.changeSince
+        ? `${signedCount(point.change)} ${t('components.deckgl.tooltip.sinceDate', { date: point.changeSince })}`
+        : signedCount(point.change))
+      : '',
+    popupStat(t('components.displacement.country'), point.country),
+    popupStat(t('popups.displacement.reportDate'), point.date),
+  ];
+  return `
+    <div class="popup-header displacement">
+      <span class="popup-title">${escapeHtml(t('components.displacement.crossBorder').toLocaleUpperCase())}</span>
+      ${point.accelerating ? `<span class="popup-badge high">${escapeHtml(t('components.displacement.accelerating').toLocaleUpperCase())}</span>` : ''}
+      <button class="popup-close" aria-label="${escapeHtml(t('common.close'))}">×</button>
+    </div>
+    <div class="popup-body">
+      <p class="popup-location">${escapeHtml(point.label)}</p>
+      <div class="popup-stats">${stats.join('')}</div>
+      <div class="popup-attribution">${escapeHtml(point.source || t('components.deckgl.tooltip.sourceUnhcrOdp'))}</div>
+      ${renderPopupSourceLinks(point.sourceUrl ? [point.sourceUrl] : [])}
+    </div>`;
 }

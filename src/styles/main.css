@@ -7583,6 +7583,27 @@ body.playback-mode .status-dot {
   color: var(--semantic-info);
 }
 
+/* Displacement and cross-border popups: the badge dot repeats the marker colour */
+.popup-header.displacement {
+  background: rgba(100, 150, 255, 0.06);
+}
+
+.popup-header.displacement .popup-title {
+  color: var(--semantic-info);
+}
+
+.popup-badge.displacement-refugees,
+.popup-badge.displacement-idps,
+.popup-badge.displacement-conflict,
+.popup-badge.displacement-disaster {
+  color: var(--text-primary);
+}
+
+.popup-badge.displacement-refugees::before { background: #6496ff; }
+.popup-badge.displacement-idps::before { background: #b482ff; }
+.popup-badge.displacement-conflict::before { background: #e65a46; }
+.popup-badge.displacement-disaster::before { background: #4696e6; }
+
 /* Nuclear markers */
 .nuclear-marker {
   position: absolute;
