@@ -13,7 +13,7 @@ import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { assessCorroboration, corroborationLabelHtml, evidenceFromItem } from '@/utils/corroboration-flag';
 import { isMobileDevice, getCSSColor } from '@/utils';
 import { TransitChart } from '@/utils/transit-chart';
-import { hasImageryRow, imageryTargetFor, mountImageryRow, renderImageryRow } from './map-popup-imagery';
+import { eventTimeFor, hasImageryRow, imageryTargetFor, mountImageryRow, renderImageryRow, type EventCompareHooks } from './map-popup-imagery';
 import { mountFireMosaic, renderFireDetectionPopup, type FireDetectionPopupData } from './map-popup-fire';
 import { ORBITAL_EVIDENCE_EVENT } from '@/services/orbital/evidence-event';
 import { HS2RingChart } from '@/utils/hs2-ring-chart';
@@ -339,7 +339,23 @@ export class MapPopup {
     const row = holder.firstElementChild as HTMLElement | null;
     if (!row) return;
     host.appendChild(row);
+    const eventMs = eventTimeFor(data.type, data.data);
+    let eventCompare: EventCompareHooks | undefined;
+    if (eventMs !== null) {
+      const access = hasPremiumAccess(getAuthState()) ? 'open' : 'locked';
+      if (access === 'locked') trackGateHit('orbital-event-compare');
+      eventCompare = {
+        eventMs,
+        access,
+        onOpen: (picked, anchorMs, pair) => {
+          this.hide();
+          void import('./OrbitalImageViewer').then(({ openOrbitalImageViewer, subjectForEvent }) =>
+            openOrbitalImageViewer(subjectForEvent(picked.point, anchorMs, pair, Date.now()), null, undefined, { compareKey: pair.before.key }));
+        },
+      };
+    }
     this.disposeImagery = mountImageryRow(row, target, {
+      eventCompare,
       onLayout: () => {
         if (this.popup === popup && !this.isMobileSheet) this.clampPopupToViewport();
       },

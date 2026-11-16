@@ -5263,7 +5263,8 @@
       "metaSpot": "지점의 구름",
       "metaScene": "장면 구름",
       "metaSun": "태양 고도",
-      "showCloudy": "흐린 날짜 포함 ({{count}})"
+      "showCloudy": "흐린 날짜 포함 ({{count}})",
+      "eventMark": "이벤트 {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5496,6 +5497,12 @@
       "noImage": "최근 영상을 찾을 수 없음",
       "noPass": "72시간 내 통과 예정 없음",
       "openEvidence": "증거 열기",
+      "compareEvent": "전 / 후",
+      "compareEventLocked": "전 / 후 · Pro",
+      "compareSearching": "{{date}} 전후 장면을 찾는 중…",
+      "compareNoAfter": "{{date}} 이후 맑은 장면이 아직 없습니다.",
+      "compareNoBefore": "아카이브 기간에 {{date}} 이전 맑은 장면이 없습니다.",
+      "compareFailed": "아카이브 검색에 실패했습니다. 다시 시도하세요.",
       "imageAlt": "{{source}} 위성 화면",
       "unavailable": "위성 영상을 불러오지 못했습니다.",
       "fire": {

@@ -5291,7 +5291,8 @@
       "metaSpot": "Noktadaki bulut",
       "metaScene": "Sahne bulutu",
       "metaSun": "Güneş yükselimi",
-      "showCloudy": "Bulutlu tarihleri dahil et ({{count}})"
+      "showCloudy": "Bulutlu tarihleri dahil et ({{count}})",
+      "eventMark": "Olay {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5532,6 +5533,12 @@
       "noImage": "Yakın tarihli görüntü bulunamadı",
       "noPass": "72 saat içinde geçiş yok",
       "openEvidence": "Kanıtları aç",
+      "compareEvent": "Önce / sonra",
+      "compareEventLocked": "Önce / sonra · Pro",
+      "compareSearching": "{{date}} öncesi ve sonrası görüntüler aranıyor…",
+      "compareNoAfter": "{{date}} sonrasında henüz net görüntü yok.",
+      "compareNoBefore": "Arşiv aralığında {{date}} öncesine ait net görüntü yok.",
+      "compareFailed": "Arşiv araması başarısız oldu. Tekrar deneyin.",
       "imageAlt": "{{source}} uydu görünümü",
       "unavailable": "Uydu görüntüleri yüklenemedi.",
       "fire": {

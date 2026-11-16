@@ -76,6 +76,8 @@
 .oiv-dates { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--oiv-line); }
 .oiv-date { display: flex; justify-content: space-between; width: 100%; padding: 9px 10px; background: none; border: 0; border-bottom: 1px solid var(--oiv-line-soft); color: var(--oiv-dim); cursor: pointer; text-align: left; }
 .oiv-date-cloud { color: var(--oiv-dim); }
+.oiv-date-event { padding: 6px 10px; border-bottom: 1px solid var(--oiv-line-soft); border-left: 2px solid var(--yellow, #ffaa00); color: var(--oiv-text); font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.oiv-event { margin: 8px 0 0; color: var(--oiv-text); }
 .oiv-toggle { margin-top: 12px; align-self: flex-start; }
 .oiv-side > .oiv-actions:last-child { margin: 16px 0 0; }
 .oiv-play { flex: none; width: 44px; height: 44px; background: none; border: 1px solid var(--oiv-line); color: var(--green-text, var(--green)); cursor: pointer; font-size: 13px; }

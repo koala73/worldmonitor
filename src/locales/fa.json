@@ -5291,7 +5291,8 @@
       "metaSpot": "ابر در نقطه",
       "metaScene": "ابر صحنه",
       "metaSun": "ارتفاع خورشید",
-      "showCloudy": "شامل تاریخ‌های ابری ({{count}})"
+      "showCloudy": "شامل تاریخ‌های ابری ({{count}})",
+      "eventMark": "رویداد {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5532,6 +5533,12 @@
       "noImage": "تصویر اخیری یافت نشد",
       "noPass": "هیچ گذری تا ۷۲ ساعت آینده نیست",
       "openEvidence": "باز کردن شواهد",
+      "compareEvent": "قبل / بعد",
+      "compareEventLocked": "قبل / بعد · Pro",
+      "compareSearching": "در حال جست‌وجوی تصاویر پیش و پس از {{date}}…",
+      "compareNoAfter": "هنوز تصویر صافی پس از {{date}} وجود ندارد.",
+      "compareNoBefore": "تصویر صافی پیش از {{date}} در بازه آرشیو نیست.",
+      "compareFailed": "جست‌وجوی آرشیو ناموفق بود. دوباره تلاش کنید.",
       "imageAlt": "نمای ماهواره‌ای از {{source}}",
       "unavailable": "تصاویر ماهواره‌ای بارگیری نشد.",
       "fire": {

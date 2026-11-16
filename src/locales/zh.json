@@ -5263,7 +5263,8 @@
       "metaSpot": "该点云量",
       "metaScene": "场景云量",
       "metaSun": "太阳高度",
-      "showCloudy": "包含多云日期（{{count}}）"
+      "showCloudy": "包含多云日期（{{count}}）",
+      "eventMark": "事件 {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5496,6 +5497,12 @@
       "noImage": "未找到近期影像",
       "noPass": "72 小时内无过境",
       "openEvidence": "打开证据",
+      "compareEvent": "前后对比",
+      "compareEventLocked": "前后对比 · Pro",
+      "compareSearching": "正在搜索 {{date}} 前后的影像…",
+      "compareNoAfter": "{{date}} 之后尚无晴空影像。",
+      "compareNoBefore": "存档时段内没有 {{date}} 之前的晴空影像。",
+      "compareFailed": "存档搜索失败，请重试。",
       "imageAlt": "来自 {{source}} 的卫星视图",
       "unavailable": "卫星影像加载失败。",
       "fire": {

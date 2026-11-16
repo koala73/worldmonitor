@@ -4896,7 +4896,8 @@
       "metaSpot": "Cloud at point",
       "metaScene": "Scene cloud",
       "metaSun": "Sun elev.",
-      "showCloudy": "Include cloudy dates ({{count}})"
+      "showCloudy": "Include cloudy dates ({{count}})",
+      "eventMark": "Event {{date}}"
     },
     "search": {
       "label": "Place or coordinates",
@@ -4969,6 +4970,12 @@
       "noImage": "No recent image found",
       "noPass": "No pass due within 72 hours",
       "openEvidence": "Open evidence",
+      "compareEvent": "Before / after",
+      "compareEventLocked": "Before / after · Pro",
+      "compareSearching": "Searching scenes either side of {{date}}…",
+      "compareNoAfter": "No clear scene since {{date}} yet.",
+      "compareNoBefore": "No clear scene before {{date}} in the archive window.",
+      "compareFailed": "Archive search failed. Try again.",
       "imageAlt": "Satellite view from {{source}}",
       "unavailable": "Satellite imagery did not load.",
       "fire": {

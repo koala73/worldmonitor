@@ -8,7 +8,8 @@
 import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 import { t, getCurrentLanguageTag } from '@/services/i18n';
 import { loadArchiveImage } from '@/services/orbital/archive-image';
-import { isFirmsDetection } from '@/services/orbital/fire-mosaic';
+import { findEventPair, type EventPair } from '@/services/orbital/event-imagery';
+import { isFirmsDetection, type FireDetectionPopupData } from '@/services/orbital/fire-mosaic';
 import { loadObjectImagery, type ImageryTarget, type ObjectImagery } from '@/services/orbital/object-imagery';
 import type { ConflictZone, MilitaryBase, NaturalEvent, NuclearFacility, Port, StrategicWaterway } from '@/types';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -18,7 +19,7 @@ import { escapeHtml } from '@/utils/sanitize';
 export const IMAGE_STALE_MS = 14 * 86_400_000;
 
 interface PointData { lat: number; lon: number }
-interface EventPointData { latitude: number; longitude: number }
+interface EventPointData { latitude: number; longitude: number; timestamp?: string | number }
 
 /** The objects that carry an imagery row, or null for every other popup. */
 export function imageryTargetFor(type: string, data: unknown): ImageryTarget | null {
@@ -66,12 +67,34 @@ export function imageryTargetFor(type: string, data: unknown): ImageryTarget | n
   }
 }
 
+const validTime = (ms: number): number | null => (Number.isFinite(ms) && ms > 0 ? ms : null);
+
+/**
+ * The time a dated event happened, for the before/after around it (#10713 unit 2), or null for objects
+ * with no single date: sites, and every popup without an imagery row.
+ */
+export function eventTimeFor(type: string, data: unknown): number | null {
+  if (!imageryTargetFor(type, data)) return null;
+  switch (type) {
+    case 'iranEvent': {
+      const { timestamp } = data as EventPointData;
+      return timestamp === undefined ? null : validTime(typeof timestamp === 'number' ? timestamp : Date.parse(timestamp));
+    }
+    case 'natEvent':
+      return validTime(new Date((data as NaturalEvent).date).getTime());
+    case 'fireDetection':
+      return validTime((data as FireDetectionPopupData).detected_at!);
+    default:
+      return null;
+  }
+}
+
 /** Whether a popup of this type and data gets the row in this build. */
 export function hasImageryRow(type: string, data: unknown, enabled = ORBITAL_WATCH_ENABLED): boolean {
   return enabled && imageryTargetFor(type, data) !== null;
 }
 
-const label = (key: string) => escapeHtml(t(`orbitalWatch.popup.${key}`));
+const label = (key: string, params?: Record<string, string>) => escapeHtml(t(`orbitalWatch.popup.${key}`, params));
 
 export function renderImageryRow(): string {
   return `<div class="popup-section popup-imagery" data-orbital-imagery aria-live="polite">
@@ -102,7 +125,25 @@ function renderNextPass(imagery: ObjectImagery): string {
     : label('noPass');
 }
 
-export function renderImageryDetails(imagery: ObjectImagery, nowMs: number, showNextPass = true): string {
+export const formatDay = (ms: number) => new Intl.DateTimeFormat(getCurrentLanguageTag(), {
+  day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+}).format(ms);
+
+/** Before/after is Pro (#10713 tier table): Pro opens it, everyone else sees where it is unlocked. */
+export type EventCompareAccess = 'open' | 'locked';
+
+function renderEventCompare(access: EventCompareAccess | null): string {
+  if (access === 'open') {
+    return `<button type="button" class="popup-imagery-open popup-imagery-compare" data-orbital-event-compare>${label('compareEvent')}</button>
+      <span class="popup-imagery-status" data-orbital-event-status hidden></span>`;
+  }
+  if (access === 'locked') {
+    return `<a class="popup-imagery-compare-locked" href="/pro#pricing" target="_blank" rel="noopener" data-orbital-event-compare-locked>${label('compareEventLocked')}</a>`;
+  }
+  return '';
+}
+
+export function renderImageryDetails(imagery: ObjectImagery, nowMs: number, showNextPass = true, eventCompare: EventCompareAccess | null = null): string {
   const latestMs = imagery.latest ? Date.parse(imagery.latest.datetime) : NaN;
   const stale = Number.isFinite(latestMs) && nowMs - latestMs > IMAGE_STALE_MS;
   const latest = imagery.latest && Number.isFinite(latestMs)
@@ -115,7 +156,17 @@ export function renderImageryDetails(imagery: ObjectImagery, nowMs: number, show
       ${showNextPass ? `<div class="popup-stat"><span class="stat-label">${label('nextPass')}</span><span class="stat-value" data-orbital-next-pass>${next}</span></div>` : ''}
     </div>
     ${renderChangeFlagRow(imagery)}
-    <button type="button" class="popup-imagery-open" data-orbital-open-evidence>${label('openEvidence')}</button>`;
+    <div class="popup-imagery-actions">
+      <button type="button" class="popup-imagery-open" data-orbital-open-evidence>${label('openEvidence')}</button>
+      ${renderEventCompare(eventCompare)}
+    </div>`;
+}
+
+export interface EventCompareHooks {
+  eventMs: number;
+  access: EventCompareAccess;
+  onOpen: (target: ImageryTarget, eventMs: number, pair: Extract<EventPair, { status: 'ok' }>) => void;
+  findPair?: typeof findEventPair;
 }
 
 export interface ImageryRowHooks {
@@ -123,6 +174,39 @@ export interface ImageryRowHooks {
   onLayout: () => void;
   load?: typeof loadObjectImagery;
   now?: () => number;
+  /** The before/after around a dated event; absent for objects without one. */
+  eventCompare?: EventCompareHooks;
+}
+
+/** Searches the archive around the event from the popup, then hands the pair to the viewer, or says in place what is missing. */
+function bindEventCompare(body: HTMLElement, target: ImageryTarget, hooks: ImageryRowHooks, signal: AbortSignal): void {
+  const compare = hooks.eventCompare;
+  const button = body.querySelector<HTMLButtonElement>('[data-orbital-event-compare]');
+  const status = body.querySelector<HTMLElement>('[data-orbital-event-status]');
+  if (!compare || !button || !status) return;
+  const date = formatDay(compare.eventMs);
+  const say = (text: string) => {
+    status.textContent = text;
+    status.hidden = false;
+    hooks.onLayout();
+  };
+  button.addEventListener('click', () => {
+    button.disabled = true;
+    say(t('orbitalWatch.popup.compareSearching', { date }));
+    const find = compare.findPair ?? findEventPair;
+    void find(target.point, compare.eventMs, (hooks.now ?? Date.now)(), { signal }).catch((): EventPair => ({ status: 'failed' })).then((pair) => {
+      if (signal.aborted) return;
+      button.disabled = false;
+      if (pair.status === 'ok') {
+        status.hidden = true;
+        compare.onOpen(target, compare.eventMs, pair);
+        return;
+      }
+      say(pair.status === 'none'
+        ? t(pair.missing === 'after' ? 'orbitalWatch.popup.compareNoAfter' : 'orbitalWatch.popup.compareNoBefore', { date })
+        : t('orbitalWatch.popup.compareFailed'));
+    });
+  });
 }
 
 /** Fills the row in place; the returned dispose aborts the lookup and frees the image. */
@@ -135,8 +219,9 @@ export function mountImageryRow(root: HTMLElement, target: ImageryTarget, hooks:
   const showNextPass = !(target.kind === 'point' && target.ownNextPass);
   let early: ObjectImagery | null = null;
   const paint = async (imagery: ObjectImagery) => {
-    setTrustedHtml(body, trustedHtml(renderImageryDetails(imagery, (hooks.now ?? Date.now)(), showNextPass), 'imagery row markup escapes every value'));
+    setTrustedHtml(body, trustedHtml(renderImageryDetails(imagery, (hooks.now ?? Date.now)(), showNextPass, hooks.eventCompare?.access ?? null), 'imagery row markup escapes every value'));
     body.querySelector('[data-orbital-open-evidence]')?.addEventListener('click', () => hooks.onOpenEvidence(target));
+    bindEventCompare(body, target, hooks, controller.signal);
     hooks.onLayout();
     const frame = body.querySelector<HTMLElement>('[data-orbital-image]');
     if (!frame || !imagery.latest) return;

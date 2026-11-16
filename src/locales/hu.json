@@ -5291,7 +5291,8 @@
       "metaSpot": "Felhőzet a pontban",
       "metaScene": "Jelenet felhőzete",
       "metaSun": "Nap magassági szöge",
-      "showCloudy": "Felhős dátumok megjelenítése ({{count}})"
+      "showCloudy": "Felhős dátumok megjelenítése ({{count}})",
+      "eventMark": "Esemény {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5532,6 +5533,12 @@
       "noImage": "Nincs friss felvétel",
       "noPass": "72 órán belül nincs áthaladás",
       "openEvidence": "Bizonyítékok megnyitása",
+      "compareEvent": "Előtte / utána",
+      "compareEventLocked": "Előtte / utána · Pro",
+      "compareSearching": "Felvételek keresése {{date}} előtt és után…",
+      "compareNoAfter": "{{date}} óta még nincs tiszta felvétel.",
+      "compareNoBefore": "{{date}} előtt nincs tiszta felvétel az archív időszakban.",
+      "compareFailed": "Az archívumkeresés sikertelen. Próbálja újra.",
       "imageAlt": "Műholdas nézet innen: {{source}}",
       "unavailable": "A műholdképek nem töltődtek be.",
       "fire": {

@@ -5347,7 +5347,8 @@
       "metaSpot": "Zachmurzenie w punkcie",
       "metaScene": "Chmury sceny",
       "metaSun": "Wysokość słońca",
-      "showCloudy": "Uwzględnij pochmurne daty ({{count}})"
+      "showCloudy": "Uwzględnij pochmurne daty ({{count}})",
+      "eventMark": "Zdarzenie {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5604,6 +5605,12 @@
       "noImage": "Nie znaleziono niedawnego zdjęcia",
       "noPass": "Brak przelotu w ciągu 72 godzin",
       "openEvidence": "Otwórz dowody",
+      "compareEvent": "Przed / po",
+      "compareEventLocked": "Przed / po · Pro",
+      "compareSearching": "Szukanie zdjęć przed i po {{date}}…",
+      "compareNoAfter": "Od {{date}} nie ma jeszcze czystego zdjęcia.",
+      "compareNoBefore": "Brak czystego zdjęcia przed {{date}} w okresie archiwum.",
+      "compareFailed": "Wyszukiwanie w archiwum nie powiodło się. Spróbuj ponownie.",
       "imageAlt": "Widok satelitarny z {{source}}",
       "unavailable": "Nie udało się wczytać zdjęć satelitarnych.",
       "fire": {

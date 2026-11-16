@@ -3,6 +3,7 @@ import type { LoadedArchiveImage } from '@/services/orbital/archive-image';
 import type { ArchiveFailure } from '@/services/orbital/archive-result';
 import type { ImagingProfileId } from '@/services/orbital/archive-stac';
 import type { DailyMosaicRow, GeostationaryRow } from '@/services/orbital/archive-gibs';
+import type { EventPair } from '@/services/orbital/event-imagery';
 import { DEFAULT_CROP_HALF_SIZE_KM } from '@/services/orbital/crop-url';
 import { describePointCondition, type MatchedAcquisition, type OrbitalEvidence } from '@/services/orbital/match';
 import {
@@ -52,6 +53,10 @@ export interface ImageViewerSubject {
   historyProfile: ImagingProfileId | null;
   /** The place name, or null to show the rounded point. */
   place?: string | null;
+  /** Where the compare history window ends; `nowMs` when absent. Set when the window is anchored on an event. */
+  historyEndMs?: number;
+  /** The time of the map event the before/after is anchored on. */
+  eventMs?: number;
 }
 
 export interface ViewerDependencies {
@@ -277,7 +282,7 @@ export class OrbitalImageViewer {
     let result: SceneHistory;
     try {
       await afterDebugBearRequestWindow(signal);
-      result = await this.deps.searchHistory(this.subject.point, profileId, this.subject.nowMs, { signal });
+      result = await this.deps.searchHistory(this.subject.point, profileId, this.subject.historyEndMs ?? this.subject.nowMs, { signal });
     } catch {
       if (signal.aborted) return;
       // An unexpected throw would otherwise leave Compare searching forever with no retry.
@@ -448,6 +453,7 @@ export class OrbitalImageViewer {
         reticle(),
         h('span', { className: 'oiv-chip oiv-chip-before' }, chipDate(before.timeMs)),
         h('span', { className: 'oiv-chip oiv-chip-after' }, chipDate(after.timeMs))),
+      this.subject.eventMs === undefined ? null : h('p', { className: 'oiv-label oiv-event' }, this.eventMark),
       h('input', { type: 'range', min: '0', max: '100', value: String(this.dividerPct), className: 'oiv-divider', 'aria-label': t('orbitalWatch.viewer.divider'), dataset: { action: 'divider' } }),
       h('p', { className: 'oiv-credit' }, before.credit === after.credit ? after.credit : `${before.credit} · ${after.credit}`));
   }
@@ -497,19 +503,30 @@ export class OrbitalImageViewer {
       scene.sunElevationDeg !== null ? metaCell(t('orbitalWatch.viewer.metaSun'), scene.sunElevationDeg.toFixed(0), '°') : null);
   }
 
+  private get eventMark(): string {
+    return t('orbitalWatch.viewer.eventMark', { date: chipDate(this.subject.eventMs!) });
+  }
+
   private renderDates(): DomChild[] {
     const others = this.compareCandidates;
     const pickedKey = this.compareKey;
     const hidden = this.hiddenCloudyCount;
+    const { eventMs } = this.subject;
+    const items: DomChild[] = others.map((scene) => h('li', null, h('button', {
+      type: 'button',
+      className: 'oiv-date',
+      'aria-pressed': String(scene.key === pickedKey),
+      dataset: { action: 'compare-date', key: scene.key },
+    }, h('span', null, chipDate(scene.timeMs)), cloudWord(scene) ? h('span', { className: 'oiv-date-cloud' }, cloudWord(scene)!) : null)));
+    if (eventMs !== undefined && others.length > 0) {
+      // Dates run newest first; the event mark sits where the list crosses the event time.
+      const at = others.findIndex((scene) => scene.timeMs < eventMs);
+      items.splice(at === -1 ? items.length : at, 0, h('li', { className: 'oiv-date-event', role: 'separator' }, this.eventMark));
+    }
     return [
       h('p', { className: 'oiv-label oiv-side-label' }, t('orbitalWatch.viewer.compareDates')),
       others.length > 0
-        ? h('ul', { className: 'oiv-dates', role: 'group', 'aria-label': t('orbitalWatch.viewer.compareDates') }, ...others.map((scene) => h('li', null, h('button', {
-          type: 'button',
-          className: 'oiv-date',
-          'aria-pressed': String(scene.key === pickedKey),
-          dataset: { action: 'compare-date', key: scene.key },
-        }, h('span', null, chipDate(scene.timeMs)), cloudWord(scene) ? h('span', { className: 'oiv-date-cloud' }, cloudWord(scene)!) : null))))
+        ? h('ul', { className: 'oiv-dates', role: 'group', 'aria-label': t('orbitalWatch.viewer.compareDates') }, ...items)
         : null,
       hidden > 0 || this.showCloudy
         ? h('button', { type: 'button', className: 'oiv-toggle', 'aria-pressed': String(this.showCloudy), dataset: { action: 'show-cloudy' } }, t('orbitalWatch.viewer.showCloudy', { count: hidden }))
@@ -581,6 +598,19 @@ export function openOrbitalImageViewer(subject: ImageViewerSubject, returnFocusT
 }
 
 export type ViewableImage = { kind: 'acquisition' | 'mosaic' | 'frame'; key: string };
+
+/** The viewer subject for a before/after anchored on a map event: it opens on the scene after the event, beside the one before. */
+export function subjectForEvent(point: GeoPoint, eventMs: number, pair: Extract<EventPair, { status: 'ok' }>, nowMs: number): ImageViewerSubject {
+  return {
+    point,
+    nowMs,
+    selected: sceneFromAcquisition(pair.after),
+    scenes: pair.scenes.map(sceneFromAcquisition),
+    historyProfile: pair.profileId,
+    historyEndMs: pair.windowEndMs,
+    eventMs,
+  };
+}
 
 /**
  * Builds the viewer subject for an image the lookup sheet shows, or null when that image is gone.
