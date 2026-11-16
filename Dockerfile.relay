@@ -80,6 +80,9 @@ COPY scripts/lib/chokepoint-disruption-alerts.cjs ./scripts/lib/chokepoint-disru
 # lazily imports _conflict-gdelt-bulk.mjs and its two helpers below.
 COPY scripts/lib/middle-east-strikes.cjs ./scripts/lib/middle-east-strikes.cjs
 COPY scripts/lib/middle-east-strikes-gazetteer.cjs ./scripts/lib/middle-east-strikes-gazetteer.cjs
+# v2 strike tally in shadow (CII v15 B3): conflict:strike-pressure:v2.
+COPY scripts/lib/middle-east-strikes-v2.cjs ./scripts/lib/middle-east-strikes-v2.cjs
+COPY scripts/lib/middle-east-strikes-gazetteer-v2.cjs ./scripts/lib/middle-east-strikes-gazetteer-v2.cjs
 COPY scripts/data/outbreak-places.json ./scripts/data/outbreak-places.json
 COPY scripts/_conflict-gdelt-bulk.mjs ./scripts/_conflict-gdelt-bulk.mjs
 COPY scripts/_conflict-gdelt.mjs ./scripts/_conflict-gdelt.mjs
