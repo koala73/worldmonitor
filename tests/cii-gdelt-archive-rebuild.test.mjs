@@ -25,6 +25,9 @@ import {
   orderEpisodes,
   requiredScanDates,
   RULE,
+  SCREEN_RULE,
+  admissionGate,
+  selectConfirmed,
 } from '../scripts/cii-unrest-episode-scan.mjs';
 import {
   countryEventsDayStamps,
@@ -300,6 +303,62 @@ describe('P15b episode rule', () => {
     };
     assert.deepEqual(Object.keys(copiedMagnitudes(scorer)), ['conflict', 'protest', 'week']);
     assert.equal(copiedMagnitudes(null), null);
+  });
+
+  it('screens near-floor weeks at 90% of each volume floor and nothing else (amendment 1)', () => {
+    assert.equal(SCREEN_RULE.minWeekArticles, 180);
+    assert.equal(SCREEN_RULE.minWeekProtest, 31.5);
+    assert.equal(SCREEN_RULE.minNormProtest, 25.2);
+    for (const key of ['ratio', 'minElevatedDays', 'maxTailProbability', 'minNormDays', 'weekDays', 'normDays', 'clusterGapDays']) {
+      assert.equal(SCREEN_RULE[key], RULE[key], key);
+    }
+    // 32 weekly protest articles: under the registered 35, inside the 90% screen.
+    const { T, read } = series({ articles: 100, weekProtest: 32 / 7, currentProtest: 10 });
+    const days = {};
+    for (const date of datesBetween('2020-01-01', '2020-02-09')) days[date] = read(date);
+    datesBetween('2020-02-02', '2020-02-08').forEach((date, i) => { days[date] = [100, 0, i < 4 ? 5 : 4, 0]; });
+    const near = (date) => days[date];
+    assert.deepEqual(evaluateCaptureDay(T, near).failed, ['weekProtest']);
+    assert.deepEqual(evaluateCaptureDay(T, near, SCREEN_RULE).failed, []);
+  });
+
+  it('admits the daily file only when every tested ratio is within 10% of the 2.0 ratio', () => {
+    const gate = { captureDays: ['2020-02-09'], ratioTolerance: 0.1 };
+    const rule = { ...RULE, countries: ['FR', 'DE', 'JP'] };
+    const base = series({ weekProtest: 10, currentProtest: 10 });
+    const scaled = (factor) => (date) => {
+      const d = base.read(date);
+      if (!d) return null;
+      // Inflate articles on week days only, so the ratio moves by 1/factor.
+      return date >= '2020-02-02' && date <= '2020-02-08' ? [Math.round(d[0] * factor), 0, d[2], 0] : d;
+    };
+    const zero = (date) => (base.read(date) ? [1000, 0, 0, 0] : null);
+    const v2Read = (iso2) => (iso2 === 'JP' ? zero : base.read);
+    const near = admissionGate((iso2) => (iso2 === 'JP' ? zero : scaled(1.05)), v2Read, gate, rule);
+    assert.equal(near.pass, true);
+    assert.equal(near.rows.find((r) => r.iso2 === 'JP').tested, false);
+    const far = admissionGate((iso2) => (iso2 === 'DE' ? scaled(1.2) : iso2 === 'JP' ? zero : base.read), v2Read, gate, rule);
+    assert.equal(far.pass, false);
+    assert.deepEqual(far.rows.filter((r) => !r.pass).map((r) => r.iso2), ['DE']);
+  });
+
+  it('selects the lower median of the confirmed episodes, ranked by their 2.0 peak ratio', () => {
+    const result = (iso2, date, screenRatio, v2Ratio, confirmed) => ({
+      episode: { iso2, peak: { date, ratio: screenRatio } },
+      v2Evaluation: { date, ratio: v2Ratio },
+      confirmed,
+    });
+    const { confirmed, index, selected } = selectConfirmed([
+      result('FR', '2019-01-01', 2.1, 2.9, true),
+      result('US', '2020-01-01', 2.2, 2.3, true),
+      result('DE', '2018-01-01', 2.3, 1.5, false),
+      result('GB', '2017-01-01', 2.4, 2.5, true),
+    ]);
+    assert.deepEqual(confirmed.map((e) => e.iso2), ['US', 'GB', 'FR']);
+    assert.equal(index, 1);
+    assert.equal(selected.iso2, 'GB');
+    assert.equal(selected.screenPeak.ratio, 2.4);
+    assert.equal(selectConfirmed([result('DE', '2018-01-01', 2.3, 1.5, false)]).selected, null);
   });
 
   it('pins the registered constants', () => {
