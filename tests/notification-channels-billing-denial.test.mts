@@ -155,15 +155,15 @@ describe('/api/notification-channels POST billing-verification capture', () => {
       checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-lapsed-nocapture' }),
       getEntitlements: async () => freeShapedEntitlements({ billingStatus: 'subscription_lapsed' }),
-      fetch: async () => {
-        throw new Error('relay must not be reached for a denied request');
-      },
+      fetch: async () => new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
       captureSilentError: makeCaptureSpy(captures),
     });
     mock.method(console, 'warn', () => {});
 
-    const res = await mod.default(makeSetChannelRequest(), ctx);
+    // Past-the-ladder channel: denied like any free caller, never captured.
+    const res = await mod.default(makeProChannelRequest(), ctx);
     assert.equal(res.status, 403);
+    assert.notEqual(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
     assert.deepEqual(captures, []);
   });
 
@@ -263,29 +263,39 @@ describe('/api/notification-channels POST billing-verification contract', () => 
     });
   });
 
-  it('keeps the lapsed subscription denial a 403 with its own code', async () => {
+  it('admits a lapsed subscriber to the free ladder so leftover alerts can be turned off', async () => {
+    // #4273: the relay now delivers a tier-0 account's scoped rule. A terminal
+    // 403 here left a churned subscriber receiving alerts with no way to
+    // disable them in-app, so a confirmed lapse is a free caller instead.
     const mod = await importFreshNotificationChannels();
+    const relayBodies: unknown[] = [];
     mod.__setNotificationChannelsDepsForTests({
       checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-lapsed' }),
       getEntitlements: async () => freeShapedEntitlements({
         billingStatus: 'subscription_lapsed',
       }),
-      fetch: async () => {
-        throw new Error('relay must not be reached for a denied request');
+      fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+        relayBodies.push(JSON.parse(String(init?.body ?? '{}')));
+        return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
       },
     });
     mock.method(console, 'warn', () => {});
 
-    const res = await mod.default(makeSetChannelRequest(), ctx);
+    const res = await mod.default(new Request('https://worldmonitor.app/api/notification-channels', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        Authorization: 'Bearer clerk-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ action: 'set-notification-config', variant: 'full', enabled: false }),
+    }), ctx);
 
-    assert.equal(res.status, 403);
-    assert.equal(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
-    assert.deepEqual(await res.json(), {
-      error: 'Subscription lapsed',
-      code: 'subscription_lapsed',
-      requiredTier: 1,
-    });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('X-Billing-Verification'), null);
+    assert.equal(relayBodies.length, 1, 'the disable reaches the relay');
+    assert.equal((relayBodies[0] as { enabled?: boolean }).enabled, false);
   });
 
   it('answers a failed renewal verification with a retryable 503', async () => {

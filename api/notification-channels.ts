@@ -447,9 +447,6 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
     // passes through intact. What still stops a caller here:
     //   - an entitlement the backend could not VERIFY (Convex 5xx, renewal
     //     re-check in flight) → the shared retryable 503 contract below;
-    //   - a confirmed `subscription_lapsed` row → the terminal 403, a
-    //     deliberate carve-out from the ladder (see the sister comment below
-    //     the denial branch);
     //   - the free-ladder prechecks for actions whose denial would otherwise
     //     be a late relay error or never reach Convex at all
     //     (create-pairing-token, over-ladder set-channel, send-test) →
@@ -476,7 +473,15 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       // after which the refreshed entitlement restores their paid ladder.
       // Making that state 503 instead would hand every never-subscribed free
       // user a retryable error in place of a working free tier.
-      const billingDenial = getBillingVerificationDenial(ent, corsHeaders, 1);
+      // A confirmed `subscription_lapsed` is NOT denied here: the provider
+      // says coverage ended, so the account is a free account and gets the
+      // free ladder like any other tier-0 caller. The old terminal 403 left a
+      // churned subscriber unable to disable or delete anything while the
+      // relay (#4273) began delivering their leftover scoped rule.
+      const rawBillingDenial = getBillingVerificationDenial(ent, corsHeaders, 1);
+      const billingDenial = rawBillingDenial?.headers.get('X-Billing-Verification') === 'subscription_lapsed'
+        ? null
+        : rawBillingDenial;
       if (billingDenial) {
         const code = billingDenial.headers.get('X-Billing-Verification');
         console.warn('[notification-channels] billing-verification denial', JSON.stringify({
@@ -523,13 +528,9 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       // free alert ladder (critical-only, 3 countries, web push + email) is
       // written through the same relay, and the Convex capability gates
       // (convex/lib/alertCapabilities.ts) answer anything past the ladder
-      // with a structured 402. Three cases still deny early: unverifiable
-      // billing states (the retryable 503s handled above), the terminal
-      // `subscription_lapsed` 403 — a deliberate carve-out from the ladder so
-      // a lapsed subscriber sees "your subscription ended", never a free-tier
-      // surface that silently shrank their channels (pinned by
-      // tests/notification-channels-billing-denial.test.mts) — and the
-      // per-action prechecks below.
+      // with a structured 402. Two cases still deny early: unverifiable
+      // billing states (the retryable 503s handled above) and the per-action
+      // prechecks below. A lapsed subscriber is a free caller (see above).
     }
     const callerIsFree = !hasCurrentEntitlementCoverage(ent) || ent.features.tier < 1;
 
