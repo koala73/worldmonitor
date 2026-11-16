@@ -8,6 +8,7 @@
 import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 import { t, getCurrentLanguageTag } from '@/services/i18n';
 import { loadArchiveImage } from '@/services/orbital/archive-image';
+import { IMAGE_CREDIT, sceneCredit } from '@/services/orbital/credits';
 import { isFirmsDetection } from '@/services/orbital/fire-mosaic';
 import { loadObjectImagery, type ImageryTarget, type ObjectImagery } from '@/services/orbital/object-imagery';
 import type { ConflictZone, MilitaryBase, NaturalEvent, NuclearFacility, Port, StrategicWaterway } from '@/types';
@@ -102,6 +103,15 @@ function renderNextPass(imagery: ObjectImagery): string {
     : label('noPass');
 }
 
+/** The credit line: the shown image's archive credit, and CelesTrak once a next pass is shown. */
+function renderCredit(imagery: ObjectImagery, showNextPass: boolean): string {
+  const credits = [
+    imagery.latest ? sceneCredit(imagery.latest.profileId, imagery.latest.datetime) : '',
+    showNextPass && imagery.nextPass ? IMAGE_CREDIT.celestrak : '',
+  ].filter(Boolean);
+  return credits.map((credit) => `<span class="popup-imagery-source">${escapeHtml(credit)}</span>`).join('');
+}
+
 export function renderImageryDetails(imagery: ObjectImagery, nowMs: number, showNextPass = true): string {
   const latestMs = imagery.latest ? Date.parse(imagery.latest.datetime) : NaN;
   const stale = Number.isFinite(latestMs) && nowMs - latestMs > IMAGE_STALE_MS;
@@ -114,6 +124,7 @@ export function renderImageryDetails(imagery: ObjectImagery, nowMs: number, show
       <div class="popup-stat${stale ? ' popup-imagery-stale' : ''}"><span class="stat-label">${label('latest')}</span><span class="stat-value">${latest}</span></div>
       ${showNextPass ? `<div class="popup-stat"><span class="stat-label">${label('nextPass')}</span><span class="stat-value" data-orbital-next-pass>${next}</span></div>` : ''}
     </div>
+    <div class="popup-imagery-credit" data-orbital-credit>${renderCredit(imagery, showNextPass)}</div>
     ${renderChangeFlagRow(imagery)}
     <button type="button" class="popup-imagery-open" data-orbital-open-evidence>${label('openEvidence')}</button>`;
 }
@@ -167,6 +178,8 @@ export function mountImageryRow(root: HTMLElement, target: ImageryTarget, hooks:
     const nextPassCell = body.querySelector<HTMLElement>('[data-orbital-next-pass]');
     if (early && early.latest === imagery.latest && early.imageSearchFailed === imagery.imageSearchFailed && (nextPassCell || !showNextPass)) {
       if (nextPassCell) setTrustedHtml(nextPassCell, trustedHtml(renderNextPass(imagery), 'next pass markup escapes every value'));
+      const creditCell = body.querySelector<HTMLElement>('[data-orbital-credit]');
+      if (creditCell) setTrustedHtml(creditCell, trustedHtml(renderCredit(imagery, showNextPass), 'credit markup escapes every value'));
       hooks.onLayout();
       return earlyPaint;
     }

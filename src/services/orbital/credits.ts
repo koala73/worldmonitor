@@ -2,6 +2,8 @@ import type { MatchedAcquisition, OrbitalEvidence } from './match';
 import type { PointPassLookup } from './pass-client';
 import { CELESTRAK_CREDIT, COPERNICUS_CREDIT, USGS_LANDSAT_CREDIT } from '../../../shared/orbital/image-credit.js';
 
+export { sceneCredit } from '../../../shared/orbital/image-credit.js';
+
 /** Credit lines the sources ask for, worded as in the source attribution manifest. */
 export const IMAGE_CREDIT = {
   copernicus: COPERNICUS_CREDIT,
