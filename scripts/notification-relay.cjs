@@ -354,7 +354,7 @@ async function deactivateChannel(userId, channelType) {
 // ── Delivery results ──────────────────────────────────────────────────────
 
 function deliveryErrorClass(error, fallback = 'Delivery failed') {
-  const value = String(error?.code ?? error?.message ?? error ?? '');
+  const value = `${error?.code ?? ''} ${error?.message ?? error ?? ''}`;
   if (/ENOTFOUND|EAI_AGAIN|getaddrinfo/.test(value)) return 'DNS lookup failed';
   if (/timeout|timed out|ETIMEDOUT|AbortError/i.test(value)) return 'Request timed out';
   if (/ECONN|socket|network/i.test(value)) return 'Connection failed';

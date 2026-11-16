@@ -61,8 +61,18 @@ for (const channelType of Object.keys(targets)) {
   for (const outcome of ['HTTP 503', 'HTTP 401', 'DNS lookup failed', 'Request timed out', null]) {
     test(`${channelType} reports ${outcome ?? 'success'} through the welcome delivery path`, async () => {
       status = outcome === null ? 200 : outcome === 'HTTP 401' ? 401 : 503;
-      networkError = outcome === 'DNS lookup failed' ? Object.assign(new Error('getaddrinfo ENOTFOUND private host'), { code: 'ENOTFOUND' })
-        : outcome === 'Request timed out' ? new Error('request timed out') : undefined;
+      networkError = outcome === 'Request timed out' ? new Error('request timed out') : undefined;
+      if (outcome === 'DNS lookup failed') {
+        try {
+          await originalSafe(targets[channelType], async () => {
+            throw Object.assign(new Error('getaddrinfo ENOTFOUND private host'), { code: 'ENOTFOUND' });
+          });
+          assert.fail('the real URL-safety helper must reject a failed DNS lookup');
+        } catch (error) {
+          assert.equal(error.code, 'ERR_SSRF_BLOCKED');
+          networkError = error;
+        }
+      }
       const channel = { _id: 'channel-1', linkedAt: 1, verified: true, channelType,
         webhookEnvelope: encrypt(targets[channelType]), endpoint: targets[channelType], p256dh: 'test', auth: 'test' };
       const results = [];
