@@ -3560,3 +3560,31 @@ describe('Rust toolchain pin', () => {
     assert.equal(new Set(pins.map((pin) => String(pin.toolchain))).size, 1, 'release and test builds must compile with one Rust release');
   });
 });
+
+describe('evidence uploads never decide a test verdict', () => {
+  // Run 43094414605: every Playwright test in three smoke shards passed, then
+  // each job went red because the artifact service answered CreateArtifact
+  // with an HTML page. An upload carries evidence for a human, so its outage
+  // must not turn a passing job red. When the tests fail, their own step
+  // already fails the job. The screenshot gallery is the chrome-gallery job's
+  // product rather than evidence for another step, so losing it stays red.
+  const deliverables = new Set(['chrome-gallery: Upload screenshot gallery']);
+  for (const file of ['test.yml', 'e2e-visual.yml']) {
+    it(`${file}: every upload-artifact step continues on error`, () => {
+      const workflow = YAML.parse(read(resolve(workflowsDir, file))) as {
+        jobs: Record<string, { steps?: { name?: string; uses?: string; 'continue-on-error'?: unknown }[] }>;
+      };
+      const uploads = Object.entries(workflow.jobs).flatMap(([job, { steps = [] }]) =>
+        steps
+          .filter((step) => step.uses?.startsWith('actions/upload-artifact@'))
+          .map((step) => ({ job, step })),
+      );
+      assert.ok(uploads.length > 0, `${file} must still upload test evidence`);
+      const strict = uploads
+        .map(({ job, step }) => ({ id: `${job}: ${step.name ?? step.uses}`, step }))
+        .filter(({ id, step }) => !deliverables.has(id) && step['continue-on-error'] !== true)
+        .map(({ id }) => id);
+      assert.deepEqual(strict, [], 'an upload outage would fail a job whose tests passed');
+    });
+  }
+});
