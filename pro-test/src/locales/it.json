@@ -133,7 +133,7 @@
     "deliveryLabel": "Scegli come l'intelligence ti trova",
     "supplyChainLab": "Laboratorio di stress della catena di approvvigionamento",
     "supplyChainLabDesc": "Modella uno shock di costo tra paesi e settori. Classifica la vulnerabilità delle commodities per dipendenza da colli di bottiglia. Traccia la concentrazione da miniera a raffineria e la divergenza del premio fisico SGE–COMEX — la serie che si muove prima della notizia.",
-    "roadmapNote": "In roadmap: sorveglianza orbitale, cronologia più lunga, layer mappa premium."
+    "roadmapNote": "In roadmap: cronologia più estesa, livelli mappa premium."
   },
   "apiSection": {
     "apiTier": "LIVELLO API",

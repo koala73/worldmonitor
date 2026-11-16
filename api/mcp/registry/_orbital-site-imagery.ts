@@ -43,7 +43,7 @@ export const WATCHED_SITE_IMAGERY_TOOL: ToolDef = {
   title: 'Latest image and next pass for watched sites',
   _subscriptionOnly: true,
   _outputBudgetBytes: 131072,
-  description: 'Return the watched sites in one country, newest image first, each with its latest archive image (scene id, sensor, date and the credit line owed when citing it) and its next predicted imaging pass, plus attribution: every credit line the listed sites owe. Pass site to keep only sites whose name or id contains it. Same evidence and currency rule as get_country_imagery_evidence: stale true means the evidence is missing or older than 3 days and sites is empty. Requires a paid plan; one downstream fetch. Read-only.',
+  description: 'Return the watched sites in one country, newest image first, each with its latest archive image (scene id, sensor, date and the credit line owed when citing it) and its next predicted imaging pass, plus attribution: every credit line the listed sites owe. Pass site to keep only sites whose name or id contains it. stale true means the site evidence for that country is missing or older than 3 days, and sites is then empty. Requires a paid plan; one downstream fetch. Read-only.',
   inputSchema: {
     type: 'object',
     properties: {

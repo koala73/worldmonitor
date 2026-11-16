@@ -133,7 +133,7 @@
     "deliveryLabel": "Escolha como a inteligência o encontra",
     "supplyChainLab": "Laboratório de estresse da cadeia de suprimentos",
     "supplyChainLabDesc": "Modele um choque de custos entre países e setores. Classifique a vulnerabilidade de commodities por dependência de gargalo. Acompanhe a concentração de mina até refinaria e a divergência do prêmio físico SGE–COMEX — a série que se move antes da manchete.",
-    "roadmapNote": "No roadmap: vigilância orbital, histórico mais longo, camadas de mapa premium."
+    "roadmapNote": "No roadmap: histórico mais longo, camadas de mapa premium."
   },
   "apiSection": {
     "apiTier": "NÍVEL API",

@@ -133,7 +133,7 @@
     "deliveryLabel": "選擇情報如何找到您",
     "supplyChainLab": "供應鏈壓力實驗室",
     "supplyChainLabDesc": "對各國和行業進行成本衝擊建模。按瓶頸依賴度對商品脆弱性排名。追蹤礦山到煉油廠的濃度和上期所-COMEX 現貨溢價差異 — 這是在頭條新聞出現前就會變動的資料序列。",
-    "roadmapNote": "路線圖中計劃：衛星監測、更長歷史資料、進階地圖圖層。"
+    "roadmapNote": "規劃中：更長的歷史記錄、進階地圖圖層。"
   },
   "apiSection": {
     "apiTier": "API 等級",

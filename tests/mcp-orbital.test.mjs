@@ -15,11 +15,10 @@ afterEach(() => { globalThis.fetch = originalFetch; });
 const call = (name, args) => tool(name)._execute(args, 'https://worldmonitor.app', { kind: 'env_key', apiKey: 'wm_orbital_fixture' });
 
 describe('orbital MCP tools', () => {
-  // #10721: the orbital REST endpoints answer 404 while Orbital Watch is dark
-  // (#10710), so a listed tool fails every call with -32603.
-  it('stay out of the published catalog while Orbital Watch is dark', () => {
+  // #10768: listed once Orbital Watch is launched; while dark (#10721) they were unlisted.
+  it('are in the published catalog', () => {
     const listed = TOOL_REGISTRY.map((t) => t.name);
-    for (const name of [POINT, COUNTRY]) assert.ok(!listed.includes(name), `${name} must not be listed`);
+    for (const name of [POINT, COUNTRY, 'get_watched_site_imagery']) assert.ok(listed.includes(name), `${name} must be listed`);
   });
 
   it('refuse free accounts: both are subscription tools', () => {
@@ -38,7 +37,8 @@ describe('orbital MCP tools', () => {
   it('own the orbital keys, so a never-seeded key marks only these tools stale', () => {
     assert.deepEqual(tool(POINT)._coverageKeys, ['orbital:catalog:v1']);
     assert.deepEqual(tool(COUNTRY)._coverageKeys, ['orbital:sites:v1']);
-    for (const other of TOOL_REGISTRY.filter((t) => t.name !== POINT && t.name !== COUNTRY)) {
+    // get_watched_site_imagery reads one site from orbital:sites:v1, as the country tool does.
+    for (const other of TOOL_REGISTRY.filter((t) => ![POINT, COUNTRY, 'get_watched_site_imagery'].includes(t.name))) {
       const keys = [...(other._cacheKeys ?? []), ...(other._coverageKeys ?? []), ...(other._freshnessChecks ?? []).map((c) => c.key)];
       assert.deepEqual(keys.filter((k) => ORBITAL_KEYS.includes(k)), [], `${other.name} must not read orbital keys`);
     }

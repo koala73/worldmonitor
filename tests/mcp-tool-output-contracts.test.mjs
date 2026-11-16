@@ -31,6 +31,7 @@ const REQUIRED_ARGS = {
   get_defense_industrial_base: { country_code: 'US' },
   get_point_satellite_passes: { lat: 39.74, lon: -104.99 },
   get_country_imagery_evidence: { country_code: 'UA' },
+  get_watched_site_imagery: { country_code: 'IR' },
   get_country_coverage: { country_code: 'US' },
   get_food_stocks: { country_code: 'US' },
   get_demographics_capability: { country_code: 'US' },
