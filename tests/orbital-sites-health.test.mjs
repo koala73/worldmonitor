@@ -68,6 +68,28 @@ test('a published site index reads healthy, and a thin or old one does not', () 
   assert.equal(classify({ activated: true, meta: { fetchedAt: now - (MAX_STALE_MIN + 1) * 60_000, recordCount: 655 } }), 'STALE_SEED');
 });
 
+// The first production run (2026-11-16, RUN_BUDGET_MS with the change-scoring reserve) evaluated
+// 171 of 705 sites. A run's count is budget-bound, so this is the throughput to plan against.
+const MEASURED_SITES_PER_RUN = 171;
+
+test('a cold start\'s first healthy run does not read as partial coverage', () => {
+  assert.equal(classify({ activated: true, meta: { fetchedAt: now - 60_000, recordCount: MEASURED_SITES_PER_RUN } }), 'OK');
+});
+
+test('the sites cadence refreshes the whole registry inside the rollup freshness window', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { ROLLUP_MAX_AGE_MS } = await import('../scripts/shared/orbital/country-rollup.js');
+  const { WATCHED_SITES } = await import('../scripts/shared/orbital-watched-sites.generated.mjs');
+  const bundle = readFileSync(new URL('../scripts/seed-bundle-climate.mjs', import.meta.url), 'utf8');
+  const interval = bundle.match(/label: 'Orbital-Sites'[^}]*intervalMs: ([^,]+),/)?.[1];
+  assert.ok(interval, 'Orbital-Sites member has an intervalMs');
+  const intervalMs = new Function('HOUR', 'DAY', `return ${interval};`)(3_600_000, 86_400_000);
+  // A site evaluated in the oldest run of the window must be re-evaluated before its rollup expires.
+  const runsPerWindow = Math.floor(ROLLUP_MAX_AGE_MS / intervalMs);
+  assert.ok(runsPerWindow * MEASURED_SITES_PER_RUN >= WATCHED_SITES.length,
+    `${runsPerWindow} runs x ${MEASURED_SITES_PER_RUN} sites must cover ${WATCHED_SITES.length} sites within ${ROLLUP_MAX_AGE_MS / 86_400_000} days`);
+});
+
 function installRedisMock({ activated, meta }) {
   globalThis.fetch = async (_url, init) => {
     const commands = JSON.parse(init.body);
@@ -94,4 +116,14 @@ test('seed-health is pending before the first publication and ok after it', asyn
   assert.notEqual((await seedHealthEntry()).status, 'pending-activation');
   installRedisMock({ activated: true, meta: { fetchedAt: now - 60_000, recordCount: 655 } });
   assert.equal((await seedHealthEntry()).status, 'ok');
+});
+
+test('seed-health agrees with health on a cold start\'s first run and on the staleness budget', async () => {
+  installRedisMock({ activated: true, meta: { fetchedAt: now - 60_000, recordCount: MEASURED_SITES_PER_RUN } });
+  assert.equal((await seedHealthEntry()).status, 'ok');
+  // Same 3-day budget as /api/health's maxStaleMin: still ok just inside it, stale just past it.
+  installRedisMock({ activated: true, meta: { fetchedAt: now - (MAX_STALE_MIN - 1) * 60_000, recordCount: 655 } });
+  assert.equal((await seedHealthEntry()).status, 'ok');
+  installRedisMock({ activated: true, meta: { fetchedAt: now - (MAX_STALE_MIN + 1) * 60_000, recordCount: 655 } });
+  assert.equal((await seedHealthEntry()).status, 'stale');
 });

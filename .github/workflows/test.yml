@@ -516,6 +516,7 @@ jobs:
           key: data-test-durations-v1-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
       - name: Upload data test timings
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: data-test-timings-${{ matrix.shard }}-${{ github.run_attempt }}
@@ -652,6 +653,7 @@ jobs:
         # duplicate name within a run, which collides on the re-run someone
         # starts to chase the failure.
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: openapi-capacity-${{ github.run_attempt }}
@@ -685,6 +687,7 @@ jobs:
       - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data -- --built-output=only --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
       - name: Upload data test timings
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: data-test-timings-built-output-${{ github.run_attempt }}
@@ -1190,6 +1193,7 @@ jobs:
 
       - name: Upload ci-smoke Playwright artifacts
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-ci-smoke-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -1329,6 +1333,7 @@ jobs:
         run: npm run test:e2e:prehydration
       - name: Upload prehydration Playwright artifacts
         if: ${{ !cancelled() && steps.prehydration.outcome != 'skipped' }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-prehydration-${{ github.run_id }}-${{ github.run_attempt }}
@@ -1354,6 +1359,7 @@ jobs:
       # starts, so a later run would delete these gates' failure traces.
       - name: Upload /pro gate Playwright artifacts
         if: ${{ !cancelled() && steps.pro-gates.outcome != 'skipped' }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-pro-gates-${{ github.run_id }}-${{ github.run_attempt }}
@@ -1375,6 +1381,7 @@ jobs:
       # itself a failure signal.
       - name: Upload WebMCP Playwright artifacts
         if: ${{ !cancelled() && steps.webmcp.outcome != 'skipped' }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-webmcp-${{ github.run_id }}-${{ github.run_attempt }}
@@ -1390,6 +1397,7 @@ jobs:
         run: npm run test:e2e:${{ matrix.part }}
       - name: Upload MCP Apps view Playwright artifacts
         if: ${{ !cancelled() && steps.plugin.outcome != 'skipped' }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-${{ matrix.part }}-${{ github.run_id }}-${{ github.run_attempt }}
