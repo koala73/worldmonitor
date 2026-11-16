@@ -57,7 +57,26 @@ const REGIONS: RegionDefinition[] = [
     category: 'latam',
     macroRegions: ['latam'],
     extraMembers: ['MX'],
-    phrases: ['latin america', 'latin american', 'latam', 'central america', 'central american', 'caribbean'],
+    phrases: ['latin america', 'latin american', 'latam'],
+  },
+  {
+    label: 'Central America',
+    category: 'latam',
+    macroRegions: [],
+    members: ['BZ', 'CR', 'GT', 'HN', 'NI', 'PA', 'SV'],
+    bucketCounts: false,
+    phrases: ['central america', 'central american'],
+  },
+  {
+    label: 'the Caribbean',
+    category: 'latam',
+    macroRegions: [],
+    members: [
+      'AG', 'AI', 'AW', 'BB', 'BL', 'BQ', 'BS', 'CU', 'CW', 'DM', 'DO', 'GD', 'GP', 'HT', 'JM',
+      'KN', 'KY', 'LC', 'MF', 'MQ', 'MS', 'PR', 'SX', 'TC', 'TT', 'VC', 'VG', 'VI',
+    ],
+    bucketCounts: false,
+    phrases: ['caribbean'],
   },
   {
     label: 'South America',

@@ -219,6 +219,21 @@ describe('selectRelevantArticles — regions and countries (#10863)', () => {
     assert.match(selectRelevantArticles(flattenDigest(digest), 'asia'), /Japan exports/);
   });
 
+  it('Central America and the Caribbean keep to their own countries (PR #10871 review)', () => {
+    const digest = {
+      categories: {
+        world: { items: [item('Brazil cuts interest rates', 50), item('Guatemala floods displace thousands', 20), item('Jamaica braces for storm', 20)] },
+        latam: { items: [item('Argentina wins debt deal', 50)] },
+      },
+    };
+    const central = selectRelevantArticles(flattenDigest(digest), 'central america');
+    assert.match(central, /Guatemala floods/);
+    assert.doesNotMatch(central, /Brazil|Argentina|Jamaica/);
+    const caribbean = selectRelevantArticles(flattenDigest(digest), 'caribbean');
+    assert.match(caribbean, /Jamaica braces/);
+    assert.doesNotMatch(caribbean, /Brazil|Argentina|Guatemala/);
+  });
+
   it('Asia includes Central Asia (PR #10871 review)', () => {
     const digest = { categories: { world: { items: [item('Kazakh grain exports hit record', 30)] } } };
     assert.match(selectRelevantArticles(flattenDigest(digest), 'asia'), /Kazakh grain/);
