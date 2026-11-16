@@ -36,7 +36,7 @@ Aligning bins to local time handles the clock change. It does not handle the tim
 
 ## Solution
 
-Cap the signal baseline at the most recent usable week (`baselineAt(..., capAtLatest)` in `scripts/shared/air-traffic-detector.cjs`, #10809). A schedule change shows in last week's numbers first. A real collapse still compares against an ordinary week, so it still fires. The coverage baseline, the control baseline and the quiet-hours peak keep the plain median.
+Cap the signal baseline at the most recent usable week (`baselineAt(..., capAtLatest)` in `scripts/shared/air-traffic-detector.cjs`, #10809). A schedule change shows in last week's numbers first. A real collapse still fires as long as last week's window was ordinary, because it compares against that week. The coverage baseline, the control baseline and the quiet-hours peak keep the plain median.
 
 ```js
 if (values.length < MIN_BASELINE_DAYS) return null;
