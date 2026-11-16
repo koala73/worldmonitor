@@ -26,6 +26,8 @@ export interface ArchiveItem {
   cloudCoverPct: number | null;
   sunElevationDeg: number | null;
   resolutionM: number;
+  /** STAC `sar:polarizations` of a radar item ("VV", "VH"; "HH", "HV" over polar regions), else null. */
+  polarizations: string[] | null;
   /** A whole-scene preview on an allowlisted host. */
   previewUrl: string | null;
   /** Planetary Computer's rendering link, which also drives point crops. */
@@ -117,6 +119,11 @@ function orbitOf(p: StacProperties): number | null {
   return fromUri ? Number(fromUri[1]) : null;
 }
 
+function polarizationsOf(p: StacProperties): string[] | null {
+  const listed = p['sar:polarizations'];
+  return Array.isArray(listed) && listed.length > 0 && listed.every((v) => typeof v === 'string') ? [...listed] : null;
+}
+
 export function parseStacItem(archive: StacArchiveId, feature: StacFeature): ArchiveItem | null {
   const collection = str(feature.collection);
   const profileId = collection ? STAC_ARCHIVES[archive].collections[collection] : undefined;
@@ -152,6 +159,7 @@ export function parseStacItem(archive: StacArchiveId, feature: StacFeature): Arc
     cloudCoverPct: num(p['eo:cloud_cover']),
     sunElevationDeg: num(p['view:sun_elevation']) ?? (zenith === null ? null : 90 - zenith),
     resolutionM: num(p.gsd) ?? NATIVE_RESOLUTION_M[profileId],
+    polarizations: polarizationsOf(p),
     previewUrl: thumbnail && isAllowedPreviewUrl(thumbnail) && !CLIPPED_PREVIEW(archive, profileId) ? thumbnail : null,
     renderedPreviewHref,
     classification,

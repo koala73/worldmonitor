@@ -48,7 +48,8 @@ const PLANETARY_COMPUTER_CROP_URL = 'https://planetarycomputer.microsoft.com/api
 /**
  * The render options Planetary Computer publishes per collection at
  * /api/data/v1/mosaic/info?collection=<id> (read 2026-11-13): "Natural color"
- * for optical scenes, "VV polarization" greyscale backscatter for radar.
+ * for optical scenes, greyscale co-polarised backscatter for radar, whose
+ * asset is chosen per item by `sentinel1CoPolarisation`.
  * The items' own rendered previews use the visual (TCI) asset, which clips
  * bright ground such as desert, snow and cloud to flat white or yellow.
  */
@@ -61,14 +62,36 @@ export const PLANETARY_COMPUTER_NATURAL_COLOUR: Readonly<Record<string, Readonly
     ['assets', 'red'], ['assets', 'green'], ['assets', 'blue'], ['nodata', '0'],
     ['color_formula', 'gamma RGB 2.7, saturation 1.5, sigmoidal RGB 15 0.55'],
   ],
-  'sentinel-1-grd': [['assets', 'vv'], ['rescale', '0,250'], ['colormap_name', 'gray']],
+  'sentinel-1-grd': [['rescale', '0,250'], ['colormap_name', 'gray']],
 };
 
+/** The polarisation code in a Sentinel-1 product ID: 1SDV/1SSV record VV, 1SDH/1SSH record HH. */
+const SENTINEL_1_PRODUCT_POLARISATION = /_1S[SD]([VH])_/;
+
+/**
+ * The co-polarised channel a Sentinel-1 item carries: VV over most of the world, HH over polar land, ice and sea.
+ * Read from the item's `sar:polarizations`, else its product ID; an item without either is taken as VV.
+ */
+export function sentinel1CoPolarisation(itemId: string, polarizations?: readonly string[] | null): 'vv' | 'hh' {
+  const listed = (polarizations ?? []).map((p) => p.toLowerCase());
+  if (listed.includes('vv')) return 'vv';
+  if (listed.includes('hh')) return 'hh';
+  return SENTINEL_1_PRODUCT_POLARISATION.exec(itemId)?.[1] === 'H' ? 'hh' : 'vv';
+}
+
+export interface CropItem {
+  collection: string;
+  itemId: string;
+  /** STAC `sar:polarizations`, when the item came with it. */
+  polarizations?: readonly string[] | null;
+}
+
 /** Crops a Planetary Computer item to the box in the archive's published rendering. */
-export function planetaryComputerCropUrl(collection: string, itemId: string, box: CropBox, pixels = DEFAULT_CROP_PIXELS): string | null {
-  const render = PLANETARY_COMPUTER_NATURAL_COLOUR[collection];
+export function planetaryComputerCropUrl(item: CropItem, box: CropBox, pixels = DEFAULT_CROP_PIXELS): string | null {
+  const render = PLANETARY_COMPUTER_NATURAL_COLOUR[item.collection];
   if (!render) return null;
-  const params = new URLSearchParams([['collection', collection], ['item', itemId], ...render.map(([key, value]): [string, string] => [key, value])]);
+  const radarAsset: Array<[string, string]> = item.collection === 'sentinel-1-grd' ? [['assets', sentinel1CoPolarisation(item.itemId, item.polarizations)]] : [];
+  const params = new URLSearchParams([['collection', item.collection], ['item', item.itemId], ...radarAsset, ...render.map(([key, value]): [string, string] => [key, value])]);
   return allowed(`${PLANETARY_COMPUTER_CROP_URL}/${boxText(box.west, box.south, box.east, box.north)}/${pixels}x${pixels}.png?${params}`);
 }
 

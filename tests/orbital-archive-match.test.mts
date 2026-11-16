@@ -71,6 +71,19 @@ describe('archive acquisitions attached to computed passes', () => {
     }
   });
 
+  it('crops an HH/HV radar acquisition from its HH channel, which is all Planetary Computer serves for it', () => {
+    const point = { lat: 78.22, lon: 15.65 };
+    const item = parseStacItem('earth-search', {
+      id: 'S1D_IW_GRDH_1SDH_20261115T154457_20261115T154522_005480_00A78C',
+      collection: 'sentinel-1-grd',
+      properties: { datetime: '2026-11-15T15:45:09Z', start_datetime: '2026-11-15T15:44:57Z', end_datetime: '2026-11-15T15:45:22Z', platform: 'sentinel-1d', 'sar:polarizations': ['HH', 'HV'] },
+      assets: {},
+    } as never)!;
+    const evidence = assembleEvidence({ lookup: { point, nowMs: Date.parse('2026-11-16T00:00:00Z'), passes: [] }, stac: [{ status: 'ok', archive: 'earth-search', items: [item] }] });
+    const crop = new URL(evidence.acquisitions[0]!.imageUrl!);
+    assert.deepEqual([crop.searchParams.get('item'), crop.searchParams.getAll('assets')], [item.itemId, ['hh']]);
+  });
+
   it('keeps Sentinel results and names the partial state for Landsat when Planetary Computer fails', async () => {
     const lookup = await fixtureLookup(dubai);
     const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(dubai, { failing: ['planetarycomputer.microsoft.com'] }).fetch });
