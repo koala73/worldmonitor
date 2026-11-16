@@ -62,7 +62,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
 | AIS Relay | Railway | WebSocket proxy (AIS stream), seed loops (market, aviation, GPSJAM, risk scores, UCDP, positive events), RSS proxy, OREF polling |
 | Macro Seed Bundle | Railway | Daily SGE physical-premium cohort, bounded histories, physical-divergence read model, health metadata, and transition cooldowns |
 | Resilience Seed Bundle | Railway | Resilience/static/food seeds plus the daily five-factor scorecard cohort and read-model publisher |
-| Consumer Prices | Railway | Containerized price scrapers (Playwright, per-country baskets) + Redis publisher for the consumer-prices dataset |
+| Consumer Prices | Railway | SearchAdapter price collection (Exa discovery, Firecrawl extraction, per-country baskets) + Redis publisher for the consumer-prices dataset |
 | Redis | Upstash | Cache layer with stampede protection, seed-meta freshness tracking, rate limiting |
 | Convex | Convex Cloud | Billing/entitlements (Dodo), user state and API keys, broadcast/email, contact + waitlist forms, historical intelligence memory (vector search) |
 | Documentation | Mintlify | Public docs, proxied through Vercel at `/docs` |
@@ -259,7 +259,7 @@ Tauri 2.x (Rust) manages the app lifecycle, system tray, and IPC commands:
 
 - **Secret management**: Read/write platform keyring (macOS Keychain, Windows Credential Manager, Linux keyring)
 - **Sidecar control**: Spawn Node.js process, probe port, inject environment variables
-- **Window management**: Three trusted windows (main, settings, live-channels) with Edit menu for macOS clipboard shortcuts
+- **Window management**: Two trusted windows (main, settings) with Edit menu for macOS clipboard shortcuts
 
 ### Node.js Sidecar
 
@@ -475,7 +475,7 @@ gates.
 │   └── <domain>/           Domain endpoints (aviation/, climate/, conflict/, ...)
 ├── blog-site/              Static blog (built into public/blog/)
 ├── cli/                    Official `worldmonitor` npm CLI (zero-dep ESM, MCP-first; published via cli-v* tag)
-├── consumer-prices-core/   Consumer-price collection service (Playwright scrapers, per-country baskets; Railway/Docker)
+├── consumer-prices-core/   Consumer-price collection service (SearchAdapter, per-country baskets; Railway/Docker)
 ├── convex/                 Convex backend (billing/entitlements, user state, broadcast, forms, intel history)
 ├── data/                   Static data (telegram channels, X accounts, OREF threat translations, forecast cohorts)
 ├── docker/                 Dockerfile + nginx config for Railway

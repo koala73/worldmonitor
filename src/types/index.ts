@@ -588,21 +588,6 @@ export interface CableHealthResponse {
   cables: Record<string, CableHealthRecord>;
 }
 
-export interface ShippingChokepoint {
-  id: string;
-  name: string;
-  lat: number;
-  lon: number;
-  desc: string;
-}
-
-export interface CyberRegion {
-  id: string;
-  group: string;
-  aka: string;
-  sponsor: string;
-}
-
 // Nuclear facility types
 export type NuclearFacilityType =
   | 'plant'        // Power reactors
@@ -878,8 +863,6 @@ export interface AppState {
   allNews: NewsItem[];
   isLoading: boolean;
 }
-
-export type FeedCategory = 'politics' | 'tech' | 'finance' | 'gov' | 'intel';
 
 // Social Unrest / Protest Types
 export type ProtestSeverity = 'low' | 'medium' | 'high';

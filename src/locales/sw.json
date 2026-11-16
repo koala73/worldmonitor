@@ -5478,7 +5478,7 @@
     "privacy": {
       "line": "Eneo lako hutumwa kwa hifadhi za picha tu.",
       "more": "Maelezo",
-      "body": "Kupita kwa satelaiti kunakokotolewa kwenye kifaa hiki. Ili kupata picha, kivinjari chako hutuma eneo hilo moja kwa moja kwa Earth Search, Planetary Computer, NASA GIBS na EUMETSAT; WorldMonitor haipokei. Jina la mahali unaloandika hutumwa kwa WorldMonitor na OpenStreetMap Nominatim ili lipatikane. Viungo vinavyoshirikiwa huhifadhi desimali mbili (0.01°)."
+      "body": "Kupita kwa satelaiti kunakokotolewa kwenye kifaa hiki. Ili kupata picha, kivinjari chako hutuma eneo hilo moja kwa moja kwa Earth Search, Planetary Computer, NASA GIBS na EUMETSAT; WorldMonitor haipokei. Katika eneo linalofuatiliwa, WorldMonitor huombwa rekodi ya kila siku ya eneo hilo kwa kitambulisho cha eneo, si kwa kituo chako. Jina la mahali unaloandika hutumwa kwa WorldMonitor na OpenStreetMap Nominatim ili lipatikane. Viungo vinavyoshirikiwa huhifadhi desimali mbili (0.01°)."
     },
     "sources": {
       "heading": "Vyanzo ({{count}})",
@@ -5535,6 +5535,23 @@
         "mosaicNoLayer": "Hakuna mozaiki ya kila siku inayopatikana kwa sateliti hii.",
         "mosaicUnavailable": "Imeshindwa kupakia mozaiki ya kila siku.",
         "mosaicAlt": "Mozaiki ya kila siku ya NASA GIBS {{source}} kwa {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Eneo linalofuatiliwa",
+      "loading": "Inapakia rekodi ya kila siku ya eneo…",
+      "failed": "Rekodi ya kila siku ya eneo haikupakia; fungua tena kituo ili kujaribu tena.",
+      "stale": "Hakuna ukaguzi wa sasa wa kila siku uliorekodiwa kwa eneo hili.",
+      "checked": "Imekaguliwa",
+      "noPass": "Hakuna mpito ujao uliorekodiwa",
+      "list": {
+        "hotspot": "eneo tete",
+        "conflictZone": "eneo la mzozo",
+        "militaryBase": "kambi ya kijeshi",
+        "nuclearFacility": "kituo cha nyuklia",
+        "port": "bandari",
+        "chokepoint": "mlango bahari",
+        "reservoir": "bwawa"
       }
     }
   },

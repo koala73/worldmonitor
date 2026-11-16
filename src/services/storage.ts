@@ -228,12 +228,6 @@ export function calculateDeviation(current: number, baseline: BaselineEntry): {
   };
 }
 
-export async function getAllBaselines(): Promise<BaselineEntry[]> {
-  return (await withTransaction<BaselineEntry[]>(
-    'baselines', 'readonly', (store) => store.getAll(), true,
-  )) || [];
-}
-
 // Snapshot types and functions
 export interface DashboardSnapshot {
   timestamp: number;

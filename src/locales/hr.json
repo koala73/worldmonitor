@@ -5524,7 +5524,7 @@
     "privacy": {
       "line": "Vaša točka ide samo u arhive slika.",
       "more": "Pojedinosti",
-      "body": "Prolasci se izračunavaju na ovom uređaju. Za pronalaženje slika vaš preglednik šalje točku izravno servisima Earth Search, Planetary Computer, NASA GIBS i EUMETSAT; WorldMonitor je ne prima. Upisani naziv mjesta šalje se servisima WorldMonitor i OpenStreetMap Nominatim radi pronalaženja. Dijeljene poveznice čuvaju dva decimalna mjesta (0,01°)."
+      "body": "Prolasci se izračunavaju na ovom uređaju. Za pronalaženje slika vaš preglednik šalje točku izravno servisima Earth Search, Planetary Computer, NASA GIBS i EUMETSAT; WorldMonitor je ne prima. Na praćenoj lokaciji WorldMonitor se traži dnevni zapis te lokacije prema njezinu ID-u, a ne prema vašoj točki. Upisani naziv mjesta šalje se servisima WorldMonitor i OpenStreetMap Nominatim radi pronalaženja. Dijeljene poveznice čuvaju dva decimalna mjesta (0,01°)."
     },
     "sources": {
       "heading": "Izvori ({{count}})",
@@ -5581,6 +5581,23 @@
         "mosaicNoLayer": "Dnevni mozaik nije dostupan za ovaj satelit.",
         "mosaicUnavailable": "Dnevni mozaik se nije učitao.",
         "mosaicAlt": "NASA GIBS {{source}} dnevni mozaik za {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Praćena lokacija",
+      "loading": "Učitavanje dnevnog zapisa lokacije…",
+      "failed": "Dnevni zapis lokacije nije učitan; ponovno otvorite točku za novi pokušaj.",
+      "stale": "Za ovu lokaciju nema aktualne dnevne provjere.",
+      "checked": "Provjereno",
+      "noPass": "Nema nadolazećeg preleta u zapisu",
+      "list": {
+        "hotspot": "žarište",
+        "conflictZone": "zona sukoba",
+        "militaryBase": "vojna baza",
+        "nuclearFacility": "nuklearno postrojenje",
+        "port": "luka",
+        "chokepoint": "tjesnac",
+        "reservoir": "akumulacija"
       }
     }
   },

@@ -11,7 +11,6 @@ import {
   RATES_CANONICAL_KEY,
   RATES_DECADES,
   type RateHistories,
-  type RateSeriesId,
   buildUsInterestRates,
   mergeRateHistories,
   pointsFromShard,
@@ -58,8 +57,4 @@ export async function getUsInterestRates(
   } catch {
     return UNAVAILABLE;
   }
-}
-
-export function rateSeriesIds(): RateSeriesId[] {
-  return RATE_SERIES.map((series) => series.id);
 }

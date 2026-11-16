@@ -225,16 +225,6 @@ function collectMLEntities(rawEntities: MLEntity[] | undefined): string[] {
   return entities;
 }
 
-function dedupeEntityTerms(entities: string[]): string[] {
-  const deduped = new Map<string, string>();
-  for (const entity of entities) {
-    const key = toTermKey(entity);
-    if (!key || deduped.has(key)) continue;
-    deduped.set(key, entity);
-  }
-  return Array.from(deduped.values());
-}
-
 async function extractMLEntitiesForTexts(texts: string[]): Promise<string[][]> {
   if (!mlWorker.isAvailable || texts.length === 0) {
     return texts.map(() => []);
@@ -249,22 +239,6 @@ async function extractMLEntitiesForTexts(texts: string[]): Promise<string[][]> {
     }
   }
   return entitiesByText;
-}
-
-export async function extractEntitiesWithML(text: string): Promise<string[]> {
-  const regexEntities = extractEntities(text);
-  if (!mlWorker.isAvailable) return dedupeEntityTerms(regexEntities);
-
-  try {
-    const mlEntitiesByText = await extractMLEntitiesForTexts([text]);
-    return dedupeEntityTerms([
-      ...regexEntities,
-      ...(mlEntitiesByText[0] ?? []),
-    ]);
-  } catch (error) {
-    console.debug('[TrendingKeywords] ML entity extraction failed, using regex entities only:', error);
-    return dedupeEntityTerms(regexEntities);
-  }
 }
 
 function headlineKey(headline: TrendingHeadlineInput): string {
@@ -669,14 +643,6 @@ export function suppressTrendingTerm(term: string): TrendingConfig {
   const blocked = new Set(config.blockedTerms);
   blocked.add(toTermKey(term));
   return updateTrendingConfig({ blockedTerms: Array.from(blocked) });
-}
-
-export function unsuppressTrendingTerm(term: string): TrendingConfig {
-  const config = readConfig();
-  const normalized = toTermKey(term);
-  return updateTrendingConfig({
-    blockedTerms: config.blockedTerms.filter(entry => toTermKey(entry) !== normalized),
-  });
 }
 
 export function getTrackedTermCount(): number {

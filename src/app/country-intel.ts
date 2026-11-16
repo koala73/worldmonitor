@@ -414,7 +414,7 @@ export class CountryIntelManager implements AppModule {
       label: t('contextMenu.imageryEvidenceHere'),
       action: () => {
         void import('@/app/orbital-watch').then(({ openOrbitalWatch }) =>
-          openOrbitalWatch(point, document.getElementById('mapContainer'), this.ctx.map));
+          openOrbitalWatch(point, document.getElementById('mapContainer'), this.ctx.map, { located: true }));
       },
     });
     return items;

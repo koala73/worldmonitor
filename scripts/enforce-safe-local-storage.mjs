@@ -298,7 +298,7 @@ export const LEGACY_RAW_LOCAL_STORAGE = [
   'src/services/followed-countries.ts :: localStorage.<member> x3',
   'src/services/font-scale-settings.ts :: localStorage.<member> x2',
   'src/services/font-settings.ts :: localStorage.<member> x2',
-  'src/services/globe-render-settings.ts :: localStorage.<member> x6',
+  'src/services/globe-render-settings.ts :: localStorage.<member> x4',
   'src/services/i18n.ts :: localStorage.<member> x3',
   'src/services/live-stream-settings.ts :: localStorage.<member> x2',
   'src/services/map-mode-preference.ts :: localStorage.<member> x1',

@@ -1,4 +1,4 @@
-export type AcquisitionProviderName = 'playwright' | 'exa' | 'firecrawl' | 'p0';
+export type AcquisitionProviderName = 'exa' | 'firecrawl';
 
 export interface FetchOptions {
   waitForSelector?: string;
@@ -84,19 +84,5 @@ export interface AcquisitionProvider {
   /** Validate provider is configured and reachable. */
   validate(): Promise<boolean>;
 
-  /** Clean up resources (close browser, etc.) */
   teardown?(): Promise<void>;
-}
-
-export interface AcquisitionConfig {
-  /** Primary acquisition provider. */
-  provider: AcquisitionProviderName;
-  /** Fallback provider if primary fails. */
-  fallback?: AcquisitionProviderName;
-  /** Provider-specific options. */
-  options?: FetchOptions;
-  /** Use search mode instead of direct URL fetch (Exa only). */
-  searchMode?: boolean;
-  /** Query template for search mode: use {category}, {product}, {market} tokens. */
-  searchQueryTemplate?: string;
 }

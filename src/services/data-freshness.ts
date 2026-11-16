@@ -640,21 +640,3 @@ export function getIntelligenceGaps(): { source: DataSourceId; message: string; 
     return 0;
   });
 }
-
-/**
- * Get a formatted intelligence gap summary for display.
- */
-export function getIntelligenceGapSummary(): string[] {
-  const gaps = getIntelligenceGaps();
-  return gaps.map(gap => {
-    const icon = gap.severity === 'critical' ? '⚠️ CRITICAL' : '⚡';
-    return `${icon}: ${gap.message}`;
-  });
-}
-
-/**
- * Check if there are any critical intelligence gaps.
- */
-export function hasCriticalGaps(): boolean {
-  return getIntelligenceGaps().some(gap => gap.severity === 'critical');
-}

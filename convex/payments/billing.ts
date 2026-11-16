@@ -4346,7 +4346,6 @@ export const claimSubscription = mutation({
     const realUserId = await requireUserId(ctx);
     await assertAccountWritable(ctx, realUserId);
 
-    // Validate anonId is a UUID v4 (format produced by crypto.randomUUID() in user-identity.ts).
     // Rejects injected Clerk IDs ("user_xxx") which are structurally distinct from UUID v4,
     // preventing cross-user subscription theft via localStorage injection.
     if (!ANON_ID_V4_REGEX.test(args.anonId) || args.anonId === realUserId) {

@@ -231,8 +231,3 @@ export function getGeoHubById(hubId: string): GeoHubLocation | undefined {
   const index = buildGeoHubIndex();
   return index.hubs.get(hubId);
 }
-
-export function getAllGeoHubs(): GeoHubLocation[] {
-  const index = buildGeoHubIndex();
-  return Array.from(index.hubs.values());
-}

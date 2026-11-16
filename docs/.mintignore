@@ -27,7 +27,6 @@ security/
 solutions/
 validation/
 COMMUNITY-PROMOTION-GUIDE.md
-DEPLOYMENT-PLAN.md
 TAURI_VALIDATION_REPORT.md
 analytics-collector-operations.md
 api-plan-enforcement-runbook.md
@@ -37,8 +36,6 @@ cyber-network-information.md
 desktop-parity-matrix.md
 fear-greed-index-2.0-brief.md
 food-price-sources.md
-harness-engineering-roadmap.md
-health-variant-full.md
 local-backend-audit.md
 market-data-cadence-audit.md
 methodology/cii-change-brief.md

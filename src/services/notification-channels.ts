@@ -279,18 +279,6 @@ export async function setEmailChannel(
   }
 }
 
-export async function setSlackChannel(
-  webhookEnvelope: string,
-  signal?: AbortSignal,
-): Promise<void> {
-  const res = await authFetch('/api/notification-channels', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'set-channel', channelType: 'slack', webhookEnvelope }),
-  }, undefined, signal);
-  if (!res.ok) throw new Error(`set slack channel: ${res.status}`);
-}
-
 export async function setWebhookChannel(
   webhookUrl: string,
   label?: string,

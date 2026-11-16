@@ -48,6 +48,7 @@ const viewer = () => document.querySelector<HTMLElement>('.oiv-dialog');
 const viewerText = () => viewer()?.textContent ?? '';
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 const showChange = () => viewer()!.querySelector<HTMLButtonElement>('[data-action="mode"][data-mode="change"]')!.click();
+const compareStatus = () => viewer()!.querySelector('.oiv-compare [role="status"]')?.textContent;
 
 function open(selected: MatchedAcquisition, deps: ViewerDependencies, others: MatchedAcquisition[] = [], returnFocusTo: HTMLElement | null = null) {
   return openOrbitalImageViewer({ point, nowMs: NOW, selected: sceneFromAcquisition(selected), scenes: others.map(sceneFromAcquisition), historyProfile: selected.profileId }, returnFocusTo, { loadImage: loaded, ...deps });
@@ -132,13 +133,47 @@ describe('orbital image viewer', () => {
     expect(subject.scenes.map((scene) => scene.dateLabel)).toEqual(['2026-11-12', '2026-11-11']);
   });
 
-  it('offers compare only when a second scene of the same collection exists', async () => {
+  it('searches the history only once Compare is chosen, and once per viewer', async () => {
+    const selected = scene(1, 5);
+    const searchHistory = history([selected, scene(40, 3)]);
+    open(selected, { searchHistory });
+    await settle();
+    expect(searchHistory, 'opening the viewer searches nothing').not.toHaveBeenCalled();
+    expect(viewer()!.querySelector('[data-mode="change"]'), 'compare is offered before the history is known').not.toBeNull();
+    showChange();
+    expect(compareStatus()).toBe('Searching 60 days of archive scenes');
+    await settle();
+    expect(searchHistory).toHaveBeenCalledTimes(1);
+    expect(searchHistory).toHaveBeenCalledWith(point, 'sentinel-2', NOW, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(viewer()!.querySelector('.oiv-slider')).not.toBeNull();
+    viewer()!.querySelector<HTMLButtonElement>('[data-mode="image"]')!.click();
+    showChange();
+    await settle();
+    expect(searchHistory, 'returning to Compare reuses the answer').toHaveBeenCalledTimes(1);
+  });
+
+  it('searches the history on open when the viewer opens straight into Compare', async () => {
+    const selected = scene(1, 5);
+    const earlier = scene(40, 3);
+    const searchHistory = history([selected, earlier]);
+    openOrbitalImageViewer({ point, nowMs: NOW, selected: sceneFromAcquisition(selected), scenes: [], historyProfile: 'sentinel-2' }, null, { loadImage: loaded, searchHistory }, { compareKey: earlier.key });
+    await settle();
+    await settle();
+    expect(searchHistory).toHaveBeenCalledTimes(1);
+    expect(srcOf('.oiv-before')).toBe(earlier.imageUrl);
+  });
+
+  it('offers compare until the history shows no second scene of the same collection', async () => {
     const selected = scene(1, 5);
     const radar = scene(40, null, { profileId: 'sentinel-1', platform: 'sentinel-1c', key: 'sentinel-1c:1:x' });
     open(selected, { searchHistory: history([selected]) }, [radar]);
     await settle();
-    expect(viewer()!.querySelector('[data-mode="change"]'), 'a radar scene is no baseline for an optical one').toBeNull();
-    expect(viewer()!.querySelector('.oiv-slider')).toBeNull();
+    showChange();
+    await settle();
+    expect(viewer()!.querySelector('.oiv-slider'), 'a radar scene is no baseline for an optical one').toBeNull();
+    expect(compareStatus()).toBe('No second scene in this collection.');
+    viewer()!.querySelector<HTMLButtonElement>('[data-mode="image"]')!.click();
+    expect(viewer()!.querySelector('[data-mode="change"]'), 'once history found none, compare is no longer offered').toBeNull();
 
     document.querySelector<HTMLButtonElement>('.oiv-close')!.click();
     open(selected, { searchHistory: history([selected, scene(20, 5)]) });
@@ -166,7 +201,9 @@ describe('orbital image viewer', () => {
     const earthSearchOnly = scene(40, 5, { key: 'sentinel-2c:1:es', imageUrl: preview('S2C_es') });
     open(scene(1, 5), { searchHistory: history([earthSearchOnly]) }, [earthSearchOnly]);
     await settle();
-    expect(viewer()!.querySelector('[data-mode="change"]'), 'a whole-scene preview is no second scene').toBeNull();
+    showChange();
+    await settle();
+    expect(compareStatus(), 'a whole-scene preview is no second scene').toBe('No second scene in this collection.');
     expect(viewer()!.querySelector('.oiv-slider')).toBeNull();
     expect(viewer()!.querySelector(`.oiv-date[data-key="${earthSearchOnly.key}"]`)).toBeNull();
   });
@@ -211,6 +248,7 @@ describe('orbital image viewer', () => {
     open(selected, { searchHistory: history([selected, ...cloudy, hazy, clear]) });
     await settle();
     showChange();
+    await settle();
     const dates = () => [...viewer()!.querySelectorAll<HTMLElement>('.oiv-date')].map((date) => date.dataset.key);
     expect(dates()).toEqual([hazy.key, clear.key]);
     const toggle = viewer()!.querySelector<HTMLButtonElement>('[data-action="show-cloudy"]')!;
@@ -230,6 +268,7 @@ describe('orbital image viewer', () => {
     });
     await settle();
     showChange();
+    await settle();
     const status = () => viewer()!.querySelector('.oiv-compare [role="status"]')!.textContent;
     expect(viewer()!.querySelector('.oiv-slider')).toBeNull();
     expect(status()).toBe('Frames loaded: 0 of 2');
@@ -278,22 +317,52 @@ describe('orbital image viewer', () => {
     const searchHistory = vi.fn(async (): Promise<SceneHistory> => ({ status: 'failed', failure: { archive: 'planetary-computer', reason: 'timeout' } }));
     open(scene(1, 5), { searchHistory });
     await settle();
-    expect(viewerText()).toContain('Microsoft Planetary Computer timed out; older scenes are missing.');
-    expect(viewer()!.querySelector('[data-mode="change"]'), 'no second scene yet').toBeNull();
+    showChange();
+    await settle();
+    expect(compareStatus()).toContain('Microsoft Planetary Computer timed out; older scenes are missing.');
+    expect(viewerText().match(/timed out/g), 'stated once, on the stage').toHaveLength(1);
     searchHistory.mockResolvedValueOnce({ status: 'ok', scenes: [scene(1, 5), scene(40, 3)] });
     viewer()!.querySelector<HTMLButtonElement>('[data-action="retry-history"]')!.click();
     await settle();
+    await settle();
+    expect(searchHistory).toHaveBeenCalledTimes(2);
+    expect(viewer()!.querySelector('.oiv-slider')).not.toBeNull();
+  });
+
+  it('offers a retry instead of searching forever when the history search throws', async () => {
+    const searchHistory = vi.fn(async (): Promise<SceneHistory> => { throw new Error('unexpected'); });
+    open(scene(1, 5), { searchHistory });
+    await settle();
     showChange();
     await settle();
+    expect(compareStatus()).not.toBe('Searching 60 days of archive scenes');
+    expect(compareStatus()).toContain('returned an error; older scenes are missing.');
+    searchHistory.mockResolvedValueOnce({ status: 'ok', scenes: [scene(1, 5), scene(40, 3)] });
+    viewer()!.querySelector<HTMLButtonElement>('[data-action="retry-history"]')!.click();
+    await settle();
+    await settle();
+    expect(searchHistory).toHaveBeenCalledTimes(2);
     expect(viewer()!.querySelector('.oiv-slider')).not.toBeNull();
+  });
+
+  it('names the archive the history searched when a radar history search throws', async () => {
+    const searchHistory = vi.fn(async (): Promise<SceneHistory> => { throw new Error('unexpected'); });
+    open(scene(1, null, { profileId: 'sentinel-1', key: 'sentinel-1c:1:radar' }), { searchHistory });
+    await settle();
+    showChange();
+    await settle();
+    expect(compareStatus()).toContain('Earth Search');
+    expect(compareStatus()).not.toContain('Planetary Computer');
   });
 
   it('never renders an image from a host outside the archive allowlist', async () => {
     const selected = scene(1, 5);
     open(selected, { searchHistory: history([selected, scene(40, 3, { imageUrl: 'https://evil.example/x.png' })]) });
     await settle();
+    showChange();
+    await settle();
     expect([...document.querySelectorAll('img')].every((img) => new URL(sourceOf(img.getAttribute('src'))!).hostname === 'planetarycomputer.microsoft.com')).toBe(true);
-    expect(viewer()!.querySelector('[data-mode="change"]'), 'an image off the allowlist is no second scene').toBeNull();
+    expect(compareStatus(), 'an image off the allowlist is no second scene').toBe('No second scene in this collection.');
   });
 });
 

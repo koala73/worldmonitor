@@ -1219,79 +1219,55 @@ describe('sectionsForCategory — structural relevance gating', () => {
 // ── Env flag parsing (endpoint config resolution) ─────────────────────
 
 describe('endpoint env flag parsing', () => {
-  // Mirror the endpoint's readConfig logic so a drift between this
-  // expectation and the handler fails one test suite.
-  function readConfig(env) {
-    const rawPrimary = (env.BRIEF_WHY_MATTERS_PRIMARY ?? '').trim().toLowerCase();
-    let primary;
-    let invalidPrimaryRaw = null;
-    if (rawPrimary === '' || rawPrimary === 'analyst') primary = 'analyst';
-    else if (rawPrimary === 'gemini') primary = 'gemini';
-    else {
-      primary = 'gemini';
-      invalidPrimaryRaw = rawPrimary;
-    }
-    const shadowEnabled = env.BRIEF_WHY_MATTERS_SHADOW === '1';
-    const rawSample = env.BRIEF_WHY_MATTERS_SHADOW_SAMPLE_PCT;
-    let samplePct = 100;
-    let invalidSamplePctRaw = null;
-    if (rawSample !== undefined && rawSample !== '') {
-      const parsed = Number.parseInt(rawSample, 10);
-      if (Number.isInteger(parsed) && parsed >= 0 && parsed <= 100 && String(parsed) === rawSample.trim()) {
-        samplePct = parsed;
-      } else {
-        invalidSamplePctRaw = rawSample;
-      }
-    }
-    return { primary, invalidPrimaryRaw, shadowEnabled, samplePct, invalidSamplePctRaw };
+  async function configFor(env) {
+    const { readConfig } = await import('../api/internal/brief-why-matters.ts');
+    return readConfig(env);
   }
 
-  it('defaults: primary=analyst, shadow=OFF (opt-in), sample=100', () => {
-    const c = readConfig({});
+  it('defaults: primary=analyst, shadow=OFF (opt-in), sample=100', async () => {
+    const c = await configFor({});
     assert.equal(c.primary, 'analyst');
     assert.equal(c.shadowEnabled, false, 'shadow must be opt-in — default-on silently doubled gemini spend (#4893)');
-    assert.equal(c.samplePct, 100);
+    assert.equal(c.sampleHardRoll('00000000ffffffff'), true);
   });
 
-  it('PRIMARY=gemini is honoured (kill switch)', () => {
-    const c = readConfig({ BRIEF_WHY_MATTERS_PRIMARY: 'gemini' });
+  it('PRIMARY=gemini is honoured (kill switch)', async () => {
+    const c = await configFor({ BRIEF_WHY_MATTERS_PRIMARY: 'gemini' });
     assert.equal(c.primary, 'gemini');
   });
 
-  it('PRIMARY=analust (typo) falls back to gemini + invalidPrimaryRaw set', () => {
-    const c = readConfig({ BRIEF_WHY_MATTERS_PRIMARY: 'analust' });
+  it('PRIMARY=analust (typo) falls back to gemini + invalidPrimaryRaw set', async () => {
+    const c = await configFor({ BRIEF_WHY_MATTERS_PRIMARY: 'analust' });
     assert.equal(c.primary, 'gemini');
     assert.equal(c.invalidPrimaryRaw, 'analust');
   });
 
-  it('SHADOW enabled only by exact "1"', () => {
+  it('SHADOW enabled only by exact "1"', async () => {
     for (const v of ['yes', '0', 'true', '', 'on']) {
-      assert.equal(readConfig({ BRIEF_WHY_MATTERS_SHADOW: v }).shadowEnabled, false, `value=${v}`);
+      const c = await configFor({ BRIEF_WHY_MATTERS_SHADOW: v });
+      assert.equal(c.shadowEnabled, false, `value=${v}`);
     }
-    assert.equal(readConfig({ BRIEF_WHY_MATTERS_SHADOW: '1' }).shadowEnabled, true);
+    const on = await configFor({ BRIEF_WHY_MATTERS_SHADOW: '1' });
+    assert.equal(on.shadowEnabled, true);
   });
 
-  it('handler source uses the same opt-in expression as this mirror (drift pin)', async () => {
-    // The mirror above is handwritten; without this pin, flipping the
-    // handler default would leave these expectations silently asserting
-    // the wrong semantics (that is exactly how default-on shipped in
-    // the first place — #4893).
-    const { readFile } = await import('node:fs/promises');
-    const src = await readFile(new URL('../api/internal/brief-why-matters.ts', import.meta.url), 'utf8');
-    assert.ok(
-      src.includes("env.BRIEF_WHY_MATTERS_SHADOW === '1'"),
-      'brief-why-matters.ts must gate shadow with the opt-in expression mirrored in readConfig()',
-    );
-  });
+  it('SAMPLE_PCT accepts integer 0–100; invalid stays at a full sample', async () => {
+    const quarter = await configFor({ BRIEF_WHY_MATTERS_SHADOW_SAMPLE_PCT: '25' });
+    assert.equal(quarter.invalidSamplePctRaw, null);
+    assert.equal(quarter.sampleHardRoll('00000000ffffffff'), true, 'bucket 0 is inside 25%');
+    assert.equal(quarter.sampleHardRoll('00000019ffffffff'), false, 'bucket 25 is outside 25%');
 
-  it('SAMPLE_PCT accepts integer 0–100; invalid → 100', () => {
-    assert.equal(readConfig({ BRIEF_WHY_MATTERS_SHADOW_SAMPLE_PCT: '25' }).samplePct, 25);
-    assert.equal(readConfig({ BRIEF_WHY_MATTERS_SHADOW_SAMPLE_PCT: '0' }).samplePct, 0);
-    assert.equal(readConfig({ BRIEF_WHY_MATTERS_SHADOW_SAMPLE_PCT: '100' }).samplePct, 100);
-    assert.equal(readConfig({ BRIEF_WHY_MATTERS_SHADOW_SAMPLE_PCT: '101' }).samplePct, 100);
-    assert.equal(readConfig({ BRIEF_WHY_MATTERS_SHADOW_SAMPLE_PCT: 'foo' }).samplePct, 100);
-    assert.equal(readConfig({ BRIEF_WHY_MATTERS_SHADOW_SAMPLE_PCT: '-5' }).samplePct, 100);
-    assert.equal(readConfig({ BRIEF_WHY_MATTERS_SHADOW_SAMPLE_PCT: '50.5' }).samplePct, 100);
+    const none = await configFor({ BRIEF_WHY_MATTERS_SHADOW_SAMPLE_PCT: '0' });
+    assert.equal(none.sampleHardRoll('00000000ffffffff'), false);
+
+    const all = await configFor({ BRIEF_WHY_MATTERS_SHADOW_SAMPLE_PCT: '100' });
+    assert.equal(all.sampleHardRoll('ffffffff00000000'), true);
+
+    for (const raw of ['101', 'foo', '-5', '50.5']) {
+      const c = await configFor({ BRIEF_WHY_MATTERS_SHADOW_SAMPLE_PCT: raw });
+      assert.equal(c.invalidSamplePctRaw, raw, raw);
+      assert.equal(c.sampleHardRoll('ffffffff00000000'), true, `${raw} keeps the full sample`);
+    }
   });
 });
 
