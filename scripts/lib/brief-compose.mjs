@@ -796,7 +796,7 @@ export function digestStoryToSynthesisShape(s) {
  *
  * @param {object} s — digest-shaped story from buildDigest()
  */
-function digestStoryToUpstreamTopStory(s) {
+export function digestStoryToUpstreamTopStory(s) {
   const sources = Array.isArray(s?.sources) ? s.sources : [];
   const primarySource = sources.length > 0 ? sources[0] : 'Multiple wires';
   const rawTitle = typeof s?.title === 'string' ? s.title : '';

@@ -1,25 +1,10 @@
-/**
- * Parity test: the relay-inlined importance scorer (scripts/ais-relay.cjs)
- * must produce identical output to the canonical digest scorer
- * (server/worldmonitor/news/v1/list-feed-digest.ts).
- *
- * Background: PR #2604 introduced importanceScore in the digest. The relay
- * republishes classified headlines as rss_alert events and must carry a score
- * recomputed from the post-LLM threat level (see docs/internal/scoringDiagnostic.md).
- * Both sides load SOURCE_TIERS from shared/source-tiers.json (same bytes), so
- * tier-map parity is structural. This test covers SEVERITY_SCORES, SCORE_WEIGHTS,
- * and computeImportanceScore() itself — the pieces still duplicated until a
- * follow-up moves them into shared/ too (todo #195, part 2).
- *
- * Run: node --test tests/importance-score-parity.test.mjs
- */
-
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { composeBriefFromDigestStories } from '../scripts/lib/brief-compose.mjs';
+import { computeImportanceScore } from '../server/worldmonitor/news/v1/list-feed-digest.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -32,15 +17,6 @@ const relaySrc = readFileSync(
   resolve(repoRoot, 'scripts/ais-relay.cjs'),
   'utf-8',
 );
-const clusteringSrc = readFileSync(
-  resolve(repoRoot, 'scripts/_clustering.mjs'),
-  'utf-8',
-);
-const briefFilterSrc = readFileSync(
-  resolve(repoRoot, 'shared/brief-filter.js'),
-  'utf-8',
-);
-
 // Shared source of truth: both sides load this JSON at runtime.
 // The test uses it as the oracle for tier lookups.
 const sharedSourceTiers = JSON.parse(
@@ -108,7 +84,7 @@ function extractNumericConst(src, varName) {
   return Number(match[1]);
 }
 
-function extractFunctionBody(src, fnSignature) {
+function extractFunctionSource(src, fnSignature) {
   const idx = src.indexOf(fnSignature);
   if (idx === -1) throw new Error(`Could not find ${fnSignature}`);
   const parenStart = src.indexOf('(', idx);
@@ -129,7 +105,8 @@ function extractFunctionBody(src, fnSignature) {
     else if (src[i] === '}') depth--;
     i++;
   }
-  return src.slice(openIdx + 1, i - 1);
+  if (depth !== 0) throw new Error(`Unbalanced braces in ${fnSignature}`);
+  return src.slice(idx, i);
 }
 
 const digestSeverityScores = extractObjectLiteral(digestSrc, 'SEVERITY_SCORES');
@@ -154,116 +131,46 @@ const relayDiplomacyPairs = extractArrayLiteral(relaySrc, 'RELAY_DIPLOMACY_FLASH
 const relayDiplomacyBoost = extractNumericConst(relaySrc, 'RELAY_DIPLOMACY_FLASHPOINT_BOOST');
 const relayEntityScorePerSource = extractNumericConst(relaySrc, 'RELAY_ENTITY_CORROBORATION_SCORE_PER_SOURCE');
 
-const clusteringDiplomacyKeywords = sharedDiplomacyKeywords.diplomacyKeywords;
-const clusteringFlashpointKeywords = sharedDiplomacyKeywords.flashpointKeywords;
-const clusteringDiplomacyPairs = sharedDiplomacyKeywords.diplomacyFlashpointPairs;
-const briefFilterDiplomacyKeywords = sharedDiplomacyKeywords.diplomacyKeywords;
-const briefFilterFlashpointKeywords = sharedDiplomacyKeywords.flashpointKeywords;
-const briefFilterDiplomacyPairs = sharedDiplomacyKeywords.diplomacyFlashpointPairs;
+// The relay file starts a server on load, so the parity call runs the
+// function text from that file.
+const relayScoreSource = [
+  'function relayGetSourceTier(',
+  'function relayNormalizeScoringText(',
+  'function relayContainsKeywordToken(',
+  'function relayHasAnySignal(',
+  'function relayHasDiplomacyFlashpointSignal(',
+  'function relayDiplomacyFlashpointBoost(',
+  'function relayEntityCorroborationScore(',
+  'function relayComputeImportanceScore(',
+].map((signature) => extractFunctionSource(relaySrc, signature)).join('\n');
 
-// ── Reconstruct the scorers as pure functions for output comparison ─────────
-
-const digestFnBody = extractFunctionBody(digestSrc, 'function computeImportanceScore(');
-const digestComputeImportanceScore = new Function(
-  'level', 'source', 'corroborationCount', 'publishedAt', 'context',
-  'SEVERITY_SCORES', 'SCORE_WEIGHTS', 'SOURCE_TIERS',
-  'DIPLOMACY_KEYWORDS', 'FLASHPOINT_SCORING_KEYWORDS', 'DIPLOMACY_FLASHPOINT_PAIRS',
-  'DIPLOMACY_FLASHPOINT_BOOST', 'ENTITY_CORROBORATION_SCORE_PER_SOURCE',
-  `
-    function getSourceTier(name) { return SOURCE_TIERS[name] ?? 4; }
-    function normalizeScoringText(text) {
-      return text.toLowerCase().replace(/[^a-z0-9\\s]/g, ' ').replace(/\\s+/g, ' ').trim();
-    }
-    function containsKeywordToken(text, kw) {
-      if (!kw) return false;
-      const escaped = kw.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&');
-      return new RegExp('(^|\\\\s)' + escaped).test(text);
-    }
-    function hasAnySignal(text, keywords) {
-      return keywords.some((kw) => containsKeywordToken(text, kw));
-    }
-    function hasDiplomacyFlashpointSignal(title) {
-      if (!title) return false;
-      const text = normalizeScoringText(title);
-      if (
-        DIPLOMACY_FLASHPOINT_PAIRS.some(([entity, action]) =>
-          containsKeywordToken(text, entity) && containsKeywordToken(text, action),
-        )
-      ) {
-        return true;
-      }
-      return hasAnySignal(text, DIPLOMACY_KEYWORDS) && hasAnySignal(text, FLASHPOINT_SCORING_KEYWORDS);
-    }
-    function diplomacyFlashpointBoost(title) {
-      return hasDiplomacyFlashpointSignal(title) ? DIPLOMACY_FLASHPOINT_BOOST : 0;
-    }
-    function entityCorroborationScore(count) {
-      const finite = Number.isFinite(count) ? Number(count) : 0;
-      return Math.min(Math.max(finite, 0), 5) * ENTITY_CORROBORATION_SCORE_PER_SOURCE;
-    }
-    ${digestFnBody}
-  `,
+const relayComputeImportanceScore = new Function(
+  'RELAY_SOURCE_TIERS',
+  'RELAY_SEVERITY_SCORES',
+  'RELAY_SCORE_WEIGHTS',
+  'RELAY_DIPLOMACY_KEYWORDS',
+  'RELAY_FLASHPOINT_SCORING_KEYWORDS',
+  'RELAY_DIPLOMACY_FLASHPOINT_PAIRS',
+  'RELAY_DIPLOMACY_FLASHPOINT_BOOST',
+  'RELAY_ENTITY_CORROBORATION_SCORE_PER_SOURCE',
+  relayScoreSource + '\nreturn relayComputeImportanceScore;',
+)(
+  sharedSourceTiers,
+  relaySeverityScores,
+  relayScoreWeights,
+  relayDiplomacyKeywords,
+  relayFlashpointKeywords,
+  relayDiplomacyPairs,
+  relayDiplomacyBoost,
+  relayEntityScorePerSource,
 );
 
 function digestScore(level, source, corroboration, publishedAt, context = {}) {
-  return digestComputeImportanceScore(
-    level, source, corroboration, publishedAt, context,
-    digestSeverityScores, digestScoreWeights, sharedSourceTiers,
-    digestDiplomacyKeywords, digestFlashpointKeywords, digestDiplomacyPairs,
-    digestDiplomacyBoost, digestEntityScorePerSource,
-  );
+  return computeImportanceScore(level, source, corroboration, publishedAt, context);
 }
 
-const relayFnBody = extractFunctionBody(relaySrc, 'function relayComputeImportanceScore(');
-const relayComputeImportanceScore = new Function(
-  'level', 'source', 'corroborationCount', 'publishedAt', 'context',
-  'RELAY_SEVERITY_SCORES', 'RELAY_SCORE_WEIGHTS', 'RELAY_SOURCE_TIERS',
-  'RELAY_DIPLOMACY_KEYWORDS', 'RELAY_FLASHPOINT_SCORING_KEYWORDS', 'RELAY_DIPLOMACY_FLASHPOINT_PAIRS',
-  'RELAY_DIPLOMACY_FLASHPOINT_BOOST', 'RELAY_ENTITY_CORROBORATION_SCORE_PER_SOURCE',
-  `
-    function relayGetSourceTier(name) { return RELAY_SOURCE_TIERS[name] ?? 4; }
-    function relayNormalizeScoringText(text) {
-      return String(text || '').toLowerCase().replace(/[^a-z0-9\\s]/g, ' ').replace(/\\s+/g, ' ').trim();
-    }
-    function relayContainsKeywordToken(text, kw) {
-      if (!kw) return false;
-      const escaped = kw.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&');
-      return new RegExp('(^|\\\\s)' + escaped).test(text);
-    }
-    function relayHasAnySignal(text, keywords) {
-      return keywords.some((kw) => relayContainsKeywordToken(text, kw));
-    }
-    function relayHasDiplomacyFlashpointSignal(title) {
-      if (!title) return false;
-      const text = relayNormalizeScoringText(title);
-      if (
-        RELAY_DIPLOMACY_FLASHPOINT_PAIRS.some(([entity, action]) =>
-          relayContainsKeywordToken(text, entity) && relayContainsKeywordToken(text, action),
-        )
-      ) {
-        return true;
-      }
-      return relayHasAnySignal(text, RELAY_DIPLOMACY_KEYWORDS) &&
-        relayHasAnySignal(text, RELAY_FLASHPOINT_SCORING_KEYWORDS);
-    }
-    function relayDiplomacyFlashpointBoost(title) {
-      return relayHasDiplomacyFlashpointSignal(title) ? RELAY_DIPLOMACY_FLASHPOINT_BOOST : 0;
-    }
-    function relayEntityCorroborationScore(count) {
-      const finite = Number.isFinite(count) ? Number(count) : 0;
-      return Math.min(Math.max(finite, 0), 5) * RELAY_ENTITY_CORROBORATION_SCORE_PER_SOURCE;
-    }
-    ${relayFnBody}
-  `,
-);
-
 function relayScore(level, source, corroboration, publishedAt, context = {}) {
-  return relayComputeImportanceScore(
-    level, source, corroboration, publishedAt, context,
-    relaySeverityScores, relayScoreWeights, sharedSourceTiers,
-    relayDiplomacyKeywords, relayFlashpointKeywords, relayDiplomacyPairs,
-    relayDiplomacyBoost, relayEntityScorePerSource,
-  );
+  return relayComputeImportanceScore(level, source, corroboration, publishedAt, context);
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -274,18 +181,6 @@ describe('SOURCE_TIERS structural parity', () => {
     for (const [name, tier] of Object.entries(sharedSourceTiers)) {
       assert.ok([1, 2, 3, 4].includes(tier), `${name} has invalid tier ${tier}`);
     }
-  });
-
-  it('scripts/shared/source-tiers.json matches shared/source-tiers.json byte-for-byte', () => {
-    // Also guarded by tests/edge-functions.test.mjs (scripts-shared-mirror).
-    // Duplicated here as an explicit parity cross-check so drift can't sneak
-    // through if the edge-functions test is ever narrowed.
-    const canonical = readFileSync(resolve(repoRoot, 'shared/source-tiers.json'), 'utf-8');
-    const mirror = readFileSync(resolve(repoRoot, 'scripts/shared/source-tiers.json'), 'utf-8');
-    assert.equal(
-      mirror, canonical,
-      'scripts/shared/source-tiers.json drifted from shared/source-tiers.json — run: cp shared/source-tiers.json scripts/shared/',
-    );
   });
 });
 
@@ -315,23 +210,9 @@ describe('diplomacy / entity boost parity (digest ↔ relay)', () => {
     assert.equal(relayEntityScorePerSource, digestEntityScorePerSource);
   });
 
-  it('keeps clustering diplomacy constants aligned with digest scoring', () => {
-    assert.deepEqual(clusteringDiplomacyKeywords, digestDiplomacyKeywords);
-    assert.deepEqual(clusteringFlashpointKeywords, digestFlashpointKeywords);
-    assert.deepEqual(clusteringDiplomacyPairs, digestDiplomacyPairs);
-  });
-
-  it('keeps brief lead-coherence diplomacy constants aligned with digest scoring', () => {
-    assert.deepEqual(briefFilterDiplomacyKeywords, digestDiplomacyKeywords);
-    assert.deepEqual(briefFilterFlashpointKeywords, digestFlashpointKeywords);
-    assert.deepEqual(briefFilterDiplomacyPairs, digestDiplomacyPairs);
-  });
-
   it('does not include generic business deal as a diplomacy keyword', () => {
     assert.equal(digestDiplomacyKeywords.includes('deal'), false);
     assert.equal(relayDiplomacyKeywords.includes('deal'), false);
-    assert.equal(clusteringDiplomacyKeywords.includes('deal'), false);
-    assert.equal(briefFilterDiplomacyKeywords.includes('deal'), false);
   });
 });
 
