@@ -1246,7 +1246,8 @@ export class OrbitalWatchPage {
       return;
     }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-    const rows = [...this.sheet.querySelectorAll<HTMLElement>('.ies-row')];
+    // A folded row is hidden; the arrows skip it rather than focus what cannot be seen.
+    const rows = [...this.sheet.querySelectorAll<HTMLElement>('.ies-row')].filter((r) => r === row || !r.closest('[hidden]'));
     const next = rows[rows.indexOf(row) + (event.key === 'ArrowDown' ? 1 : -1)];
     if (!next) return;
     event.preventDefault();

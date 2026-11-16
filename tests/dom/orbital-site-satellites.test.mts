@@ -164,6 +164,21 @@ describe('#10713 unit 3: a watched site links back to the satellites covering it
     expect(document.activeElement).toBe(section()!.querySelector('.ies-more'));
   });
 
+  it('moves the arrow keys past rows the fold hides', async () => {
+    const times = Array.from({ length: 8 }, (_, i) => NOW + (i + 4) * HOUR);
+    const linkedPasses = times.map((timeMs, i) => pointPass(99200 + i, `SAT-${i}`, timeMs));
+    lookupMock.mockResolvedValue({ ...lookup(), passes: linkedPasses });
+    evidenceMock.mockResolvedValue({ ...evidence(), passes: linkedPasses });
+    coverage.covering.mockResolvedValue(times.map((timeMs, i) => covering(String(99200 + i), `SAT-${i}`, timeMs)));
+    openOrbitalWatch(sitePoint, null, surface);
+    await vi.waitFor(() => expect(section()?.dataset.state).toBe('ok'));
+    const rows = [...section()!.querySelectorAll<HTMLElement>('.ies-row[data-norad-id]')];
+    expect(rows[6]!.hidden, 'the seventh row is folded away').toBe(true);
+    rows[5]!.focus();
+    rows[5]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect((document.activeElement as HTMLElement).closest('[hidden]')).toBeNull();
+  });
+
   it('says no tracked satellite covers the site in the window', async () => {
     coverage.covering.mockResolvedValue([]);
     openOrbitalWatch(sitePoint, null, surface);
