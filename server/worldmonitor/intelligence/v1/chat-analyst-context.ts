@@ -42,6 +42,7 @@ import {
 } from '../../../_shared/cache-keys';
 import { isOrbitalWatchEnabled } from '../../orbital/v1/dark-launch';
 import { buildWatchedSiteImagery } from './chat-analyst-site-imagery';
+import { hasGeoScope, matchPlaces, resolveGeoScope } from './chat-analyst-geo-scope';
 
 // TODO: multi-language digest search — currently only queries news:digest:v1:full:en.
 // When multi-language digests are available, fan out to news:digest:v1:full:<lang>
@@ -748,6 +749,9 @@ const STOPWORDS = new Set([
   'you','he','she','it','they','them','their','our','your','its',
   'tell','list','give','show','explain','describe','many','some',
   'any','all','more','most','than','then','just','also','now',
+  // Question filler, not topic (#10863): "news" matched every "- AP News"
+  // source suffix.
+  'news','recent','recently','latest','headline','headlines','update','updates',
 ]);
 
 const MAX_KEYWORDS = 8;
@@ -983,9 +987,11 @@ interface DigestItem {
   link?: string;
   publishedAt?: number;
   importanceScore?: number;
+  /** Digest bucket the item came from (`latam`, `finance`, …), when known. */
+  category?: string;
 }
 
-function flattenDigest(digest: unknown): DigestItem[] {
+export function flattenDigest(digest: unknown): DigestItem[] {
   if (!digest || typeof digest !== 'object') return [];
   const d = digest as Record<string, unknown>;
 
@@ -993,9 +999,12 @@ function flattenDigest(digest: unknown): DigestItem[] {
 
   if (d.categories && typeof d.categories === 'object') {
     const items: DigestItem[] = [];
-    for (const bucket of Object.values(d.categories as Record<string, unknown>)) {
+    for (const [category, bucket] of Object.entries(d.categories as Record<string, unknown>)) {
       const b = bucket as Record<string, unknown>;
-      if (Array.isArray(b.items)) items.push(...(b.items as DigestItem[]));
+      if (!Array.isArray(b?.items)) continue;
+      for (const raw of b.items as DigestItem[]) {
+        if (raw && typeof raw === 'object') items.push({ ...raw, category });
+      }
     }
     return items;
   }
@@ -1018,9 +1027,102 @@ function scoreArticle(title: string, keywords: string[]): number {
   return (hasAdjacentPair ? 3 : 1) * hits;
 }
 
-async function searchDigestByKeywords(keywords: string[]): Promise<string> {
-  if (keywords.length === 0) return '';
+// "… grows to 22 - AP News", "… | Defense News Weekly": the outlet, not the
+// story. Up to five words after the last dash or bar.
+// Words are whitespace-separated so a long token cannot be split across the
+// repetition (polynomial backtracking on untrusted titles).
+const SOURCE_SUFFIX = /\s+[-–—|]\s+[^\s\-–—|]+(?:\s+[^\s\-–—|]+){0,4}\s*$/u;
 
+function stripSourceSuffix(title: string): string {
+  const stripped = title.replace(SOURCE_SUFFIX, '');
+  return stripped || title;
+}
+
+// Slots kept for topic-only headlines when a question names places, so
+// "China and oil prices" still sees oil stories that do not mention China.
+const TOPIC_ONLY_SLOTS = 2;
+
+/**
+ * The "Matched News Articles" block for a question (#10863).
+ *
+ * A question that names places (`resolveGeoScope`) fills the block with
+ * headlines covering them — by country name/demonym or by digest region
+ * bucket — ranked by place and topic-word matches times importance; up to
+ * TOPIC_ONLY_SLOTS headlines that match only a topic word follow. Each named
+ * place with no headline at all gets a coverage line, so the model can say
+ * the digest has nothing on it instead of blaming the live context. A
+ * question with no place ranks by keyword alone.
+ */
+export function selectRelevantArticles(items: DigestItem[], query: string, currentTurn?: string): string {
+  // Places come from the current turn, so "What about Germany?" after a
+  // question on Brazil pivots; a turn naming no place ("and oil prices?")
+  // inherits the prior turn's. Topic words come from both, places removed.
+  const currentScope = currentTurn ? resolveGeoScope(currentTurn) : null;
+  const fullScope = resolveGeoScope(query);
+  const scope = currentScope && hasGeoScope(currentScope) ? currentScope : fullScope;
+  const scoped = hasGeoScope(scope);
+  const keywords = extractKeywords(scoped ? fullScope.residualQuery : query);
+  if (!scoped && keywords.length === 0) return '';
+
+  type Scored = { item: DigestItem; inScope: boolean; total: number };
+  const coveredCountries = new Set<string>();
+  const coveredRegions = new Set<string>();
+  const scored = items
+    .map((item): Scored | null => {
+      const title = safeStr(item.title);
+      if (!title) return null;
+      const scoringTitle = stripSourceSuffix(title);
+      const kwScore = keywords.length > 0 ? scoreArticle(scoringTitle, keywords) : 0;
+      let placeScore = 0;
+      if (scoped) {
+        const places = matchPlaces(scope, scoringTitle, safeStr(item.category) || undefined);
+        for (const code of places.countries) coveredCountries.add(code);
+        for (const label of places.regions) coveredRegions.add(label);
+        placeScore = places.score;
+      }
+      if (placeScore === 0 && kwScore === 0) return null;
+      const importance = Math.log1p(Math.max(safeNum(item.importanceScore), 1));
+      return { item, inScope: placeScore > 0, total: (placeScore + kwScore) * importance };
+    })
+    .filter((x): x is Scored => x !== null)
+    .sort((a, b) => b.total - a.total)
+    // The same wire story arrives through several feeds and buckets; after
+    // ranking, so the copy filed under the asked region is the one kept.
+    .filter(((seen) => (s: Scored) => {
+      const key = safeStr(s.item.title).trim().toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })(new Set<string>()));
+
+  const inScope = scored.filter((s) => s.inScope);
+  const topicOnly = scored.filter((s) => !s.inScope);
+  let selected = scored.slice(0, MAX_RELEVANT_ARTICLES);
+  if (scoped) {
+    const placeTaken = inScope.slice(0, MAX_RELEVANT_ARTICLES - Math.min(TOPIC_ONLY_SLOTS, topicOnly.length));
+    selected = [...placeTaken, ...topicOnly.slice(0, MAX_RELEVANT_ARTICLES - placeTaken.length)];
+  }
+
+  const lines = selected.map(({ item }) => {
+    const title = sanitizeForPromptLine(safeStr(item.title));
+    const source = sanitizeForPromptLine(safeStr(item.source)).slice(0, 40);
+    const ts = item.publishedAt ? new Date(item.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+    const meta = [source, ts].filter(Boolean).join(', ');
+    return `- ${title}${meta ? ` (${meta})` : ''}`;
+  });
+
+  const missing = [
+    ...scope.countries.filter((c) => !coveredCountries.has(c.code)).map((c) => c.label),
+    ...scope.regions.filter((r) => !coveredRegions.has(r.label)).map((r) => r.label),
+  ];
+  for (const place of missing) {
+    lines.push(`Coverage gap: no headline in the current news digest mentions ${place}.`);
+  }
+
+  return lines.join('\n');
+}
+
+async function searchDigest(query: string, currentTurn?: string): Promise<string> {
   let digest: unknown;
   let revoked: RevocationRead;
   try {
@@ -1040,31 +1142,7 @@ async function searchDigestByKeywords(keywords: string[]): Promise<string> {
 
   const items = filterRevokedUrls(flattenDigest(digest), revoked.urls).kept;
   if (items.length === 0) return '';
-
-  const scored = items
-    .map((item) => {
-      const title = safeStr(item.title);
-      if (!title) return null;
-      const kwScore = scoreArticle(title, keywords);
-      if (kwScore === 0) return null;
-      const importance = safeNum(item.importanceScore);
-      return { item, total: kwScore * Math.log1p(importance > 0 ? importance : 1) };
-    })
-    .filter((x): x is { item: DigestItem; total: number } => x !== null)
-    .sort((a, b) => b.total - a.total)
-    .slice(0, MAX_RELEVANT_ARTICLES);
-
-  if (scored.length === 0) return '';
-
-  const lines = scored.map(({ item }) => {
-    const title = sanitizeForPromptLine(safeStr(item.title));
-    const source = sanitizeForPromptLine(safeStr(item.source)).slice(0, 40);
-    const ts = item.publishedAt ? new Date(item.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
-    const meta = [source, ts].filter(Boolean).join(', ');
-    return `- ${title}${meta ? ` (${meta})` : ''}`;
-  });
-
-  return lines.join('\n');
+  return selectRelevantArticles(items, query, currentTurn);
 }
 
 // ── Source labels ─────────────────────────────────────────────────────────────
@@ -1099,6 +1177,8 @@ export async function assembleAnalystContext(
   geoContext?: string,
   domainFocus?: string,
   userQuery?: string,
+  /** The current turn alone; `userQuery` also carries the prior user turn. */
+  currentTurn?: string,
 ): Promise<AnalystContext> {
   const keys = {
     insights: 'news:insights:v1',
@@ -1176,7 +1256,7 @@ export async function assembleAnalystContext(
     needsEnergyExposure ? getCachedJson(keys.energyExposure, true) : Promise.resolve(null),
     countryKey ? getCachedJson(countryKey, true) : Promise.resolve(null),
     buildLiveHeadlines(resolvedDomain, keywords),
-    keywords.length > 0 ? searchDigestByKeywords(keywords) : Promise.resolve(''),
+    userQuery ? searchDigest(userQuery, currentTurn) : Promise.resolve(''),
     needsGasStorage ? buildGasStorage() : Promise.resolve(undefined),
     needsElectricity ? buildElectricityPrices() : Promise.resolve(undefined),
     needsEnergyIntel ? buildEnergyIntelligence() : Promise.resolve(undefined),
