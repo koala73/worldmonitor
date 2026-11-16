@@ -285,21 +285,26 @@ test.describe('dashboard LCP attribution debug', () => {
   // loaded, its coverage report went to nobody and the row never mounted
   // (CI runs 43792956961 and 43794135730, retried by Playwright).
   test('mounts the coverage row when the status panel loads after the first digest', async ({ page }, testInfo) => {
-    let digestServed!: () => void;
-    const served = new Promise<void>((resolve) => { digestServed = resolve; });
-    page.on('requestfinished', (request) => {
-      if (request.url().includes('/api/news/v1/list-feed-digest')) digestServed();
-    });
-    let heldPanelModule = false;
+    let coveragePublished = false;
+    let releasePanelModule!: () => void;
+    const panelModuleReleased = new Promise<void>((resolve) => { releasePanelModule = resolve; });
+    let panelRequestedBeforeCoverage = false;
     await page.route('**/src/components/StatusPanel.ts*', async (route) => {
-      await served;
-      heldPanelModule = true;
+      if (!coveragePublished) panelRequestedBeforeCoverage = true;
+      await panelModuleReleased;
       await route.continue();
     });
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    // The data loader marks feed-digest-ready and calls reportDigestCoverage()
+    // in one synchronous run, so once the mark is visible the summary has been
+    // published with no panel to receive it.
+    await page.waitForFunction(() => window.__wmLcpDebug?.getSnapshot().marks
+      .some((mark) => mark.name === 'wm:data:feed-digest-ready'), null, { timeout: 30000 });
+    coveragePublished = true;
+    releasePanelModule();
     const coverageRow = page.getByRole('status', { name: 'News coverage status' });
     await expect(coverageRow).toHaveText(PARTIAL_DIGEST_COVERAGE_TEXT, { timeout: 30000 });
-    expect(heldPanelModule, 'the StatusPanel module request must be held until the digest is served').toBe(true);
+    expect(panelRequestedBeforeCoverage, 'the StatusPanel module must be requested before coverage is published').toBe(true);
     await evidenceScreenshot(page.locator('.site-footer'), { path: testInfo.outputPath('coverage-row-late-status-panel.png') });
   });
 });
