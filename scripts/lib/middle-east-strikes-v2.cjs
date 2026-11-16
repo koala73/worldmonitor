@@ -623,6 +623,7 @@ function normalizeStore(store) {
     candidates: Array.isArray(store?.candidates) ? store.candidates.filter(isValidCandidate) : [],
     gdeltExports: Array.isArray(store?.gdeltExports) ? store.gdeltExports.filter((s) => typeof s === 'string') : [],
     updatedAt: Number(store?.updatedAt) || 0,
+    ...(Number.isFinite(store?.cutAt) ? { cutAt: store.cutAt } : {}),
   };
 }
 
@@ -794,8 +795,15 @@ function mergeCandidateStore(previous, additions, now) {
       }
     }
   }
-  const candidates = [...byId.values()].sort((a, b) => b.ts - a.ts).slice(0, MAX_STORE_CANDIDATES);
-  return { version: 1, candidates, gdeltExports: store.gdeltExports, updatedAt: now };
+  const sorted = [...byId.values()].sort((a, b) => b.ts - a.ts);
+  const candidates = sorted.slice(0, MAX_STORE_CANDIDATES);
+  // A cut at the cap drops reports for good, so the store records it (and
+  // keeps the latest one until it leaves the window) for the strike tally.
+  const cuts = [store.cutAt];
+  if (sorted.length > candidates.length) cuts.push(candidates[candidates.length - 1].ts + LATE_REPORT_MS);
+  const live = cuts.filter((t) => Number.isFinite(t) && t > now - WINDOW_MS);
+  const cutAt = live.length ? Math.max(...live) : null;
+  return { version: 1, candidates, gdeltExports: store.gdeltExports, ...(cutAt !== null ? { cutAt } : {}), updatedAt: now };
 }
 
 // A report with no recency signal (no valid `when`) never stands alone: it
@@ -1033,12 +1041,12 @@ function normalizePeaks(previous) {
 /**
  * A store cut at MAX_STORE_CANDIDATES lost its oldest reports, which may have
  * re-dated their incidents by up to LATE_REPORT_MS: days before this time are
- * not shown whole. Null when the store is under its cap.
+ * not shown whole. Recorded in the store (mergeCandidateStore), so it survives
+ * a failed tally write and a store that later shrinks below its cap. Null when
+ * no cut is still in the window.
  */
-function storeCutAt(storeCandidates) {
-  if (!Array.isArray(storeCandidates) || storeCandidates.length < MAX_STORE_CANDIDATES) return null;
-  const oldest = Math.min(...storeCandidates.map((c) => c?.ts).filter(Number.isFinite));
-  return Number.isFinite(oldest) ? oldest + LATE_REPORT_MS : null;
+function storeCutAt(store) {
+  return Number.isFinite(store?.cutAt) ? store.cutAt : null;
 }
 
 /**
@@ -1257,7 +1265,7 @@ async function publishStrikeCycle({
   if (!result || !outcome.canonicalWritten) return { ...outcome, pressureStatus: 'skipped' };
   const stored = await Promise.resolve(readPressure()).catch(() => null);
   if (!stored?.ok) return { ...outcome, pressureStatus: 'read-failed' };
-  const pressure = mergeStrikePressure(stored.value, result.payload.events, now, storeCutAt(result.store?.candidates));
+  const pressure = mergeStrikePressure(stored.value, result.payload.events, now, storeCutAt(result.store));
   if (!await Promise.resolve(writePressure(pressure)).catch(() => false)) return { ...outcome, pressureStatus: 'write-failed' };
   if (!result.healthy) return { ...outcome, pressureStatus: 'degraded' };
   const recordCount = Object.values(pressure.days).reduce((sum, byCountry) => sum + Object.keys(byCountry).length, 0);
