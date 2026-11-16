@@ -90,7 +90,13 @@ describe('findEventPair', () => {
     assert.deepEqual(await findEventPair(point, NOW - 3 * DAY, NOW, {}, deps), { status: 'none', missing: 'before' });
   });
 
-  it('fails only when every archive failed', async () => {
+  it('fails rather than naming a missing side when one archive could not answer', async () => {
+    const failed: SceneHistory = { status: 'failed', failure: { archive: 'planetary-computer', reason: 'timeout' } };
+    const { deps } = searches({ 'sentinel-2': { status: 'ok', scenes: [] }, 'sentinel-1': failed });
+    assert.deepEqual(await findEventPair(point, NOW - 3 * DAY, NOW, {}, deps), { status: 'failed' });
+  });
+
+  it('fails when every archive failed', async () => {
     const failed: SceneHistory = { status: 'failed', failure: { archive: 'planetary-computer', reason: 'timeout' } };
     const { deps } = searches({ 'sentinel-2': failed, 'sentinel-1': failed });
     assert.deepEqual(await findEventPair(point, NOW - 3 * DAY, NOW, {}, deps), { status: 'failed' });

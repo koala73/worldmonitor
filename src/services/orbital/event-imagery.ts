@@ -66,16 +66,21 @@ export async function findEventPair(
   const anchorMs = clampEventMs(eventMs, nowMs);
   const windowEndMs = eventWindowEndMs(eventMs, nowMs);
   let answered = false;
+  let anyFailed = false;
   let anyAfter = false;
   for (const profileId of EVENT_PROFILES) {
     const history = await search(point, profileId, windowEndMs, options);
     if (options.signal?.aborted) return { status: 'failed' };
-    if (history.status !== 'ok') continue;
+    if (history.status !== 'ok') {
+      anyFailed = true;
+      continue;
+    }
     answered = true;
     const { before, after } = pickEventPair(anchorMs, history.scenes);
     if (before && after) return { status: 'ok', profileId, windowEndMs, scenes: history.scenes, before, after };
     anyAfter ||= after !== null;
   }
+  // A missing side is only reported when every archive answered; otherwise a retry may still find the pair.
   // No scene since the event is the usual gap for a recent event, so it is named first.
-  return answered ? { status: 'none', missing: anyAfter ? 'before' : 'after' } : { status: 'failed' };
+  return answered && !anyFailed ? { status: 'none', missing: anyAfter ? 'before' : 'after' } : { status: 'failed' };
 }
