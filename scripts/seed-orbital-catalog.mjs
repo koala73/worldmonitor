@@ -10,6 +10,8 @@ import {
   ORBITAL_CATALOG_KEY,
   RING_DAYS,
 } from './_orbital-catalog.mjs';
+import { mergeHistory, ORBITAL_HISTORY_R2_KEY } from './_orbital-history.mjs';
+import { getR2JsonObject, putR2JsonObject, resolveR2StorageConfig } from './_r2-storage.mjs';
 import { loadEnvFile, markPreservableFetchFailure, readCanonicalValue, runSeed } from './_seed-utils.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 
@@ -74,7 +76,38 @@ export async function fetchOrbitalCatalog({
   return catalog;
 }
 
-export function buildSeedOptions() {
+/**
+ * Appends this run's new epochs to the R2 elements history (#9110). Best effort: the catalog
+ * is already published, so a missing R2 config or an R2 failure skips the update and is
+ * logged, never thrown. A history it cannot read is never replaced.
+ */
+export async function updateElementsHistory(catalog, {
+  storageConfig = resolveR2StorageConfig(process.env),
+  readHistory = (config) => getR2JsonObject(config, ORBITAL_HISTORY_R2_KEY),
+  writeHistory = (config, history) => putR2JsonObject(config, ORBITAL_HISTORY_R2_KEY, history, { source: 'seed-orbital-catalog' }),
+  nowMs = Date.now(),
+} = {}) {
+  if (!storageConfig) {
+    console.log('  [orbital-history] skipped: R2 storage is not configured');
+    return { status: 'skipped-unconfigured' };
+  }
+  try {
+    const previous = await readHistory(storageConfig);
+    const { history, added, pruned, changed } = mergeHistory(previous, catalog?.satellites, nowMs);
+    if (!changed) {
+      console.log(`  [orbital-history] unchanged: ${history.entries.length} entries`);
+      return { status: 'unchanged', entries: history.entries.length };
+    }
+    await writeHistory(storageConfig, history);
+    console.log(`  [orbital-history] wrote ${history.entries.length} entries (+${added}, -${pruned})`);
+    return { status: 'written', entries: history.entries.length, added, pruned };
+  } catch (err) {
+    console.warn(`  [orbital-history] skipped: ${err?.message || err}`);
+    return { status: 'skipped-error', error: String(err?.message || err) };
+  }
+}
+
+export function buildSeedOptions({ updateHistory = updateElementsHistory } = {}) {
   return {
     validateFn: (data) => Array.isArray(data?.satellites) && data.satellites.length > 0,
     ttlSeconds: CACHE_TTL_SECONDS,
@@ -84,10 +117,11 @@ export function buildSeedOptions() {
     schemaVersion: 1,
     maxStaleMin: MAX_STALE_MIN,
     // runSeed calls this only after the canonical key and seed-meta are written.
-    afterFreshness: async () => {
+    afterFreshness: async (data) => {
       const creds = getOptionalUpstashCreds();
       if (!creds) throw new Error('Missing orbital catalog activation credentials');
       await upstashCommand(creds, ['SET', ORBITAL_CATALOG_ACTIVATION_KEY, '1']);
+      await updateHistory(data);
     },
   };
 }
