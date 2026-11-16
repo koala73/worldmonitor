@@ -2706,7 +2706,7 @@ describe('CII scoring', () => {
       'docs/platform-evaluation.mdx',
       'docs/features.mdx',
       'docs/methodology/cii-risk-scores.mdx',
-      'docs/Docs_To_Review/DOCUMENTATION.md',
+      'docs/signal-intelligence.mdx',
       'docs/COMMUNITY-PROMOTION-GUIDE.md',
     ];
     const stalePatterns = [

@@ -74,13 +74,12 @@ function countAnalysisSignalTypes(): number {
 
 test('public signal docs keep their listed signal count in sync with the SignalType union', () => {
   const expectedCount = countAnalysisSignalTypes();
-  for (const path of ['docs/signal-intelligence.mdx', 'docs/Docs_To_Review/DOCUMENTATION.md'] as const) {
-    const doc = readRepo(path);
-    const countMatch = doc.match(/lists (\d+) distinct signal types/);
-    assert.ok(countMatch, `${path} must publish the listed signal type count`);
-    assert.equal(Number(countMatch[1]), expectedCount, `${path} signal headline count must match SignalType`);
-    assert.equal(countSignalTableRows(doc), expectedCount, `${path} signal table rows must match SignalType`);
-  }
+  const path = 'docs/signal-intelligence.mdx';
+  const doc = readRepo(path);
+  const countMatch = doc.match(/lists (\d+) distinct signal types/);
+  assert.ok(countMatch, `${path} must publish the listed signal type count`);
+  assert.equal(Number(countMatch[1]), expectedCount, `${path} signal headline count must match SignalType`);
+  assert.equal(countSignalTableRows(doc), expectedCount, `${path} signal table rows must match SignalType`);
 });
 
 test('public signal docs stay aligned with hotspot escalation math', () => {
