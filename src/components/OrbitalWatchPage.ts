@@ -521,6 +521,14 @@ function sectionOf(el: HTMLElement): string | undefined {
   return el.closest<HTMLElement>('[data-section]')?.dataset.section;
 }
 
+/** Ground distance to the track, plus the swath-edge marker when the point is near the footprint edge. */
+function trackCells(pass: PointPass): DomChild[] {
+  return [
+    cell('', t('orbitalWatch.row.distance', { km: formatInt(Math.round(pass.groundDistanceKm)) }), 'ies-distance'),
+    pass.edgeOfSwath ? cell('', t('orbitalWatch.satelliteSites.swathEdge'), 'ies-edge') : null,
+  ];
+}
+
 function orbitAgeCell(pass: PointPass): HTMLElement {
   const stale = pass.orbitAgeDays > STALE_ORBIT_DAYS;
   return cell(t('orbitalWatch.row.orbitAge'), t('orbitalWatch.row.orbitAgeValue', { age: formatAge(pass.orbitAgeDays) }), stale ? 'ies-stale' : '');
@@ -1098,8 +1106,7 @@ export class OrbitalWatchPage {
     cell(t('orbitalWatch.row.time'), formatStamp(pass.timeMs)),
     cell(t('orbitalWatch.row.elevation'), `${Math.round(pass.elevationDeg)}°`),
     cell('', t('orbitalWatch.row.offNadir', { deg: offNadirDeg(pass).toFixed(1) })),
-    cell('', t('orbitalWatch.row.distance', { km: formatInt(Math.round(pass.groundDistanceKm)) }), 'ies-distance'),
-    pass.edgeOfSwath ? cell('', t('orbitalWatch.satelliteSites.swathEdge'), 'ies-edge') : null,
+    ...trackCells(pass),
     orbitAgeCell(pass));
   }
 
@@ -1148,6 +1155,7 @@ export class OrbitalWatchPage {
             cell(t('orbitalWatch.row.satellite'), pass.name, 'ies-grow ies-name'),
             cell(t('orbitalWatch.row.sensor'), t(pass.category === 'open-radar' ? 'orbitalWatch.windows.radar' : 'orbitalWatch.windows.optical')),
             cell(t('orbitalWatch.row.elevation'), `${Math.round(pass.elevationDeg)}°`),
+            ...trackCells(pass),
             orbitAgeCell(pass));
         })));
   }

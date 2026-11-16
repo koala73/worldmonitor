@@ -399,14 +399,18 @@ describe('imagery evidence sheet', () => {
   it('shows the ground distance to the track on every pass row and marks a point near the swath edge', () => {
     const centred = pass('SENTINEL-2B', 'sentinel-2', -30, { kind: 'likely-imaged' });
     const edge = { ...pass('SENTINEL-2A', 'sentinel-2', -60, { kind: 'likely-imaged' }), groundDistanceKm: 1234.4, edgeOfSwath: true };
-    mounted(answered([centred, edge]));
+    const upcoming = { ...pass('SENTINEL-2C', 'sentinel-2', 3, { kind: 'opportunity' }), groundDistanceKm: 7.6, edgeOfSwath: true };
+    mounted(answered([centred, edge, upcoming]));
     const capability = sectionOf('capability');
     const rows = [...capability.querySelectorAll<HTMLElement>('.ies-row')];
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     expect(rowOf(centred.name, capability).querySelector('.ies-distance')!.textContent).toBe('42 km to track');
     expect(rowOf(centred.name, capability).querySelector('.ies-edge')).toBeNull();
     expect(rowOf(edge.name, capability).querySelector('.ies-distance')!.textContent).toBe('1,234 km to track');
     expect(rowOf(edge.name, capability).querySelector('.ies-edge')!.textContent).toBe('at swath edge');
+    const windowRow = rowOf(upcoming.name, sectionOf('windows'));
+    expect(windowRow.querySelector('.ies-distance')!.textContent).toBe('8 km to track');
+    expect(windowRow.querySelector('.ies-edge')!.textContent).toBe('at swath edge');
   });
 
   it('groups the passes that could image the point by operating state', () => {
