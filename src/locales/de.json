@@ -5225,6 +5225,7 @@
     "counts": {},
     "tier": {
       "checking": "Archiv wird geprüft",
+      "notInArchive": "nicht im Archiv",
       "confirmed": "bestätigt",
       "likely": "wahrscheinlich",
       "unmatchedImage": "Bild ohne berechneten Überflug",

@@ -5225,6 +5225,7 @@
     "counts": {},
     "tier": {
       "checking": "در حال بررسی بایگانی",
+      "notInArchive": "در بایگانی نیست",
       "confirmed": "تأییدشده",
       "likely": "احتمالی",
       "unmatchedImage": "تصویر بدون گذر محاسبه‌شده",

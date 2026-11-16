@@ -5225,6 +5225,7 @@
     "counts": {},
     "tier": {
       "checking": "inakagua kumbukumbu",
+      "notInArchive": "haipo kwenye kumbukumbu",
       "confirmed": "imethibitishwa",
       "likely": "inawezekana",
       "unmatchedImage": "picha bila kupita kulikokokotolewa",

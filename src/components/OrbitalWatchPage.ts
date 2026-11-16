@@ -1084,18 +1084,22 @@ export class OrbitalWatchPage {
 
   private passRow(pass: PointPass, pending: boolean, nowMs: number): HTMLElement {
     const key = passKey(pass);
-    const tier = pending ? t('orbitalWatch.tier.checking') : t(TIER_KEY[pass.timeMs > nowMs ? 'opportunity' : pass.tier.kind]);
+    const notInArchive = !pending && pass.timeMs <= nowMs && pass.tier.kind === 'passed-overhead' && pass.tier.note === 'not-in-archive';
+    const tierLabel = pending ? t('orbitalWatch.tier.checking') : t(TIER_KEY[pass.timeMs > nowMs ? 'opportunity' : pass.tier.kind]);
+    const tier = notInArchive ? `${tierLabel} · ${t('orbitalWatch.tier.notInArchive')}` : tierLabel;
     return h('li', {
       className: 'ies-row',
       tabindex: '0',
       'aria-current': this.selectedKey === key ? 'true' : null,
-      dataset: { key: `pass:${key}`, tier: pending ? 'pending' : pass.tier.kind },
+      dataset: { key: `pass:${key}`, tier: pending ? 'pending' : pass.tier.kind, ...(notInArchive ? { note: 'not-in-archive' } : {}) },
     },
     cell(t('orbitalWatch.row.satellite'), pass.name, 'ies-grow ies-name'),
     cell(t('orbitalWatch.row.tier'), tier, 'ies-tier'),
     cell(t('orbitalWatch.row.time'), formatStamp(pass.timeMs)),
     cell(t('orbitalWatch.row.elevation'), `${Math.round(pass.elevationDeg)}°`),
     cell('', t('orbitalWatch.row.offNadir', { deg: offNadirDeg(pass).toFixed(1) })),
+    cell('', t('orbitalWatch.row.distance', { km: formatInt(Math.round(pass.groundDistanceKm)) }), 'ies-distance'),
+    pass.edgeOfSwath ? cell('', t('orbitalWatch.satelliteSites.swathEdge'), 'ies-edge') : null,
     orbitAgeCell(pass));
   }
 

@@ -5337,6 +5337,7 @@
     "counts": {},
     "tier": {
       "checking": "جارٍ فحص الأرشيف",
+      "notInArchive": "غير موجود في الأرشيف",
       "confirmed": "مؤكد",
       "likely": "محتمل",
       "unmatchedImage": "صورة بلا مرور محسوب",

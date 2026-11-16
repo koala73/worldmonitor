@@ -5197,6 +5197,7 @@
     "counts": {},
     "tier": {
       "checking": "アーカイブ確認中",
+      "notInArchive": "アーカイブになし",
       "confirmed": "確認済み",
       "likely": "可能性が高い",
       "unmatchedImage": "計算済みパスのない画像",

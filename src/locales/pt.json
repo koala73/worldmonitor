@@ -5253,6 +5253,7 @@
     "counts": {},
     "tier": {
       "checking": "consultando arquivo",
+      "notInArchive": "não está no arquivo",
       "confirmed": "confirmado",
       "likely": "provável",
       "unmatchedImage": "imagem sem passagem calculada",
