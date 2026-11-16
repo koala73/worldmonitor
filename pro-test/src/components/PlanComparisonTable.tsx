@@ -120,7 +120,7 @@ export const PlanComparisonTable = () => {
     },
     { label: t('pricingTable.rowSupport'), cell: tier => ({ text: t(SUPPORT[tier.localeKey] ?? 'pricingTable.supportStandard') }) },
   ];
-  // Orbital Watch stays off the table until launch (#10768).
+  // The Orbital Watch row shows only while ORBITAL_WATCH_PRICING_PUBLISHED is true (#10768).
   if (tiers.some(tier => orbitalWatchAccess(tier.localeKey))) {
     rows.splice(rows.length - 1, 0, {
       label: t('pricingTable.rowOrbital'),
