@@ -93,6 +93,19 @@ describe("delivery failure lifecycle", () => {
     expect((await row())?.verified).toBe(true);
   });
 
+  test("a successful digest batch resets a day-old realtime failure streak", async () => {
+    const { t, id, report, row } = await setup();
+    for (let i = 0; i < 9; i++) await report("HTTP 503");
+    vi.setSystemTime(Date.now() + 25 * 60 * 60 * 1000);
+    expect((await t.fetch("/relay/delivery-result", {
+      method: "POST", headers: { Authorization: "Bearer delivery-secret", "Content-Type": "application/json" },
+      body: JSON.stringify({ results: [{ userId: USER.subject, channelType: "webhook",
+        delivery: { channelId: id, linkedAt: 1, error: null } }] }),
+    })).status).toBe(200);
+    await report("HTTP 503");
+    expect(await row()).toMatchObject({ verified: true, deliveryFailure: { count: 1, firstFailedAt: Date.now() } });
+  });
+
   test("batches preserve failure/success order and reject invalid batches before writing", async () => {
     const { t, id, row } = await setup();
     const send = (results: unknown[]) => t.fetch("/relay/delivery-result", {

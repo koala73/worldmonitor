@@ -1,6 +1,6 @@
 'use strict';
 
-const { AsyncLocalStorage } = require('node:async_hooks');
+const { createDeliveryReporter, deliveryErrorClass } = require('./lib/notification-delivery.cjs');
 const { createHash, randomUUID } = require('node:crypto');
 const { Resend } = require('resend');
 const { appendUnsubscribeText, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
@@ -353,52 +353,7 @@ async function deactivateChannel(userId, channelType) {
 
 // ── Delivery results ──────────────────────────────────────────────────────
 
-function deliveryErrorClass(error, fallback = 'Delivery failed') {
-  const value = `${error?.code ?? ''} ${error?.message ?? error ?? ''}`;
-  if (/ENOTFOUND|EAI_AGAIN|getaddrinfo/.test(value)) return 'DNS lookup failed';
-  if (/timeout|timed out|ETIMEDOUT|AbortError/i.test(value)) return 'Request timed out';
-  if (/ECONN|socket|network/i.test(value)) return 'Connection failed';
-  return fallback;
-}
-
-const deliveryReports = new AsyncLocalStorage();
-
-async function submitDeliveryReports(results) {
-  try {
-    const response = await fetch(`${CONVEX_SITE_URL}/relay/delivery-result`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RELAY_SECRET}`, 'User-Agent': 'worldmonitor-relay/1.0' },
-      body: JSON.stringify({ results }),
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!response.ok) console.warn(`[relay] Delivery results not recorded: HTTP ${response.status}`);
-  } catch {
-    console.warn('[relay] Delivery results not recorded');
-  }
-}
-
-async function withDeliveryReports(deliver) {
-  if (deliveryReports.getStore()) return deliver();
-  const results = [];
-  return deliveryReports.run(results, async () => {
-    try {
-      return await deliver();
-    } finally {
-      for (let i = 0; i < results.length; i += 100) {
-        await submitDeliveryReports(results.slice(i, i + 100));
-      }
-    }
-  });
-}
-
-async function recordDelivery(userId, channelType, channel, error = null) {
-  if (!channel?._id || !Number.isFinite(channel.linkedAt)) return error === null;
-  const result = { userId, channelType, delivery: { channelId: channel._id, linkedAt: channel.linkedAt, error } };
-  const results = deliveryReports.getStore();
-  if (results) results.push(result);
-  else await submitDeliveryReports([result]);
-  return error === null;
-}
+const { recordDelivery, withDeliveryReports } = createDeliveryReporter({ siteUrl: CONVEX_SITE_URL, secret: RELAY_SECRET, source: 'relay' });
 
 // ── Entitlement check (PRO gate for delivery) ───────────────────────────────
 

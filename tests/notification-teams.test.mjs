@@ -427,7 +427,11 @@ describe('digest cron Teams dispatch', () => {
         throw new Error(`unexpected fetch ${url}`);
       },
       decrypt: (envelope) => envelope.replace(/^enc:/, ''),
-      deactivateChannel: async (userId, channelType) => { deactivations.push({ userId, channelType }); },
+      withDeliveryReports: async deliver => deliver(),
+      recordDelivery: async (userId, channelType, channel, error = null) => {
+        deactivations.push({ userId, channelType, delivery: { channelId: channel._id, linkedAt: channel.linkedAt, error } });
+        return error === null;
+      },
       buildTeamsDigestPayload: teams.buildTeamsDigestPayload,
       stripSourceSuffix: (title) => title.replace(/ - Reuters$/, ''),
       sendTeamsPayload: async (url, payload) => { sends.push({ url, payload }); return { ok: status < 300, status, gone: status === 404 }; },
@@ -451,7 +455,7 @@ describe('digest cron Teams dispatch', () => {
     return { sends, deactivations, metadata };
   }
 
-  const verified = { _id: 'teams-channel', channelType: 'teams', webhookEnvelope: `enc:${TEAMS_URL}`, verified: true };
+  const verified = { _id: 'teams-channel', linkedAt: 1, channelType: 'teams', webhookEnvelope: `enc:${TEAMS_URL}`, verified: true };
 
   it('delivers the digest to a verified Teams channel as an Adaptive Card', async () => {
     const { sends, metadata } = await runDigest({ channel: verified });
@@ -473,9 +477,9 @@ describe('digest cron Teams dispatch', () => {
     assert.equal(sends.length, 0);
   });
 
-  it('deactivates a Teams channel whose workflow is gone', async () => {
+  it('reports a Teams channel whose workflow is gone', async () => {
     const { deactivations, metadata } = await runDigest({ channel: verified, status: 404 });
-    assert.deepEqual(deactivations, [{ userId: 'owner', channelType: 'teams' }]);
+    assert.deepEqual(deactivations, [{ userId: 'owner', channelType: 'teams', delivery: { channelId: 'teams-channel', linkedAt: 1, error: 'HTTP 404' } }]);
     assert.equal(metadata[0].sentCount, 0);
   });
 });

@@ -208,6 +208,6 @@ describe('both producers pass the channel secret', () => {
 
   it('the digest producer signs with the shared helper', () => {
     assert.match(digestSrc, /buildWebhookDeliveryHeaders\(\{ body: payload, eventType: 'digest', secret: signingSecret \}\)/);
-    assert.match(digestSrc, /sendWebhook\(rule\.userId, ch\.webhookEnvelope, formatterStories, briefLead, ch\.webhookSecret\)/);
+    assert.match(digestSrc, /sendWebhook\(rule\.userId, ch\.webhookEnvelope, formatterStories, briefLead, ch\.webhookSecret, ch\)/);
   });
 });
