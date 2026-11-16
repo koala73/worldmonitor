@@ -205,7 +205,7 @@
   animation: ow-shimmer 1.4s linear infinite;
 }
 
-.ow-tile[data-state="failed"], .ow-tile[data-state="none"] { border-style: dashed; }
+.ow-tile[data-state="failed"], .ow-tile[data-state="processing"], .ow-tile[data-state="none"] { border-style: dashed; }
 
 .ow-tile[data-state="loaded"] { background: none; }
 

@@ -5485,6 +5485,7 @@
     "tile": {
       "failed": "场景加载失败 · {{archive}}",
       "noPreview": "尚未发布此场景的预览",
+      "processing": "场景仍在处理中，请稍后再试。",
       "radar": "雷达"
     },
     "target": {

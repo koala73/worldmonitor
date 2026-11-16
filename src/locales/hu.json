@@ -5521,6 +5521,7 @@
     "tile": {
       "failed": "Jelenet nem töltődött be · {{archive}}",
       "noPreview": "Ehhez a jelenethez még nincs előnézet közzétéve",
+      "processing": "A felvétel feldolgozása még folyamatban van. Próbálja újra később.",
       "radar": "radar"
     },
     "target": {

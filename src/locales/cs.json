@@ -5593,6 +5593,7 @@
     "tile": {
       "failed": "Scéna se nenačetla · {{archive}}",
       "noPreview": "Pro tuto scénu ještě není publikován náhled",
+      "processing": "Scéna se stále zpracovává. Zkuste to znovu později.",
       "radar": "radar"
     },
     "target": {

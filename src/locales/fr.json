@@ -5557,6 +5557,7 @@
     "tile": {
       "failed": "La scène n'a pas pu se charger · {{archive}}",
       "noPreview": "Aucun aperçu publié pour cette scène pour l'instant",
+      "processing": "Scène encore en cours de traitement. Réessayez plus tard.",
       "radar": "radar"
     },
     "target": {

@@ -104,6 +104,8 @@ const progress = (settled: EvidenceProgress['settled'], pendingProfiles: Evidenc
 
 /** Archive image fetches: the page paints each one from a blob: URL. */
 const failing = new Set<string>();
+/** The status a failing URL answers with; 503 when unset. */
+const failStatus = new Map<string, number>();
 const fetched: string[] = [];
 const sources: string[] = [];
 const revoked = new Set<string>();
@@ -115,13 +117,14 @@ beforeAll(async () => {
 
 beforeEach(() => {
   failing.clear();
+  failStatus.clear();
   fetched.length = 0;
   sources.length = 0;
   revoked.clear();
   vi.stubGlobal('fetch', vi.fn(async (input: string) => {
     const url = String(input);
     fetched.push(url);
-    if (failing.has(url)) return new Response('', { status: 503 });
+    if (failing.has(url)) return new Response('', { status: failStatus.get(url) ?? 503 });
     sources.push(url);
     return new Response(new Blob([new Uint8Array(sources.length - 1)], { type: 'image/jpeg' }));
   }));
@@ -529,6 +532,59 @@ describe('imagery evidence sheet', () => {
     expect(sheet().querySelector('.ies-close')?.getAttribute('aria-label')).toBe('Schließen');
     expect(sheet().querySelector('.ies-privacy-line')?.textContent).toBe('Punkt bleibt auf diesem Gerät.');
     expect(sheet().querySelector('[data-action="change"]')?.textContent).toBe('Ort ändern');
+  });
+});
+
+describe('a crop the archive has not served yet', () => {
+  const hero = () => sheet().querySelector<HTMLElement>('.ow-tile-hero')!;
+  const showFailing = async (p: PointPass, status: number) => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const latest = acquisition(p);
+    failing.add(latest.imageUrl!);
+    failStatus.set(latest.imageUrl!, status);
+    mounted(answered([p], { acquisitions: [latest] }));
+    await settle();
+    return hero();
+  };
+
+  it('reads as still processing for a Sentinel-1 scene under a day old that answers 404, with a retry', async () => {
+    const tile = await showFailing(pass('SENTINEL-1C', 'sentinel-1', -3, { kind: 'confirmed-image' }), 404);
+    expect(tile.dataset.state).toBe('processing');
+    expect(tile.textContent).toContain('Scene still processing. Try again later.');
+    expect(tile.textContent).not.toContain('did not load');
+    expect(tile.querySelector('[data-action="retry-image"]')).not.toBeNull();
+  });
+
+  it('reads as processing on a fresh Sentinel-1 thumbnail too', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const newer = pass('SENTINEL-2C', 'sentinel-2', -1, { kind: 'confirmed-image' });
+    const radar = pass('SENTINEL-1A', 'sentinel-1', -5, { kind: 'confirmed-image' });
+    const thumb = acquisition(radar);
+    failing.add(thumb.imageUrl!);
+    failStatus.set(thumb.imageUrl!, 404);
+    mounted(answered([newer, radar], { acquisitions: [acquisition(newer), thumb] }));
+    await settle();
+    const tile = sheet().querySelector<HTMLElement>(`[data-key="image:${thumb.key}"] .ow-tile`)!;
+    expect(tile.dataset.state).toBe('processing');
+    expect(tile.textContent).toContain('Scene still processing');
+  });
+
+  it('stays a failure for a Sentinel-1 scene older than a day that answers 404', async () => {
+    const tile = await showFailing(pass('SENTINEL-1C', 'sentinel-1', -30, { kind: 'confirmed-image' }), 404);
+    expect(tile.dataset.state).toBe('failed');
+    expect(tile.textContent).toContain('Scene did not load');
+  });
+
+  it('stays a failure for a fresh Sentinel-1 scene that answers anything but 404', async () => {
+    const tile = await showFailing(pass('SENTINEL-1C', 'sentinel-1', -3, { kind: 'confirmed-image' }), 500);
+    expect(tile.dataset.state).toBe('failed');
+    expect(tile.textContent).toContain('Scene did not load');
+  });
+
+  it('stays a failure for a fresh scene from another mission that answers 404', async () => {
+    const tile = await showFailing(pass('SENTINEL-2C', 'sentinel-2', -3, { kind: 'confirmed-image' }), 404);
+    expect(tile.dataset.state).toBe('failed');
+    expect(tile.textContent).toContain('Scene did not load');
   });
 });
 

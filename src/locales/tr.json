@@ -5521,6 +5521,7 @@
     "tile": {
       "failed": "Sahne yüklenmedi · {{archive}}",
       "noPreview": "Bu sahne için henüz yayımlanmış ön izleme yok",
+      "processing": "Sahne hâlâ işleniyor. Daha sonra tekrar deneyin.",
       "radar": "radar"
     },
     "target": {

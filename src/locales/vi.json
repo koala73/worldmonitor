@@ -5485,6 +5485,7 @@
     "tile": {
       "failed": "Cảnh không tải được · {{archive}}",
       "noPreview": "Chưa công bố bản xem trước cho cảnh này",
+      "processing": "Cảnh vẫn đang được xử lý. Hãy thử lại sau.",
       "radar": "radar"
     },
     "target": {

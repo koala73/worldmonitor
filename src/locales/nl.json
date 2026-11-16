@@ -5521,6 +5521,7 @@
     "tile": {
       "failed": "Scène kon niet laden · {{archive}}",
       "noPreview": "Nog geen voorbeeld gepubliceerd voor deze scène",
+      "processing": "Scène wordt nog verwerkt. Probeer het later opnieuw.",
       "radar": "radar"
     },
     "target": {

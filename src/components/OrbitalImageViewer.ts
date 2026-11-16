@@ -1,10 +1,11 @@
 import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
-import type { LoadedArchiveImage } from '@/services/orbital/archive-image';
+import { ArchiveImageError, type LoadedArchiveImage } from '@/services/orbital/archive-image';
 import type { ArchiveFailure } from '@/services/orbital/archive-result';
 import type { ImagingProfileId } from '@/services/orbital/archive-stac';
 import type { DailyMosaicRow, GeostationaryRow } from '@/services/orbital/archive-gibs';
 import type { EventPair } from '@/services/orbital/event-imagery';
 import { DEFAULT_CROP_HALF_SIZE_KM } from '@/services/orbital/crop-url';
+import { isSceneStillProcessing } from '@/services/orbital/scene-processing';
 import { describePointCondition, type MatchedAcquisition, type OrbitalEvidence } from '@/services/orbital/match';
 import {
   CLEAR_LOOK_CLOUD_PCT,
@@ -218,7 +219,8 @@ export class OrbitalImageViewer {
   private readonly painted = new Map<string, LoadedArchiveImage>();
   /** The archive URLs the last render shows; every other loaded image is released. */
   private readonly shownUrls = new Set<string>();
-  private readonly failedUrls = new Set<string>();
+  /** Why each failed image failed, when the archive said. */
+  private readonly failedUrls = new Map<string, ArchiveFailure | null>();
   private readonly pendingUrls = new Set<string>();
   private readonly deps: Required<ViewerDependencies>;
 
@@ -326,8 +328,8 @@ export class OrbitalImageViewer {
           if (signal.aborted) paint.release();
           else this.painted.set(url, paint);
         },
-        () => {
-          if (!signal.aborted) this.failedUrls.add(url);
+        (error: unknown) => {
+          if (!signal.aborted) this.failedUrls.set(url, error instanceof ArchiveImageError ? error.failure : null);
         },
       ).finally(() => {
         this.pendingUrls.delete(url);
@@ -414,8 +416,9 @@ export class OrbitalImageViewer {
     const paint = this.painted.get(url);
     if (paint) return h('div', { className: 'oiv-stage' }, sceneImage(scene, 'oiv-image', paint), ...this.overlays(scene));
     if (this.failedUrls.has(url)) {
-      return h('div', { className: 'oiv-stage oiv-stage-empty', role: 'alert' },
-        h('span', { className: 'oiv-label' }, t('orbitalWatch.tile.failed', { archive: archiveHost(url).name.toUpperCase() })),
+      const processing = isSceneStillProcessing(this.failedUrls.get(url), { profileId: scene.collection, acquiredMs: scene.timeMs }, Date.now());
+      return h('div', { className: 'oiv-stage oiv-stage-empty', role: processing ? 'status' : 'alert', dataset: processing ? { state: 'processing' } : undefined },
+        h('span', { className: 'oiv-label' }, processing ? t('orbitalWatch.tile.processing') : t('orbitalWatch.tile.failed', { archive: archiveHost(url).name.toUpperCase() })),
         h('button', { type: 'button', className: 'oiv-button', dataset: { action: 'retry-image', url } }, t('countryBrief.retryBtn')));
     }
     return h('div', { className: 'oiv-stage oiv-skeleton', role: 'status' }, h('span', { className: 'oiv-label' }, t('orbitalWatch.row.imageLoading')));

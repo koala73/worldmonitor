@@ -5567,6 +5567,7 @@
     "tile": {
       "failed": "Scena se nije učitala · {{archive}}",
       "noPreview": "Pregled za ovu scenu još nije objavljen",
+      "processing": "Scena se još obrađuje. Pokušajte ponovno kasnije.",
       "radar": "radar"
     },
     "target": {

@@ -5557,6 +5557,7 @@
     "tile": {
       "failed": "La escena no se cargó · {{archive}}",
       "noPreview": "Aún no hay vista previa publicada para esta escena",
+      "processing": "La escena aún se está procesando. Inténtalo de nuevo más tarde.",
       "radar": "radar"
     },
     "target": {
