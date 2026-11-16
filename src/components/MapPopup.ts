@@ -15,7 +15,7 @@ import { isMobileDevice, getCSSColor } from '@/utils';
 import { TransitChart } from '@/utils/transit-chart';
 import { eventTimeFor, hasImageryRow, imageryTargetFor, mountImageryRow, renderImageryRow, type EventCompareHooks } from './map-popup-imagery';
 import { mountFireMosaic, renderFireDetectionPopup, type FireDetectionPopupData } from './map-popup-fire';
-import { ORBITAL_EVIDENCE_EVENT } from '@/services/orbital/evidence-event';
+import { ORBITAL_EVENT_COMPARE_EVENT, ORBITAL_EVIDENCE_EVENT, type OrbitalEventCompareDetail } from '@/services/orbital/evidence-event';
 import { HS2RingChart } from '@/utils/hs2-ring-chart';
 import type { GetChokepointStatusResponse, TransitDayCount } from '@/services/supply-chain';
 import { fetchChokepointHistory } from '@/services/supply-chain';
@@ -349,8 +349,8 @@ export class MapPopup {
         access,
         onOpen: (picked, anchorMs, pair) => {
           this.hide();
-          void import('./OrbitalImageViewer').then(({ openOrbitalImageViewer, subjectForEvent }) =>
-            openOrbitalImageViewer(subjectForEvent(picked.point, anchorMs, pair, Date.now()), null, undefined, { compareKey: pair.before.key }));
+          const detail: OrbitalEventCompareDetail = { point: picked.point, eventMs: anchorMs, pair };
+          window.dispatchEvent(new CustomEvent(ORBITAL_EVENT_COMPARE_EVENT, { detail }));
         },
       };
     }

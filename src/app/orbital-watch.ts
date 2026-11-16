@@ -6,6 +6,7 @@ import { loadOrbitalCatalog } from '@/services/orbital/catalog';
 import { buildPassTrack, framingBounds, type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import { ARCHIVE_SEARCHES, findArchiveEvidence, type MatchedAcquisition, type OrbitalEvidence } from '@/services/orbital/match';
 import { setOrbitalLookupOpen } from '@/services/orbital/lookup-host';
+import type { OrbitalEventCompareDetail } from '@/services/orbital/evidence-event';
 import { t } from '@/services/i18n';
 import { OrbitalWatchPage, type OrbitalWatchState } from '@/components/OrbitalWatchPage';
 import { OrbitalTimeline, type OrbitalTimelineInput, type PointContextState } from '@/components/OrbitalTimeline';
@@ -546,6 +547,12 @@ export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null
 }
 
 /** Opens the lookup with no place yet, focused on its search field. */
+/** Opens the image viewer in Compare on the pair found around a map event (#10713 unit 2). */
+export function openOrbitalEventCompare({ point, eventMs, pair }: OrbitalEventCompareDetail): void {
+  void import('@/components/OrbitalImageViewer').then(({ openOrbitalImageViewer, subjectForEvent }) =>
+    openOrbitalImageViewer(subjectForEvent(point, eventMs, pair, Date.now()), null, undefined, { compareKey: pair.before.key }));
+}
+
 export function openOrbitalWatchSearch(returnFocusTo: HTMLElement | null, map?: OrbitalTrackSurface | null): void {
   const sheet = ensurePage();
   if (useSurface(map) && point) drawTarget(targetFor(point, null));
