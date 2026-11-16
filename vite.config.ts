@@ -3,7 +3,7 @@ import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { VitePWA } from 'vite-plugin-pwa';
 import { appChunkRuntimeCache, createDashboardPrecache } from './shared/pwa-precache';
 import type { OutputBundle } from 'rollup';
-import { resolve, dirname, extname, basename, posix } from 'path';
+import { resolve, dirname, extname, basename, posix, relative, isAbsolute } from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { statSync } from 'fs';
 import { brotliCompress } from 'zlib';
@@ -545,7 +545,8 @@ function devApiSourceGuardPlugin(): Plugin {
         if (!path.startsWith('/api/')) return next();
         if (proxyKeys.some((key) => (key.startsWith('^') ? new RegExp(key).test(path) : path.startsWith(key)))) return next();
         const file = resolve(__dirname, `.${decodeURIComponent(path)}`);
-        if (!file.startsWith(resolve(__dirname, 'api') + '/')) return next();
+        const inApi = relative(resolve(__dirname, 'api'), file);
+        if (!inApi || inApi.startsWith('..') || isAbsolute(inApi)) return next();
         const isSource = ['', '.js', '.ts', '.mjs'].some((ext) => statSync(file + ext, { throwIfNoEntry: false })?.isFile());
         if (!isSource) return next();
         res.statusCode = 404;

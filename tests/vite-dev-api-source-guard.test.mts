@@ -20,7 +20,7 @@ describe('Vite dev server /api source guard', () => {
       root,
       configFile: resolve(root, 'vite.config.ts'),
       logLevel: 'silent',
-      server: { host: '127.0.0.1', port: 0, strictPort: false, hmr: false, watch: null },
+      server: { host: '127.0.0.1', port: 0, strictPort: false, open: false, hmr: false, watch: null },
       optimizeDeps: { noDiscovery: true, include: [] },
     });
     await server.listen();
