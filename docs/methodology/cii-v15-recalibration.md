@@ -169,3 +169,19 @@ One of 21 country-days exceeds the registered 5% article tolerance. As registere
 3. Shorten the window to what the 2.0 stream can cover in an acceptable time, justified from the construct.
 
 The criteria, thresholds, clustering, lower-median selection and copied magnitudes above stay as registered under any of the three.
+
+### Amendment 1: daily-file screen, 2.0 confirmation (registered 2026-11-16)
+
+The owner chose option 1 on 2026-11-16, with a margin below the volume floors. This amendment is registered before any in-window count is read. The only in-window bytes fetched so far are 20 quarter-hour exports for 2024-03-15, downloaded by a throughput test that recorded their byte size and never unzipped or parsed them.
+
+**Why the registered gate failed.** On 2026-11-10, GB's daily-file article count was 5.1% above the 2.0 rebuild, against a 5% limit. The two sources hold the same events. The daily file flags 2.3% more of them `IsRootEvent=1`, and the seeder counts root events only (see "Validation results"). Article counts in both the week and the norm rise by a few percent together, so protest share falls slightly in both and the ratio between them barely moves.
+
+**The daily file only screens.** No episode is selected from daily-file counts, and no magnitude is copied from them.
+
+**Admission gate, replacing the 5% article gate.** The daily file is admissible as a screen if, for each of the seven countries, the rule's ratio `week share / n` computed from daily files is within 10% of the same ratio from the 2.0 rebuild. The check is made at capture days 2026-11-13 and 2026-11-14. Both lie outside the window, and the 2.0 rebuild already covers 2026-10-15 to 2026-11-14. On these days the norm is 22 and 23 present days, above the 21-day minimum. A country whose 2.0 norm share is zero has no ratio and is not tested. The 10% tolerance matches the margin below the volume floors. Ratio criteria 4–6 are tested at the threshold, so a screen that shifted the ratio by more than the margin would drop real episodes. If the gate fails, the scan is not run and the finding is reported.
+
+**Screen criteria.** Criteria 1–3, the article-volume floors, admit weeks at 90% of each floor or above: week articles ≥ 180, week protest ≥ 31.5 (so 32), and norm protest ≥ 25.2 (so 26). This keeps near-floor weeks the daily file's root-flag noise could otherwise drop. The ratio (4, 6), duration (5), significance (7), norm-day and completeness requirements are unchanged. Episodes, peak days and their ordering are formed from screen results exactly as registered.
+
+**Confirmation of every screened episode.** Every screened episode's peak day is rebuilt from the 2.0 exports (days `T-35` to `T`, 96 exports each) and tested against the registered criteria 1–7 at their registered thresholds, plus the scorer eligibility check, exactly as in "Confirmation on the 2.0 stream". An episode that fails anywhere is dropped, and the reasons are recorded. The selection ordering (peak ratio ascending, then date, then ISO2) and the lower median are applied to the confirmed episodes only, with each episode's peak ratio taken from the 2.0 rebuild. The selected episode and every confirmed episode above or below it in the ranking therefore pass every registered threshold on the 2.0 rebuild. The report gives the number of screened episodes that fail on 2.0 and the failed criteria for each one. If no screened episode confirms, P15b has no episode.
+
+Everything else in this section stands as registered: thresholds, clustering, selection position and copied magnitudes. All copied magnitudes come from the 2.0 rebuild.
