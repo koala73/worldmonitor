@@ -50,7 +50,7 @@ window.__breakingNewsBannerHarness = { ready: false, layout: 'overlay' };
 const englishResourcesReady = new Promise<void>((resolve) => {
   window.addEventListener(I18N_RESOURCES_LOADED_EVENT, () => resolve(), { once: true });
 });
-await initI18n();
+await initI18n({ waitForFullTranslation: true });
 if (t('components.intelligenceFindings.time.justNow').startsWith('components.')) {
   await englishResourcesReady;
 }

@@ -188,7 +188,7 @@ const layers = {
   diseaseOutbreaks: false,
 };
 
-await initI18n();
+await initI18n({ waitForFullTranslation: true });
 
 // #7112: `?mobile=1` builds the component on its mobile branch, which selects
 // MAP_OVERLAY_MARKER_BUDGET_MOBILE (150/400) instead of the desktop 300/800.

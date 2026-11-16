@@ -4,7 +4,7 @@ import { PinnedWebcamsPanel } from '@/components/PinnedWebcamsPanel';
 import { pinWebcam } from '@/services/webcams/pinned-store';
 import { importSettings } from '@/utils/settings-persistence';
 
-await initI18n();
+await initI18n({ waitForFullTranslation: true });
 const panel = new PinnedWebcamsPanel();
 Object.assign(panel.getElement().style, { width: '100%', height: '620px', marginTop: '16px' });
 document.getElementById('webcam-fixture')!.appendChild(panel.getElement());
