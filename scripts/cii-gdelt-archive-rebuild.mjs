@@ -120,6 +120,7 @@ async function fetchBuffer(fetchImpl, url, maxBytes) {
       if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
       const buffer = Buffer.from(await response.arrayBuffer());
       if (buffer.length > maxBytes) throw new Error(`response over ${maxBytes} bytes for ${url}`);
+      buffer.storageMd5 = storageMd5(response.headers);
       return buffer;
     } catch (error) {
       lastError = error;
@@ -127,6 +128,13 @@ async function fetchBuffer(fetchImpl, url, maxBytes) {
     }
   }
   throw lastError;
+}
+
+/** The object's MD5 from Cloud Storage's `x-goog-hash` header, as hex, or null. */
+export function storageMd5(headers) {
+  const value = headers?.get?.('x-goog-hash') ?? '';
+  const match = /(?:^|,)\s*md5=([A-Za-z0-9+/=]+)/.exec(value);
+  return match ? Buffer.from(match[1], 'base64').toString('hex') : null;
 }
 
 function readJson(path) {
@@ -206,8 +214,12 @@ export async function rebuildDailyDay(date, { cacheDir, fetchImpl = globalThis.f
   const result = { date, available: false, countries: {} };
   if (zip) {
     const expected = md5s?.get(name);
-    if (expected && createHash('md5').update(zip).digest('hex') !== expected) {
-      throw new Error(`GDELT daily file ${name} failed MD5 verification`);
+    const actual = createHash('md5').update(zip).digest('hex');
+    if (expected && actual !== expected) {
+      // GDELT's md5sums list is stale for some dates. The bytes are accepted only
+      // when they match the stored object's own MD5, and the mismatch is recorded.
+      if (zip.storageMd5 !== actual) throw new Error(`GDELT daily file ${name} failed MD5 verification`);
+      result.listMd5Mismatch = { listed: expected, storage: actual };
     }
     result.available = true;
     result.verified = Boolean(expected);

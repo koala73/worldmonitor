@@ -175,6 +175,25 @@ describe('GDELT archive rebuild', () => {
     await assert.rejects(extractDailyCsv(zipOf('20261111.export.CSV', csv), '2026-11-12'), /unexpected daily ZIP entry/);
   });
 
+  it('accepts bytes that match the stored object MD5 when the md5sums list is stale, and rejects all others', async () => {
+    const csv = SAMPLE.split('\n').filter(Boolean).map(toDailyRow).join('\n');
+    const zip = zipOf('20230322.export.CSV', csv);
+    const hex = createHash('md5').update(zip).digest('hex');
+    const stale = new Map([['20230322.export.CSV.zip', '9fa71d95704e96cc896fc7f52b4866ba']]);
+    const serve = (hash) => async () => new Response(zip, { headers: { 'x-goog-hash': `crc32c=e/Vc9g==,md5=${Buffer.from(hash, 'hex').toString('base64')}` } });
+    const accepted = await rebuildDailyDay('2023-03-22', { cacheDir: mkdtempSync(join(tmpdir(), 'gdelt-md5-')), fetchImpl: serve(hex), md5s: stale });
+    assert.equal(accepted.available, true);
+    assert.deepEqual(accepted.listMd5Mismatch, { listed: '9fa71d95704e96cc896fc7f52b4866ba', storage: hex });
+    await assert.rejects(
+      rebuildDailyDay('2023-03-22', { cacheDir: mkdtempSync(join(tmpdir(), 'gdelt-md5-')), fetchImpl: serve('0'.repeat(32)), md5s: stale }),
+      /failed MD5 verification/,
+    );
+    await assert.rejects(
+      rebuildDailyDay('2023-03-22', { cacheDir: mkdtempSync(join(tmpdir(), 'gdelt-md5-')), fetchImpl: async () => new Response(zip), md5s: stale }),
+      /failed MD5 verification/,
+    );
+  });
+
   it('records a missing daily file as unavailable and caches it', async () => {
     const cacheDir = mkdtempSync(join(tmpdir(), 'gdelt-daily-test-'));
     let calls = 0;

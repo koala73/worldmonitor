@@ -264,6 +264,8 @@ async function main() {
       if (date.endsWith('-01')) log(`${date}: ${days[date].available ? 'ok' : 'missing'}`);
     }
     const missingDays = Object.entries(days).filter(([, day]) => !day.available).map(([date]) => date);
+    const md5ListMismatches = Object.entries(days).filter(([, day]) => day.listMd5Mismatch)
+      .map(([date, day]) => ({ date, ...day.listMd5Mismatch }));
     const { evaluations, episodes } = scanDays(days, SCREEN_RULE);
     const output = {
       rule: SCREEN_RULE,
@@ -271,6 +273,7 @@ async function main() {
       scannedFrom: dates[0],
       scannedTo: dates.at(-1),
       missingDays,
+      md5ListMismatches,
       episodeCount: episodes.length,
       episodes,
       qualifyingCaptureDays: Object.fromEntries(Object.entries(evaluations)
