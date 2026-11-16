@@ -115,6 +115,30 @@ describe('updateElementsHistory', () => {
     assert.equal(writes, 0);
   });
 
+  it('gives up at its own budget when R2 stalls, so the catalog job keeps its time limit', async () => {
+    let writes = 0;
+    const started = Date.now();
+    const result = await updateElementsHistory(catalog, {
+      storageConfig: config, nowMs: NOW, budgetMs: 50, readHistory: () => new Promise(() => {}), writeHistory: async () => { writes++; },
+    });
+    assert.equal(result.status, 'skipped-error');
+    assert.match(result.error, /timed out after 50ms/);
+    assert.ok(Date.now() - started < 1_000);
+    assert.equal(writes, 0);
+  });
+
+  it('does not write back a read that outlived the budget', async () => {
+    let now = 0;
+    let writes = 0;
+    const result = await updateElementsHistory(catalog, {
+      storageConfig: config, nowMs: NOW, budgetMs: 25_000, clock: () => now,
+      readHistory: async () => { now = 30_000; return null; }, writeHistory: async () => { writes++; },
+    });
+    assert.equal(result.status, 'skipped-error');
+    assert.match(result.error, /outlived/);
+    assert.equal(writes, 0);
+  });
+
   it('never writes after a failed or unreadable read, and never throws', async () => {
     const isoEpochs = { schema: HISTORY_SCHEMA, windowDays: HISTORY_DAYS, updatedAt: 0, entries: [{ noradId: 1, epoch: '2026-11-10T00:00:00Z', meanMotion: 15, eccentricity: 0.001, inclination: 97, raan: 10, bstar: 0 }] };
     for (const readHistory of [async () => { throw new Error('R2 get failed: HTTP 503'); }, async () => ({ schema: 99, entries: [] }), async () => isoEpochs]) {
