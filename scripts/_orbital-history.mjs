@@ -3,7 +3,7 @@
 // The catalog's daily ring keeps one snapshot per UTC day for 8 days and ships to every
 // Orbital Watch browser. Manoeuvre detection needs every new epoch over a longer window and
 // only the seeder reads it, so it lives in R2, not Redis. One entry per satellite per epoch.
-import { historyEntryFromOmm } from './_orbital-maneuvers.mjs';
+import { historyEntryFromOmm, isHistoryEntry } from './_orbital-maneuvers.mjs';
 
 export const ORBITAL_HISTORY_R2_KEY = 'seed-data/orbital/elements-history-v1.json';
 export const HISTORY_SCHEMA = 1;
@@ -16,14 +16,17 @@ function entryKey(entry) {
 }
 
 /**
- * Throws when a stored history is present but not one this code wrote, so the caller never
- * replaces history it cannot read with a fresh, shorter one.
+ * Throws when a stored history is present but not one this code wrote, including one with any
+ * entry it cannot read (an ISO-string epoch, a missing element), so the caller never replaces
+ * history it cannot read with a fresh, shorter one.
  */
 export function assertReadableHistory(previous) {
   if (previous == null) return;
   if (typeof previous !== 'object' || previous.schema !== HISTORY_SCHEMA || !Array.isArray(previous.entries)) {
     throw new Error(`orbital elements history has an unreadable shape (schema ${previous?.schema ?? 'missing'})`);
   }
+  const unreadable = previous.entries.findIndex((entry) => !isHistoryEntry(entry));
+  if (unreadable !== -1) throw new Error(`orbital elements history has an unreadable entry at index ${unreadable}`);
 }
 
 /**

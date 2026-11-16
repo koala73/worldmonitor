@@ -94,6 +94,11 @@ export function historyEntryFromOmm(omm) {
   return validEntry(entry) ? entry : null;
 }
 
+/** True for an entry this module can read: integer NORAD id, epoch milliseconds, finite elements. */
+export function isHistoryEntry(entry) {
+  return validEntry(entry);
+}
+
 function validEntry(entry) {
   return Boolean(entry)
     && Number.isInteger(entry.noradId) && entry.noradId > 0

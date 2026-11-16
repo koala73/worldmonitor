@@ -60,6 +60,15 @@ describe('mergeHistory', () => {
     assert.throws(() => mergeHistory('[]', SATELLITES, NOW), /unreadable shape/);
   });
 
+  it('refuses a stored history with any entry it cannot read, rather than dropping it', () => {
+    const good = { noradId: 1, epoch: NOW - DAY_MS, meanMotion: 15, eccentricity: 0.001, inclination: 97, raan: 10, bstar: null };
+    const stored = (bad) => ({ schema: HISTORY_SCHEMA, windowDays: HISTORY_DAYS, updatedAt: 0, entries: [good, bad] });
+    for (const bad of [{ ...good, epoch: '2026-11-10T00:00:00Z' }, { ...good, inclination: null }, { ...good, noradId: '1' }, null]) {
+      assert.throws(() => mergeHistory(stored(bad), SATELLITES, NOW), /unreadable entry at index 1/, JSON.stringify(bad));
+    }
+    assert.equal(mergeHistory(stored({ ...good, epoch: NOW - 2 * DAY_MS }), SATELLITES, NOW).history.entries.filter((e) => e.noradId === 1).length, 2);
+  });
+
   it('stays near the size the plan expects for 30 days', () => {
     // 297 profiled satellites; LEO imagers get about two new element sets a day.
     let history = null;
@@ -107,7 +116,8 @@ describe('updateElementsHistory', () => {
   });
 
   it('never writes after a failed or unreadable read, and never throws', async () => {
-    for (const readHistory of [async () => { throw new Error('R2 get failed: HTTP 503'); }, async () => ({ schema: 99, entries: [] })]) {
+    const isoEpochs = { schema: HISTORY_SCHEMA, windowDays: HISTORY_DAYS, updatedAt: 0, entries: [{ noradId: 1, epoch: '2026-11-10T00:00:00Z', meanMotion: 15, eccentricity: 0.001, inclination: 97, raan: 10, bstar: 0 }] };
+    for (const readHistory of [async () => { throw new Error('R2 get failed: HTTP 503'); }, async () => ({ schema: 99, entries: [] }), async () => isoEpochs]) {
       let writes = 0;
       const result = await updateElementsHistory(catalog, { storageConfig: config, nowMs: NOW, readHistory, writeHistory: async () => { writes++; } });
       assert.equal(result.status, 'skipped-error');
