@@ -1,19 +1,14 @@
 #!/usr/bin/env node
-// Extract shadow:score-log (defaults to v4; override via SHADOW_SCORE_KEY) from
-// Upstash and write a review bundle to ./shadow-score-report/. Parses both v2
-// JSON members and legacy v1 string members.
+// Read shadow:score-log:v5 (override with SHADOW_SCORE_KEY) and write ./shadow-score-report/.
+// The default must match SHADOW_SCORE_LOG_KEY in server/_shared/cache-keys.ts or this report reads a different log.
 // Usage: node scripts/shadow-score-report.mjs
 // Env:   UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN (reads .env.local if present)
-//        SHADOW_SCORE_KEY=shadow:score-log:v2 to read pre-weight-rebalance data
-//        SHADOW_SCORE_KEY=shadow:score-log:v1 to read pre-PR #3069 data
 
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { loadEnvFile } from './_seed-utils.mjs';
 
-// v2 is the post-fix key (JSON members). v1 is the legacy key (compact strings).
-// Override with SHADOW_SCORE_KEY=shadow:score-log:v2 (pre-weight-rebalance) or v1 (pre-PR #3069).
 const KEY = process.env.SHADOW_SCORE_KEY || 'shadow:score-log:v5';
 const OUT = resolve(process.cwd(), 'shadow-score-report');
 const GATE_MIN = 40;     // current IMPORTANCE_SCORE_MIN default
