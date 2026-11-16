@@ -1420,7 +1420,13 @@ export function replayPendingProFunnelEvents(): void {
   }
   if (!raw) return;
 
-  const sanitized: Array<{ productId: string; surface: 'pro-page' | 'pro-resume'; authed: boolean; vw?: ViewportBand }> = [];
+  const sanitized: Array<{
+    productId: string;
+    surface: 'pro-page' | 'pro-resume';
+    authed: boolean;
+    newAccount?: boolean;
+    vw?: ViewportBand;
+  }> = [];
   try {
     const items: unknown = JSON.parse(raw);
     if (Array.isArray(items)) {
@@ -1433,6 +1439,7 @@ export function replayPendingProFunnelEvents(): void {
           productId: bucketProductIdForAnalytics(String(d.productId ?? '')),
           surface: d.surface === 'pro-resume' ? 'pro-resume' : 'pro-page',
           authed: Boolean(d.authed),
+          ...(typeof d.newAccount === 'boolean' ? { newAccount: d.newAccount } : {}),
           ...(isViewportBand(d.vw) ? { vw: d.vw } : {}),
         });
       }

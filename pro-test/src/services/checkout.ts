@@ -32,6 +32,7 @@ import {
   postCreateCheckout,
 } from './checkout-transport';
 import { createTimeoutSignal } from './timeout-signal';
+import { watchAuthModalDismissal } from './auth-modal-watch';
 import { IN_PLACE_UPGRADE_SOURCE_PLANS, runProBusinessUpgradeFlow } from './pro-business-upgrade';
 import {
   checkoutRetryAtMs,
@@ -334,11 +335,45 @@ async function startCheckoutInner(
       console.error('[checkout] Failed to open sign in:', err);
       Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'checkout-sign-in' } });
       showCheckoutErrorToast('Sign-in could not open. Please try again.');
+      return false;
     }
+    trackAuthStep(c, productId, 'sign-in');
     return false;
   }
 
   return checkoutAs(c, productId, options ?? {});
+}
+
+type CheckoutAuthForm = 'sign-in' | 'sign-up';
+
+/** Funnel: the auth modal opened for a checkout click, and whether it closed without sign-in. */
+function trackAuthStep(c: LoadedClerk, productId: string, form: CheckoutAuthForm): void {
+  trackFunnelEvent('checkout-auth-shown', { productId: bucketProductIdForAnalytics(productId), surface: 'pro-page', form });
+  try {
+    watchAuthModalDismissal({
+      isSignedIn: () => Boolean(c.user),
+      onDismissed: ({ reachedCodeStep }) => {
+        trackFunnelEvent('checkout-auth-dismissed', {
+          productId: bucketProductIdForAnalytics(productId),
+          surface: 'pro-page',
+          form,
+          reachedCodeStep,
+        });
+      },
+    });
+  } catch {
+    /* analytics can never break checkout */
+  }
+}
+
+/** A resumed checkout counts as a new account when Clerk created the user this recently. */
+export const NEW_ACCOUNT_WINDOW_MS = 15 * 60_000;
+
+export function isRecentlyCreated(createdAt: Date | number | null | undefined, now: number): boolean {
+  const created = createdAt instanceof Date ? createdAt.getTime() : createdAt;
+  if (typeof created !== 'number' || !Number.isFinite(created)) return false;
+  const age = now - created;
+  return age >= 0 && age < NEW_ACCOUNT_WINDOW_MS;
 }
 
 type ProCheckoutOptions = NonNullable<Parameters<typeof startCheckout>[1]>;
@@ -431,10 +466,12 @@ export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
   // Funnel (#4931): post-sign-in auto-resume — the pre-auth click already
   // fired checkout-start{authed:false}; this marks the resumed attempt.
   // productId is URL-derived here — bucketed for analytics (round-4 F2).
+  const newAccount = isRecentlyCreated(c.user.createdAt, Date.now());
   trackFunnelEvent('checkout-start', {
     productId: bucketProductIdForAnalytics(productId),
     surface: 'pro-resume',
     authed: true,
+    newAccount,
     ...(checkoutAttribution
       ? { missionId: checkoutAttribution.missionId, panelKey: checkoutAttribution.panelKey }
       : {}),

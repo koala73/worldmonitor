@@ -212,3 +212,30 @@ it('releases checkout when the redirect never leaves the page', async () => {
     mock.timers.reset();
   }
 });
+
+it('records that the auth modal opened for a signed-out checkout click', async () => {
+  const f = await fixture({ signedOut: true });
+  assert.equal(await f.checkout.startCheckout('synthetic-product'), false);
+  const names = f.analyticsEvents.map(item => item.event);
+  assert.deepEqual(names, ['checkout-start', 'checkout-auth-shown']);
+  assert.equal(f.analyticsEvents[0]?.data?.authed, false);
+  assert.deepEqual(f.analyticsEvents[1]?.data, { productId: 'unknown', surface: 'pro-page', form: 'sign-in' });
+});
+
+it('does not record the auth modal as shown when it fails to open', async () => {
+  const f = await fixture({ signedOut: true, signInError: true });
+  assert.equal(await f.checkout.startCheckout('synthetic-product'), false);
+  assert.deepEqual(f.analyticsEvents.map(item => item.event), ['checkout-start']);
+});
+
+it('counts an account as new only within the window after creation', async () => {
+  const f = await fixture();
+  const now = Date.UTC(2026, 10, 16, 12);
+  assert.equal(f.checkout.isRecentlyCreated(new Date(now - 60_000), now), true);
+  assert.equal(f.checkout.isRecentlyCreated(now - 60_000, now), true);
+  assert.equal(f.checkout.isRecentlyCreated(new Date(now - 86_400_000), now), false);
+  assert.equal(f.checkout.isRecentlyCreated(new Date(now - f.checkout.NEW_ACCOUNT_WINDOW_MS), now), false);
+  assert.equal(f.checkout.isRecentlyCreated(undefined, now), false);
+  assert.equal(f.checkout.isRecentlyCreated(null, now), false);
+  assert.equal(f.checkout.isRecentlyCreated(new Date('invalid'), now), false);
+});
