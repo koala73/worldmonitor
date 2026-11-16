@@ -101,7 +101,7 @@ async function loadClerk(): Promise<LoadedClerk> {
         signUp: {
           start: {
             title: 'Create your account',
-            subtitle: 'An account is needed to continue. Payment is the next step.',
+            subtitle: 'If you picked a plan, secure checkout opens next.',
           },
         },
       },
