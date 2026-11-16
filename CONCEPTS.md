@@ -947,7 +947,10 @@ on a later one.
 Deferral is load-shedding, not failure — but it only pays for itself if the
 member eventually runs. A member deferred on every tick is a stall wearing
 deferral's clothing, and telling those two apart is the whole reason this
-vocabulary exists.
+vocabulary exists. The stall check judges only how old the member's data is,
+so a member that runs every tick but fails as a Graceful Skip also reads as
+stalled the first time it is deferred. Check whether the member ran on earlier
+ticks before you treat a stall as starvation.
 
 ### Graceful Skip
 
