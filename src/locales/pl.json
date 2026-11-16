@@ -5450,6 +5450,12 @@
       "passes_many": "{{count}} przelotów",
       "passes_other": "{{count}} przelotu"
     },
+    "siteSatellites": {
+      "heading": "Śledzone satelity nad tym miejscem · kolejne {{hours}} h",
+      "none": "Żaden śledzony satelita obrazujący nie obejmuje tego miejsca w ciągu {{hours}} h.",
+      "notLoaded": "Otwórz miejsce ponownie, aby spróbować jeszcze raz; nie wczytano elementów orbitalnych.",
+      "failed": "Otwórz miejsce ponownie, aby spróbować jeszcze raz; obliczenie przelotów nie powiodło się."
+    },
     "sheet": {
       "heading": "Dowody ze zdjęć satelitarnych",
       "window": "Ostatnie {{days}} dni, następne {{hours}} h",

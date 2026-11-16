@@ -5386,6 +5386,12 @@
       "passes_one": "{{count}} passage",
       "passes_other": "{{count}} passager"
     },
+    "siteSatellites": {
+      "heading": "Spårade satelliter över platsen · kommande {{hours}} h",
+      "none": "Ingen spårad avbildningssatellit täcker platsen inom {{hours}} h.",
+      "notLoaded": "Öppna platsen igen för att försöka på nytt; banelementen kunde inte läsas in.",
+      "failed": "Öppna platsen igen för att försöka på nytt; passageberäkningen misslyckades."
+    },
     "sheet": {
       "heading": "Bildbevis",
       "window": "Senaste {{days}} dagar, nästa {{hours}} h",

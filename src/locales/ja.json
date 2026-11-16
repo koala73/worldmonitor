@@ -5354,6 +5354,12 @@
       "count_other": "{{family}}の観測範囲内に{{count}}地点",
       "passes_other": "{{count}}回の通過"
     },
+    "siteSatellites": {
+      "heading": "この地点上空の追跡衛星 · 今後{{hours}}時間",
+      "none": "{{hours}}時間以内にこの地点をカバーする追跡中の撮像衛星はありません。",
+      "notLoaded": "再試行するには地点を開き直してください。衛星の軌道要素を読み込めませんでした。",
+      "failed": "再試行するには地点を開き直してください。通過の計算に失敗しました。"
+    },
     "sheet": {
       "heading": "衛星画像の証拠",
       "window": "過去{{days}}日間、今後{{hours}}時間",

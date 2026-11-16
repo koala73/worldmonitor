@@ -82,7 +82,7 @@
 .ies-thumb { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .ies-thumb-caption { font: 10px var(--font-mono); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ies-table { list-style: none; margin: 0; padding: 0; }
-.ies-row, .ies-event {
+.ies-row, .ies-event, .ies-static-row {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -106,6 +106,7 @@
 .ies-group + .ies-group { margin-top: 10px; }
 .ies-group-title { margin: 0 0 4px; font-weight: 500; }
 .ies-more { margin-top: 6px; }
+.ies-table > [hidden] { display: none; }
 .ies-alert { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; font-size: 12px; color: var(--text-secondary); }
 .ies-alert-cta { font: 11px var(--font-mono); color: var(--green-text, var(--green)); text-decoration: none; border: 1px solid var(--green); border-radius: 3px; padding: 4px 8px; white-space: nowrap; }
 .ies-footer { border-top: 1px solid var(--border); padding: 8px 16px; font-size: 11px; color: var(--text-muted); }

@@ -5386,6 +5386,12 @@
       "passes_one": "{{count}} overkomst",
       "passes_other": "{{count}} overkomsten"
     },
+    "siteSatellites": {
+      "heading": "Gevolgde satellieten boven deze locatie · volgende {{hours}} u",
+      "none": "Geen gevolgde beeldsatelliet dekt deze locatie binnen {{hours}} u.",
+      "notLoaded": "Open de locatie opnieuw om het nogmaals te proberen; de baanelementen zijn niet geladen.",
+      "failed": "Open de locatie opnieuw om het nogmaals te proberen; de passageberekening is mislukt."
+    },
     "sheet": {
       "heading": "Bewijsmateriaal uit satellieten",
       "window": "Afgelopen {{days}} dagen, komende {{hours}} u",

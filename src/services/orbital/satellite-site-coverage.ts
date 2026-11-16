@@ -217,3 +217,57 @@ export async function sitesCoveredBySatellite(input: {
   const coverage = await entry.work.join(input.signal, () => { throw new DOMException('Aborted', 'AbortError'); });
   return coverageAt(coverage, input.nowMs);
 }
+
+export interface SiteSatellite {
+  noradId: string;
+  name: string;
+  sensor: CoverageSensor;
+  /** Closest approaches inside the modelled footprint, earliest first. */
+  passes: CoveragePass[];
+}
+
+/** One stable registry per site, so a reopened site reads the satellites' cached scans. */
+const singleSiteRegistries = new Map<string, readonly CoverageSite[]>();
+/** A site scans every drawn satellite, so its cache holds a whole layer's scans. */
+const SITE_SCAN_CACHE_ENTRIES = 1024;
+/** Scans that answered nothing about the site; if no scan answers, the site's answer is unknown, not empty. */
+const FAILED_SCANS = new Set<SatelliteCoverage['status']>(['unavailable', 'bad-elements', 'too-old']);
+
+/**
+ * The tracked satellites whose modelled footprint covers `site` in the window, earliest
+ * pass first: the reverse of `sitesCoveredBySatellite`, from the same scan, so a site
+ * and a satellite card always agree.
+ */
+export async function satellitesCoveringSite(input: {
+  site: CoverageSite;
+  tles: readonly TrackedSatelliteTle[];
+  nowMs: number;
+  hours?: number;
+  signal?: AbortSignal;
+}): Promise<SiteSatellite[]> {
+  const { site, tles, nowMs, hours, signal } = input;
+  let sites = singleSiteRegistries.get(site.id);
+  if (!sites) {
+    sites = [site];
+    singleSiteRegistries.set(site.id, sites);
+    coverageCaches.set(sites, new BoundedCache<CoverageEntry>(SITE_SCAN_CACHE_ENTRIES));
+  }
+  const covering: SiteSatellite[] = [];
+  let answered = 0;
+  let failed = 0;
+  let sliceStart = performance.now();
+  for (const tle of tles) {
+    if (performance.now() - sliceStart > YIELD_AFTER_MS) {
+      await nextTick();
+      signal?.throwIfAborted();
+      sliceStart = performance.now();
+    }
+    const coverage = await sitesCoveredBySatellite({ tle, sites, nowMs, hours, signal });
+    if (coverage.status === 'ok') answered++;
+    else if (FAILED_SCANS.has(coverage.status)) failed++;
+    const passes = coverage.status === 'ok' ? coverage.sites[0]?.passes : undefined;
+    if (coverage.status === 'ok' && passes?.length) covering.push({ noradId: tle.noradId, name: tle.name, sensor: coverage.sensor, passes });
+  }
+  if (answered === 0 && failed > 0) throw new Error('No satellite pass could be projected for this site');
+  return covering.sort((a, b) => a.passes[0]!.timeMs - b.passes[0]!.timeMs || a.name.localeCompare(b.name));
+}

@@ -5354,6 +5354,12 @@
       "count_other": "{{count}} địa điểm trong vùng quan sát của {{family}}",
       "passes_other": "{{count}} lượt bay qua"
     },
+    "siteSatellites": {
+      "heading": "Vệ tinh được theo dõi trên địa điểm này · {{hours}} giờ tới",
+      "none": "Không có vệ tinh chụp ảnh được theo dõi nào bao phủ địa điểm này trong {{hours}} giờ.",
+      "notLoaded": "Mở lại địa điểm để thử lại; không tải được các phần tử quỹ đạo của vệ tinh.",
+      "failed": "Mở lại địa điểm để thử lại; tính toán lượt bay qua thất bại."
+    },
     "sheet": {
       "heading": "Bằng chứng ảnh vệ tinh",
       "window": "{{days}} ngày qua, {{hours}} h tới",

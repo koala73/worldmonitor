@@ -5418,6 +5418,12 @@
       "passes_many": "{{count}} passages",
       "passes_other": "{{count}} passages"
     },
+    "siteSatellites": {
+      "heading": "Satellites suivis au-dessus de ce site · prochaines {{hours}} h",
+      "none": "Aucun satellite d’imagerie suivi ne couvre ce site dans les {{hours}} h.",
+      "notLoaded": "Rouvrez le site pour réessayer ; les éléments orbitaux ne se sont pas chargés.",
+      "failed": "Rouvrez le site pour réessayer ; le calcul des passages a échoué."
+    },
     "sheet": {
       "heading": "Preuves d'imagerie",
       "window": "Derniers {{days}} jours, prochaines {{hours}} h",
