@@ -57,7 +57,7 @@ describe('Orbital Watch on the pricing page and in the product facts (#10761)', 
     assert.match(generator, /orbitalWatchAccess\(TIER_BY_PLAN_KEY\[planKey\]\)/);
     assert.match(generator, /orbitalWatchAccess\('free'\) \?/);
     for (const doc of ['docs/pricing.mdx', 'docs/zh/pricing.mdx']) {
-      assert.match(read(doc), /\{\/\* orbital-watch-pricing:start \*\/\}\n[^]*Orbital Watch[^]*\{\/\* orbital-watch-pricing:end \*\/\}/, doc);
+      assert.match(read(doc), /\{\/\* orbital-watch-pricing:start \*\/\}\n[\s\S]*Orbital Watch[\s\S]*\{\/\* orbital-watch-pricing:end \*\/\}/, doc);
     }
   });
 });
