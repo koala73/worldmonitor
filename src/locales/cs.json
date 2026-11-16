@@ -5563,7 +5563,7 @@
     "privacy": {
       "line": "Váš bod se odešle pouze do archivů obrázků.",
       "more": "Podrobnosti",
-      "body": "Průchody se počítají na tomto zařízení. Při hledání obrázků váš prohlížeč odesílá bod přímo do Earth Search, Planetary Computer, NASA GIBS a EUMETSAT; WorldMonitor jej neobdrží. Zadaný název místa se odesílá do WorldMonitor a OpenStreetMap Nominatim k vyhledání. Sdílené odkazy mají dvě desetinná místa (0,01°)."
+      "body": "Průchody se počítají na tomto zařízení. Při hledání obrázků váš prohlížeč odesílá bod přímo do Earth Search, Planetary Computer, NASA GIBS a EUMETSAT; WorldMonitor jej neobdrží. U sledovaného místa se WorldMonitor žádá o denní záznam tohoto místa podle jeho ID, ne podle vašeho bodu. Zadaný název místa se odesílá do WorldMonitor a OpenStreetMap Nominatim k vyhledání. Sdílené odkazy mají dvě desetinná místa (0,01°)."
     },
     "sources": {
       "heading": "Zdroje ({{count}})",
@@ -5620,6 +5620,23 @@
         "mosaicNoLayer": "Pro tento satelit není dostupná denní mozaika.",
         "mosaicUnavailable": "Denní mozaika se nenačetla.",
         "mosaicAlt": "NASA GIBS {{source}} denní mozaika pro {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Sledované místo",
+      "loading": "Načítání denního záznamu místa…",
+      "failed": "Denní záznam místa se nenačetl; otevřete bod znovu a zkuste to znovu.",
+      "stale": "Pro toto místo není k dispozici aktuální denní kontrola.",
+      "checked": "Zkontrolováno",
+      "noPass": "Žádný nadcházející přelet v záznamu",
+      "list": {
+        "hotspot": "ohnisko",
+        "conflictZone": "konfliktní zóna",
+        "militaryBase": "vojenská základna",
+        "nuclearFacility": "jaderné zařízení",
+        "port": "přístav",
+        "chokepoint": "úžina",
+        "reservoir": "nádrž"
       }
     }
   },

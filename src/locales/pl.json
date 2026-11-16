@@ -5563,7 +5563,7 @@
     "privacy": {
       "line": "Twój punkt trafia tylko do archiwów obrazów.",
       "more": "Szczegóły",
-      "body": "Przejścia są obliczane na tym urządzeniu. Aby znaleźć obrazy, Twoja przeglądarka wysyła punkt bezpośrednio do Earth Search, Planetary Computer, NASA GIBS i EUMETSAT; WorldMonitor go nie otrzymuje. Wpisana nazwa miejsca trafia do WorldMonitor i OpenStreetMap Nominatim w celu jej zlokalizowania. Udostępniane linki zachowują dwa miejsca dziesiętne (0,01°)."
+      "body": "Przejścia są obliczane na tym urządzeniu. Aby znaleźć obrazy, Twoja przeglądarka wysyła punkt bezpośrednio do Earth Search, Planetary Computer, NASA GIBS i EUMETSAT; WorldMonitor go nie otrzymuje. W monitorowanym miejscu WorldMonitor otrzymuje prośbę o dzienny zapis tego miejsca według jego identyfikatora, a nie Twojego punktu. Wpisana nazwa miejsca trafia do WorldMonitor i OpenStreetMap Nominatim w celu jej zlokalizowania. Udostępniane linki zachowują dwa miejsca dziesiętne (0,01°)."
     },
     "sources": {
       "heading": "Źródła ({{count}})",
@@ -5620,6 +5620,23 @@
         "mosaicNoLayer": "Dla tego satelity nie ma dostępnej mozaiki dziennej.",
         "mosaicUnavailable": "Mozaika dzienna nie została załadowana.",
         "mosaicAlt": "Mozaika dzienna NASA GIBS {{source}} dla {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Monitorowane miejsce",
+      "loading": "Wczytywanie dziennego zapisu miejsca…",
+      "failed": "Nie udało się wczytać dziennego zapisu miejsca; otwórz punkt ponownie, aby spróbować jeszcze raz.",
+      "stale": "Brak aktualnej dziennej kontroli dla tego miejsca.",
+      "checked": "Sprawdzono",
+      "noPass": "Brak zapisanego nadchodzącego przelotu",
+      "list": {
+        "hotspot": "punkt zapalny",
+        "conflictZone": "strefa konfliktu",
+        "militaryBase": "baza wojskowa",
+        "nuclearFacility": "obiekt jądrowy",
+        "port": "port",
+        "chokepoint": "cieśnina",
+        "reservoir": "zbiornik wodny"
       }
     }
   },

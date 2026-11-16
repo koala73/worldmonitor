@@ -4798,7 +4798,7 @@
     "privacy": {
       "line": "Your point goes only to the image archives.",
       "more": "Details",
-      "body": "Passes are computed on this device. To find images, your browser sends the point straight to Earth Search, Planetary Computer, NASA GIBS and EUMETSAT; WorldMonitor does not receive it. A typed place name goes to WorldMonitor and OpenStreetMap Nominatim to be found. Shared links keep two decimals (0.01°)."
+      "body": "Passes are computed on this device. To find images, your browser sends the point straight to Earth Search, Planetary Computer, NASA GIBS and EUMETSAT; WorldMonitor does not receive it. On a monitored site, WorldMonitor is asked for that site's daily record by the site's ID, not your point. A typed place name goes to WorldMonitor and OpenStreetMap Nominatim to be found. Shared links keep two decimals (0.01°)."
     },
     "sources": {
       "heading": "Sources ({{count}})",
@@ -4985,6 +4985,23 @@
         "mosaicNoLayer": "No daily mosaic is available for this satellite.",
         "mosaicUnavailable": "The daily mosaic did not load.",
         "mosaicAlt": "NASA GIBS {{source}} daily mosaic for {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Monitored site",
+      "loading": "Loading the site's daily record…",
+      "failed": "The site's daily record did not load; reopen the point to retry.",
+      "stale": "No current daily check on record for this site.",
+      "checked": "Checked",
+      "noPass": "No upcoming pass on record",
+      "list": {
+        "hotspot": "hotspot",
+        "conflictZone": "conflict zone",
+        "militaryBase": "military base",
+        "nuclearFacility": "nuclear facility",
+        "port": "port",
+        "chokepoint": "chokepoint",
+        "reservoir": "reservoir"
       }
     }
   },

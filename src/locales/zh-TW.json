@@ -5455,7 +5455,7 @@
     "privacy": {
       "line": "您的點位僅傳送到影象檔案庫。",
       "more": "詳情",
-      "body": "軌道過境時間在本裝置上計算。為了查詢影象，您的瀏覽器將該點位直接傳送到 Earth Search、Planetary Computer、NASA GIBS 和 EUMETSAT；WorldMonitor 不會收到它。輸入的地名將傳送到 WorldMonitor 和 OpenStreetMap Nominatim 進行定位。共享連結保留兩位小數（0.01°）。"
+      "body": "軌道過境時間在本裝置上計算。為了查詢影象，您的瀏覽器將該點位直接傳送到 Earth Search、Planetary Computer、NASA GIBS 和 EUMETSAT；WorldMonitor 不會收到它。在監測站點上，系統按站點 ID 向 WorldMonitor 請求該站點的每日記錄，而不是按您的點位。輸入的地名將傳送到 WorldMonitor 和 OpenStreetMap Nominatim 進行定位。共享連結保留兩位小數（0.01°）。"
     },
     "sources": {
       "heading": "資料來源 ({{count}})",
@@ -5512,6 +5512,23 @@
         "mosaicNoLayer": "此衛星沒有可用的每日合成圖。",
         "mosaicUnavailable": "每日合成圖載入失敗。",
         "mosaicAlt": "NASA GIBS {{source}} {{date}} 每日合成圖"
+      }
+    },
+    "site": {
+      "heading": "監測站點",
+      "loading": "正在載入站點的每日記錄…",
+      "failed": "站點的每日記錄未能載入；請重新開啟該點以重試。",
+      "stale": "此站點沒有當前的每日檢查記錄。",
+      "checked": "檢查時間",
+      "noPass": "沒有即將到來的過境記錄",
+      "list": {
+        "hotspot": "熱點",
+        "conflictZone": "衝突區",
+        "militaryBase": "軍事基地",
+        "nuclearFacility": "核設施",
+        "port": "港口",
+        "chokepoint": "咽喉要道",
+        "reservoir": "水庫"
       }
     }
   },

@@ -5635,7 +5635,7 @@
     "privacy": {
       "line": "نقطتك تذهب فقط إلى أرشيفات الصور.",
       "more": "التفاصيل",
-      "body": "يتم حساب المسارات على هذا الجهاز. للعثور على الصور، يرسل متصفحك النقطة مباشرة إلى Earth Search و Planetary Computer و NASA GIBS و EUMETSAT؛ لا يتلقاها WorldMonitor. يذهب اسم المكان المكتوب إلى WorldMonitor و OpenStreetMap Nominatim للعثور عليه. الروابط المشاركة تحتفظ برقمين عشريين (0.01°)."
+      "body": "يتم حساب المسارات على هذا الجهاز. للعثور على الصور، يرسل متصفحك النقطة مباشرة إلى Earth Search و Planetary Computer و NASA GIBS و EUMETSAT؛ لا يتلقاها WorldMonitor. في موقع مراقَب، يُطلب من WorldMonitor السجل اليومي لذلك الموقع بمعرّف الموقع، لا بنقطتك. يذهب اسم المكان المكتوب إلى WorldMonitor و OpenStreetMap Nominatim للعثور عليه. الروابط المشاركة تحتفظ برقمين عشريين (0.01°)."
     },
     "sources": {
       "heading": "المصادر ({{count}})",
@@ -5692,6 +5692,23 @@
         "mosaicNoLayer": "لا توجد فسيفساء يومية متاحة لهذا القمر الصناعي.",
         "mosaicUnavailable": "لم يتم تحميل الفسيفساء اليومية.",
         "mosaicAlt": "فسيفساء NASA GIBS اليومية {{source}} لـ {{date}}"
+      }
+    },
+    "site": {
+      "heading": "موقع مراقَب",
+      "loading": "جارٍ تحميل السجل اليومي للموقع…",
+      "failed": "تعذّر تحميل السجل اليومي للموقع؛ أعد فتح النقطة لإعادة المحاولة.",
+      "stale": "لا يوجد فحص يومي حالي مسجّل لهذا الموقع.",
+      "checked": "آخر فحص",
+      "noPass": "لا يوجد مرور قادم مسجّل",
+      "list": {
+        "hotspot": "نقطة ساخنة",
+        "conflictZone": "منطقة نزاع",
+        "militaryBase": "قاعدة عسكرية",
+        "nuclearFacility": "منشأة نووية",
+        "port": "ميناء",
+        "chokepoint": "ممر ضيق",
+        "reservoir": "خزان مائي"
       }
     }
   },

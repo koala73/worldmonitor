@@ -5527,7 +5527,7 @@
     "privacy": {
       "line": "Il tuo punto va solo agli archivi di immagini.",
       "more": "Dettagli",
-      "body": "I passaggi sono calcolati su questo dispositivo. Per trovare le immagini, il tuo browser invia il punto direttamente a Earth Search, Planetary Computer, NASA GIBS e EUMETSAT; WorldMonitor non lo riceve. Un nome di luogo digitato viene inviato a WorldMonitor e OpenStreetMap Nominatim per essere trovato. I link condivisi mantengono due decimali (0,01°)."
+      "body": "I passaggi sono calcolati su questo dispositivo. Per trovare le immagini, il tuo browser invia il punto direttamente a Earth Search, Planetary Computer, NASA GIBS e EUMETSAT; WorldMonitor non lo riceve. Su un sito monitorato, a WorldMonitor viene chiesto il registro giornaliero di quel sito tramite il suo ID, non tramite il tuo punto. Un nome di luogo digitato viene inviato a WorldMonitor e OpenStreetMap Nominatim per essere trovato. I link condivisi mantengono due decimali (0,01°)."
     },
     "sources": {
       "heading": "Fonti ({{count}})",
@@ -5584,6 +5584,23 @@
         "mosaicNoLayer": "Nessun mosaico giornaliero è disponibile per questo satellite.",
         "mosaicUnavailable": "Il mosaico giornaliero non è stato caricato.",
         "mosaicAlt": "Mosaico giornaliero NASA GIBS {{source}} per {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Sito monitorato",
+      "loading": "Caricamento del registro giornaliero del sito…",
+      "failed": "Il registro giornaliero del sito non è stato caricato; riapri il punto per riprovare.",
+      "stale": "Nessun controllo giornaliero attuale registrato per questo sito.",
+      "checked": "Controllato",
+      "noPass": "Nessun passaggio imminente registrato",
+      "list": {
+        "hotspot": "punto caldo",
+        "conflictZone": "zona di conflitto",
+        "militaryBase": "base militare",
+        "nuclearFacility": "impianto nucleare",
+        "port": "porto",
+        "chokepoint": "stretto",
+        "reservoir": "bacino idrico"
       }
     }
   },

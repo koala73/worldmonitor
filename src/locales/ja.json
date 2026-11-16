@@ -5455,7 +5455,7 @@
     "privacy": {
       "line": "ご指定のポイントはイメージアーカイブのみに送信されます。",
       "more": "詳細",
-      "body": "パスはこのデバイス上で計算されます。イメージを検索するとき、ブラウザはそのポイントを Earth Search、Planetary Computer、NASA GIBS、EUMETSAT に直接送信します。WorldMonitor は受信しません。入力された地名は WorldMonitor と OpenStreetMap Nominatim に送信され、検索されます。共有リンクは小数点以下2桁（0.01°）を保持します。"
+      "body": "パスはこのデバイス上で計算されます。イメージを検索するとき、ブラウザはそのポイントを Earth Search、Planetary Computer、NASA GIBS、EUMETSAT に直接送信します。WorldMonitor は受信しません。監視対象サイトでは、WorldMonitor にはそのサイトの日次記録をサイト ID で問い合わせ、ポイントは送信しません。入力された地名は WorldMonitor と OpenStreetMap Nominatim に送信され、検索されます。共有リンクは小数点以下2桁（0.01°）を保持します。"
     },
     "sources": {
       "heading": "ソース ({{count}})",
@@ -5512,6 +5512,23 @@
         "mosaicNoLayer": "この衛星の日次モザイクは利用できません。",
         "mosaicUnavailable": "日次モザイクが読み込まれませんでした。",
         "mosaicAlt": "NASA GIBS {{source}} {{date}}の日次モザイク"
+      }
+    },
+    "site": {
+      "heading": "監視対象サイト",
+      "loading": "サイトの日次記録を読み込み中…",
+      "failed": "サイトの日次記録を読み込めませんでした。地点を開き直して再試行してください。",
+      "stale": "このサイトには現在の日次チェックの記録がありません。",
+      "checked": "確認日時",
+      "noPass": "予定されている通過の記録はありません",
+      "list": {
+        "hotspot": "ホットスポット",
+        "conflictZone": "紛争地域",
+        "militaryBase": "軍事基地",
+        "nuclearFacility": "核施設",
+        "port": "港湾",
+        "chokepoint": "海峡",
+        "reservoir": "貯水池"
       }
     }
   },

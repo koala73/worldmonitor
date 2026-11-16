@@ -5491,7 +5491,7 @@
     "privacy": {
       "line": "Din punkt skickas endast till bildarkiven.",
       "more": "Detaljer",
-      "body": "Passager beräknas på denna enhet. För att hitta bilder skickar din webbläsare punkten direkt till Earth Search, Planetary Computer, NASA GIBS och EUMETSAT; WorldMonitor tar inte emot den. Ett inskrivet ortnamn skickas till WorldMonitor och OpenStreetMap Nominatim för att hittas. Delade länkar behåller två decimaler (0,01°)."
+      "body": "Passager beräknas på denna enhet. För att hitta bilder skickar din webbläsare punkten direkt till Earth Search, Planetary Computer, NASA GIBS och EUMETSAT; WorldMonitor tar inte emot den. På en övervakad plats tillfrågas WorldMonitor om platsens dagliga register via platsens ID, inte din punkt. Ett inskrivet ortnamn skickas till WorldMonitor och OpenStreetMap Nominatim för att hittas. Delade länkar behåller två decimaler (0,01°)."
     },
     "sources": {
       "heading": "Källor ({{count}})",
@@ -5548,6 +5548,23 @@
         "mosaicNoLayer": "Ingen daglig mosaik är tillgänglig för denna satellit.",
         "mosaicUnavailable": "Den dagliga mosaiken laddades inte.",
         "mosaicAlt": "NASA GIBS {{source}} daglig mosaik för {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Övervakad plats",
+      "loading": "Läser in platsens dagliga register…",
+      "failed": "Platsens dagliga register kunde inte läsas in; öppna punkten igen för att försöka på nytt.",
+      "stale": "Ingen aktuell daglig kontroll registrerad för den här platsen.",
+      "checked": "Kontrollerad",
+      "noPass": "Ingen kommande passage registrerad",
+      "list": {
+        "hotspot": "krishärd",
+        "conflictZone": "konfliktzon",
+        "militaryBase": "militärbas",
+        "nuclearFacility": "kärnteknisk anläggning",
+        "port": "hamn",
+        "chokepoint": "sund",
+        "reservoir": "vattenmagasin"
       }
     }
   },

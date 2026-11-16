@@ -5527,7 +5527,7 @@
     "privacy": {
       "line": "Seu ponto vai apenas para os arquivos de imagens.",
       "more": "Detalhes",
-      "body": "As passagens são calculadas neste dispositivo. Para encontrar imagens, seu navegador envia o ponto direto para Earth Search, Planetary Computer, NASA GIBS e EUMETSAT; o WorldMonitor não o recebe. Um nome de lugar digitado vai para WorldMonitor e OpenStreetMap Nominatim para ser localizado. Links compartilhados mantêm duas casas decimais (0,01°)."
+      "body": "As passagens são calculadas neste dispositivo. Para encontrar imagens, seu navegador envia o ponto direto para Earth Search, Planetary Computer, NASA GIBS e EUMETSAT; o WorldMonitor não o recebe. Em um local monitorado, o WorldMonitor recebe o pedido do registro diário desse local pelo ID do local, não pelo seu ponto. Um nome de lugar digitado vai para WorldMonitor e OpenStreetMap Nominatim para ser localizado. Links compartilhados mantêm duas casas decimais (0,01°)."
     },
     "sources": {
       "heading": "Fontes ({{count}})",
@@ -5584,6 +5584,23 @@
         "mosaicNoLayer": "Nenhum mosaico diário disponível para este satélite.",
         "mosaicUnavailable": "O mosaico diário não carregou.",
         "mosaicAlt": "Mosaico diário NASA GIBS {{source}} para {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Local monitorado",
+      "loading": "Carregando o registro diário do local…",
+      "failed": "O registro diário do local não carregou; reabra o ponto para tentar novamente.",
+      "stale": "Nenhuma verificação diária atual registrada para este local.",
+      "checked": "Verificado",
+      "noPass": "Nenhuma passagem futura registrada",
+      "list": {
+        "hotspot": "ponto crítico",
+        "conflictZone": "zona de conflito",
+        "militaryBase": "base militar",
+        "nuclearFacility": "instalação nuclear",
+        "port": "porto",
+        "chokepoint": "estreito",
+        "reservoir": "reservatório"
       }
     }
   },

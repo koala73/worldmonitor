@@ -1,5 +1,7 @@
 import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
 import { OPTICAL_MIN_SUN_ELEVATION_DEG, type PassTier } from '../../shared/orbital/tiers.js';
+import type { WatchedSite, WatchedSiteOriginList } from '../../shared/watched-sites';
+import type { GetWatchedSiteImageryResponse } from '@/generated/client/worldmonitor/orbital/v1/service_client';
 import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { EvidenceProgress, MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
@@ -33,6 +35,18 @@ export type OrbitalWatchState =
   | { kind: 'computing'; done: number; total: number }
   | { kind: 'unavailable' }
   | { kind: 'passes'; lookup: PointPassLookup; archives: ArchiveState };
+
+/** The watched site the point falls on, and its public record (read by site id, never by the point). */
+export type WatchedSiteState =
+  | { kind: 'none' }
+  | { kind: 'loading'; site: WatchedSite }
+  | { kind: 'loaded'; site: WatchedSite; record: GetWatchedSiteImageryResponse }
+  | { kind: 'failed'; site: WatchedSite };
+
+const SITE_LIST_KEY: Record<WatchedSiteOriginList, string> = {
+  hotspot: 'hotspot', 'conflict-zone': 'conflictZone', 'military-base': 'militaryBase', 'nuclear-facility': 'nuclearFacility',
+  port: 'port', chokepoint: 'chokepoint', reservoir: 'reservoir',
+};
 
 /** Empty mount points other surfaces fill: the place search and the timeline. */
 export type OrbitalSlot = 'search' | 'timeline' | 'water';
@@ -607,6 +621,7 @@ export class OrbitalWatchPage {
   private readonly expanded = new Set<OperatingGroup>();
   private state: OrbitalWatchState | null = null;
   private context: PointContextState = { kind: 'loading' };
+  private watchedSite: WatchedSiteState = { kind: 'none' };
   private openSeq = 0;
 
   constructor(private readonly callbacks: OrbitalWatchPageCallbacks) {
@@ -670,11 +685,27 @@ export class OrbitalWatchPage {
     this.renderSubline();
   }
 
-  /** Coordinates under a place name (an unnamed point already shows them as its name), then the country. */
+  /** Coordinates under a place name (an unnamed point already shows them as its name), then the country, then "monitored site". */
   private renderSubline(): void {
     const code = this.context.kind === 'loaded' ? this.context.context.countryCode : null;
-    this.coords.textContent = [this.placeName && this.point ? formatCoords(this.point) : null, code ? iso2ToCountryName(code) : null]
-      .filter(Boolean).join(' · ');
+    const named = this.placeName ?? this.siteName();
+    this.coords.textContent = [
+      named && this.point ? formatCoords(this.point) : null,
+      code ? iso2ToCountryName(code) : null,
+      this.watchedSite.kind === 'none' ? null : t('orbitalWatch.site.heading'),
+    ].filter(Boolean).join(' · ');
+  }
+
+  private siteName(): string | null {
+    return this.watchedSite.kind === 'none' ? null : this.watchedSite.site.name;
+  }
+
+  /** The watched site the open point falls on; an unnamed point takes the site's name. */
+  setWatchedSite(state: WatchedSiteState): void {
+    this.watchedSite = state;
+    this.place.textContent = this.placeLabel();
+    this.renderSubline();
+    if (this.state) this.render(this.state);
   }
 
   /** The conflict, fire, unrest and outage rows near the point, shared with the timeline. */
@@ -696,7 +727,7 @@ export class OrbitalWatchPage {
   }
 
   private placeLabel(): string {
-    return this.placeName ?? (this.point ? formatCoords(this.point) : t('orbitalWatch.search.label'));
+    return this.placeName ?? this.siteName() ?? (this.point ? formatCoords(this.point) : t('orbitalWatch.search.label'));
   }
 
   private setHeight(height: SheetHeight): void {
@@ -717,6 +748,7 @@ export class OrbitalWatchPage {
     this.selectedKey = null;
     this.compareKey = null;
     this.context = { kind: 'loading' };
+    this.watchedSite = { kind: 'none' };
     this.place.textContent = this.placeLabel();
     this.renderSubline();
     this.placeZone = point ? placeTimeZone(point) : null;
@@ -854,12 +886,12 @@ export class OrbitalWatchPage {
   private renderState(state: OrbitalWatchState): DomChild[] {
     if (state.kind === 'idle') return [h('p', { className: 'ies-empty' }, t('orbitalWatch.search.idle'))];
     if (state.kind === 'unavailable') {
-      return [h('div', { className: 'ies-empty' }, h('p', null, t('orbitalWatch.status.unavailable')), this.retryButton()), this.slots.water];
+      return [h('div', { className: 'ies-empty' }, h('p', null, t('orbitalWatch.status.unavailable')), this.retryButton()), this.siteSection(), this.slots.water];
     }
     if (state.kind === 'computing') {
       return [h('p', { className: 'ies-status', role: 'status' }, state.total > 0
         ? t('orbitalWatch.status.computing', { done: state.done, total: state.total })
-        : t('orbitalWatch.status.catalog'))];
+        : t('orbitalWatch.status.catalog')), this.siteSection()];
     }
     return this.renderSheet(state);
   }
@@ -874,6 +906,7 @@ export class OrbitalWatchPage {
       this.staleBanner(lookup),
       this.evidenceBlock(lookup, archives, summary, evidence),
       this.latestImage(summary, evidence, archives),
+      this.siteSection(),
       this.slots.water,
       this.slots.timeline,
       this.eventsSection(lookup),
@@ -965,6 +998,29 @@ export class OrbitalWatchPage {
           cell(t('orbitalWatch.row.credit'), h('span', { title: credit.full }, credit.short)))),
       compare,
       this.thumbStrip(summary, evidence));
+  }
+
+  /** The site's daily record: its newest image, next pass and when it was checked. No change flag while flags are in shadow. */
+  private siteSection(): DomChild {
+    const state = this.watchedSite;
+    if (state.kind === 'none') return null;
+    const kinds = [...new Set(state.site.origins.map((origin) => t(`orbitalWatch.site.list.${SITE_LIST_KEY[origin.list]}`)))].join(' · ');
+    const name = h('p', { className: 'ies-site-name' }, h('strong', null, state.site.name), ` · ${kinds}`);
+    const title = t('orbitalWatch.site.heading');
+    if (state.kind !== 'loaded') {
+      return section('site', title, name, h('p', { className: 'ies-empty' }, t(state.kind === 'loading' ? 'orbitalWatch.site.loading' : 'orbitalWatch.site.failed')));
+    }
+    const { record } = state;
+    if (record.stale) return section('site', title, name, h('p', { className: 'ies-empty' }, t('orbitalWatch.site.stale')));
+    const image = record.latestImage;
+    const imageMs = image ? Date.parse(image.datetime) : NaN;
+    const pass = record.nextPass;
+    const passMs = pass ? Date.parse(pass.time) : NaN;
+    return section('site', title, name,
+      h('div', { className: 'ies-caption' },
+        cell(t('orbitalWatch.popup.latest'), image && Number.isFinite(imageMs) ? `${formatStamp(imageMs)} · ${sensorName(image.profileId)}` : t('orbitalWatch.popup.noImage')),
+        cell(t('orbitalWatch.popup.nextPass'), pass && passMs > Date.now() ? `${formatStamp(passMs)} · ${pass.satellite}` : t('orbitalWatch.site.noPass')),
+        cell(t('orbitalWatch.site.checked'), formatStamp(record.evaluatedAt))));
   }
 
   /** Every other image of the point; each starts loading only as it nears the viewport. */
