@@ -598,7 +598,10 @@ describe('orbital change stage in the site seeder', () => {
     });
     await Promise.all([radarScene(40), radarScene(40), radarScene(40)].map((scene) => fetchStatistics(scene, {})));
     started.sort((x, y) => x - y);
-    assert.ok(started.every((at, i) => i === 0 || at - started[i - 1] >= 35), `started at ${started}`);
+    // Slots are fixed at 0, 40 and 80 ms. A timer that fires late shortens the gap to the next
+    // request without breaking the throttle, so check each start against its slot, not its neighbour.
+    // The 2 ms allowance covers Date.now's whole-millisecond clock.
+    assert.ok(started.every((at, i) => at - started[0] >= i * 40 - 2), `started at ${started}`);
   });
 
   it('scores unfinished sites first, then the least recently scored, so sites a short budget missed catch up next run', async () => {
