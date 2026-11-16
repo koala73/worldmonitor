@@ -97,9 +97,10 @@ for (const width of [390, 1280]) {
 // and 43794884414).
 test.describe('SVG marker press across a rebuild', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
-  // 'mouse+finger' lifts a second pointer mid-press: only the pressing pointer
-  // may end the hold.
-  for (const input of ['touch', 'mouse', 'mouse+finger'] as const) {
+  // 'mouse+finger' lifts an unrelated pointer mid-press, and 'mouse+pen' starts
+  // and ends a second marker press mid-press: only the mouse release may end
+  // the hold.
+  for (const input of ['touch', 'mouse', 'mouse+finger', 'mouse+pen'] as const) {
     test(`a ${input} press opens the popup when a render lands before release`, async ({ page }, testInfo) => {
       await page.goto('/tests/mobile-map-integration-harness.html?mobile=1');
       await page.waitForFunction(() => (window as unknown as { __mobileMapIntegrationHarness: Harness }).__mobileMapIntegrationHarness?.ready);
@@ -125,13 +126,17 @@ test.describe('SVG marker press across a rebuild', () => {
       else { await page.mouse.move(point.x, point.y); await page.mouse.down(); }
       // Render while the press is held, past the 100ms render throttle so the
       // render is not just coalesced into a later frame.
-      await page.evaluate(async (otherPointerLifts) => {
+      await page.evaluate(async (other) => {
         const h = (window as unknown as { __mobileMapIntegrationHarness: Harness }).__mobileMapIntegrationHarness;
-        if (otherPointerLifts) document.dispatchEvent(new PointerEvent('pointerup', { pointerId: 99, pointerType: 'touch', bubbles: true }));
+        if (other === 'mouse+finger') document.dispatchEvent(new PointerEvent('pointerup', { pointerId: 99, pointerType: 'touch', bubbles: true }));
+        if (other === 'mouse+pen') {
+          document.querySelector('.displacement-idmc')!.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 7, pointerType: 'pen', bubbles: true }));
+          document.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, pointerType: 'pen', bubbles: true }));
+        }
         await new Promise(resolve => setTimeout(resolve, 150));
         h.forceRender();
         await new Promise(resolve => setTimeout(resolve, 150));
-      }, input === 'mouse+finger');
+      }, input);
       if (input === 'touch') await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       else await page.mouse.up();
       const popup = page.locator('.map-popup');

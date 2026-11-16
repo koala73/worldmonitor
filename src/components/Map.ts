@@ -339,7 +339,8 @@ export class MapComponent {
   // sent the click to the map and the press opened nothing. While a press on a
   // marker is down the rebuild waits, and runs once the press ends. Touch is
   // exempt: Chromium hit-tests a tap at release, so it reaches the new marker.
-  private markerPressPointer: number | null = null;
+  // Pointers pressing a marker; a mouse and a pen can each hold one at once.
+  private readonly markerPressPointers = new Set<number>();
   private dynamicRebuildDeferred = false;
   private lastTruncationLabelKey = '';
   private labelVisibilityScheduled = false;
@@ -1132,14 +1133,18 @@ export class MapComponent {
     const signal = this.listenerAbort.signal;
     this.container.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'touch' || !(e.target instanceof Node)) return;
-      if (this.overlays?.contains(e.target) || this.dynamicLayerGroup?.node()?.contains(e.target)) this.markerPressPointer = e.pointerId;
+      if (this.overlays?.contains(e.target) || this.dynamicLayerGroup?.node()?.contains(e.target)) this.markerPressPointers.add(e.pointerId);
     }, { capture: true, signal });
-    // Only the pointer that pressed the marker ends the hold; a finger lifted
-    // elsewhere on a touch laptop must not release a mouse press.
+    // A pointer's release ends only its own press; a finger lifted elsewhere on
+    // a touch laptop must not release a mouse press. The rebuild waits until
+    // no press is left. Window blur ends every press.
     const endMarkerPress = (e: Event) => {
-      if (typeof this.markerPressPointer !== 'number') return;
-      if (e instanceof PointerEvent && e.pointerId !== this.markerPressPointer) return;
-      this.markerPressPointer = null;
+      if (!this.markerPressPointers?.size) return;
+      if (e instanceof PointerEvent) {
+        if (!this.markerPressPointers.delete(e.pointerId) || this.markerPressPointers.size) return;
+      } else {
+        this.markerPressPointers.clear();
+      }
       // The click follows pointerup in the same task; scheduleRender() waits for
       // a frame, so the click reaches the marker it was pressed on.
       if (this.dynamicRebuildDeferred) {
@@ -1621,7 +1626,7 @@ export class MapComponent {
   // reached, so it runs synchronously. The re-entrancy token lets a chunked pass bail once a
   // newer render (which bumps the token and rebuilds) has superseded it.
   private async renderDynamicLayers(width: number, height: number, chunk = false): Promise<void> {
-    if (typeof this.markerPressPointer === 'number') {
+    if (this.markerPressPointers?.size) {
       this.dynamicRebuildDeferred = true;
       return;
     }
