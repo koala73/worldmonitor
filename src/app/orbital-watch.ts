@@ -511,6 +511,7 @@ function lookAt(at: GeoPoint, name: string | null, { recentre, map, located = fa
     if (pointIsLocated !== located) {
       pointIsLocated = located;
       loadWatchedSite(at);
+      drawWater(located ? null : at);
     } else if (siteFailed && !located) {
       loadWatchedSite(at);
     }
@@ -532,7 +533,8 @@ function lookAt(at: GeoPoint, name: string | null, { recentre, map, located = fa
   pointIsLocated = located;
   loadWatchedSite(at);
   focusMap();
-  drawWater(at);
+  // The water card reads its reservoir by site id, which would name where a located user is.
+  drawWater(located ? null : at);
   void start();
 }
 
