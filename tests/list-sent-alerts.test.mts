@@ -246,6 +246,17 @@ describe('sent-alert history contract between the relay and the server', () => {
     assert.ok(deletionSource.includes(`\`${SENT_ALERTS_KEY_PREFIX}\${args.userId}\``));
   });
 
+  // The relay refuses a history write while this marker exists. Convex cannot
+  // import the relay module, so the key and its TTL are compared as source.
+  // convex/__tests__/accountDeletionRetries.test.ts covers the command order.
+  it('account deletion sets the marker the relay write checks, for the same time', () => {
+    const deletionSource = readFileSync(new URL('../convex/accountDeletion/sideEffects.ts', import.meta.url), 'utf8');
+    assert.ok(deletionSource.includes(`key: \`${relayHistory.SENT_ALERTS_ERASED_KEY_PREFIX}\${args.userId}\`, value: "1", ttlSeconds: SENT_ALERTS_ERASED_TTL_SECONDS`));
+    const ttl = deletionSource.match(/const SENT_ALERTS_ERASED_TTL_SECONDS = (\d+) \* (\d+) \* (\d+) \* (\d+);/);
+    assert.ok(ttl, 'the marker TTL constant must be declared as a product of integers');
+    assert.equal(ttl.slice(1).reduce((product, factor) => product * Number(factor), 1), relayHistory.SENT_ALERTS_ERASED_TTL_SECONDS);
+  });
+
   it('reads the link block list the relay consults before delivery', () => {
     const relaySource = readFileSync(new URL('../scripts/notification-relay.cjs', import.meta.url), 'utf8');
     assert.ok(relaySource.includes(`const BLOCKED_LINKS_KEY = '${BLOCKED_NOTIFICATION_LINKS_KEY}';`));

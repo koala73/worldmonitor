@@ -4,9 +4,16 @@
 // ListSentAlerts (server/worldmonitor/news/v1/list-sent-alerts.ts) so the
 // dashboard search can find a headline after it left the loaded news.
 //
-// One Redis list per user, newest first, capped and expiring. It is written
-// only for a user who received the alert on at least one channel, so it holds
-// what reached that user and nothing about anyone else.
+// One Redis list per user, capped and expiring, latest write first. It is
+// written only for a user who received the alert on at least one channel, so
+// it holds what reached that user and nothing about anyone else. Passes that
+// overlap finish in any order, so ListSentAlerts orders the rows by `sentAt`.
+//
+// A delivery pass writes its records when it ends, which can be after a
+// recipient deleted their account. Account deletion
+// (convex/accountDeletion/sideEffects.ts) therefore sets a per-user marker
+// before it deletes the list, and the write is a script that pushes only while
+// that marker is absent, so a late write cannot bring the list back.
 //
 // The key and the record shape are mirrored in
 // server/_shared/sent-alert-history.ts; tests/list-sent-alerts.test.mts fails
@@ -17,16 +24,40 @@ const { AsyncLocalStorage } = require('node:async_hooks');
 const SENT_ALERTS_KEY_PREFIX = 'wm:notif:sent:v1:';
 const SENT_ALERTS_MAX = 200;
 const SENT_ALERTS_TTL_SECONDS = 7 * 24 * 60 * 60;
+// Set by account deletion. It only has to outlive a delivery pass that loaded
+// the account's rules before they were deleted (minutes); the history TTL is
+// used so no record written before the deletion could outlast it either.
+const SENT_ALERTS_ERASED_KEY_PREFIX = 'wm:notif:sent-erased:v1:';
+const SENT_ALERTS_ERASED_TTL_SECONDS = SENT_ALERTS_TTL_SECONDS;
 const SENT_ALERT_TITLE_MAX = 300;
 const SENT_ALERT_SOURCE_MAX = 120;
 const SENT_ALERT_LINK_MAX = 2048;
 const SENT_ALERT_LABEL_MAX = 64;
-// Three commands per record; 100 records keeps one request well under the
+// One script call per record; 100 records keeps one request well under the
 // Upstash pipeline size limit.
 const RECORDS_PER_PIPELINE = 100;
 
+// KEYS[1] the user's list, KEYS[2] the user's deletion marker.
+// ARGV[1] the record, ARGV[2] the list cap, ARGV[3] the list TTL in seconds.
+// Returns 1 when the record was stored and 0 when the account was deleted.
+// docker/redis-rest-proxy.mjs pins this exact text for self-hosted installs;
+// tests/redis-rest-proxy-command-parity.test.mjs fails when the two differ.
+const SENT_ALERT_WRITE_SCRIPT = [
+  "if redis.call('EXISTS', KEYS[2]) == 1 then",
+  '  return 0',
+  'end',
+  "redis.call('LPUSH', KEYS[1], ARGV[1])",
+  "redis.call('LTRIM', KEYS[1], 0, tonumber(ARGV[2]) - 1)",
+  "redis.call('EXPIRE', KEYS[1], ARGV[3])",
+  'return 1',
+].join('\n');
+
 function sentAlertsKey(userId) {
   return `${SENT_ALERTS_KEY_PREFIX}${userId}`;
+}
+
+function sentAlertsErasedKey(userId) {
+  return `${SENT_ALERTS_ERASED_KEY_PREFIX}${userId}`;
 }
 
 function boundedText(value, max) {
@@ -70,14 +101,10 @@ function createSentAlertLog({ upstashUrl, upstashToken, userAgent = 'worldmonito
   // per-command error is reported instead of assumed away.
   async function writeSentAlerts(entries) {
     for (let i = 0; i < entries.length; i += RECORDS_PER_PIPELINE) {
-      const commands = entries.slice(i, i + RECORDS_PER_PIPELINE).flatMap(({ userId, record }) => {
-        const key = sentAlertsKey(userId);
-        return [
-          ['LPUSH', key, JSON.stringify(record)],
-          ['LTRIM', key, '0', String(SENT_ALERTS_MAX - 1)],
-          ['EXPIRE', key, String(SENT_ALERTS_TTL_SECONDS)],
-        ];
-      });
+      const commands = entries.slice(i, i + RECORDS_PER_PIPELINE).map(({ userId, record }) => [
+        'EVAL', SENT_ALERT_WRITE_SCRIPT, '2', sentAlertsKey(userId), sentAlertsErasedKey(userId),
+        JSON.stringify(record), String(SENT_ALERTS_MAX), String(SENT_ALERTS_TTL_SECONDS),
+      ]);
       try {
         const res = await fetch(`${upstashUrl}/pipeline`, {
           method: 'POST',
@@ -90,8 +117,11 @@ function createSentAlertLog({ upstashUrl, upstashToken, userAgent = 'worldmonito
           continue;
         }
         const body = await res.json().catch(() => null);
-        const failed = Array.isArray(body) ? body.filter((result) => result?.error).length : 0;
-        if (failed > 0) console.warn(`${logPrefix} sent-alert history: ${failed} of ${commands.length} commands failed`);
+        const results = Array.isArray(body) ? body : [];
+        const failed = results.filter((result) => result?.error).length;
+        if (failed > 0) console.warn(`${logPrefix} sent-alert history: ${failed} of ${commands.length} records not recorded`);
+        const erased = results.filter((result) => !result?.error && Number(result?.result) === 0).length;
+        if (erased > 0) console.log(`${logPrefix} sent-alert history: ${erased} record(s) skipped for deleted accounts`);
       } catch (err) {
         console.warn(`${logPrefix} sent-alert history not recorded: ${err?.message ?? err}`);
       }
@@ -125,11 +155,15 @@ function createSentAlertLog({ upstashUrl, upstashToken, userAgent = 'worldmonito
 }
 
 module.exports = {
+  SENT_ALERTS_ERASED_KEY_PREFIX,
+  SENT_ALERTS_ERASED_TTL_SECONDS,
   SENT_ALERTS_KEY_PREFIX,
   SENT_ALERTS_MAX,
   SENT_ALERTS_TTL_SECONDS,
   SENT_ALERT_TITLE_MAX,
+  SENT_ALERT_WRITE_SCRIPT,
   buildSentAlertRecord,
   createSentAlertLog,
+  sentAlertsErasedKey,
   sentAlertsKey,
 };

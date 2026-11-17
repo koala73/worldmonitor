@@ -1,6 +1,7 @@
 // Per-user record of the realtime alerts the notification relay delivered.
-// Written by scripts/lib/sent-alert-history.cjs (LPUSH + LTRIM + EXPIRE on an
-// unprefixed key), read by ListSentAlerts. tests/list-sent-alerts.test.mts
+// Written by scripts/lib/sent-alert-history.cjs (one script that pushes, caps
+// and expires an unprefixed list, and writes nothing once account deletion has
+// marked the user), read by ListSentAlerts. tests/list-sent-alerts.test.mts
 // fails when the key, the cap or the retention drift from the relay module.
 
 export const SENT_ALERTS_KEY_PREFIX = 'wm:notif:sent:v1:';
