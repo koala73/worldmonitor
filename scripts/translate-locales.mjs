@@ -33,6 +33,11 @@ import { localePathTokens } from './_locale-keys.mjs';
 
 export const LOCALES = ['ar', 'bg', 'cs', 'de', 'el', 'es', 'fa', 'fr', 'hi', 'hr', 'hu', 'id', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'sw', 'th', 'tr', 'uk', 'vi', 'zh', 'zh-TW'];
 
+// Locales only pro-test/src/locales ships. A landing-only language has a
+// marketing dictionary for its prerendered homepage and no dashboard one, so
+// the app root's gates leave it out and the pro root's gates cover it.
+export const PRO_ONLY_LOCALES = new Set(['id']);
+
 // Locales produced by another generator, which this script must not write.
 //
 // zh-TW is converted from zh.json by scripts/convert-zh-tw.py. Translating it

@@ -259,7 +259,7 @@
     "oneKey": "Layanan Langsung, 1 Kunci",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky, dan lainnya — semuanya aktif, tanpa pendaftaran terpisah.",
     "deliveryLabel": "Pilih cara intelijen sampai ke Anda",
-    "supplyChainLab": "Lab Uji Tekanan Rantai Pasok",
+    "supplyChainLab": "Lab Uji Ketahanan Rantai Pasok",
     "supplyChainLabDesc": "Modelkan guncangan biaya lintas negara dan sektor. Urutkan kerentanan komoditas berdasarkan ketergantungan pada chokepoint. Pantau konsentrasi dari tambang hingga kilang serta divergensi premi fisik SGE–COMEX — deret data yang bergerak sebelum berita utamanya muncul.",
     "roadmapNote": "Dalam peta jalan: riwayat lebih panjang, lapisan peta premium."
   },
@@ -630,7 +630,7 @@
       "q2": "Apa itu dasbor intelijen global?",
       "a2": "Satu tampilan langsung yang memadukan sinyal yang biasanya dipisahkan oleh kebanyakan alat: peristiwa konflik, pelacakan kapal dan pesawat, chokepoint pelayaran, satelit, kabel bawah laut, pipa, pasar, dan ancaman siber — pada satu peta dunia real-time, dilengkapi skor dan ringkasan AI. World Monitor adalah salah satunya, dan gratis.",
       "q3": "Dari mana datanya berasal?",
-      "a3": "Dari {{providers}} penyedia yang dicantumkan namanya. Di antaranya ACLED dan UCDP untuk konflik, AISStream untuk posisi kapal langsung, OpenSky untuk pesawat, NASA FIRMS untuk kebakaran, USGS untuk gempa bumi, IMF, BIS, FRED, dan Finnhub untuk pasar dan makro — ditambah feed berita terkurasi. Setiap panel mencantumkan sumber dan stempel waktunya di tempat.",
+      "a3": "Dari {{providers}} penyedia yang dicantumkan namanya. Di antaranya ACLED dan UCDP untuk konflik, AISStream untuk posisi kapal langsung, OpenSky untuk pesawat, NASA FIRMS untuk kebakaran, USGS untuk gempa bumi, IMF, BIS, FRED, dan Finnhub untuk pasar dan makro — ditambah feed berita terkurasi. Setiap panel menampilkan sumber dan stempel waktunya.",
       "q4": "Bisakah saya memantau chokepoint seperti Hormuz atau Bab el-Mandeb secara real-time?",
       "a4": "Ya. {{chokepoints}} chokepoint, baik selat maupun terusan, dari Hormuz dan Bab el-Mandeb hingga Suez, dipantau dengan jumlah kapal AIS langsung, perubahan lintasan dari minggu ke minggu, dan skor gangguan — dan anomali kepadatan ditandai terhadap garis dasar bergulir tiap chokepoint.",
       "q5": "Apa bedanya dengan peta konflik seperti Liveuamap?",

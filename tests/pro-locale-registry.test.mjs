@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PRO_ONLY_LOCALES } from '../scripts/translate-locales.mjs';
 import { nonDefaultLandingLocales } from '../shared/indexable-landing-locales.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -43,10 +44,9 @@ const EXPECTED_OG_LOCALE = {
 
 // Languages the marketing root ships and the dashboard does not. A prerendered
 // homepage needs the pro dictionary alone; the dashboard dictionary is a
-// separate, far larger translation. Adding a code here publishes marketing
-// copy in a language the product does not speak, so each one must be an
-// indexable landing.
-const LANDING_ONLY_LANGUAGES = ['id'];
+// separate, far larger translation. Each one publishes marketing copy in a
+// language the product does not speak, so it must be an indexable landing.
+const LANDING_ONLY_LANGUAGES = [...PRO_ONLY_LOCALES];
 
 function parseStringArrayConst(source, name) {
   const match = source.match(new RegExp(String.raw`const\s+${name}\s*=\s*\[([^\]]+)\]`));
