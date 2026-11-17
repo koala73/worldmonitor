@@ -2469,7 +2469,7 @@ async function main() {
             Authorization: `Bearer ${RELAY_SECRET}`,
             'User-Agent': 'worldmonitor-digest/1.0',
           },
-          body: JSON.stringify({ userId: rule.userId }),
+          body: JSON.stringify({ userId: rule.userId, deliveryChannels: rule.channels ?? [] }),
           signal: AbortSignal.timeout(10000),
         });
         if (chRes.ok) channels = await chRes.json();
