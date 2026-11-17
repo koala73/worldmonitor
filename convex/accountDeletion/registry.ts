@@ -219,6 +219,11 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     notes: "brief:slots:{userId} index and brief:latest:{userId} pointer; brief:{userId}:{slot} and brief:l10n:{userId}:{slot} for every indexed slot and the pointer slot",
   },
   {
+    target: "redis:brief-translation-user-cache",
+    action: "skip",
+    notes: "brief:llm:translate:user:v1:{model}:{userId}:{lang}:{sha256}; keyed by content hash with no index, 8 h TTL",
+  },
+  {
     target: "clerk.users",
     action: "delete",
     notes: "Backend Users API; 404 is success",

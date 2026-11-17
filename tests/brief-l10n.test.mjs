@@ -74,10 +74,15 @@ function synthesis() {
 }
 
 // Fake model: echoes each item with a French prefix so validation passes.
+// The fake "translation": a prefix, with English-only function words
+// replaced so the output does not read as English prose to the validator.
+const ENGLISH_ONLY = /\b(the|and|with|that|this|from|after|says|said|which|their|were|been|have|into|amid|against|about|would|could|should|while)\b/gi;
+const toFr = (text, prefix = 'FR ') => `${prefix}${text.replace(ENGLISH_ONLY, 'le')}`;
+
 function fakeTranslate(prefix = 'FR ') {
   return (_system, user) => {
     const arr = JSON.parse(user.slice(user.indexOf('['), user.lastIndexOf(']') + 1));
-    return JSON.stringify(arr.map(({ id, text }) => ({ id, text: `${prefix}${text}` })));
+    return JSON.stringify(arr.map(({ id, text }) => ({ id, text: toFr(text, prefix) })));
   };
 }
 
@@ -162,6 +167,25 @@ describe('translate prompt and parser', () => {
     assert.equal(one('Naval forces boarded the vessel early on Tuesday.', 'Naval forces boarded the vessel early on Tuesday.'), null);
     assert.equal(one('Naval forces boarded the vessel early on Tuesday.', '  naval forces boarded the vessel early on tuesday. '), null);
     assert.equal(one('Cyber', 'Cyber'), 'Cyber');
+    // Changing only punctuation or quotes does not make it a translation.
+    assert.equal(one('Naval forces boarded the vessel early on Tuesday.', 'Naval forces boarded the vessel early on Tuesday'), null);
+    assert.equal(one('Officials call it "a major escalation" today', 'Officials call it \u201ca major escalation\u201d today'), null);
+  });
+
+  it('keeps an unchanged sentence that is not English: a feed already in the target language, or a list of names', () => {
+    const fr = 'Les prix de l\u2019énergie flambent en Europe cette semaine';
+    assert.equal(one(fr, fr, 'fr'), fr);
+    const de = 'Bundesregierung beschließt neues Klimapaket für Industrie';
+    assert.equal(one(de, de, 'de'), de);
+    const names = 'Nvidia, Microsoft, Apple, Alphabet, Amazon';
+    assert.equal(one(names, names, 'es'), names);
+  });
+
+  it('rejects a reply that is mostly English words, in any script', () => {
+    assert.equal(one('Naval forces boarded the vessel after the attack on Tuesday', 'Les forces navales and the vessel were boarded after the attack'), null);
+    assert.equal(one('The central bank said that rates would rise again this year', 'The central bank said that rates 日銀が今年再び利上げ', 'ja'), null);
+    // One English word quoted in a real translation is fine.
+    assert.equal(one('The vessel was named The Pride after its owner', 'Le navire a été baptisé The Pride en hommage à son propriétaire'), 'Le navire a été baptisé The Pride en hommage à son propriétaire');
   });
 
   it('keeps a comparison sign the source had, and still rejects markup', () => {
@@ -475,17 +499,19 @@ describe('localizeBrief', () => {
   });
 
   it('cache writes never hold localizeBrief past its deadline, and a valid translation is kept', async () => {
+    // A slow model call leaves less than the 2s write budget before the
+    // deadline, so only the deadline cap keeps writes inside it. The budget
+    // must leave room to start a model call (MIN_MODEL_CALL_MS).
     const shared = makeDeps(async (s, u) => {
-      await new Promise((r) => setTimeout(r, 150));
+      await new Promise((r) => setTimeout(r, 2_500));
       return fakeTranslate()(s, u);
     });
     shared.deps.cacheSet = () => new Promise(() => {});
-    // The budget must leave room to start a model call (MIN_MODEL_CALL_MS).
     const started = Date.now();
     const { result } = await run({ shared, budgetMs: 3_400 });
     const elapsed = Date.now() - started;
     assert.equal(result.ok, true);
-    assert.ok(elapsed < 3_500, `took ${elapsed}ms against a 3400ms budget`);
+    assert.ok(elapsed < 3_600, `took ${elapsed}ms against a 3400ms budget`);
   });
 
   it('the localized envelope passes assertBriefEnvelope with version 5 and the same issuedAt and clusterIds', async () => {
@@ -500,7 +526,7 @@ describe('localizeBrief', () => {
     assert.equal(result.envelope.data.stories[0].headline, 'FR Oil tanker seized near strait 1');
     assert.equal(result.envelope.data.stories[0].sourceUrl, can.data.stories[0].sourceUrl);
     assert.equal(result.envelope.data.digest.greeting, can.data.digest.greeting);
-    assert.equal(result.synthesis.lead, `FR ${synthesis().lead}`);
+    assert.equal(result.synthesis.lead, toFr(synthesis().lead));
     assert.equal('rankedStoryHashes' in result.synthesis, false);
   });
 
@@ -508,7 +534,7 @@ describe('localizeBrief', () => {
     const { result } = await run();
     assert.deepEqual(result.envelope.data.digest.threads[0], {
       tag: 'FR Energy',
-      teaser: 'FR Naval forces boarded the vessel early on Tuesday 1.',
+      teaser: toFr('Naval forces boarded the vessel early on Tuesday 1.'),
     });
   });
 
@@ -535,7 +561,7 @@ describe('localizeBrief', () => {
     const userPayload = user.calls.map((c) => c.user).join('\n');
     assert.equal(userPayload.includes('Naval forces boarded'), false, 'story text sent through the user policy');
     assert.equal(userPayload.includes('"Energy"'), false);
-    assert.deepEqual(result.synthesis.threads[0], { tag: 'FR Energy', teaser: 'FR Naval forces boarded the vessel early on Tuesday 1.' });
+    assert.deepEqual(result.synthesis.threads[0], { tag: 'FR Energy', teaser: toFr('Naval forces boarded the vessel early on Tuesday 1.') });
     assert.ok(shared.calls.length > 0);
   });
 
@@ -560,6 +586,24 @@ describe('localizeBrief', () => {
     for (const call of shared.calls) assert.ok(call.user.length < 6_000, `batch of ${call.user.length} chars`);
     assert.equal(result.ok, false);
     assert.ok(shared.sets.length > 0, 'successful batches not cached');
+  });
+
+  it('a batch that runs to the deadline still leaves time to cache the batches that finished', async () => {
+    const env = canonical();
+    env.data.stories = Array.from({ length: 12 }, (_, i) => story(i + 1, {
+      description: `Naval forces boarded the vessel early on Tuesday near the strait, officials said ${i + 1}. `.repeat(4).trim(),
+    }));
+    env.data.digest.numbers.surfaced = 12;
+    let n = 0;
+    // Like callLLM, a hung provider gives up only at the call deadline.
+    const shared = makeDeps((s, u, opts) => (++n === 2
+      ? new Promise((r) => setTimeout(r, Math.max(0, opts.deadlineAt - Date.now()), null))
+      : fakeTranslate()(s, u)));
+    const started = Date.now();
+    const { result } = await run({ envelope: env, shared, budgetMs: 3_400 });
+    assert.equal(result.ok, false);
+    assert.ok(Date.now() - started < 3_500, 'past the budget');
+    assert.ok(shared.sets.length > 0, 'finished batches not cached');
   });
 
   it('the real routing-policy wrapper pins only the user call to the user\'s providers', async () => {
@@ -597,15 +641,22 @@ describe('cron wiring', () => {
 
   it('only the canonical envelope and pointer writes are fatal; index and sibling errors are logged', () => {
     const ok = 'OK';
-    assert.deepEqual(briefPipelineErrors([ok, ok, 1, 0, 1], 2), { fatal: null, other: [] });
+    assert.deepEqual(briefPipelineErrors([ok, ok, 1, 0, 1], 2), { fatal: null, other: [], siblingFailed: false });
     assert.match(briefPipelineErrors([{ error: 'OOM' }, ok], 2).fatal ?? '', /OOM/);
     assert.match(briefPipelineErrors([ok, { error: 'READONLY' }, 1], 2).fatal ?? '', /READONLY/);
-    assert.deepEqual(briefPipelineErrors([ok, ok, { error: 'WRONGTYPE' }, 0, 1, { error: 'x' }], 2), { fatal: null, other: ['WRONGTYPE', 'x'] });
-    assert.match(cron, /const pipelineErrors = briefPipelineErrors\(pipelineResult, 2\);/);
+    assert.deepEqual(briefPipelineErrors([ok, ok, { error: 'WRONGTYPE' }, 0, 1], 2), { fatal: null, other: ['WRONGTYPE'], siblingFailed: false });
+    // A failed sibling write: the magazine will read English, so the email
+    // and channels must not go out localized.
+    assert.deepEqual(briefPipelineErrors([ok, ok, 1, 0, 1, { error: 'x' }], 2, 5), { fatal: null, other: ['x'], siblingFailed: true });
+    assert.equal(briefPipelineErrors([ok, ok, 1, 0, 1, ok], 2, 5).siblingFailed, false);
+    assert.match(cron, /const pipelineErrors = briefPipelineErrors\(pipelineResult, 2, siblingIndex\);/);
+    assert.match(cron, /if \(pipelineErrors\.siblingFailed\) \{\n\s+localizedEnvelope = null;\n\s+localizedSynthesis = null;/);
   });
 
   it('the per-user translation cap covers the routing-policy lookup', () => {
     assert.match(cron, /const userDeadline = l10nStarted \+ briefL10nConfig\.userBudgetMs;/);
+    assert.match(cron, /const leftMs = \(\) => Math\.min\(userDeadline - Date\.now\(\), passLeftMs\(\)\);/);
+    assert.match(cron, /deadlineTimer = setTimeout\(resolve, Math\.max\(0, leftMs\(\)\), null\);/);
     assert.match(cron, /budgetMs: Math\.max\(1, Math\.min\(userDeadline - Date\.now\(\), passLeftMs\(\)\)\)/);
   });
 

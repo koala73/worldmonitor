@@ -2125,7 +2125,6 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
       briefL10nBudgetSkipped += 1;
     }
   }
-  const briefLang = localizedEnvelope ? targetLang : 'en';
 
   // Slot (YYYY-MM-DD-HHMM in the user's tz) is what routes the
   // magazine URL + Redis key. Using the same tz the composer used to
@@ -2159,7 +2158,9 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   ];
   // Flag on: write the sibling, or DEL it so a stale one cannot outlive a
   // switch back to English. Flag off: no brief:l10n: command at all.
+  let siblingIndex = -1;
   if (localizedEnvelope) {
+    siblingIndex = briefCommands.length;
     briefCommands.push(['SETEX', briefLocalizedKey(userId, issueSlot), String(BRIEF_TTL_SECONDS), JSON.stringify(localizedEnvelope)]);
   } else if (briefL10nConfig.enabled) {
     briefCommands.push(['DEL', briefLocalizedKey(userId, issueSlot)]);
@@ -2168,11 +2169,18 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   if (!pipelineResult || !Array.isArray(pipelineResult) || pipelineResult.length < 2) {
     throw new Error('null pipeline response from Upstash');
   }
-  const pipelineErrors = briefPipelineErrors(pipelineResult, 2);
+  const pipelineErrors = briefPipelineErrors(pipelineResult, 2, siblingIndex);
   if (pipelineErrors.fatal) throw new Error(`Upstash SETEX error: ${pipelineErrors.fatal}`);
   if (pipelineErrors.other.length > 0) {
     console.warn(`[digest] brief index/sibling write error user=${userId}: ${pipelineErrors.other.join('; ')}`);
   }
+  // The magazine and carousel read the stored sibling. Without it they render
+  // English, so the email and channels go out in English too.
+  if (pipelineErrors.siblingFailed) {
+    localizedEnvelope = null;
+    localizedSynthesis = null;
+  }
+  const briefLang = localizedEnvelope ? targetLang : 'en';
 
   const magazineUrl = await signBriefUrl({
     userId,

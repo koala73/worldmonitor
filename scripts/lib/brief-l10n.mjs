@@ -22,6 +22,8 @@ const SHARED_TTL_SEC = 7 * 24 * 60 * 60;
 const USER_TTL_SEC = 8 * 60 * 60;
 /** Cache writes are best-effort and also bounded by the localization deadline. */
 const CACHE_WRITE_BUDGET_MS = 2_000;
+/** Model calls end this long before the deadline so finished work can still be cached. */
+const WRITE_RESERVE_MS = 500;
 /** Below this much time left, a model call cannot finish; do not start one. */
 const MIN_MODEL_CALL_MS = 3_000;
 /**
@@ -142,13 +144,15 @@ export function briefL10nEnvOverrideWarning(env) {
  * Error cells of a brief write pipeline. The first `requiredCount` commands
  * (canonical envelope, latest pointer) are fatal; the slot index and the
  * localized sibling are best effort, because the English brief is already
- * stored and readable.
+ * stored and readable. `siblingFailed` means the localized sibling at
+ * `siblingIndex` was not stored, so nothing may be sent localized.
  */
-export function briefPipelineErrors(cells, requiredCount) {
+export function briefPipelineErrors(cells, requiredCount, siblingIndex = -1) {
   const errorOf = (cell) => (cell && typeof cell === 'object' && 'error' in cell ? String(cell.error) : null);
   const fatal = cells.slice(0, requiredCount).map(errorOf).find((e) => e != null) ?? null;
   const other = cells.slice(requiredCount).map(errorOf).filter((e) => e != null);
-  return { fatal, other };
+  const siblingFailed = siblingIndex >= 0 && (siblingIndex >= cells.length || errorOf(cells[siblingIndex]) != null);
+  return { fatal, other, siblingFailed };
 }
 
 /** Language to localize into, or null for English. */
@@ -193,7 +197,38 @@ function countOf(text, ch) {
   return text.split(ch).length - 1;
 }
 
-const normalizeForCompare = (text) => text.toLowerCase().replace(/\s+/g, ' ').trim();
+/** Letters and digits only: punctuation and quote style do not translate. */
+const normalizeForCompare = (text) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
+const wordsOf = (text) => text.toLowerCase().split(/[^\p{L}]+/u).filter(Boolean);
+
+/**
+ * Words that are English and not words of any other brief language (so not
+ * "is", "of", "was", "over", "for", "has" or "will"). Matching is per whole
+ * word, so French "thé" is not "the".
+ */
+const ENGLISH_MARKERS = new Set([
+  'the', 'and', 'with', 'that', 'this', 'from', 'after', 'says', 'said', 'which', 'their',
+  'were', 'been', 'have', 'into', 'amid', 'against', 'about', 'would', 'could', 'should', 'while',
+]);
+
+/** True when the text reads as English prose rather than names or another language. */
+function looksEnglish(text) {
+  const markers = wordsOf(text).filter((w) => ENGLISH_MARKERS.has(w)).length;
+  return markers >= 2;
+}
+
+/**
+ * A text returned unchanged is untranslated when it is English. It is a
+ * correct translation when the source is already in another language (a
+ * French feed in a French brief) or is only names ("Nvidia, Microsoft").
+ */
+function unchangedIsUntranslated(source) {
+  if (looksEnglish(source)) return true;
+  if (/[^\x00-\x7F]/.test(source.replace(URL_RE, ''))) return false;
+  // ASCII prose with lower-case words: English unless proven otherwise.
+  return /(?:^|[^\p{L}])\p{Ll}{3,}/u.test(source.replace(URL_RE, ''));
+}
 
 // Soft hyphen and zero-width (non-)joiners are legitimate in Indic, Persian
 // and Thai text; sanitizeForPrompt strips them, so drop them before comparing.
@@ -231,9 +266,14 @@ function validTranslation(source, out, lang) {
   if (source.length < MIN_CHECKED_LENGTH) {
     if (text.length > Math.max(SHORT_SOURCE_MAX_LEN, source.length * MAX_RATIO)) return false;
   } else {
-    // A sentence returned unchanged is untranslated: in a Latin-script target
-    // no other check would catch it, and the brief would ship mixed-language.
-    if (normalizeForCompare(text) === normalizeForCompare(source)) return false;
+    // English returned unchanged, or as English prose, is untranslated: in a
+    // Latin-script target no other check would catch it, and the brief would
+    // ship mixed-language.
+    if (normalizeForCompare(text) === normalizeForCompare(source)) {
+      if (unchangedIsUntranslated(source)) return false;
+    } else if (looksEnglish(text)) {
+      return false;
+    }
     const ratio = text.length / source.length;
     if (ratio < (COMPACT_LANGS.has(lang) ? MIN_RATIO_COMPACT : MIN_RATIO) || ratio > MAX_RATIO) return false;
     if (!scriptShareOk(text, lang)) return false;
@@ -402,6 +442,7 @@ export async function localizeBrief(input) {
   const stats = { sharedMs: 0, userMs: 0, sharedHits: 0, sharedMisses: 0, userHits: 0, userMisses: 0 };
   // One deadline for the whole operation: cache reads, model calls and cache writes.
   const deadlineAt = Date.now() + budgetMs;
+  const callDeadlineAt = deadlineAt - Math.min(WRITE_RESERVE_MS, Math.floor(budgetMs / 10));
   const data = envelope?.data;
   const stories = Array.isArray(data?.stories) ? data.stories : null;
   const digest = data?.digest;
@@ -434,14 +475,14 @@ export async function localizeBrief(input) {
       lang,
       deps: sharedDeps,
       keyFor: (text) => sharedTranslateCacheKey(lang, text),
-      deadlineAt,
+      deadlineAt: callDeadlineAt,
       callOpts: { maxTokens: 4096, temperature: 0.2, timeoutMs: 15_000, stage: 'brief-l10n-shared' },
     }),
     translateTexts(userTexts, {
       lang,
       deps: userDeps,
       keyFor: (text) => userTranslateCacheKey(userId, lang, text),
-      deadlineAt,
+      deadlineAt: callDeadlineAt,
       callOpts: { maxTokens: 2048, temperature: 0.2, timeoutMs: 12_000, stage: 'brief-l10n-user' },
     }),
   ]);
