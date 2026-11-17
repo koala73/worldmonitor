@@ -299,11 +299,12 @@ const SCALES = [
 const MONTH_RE = /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sept?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\b/g;
 const MONTH_NUMBER = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 // Scale words of the brief languages, inflections included, by the start of
-// the word. Billions first: "mil millones" is a billion, "mil" a thousand.
+// the word. Billions first: "mil millones" and "mil milhões" are a billion,
+// "mil" a thousand. French "milles" (miles) is not "mille".
 const LOCAL_SCALES = [
-  [/^(?:mil millones|milliard|milliárd|miljard|miliard|miliar|milyar|mld|mrd|bilh[aã]o|bilh[oõ]es|миллиард|млрд|мільярд|милиард|δισ|مليار|میلیارد|tỷ)/iu, 1e9],
+  [/^(?:mil millones|mil milh[oõ]es|mil milh[aã]o|milliard|milliárd|miljard|miliard|miliar|milyar|mld|mrd|bilh[aã]o|bilh[oõ]es|миллиард|млрд|мільярд|милиард|δισ|مليار|میلیارد|tỷ)/iu, 1e9],
   [/^(?:million|millió|millón|millones|milione|milioni|milh[aã]o|milh[oõ]es|miljoen|miljon|milion|milyon|mln|mio|миллион|млн|мільйон|милион|εκατ|ล้าน|مليون|ملايين|میلیون|triệu|juta)/iu, 1e6],
-  [/^(?:tausend|tsd\.|mille|mila(?!\p{L})|mil(?!\p{L})|duizend|tusen|tusind|tys\.|tysi[aą]c|tysi[eę]cy|tis\.|tisíc|tisuć|ezer|mii(?!\p{L})|bin(?!\p{L})|тысяч|тыс\.|тисяч|хиляд|χιλιάδ|ألف|آلاف|هزار|हज़ार|हजार|nghìn|ngàn|ribu|พัน)/iu, 1e3],
+  [/^(?:tausend|tsd\.|mille(?!\p{L})|mila(?!\p{L})|mil(?!\p{L})|duizend|tusen|tusind|tys\.|tysi[aą]c|tysi[eę]cy|tis\.|tisíc|tisuć|ezer|mii(?!\p{L})|bin(?!\p{L})|тысяч|тыс\.|тисяч|хиляд|χιλιάδ|ألف|آلاف|هزار|हज़ार|हजार|nghìn|ngàn|ribu|พัน)/iu, 1e3],
 ];
 // Any other large-number word (bilioni, трлн...). It says "scaled" with an
 // unknown value, so only the coefficient can be compared.
@@ -322,8 +323,10 @@ function asciiDigits(text) {
 /**
  * The values a number token can mean. In a translation "1,234" and "1.234"
  * are a thousands group or a decimal depending on the language, so they mean
- * either. The English source writes thousands with a comma and decimals with
- * a point, so there each means one thing. "18.04.2026" is three numbers.
+ * either. In the source a comma before three digits is a thousands group
+ * ("1,000" is never 1): briefs are written in English, and feeds that use a
+ * decimal comma write "1,5", not "1,500". A point before three digits stays
+ * either, because German feeds write "1.500". "18.04.2026" is three numbers.
  */
 function parseNumber(token, english) {
   const t = token.replace(/[\u00A0\u202F ']/g, '');
@@ -339,7 +342,7 @@ function parseNumber(token, english) {
   if (seps.length === 1) {
     const decimal = Number(`${parts[0]}.${parts[1]}`);
     if (!grouped) return [[decimal]];
-    if (english) return [[seps[0] === ',' ? Number(parts.join('')) : decimal]];
+    if (english && seps[0] === ',') return [[Number(parts.join(''))]];
     return [[Number(parts.join('')), decimal]];
   }
   return grouped ? [[Number(parts.join(''))]] : parts.map((p) => [Number(p)]);
@@ -507,18 +510,19 @@ function unchangedIsUntranslated(source, lang) {
 
 /**
  * A short text returned unchanged is untranslated when it holds an English
- * word, or is lower-case prose in a target written in another script. A
- * label or name ("Cyber", "macOS", "Nvidia, Microsoft") stays as it is, and
- * so may a short phrase in a Latin-script target with no English word in it
- * ("Paris sous pression"): it may already be that language, and rejecting it
- * would send the whole brief in English.
+ * word, or, in a target written in another script, is a phrase with a
+ * lower-case word ("War ends", "Oil prices rise"). A label or name ("Cyber",
+ * "macOS", "Bank of America") stays as it is, and so may a short phrase in a
+ * Latin-script target with no English word in it ("Paris sous pression"): it
+ * may already be that language, and rejecting it would send the whole brief
+ * in English.
  */
 function shortUnchangedIsUntranslated(source, lang) {
   if (englishMarkerCount(source) > 0) return true;
   const prose = source.replace(URL_RE, '');
   if (NON_ASCII_LETTER_RE.test(prose)) return false;
-  const lowerWords = prose.split(/[^\p{L}]+/u).filter((w) => /^\p{Ll}{3,}$/u.test(w));
-  return lowerWords.length >= 2 && Boolean(SCRIPT_RE[lang]);
+  const words = prose.split(/[^\p{L}]+/u).filter(Boolean);
+  return Boolean(SCRIPT_RE[lang]) && words.length >= 2 && words.some((w) => /^\p{Ll}{3,}$/u.test(w));
 }
 
 // Soft hyphen and zero-width (non-)joiners are legitimate in Indic, Persian
