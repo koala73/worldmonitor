@@ -11,7 +11,7 @@ import {
   type SiteCoverage,
   type TrackedSatelliteTle,
 } from '@/services/orbital/satellite-site-coverage';
-import { loadRecentManeuvers, maneuverChange, maneuverDay, maneuverReceipt, type ManeuverCandidate } from '@/services/orbital/satellite-maneuvers';
+import { loadRecentManeuvers, maneuverChange, maneuverDay, maneuverExpired, maneuverReceipt, type ManeuverCandidate } from '@/services/orbital/satellite-maneuvers';
 
 const HOUR_MS = 3_600_000;
 const MINUTE_MS = 60_000;
@@ -154,7 +154,13 @@ export function satelliteSitesOutdated(host: HTMLElement, noradId: string): bool
  * section should be computed again.
  */
 export function advanceSatelliteSites(host: HTMLElement, nowMs: number): 'current' | 'rescan' {
-  const state = sections.get(host);
+  let state = sections.get(host);
+  // A candidate line ages out on its own clock, whatever the coverage status: a card with no
+  // sensor profile never rescans, so its line would otherwise stay as long as the card is open.
+  if (state?.kind === 'coverage' && state.maneuver && maneuverExpired(state.maneuver, nowMs)) {
+    state = { ...state, maneuver: null };
+    draw(host, state, nowMs);
+  }
   if (state?.kind !== 'coverage' || state.coverage.status !== 'ok') return 'current';
   const coverage = state.coverage;
   if (nowMs - coverage.windowStartMs >= COVERAGE_RENEW_MS) return 'rescan';

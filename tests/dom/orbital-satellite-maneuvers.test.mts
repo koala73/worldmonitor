@@ -220,3 +220,28 @@ describe('site satellite rows', () => {
     expect(rows[1]!.textContent).not.toContain('candidate maneuver');
   });
 });
+
+describe('review round 3 (#10869)', () => {
+  const tle = { name: 'SENTINEL-2A', line1: '1 40697U', line2: '2 40697' };
+  const sensor = { profileId: 'sentinel-2', family: 'Sentinel-2', category: 'open-optical' as const };
+
+  it.each([
+    ['no-profile', { status: 'no-profile' as const }],
+    ['ok', { status: 'ok' as const, sensor, windowStartMs: 0, windowEndMs: 0, orbitAgeDays: 0.4, sites: [] }],
+  ])('removes an expired candidate line on the next tick when coverage is %s', async (_label, coverage) => {
+    const nowMs = Date.now();
+    // One minute before the candidate leaves the 14-day marker window.
+    const toEpoch = nowMs - MANEUVER_MARKER_DAYS * DAY_MS + 60_000;
+    mocks.getTrackedSatelliteTle.mockReturnValue(tle);
+    mocks.sitesCoveredBySatellite.mockResolvedValue(coverage.status === 'ok' ? { ...coverage, windowStartMs: nowMs, windowEndMs: nowMs + DAY_MS } : coverage);
+    mocks.listSatelliteManeuvers.mockResolvedValue(response([candidate({ toEpoch })]));
+    const host = document.createElement('div');
+    document.body.append(host);
+    await renderSatelliteSites(host, '40697', 'SENTINEL-2A');
+    await vi.waitFor(() => expect(host.querySelector('.osat-sites-maneuver')).not.toBeNull());
+    expect(advanceSatelliteSites(host, nowMs + 30_000)).toBe('current');
+    expect(host.querySelector('.osat-sites-maneuver')).not.toBeNull();
+    expect(advanceSatelliteSites(host, nowMs + 2 * 60_000)).toBe('current');
+    expect(host.querySelector('.osat-sites-maneuver')).toBeNull();
+  });
+});

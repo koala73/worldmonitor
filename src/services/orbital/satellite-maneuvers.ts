@@ -32,6 +32,11 @@ export function recentManeuvers(response: ListSatelliteManeuversResponse, nowMs:
   return recent;
 }
 
+/** Whether a candidate has aged out of the marker window: past it, a marker already drawn is removed. */
+export function maneuverExpired(candidate: ManeuverCandidate, nowMs: number): boolean {
+  return !Number.isFinite(candidate.toEpoch) || nowMs - candidate.toEpoch > MANEUVER_MARKER_DAYS * DAY_MS;
+}
+
 /** When the first of these candidates ages out of the marker window, or Infinity. */
 function firstExpiryMs(recent: ReadonlyMap<string, ManeuverCandidate>): number {
   let first = Number.POSITIVE_INFINITY;
