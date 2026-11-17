@@ -9,7 +9,7 @@ import { parseStatec, collect as collectStatec } from '../scripts/lib/food-price
 import { parseLatvia } from '../scripts/lib/food-prices-adapters/csblv.mjs';
 import { parseMakstat } from '../scripts/lib/food-prices-adapters/makstat.mjs';
 import { parseFoag, FOAG_CUBES, observationQuery } from '../scripts/lib/food-prices-adapters/foag.mjs';
-import { PRICECATCHER_ITEM_CODES, addPriceRows, aggregatePrices, priceAccumulator, readPricecatcher, summarizePrices, collect as collectPricecatcher } from '../scripts/lib/food-prices-adapters/pricecatcher.mjs';
+import { PRICECATCHER_ITEM_CODES, addPriceRows, aggregatePrices, foldPriorMonth, priceAccumulator, readPricecatcher, summarizePrices, collect as collectPricecatcher } from '../scripts/lib/food-prices-adapters/pricecatcher.mjs';
 import { parseMercado, readMercadoArchive, collect as collectMercado } from '../scripts/lib/food-prices-adapters/mcba.mjs';
 import { cubeCells, csvRows } from '../scripts/lib/food-prices-adapters/monthly.mjs';
 import { collectFoodSource } from '../scripts/lib/food-prices-fetch.mjs';
@@ -149,6 +149,17 @@ test('Malaysia keeps one quote per premise, rejects conflicts, requires ten prem
   assert.throws(() => aggregatePrices([{ date: '2026-11-04', premise_code: 'x', item_code: 114, price: 1 }], lookup, window), /premise code/);
   assert.equal(aggregatePrices([...quotes(10), { date: '2026-11-04', premise_code: 99, item_code: 999999, price: 1 }], lookup, window).length, 1, 'unselected items are ignored');
   assert.throws(() => addPriceRows(priceAccumulator({ ...window, limit: 5 }), quotes(6)), /quotes exceed limit/);
+});
+
+test('Malaysia bounds the combined two-month window and drops an over-budget prior month whole', async () => {
+  const window = { before: '2026-11-05', since: '2026-10-20' };
+  const quotes = (date, count) => Array.from({ length: count }, (_, index) => ({ date, premise_code: index + 1, item_code: 114, price: 1 }));
+  const acc = addPriceRows(priceAccumulator({ ...window, limit: 30 }), quotes('2026-11-04', 20));
+  await assert.rejects(foldPriorMonth(acc, async prior => addPriceRows(prior, quotes('2026-10-30', 11))), /quotes exceed limit/);
+  assert.deepEqual([acc.quotes, [...acc.groups.keys()]], [20, ['2026-11-04|114']], 'a rejected prior month leaves nothing behind');
+  await foldPriorMonth(acc, async prior => addPriceRows(prior, quotes('2026-10-30', 10)));
+  assert.deepEqual([acc.quotes, acc.groups.size], [30, 2]);
+  assert.throws(() => addPriceRows(acc, quotes('2026-11-03', 1)), /quotes exceed limit/, 'the merged count keeps counting toward the limit');
 });
 
 test('Malaysia reports the latest completed local day carrying every selected staple', async () => {
