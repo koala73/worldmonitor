@@ -2179,12 +2179,26 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   } else if (briefL10nConfig.enabled) {
     briefCommands.push(['DEL', briefLocalizedKey(userId, issueSlot)]);
   }
-  const pipelineResult = await redisPipeline(briefCommands, 5_000, true);
-  if (!pipelineResult || !Array.isArray(pipelineResult) || pipelineResult.length < 2) {
-    throw new Error('null pipeline response from Upstash');
+  let pipelineErrors;
+  try {
+    const pipelineResult = await redisPipeline(briefCommands, 5_000, true);
+    if (!pipelineResult || !Array.isArray(pipelineResult) || pipelineResult.length < 2) {
+      throw new Error('null pipeline response from Upstash');
+    }
+    pipelineErrors = briefPipelineErrors(pipelineResult, 2, siblingIndex);
+    if (pipelineErrors.fatal) throw new Error(`Upstash SETEX error: ${pipelineErrors.fatal}`);
+  } catch (err) {
+    // A failed or lost write may still have stored an envelope. If the account
+    // was erased meanwhile, remove it before failing; a failed cleanup fails
+    // with both reasons, so the compose is retried and the envelope is not
+    // silently left behind.
+    try {
+      await undoBriefWriteIfErased(userId, issueSlot, (commands) => redisPipeline(commands, 5_000, true));
+    } catch (cleanupErr) {
+      throw new Error(`${err instanceof Error ? err.message : String(err)}; ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`);
+    }
+    throw err;
   }
-  const pipelineErrors = briefPipelineErrors(pipelineResult, 2, siblingIndex);
-  if (pipelineErrors.fatal) throw new Error(`Upstash SETEX error: ${pipelineErrors.fatal}`);
   if (pipelineErrors.other.length > 0) {
     console.warn(`[digest] brief index/sibling write error user=${userId}: ${pipelineErrors.other.join('; ')}`);
   }

@@ -41,7 +41,7 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders, isDisallowedOrigin } from '../../../../_cors.js';
 import { readRawJsonFromUpstash } from '../../../../_upstash-json.js';
 import { briefLocalizedKey } from '../../../../../shared/brief-envelope.js';
-import { selectBriefEnvelope } from '../../../../../server/_shared/brief-render.js';
+import { assertBriefEnvelope, selectBriefEnvelope } from '../../../../../server/_shared/brief-render.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../_sentry-edge.js';
 import { verifyBriefToken, BriefUrlError } from '../../../../../server/_shared/brief-url';
@@ -164,6 +164,15 @@ async function respond(
     return jsonError('service_unavailable', 503, cors);
   }
   if (!envelope) return jsonError('not_found', 404, cors);
+  try {
+    // A malformed canonical is a 404 even when a matching sibling would
+    // render, as on the magazine route.
+    assertBriefEnvelope(envelope);
+  } catch (err) {
+    console.error('[api/brief/carousel] malformed envelope:', (err as Error).message);
+    captureSilentError(err, { tags: { route: 'api/brief/carousel', step: 'malformed-envelope' }, fingerprint: ['api/brief/carousel', 'malformed-envelope', err instanceof Error ? err.name : 'Error'], ctx });
+    return jsonError('not_found', 404, cors);
+  }
   // A sibling in a language the image renderer cannot draw yet counts as
   // absent: the English image is then the intended output and is cached.
   const stored = await siblingPromise;

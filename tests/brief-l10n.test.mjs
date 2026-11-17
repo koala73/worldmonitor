@@ -243,6 +243,21 @@ describe('translate prompt and parser', () => {
     assert.ok(one('Officials said 3 soldiers were hurt in the attack.', 'Selon les responsables, 3 militaires ont été blessés dans l\u2019attaque.'));
   });
 
+  it('compares compound scales, signs, Indian grouping and Arabic separators', () => {
+    // A thousand billion is a trillion.
+    assert.ok(one('Italy plans 3 trillion euros of spending over a decade.', 'L\u2019Italia prevede 3 mila miliardi di euro di spesa in dieci anni.', 'it'));
+    assert.equal(one('Italy plans 3 billion euros of spending over a decade.', 'L\u2019Italia prevede 3 mila miliardi di euro di spesa in dieci anni.', 'it'), null);
+    // A sign is part of the amount; a range dash is not a sign.
+    assert.equal(one('The fund posted -10 million dollars in net flows this week.', 'Le fonds a enregistré 10 millions de dollars de flux nets cette semaine.'), null);
+    assert.ok(one('The fund posted -10 million dollars in net flows this week.', 'Le fonds a enregistré \u221210 millions de dollars de flux nets cette semaine.'));
+    assert.ok(one('Temperatures will range from 10-20 degrees across the region.', 'Les températures varieront de 10-20 degrés dans la région.'));
+    // Indian digit grouping is one number.
+    assert.ok(one('Officials said 150,000 people were moved to shelters.', '\u0905\u0927\u093F\u0915\u093E\u0930\u093F\u092F\u094B\u0902 \u0928\u0947 \u0915\u0939\u093E \u0915\u093F 1,50,000 \u0932\u094B\u0917\u094B\u0902 \u0915\u094B \u0906\u0936\u094D\u0930\u092F \u0938\u094D\u0925\u0932\u094B\u0902 \u092A\u0930 \u092D\u0947\u091C\u093E \u0917\u092F\u093E\u0964', 'hi'));
+    // Arabic decimal and thousands separators.
+    assert.ok(one('Output rose to 1.5 million barrels after the deal.', '\u0627\u0631\u062A\u0641\u0639 \u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0625\u0644\u0649 \u0661\u066B\u0665 \u0645\u0644\u064A\u0648\u0646 \u0628\u0631\u0645\u064A\u0644 \u0628\u0639\u062F \u0627\u0644\u0627\u062A\u0641\u0627\u0642.', 'ar'));
+    assert.ok(one('Officials seized 10,000 tonnes of grain at the port.', '\u0636\u0628\u0637 \u0627\u0644\u0645\u0633\u0624\u0648\u0644\u0648\u0646 \u0661\u0660\u066C\u0660\u0660\u0660 \u0637\u0646 \u0645\u0646 \u0627\u0644\u062D\u0628\u0648\u0628 \u0641\u064A \u0627\u0644\u0645\u064A\u0646\u0627\u0621.', 'ar'));
+  });
+
   it('reads numbers after a URL at the right place', () => {
     const src = 'See https://example.com/r/2026-report for details: exports hit 3 million barrels.';
     assert.ok(one(src, '详情见 https://example.com/r/2026-report ：出口达到300万桶。', 'zh'));
@@ -296,6 +311,11 @@ describe('translate prompt and parser', () => {
     // Mostly title case, no marker word, but a lower-case English word.
     const mixed = 'Oil Prices Fall despite Rising Supply Fears';
     assert.equal(one(mixed, mixed), null);
+    // A short particle is not English prose: a French headline, a list of names.
+    const frTitle = 'Paris Face aux Sanctions Internationales';
+    assert.equal(one(frTitle, frTitle), frTitle);
+    const composers = 'Ludwig van Beethoven, Johann Sebastian Bach';
+    assert.equal(one(composers, composers), composers);
   });
 
   it('rejects a reply that is mostly English words, in any script', () => {
@@ -901,7 +921,7 @@ describe('cron wiring', () => {
     // and channels must not go out localized.
     assert.deepEqual(briefPipelineErrors([ok, ok, 1, 0, 1, { error: 'x' }], 2, 5), { fatal: null, other: ['x'], siblingFailed: true });
     assert.equal(briefPipelineErrors([ok, ok, 1, 0, 1, ok], 2, 5).siblingFailed, false);
-    assert.match(cron, /const pipelineErrors = briefPipelineErrors\(pipelineResult, 2, siblingIndex\);/);
+    assert.match(cron, /pipelineErrors = briefPipelineErrors\(pipelineResult, 2, siblingIndex\);/);
     assert.match(cron, /if \(pipelineErrors\.siblingFailed\) \{\n\s+localizedEnvelope = null;\n\s+localizedSynthesis = null;/);
   });
 
@@ -988,6 +1008,12 @@ describe('cron wiring', () => {
     assert.equal(calls, 2);
     // A marker that was read but whose cleanup failed also fails the compose.
     await assert.rejects(undoBriefWriteIfErased('u1', 's', async (c) => c.map((cmd) => (cmd[0] === 'GET' ? { result: '1' } : { error: 'down' }))), /cleanup/);
+  });
+
+  it('a failed or lost envelope write still runs the erase cleanup before failing', () => {
+    const start = cron.indexOf('const pipelineResult = await redisPipeline(briefCommands');
+    const block = cron.slice(cron.lastIndexOf('try {', start), cron.indexOf('const magazineUrl = await signBriefUrl('));
+    assert.match(block, /catch \(err\) \{[\s\S]*undoBriefWriteIfErased\(userId, issueSlot,[\s\S]*throw err;/);
   });
 
   it('the compose re-reads the erase marker after its envelope write and before signing a URL', () => {
