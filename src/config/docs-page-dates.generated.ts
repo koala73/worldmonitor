@@ -6,7 +6,7 @@ export const DOCS_PAGE_DATES: Record<string, { datePublished: string; dateModifi
   "agent-discovery": {"datePublished":"2026-04-27","dateModified":"2026-11-12"},
   "agent-skills": {"datePublished":"2026-07-08","dateModified":"2026-11-12"},
   "ai-intelligence": {"datePublished":"2026-03-11","dateModified":"2026-11-10"},
-  "algorithms": {"datePublished":"2026-03-11","dateModified":"2026-11-11"},
+  "algorithms": {"datePublished":"2026-03-11","dateModified":"2026-11-17"},
   "api-brief": {"datePublished":"2026-04-19","dateModified":"2026-08-24"},
   "api-commerce": {"datePublished":"2026-04-19","dateModified":"2026-11-06"},
   "api-key-deployment": {"datePublished":"2026-03-11","dateModified":"2026-10-26"},
