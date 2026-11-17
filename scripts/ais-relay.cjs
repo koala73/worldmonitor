@@ -51,6 +51,7 @@ const {
 const xNewsAccounts = require('./lib/x-news-accounts.cjs');
 const { SAUDI_CIVIL_DEFENSE, MAX_POST_CHARS, publishSaudiCivilDefenseAlerts } = require('./lib/saudi-civil-defense-alerts.cjs');
 const { publishChokepointDisruptionAlerts } = require('./lib/chokepoint-disruption-alerts.cjs');
+const notifyPolicy = require('./lib/notification-publish-policy.cjs');
 // Loaded defensively: the gazetteer validates its data files at require time,
 // and a bad regenerated data file must disable only this feed, not the relay.
 let middleEastStrikes = null;
@@ -3898,7 +3899,9 @@ async function seedMarketQuotes() {
   for (const q of movingStocks.slice(0, 3)) {
     const pct = Math.round(q.change);
     const dir = q.change < 0 ? 'decline' : 'surge';
-    const severity = Math.abs(q.change) >= 10 ? 'critical' : 'high';
+    // A single stock is at most high; only an index move is critical (#10873).
+    const severity = notifyPolicy.marketMoveSeverity({ assetClass: 'equity', symbol: q.symbol, changePct: q.change });
+    if (!severity) continue;
     publishNotificationEvent({
       eventType: 'market_alert',
       payload: {
@@ -3909,7 +3912,7 @@ async function seedMarketQuotes() {
       },
       severity,
       variant: undefined,
-      dedupTtl: 3600,
+      dedupTtl: notifyPolicy.marketMoveDedupTtlSeconds('equity'),
     }).catch(e => console.warn('[Notify] Market stock publish error:', e?.message));
   }
   return quotes.length;
@@ -3967,7 +3970,9 @@ async function seedCommodityQuotes() {
   for (const q of movingCommodities.slice(0, 3)) {
     const pct = Math.round(q.change);
     const dir = q.change < 0 ? 'decline' : 'surge';
-    const severity = Math.abs(q.change) >= 10 ? 'critical' : 'high';
+    // VIX swings 10%+ routinely, so it is never critical (#10873).
+    const severity = notifyPolicy.marketMoveSeverity({ assetClass: 'commodity', symbol: q.symbol, changePct: q.change });
+    if (!severity) continue;
     publishNotificationEvent({
       eventType: 'market_alert',
       payload: {
@@ -3978,7 +3983,7 @@ async function seedCommodityQuotes() {
       },
       severity,
       variant: undefined,
-      dedupTtl: 3600,
+      dedupTtl: notifyPolicy.marketMoveDedupTtlSeconds('commodity'),
     }).catch(e => console.warn('[Notify] Commodity publish error:', e?.message));
   }
   return quotes.length;
@@ -4310,7 +4315,8 @@ async function seedCryptoQuotes() {
   for (const q of movingCrypto.slice(0, 3)) {
     const pct = Math.round(q.change);
     const dir = q.change < 0 ? 'decline' : 'surge';
-    const severity = Math.abs(q.change) >= 20 ? 'critical' : 'high';
+    const severity = notifyPolicy.marketMoveSeverity({ assetClass: 'crypto', symbol: q.symbol, changePct: q.change });
+    if (!severity) continue;
     publishNotificationEvent({
       eventType: 'market_alert',
       payload: {
@@ -4321,7 +4327,7 @@ async function seedCryptoQuotes() {
       },
       severity,
       variant: undefined,
-      dedupTtl: 3600,
+      dedupTtl: notifyPolicy.marketMoveDedupTtlSeconds('crypto'),
     }).catch(e => console.warn('[Notify] Crypto publish error:', e?.message));
   }
   return quotes.length;
@@ -4924,7 +4930,9 @@ async function seedCyberThreats() {
       publishNotificationEvent({
         eventType: 'cyber_threat',
         payload: { title: `${typeLabel}: ${t.indicator?.slice(0, 50)}${familyTag}`, source: t.source || 'Cyber Intel', ...(countryCode ? { countryCode } : {}) },
-        severity: t.severity === 'critical' ? 'critical' : 'high',
+        // One indicator (an IP, a URL) is never a realtime-critical event; the
+        // feed's own 'critical' becomes high (#10873, #3936).
+        severity: 'high',
         variant: undefined,
         dedupTtl: 43200,
       }).catch(err => console.warn('[Notify] Cyber publish error:', err?.message));
@@ -5628,6 +5636,8 @@ async function seedClassifyForVariant(variant, seenTitles) {
             entityCorroborationCount: 0,
           },
         );
+        const titleCountryCodes = matchCountryNamesInText(chunk[idx]);
+        const primaryCountryCode = notifyPolicy.primaryNewsCountryCode(titleCountryCodes);
         publishNotificationEvent({
           eventType: 'rss_alert',
           payload: {
@@ -5642,7 +5652,10 @@ async function seedClassifyForVariant(variant, seenTitles) {
             // rss_alert permissive-unattributed, so a singular field here would
             // start silencing country-scoped Slack rules.
             category,
-            countryCodes: matchCountryNamesInText(chunk[idx]),
+            countryCodes: titleCountryCodes,
+            // The one country the headline names, read by the relay's tier
+            // gate (#10873). Deliberately not the singular field the relay scopes on (see above).
+            ...(primaryCountryCode ? { primaryCountryCode } : {}),
           },
           severity: level,
           variant,
@@ -7564,7 +7577,9 @@ async function seedWeatherAlerts() {
       publishNotificationEvent({
         eventType: 'weather_alert',
         payload: {
-          title: a.headline || a.event || 'Weather alert',
+          // What · where · until (#10873): a bare WMO "Wind" or "CAP Alert"
+          // named neither the place nor the country.
+          title: notifyPolicy.weatherAlertNotifyTitle(a),
           source: weatherAlertNotifySource(a),
           ...(countryCode ? { countryCode } : {}),
           ...(coalesceKey ? { coalesceKey } : {}),
@@ -7572,6 +7587,9 @@ async function seedWeatherAlerts() {
         },
         severity: a.severity === 'Extreme' ? 'critical' : 'high',
         variant: undefined,
+        // Until the alert expires: the 30-minute default re-sent an active
+        // alert on every seed tick.
+        dedupTtl: notifyPolicy.weatherAlertDedupTtlSeconds(a),
       }).catch(e => console.warn('[Notify] Weather publish error:', e?.message));
     }
   } catch (e) {
@@ -8283,16 +8301,13 @@ async function seedCorridorRisk() {
     await upstashSet('seed-meta:supply_chain:corridorrisk', { fetchedAt: Date.now(), recordCount: Object.keys(result).length }, 604800);
     console.log(`[CorridorRisk] Seeded ${Object.keys(result).length} corridors (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     seedTransitSummaries().catch(e => console.warn('[TransitSummary] Post-CorridorRisk seed error:', e?.message || e));
+    // Keyed on corridor + band for a day (#10873): an unchanged score used to
+    // re-notify hourly because the dedup hash covered the title's live score.
     for (const [corridorId, c] of Object.entries(result)) {
-      if (c.riskScore < 50) continue;
-      const label = corridorId.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
-      publishNotificationEvent({
-        eventType: 'corridor_risk',
-        payload: { title: `${label}: risk score ${c.riskScore}`, source: 'Corridor Risk' },
-        severity: c.riskScore >= 70 ? 'critical' : 'high',
-        variant: undefined,
-        dedupTtl: 3600,
-      }).catch(err => console.warn('[Notify] CorridorRisk publish error:', err?.message));
+      const notification = notifyPolicy.corridorRiskNotification(corridorId, c.riskScore);
+      if (!notification) continue;
+      publishNotificationEvent({ ...notification, variant: undefined })
+        .catch(err => console.warn('[Notify] CorridorRisk publish error:', err?.message));
     }
   } catch (e) {
     console.warn('[CorridorRisk] Seed error:', e?.message || e);
@@ -8445,14 +8460,11 @@ async function seedShippingStress() {
     const ok = await envelopeWrite(SHIPPING_STRESS_REDIS_KEY, payload, SHIPPING_STRESS_TTL, { recordCount: results.length, sourceVersion: 'shipping-stress' });
     await upstashSet('seed-meta:supply_chain:shipping_stress', { fetchedAt: Date.now(), recordCount: results.length }, 604800);
     console.log(`[ShippingStress] Seeded ${results.length} carriers score=${stressScore}/${stressLevel} (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-    if (stressScore >= 75) {
-      publishNotificationEvent({
-        eventType: 'shipping_stress',
-        payload: { title: `Global shipping stress: score ${stressScore}/100 (${stressLevel})`, source: 'Shipping Index' },
-        severity: stressScore >= 90 ? 'critical' : 'high',
-        variant: undefined,
-        dedupTtl: 7200,
-      }).catch(err => console.warn('[Notify] ShippingStress publish error:', err?.message));
+    // Keyed on the band for a day (#10873), not on the title's live score.
+    const stressNotification = notifyPolicy.shippingStressNotification(stressScore, stressLevel);
+    if (stressNotification) {
+      publishNotificationEvent({ ...stressNotification, variant: undefined })
+        .catch(err => console.warn('[Notify] ShippingStress publish error:', err?.message));
     }
   } catch (e) {
     console.warn('[ShippingStress] Seed error:', e?.message || e, '— extending TTL, retrying in 20min');

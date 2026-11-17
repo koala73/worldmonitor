@@ -45,14 +45,14 @@ describe('ais-relay API fan-out tee', () => {
 
   it('the rss_alert publish site carries category and countryCodes (plural) beside the existing fields', () => {
     const site = blockAfter("eventType: 'rss_alert',", 900);
-    for (const field of ['title: chunk[idx]', 'source: meta.source', 'link: meta.link', 'publishedAt: meta.publishedAt', 'importanceScore', 'corroborationCount', 'category,', 'countryCodes: matchCountryNamesInText(chunk[idx])']) {
+    for (const field of ['title: chunk[idx]', 'source: meta.source', 'link: meta.link', 'publishedAt: meta.publishedAt', 'importanceScore', 'corroborationCount', 'category,', 'countryCodes: titleCountryCodes']) {
       assert.ok(site.includes(field), `rss_alert payload must carry ${field}`);
     }
     assert.ok(!/payload:\s*\{[^}]*\bcountryCode:/s.test(site), 'rss_alert stays permissive-unattributed for relay country scopes: no singular countryCode');
   });
 
   it('all three market_alert publish sites carry the quote fields the market.move payload needs', () => {
-    const blocks = [...relaySrc.matchAll(/eventType:\s*'market_alert'[\s\S]*?dedupTtl:\s*3600,/g)].map((m) => m[0]);
+    const blocks = [...relaySrc.matchAll(/eventType:\s*'market_alert'[\s\S]*?dedupTtl:\s*notifyPolicy\.marketMoveDedupTtlSeconds\('\w+'\),/g)].map((m) => m[0]);
     assert.equal(blocks.length, 3, 'equity, commodity and crypto');
     for (const [block, assetClass] of blocks.map((b, i) => [b, ['equity', 'commodity', 'crypto'][i]])) {
       assert.match(block, new RegExp(`\\.\\.\\.marketMoveFields\\('${assetClass}', q\\)`), `${assetClass} site`);

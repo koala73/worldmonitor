@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import * as weather from '../scripts/_weather-alert-select.mjs';
 import { __testing__ as health } from '../api/health.js';
+
+const notifyPolicy = createRequire(import.meta.url)('../scripts/lib/notification-publish-policy.cjs');
 
 const relay = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
 const weatherLoop = relay.slice(relay.indexOf('const WEATHER_SEED_INTERVAL_MS ='), relay.indexOf('async function startWeatherSeedLoop()'));
@@ -68,6 +71,7 @@ function harness({ store = new Map() } = {}) {
       store.set(key, clone(value)); writes.push({ key, ttl }); return true;
     },
     nwsVtec: () => undefined,
+    notifyPolicy,
     publishNotificationEvent: async (event) => notifications.push(clone(event)),
   };
   const seed = runInNewContext(`${envelopes}\n${weatherLoop}\nseedWeatherAlerts`, context);

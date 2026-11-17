@@ -310,7 +310,7 @@ describe('market alert producer — asset-family coalesce key', () => {
   });
 
   it('all market_alert publishers pass coalesceKey through the payload', () => {
-    const marketBlocks = [...aisRelaySrc.matchAll(/eventType:\s*'market_alert'[\s\S]*?dedupTtl:\s*3600,/g)].map(m => m[0]);
+    const marketBlocks = [...aisRelaySrc.matchAll(/eventType:\s*'market_alert'[\s\S]*?dedupTtl:\s*notifyPolicy\.marketMoveDedupTtlSeconds\('\w+'\),/g)].map(m => m[0]);
     assert.equal(marketBlocks.length, 3, 'expected equity, commodity, and crypto market_alert producers');
     for (const block of marketBlocks) {
       assert.match(
