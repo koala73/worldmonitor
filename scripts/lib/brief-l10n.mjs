@@ -118,22 +118,19 @@ function scriptShareOk(text, lang) {
   return inScript / letters.length >= MIN_SCRIPT_SHARE;
 }
 
-/** URLs in `text`, without sentence punctuation the match swallowed. */
-function urlsIn(text) {
-  return (text.match(URL_RE) ?? []).map((url) => url.replace(/[.,;:!?]+$/, ''));
-}
-
 function validTranslation(source, out, lang) {
   if (typeof out !== 'string') return false;
   const text = out.trim();
   if (text.length === 0) return false;
   if (/[<>]/.test(text) || CONTROL_RE.test(text) || hasPromptMarker(text)) return false;
-  const sourceUrls = urlsIn(source);
+  // Source URLs must survive byte for byte. A translated URL must be one of
+  // them, optionally followed by sentence punctuation the match swallowed.
+  const sourceUrls = source.match(URL_RE) ?? [];
   for (const url of sourceUrls) {
     if (!text.includes(url)) return false;
   }
-  for (const url of urlsIn(text)) {
-    if (!sourceUrls.includes(url)) return false;
+  for (const url of text.match(URL_RE) ?? []) {
+    if (!sourceUrls.includes(url) && !sourceUrls.includes(url.replace(/[.,;:!?]+$/, ''))) return false;
   }
   if (source.length < MIN_CHECKED_LENGTH) {
     if (text.length > Math.max(SHORT_SOURCE_MAX_LEN, source.length * MAX_RATIO)) return false;
