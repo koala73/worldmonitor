@@ -72,7 +72,20 @@ async function loadFont(): Promise<ArrayBuffer> {
 }
 
 // Code points the base Latin file draws (its cmap).
-const BASE_COVERAGE = /^[\u0000\u000A\u000D\u0020-\u007E\u00A0-\u00FF\u0131\u0152\u0153\u02BB\u02BC\u02C6\u02DA\u02DC\u0300\u0301\u0303\u0304\u0308\u0309\u0323\u0329\u2002\u2009\u200B\u2013\u2014\u2018-\u201A\u201C-\u201E\u2022\u2026\u2032\u2033\u2039\u203A\u2044\u20AC\u2122\u2212\uFEFF\uFFFD]$/u;
+const BASE_COVERAGE: ReadonlyArray<readonly [number, number]> = [
+  [0x0000, 0x0000], [0x000A, 0x000A], [0x000D, 0x000D], [0x0020, 0x007E], [0x00A0, 0x00FF],
+  [0x0131, 0x0131], [0x0152, 0x0153], [0x02BB, 0x02BC], [0x02C6, 0x02C6], [0x02DA, 0x02DA],
+  [0x02DC, 0x02DC], [0x0300, 0x0301], [0x0303, 0x0304], [0x0308, 0x0309], [0x0323, 0x0323],
+  [0x0329, 0x0329], [0x2002, 0x2002], [0x2009, 0x2009], [0x200B, 0x200B], [0x2013, 0x2014],
+  [0x2018, 0x201A], [0x201C, 0x201E], [0x2022, 0x2022], [0x2026, 0x2026], [0x2032, 0x2033],
+  [0x2039, 0x203A], [0x2044, 0x2044], [0x20AC, 0x20AC], [0x2122, 0x2122], [0x2212, 0x2212],
+  [0xFEFF, 0xFEFF], [0xFFFD, 0xFFFD],
+];
+
+function baseCovers(ch: string): boolean {
+  const cp = ch.codePointAt(0) ?? 0;
+  return BASE_COVERAGE.some(([lo, hi]) => cp >= lo && cp <= hi);
+}
 
 type ExtraFamily = { family: string; name: string; lang?: string };
 
@@ -97,7 +110,7 @@ function hanFamily(lang: string): ExtraFamily {
 
 /** The family that draws one character the base file cannot, or null when the base file covers it. */
 function familyForChar(ch: string, lang: string): ExtraFamily | null {
-  if (BASE_COVERAGE.test(ch)) return null;
+  if (baseCovers(ch)) return null;
   const cp = ch.codePointAt(0)!;
   if ((cp >= 0x1100 && cp <= 0x11ff) || (cp >= 0x3130 && cp <= 0x318f) || (cp >= 0xac00 && cp <= 0xd7af)) return FAMILIES.kr;
   if ((cp >= 0x3040 && cp <= 0x30ff) || (cp >= 0x31f0 && cp <= 0x31ff) || (cp >= 0xff65 && cp <= 0xff9f)) return FAMILIES.jp;
