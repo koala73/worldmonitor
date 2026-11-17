@@ -41,7 +41,7 @@ import { selectBriefEnvelope } from '../../../../../server/_shared/brief-render.
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../_sentry-edge.js';
 import { verifyBriefToken, BriefUrlError } from '../../../../../server/_shared/brief-url';
-import { renderCarouselImageResponse, pageFromIndex } from '../../../../../server/_shared/brief-carousel-render';
+import { carouselKeepsEnglish, renderCarouselImageResponse, pageFromIndex } from '../../../../../server/_shared/brief-carousel-render';
 
 // Matches the signer's slot format (YYYY-MM-DD-HHMM).
 const ISSUE_DATE_RE = /^\d{4}-\d{2}-\d{2}-\d{4}$/;
@@ -150,7 +150,10 @@ export default async function handler(
     return jsonError('service_unavailable', 503, cors);
   }
   if (!envelope) return jsonError('not_found', 404, cors);
-  const sibling = await siblingPromise;
+  // A sibling in a language the image renderer cannot draw yet counts as
+  // absent: the English image is then the intended output and is cached.
+  const stored = await siblingPromise;
+  const sibling = carouselKeepsEnglish(stored) ? null : stored;
   const canonicalEnvelope = envelope;
   envelope = selectBriefEnvelope(canonicalEnvelope, sibling);
   const cacheable = !siblingReadFailed && (sibling == null || envelope !== canonicalEnvelope);
