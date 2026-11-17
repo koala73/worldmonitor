@@ -51,6 +51,10 @@ describe('published Pentagon Pizza Index reading', () => {
     assert.equal(publishedPizzaIndex(null, NOW), null);
     assert.equal(publishedPizzaIndex({ pizzaIndex: { ...RECORD, label: 'Normal Activity' } }, NOW), null, 'label must match the level');
     assert.equal(publishedPizzaIndex({ pizzaIndex: { ...RECORD, level: '6' } }, NOW), null);
+    const { label: _label, ...unlabelled } = RECORD;
+    assert.equal(publishedPizzaIndex({ pizzaIndex: { ...unlabelled, level: '6' } }, NOW), null, 'unknown level with no label');
+    assert.equal(publishedPizzaIndex({ pizzaIndex: { ...unlabelled, level: 'constructor' } }, NOW), null, 'inherited key is not a level');
+    assert.equal(publishedPizzaIndex({ pizzaIndex: unlabelled }, NOW), null, 'known level with no label');
     assert.equal(publishedPizzaIndex({ pizzaIndex: { ...RECORD, updatedAt: 'yesterday' } }, NOW), null);
     assert.equal(publishedPizzaIndex({ pizzaIndex: { ...RECORD, updatedAt: new Date(NOW + 60_000).toISOString() } }, NOW), null, 'no future readings');
     assert.equal(publishedPizzaIndex({ pizzaIndex: { ...RECORD, venues: [{ name: '' }] } }, NOW), null);

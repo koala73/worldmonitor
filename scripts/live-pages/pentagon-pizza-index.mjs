@@ -9,7 +9,12 @@
 //
 // Pure module: no Node or DOM APIs, so middleware.ts can bundle it.
 
-import { PIZZINT_LEVEL_LABELS, pizzIntAnswerText, pizzIntViewModel } from '../crawlable-live-tools.mjs';
+import {
+  MAX_PUBLISHED_PIZZA_INDEX_AGE_MS,
+  PIZZINT_LEVEL_LABELS,
+  pizzIntAnswerText,
+  pizzIntViewModel,
+} from '../crawlable-live-tools.mjs';
 import { escapeHtml, formatStaticDateTime, liveSectionMarkers } from './common.mjs';
 
 export const PIZZA_INDEX_SLUG = 'pentagon-pizza-index';
@@ -17,10 +22,7 @@ export const PIZZA_INDEX_PAGE_PATH = '/blog/glossary/pentagon-pizza-index/';
 // Bare `public=1`: include_gdelt stays false, so the handler reads only the
 // pizza seed. src/shared/public-rpc-cache.ts admits exactly this shape.
 export const PIZZA_INDEX_STATUS_PATH = '/api/intelligence/v1/get-pizzint-status?public=1';
-// The relay publishes a level only while a venue reports live busyness, so the
-// weekly freeze often finds none and carries the previous edition's reading.
-// Past two weeks a dated level says more about the archive than the index.
-export const MAX_PUBLISHED_PIZZA_INDEX_AGE_MS = 14 * 24 * 60 * 60 * 1_000;
+export { MAX_PUBLISHED_PIZZA_INDEX_AGE_MS };
 
 const FALLBACK_TEXT = 'The current level loads in your browser from World Monitor’s live feed, refreshed every 15 minutes.'
   + ' It also appears next to the pizza icon in the <a href="/dashboard">dashboard header</a>.';
@@ -55,6 +57,7 @@ export function publishedPizzaIndex(livePulse, now = Date.now()) {
   if (!record || typeof record !== 'object') return null;
   const updatedAt = Date.parse(record.updatedAt);
   if (!Number.isFinite(updatedAt) || updatedAt > now || now - updatedAt > MAX_PUBLISHED_PIZZA_INDEX_AGE_MS) return null;
+  if (!Object.hasOwn(PIZZINT_LEVEL_LABELS, record.level) || typeof record.label !== 'string') return null;
   if (PIZZINT_LEVEL_LABELS[record.level] !== record.label) return null;
   if (!Array.isArray(record.venues) || !record.venues.every((venue) => (
     typeof venue?.name === 'string' && venue.name && typeof venue?.status === 'string' && venue.status
