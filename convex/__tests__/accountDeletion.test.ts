@@ -842,6 +842,7 @@ describe("account deletion — external side effects", () => {
     expect(fetchCalls.some((call) => call.includes("entitlements:test:user_deletion_a"))).toBe(true);
     expect(fetchCalls.some((call) => call.includes(`pro-mcp-token-neg:${String(tokenId)}`))).toBe(true);
     expect(fetchCalls.some((call) => call.includes("brief:latest:user_deletion_a"))).toBe(true);
+    expect(fetchCalls.some((call) => call.includes("wm:notif:sent:v1:user_deletion_a"))).toBe(true);
     expect(fetchCalls.some((call) => call.includes("brief:user_deletion_a:2026-09-21-1200"))).toBe(true);
     expect(await t.query(internal.mcpProTokens.validateProMcpToken, { tokenId })).toBeNull();
   });

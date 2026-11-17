@@ -87,6 +87,10 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   // /api/news/v1/search-headlines stays off this list: free and signed-out
   // dashboards search that window.
   '/api/news/v1/search-headline-archive',
+  // Alerts delivered to the signed-in account, read by the dashboard search.
+  // Account-private: the handler reads only the key of the user the gateway
+  // authenticated. Listed here so premiumFetch attaches the Clerk bearer.
+  '/api/news/v1/list-sent-alerts',
   '/api/trade/v1/list-comtrade-flows',
   '/api/trade/v1/get-tariff-trends',
   '/api/trade/v1/get-bilateral-tariff',

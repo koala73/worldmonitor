@@ -269,6 +269,10 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/news/v1/list-news-pool': 1,
   // Cmd+K headline search over 7 days; the 24-hour sibling stays free.
   '/api/news/v1/search-headline-archive': 1,
+  // Account-private history of delivered realtime alerts (dashboard search).
+  // Tier-gated so the gateway resolves the session and stamps the trusted
+  // user id the handler reads; an anonymous or keyless caller never reaches it.
+  '/api/news/v1/list-sent-alerts': 1,
 };
 
 const CONVEX_INTERNAL_ENTITLEMENTS_PATH = '/api/internal-entitlements';

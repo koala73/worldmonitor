@@ -55,6 +55,7 @@ const RELAY_PATHS = new Set([
   '/api/news/v1/list-media-perspective',
   '/api/news/v1/list-news-pool',
   '/api/news/v1/search-headline-archive',
+  '/api/news/v1/list-sent-alerts',
   '/api/trade/v1/list-comtrade-flows',
   '/api/trade/v1/get-tariff-trends',
   '/api/trade/v1/get-bilateral-tariff',

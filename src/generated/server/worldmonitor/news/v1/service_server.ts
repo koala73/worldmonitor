@@ -378,6 +378,21 @@ export interface HeadlineMatch {
   lastServedAt: number;
 }
 
+export interface ListSentAlertsRequest {
+}
+
+export interface ListSentAlertsResponse {
+  alerts: SentAlert[];
+  state: string;
+}
+
+export interface SentAlert {
+  title: string;
+  source: string;
+  link: string;
+  sentAt: number;
+}
+
 export type StoryPhase = "STORY_PHASE_UNSPECIFIED" | "STORY_PHASE_BREAKING" | "STORY_PHASE_DEVELOPING" | "STORY_PHASE_SUSTAINED" | "STORY_PHASE_FADING";
 
 export type SummarizeStatus = "SUMMARIZE_STATUS_UNSPECIFIED" | "SUMMARIZE_STATUS_SUCCESS" | "SUMMARIZE_STATUS_CACHED" | "SUMMARIZE_STATUS_SKIPPED" | "SUMMARIZE_STATUS_ERROR";
@@ -444,6 +459,7 @@ export interface NewsServiceHandler {
   searchClaimHeadlines(ctx: ServerContext, req: SearchClaimHeadlinesRequest): Promise<SearchClaimHeadlinesResponse>;
   searchHeadlines(ctx: ServerContext, req: SearchHeadlinesRequest): Promise<SearchHeadlinesResponse>;
   searchHeadlineArchive(ctx: ServerContext, req: SearchHeadlinesRequest): Promise<SearchHeadlinesResponse>;
+  listSentAlerts(ctx: ServerContext, req: ListSentAlertsRequest): Promise<ListSentAlertsResponse>;
 }
 
 export function createNewsServiceRoutes(
@@ -1138,6 +1154,43 @@ export function createNewsServiceRoutes(
 
           const result = await handler.searchHeadlineArchive(ctx, body);
           return new Response(JSON.stringify(result as SearchHeadlinesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/list-sent-alerts",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListSentAlertsRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listSentAlerts(ctx, body);
+          return new Response(JSON.stringify(result as ListSentAlertsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

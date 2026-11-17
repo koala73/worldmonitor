@@ -236,7 +236,7 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["GET /api/scenario/v1/list-scenario-templates",
     "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
 
-  // === deferred-to-future-tool (56) ===
+  // === deferred-to-future-tool (57) ===
   ["GET /api/safety/v1/get-toronto-safety",
     "deferred-to-future-tool: pure-read of the seeded Toronto Police Service extracts. The two Toronto-only tools left tools/list (both names stay callable as retired tools); a public-safety tool taking a jurisdiction receives them once a second city or province is seeded."],
   ["GET /api/aviation/v1/list-aircraft-emergencies",
@@ -251,6 +251,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "deferred-to-future-tool: Cmd+K search over the last 24 hours of headlines the dashboard served; agents search current news through get_news_intelligence and verify_claim"],
   ["GET /api/news/v1/search-headline-archive",
     "deferred-to-future-tool: the 7-day Pro window of the same Cmd+K headline search; a future headline-history tool can expose it"],
+  ["GET /api/news/v1/list-sent-alerts",
+    "deferred-to-future-tool: account-private history of the alerts delivered to the caller, read by the dashboard search; no MCP surface until per-user notification data has an explicit MCP authorization design"],
   ["GET /api/news/v1/list-label-changes",
     "deferred-to-future-tool: label history (#9093) is read by the /trust page; a future trust tool can expose recent label changes"],
   ["GET /api/consumer-prices/v1/get-consumer-price-basket-series",

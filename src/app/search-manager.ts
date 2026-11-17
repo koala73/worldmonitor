@@ -60,6 +60,7 @@ import { HeadlineHistorySearch } from '@/app/headline-history-search';
 import { resetHeadlineHistoryAccess, searchHeadlineHistory } from '@/services/headline-history';
 import { isOpenableExternalUrl, openExternalUrl } from '@/services/external-navigation';
 import { headlineTitleKey } from '@/shared/headline-title-key';
+import { attachSentAlertSearch, openSentAlertLink } from '@/app/search-alert-wiring';
 import { WebMcpSearchController } from '@/app/webmcp-search-controller';
 import type {
   DashboardSearchOpenResult,
@@ -210,6 +211,7 @@ export class SearchManager implements AppModule {
   private liveFlightLookupGeneration = 0;
   private acceptLateBaseHydration = true;
   private searchIndexReady: Promise<void> = Promise.resolve();
+  private detachSentAlertSearch: (() => void) | null = null;
 
   constructor(ctx: AppContext, callbacks: SearchManagerCallbacks) {
     this.ctx = ctx;
@@ -233,6 +235,7 @@ export class SearchManager implements AppModule {
       },
       saveToStorage,
       setTheme,
+      openExternalLink: (url) => openSentAlertLink(url),
       // Must stay wrapped, not passed bare: the dispatcher invokes these as
       // `this.bindings.setTimeout(...)` / `this.bindings.clearTimeout(...)`,
       // a method call. The native functions require the receiver to be the
@@ -343,6 +346,8 @@ export class SearchManager implements AppModule {
     this.liveFlightLookupGeneration += 1;
     this.acceptLateBaseHydration = false;
     this.ctx.searchModal?.cancelPendingWork();
+    this.detachSentAlertSearch?.();
+    this.detachSentAlertSearch = null;
     this.webMcpSearch.destroy();
     this.searchSelection.destroy();
     this.headlineHistory.reset();
@@ -545,6 +550,10 @@ export class SearchManager implements AppModule {
     this.ctx.searchModal.setOnQueryChange((rawInput) => {
       this.headlineHistory.onQueryChange(rawInput);
     });
+    // "Alerts sent to you": fetched when the palette opens, not here, so
+    // building the index never waits on an account-private request.
+    this.detachSentAlertSearch?.();
+    this.detachSentAlertSearch = attachSentAlertSearch(this.ctx.searchModal);
 
   }
 
@@ -867,6 +876,9 @@ export class SearchManager implements AppModule {
       case 'headline':
         // Fetched for the query a person typed, and opens a publisher page:
         // never issued to an agent as something it can run.
+      case 'alert':
+        // Human-only: WebMcpSearchController excludes the alert source from
+        // agent search, and this keeps a forged or stale key from opening one.
         return false;
       default:
         return true;

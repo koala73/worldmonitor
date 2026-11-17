@@ -21,6 +21,9 @@ const MOBILE_MAX_RESULTS = 5;
 
 const RESULT_TYPE_PRIORITY: readonly SearchResultType[] = [
   'flight',
+  // Ahead of news: a user who types a headline from an alert is looking for
+  // that alert, and on a phone only the first types fit.
+  'alert',
   'news',
   // Directly after loaded news: mobile shows five results, filled in this order.
   'headline',
@@ -112,10 +115,21 @@ function matchCommands(
   return matched.sort((left, right) => right.score - left.score).slice(0, MAX_COMMANDS);
 }
 
+// What alert channels put before a headline: the email subject prefix and the
+// severity tag that opens a Telegram, Slack or Discord message
+// (scripts/notification-relay.cjs formatSubject, formatMessage). A subject or
+// message line pasted whole searches for the headline it carries.
+const ALERT_WORDING_PREFIX = /^(?:worldmonitor alert:|\[(?:critical|high|medium|low|info)\])\s*/;
+
+function withoutAlertWording(query: string): string {
+  return query.replace(ALERT_WORDING_PREFIX, '') || query;
+}
+
 function resultPerTypeLimit(type: SearchResultType, isMobile: boolean): number {
   if (isMobile) return 2;
   if (type === 'news') return 6;
   if (type === 'headline') return 8;
+  if (type === 'alert') return 5;
   if (type === 'country') return 4;
   return 3;
 }
@@ -173,6 +187,7 @@ export function querySearchIndex(options: SearchIndexQueryOptions): SearchIndexQ
     }
   }
 
+  const entityQuery = withoutAlertWording(query);
   for (const source of options.sources) {
     if (!resultMatchesSearchScope(options.scope, source.type)) continue;
     for (const item of source.items) {
@@ -180,9 +195,9 @@ export function querySearchIndex(options: SearchIndexQueryOptions): SearchIndexQ
       const subtitleLower = item.subtitle?.toLowerCase() ?? '';
       const searchTextLower = item.searchText?.toLowerCase() ?? '';
       if (
-        !titleLower.includes(query)
-        && !subtitleLower.includes(query)
-        && !searchTextLower.includes(query)
+        !titleLower.includes(entityQuery)
+        && !subtitleLower.includes(entityQuery)
+        && !searchTextLower.includes(entityQuery)
       ) continue;
 
       const matches = byType.get(source.type) ?? [];
@@ -192,10 +207,12 @@ export function querySearchIndex(options: SearchIndexQueryOptions): SearchIndexQ
         title: item.title,
         subtitle: item.subtitle,
         data: item.data,
-        _score: (
-          titleLower.startsWith(query)
-          || subtitleLower.startsWith(query)
-          || searchTextLower.startsWith(query)
+        // A title that is the whole query outranks a prefix match, so a
+        // pasted headline lists the item it names first.
+        _score: titleLower.trim() === entityQuery ? 3 : (
+          titleLower.startsWith(entityQuery)
+          || subtitleLower.startsWith(entityQuery)
+          || searchTextLower.startsWith(entityQuery)
         ) ? 2 : 1,
       };
       if (!options.isResultVisible({

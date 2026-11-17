@@ -82,6 +82,7 @@ Ready-made steps, one per mapped feature:
 | `steps/country-brief.mjs` | [Country brief](features/country-brief.md) |
 | `steps/global-search.mjs` | [Global search](features/global-search.md) |
 | `steps/headline-history-search.mjs` | [Cmd+K headline history](features/global-search.md) |
+| `steps/search-sent-alerts.mjs` | [Alerts sent to you in search](features/global-search.md) |
 | `steps/map-layers.mjs` | [Map layers](features/map-layers.md) |
 | `steps/orbital-watch.mjs` | [Satellite passes here](features/orbital-watch.md) |
 | `steps/orbital-image-viewer.mjs` | [Orbital image viewer and Compare](features/orbital-watch.md) |

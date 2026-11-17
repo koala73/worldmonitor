@@ -154,6 +154,8 @@ const MAP = [
   [/:\/api\/news\/v1\/list-media-perspective$/,          { cap: 'news.media_perspective' }],
   [/:\/api\/news\/v1\/list-news-pool$/,                   { cap: 'news.pool' }],
   [/:\/api\/news\/v1\/search-headline-archive$/,          { cap: 'news.headline_archive' }],
+  // Delivered-alert history behind the dashboard search: part of notifications, no label of its own.
+  [/:\/api\/news\/v1\/list-sent-alerts$/,                 { cap: 'notifications.channels' }],
   [/:\/api\/intelligence\/v1\/deduct-situation$/,         { cap: 'intel.deduction' }],
   [/:\/api\/intelligence\/v1\/(search-intel-history|get-intel-timeline|get-similar-events)$/, { cap: 'intel.memory' }],
   // get-country-coverage (#7526) is the agent-facing sibling of the country

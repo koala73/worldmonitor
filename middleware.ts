@@ -25,6 +25,7 @@ import {
   PIZZA_INDEX_STATUS_PATH,
   pizzaIndexReading,
   renderPizzaIndexSection,
+  withoutExpiredPizzaIndex,
 } from './scripts/live-pages/pentagon-pizza-index.mjs';
 import {
   SITUATION_PAGE_PATH,
@@ -601,15 +602,20 @@ function liveTopicPage(url: URL, topic: LiveTopicPage): Promise<Response> {
 }
 
 /**
- * The glossary page's "Current level" section. The blog build ships it in its
- * browser-loading state; this swaps in the current level so the HTML a crawler
- * reads states it. No current level (expired seed, closed-only poll) keeps the
- * built section, which the page's script still fills for visitors.
+ * The glossary page's level section. The blog build ships the last published
+ * reading, dated; this swaps in the current level. No current level (expired
+ * seed, closed-only poll, failed read) keeps the built section, unless its
+ * published reading has aged out since the build.
  */
 function livePizzaIndexPage(url: URL): Promise<Response> {
   return liveHtmlPage(url, PIZZA_INDEX_SLUG, async (html) => {
-    const view = pizzaIndexReading(await fetchPublicReading(url, PIZZA_INDEX_STATUS_PATH));
-    if (view === null) return null;
+    let view: ReturnType<typeof pizzaIndexReading> = null;
+    try {
+      view = pizzaIndexReading(await fetchPublicReading(url, PIZZA_INDEX_STATUS_PATH));
+    } catch {
+      view = null;
+    }
+    if (view === null) return withoutExpiredPizzaIndex(html);
     return replaceLiveSection(html, PIZZA_INDEX_SLUG, renderPizzaIndexSection(view));
   });
 }

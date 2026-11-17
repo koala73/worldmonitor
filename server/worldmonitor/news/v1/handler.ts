@@ -12,6 +12,7 @@ import { listErrorReports, reviewErrorReport, submitErrorReport } from './error-
 import { searchFactChecks } from './search-fact-checks';
 import { searchClaimHeadlines } from './search-claim-headlines';
 import { searchHeadlineArchive, searchHeadlines } from './search-headlines';
+import { listSentAlerts } from './list-sent-alerts';
 
 export const newsHandler: NewsServiceHandler = {
   summarizeArticle,
@@ -29,4 +30,5 @@ export const newsHandler: NewsServiceHandler = {
   searchClaimHeadlines,
   searchHeadlines,
   searchHeadlineArchive,
+  listSentAlerts,
 };

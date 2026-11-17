@@ -51,6 +51,8 @@ export interface SearchSelectionDispatcherBindings {
   openArticle(url: string): boolean;
   saveToStorage(key: string, value: unknown): void;
   setTheme(theme: 'dark' | 'light'): void;
+  /** Opens an article in a new tab. */
+  openExternalLink(url: string): void;
   setTimeout(callback: () => void, delay: number): ReturnType<typeof setTimeout>;
   clearTimeout(timer: ReturnType<typeof setTimeout>): void;
 }
@@ -182,6 +184,15 @@ export class SearchSelectionDispatcher {
       includeAttribution: trackDetailedAnalytics,
     });
     switch (result.type) {
+      case 'alert': {
+        // An alert the user was sent. The dashboard may no longer hold the
+        // story, so this opens the article itself instead of a news panel.
+        // An alert with no article link only shows when it was sent.
+        const link = (result.data as { link?: unknown } | null)?.link;
+        if (typeof link !== 'string' || !/^https?:\/\//i.test(link)) return false;
+        this.bindings.openExternalLink(link);
+        return true;
+      }
       case 'news': {
         const item = result.data as NewsItem;
         const target = this.bindings.resolveExecutableNewsPanel(item.link);

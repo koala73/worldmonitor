@@ -447,7 +447,8 @@
       "trendRising": "yükselen",
       "trendFalling": "düşen",
       "trendStable": "istikrarlı",
-      "situationLink": "Durumu izleyin: krizler, başlıklar, dar geçitler ve kesintiler tek bir panelde"
+      "situationLink": "Durumu izleyin: krizler, başlıklar, dar geçitler ve kesintiler tek bir panelde",
+      "pizzaIndexLink": "Pentagon Pizza Endeksi: Pentagon çevresindeki pizzacıların yoğunluğu"
     },
     "moments": {
       "eyebrow": "Korelasyon motoru",

@@ -27,7 +27,9 @@ export type SearchResultType =
   | 'financialcenter'
   | 'centralbank'
   | 'commodityhub'
-  | 'flight';
+  | 'flight'
+  // A realtime alert delivered to the signed-in user (ListSentAlerts).
+  | 'alert';
 
 export interface SearchResult {
   type: SearchResultType;

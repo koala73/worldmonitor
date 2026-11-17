@@ -128,6 +128,7 @@ describe('open_search_result persists an executable layer result', () => {
       openArticle: vi.fn(() => true),
       saveToStorage,
       setTheme: vi.fn(),
+      openExternalLink: vi.fn(),
       setTimeout: (callback, delay) => setTimeout(callback, delay),
       clearTimeout: (timer) => clearTimeout(timer),
     });

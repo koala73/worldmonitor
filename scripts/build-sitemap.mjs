@@ -120,6 +120,10 @@ export const STATIC_ROUTE_MANIFEST = Object.freeze([
   route(`${SITE_ORIGIN}/agent/`, 'agent', [
     'public/agent/index.html',
   ]),
+  route(`${SITE_ORIGIN}/trust/`, 'trust', [
+    'public/trust/index.html',
+    'public/trust/trust.js',
+  ]),
   route('https://tech.worldmonitor.app/dashboard', 'dashboard-variant', [
     ...DASHBOARD_MATERIAL_SOURCES,
     'src/config/panels.ts',

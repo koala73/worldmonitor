@@ -632,7 +632,8 @@
         "techevent": "Технологично събитие",
         "techhq": "Технологична централа",
         "accelerator": "Ускоритель",
-        "flight": "Полет"
+        "flight": "Полет",
+        "alert": "Известие"
       },
       "flightOnGround": "На земята",
       "flightAirborne": "FL{{fl}} · {{kts}} възела",
@@ -640,7 +641,9 @@
       "flightMilitaryOnGround": "Военен · {{type}} · на земята",
       "flightSearchHint": "Натиснете Enter или щракнете, за да проверите живата позиция",
       "flightNotFound": "Живата позиция не е намерена за {{callsign}}",
-      "addPanel": "Добави"
+      "addPanel": "Добави",
+      "sentAlerts": "Получени известия",
+      "sentAlertTime": "Изпратено {{time}}"
     },
     "signal": {
       "title": "РАЗУЗНАВАТЕЛНА НАХОДКА",
