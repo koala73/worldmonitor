@@ -19,6 +19,8 @@ import { fileURLToPath } from 'node:url';
 
 const relayScript = fileURLToPath(new URL('../scripts/ais-relay.cjs', import.meta.url));
 const EVENT_QUEUE = 'wm:events:queue';
+// The list the relay tees news and market events onto for API webhook subscribers.
+const API_FANOUT_LIST = 'wm:events:api:v1';
 
 const CNN_TITLE = 'Exclusive: US intel indicates Iran developing plans to potentially detonate a dirty bomb in Washington, sources say - CNN';
 const EGYPT_INDEPENDENT_TITLE = 'Exclusive: US intel indicates Iran developing plans to potentially detonate a dirty bomb in Washington, sources say';
@@ -59,6 +61,7 @@ function readBody(req) {
 async function startUpstash(t) {
   const store = new Map();
   const queued = [];
+  const apiFanout = [];
   const state = { failLpush: false };
   const run = (command) => {
     const [name, key, value, ...rest] = command;
@@ -77,7 +80,12 @@ async function startUpstash(t) {
       }
       return 1;
     }
-    return name === 'EVAL' ? 1 : 'OK';
+    if (name === 'EVAL') {
+      // ['EVAL', script, numkeys, key, ...args]: the tee's first argument is the message.
+      if (command[3] === API_FANOUT_LIST) apiFanout.push(JSON.parse(command[4]));
+      return 1;
+    }
+    return 'OK';
   };
   const server = http.createServer(async (req, res) => {
     let command = null;
@@ -95,6 +103,7 @@ async function startUpstash(t) {
     state,
     store,
     alerts: (variant = 'full') => queued.filter((e) => e.eventType === 'rss_alert' && e.variant === variant),
+    apiEvents: (variant = 'full') => apiFanout.filter((e) => e.eventType === 'rss_alert' && e.variant === variant),
   };
 }
 
@@ -194,12 +203,26 @@ test('a publisher repeating an alerted headline does not raise a second alert fo
   );
 });
 
+test('API webhook subscribers still get the repeat, to filter for themselves', async (t) => {
+  const { upstash, cycle, output } = await startRelay(t);
+  await cycle([{ title: CNN_TITLE, source: 'CNN World' }]);
+  await cycle([{ title: EGYPT_INDEPENDENT_TITLE, source: 'Egypt Independent' }]);
+
+  // One alert for realtime rules. Webhook subscribers each apply their own
+  // importance floor, severity and keywords, so the sighting that claimed the
+  // story may be one a subscriber rejected.
+  assert.deepEqual(titles(upstash.alerts()), [CNN_TITLE], output());
+  assert.deepEqual(titles(upstash.apiEvents()), [CNN_TITLE, EGYPT_INDEPENDENT_TITLE], output());
+  // Both carry one event id (occurrence-events.cjs normalizes the headline),
+  // which is what the webhook worker dedupes each subscription on.
+  assert.equal(upstash.apiEvents()[0].payload.eventId, upstash.apiEvents()[1].payload.eventId);
+});
+
 test('the story stays claimed for a day, the window an exact repeat is already held for', async (t) => {
   const { upstash, cycle } = await startRelay(t);
   await cycle([{ title: CNN_TITLE, source: 'CNN World' }]);
   const claims = [...upstash.store].filter(([key]) => key.startsWith('wm:notif:scan-dedup:rss_alert:full:'));
-  assert.equal(claims.length, 1);
-  assert.equal(claims[0][1].ttl, 86_400);
+  assert.deepEqual(claims.map(([, claim]) => claim.ttl), [86_400]);
 });
 
 test('a story first graded high still alerts when a later sighting is graded critical', async (t) => {

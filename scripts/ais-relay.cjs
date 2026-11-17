@@ -1020,11 +1020,6 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
     });
     // Returns true once the event is queued or was already queued; callers
     // that keep their own edge state retry on false.
-    if (!dedupDecision.shouldPublish) {
-      if (!dedupDecision.isDuplicate) return false;
-      console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
-      return true;
-    }
     const publishedAt = Date.now();
     const fanout = API_FANOUT_EVENT_TYPES.has(eventType);
     // Stable per-story / per-move id for API subscribers (occurrence-events.cjs).
@@ -1034,6 +1029,21 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
       if (eventId) payload = { ...payload, eventId };
     }
     const msg = JSON.stringify({ eventType, payload, severity: dedupDecision.severity, ...(variant ? { variant } : {}), publishedAt });
+    if (!dedupDecision.shouldPublish) {
+      if (!dedupDecision.isDuplicate) return false;
+      console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
+      // A repeat of an alerted story still goes to API webhook subscribers,
+      // on the title identity they had before the story key. Each one filters
+      // by its own importance floor, severity and keywords, so the sighting
+      // that claimed the story may be one a subscriber rejected, and this one
+      // the first it accepts.
+      if (storyKey && fanout) {
+        const titleKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(dedupMaterial)}`;
+        const titleClaim = await upstashSetNx(titleKey, '1', 1800);
+        if (titleClaim !== 'duplicate' && titleClaim !== 'disabled') teeApiFanout(eventType, msg);
+      }
+      return true;
+    }
     const ok = await upstashLpush('wm:events:queue', msg);
     if (ok) {
       if (fanout) teeApiFanout(eventType, msg);
