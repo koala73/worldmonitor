@@ -53,6 +53,10 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.language == 'go' && 'autobuild' || 'none' }}
+          # With overlay off, the action turns TRAP caching on by default; default-branch
+          # runs only upload TRAP caches (they never restore them), so they too would sit
+          # unread in the shared cache.
+          trap-caching: false
           # Generated upstream @vercel/og + satori bundle (scripts/vendor-vercel-og.mjs).
           # Its library internals re-raise ~22 alerts on every re-vendor; the generator
           # script and our patched vendor copies (braces, stream-json) stay scanned.

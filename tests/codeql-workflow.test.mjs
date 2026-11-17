@@ -55,6 +55,9 @@ test('scans never build overlay-base databases nobody restores', () => {
   // Only overlay scans of pull requests restore a base, and this workflow never runs
   // on them; each default-branch base was ~2 GB of Actions cache evicting what PRs read.
   assert.equal(workflow.jobs.analyze.env?.CODEQL_OVERLAY_DATABASE_MODE, 'none');
+  // Overlay off turns TRAP caching on, and default-branch runs only ever upload it.
+  const init = workflow.jobs.analyze.steps.find(step => step.uses?.startsWith('github/codeql-action/init@'));
+  assert.equal(init.with['trap-caching'], false);
   assert.deepEqual(Object.keys(workflow.jobs), ['analyze'], 'no cache-pruning job is needed');
   for (const job of Object.values(workflow.jobs)) assert.notEqual(job.permissions?.actions, 'write');
   assert.equal(workflow.permissions.actions, undefined);
