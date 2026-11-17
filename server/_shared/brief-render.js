@@ -21,7 +21,7 @@
 //   - Brainstorm: docs/brainstorms/2026-04-17-worldmonitor-brief-magazine-requirements.md
 //   - Plan: docs/plans/2026-04-17-003-feat-worldmonitor-brief-magazine-plan.md
 
-import { BRIEF_ENVELOPE_VERSION, SUPPORTED_ENVELOPE_VERSIONS } from '../../shared/brief-envelope.js';
+import { BRIEF_LOCALIZED_ENVELOPE_VERSION, SUPPORTED_ENVELOPE_VERSIONS } from '../../shared/brief-envelope.js';
 import { BRIEF_FONTS } from './brief-fonts.generated.js';
 
 /**
@@ -123,6 +123,10 @@ function isFiniteNumber(v) {
 // panel preview, carousel, email teaser). Locking the contract at
 // write time is the only place this invariant can live.
 const ALLOWED_ENVELOPE_KEYS = new Set(['version', 'issuedAt', 'data']);
+// v5 is the localized sibling (brief:l10n:{userId}:{slot}); only it may
+// carry the language code, which is validated by shape below.
+const ALLOWED_LOCALIZED_ENVELOPE_KEYS = new Set([...ALLOWED_ENVELOPE_KEYS, 'lang']);
+const LOCALIZED_LANG_RE = /^[a-z]{2,3}(-[A-Z]{2})?$/;
 const ALLOWED_DATA_KEYS = new Set(['user', 'issue', 'date', 'dateLong', 'digest', 'stories']);
 const ALLOWED_USER_KEYS = new Set(['name', 'tz']);
 // publicLead / publicSignals / publicThreads: optional v3+ fields.
@@ -229,7 +233,8 @@ export function assertBriefEnvelope(envelope) {
     throw new Error('renderBriefMagazine: envelope must be an object');
   }
   const env = /** @type {Record<string, unknown>} */ (envelope);
-  assertNoExtraKeys(env, ALLOWED_ENVELOPE_KEYS, 'envelope');
+  const isLocalized = env.version === BRIEF_LOCALIZED_ENVELOPE_VERSION;
+  assertNoExtraKeys(env, isLocalized ? ALLOWED_LOCALIZED_ENVELOPE_KEYS : ALLOWED_ENVELOPE_KEYS, 'envelope');
 
   // Accept any version in SUPPORTED_ENVELOPE_VERSIONS. The composer
   // only ever writes the current BRIEF_ENVELOPE_VERSION; older
@@ -244,6 +249,11 @@ export function assertBriefEnvelope(envelope) {
   }
   if (!isFiniteNumber(env.issuedAt)) {
     throw new Error('renderBriefMagazine: envelope.issuedAt must be a finite number');
+  }
+  if (isLocalized && (typeof env.lang !== 'string' || !LOCALIZED_LANG_RE.test(env.lang) || env.lang.split('-')[0] === 'en')) {
+    throw new Error(
+      `renderBriefMagazine: envelope.lang must be a non-English UI language code on v${BRIEF_LOCALIZED_ENVELOPE_VERSION} envelopes (got ${JSON.stringify(env.lang)})`,
+    );
   }
   if (!isObject(env.data)) {
     throw new Error('renderBriefMagazine: envelope.data is required');
@@ -373,10 +383,10 @@ export function assertBriefEnvelope(envelope) {
     // When present on any version it must be a non-empty string —
     // empty strings would silently collapse delivered-log keys across
     // clusters and break the `digest.cards ⊆ brief.cards` invariant.
-    if (env.version === BRIEF_ENVELOPE_VERSION) {
+    if (env.version >= 4) {
       if (!isNonEmptyString(st.clusterId)) {
         throw new Error(
-          `envelope.data.stories[${i}].clusterId must be a non-empty string on v${BRIEF_ENVELOPE_VERSION} envelopes (got ${JSON.stringify(st.clusterId)})`,
+          `envelope.data.stories[${i}].clusterId must be a non-empty string on v4+ envelopes (got ${JSON.stringify(st.clusterId)})`,
         );
       }
     } else if (st.clusterId !== undefined && !isNonEmptyString(st.clusterId)) {
@@ -394,6 +404,43 @@ export function assertBriefEnvelope(envelope) {
       `envelope.data.digest.numbers.surfaced=${numbers.surfaced} must equal envelope.data.stories.length=${data.stories.length}`,
     );
   }
+}
+
+/**
+ * Pick the envelope a private reader should render.
+ * Returns `localized` only when it passes assertBriefEnvelope, is version 5,
+ * has the same issuedAt as `canonical`, and its stories carry the same
+ * clusterId sequence. Otherwise returns `canonical`. Never throws.
+ * The issuedAt and clusterId checks stop a stale sibling (from an earlier
+ * compose in the same slot, or after the reader switched back to English)
+ * from rendering against a newer canonical envelope.
+ *
+ * @param {unknown} canonical  already-fetched brief:{userId}:{slot} value
+ * @param {unknown} localized  already-fetched brief:l10n:{userId}:{slot} value, or null
+ * @returns {unknown} canonical or localized, unvalidated shape preserved for the caller's own assert
+ */
+export function selectBriefEnvelope(canonical, localized) {
+  if (localized == null || !isObject(canonical)) return canonical;
+  try {
+    assertBriefEnvelope(localized);
+  } catch {
+    return canonical;
+  }
+  const loc = /** @type {BriefEnvelope} */ (localized);
+  const can = /** @type {{ issuedAt?: unknown; data?: unknown }} */ (canonical);
+  if (loc.version !== BRIEF_LOCALIZED_ENVELOPE_VERSION) return canonical;
+  if (loc.issuedAt !== can.issuedAt) return canonical;
+  const canStories = isObject(can.data) ? /** @type {{ stories?: unknown }} */ (can.data).stories : undefined;
+  if (!Array.isArray(canStories)) return canonical;
+  const locStories = loc.data.stories;
+  if (canStories.length !== locStories.length) return canonical;
+  for (let i = 0; i < canStories.length; i++) {
+    /** @type {unknown} */
+    const story = canStories[i];
+    const clusterId = isObject(story) ? /** @type {{ clusterId?: unknown }} */ (story).clusterId : undefined;
+    if (clusterId !== locStories[i].clusterId) return canonical;
+  }
+  return localized;
 }
 
 // ── Logo symbol + references ─────────────────────────────────────────────────

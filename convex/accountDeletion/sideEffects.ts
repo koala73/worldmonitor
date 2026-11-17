@@ -274,7 +274,6 @@ async function deleteAccountRedisKeys(args: {
 }): Promise<void> {
   const keys = [
     entitlementKey(args.userId),
-    `brief:latest:${args.userId}`,
     // Alerts delivered to the account (scripts/lib/sent-alert-history.cjs).
     `wm:notif:sent:v1:${args.userId}`,
     ...args.keyHashes.flatMap((hash) => [
@@ -291,7 +290,13 @@ async function deleteAccountRedisKeys(args: {
       : typeof latest === "string"
         ? latest
         : null;
-  if (slot) keys.push(`brief:${args.userId}:${slot}`);
+  if (slot) {
+    keys.push(`brief:${args.userId}:${slot}`);
+    // Localized sibling; source of truth is briefLocalizedKey in shared/brief-envelope.js.
+    keys.push(`brief:l10n:${args.userId}:${slot}`);
+  }
+  // Pointer last: a partial pipeline keeps it, so a retry still finds the slot.
+  keys.push(`brief:latest:${args.userId}`);
 
   // Deletes, the alert-history marker and the MCP negative-cache sentinels go
   // in one pipeline. The sentinels used to be a per-token await, each its own

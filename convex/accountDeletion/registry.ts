@@ -216,7 +216,7 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
   {
     target: "redis:briefs",
     action: "delete",
-    notes: "brief:latest:{userId} and brief:{userId}:{slot} from that pointer",
+    notes: "brief:latest:{userId}, brief:{userId}:{slot} and brief:l10n:{userId}:{slot} from that pointer",
   },
   {
     target: "redis:sent-alerts",
