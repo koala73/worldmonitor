@@ -89,6 +89,11 @@ function resolveCategoryLabel(cmd: Command): string {
 const RECENT_SEARCHES_KEY = 'worldmonitor_recent_searches';
 const MAX_RECENT = 8;
 
+/** Sources left out of one query before ranking, so they take none of the capped result slots. */
+interface SearchQueryOptions {
+  excludeTypes?: readonly SearchResultType[];
+}
+
 interface SearchModalOptions {
   placeholder?: string;
   scopes?: readonly [SearchScope, ...SearchScope[]];
@@ -207,11 +212,7 @@ export class SearchModal {
   }
 
   /** Search the current index without opening or mutating the modal. */
-  public search(
-    rawInput: string,
-    scope: SearchScope = this.activeScope,
-    options?: { excludeTypes?: readonly SearchResultType[] },
-  ): SearchIndexQueryResult {
+  public search(rawInput: string, scope: SearchScope = this.activeScope, options?: SearchQueryOptions): SearchIndexQueryResult {
     // Viewport width can change while the lazy manager stays alive. Re-read
     // the responsive mode so programmatic and visible searches use identical
     // caps/order at the current viewport. Do not mutate the current open
@@ -220,8 +221,6 @@ export class SearchModal {
     return querySearchIndex({
       rawInput,
       scope,
-      // An excluded source is left out before ranking, so it takes none of
-      // the capped result slots.
       sources: options?.excludeTypes?.length
         ? this.sources.filter((source) => !options.excludeTypes?.includes(source.type))
         : this.sources,
