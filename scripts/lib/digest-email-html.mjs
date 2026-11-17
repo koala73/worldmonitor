@@ -159,17 +159,17 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
         <tr>
           <td style="text-align: center; padding: 14px 8px; width: 33%; background: #161616; border: 1px solid #222;">
             <div style="font-size: 24px; font-weight: 800; color: #4ade80;">${totalCount}</div>
-            <div style="font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px;">Events</div>
+            <div style="font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px;">${chromeHtml(lang, 'email.events')}</div>
           </td>
           <td style="width: 1px;"></td>
           <td style="text-align: center; padding: 14px 8px; width: 33%; background: #161616; border: 1px solid #222;">
             <div style="font-size: 24px; font-weight: 800; color: #ef4444;">${criticalCount}</div>
-            <div style="font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px;">Critical</div>
+            <div style="font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px;">${chromeHtml(lang, 'threat.critical')}</div>
           </td>
           <td style="width: 1px;"></td>
           <td style="text-align: center; padding: 14px 8px; width: 33%; background: #161616; border: 1px solid #222;">
             <div style="font-size: 24px; font-weight: 800; color: #f97316;">${highCount}</div>
-            <div style="font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px;">High</div>
+            <div style="font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px;">${chromeHtml(lang, 'threat.high')}</div>
           </td>
         </tr>
       </table>

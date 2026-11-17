@@ -305,4 +305,3 @@ describe('localized chat chrome', () => {
     assert.ok(bodies.telegramText.includes('Open your WorldMonitor Brief magazine</a>'));
   });
 });
-
