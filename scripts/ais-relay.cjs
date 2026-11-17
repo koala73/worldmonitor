@@ -951,9 +951,10 @@ function normalizeNotificationCountryCode(raw) {
   return countryNameToIso2(raw) ?? undefined;
 }
 
-function marketAlertCoalesceKey(assetClass, identifier, direction, severity) {
+function marketAlertCoalesceKey(assetClass, identifier, direction, severity, session) {
   const stableIdentifier = String(identifier || 'unknown').trim().toLowerCase();
-  return `market:${assetClass}:${stableIdentifier}:${direction}:${severity}`;
+  const sessionSuffix = session ? `:${session}` : '';
+  return `market:${assetClass}:${stableIdentifier}:${direction}:${severity}${sessionSuffix}`;
 }
 
 function nwsVtec(p) {
@@ -3907,7 +3908,7 @@ async function seedMarketQuotes() {
       payload: {
         title: `${q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`,
         source: 'Equity Market',
-        coalesceKey: marketAlertCoalesceKey('equity', q.symbol, dir, severity),
+        coalesceKey: marketAlertCoalesceKey('equity', q.symbol, dir, severity, notifyPolicy.marketMoveSessionKey('equity')),
         ...marketMoveFields('equity', q),
       },
       severity,
@@ -3978,7 +3979,7 @@ async function seedCommodityQuotes() {
       payload: {
         title: `${q.name || q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`,
         source: 'Commodity Market',
-        coalesceKey: marketAlertCoalesceKey('commodity', q.symbol || q.name, dir, severity),
+        coalesceKey: marketAlertCoalesceKey('commodity', q.symbol || q.name, dir, severity, notifyPolicy.marketMoveSessionKey('commodity')),
         ...marketMoveFields('commodity', q),
       },
       severity,
@@ -5284,6 +5285,12 @@ function countriesNamedInText(lower) {
 function threatSummaryCountries(text) {
   const affected = matchCountryNamesInText(text);
   if (affected.length > 0) return affected;
+  return countriesNamedInHeadline(text);
+}
+
+// Every country a raw headline names, after US/UK expansion, diacritic folding
+// and dropping a trailing outlet credit.
+function countriesNamedInHeadline(text) {
   // Uppercase US/UK are the countries; lowercase "us" stays the pronoun.
   let lower = text.replace(/\bU\.S\.(?:A\.)?/g, 'United States ').replace(/\bU\.K\./g, 'United Kingdom ')
     .replace(/\bUS\b/g, 'United States').replace(/\bUK\b/g, 'United Kingdom')
@@ -5637,7 +5644,9 @@ async function seedClassifyForVariant(variant, seenTitles) {
           },
         );
         const titleCountryCodes = matchCountryNamesInText(chunk[idx]);
-        const primaryCountryCode = notifyPolicy.primaryNewsCountryCode(titleCountryCodes);
+        // The one country the title names anywhere, not the affected target
+        // countryCodes keeps ("Russia attacks Ukraine" names two).
+        const primaryCountryCode = notifyPolicy.primaryNewsCountryCode(countriesNamedInHeadline(chunk[idx]));
         publishNotificationEvent({
           eventType: 'rss_alert',
           payload: {
@@ -7566,13 +7575,15 @@ async function seedWeatherAlerts() {
     // are unit-testable without booting the relay.
     const distinctFamilyAlerts = selectWeatherNotificationAlerts(alerts);
     for (const a of distinctFamilyAlerts) {
-      // The SAME family key the selector partitioned by. Publishing a narrower
+      // The SAME family key the selector partitioned by, plus the severity
+      // band so an upgrade to Extreme is not swallowed by the earlier Severe
+      // alert's lifetime-long dedup (#10873). Publishing a narrower
       // key (VTEC only) let publishNotificationEvent fall back to its global
       // `weather_alert:<title>` dedup hash for every VTEC-less SWIC/ECCC
       // alert, so two countries sharing a generic WMO title ("Heavy rain",
       // "Forestfire") collided on SET NX and only the first survived —
       // recreating the #7243 starvation one layer below the selector.
-      const coalesceKey = weatherAlertFamilyKey(a);
+      const coalesceKey = notifyPolicy.weatherAlertCoalesceKey(weatherAlertFamilyKey(a), a.severity);
       const countryCode = weatherAlertNotifyCountryCode(a);
       publishNotificationEvent({
         eventType: 'weather_alert',

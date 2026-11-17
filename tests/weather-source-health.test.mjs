@@ -71,7 +71,12 @@ function harness({ store = new Map() } = {}) {
       store.set(key, clone(value)); writes.push({ key, ttl }); return true;
     },
     nwsVtec: () => undefined,
-    notifyPolicy,
+    // Bound to the harness clock, so titles and TTLs never read the wall clock.
+    notifyPolicy: {
+      ...notifyPolicy,
+      weatherAlertNotifyTitle: (alert) => notifyPolicy.weatherAlertNotifyTitle(alert, now),
+      weatherAlertDedupTtlSeconds: (alert) => notifyPolicy.weatherAlertDedupTtlSeconds(alert, now),
+    },
     publishNotificationEvent: async (event) => notifications.push(clone(event)),
   };
   const seed = runInNewContext(`${envelopes}\n${weatherLoop}\nseedWeatherAlerts`, context);

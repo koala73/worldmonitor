@@ -40,9 +40,30 @@ describe('market move severity', () => {
   });
 
   it('holds one move for a session, not an hour', () => {
-    assert.equal(policy.marketMoveDedupTtlSeconds('equity'), 20 * 3600);
-    assert.equal(policy.marketMoveDedupTtlSeconds('commodity'), 20 * 3600);
+    assert.equal(policy.marketMoveDedupTtlSeconds('equity'), 24 * 3600);
+    assert.equal(policy.marketMoveDedupTtlSeconds('commodity'), 24 * 3600);
     assert.equal(policy.marketMoveDedupTtlSeconds('crypto'), 24 * 3600);
+  });
+
+  it('keys a daily move by session, so a move at the close cannot block the next open', () => {
+    const close = policy.marketMoveSessionKey('equity', Date.parse('2026-11-16T20:55:00Z'));
+    const nextOpen = policy.marketMoveSessionKey('equity', Date.parse('2026-11-17T14:35:00Z'));
+    assert.equal(close, '2026-11-16');
+    assert.notEqual(close, nextOpen);
+    assert.equal(policy.marketMoveSessionKey('commodity', NOW), '2026-11-16');
+    assert.equal(policy.marketMoveSessionKey('crypto', NOW), undefined);
+  });
+
+  it('treats every catalog index as an index, caret or not', () => {
+    const stocks = JSON.parse(readFileSync(new URL('../shared/stocks.json', import.meta.url), 'utf8'));
+    const indexes = stocks.symbols.filter((s) => /\b(?:composite|index|ftse|nikkei|hang seng|dax|cac|s&p|nasdaq|dow|kospi|sensex|nifty|tasi|ibex|aex|smi|stoxx)\b/i.test(s.name));
+    assert.ok(indexes.some((s) => s.symbol === '000001.SS'));
+    for (const { symbol, name } of indexes) {
+      if (symbol === '^VIX') continue;
+      assert.equal(policy.isEquityIndexSymbol(symbol), true, `${symbol} (${name})`);
+    }
+    assert.equal(policy.marketMoveSeverity({ assetClass: 'equity', symbol: 'FTSEMIB.MI', changePct: -11 }), 'critical');
+    assert.equal(policy.marketMoveSeverity({ assetClass: 'equity', symbol: '600519.SS', changePct: -11 }), 'high');
   });
 
   it('marks only index, commodity and crypto moves as global', () => {
@@ -147,6 +168,16 @@ describe('weather alert title', () => {
   });
 });
 
+describe('weather coalesce key', () => {
+  it('sends an upgrade to Extreme once more, and an unchanged band never again', () => {
+    const severe = policy.weatherAlertCoalesceKey('weather:eccc:CA:wind:area', 'Severe');
+    const extreme = policy.weatherAlertCoalesceKey('weather:eccc:CA:wind:area', 'Extreme');
+    assert.notEqual(severe, extreme);
+    assert.equal(severe, policy.weatherAlertCoalesceKey('weather:eccc:CA:wind:area', 'Moderate'));
+    assert.equal(policy.weatherAlertCoalesceKey(undefined, 'Extreme'), undefined);
+  });
+});
+
 describe('news country', () => {
   it('names the country only when the headline names exactly one', () => {
     assert.equal(policy.primaryNewsCountryCode(['ua']), 'UA');
@@ -159,6 +190,12 @@ describe('news country', () => {
 
 describe('ais-relay wiring', () => {
   const src = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
+
+  it('keys equity and commodity moves by session, and weather by severity band', () => {
+    assert.match(src, /marketAlertCoalesceKey\('equity', q\.symbol, dir, severity, notifyPolicy\.marketMoveSessionKey\('equity'\)\)/);
+    assert.match(src, /marketAlertCoalesceKey\('commodity', q\.symbol \|\| q\.name, dir, severity, notifyPolicy\.marketMoveSessionKey\('commodity'\)\)/);
+    assert.match(src, /notifyPolicy\.weatherAlertCoalesceKey\(weatherAlertFamilyKey\(a\), a\.severity\)/);
+  });
 
   it('routes every market severity through the policy', () => {
     assert.equal((src.match(/notifyPolicy\.marketMoveSeverity\(/g) || []).length, 3);

@@ -627,7 +627,9 @@ function aviationAggregateFlights(iata, flights) {
   const cancelledCount = fromDue || closed ? cancelled : 0;
   const cancelledPct = (cancelledCount / total) * 100;
   const delayedPct = (delayed / total) * 100;
-  const avgDelay = delayed > 0 ? Math.round(totalDelay / delayed) : 0;
+  // Classify on the exact average; round only for display (59.5 min is not an hour).
+  const exactAvgDelay = delayed > 0 ? totalDelay / delayed : 0;
+  const avgDelay = Math.round(exactAvgDelay);
 
   let severity, delayType, reason;
   if (closed) {
@@ -643,8 +645,8 @@ function aviationAggregateFlights(iata, flights) {
     severity = 'minor'; delayType = 'general';
     reason = `${Math.round(cancelledPct)}% flights cancelled`;
   } else if (avgDelay > 0) {
-    severity = aviationDetermineSeverity(avgDelay, delayedPct, total);
-    delayType = avgDelay >= 60 ? 'ground_delay' : 'general';
+    severity = aviationDetermineSeverity(exactAvgDelay, delayedPct, total);
+    delayType = exactAvgDelay >= 60 ? 'ground_delay' : 'general';
     reason = `Avg ${avgDelay}min delay, ${Math.round(delayedPct)}% delayed`;
   } else {
     return null;

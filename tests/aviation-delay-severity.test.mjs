@@ -48,3 +48,19 @@ test('a page of short delays on every flight is no longer a severe disruption', 
   assert.equal(result.alerts.length, 1);
   assert.equal(result.alerts[0].severity, 'FLIGHT_DELAY_SEVERITY_MODERATE');
 });
+
+test('classifies on the exact average, so 59.5 minutes is not an hour', async () => {
+  const rows = Array.from({ length: 10 }, (_, i) => ({
+    flight_status: 'active',
+    departure: { scheduled: new Date(Date.now() - (i + 1) * 60_000).toISOString(), delay: i < 5 ? 59 : 60 },
+  }));
+  const result = await seedIntlDelays({
+    apiKey: 'fixture-key',
+    airports: [GRU],
+    logger: quietLogger,
+    fetchFn: async () => Response.json({ pagination: { limit: 100, offset: 0, count: rows.length, total: rows.length }, data: rows }),
+  });
+  assert.equal(result.alerts.length, 1);
+  assert.equal(result.alerts[0].severity, 'FLIGHT_DELAY_SEVERITY_MAJOR');
+  assert.match(result.alerts[0].reason, /Avg 60min/);
+});

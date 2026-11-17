@@ -292,12 +292,12 @@ describe('market alert producer — asset-family coalesce key', () => {
   it('defines a stable market alert coalesce helper', () => {
     assert.match(
       aisRelaySrc,
-      /function marketAlertCoalesceKey\(assetClass,\s*identifier,\s*direction,\s*severity\)/,
+      /function marketAlertCoalesceKey\(assetClass,\s*identifier,\s*direction,\s*severity,\s*session\)/,
       'market alerts must build hidden family keys rather than deduping on the rounded subject',
     );
     assert.match(
       aisRelaySrc,
-      /return `market:\$\{assetClass\}:\$\{stableIdentifier\}:\$\{direction\}:\$\{severity\}`/,
+      /return `market:\$\{assetClass\}:\$\{stableIdentifier\}:\$\{direction\}:\$\{severity\}\$\{sessionSuffix\}`/,
       'market coalesce key must separate asset class, instrument, direction, and severity band',
     );
     // Lock the normalization line itself so dropping the fallback or
@@ -469,7 +469,7 @@ describe('ais-relay weather publisher — coalesceKey threading', () => {
     // collided on SET NX (#7243).
     assert.match(
       aisRelaySrc,
-      /coalesceKey\s*=\s*weatherAlertFamilyKey\(a\)/,
+      /coalesceKey\s*=\s*notifyPolicy\.weatherAlertCoalesceKey\(weatherAlertFamilyKey\(a\),\s*a\.severity\)/,
       'weather publisher must key dedup on the same family key the selector partitions by',
     );
     assert.match(

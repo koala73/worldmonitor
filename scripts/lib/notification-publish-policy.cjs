@@ -25,8 +25,10 @@ const DAY_SECONDS = 86_400;
 
 // A move is a once-per-session fact: the daily change stays above the
 // threshold for the rest of the trading day, so a 1h TTL re-sent it hourly.
-// 20h outlives one session and expires before the next one's open.
-const MARKET_MOVE_DEDUP_TTL_SECONDS = 20 * HOUR_SECONDS;
+// The coalesce key carries the UTC session date (marketMoveSessionKey), so the
+// next session's move gets a fresh key however late today's was published;
+// the TTL only has to outlive one date.
+const MARKET_MOVE_DEDUP_TTL_SECONDS = DAY_SECONDS;
 // Crypto's change is a rolling 24h window, so the same move is visible for a day.
 const CRYPTO_MOVE_DEDUP_TTL_SECONDS = DAY_SECONDS;
 // Band-keyed states (corridor risk, shipping stress): an unchanged band is
@@ -34,6 +36,8 @@ const CRYPTO_MOVE_DEDUP_TTL_SECONDS = DAY_SECONDS;
 const STATE_BAND_DEDUP_TTL_SECONDS = DAY_SECONDS;
 
 const VOLATILITY_SYMBOLS = new Set(['^VIX', 'VIX']);
+// Catalog indexes (shared/stocks.json) whose Yahoo symbol has no caret.
+const UNCARETED_EQUITY_INDEXES = new Set(['000001.SS', 'FTSEMIB.MI']);
 
 function normalizedSymbol(symbol) {
   return String(symbol || '').trim().toUpperCase();
@@ -44,9 +48,10 @@ function isVolatilitySymbol(symbol) {
   return VOLATILITY_SYMBOLS.has(normalizedSymbol(symbol));
 }
 
-/** An equity index (^GSPC, ^N225, ^TASI.SR), as opposed to a single stock. */
+/** An equity index (^GSPC, ^N225, 000001.SS), as opposed to a single stock. */
 function isEquityIndexSymbol(symbol) {
   const s = normalizedSymbol(symbol);
+  if (UNCARETED_EQUITY_INDEXES.has(s)) return true;
   return s.startsWith('^') && !isVolatilitySymbol(s);
 }
 
@@ -74,6 +79,17 @@ function marketMoveSeverity({ assetClass, symbol, changePct }) {
 
 function marketMoveDedupTtlSeconds(assetClass) {
   return assetClass === 'crypto' ? CRYPTO_MOVE_DEDUP_TTL_SECONDS : MARKET_MOVE_DEDUP_TTL_SECONDS;
+}
+
+/**
+ * The session a daily move belongs to, for its coalesce key: the UTC date for
+ * equities and commodities, so a move published at the close cannot block the
+ * same move at the next open. Crypto's change is a rolling 24h window with no
+ * session, so it has none (its 24h TTL alone bounds it).
+ */
+function marketMoveSessionKey(assetClass, now = Date.now()) {
+  if (assetClass === 'crypto') return undefined;
+  return new Date(now).toISOString().slice(0, 10);
 }
 
 /**
@@ -225,6 +241,17 @@ function weatherAlertDedupTtlSeconds(alert, now = Date.now()) {
  * unattributed and permissive, and setting it would change delivery before the
  * gate lands.
  */
+/**
+ * Publisher coalesce key for a weather alert: the selector's family key plus
+ * the severity band. The dedup lasts the alert's lifetime, so a family key
+ * alone would swallow a Severe -> Extreme upgrade of the same alert until the
+ * first one expired; with the band in the key the upgrade is sent once more.
+ */
+function weatherAlertCoalesceKey(familyKey, severity) {
+  if (!familyKey) return undefined;
+  return `${familyKey}:${severity === 'Extreme' ? 'critical' : 'high'}`;
+}
+
 function primaryNewsCountryCode(countryCodes) {
   if (!Array.isArray(countryCodes)) return undefined;
   const unique = [...new Set(countryCodes.map((c) => String(c || '').trim().toUpperCase()).filter((c) => /^[A-Z]{2}$/.test(c)))];
@@ -237,6 +264,7 @@ module.exports = {
   STATE_BAND_DEDUP_TTL_SECONDS,
   marketMoveSeverity,
   marketMoveDedupTtlSeconds,
+  marketMoveSessionKey,
   isGlobalMarketMove,
   isEquityIndexSymbol,
   isVolatilitySymbol,
@@ -245,5 +273,6 @@ module.exports = {
   countryDisplayName,
   weatherAlertNotifyTitle,
   weatherAlertDedupTtlSeconds,
+  weatherAlertCoalesceKey,
   primaryNewsCountryCode,
 };
