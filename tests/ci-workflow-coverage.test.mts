@@ -2191,7 +2191,9 @@ describe('CI workflow coverage', () => {
 
   it('keeps resilience validation bundle inputs in the CI change filter', () => {
     assert.ok(
-      testWorkflow.includes('validation: ${{ steps.diff.outputs.validation }}'),
+      // The reuse step may only switch it off on a push whose tree unit already
+      // passed (tests/ci-reuse-pr-test-verdict.test.mjs).
+      testWorkflow.includes('validation: ${{ steps.reuse.outputs.validation || steps.diff.outputs.validation }}'),
       'test.yml must expose a validation change output',
     );
     for (const input of REQUIRED_RESILIENCE_VALIDATION_INPUTS) {
