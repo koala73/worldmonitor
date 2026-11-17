@@ -9,11 +9,12 @@ import { parseStatec, collect as collectStatec } from '../scripts/lib/food-price
 import { parseLatvia } from '../scripts/lib/food-prices-adapters/csblv.mjs';
 import { parseMakstat } from '../scripts/lib/food-prices-adapters/makstat.mjs';
 import { parseFoag, FOAG_CUBES, observationQuery } from '../scripts/lib/food-prices-adapters/foag.mjs';
-import { PRICECATCHER_ITEM_CODES, addPriceRows, aggregatePrices, priceAccumulator, readPricecatcher, summarizePrices, collect as collectPricecatcher } from '../scripts/lib/food-prices-adapters/pricecatcher.mjs';
+import { PRICECATCHER_BASKET_CODES, PRICECATCHER_BASKET_NAMES, PRICECATCHER_DAILY_CODES, PRICECATCHER_ITEM_CODES, addPriceRows, aggregatePrices, basketObservations, basketSurveyDates, priceAccumulator, readPricecatcher, summarizePrices, collect as collectPricecatcher } from '../scripts/lib/food-prices-adapters/pricecatcher.mjs';
 import { parseMercado, readMercadoArchive, collect as collectMercado } from '../scripts/lib/food-prices-adapters/mcba.mjs';
 import { cubeCells, csvRows } from '../scripts/lib/food-prices-adapters/monthly.mjs';
 import { collectFoodSource } from '../scripts/lib/food-prices-fetch.mjs';
 import { mergeFoodSnapshot } from '../scripts/lib/food-prices-seed.mjs';
+import { mergeHistory } from '../scripts/lib/food-prices.mjs';
 import { FOOD_PRICE_ADAPTERS } from '../scripts/lib/food-prices-adapters/index.mjs';
 
 const file = name => readFileSync(new URL(`./fixtures/food-prices/${name}`, import.meta.url));
@@ -125,12 +126,19 @@ test('Malaysia folds the publisher Brotli parquet into per-item medians across u
   const lookup = pricecatcherLookup();
   assert.deepEqual([...lookup.keys()].sort(), [...PRICECATCHER_ITEM_CODES].sort(), 'fixture lookup holds exactly the selected publisher rows');
   const acc = await readPricecatcher(file('pricecatcher.parquet'), priceAccumulator({ before: '2026-11-05', since: '2026-11-01' }));
-  assert.ok(acc.quotes > 100_000 && acc.groups.size === 4 * PRICECATCHER_ITEM_CODES.length, 'every staple reports on each fixture day');
+  assert.equal(PRICECATCHER_DAILY_CODES.length, 39);
+  assert.equal(PRICECATCHER_BASKET_CODES.length, 19);
+  for (const date of ['2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04']) {
+    assert.ok(PRICECATCHER_DAILY_CODES.every(code => acc.groups.get(`${date}|${code}`)?.size >= 200), `every daily staple reports widely on ${date}`);
+  }
+  assert.ok(PRICECATCHER_BASKET_CODES.every(code => acc.groups.get(`2026-11-02|${code}`)?.size >= 50), 'every basket item is surveyed on 2 November');
   const prices = summarizePrices(acc, lookup);
-  assert.equal(prices.filter(row => row.date === '2026-11-04').length, PRICECATCHER_ITEM_CODES.length);
   assert.equal(prices.find(row => row.date === '2026-11-04' && row.item === 'Eggs (grade A)').unit, '30 pieces');
   assert.equal(prices.find(row => row.date === '2026-11-04' && row.item === 'Tomatoes').price, 5.5);
-  assert.ok(prices.every(row => row.currency === 'MYR' && ['kg', '30 pieces'].includes(row.unit) && row.price > 0));
+  assert.ok(prices.every(row => row.currency === 'MYR' && ['kg', '30 pieces', '10 kg', '5 kg', 'piece'].includes(row.unit) && row.price > 0));
+  assert.equal(prices.find(row => row.date === '2026-11-02' && row.item === 'Cooking oil, subsidised packet').price, 2.5);
+  assert.equal(prices.find(row => row.date === '2026-11-02' && row.item === 'Rice, imported white (Faiza Emas)').unit, '10 kg');
+  assert.equal(prices.find(row => row.date === '2026-11-02' && row.item === 'Pineapple').unit, 'piece');
   const early = summarizePrices(await readPricecatcher(file('pricecatcher.parquet'), priceAccumulator({ before: '2026-11-04', since: '2026-11-02' })), lookup);
   assert.deepEqual([...new Set(early.map(row => row.date))].sort(), ['2026-11-02', '2026-11-03']);
   const wrong = new Map(lookup); wrong.set('1', { item: 'AYAM BERSIH - STANDARD', unit: 'piece' });
@@ -161,9 +169,74 @@ test('Malaysia reports the latest completed local day carrying every selected st
   ctx.warn = message => warnings.push(message);
   const report = await collectPricecatcher(ctx);
   // 20:00Z is 04:00 on 5 November in Malaysia, so 4 November is complete; 28 October is outside the fixture.
-  assert.deepEqual(report.refreshedReports, [{ date: '2026-11-04' }]);
+  // Basket items carry the 2 November survey, the only one in the fixture, so they have no in-window baseline.
+  const dates = new Map(report.observations.map(row => [row.item, row.date]));
   assert.equal(report.observations.length, PRICECATCHER_ITEM_CODES.length);
+  assert.equal([...dates.values()].filter(date => date === '2026-11-04').length, PRICECATCHER_DAILY_CODES.length);
+  assert.equal([...dates.values()].filter(date => date === '2026-11-02').length, PRICECATCHER_BASKET_CODES.length);
+  // History refreshes per item and date, for every item and date checked.
+  const markers = new Set(report.refreshedReports.map(marker => `${marker.date}|${marker.item}`));
+  assert.ok(report.refreshedReports.every(marker => marker.item), 'no date-wide refresh');
+  assert.ok(report.observations.every(row => markers.has(`${row.date}|${row.item}`)));
+  assert.equal(report.refreshedReports.filter(marker => marker.date === '2026-11-02').length, PRICECATCHER_BASKET_CODES.length);
+  // Basket items are refreshed on every loaded date in their window, so a withdrawn survey day cannot linger.
+  const basketStored = { ...report.observations.find(row => row.date === '2026-11-02'), date: '2026-11-03', price: 1 };
+  const cleared = mergeFoodSnapshot({ observations: [basketStored] }, { ...report, contexts: [] }, { surveyItems: PRICECATCHER_BASKET_NAMES });
+  assert.ok(!cleared.observations.some(row => row.date === '2026-11-03'), 'a stored survey row on a non-survey loaded day is dropped');
+  assert.equal(report.refreshedReports.filter(marker => marker.date === '2026-10-20').length, 0, 'unloaded October dates are left alone');
+  // The October file did not load, so 28 October was not checked: no marker, and a stored baseline survives.
+  assert.equal(report.refreshedReports.filter(marker => marker.date === '2026-10-28').length, 0);
+  const stored = { ...report.observations.find(row => row.date === '2026-11-04'), date: '2026-10-28', price: 1 };
+  const kept = mergeFoodSnapshot({ observations: [stored] }, { ...report, contexts: [] }, { surveyItems: PRICECATCHER_BASKET_NAMES });
+  assert.ok(kept.observations.some(row => row.date === '2026-10-28'));
   assert.match(warnings.join(), /prior-month prices unavailable/);
+
+  // When the October file loads but holds no 28 October quotes, that baseline was withdrawn and is dropped.
+  const loaded = await collectPricecatcher(pricecatcherCtx('2026-11-04T20:00:00Z', async url => {
+    if (url.endsWith('.csv')) return file('pricecatcher-items.csv').toString();
+    return file('pricecatcher.parquet');
+  }));
+  // 28 October is the daily baseline day and inside the loaded basket window: every daily and basket item is marked.
+  assert.equal(loaded.refreshedReports.filter(marker => marker.date === '2026-10-28').length, PRICECATCHER_ITEM_CODES.length);
+  const dropped = mergeFoodSnapshot({ observations: [stored] }, { ...loaded, contexts: [] }, { surveyItems: PRICECATCHER_BASKET_NAMES });
+  assert.ok(!dropped.observations.some(row => row.date === '2026-10-28'));
+});
+
+test('Malaysia detects basket-survey days from total basket quotes and pairs each item with a survey at least a week earlier', () => {
+  const window = { before: '2026-11-18', since: '2026-10-01' };
+  const quotes = (date, code, count) => Array.from({ length: count }, (_, index) => ({ date, premise_code: index + 1, item_code: Number(code), price: 2.5 }));
+  const survey = (date, count = 100) => PRICECATCHER_BASKET_CODES.flatMap(code => quotes(date, code, count));
+  // Real pattern: surveys on 2, 5 and 16 November; strays of up to ~50 premises on other days.
+  const acc = addPriceRows(priceAccumulator(window), [...survey('2026-11-02'), ...survey('2026-11-05'), ...survey('2026-11-16'),
+    ...survey('2026-11-09', 3), ...quotes('2026-11-17', '1589', 50), ...quotes('2026-11-17', '266', 30), ...quotes('2026-11-01', '114', 500)]);
+  assert.deepEqual([...basketSurveyDates(acc)].sort(), ['2026-11-02', '2026-11-05', '2026-11-16']);
+  const rows = summarizePrices(acc, pricecatcherLookup());
+  assert.ok(rows.some(row => row.date === '2026-11-17' && row.item === 'White sugar, coarse'), 'stray days still pass the ten-premise floor');
+  const picked = basketObservations(rows, basketSurveyDates(acc));
+  assert.equal(picked.length, 2 * PRICECATCHER_BASKET_CODES.length);
+  assert.deepEqual([...new Set(picked.map(row => row.date))].sort(), ['2026-11-05', '2026-11-16'], '16 November pairs with 5 November, not the 9th or the 17th');
+  // A window holding only stray quotes promotes nothing.
+  const strays = addPriceRows(priceAccumulator(window), [...quotes('2026-11-17', '1589', 50), ...quotes('2026-11-16', '266', 40)]);
+  assert.equal(basketSurveyDates(strays).size, 0);
+  // Without a survey seven or more days earlier, the latest survey stands alone.
+  const recent = addPriceRows(priceAccumulator(window), [...survey('2026-11-12'), ...survey('2026-11-16')]);
+  assert.deepEqual(basketObservations(summarizePrices(recent, pricecatcherLookup()), basketSurveyDates(recent)).map(row => row.date), PRICECATCHER_BASKET_CODES.map(() => '2026-11-16'));
+});
+
+test('Malaysia basket items read four weeks back, are registered as survey items, and keep re-sent baselines in history', () => {
+  const sources = JSON.parse(readFileSync(new URL('../shared/food-price-sources.json', import.meta.url)));
+  assert.deepEqual([...sources.find(source => source.id === 'pricecatcher').surveyItems].sort(), [...PRICECATCHER_BASKET_NAMES].sort());
+  const quotes = (date, code) => Array.from({ length: 12 }, (_, index) => ({ date, premise_code: index + 1, item_code: Number(code), price: 3 }));
+  const acc = addPriceRows(priceAccumulator({ before: '2026-11-21', since: '2026-11-06', basketSince: '2026-10-24' }),
+    [...quotes('2026-11-05', '114'), ...quotes('2026-11-05', '266'), ...quotes('2026-10-23', '266')]);
+  assert.deepEqual([...acc.groups.keys()], ['2026-11-05|266'], 'the basket window reaches further back than the daily window, and no further');
+  // 20 November daily prices would prune 5 November history; the basket baseline the collector re-sends survives.
+  const row = { item: 'Cooking oil, pure palm (Seri Murni)', market: 'M', marketType: 'retail', unit: '5 kg', currency: 'MYR', origin: '', price: 30 };
+  const incoming = [{ ...row, item: 'Tomatoes', unit: 'kg', date: '2026-11-20' }, { ...row, date: '2026-11-16' }, { ...row, date: '2026-11-05' }];
+  const stale = { ...row, date: '2026-10-30' };
+  assert.deepEqual(mergeHistory([stale], incoming).map(row => row.date), ['2026-11-16', '2026-11-20'], 'other sources keep the 14-day prune');
+  const kept = mergeFoodSnapshot({ observations: [stale] }, { observations: incoming, contexts: [] }, sources.find(source => source.id === 'pricecatcher'));
+  assert.deepEqual(kept.observations.map(row => row.date), ['2026-11-05', '2026-11-16', '2026-11-20'], 'stale history is still pruned');
 });
 
 test('Malaysia chooses current and previous archives by local month and tolerates an unpublished current file', async () => {
