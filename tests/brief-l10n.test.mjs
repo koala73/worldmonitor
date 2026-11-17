@@ -278,6 +278,23 @@ describe('translate prompt and parser', () => {
     assert.ok(one('The fund lost 3 billion dollars during the crisis.', '\u0e01\u0e2d\u0e07\u0e17\u0e38\u0e19\u0e2a\u0e39\u0e0d\u0e40\u0e2a\u0e35\u0e22\u0e40\u0e07\u0e34\u0e19 3 \u0e1e\u0e31\u0e19\u0e25\u0e49\u0e32\u0e19\u0e14\u0e2d\u0e25\u0e25\u0e32\u0e23\u0e4c\u0e43\u0e19\u0e0a\u0e48\u0e27\u0e07\u0e27\u0e34\u0e01\u0e24\u0e15', 'th'));
   });
 
+  it('reads scale words by the target language, Greek abbreviations and a minus after a colon', () => {
+    // Long scale: German Billionen and French billions are 1e12.
+    assert.ok(one('Germany plans 3 trillion euros of spending over a decade.', 'Deutschland plant Ausgaben von 3 Billionen Euro über ein Jahrzehnt.', 'de'));
+    assert.equal(one('Germany plans 3 billion euros of spending over a decade.', 'Deutschland plant Ausgaben von 3 Billionen Euro über ein Jahrzehnt.', 'de'), null);
+    assert.ok(one('France plans 3 trillion euros of spending over a decade.', 'La France prévoit 3 billions d\u2019euros de dépenses sur dix ans.'));
+    // Swahili bilioni is 1e9.
+    assert.ok(one('Kenya will borrow 3 billion dollars from the fund.', 'Kenya itakopa dola 3 bilioni kutoka kwa mfuko.', 'sw'));
+    assert.equal(one('Kenya will borrow 3 million dollars from the fund.', 'Kenya itakopa dola 3 bilioni kutoka kwa mfuko.', 'sw'), null);
+    // Greek abbreviations without a dot.
+    assert.ok(one('Greece will borrow 3 billion euros from the fund this year.', 'Η Ελλάδα θα δανειστεί 3 δισ ευρώ από το ταμείο φέτος.', 'el'));
+    assert.equal(one('Greece will borrow 3 euros from the fund this year.', 'Η Ελλάδα θα δανειστεί 3 δισ ευρώ από το ταμείο φέτος.', 'el'), null);
+    assert.ok(one('Greece will borrow 3 million euros from the fund this year.', 'Η Ελλάδα θα δανειστεί 3 εκατ ευρώ από το ταμείο φέτος.', 'el'));
+    // A minus after a colon is a sign.
+    assert.equal(one('Index change:-5% after the report today.', 'Variation de l\u2019indice:+5% après le rapport.'), null);
+    assert.ok(one('The index changed by -5% after the report today.', 'Variation de l\u2019indice:-5% après le rapport aujourd\u2019hui.'));
+  });
+
   it('reads numbers after a URL at the right place', () => {
     const src = 'See https://example.com/r/2026-report for details: exports hit 3 million barrels.';
     assert.ok(one(src, '详情见 https://example.com/r/2026-report ：出口达到300万桶。', 'zh'));

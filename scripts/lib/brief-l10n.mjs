@@ -302,12 +302,25 @@ const MONTH_NUMBER = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, a
 // it ("mil millones", "mil milhões", "mila miliardi"; see scaleAt). French
 // "milles" (miles) is not "mille".
 const LOCAL_SCALES = [
-  [/^(?:milliard|milliárd|miljard|milijard|miliard|miliar|milyar|mld|mrd|bilh[aã]o|bilh[oõ]es|миллиард|млрд|мільярд|милиард|δισεκατομμ|δισ\.|مليار|میلیارد|tỷ)/iu, 1e9],
-  [/^(?:million|millió|millón|millones|milione|milioni|milh[aã]o|milh[oõ]es|miljoen|miljon|milijun|milion|milyon|mln|mio|миллион|млн|мільйон|милион|εκατομμ|εκατ\.|ล้าน|مليون|ملايين|میلیون|triệu|juta)/iu, 1e6],
+  [/^(?:milliard|milliárd|miljard|milijard|miliard|miliar|milyar|mld|mrd|bilh[aã]o|bilh[oõ]es|миллиард|млрд|мільярд|милиард|δισεκατομμ|δισ(?:\.|(?!\p{L}))|مليار|میلیارد|tỷ)/iu, 1e9],
+  [/^(?:million|millió|millón|millones|milione|milioni|milh[aã]o|milh[oõ]es|miljoen|miljon|milijun|milion|milyon|mln|mio|миллион|млн|мільйон|милион|εκατομμ|εκατ(?:\.|(?!\p{L}))|ล้าน|مليون|ملايين|میلیون|triệu|juta)/iu, 1e6],
   [/^แสน/u, 1e5],
   [/^หมื่น/u, 1e4],
   [/^(?:tausend|tsd\.|mille(?!\p{L})|mila(?!\p{L})|mil(?!\p{L})|duizend|tusen|tusind|tys\.|tysi[aą]c|tysi[eę]cy|tis\.|tisíc|tisuć|ezer|mii(?!\p{L})|bin(?!\p{L})|тысяч|тыс\.|тисяч|хиляд|χιλιάδ|ألف|آلاف|هزار|हज़ार|हजार|nghìn|ngàn|ribu|พัน)/iu, 1e3],
 ];
+// Scale words whose value depends on the language: in the long scale a
+// "billion" is 1e12 (Billion, billion, bilion, billón, biljoen...), in Swahili
+// bilioni is 1e9. Checked before every other table, for translations only.
+const LONG_SCALE_BILLION = [/^(?:billion|bilion|biljon|biljoen|billón|billones|bilión|bilione|bilijun|billió|bili[aã]o|bili[oõ]es)/iu, 1e12];
+const LANG_SCALES = {
+  ...Object.fromEntries(['fr', 'de', 'es', 'it', 'pl', 'nl', 'sv', 'cs', 'hr', 'hu', 'ro', 'pt'].map((l) => [l, [LONG_SCALE_BILLION]])),
+  sw: [[/^bilioni/iu, 1e9], [/^trilioni/iu, 1e12]],
+  tr: [[/^trilyon/iu, 1e12]],
+  ru: [[/^(?:трлн|триллион)/iu, 1e12]],
+  uk: [[/^(?:трлн|трильйон)/iu, 1e12]],
+  bg: [[/^(?:трлн|трилион)/iu, 1e12]],
+  el: [[/^τρισ/iu, 1e12]],
+};
 // A large-number word whose value differs by language (Spanish billón and
 // Polish bilion are 1e12, Swahili bilioni is 1e9) or that the table above does
 // not list (trillions). It says "scaled" with an unknown value, so only the
@@ -319,13 +332,20 @@ const SCALE_WORD_RE = /^(?:bilion|billón|billones|bili[aã]o|bili[oõ]es|bilj|b
  * thousand followed by a larger scale multiplies into it ("3 mila miliardi"
  * is 3e12, "3万亿" is 3e12).
  */
-function scaleAt(after, compound = true) {
+function scaleAt(after, compound = true, lang = undefined) {
   let found = null;
+  for (const [re, factor] of LANG_SCALES[lang] ?? []) {
+    const m = after.match(re);
+    if (m) {
+      found = { factor, length: m[0].length + after.slice(m[0].length).match(/^[\p{L}\p{M}]*/u)[0].length };
+      break;
+    }
+  }
   // Latin scale words are whole words; CJK, Hangul and Devanagari ones attach.
   const listed = SCALES.find(([word]) => (/[a-z]/.test(word)
     ? after.toLowerCase().startsWith(word) && !/^\p{L}/u.test(after.slice(word.length))
     : after.startsWith(word)));
-  if (listed) found = { factor: listed[1], length: listed[0].length };
+  if (listed && !found) found = { factor: listed[1], length: listed[0].length };
   for (const [re, factor] of found ? [] : LOCAL_SCALES) {
     const m = after.match(re);
     if (!m) continue;
@@ -336,7 +356,7 @@ function scaleAt(after, compound = true) {
     break;
   }
   if (!found || !compound) return found;
-  const next = scaleAt(after.slice(found.length).replace(/^[\u00A0\u202F ]/, ''), false);
+  const next = scaleAt(after.slice(found.length).replace(/^[\u00A0\u202F ]/, ''), false, lang);
   return next && next.factor > found.factor ? { factor: found.factor * next.factor, length: found.length } : found;
 }
 
@@ -387,7 +407,7 @@ function parseNumber(token, english) {
  * "3 millions" are value 3000000, coefficient 3, scaled, known; "3 bilioni"
  * is value 3, coefficient 3, scaled, unknown.
  */
-function numbersIn(text, english = false) {
+function numbersIn(text, english = false, lang = undefined) {
   // URLs are blanked to the same length, so match offsets index this string.
   // Arabic decimal and thousands separators: ١٫٥ reads as 1.5, ١٠٬٠٠٠ as
   // 10'000 (a thousands group only, never a decimal).
@@ -397,14 +417,14 @@ function numbersIn(text, english = false) {
   const out = [];
   for (const m of t.matchAll(NUMBER_RE)) {
     const after = t.slice(m.index + m[0].length).replace(/^[\u00A0\u202F ]/, '');
-    const factor = scaleAt(after)?.factor;
+    const factor = scaleAt(after, true, lang)?.factor;
     const known = factor != null;
     const scaled = known || SCALE_WORD_RE.test(after);
     // A minus sign right before the number or its currency symbol (-10,
-    // -$10), after a space, bracket or the start, makes it negative. A dash
+    // -$10), after a space, bracket, colon or the start, makes it negative. A dash
     // after a word or number (10-20, COVID-19) or before a space (10 - 20)
     // is not a sign.
-    const sign = /(?:^|[\s([])[-\u2212][$\u20AC\u00A3\u00A5\u20B9]?$/u.test(t.slice(Math.max(0, m.index - 3), m.index).padStart(m.index >= 3 ? 4 : 0, ' ')) ? -1 : 1;
+    const sign = /(?:^|[\s([:=])[-\u2212][$\u20AC\u00A3\u00A5\u20B9]?$/u.test(t.slice(Math.max(0, m.index - 3), m.index).padStart(m.index >= 3 ? 4 : 0, ' ')) ? -1 : 1;
     for (const parsed of parseNumber(m[0], english)) {
       const mantissas = parsed.map((v) => sign * v);
       out.push({ values: known ? mantissas.map((v) => v * factor) : mantissas, mantissas, scaled, known });
@@ -428,9 +448,9 @@ const overlaps = (a, b) => a.some((x) => b.some((y) => sameValue(x, y)));
  * A scaled number never pairs with an unscaled one ("3 million" / "3"). The only extra output numbers allowed are the
  * month numbers of month names the source spells out (April 18 -> 4月18日).
  */
-function numbersKept(source, text) {
+function numbersKept(source, text, lang) {
   const want = numbersIn(source, true);
-  const got = numbersIn(text);
+  const got = numbersIn(text, false, lang);
   const months = [...source.matchAll(MONTH_RE)].map((m) => MONTH_NUMBER[m[1].slice(0, 3).toLowerCase()]);
   if (got.length < want.length || got.length > want.length + months.length) return false;
   const left = [
@@ -612,7 +632,7 @@ function validTranslation(source, out, lang) {
   const mapped = urlsIn(text).map((url) => sourceUrlFor(url, sourceUrls));
   if (mapped.includes(null)) return false;
   if (sourceUrls.some((url) => !mapped.includes(url))) return false;
-  if (!numbersKept(source, text)) return false;
+  if (!numbersKept(source, text, lang)) return false;
   if (source.length < MIN_CHECKED_LENGTH) {
     if (text.length > Math.max(SHORT_SOURCE_MAX_LEN, source.length * MAX_RATIO)) return false;
     if (normalizeForCompare(text) === normalizeForCompare(source)) {
