@@ -3008,7 +3008,13 @@ async function recordServedHeadlines(
     if (!confirmed) console.warn(`[digest] headline history write not confirmed for ${variant}:${lang}`);
     return confirmed;
   } catch (err) {
+    // Redis failures come back as an unconfirmed write above; a throw here is
+    // a defect in this path, so it is reported, not only logged.
     console.warn(`[digest] headline history write failed for ${variant}:${lang}:`, err);
+    captureSilentError(err, {
+      tags: { surface: 'news', component: 'headline-history', stage: 'write', variant, lang },
+      fingerprint: ['headline-history', 'write-threw'],
+    });
     return false;
   }
 }

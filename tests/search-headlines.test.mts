@@ -186,6 +186,17 @@ describe('headline history write', () => {
     }
   });
 
+  it('never lets a defect in the history write fail the digest build', async () => {
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      // A malformed item makes the mapping throw; the build must carry on.
+      assert.equal(await digest.recordServedHeadlines([null] as never, 'full', 'en'), false);
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
   it('is quiet where there is no Redis to write to', async () => {
     delete process.env.UPSTASH_REDIS_REST_URL;
     const warnings: string[] = [];
