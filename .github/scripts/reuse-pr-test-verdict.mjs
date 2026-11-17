@@ -99,6 +99,8 @@ function githubApi(token) {
   return async (path) => {
     const response = await fetch(`https://api.github.com/${path}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'worldmonitor-ci' },
+      // A hung request would hold the `changes` job, and every job behind it.
+      signal: AbortSignal.timeout(15_000),
     });
     if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
     return response.json();
