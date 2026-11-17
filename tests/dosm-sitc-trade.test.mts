@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, it } from 'node:test';
+import { parse as parseYaml } from 'yaml';
 
 import {
   SITC_SECTIONS,
@@ -167,7 +168,6 @@ describe('GetMonthlySitcTrade handler', () => {
 describe('GetMonthlySitcTrade OpenAPI contract', () => {
   // protoc-gen-openapiv3 drops these proto bounds; openapi-inject-required.mjs restores them.
   const spec = JSON.parse(readFileSync(new URL('../docs/api/TradeService.openapi.json', import.meta.url), 'utf8'));
-  const yaml = readFileSync(new URL('../docs/api/TradeService.openapi.yaml', import.meta.url), 'utf8');
 
   it('publishes the proto section and month bounds on the request schema and query parameters', () => {
     const sections = spec.components.schemas.GetMonthlySitcTradeRequest.properties.sections;
@@ -195,9 +195,23 @@ describe('GetMonthlySitcTrade OpenAPI contract', () => {
     assert.ok(example.fetchedAt > Date.parse(`${example.latestMonth}-01T00:00:00Z`));
   });
 
-  it('carries the same bounds in the YAML spec', () => {
-    const operation = yaml.slice(yaml.indexOf('operationId: GetMonthlySitcTrade'), yaml.indexOf('- name: jmespath', yaml.indexOf('operationId: GetMonthlySitcTrade')));
-    assert.match(operation, /pattern: '\^\(\[0-9\]\|overall\)\$'\n\s+maxItems: 11/);
-    assert.match(operation, /minimum: 0\n\s+maximum: 480/);
+  it('carries the same bounds in the parsed YAML specs', () => {
+    for (const file of ['TradeService.openapi.yaml', 'worldmonitor.openapi.yaml']) {
+      const doc = parseYaml(readFileSync(new URL(`../docs/api/${file}`, import.meta.url), 'utf8'));
+      // The combined bundle namespaces component names (worldmonitor_trade_v1_...).
+      const requestName = Object.keys(doc.components.schemas).find((name: string) => name === 'GetMonthlySitcTradeRequest' || name.endsWith('_GetMonthlySitcTradeRequest'));
+      assert.ok(requestName, file);
+      const sections = doc.components.schemas[requestName].properties.sections;
+      assert.equal(sections.maxItems, 11, file);
+      assert.equal(sections.items.pattern, '^([0-9]|overall)$', file);
+      assert.equal('maxItems' in sections.items, false, file);
+      const params = Object.fromEntries(doc.paths['/api/trade/v1/get-monthly-sitc-trade'].get.parameters
+        .map((parameter: { name: string; schema: Record<string, unknown> }) => [parameter.name, parameter.schema]));
+      assert.equal(params.sections.maxItems, 11, file);
+      assert.equal(params.sections.items.pattern, '^([0-9]|overall)$', file);
+      assert.equal('maxItems' in params.sections.items, false, file);
+      assert.equal(params.months.minimum, 0, file);
+      assert.equal(params.months.maximum, 480, file);
+    }
   });
 });
