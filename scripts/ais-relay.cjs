@@ -100,6 +100,7 @@ const {
   CLASSIFY_DIGEST_RETRY_DELAYS_MS,
   classifyDigestRetryDecision,
   DIGEST_BUILD_WATCH_INTERVAL_MS,
+  DIGEST_BUILD_RETRY_MS,
   digestBuildStampKey,
   digestBuildStampMs,
   editionsWithUnclassifiedBuild,
@@ -1059,7 +1060,7 @@ async function settleNotificationPublishes() {
   while (dedupKeyPublishes.size > 0) await Promise.all(dedupKeyPublishes.values());
 }
 
-async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800, storyKey }) {
+async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800, storyKey, onQueued }) {
   try {
     // Include variant in dedup key so each variant can independently publish the same title
     // (e.g. finance and world users both receive an alert for the same headline).
@@ -1122,6 +1123,11 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
         unreleasedDedupClaims.delete(dedupKey);
         if (fanout) teeApiFanout(eventType, msg);
         console.log(`[Notify] Queued ${dedupDecision.severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
+        // Only here is the event new in the queue: a dedup hit above also
+        // returns true, and a failed LPUSH returns false below.
+        if (onQueued) {
+          try { onQueued(Date.now()); } catch (e) { console.warn('[Notify] onQueued error:', e?.message || e); }
+        }
         return true;
       } else {
         // Rollback the dedup key so the next poll cycle can retry — avoids silent
@@ -5584,16 +5590,23 @@ function runClassifyExclusive(task) {
 }
 
 // Edition -> build time (ms) of the newest digest body the relay classified.
-// In memory only: a restarted relay reads every edition once.
+// In memory only: a restarted relay reads every edition once. Recorded by the
+// caller once a pass has finished, so a pass that threw leaves the build new.
 const classifiedDigestBuildAt = new Map();
+// Edition -> earliest time the build watch may read it again after a failed
+// read. Short under RELAY_TEST_MODE so the retry is testable.
+const digestBuildRetryAt = new Map();
+const DIGEST_BUILD_RETRY_DELAY_MS = RELAY_TEST_MODE ? 300 : DIGEST_BUILD_RETRY_MS;
 function noteClassifiedDigestBuild(variant, builtAt) {
   if (Number.isFinite(builtAt) && builtAt > (classifiedDigestBuildAt.get(variant) ?? 0)) {
     classifiedDigestBuildAt.set(variant, builtAt);
   }
 }
 
-// One sample per alert the classify pass sends to the queue, so the delay can
-// be measured per stage after the fact (scripts/report-alert-latency.mjs).
+// One sample per alert the classify pass put in the queue, so the delay can be
+// measured per stage after the fact (scripts/report-alert-latency.mjs). Called
+// from publishNotificationEvent's onQueued, never for a dedup hit or a failed
+// LPUSH.
 const ALERT_LATENCY_KEY = 'relay:alert-latency:v1';
 const ALERT_LATENCY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 function recordAlertLatency(latency, { severity, importanceScore, variant, source }) {
@@ -5682,12 +5695,12 @@ async function seedClassifyForVariant(variant, seenTitles) {
     RECENCY_GATE_MS,
   );
   const allTitles = buildClassifyCandidateMap(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS);
-  // The build the relay has now read. A stale replay or an unavailable digest
-  // is not a build: the next real one must still trigger the watch.
+  // The build this pass read, returned so the caller can record it once the
+  // pass has finished. A stale replay or an unavailable digest is not a build:
+  // the next real one must still trigger the watch.
   const digestBuildAt = staleReplay ? Number.NaN : Date.parse(digest.generatedAt ?? '');
-  noteClassifiedDigestBuild(variant, digestBuildAt);
   const xTitles = new Set(xCandidates.map((candidate) => candidate.title));
-  if (allTitles.size === 0) return { total: 0, classified: 0, skipped: 0, staleReplay };
+  if (allTitles.size === 0) return { total: 0, classified: 0, skipped: 0, staleReplay, digestBuildAt };
 
   const titleArr = [...allTitles.keys()];
   const cacheKeys = titleArr.map((t) => classifyCacheKey(t));
@@ -5722,7 +5735,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
     }
   }
 
-  if (misses.length === 0) return { total: titleArr.length, classified: 0, skipped: 0, byCountry, staleReplay, unlabelled };
+  if (misses.length === 0) return { total: titleArr.length, classified: 0, skipped: 0, byCountry, staleReplay, unlabelled, digestBuildAt };
 
   let classified = 0;
   let skipped = 0;
@@ -5807,17 +5820,13 @@ async function seedClassifyForVariant(variant, seenTitles) {
         // One alert per story per day, not per title string: a second
         // publisher carrying an alerted headline is the same story.
         const storyKey = newsStoryKey(chunk[idx], { severity: level, importanceScore });
-        recordAlertLatency(
-          alertLatency({
-            publishedAt: meta.publishedAt,
-            firstSeen: meta.firstSeen,
-            // An X post has no digest build behind it.
-            buildAt: xTitles.has(chunk[idx]) ? undefined : digestBuildAt,
-            queuedAt: Date.now(),
-          }),
-          { severity: level, importanceScore, variant, source: meta.source },
-        );
+        // An X post has no digest build behind it.
+        const alertBuildAt = xTitles.has(chunk[idx]) ? undefined : digestBuildAt;
         publishNotificationEvent({
+          onQueued: (queuedAt) => recordAlertLatency(
+            alertLatency({ publishedAt: meta.publishedAt, firstSeen: meta.firstSeen, buildAt: alertBuildAt, queuedAt }),
+            { severity: level, importanceScore, variant, source: meta.source },
+          ),
           eventType: 'rss_alert',
           payload: {
             title: chunk[idx],
@@ -5861,7 +5870,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
   if (shadow.asked > 0) {
     console.log(`[Classify] Jev shadow ${variant}: asked ${shadow.asked}, answered ${shadow.answered}, agreed ${shadow.agreed}, alert flips ${shadow.alertFlips}`);
   }
-  return { total: titleArr.length, classified, skipped, byCountry, staleReplay, unlabelled };
+  return { total: titleArr.length, classified, skipped, byCountry, staleReplay, unlabelled, digestBuildAt };
 }
 
 async function seedClassify() {
@@ -5909,6 +5918,7 @@ async function seedClassify() {
       if (v > 0) await new Promise((r) => setTimeout(r, CLASSIFY_VARIANT_STAGGER_MS));
       try {
         const stats = await runClassifyExclusive(() => seedClassifyForVariant(CLASSIFY_VARIANTS[v], seenTitles));
+        noteClassifiedDigestBuild(CLASSIFY_VARIANTS[v], stats.digestBuildAt);
         if (stats.fetchFailed) fetchFailed += 1;
         else fetchOk += 1;
         if (stats.staleReplay) staleReplays += 1;
@@ -5983,21 +5993,33 @@ async function checkDigestBuilds() {
       stamps,
       classifiedAt: classifiedDigestBuildAt,
       now: Date.now(),
+      retryAt: digestBuildRetryAt,
     });
     const editions = buildPassEditions(CLASSIFY_VARIANTS, rebuilt);
     const summary = [];
     for (const variant of editions) {
+      let stats = null;
       try {
-        const stats = await runClassifyExclusive(() => seedClassifyForVariant(variant, new Set()));
+        stats = await runClassifyExclusive(() => seedClassifyForVariant(variant, new Set()));
         summary.push(`${variant} ${stats.classified}/${stats.total}${stats.fetchFailed ? ' fetch failed' : ''}`);
       } catch (e) {
         summary.push(`${variant} error`);
         console.warn(`[Classify] build pass ${variant} error:`, e?.message || e);
       }
+      if (stats && !stats.fetchFailed) {
+        // The pass finished on a digest it could read. A stale replay counts:
+        // the build behind the stamp was not published, so reading again
+        // before the next build would serve the same replay.
+        noteClassifiedDigestBuild(variant, stats.digestBuildAt);
+        if (rebuilt.includes(variant)) noteClassifiedDigestBuild(variant, stamps.get(variant));
+        digestBuildRetryAt.delete(variant);
+      } else if (rebuilt.includes(variant)) {
+        // The read failed or the pass threw: the build stays new, and the
+        // edition is left alone for a while so a failing API is not re-read
+        // on every check. The cycle still covers it meanwhile.
+        digestBuildRetryAt.set(variant, Date.now() + DIGEST_BUILD_RETRY_DELAY_MS);
+      }
     }
-    // Recorded even when the digest read failed or served a replay, so one
-    // build is acted on once; the cycle picks up whatever a failed read missed.
-    for (const variant of rebuilt) noteClassifiedDigestBuild(variant, stamps.get(variant));
     if (editions.length > 0) {
       console.log(`[Classify] build pass (rebuilt: ${rebuilt.join(',')}) classified/titles: ${summary.join(', ')}`);
     }

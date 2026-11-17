@@ -94,6 +94,10 @@ const DIGEST_BUILD_WATCH_INTERVAL_MS = 20_000;
 // when the build returns. A fetch before that finds the cache empty and starts
 // a second build, so a stamp is acted on only once it is this old.
 const DIGEST_BUILD_SETTLE_MS = 10_000;
+// A digest read that fails does not count as classifying the build. The watch
+// leaves that edition alone for this long, so a failing API is not re-read on
+// every check.
+const DIGEST_BUILD_RETRY_MS = 2 * 60_000;
 // Build to queue is the one stage the relay owns: a watch poll, the settle
 // wait, the digest fetch and one LLM call. Anything over this means the watch
 // is not firing and alerts are back on the 15-minute cycle.
@@ -117,12 +121,15 @@ function digestBuildStampMs(ledger) {
  * Editions whose digest was built after the build the relay last classified.
  * `stamps` and `classifiedAt` map edition -> build time in ms. An edition the
  * relay has never classified counts, so a restarted relay catches up at once.
+ * `retryAt` maps edition -> the earliest time it may be read again after a
+ * failed read.
  */
-function editionsWithUnclassifiedBuild({ editions, stamps, classifiedAt, now, settleMs = DIGEST_BUILD_SETTLE_MS }) {
+function editionsWithUnclassifiedBuild({ editions, stamps, classifiedAt, now, settleMs = DIGEST_BUILD_SETTLE_MS, retryAt }) {
   return editions.filter((edition) => {
     const stamp = stamps.get(edition);
     if (!Number.isFinite(stamp) || stamp <= 0) return false;
     if (stamp > now - settleMs) return false;
+    if ((retryAt?.get(edition) ?? 0) > now) return false;
     return stamp > (classifiedAt.get(edition) ?? 0);
   });
 }
@@ -200,8 +207,25 @@ function summarizeAlertLatency(samples) {
   };
 }
 
+/**
+ * The --strict verdict of scripts/report-alert-latency.mjs for one summary.
+ * No measured build stage is a failure, not a pass: a window holding only X
+ * alerts has samples and still says nothing about the budget.
+ */
+function strictLatencyVerdict(summary) {
+  const minutes = (ms) => (ms / 60_000).toFixed(1);
+  const { n, p90 } = summary.buildToQueue;
+  if (n === 0) return { ok: false, reason: 'no alert in this window measured digest build to queue' };
+  if (p90 > BUILD_TO_QUEUE_BUDGET_MS) {
+    return { ok: false, reason: `build-to-queue p90 ${minutes(p90)} min is over the ${minutes(BUILD_TO_QUEUE_BUDGET_MS)}-minute budget` };
+  }
+  return { ok: true, reason: '' };
+}
+
 module.exports = {
   summarizeAlertLatency,
+  strictLatencyVerdict,
+  DIGEST_BUILD_RETRY_MS,
   DIGEST_BUILD_WATCH_INTERVAL_MS,
   DIGEST_BUILD_SETTLE_MS,
   BUILD_TO_QUEUE_BUDGET_MS,

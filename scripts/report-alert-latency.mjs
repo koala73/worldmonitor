@@ -4,7 +4,8 @@
  *
  *   node scripts/report-alert-latency.mjs              # last 24 hours
  *   node scripts/report-alert-latency.mjs --hours 168  # last 7 days
- *   node scripts/report-alert-latency.mjs --strict     # exit 1 if build-to-queue p90 is over budget
+ *   node scripts/report-alert-latency.mjs --strict     # exit 1 if build-to-queue p90 is over budget,
+ *                                                      # or if nothing measured that stage
  *
  * Two sources:
  *   shadow:score-log:v5     written by the notification relay for every
@@ -26,7 +27,7 @@ import { loadEnvFile } from './_env-file.mjs';
 import { getRedisCredentials } from './_seed-utils.mjs';
 
 const require = createRequire(import.meta.url);
-const { BUILD_TO_QUEUE_BUDGET_MS, summarizeAlertLatency } = require('./lib/classify-digest-request.cjs');
+const { BUILD_TO_QUEUE_BUDGET_MS, summarizeAlertLatency, strictLatencyVerdict } = require('./lib/classify-digest-request.cjs');
 
 const SCORE_LOG_KEY = 'shadow:score-log:v5';
 const LATENCY_KEY = 'relay:alert-latency:v1';
@@ -82,21 +83,20 @@ async function main() {
   console.log(`\nBy stage, last ${hours}h (${LATENCY_KEY})`);
   if (samples.length === 0) {
     console.log('  no samples: the relay build with the latency record has not queued an alert in this window');
-    if (strict) process.exitCode = 1;
-    return;
   }
-  let worstBuildP90 = null;
-  for (const [label, keep] of SLICES) {
+  for (const [label, keep] of samples.length === 0 ? [] : SLICES) {
     const summary = summarizeAlertLatency(samples.filter(keep));
     console.log(` ${label} (${summary.count}, ${summary.overBudget} over the ${minutes(BUILD_TO_QUEUE_BUDGET_MS)}-minute build-to-queue budget)`);
     printStage('publisher timestamp -> queue', summary.publishToQueue);
     printStage('story tracking first sight -> queue', summary.seenToQueue);
     printStage('digest build -> queue', summary.buildToQueue);
-    if (label === 'all alerts') worstBuildP90 = summary.buildToQueue.p90;
   }
-  if (strict && worstBuildP90 !== null && worstBuildP90 > BUILD_TO_QUEUE_BUDGET_MS) {
-    console.error(`\nbuild-to-queue p90 ${minutes(worstBuildP90)} min is over the ${minutes(BUILD_TO_QUEUE_BUDGET_MS)}-minute budget`);
-    process.exitCode = 1;
+  if (strict) {
+    const verdict = strictLatencyVerdict(summarizeAlertLatency(samples));
+    if (!verdict.ok) {
+      console.error(`\n${verdict.reason}`);
+      process.exitCode = 1;
+    }
   }
 }
 

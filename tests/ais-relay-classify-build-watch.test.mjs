@@ -50,7 +50,7 @@ async function until(check, waitingFor) {
 // Upstash REST stand-in. `stamps` maps an edition to the build time its
 // coverage ledger reports (absent = no ledger). The classify cache starts
 // empty and remembers what the relay writes, like the real one.
-async function startUpstash(t, stamps) {
+async function startUpstash(t, stamps, { dedupHit = false, lpushFails = false } = {}) {
   const commands = [];
   const classifyCache = new Map();
   const storedValue = (key) => {
@@ -80,8 +80,12 @@ async function startUpstash(t, stamps) {
       if (!Array.isArray(command)) return res.end(JSON.stringify({ result: null }));
       commands.push(command);
       if (command[0] === 'SET' && String(command[1]).startsWith('classify:')) classifyCache.set(command[1], command[2]);
-      const numeric = command[0] === 'LPUSH' || command[0] === 'EVAL';
-      return res.end(JSON.stringify({ result: numeric ? 1 : 'OK' }));
+      // SET NX on the scan-dedup key answers null when the key already exists.
+      if (dedupHit && command[0] === 'SET' && String(command[1]).startsWith('wm:notif:scan-dedup:')) {
+        return res.end(JSON.stringify({ result: null }));
+      }
+      if (command[0] === 'LPUSH') return res.end(JSON.stringify({ result: lpushFails ? 0 : 1 }));
+      return res.end(JSON.stringify({ result: command[0] === 'EVAL' ? 1 : 'OK' }));
     });
   });
   const port = await listen(server);
@@ -96,11 +100,15 @@ async function startUpstash(t, stamps) {
 
 // list-feed-digest stand-in: one fresh headline per edition, and a record of
 // which editions were requested, in order.
-async function startDigestApi(t, { builtAt }) {
+async function startDigestApi(t, { builtAt, down }) {
   const requests = [];
   const server = http.createServer((req, res) => {
     const variant = new URL(req.url, 'http://digest.test').searchParams.get('variant');
     requests.push(variant);
+    if (down.has(variant)) {
+      res.writeHead(500);
+      return res.end();
+    }
     const at = builtAt();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
@@ -144,10 +152,11 @@ async function startLlm(t) {
   return { calls, url: `http://127.0.0.1:${port}` };
 }
 
-async function startRelay(t, stamps) {
+async function startRelay(t, stamps, upstashOptions) {
   const built = { at: Date.now() - 60_000 };
-  const upstash = await startUpstash(t, stamps);
-  const digest = await startDigestApi(t, { builtAt: () => built.at });
+  const down = new Set();
+  const upstash = await startUpstash(t, stamps, upstashOptions);
+  const digest = await startDigestApi(t, { builtAt: () => built.at, down });
   const llm = await startLlm(t);
   const child = spawn(process.execPath, [relayScript], {
     env: {
@@ -186,7 +195,7 @@ async function startRelay(t, stamps) {
     const res = await get(port, '/__test/seed-classify');
     assert.equal(res.status, 200, `classify seam failed: ${res.body}\n${output}`);
   };
-  return { upstash, digest, llm, built, watch, cycle, output: () => output };
+  return { upstash, digest, llm, built, down, watch, cycle, output: () => output };
 }
 
 test('a rebuilt edition is classified and its alert queued without waiting for the cycle', async (t) => {
@@ -216,8 +225,9 @@ test('every queued alert logs and records how long it took, by stage', async (t)
   const { upstash, watch, output } = await startRelay(t, { full: Date.now() - 60_000 });
   await watch();
 
+  // Logged once the event is in the queue, a moment after the pass returns.
+  await until(() => output().includes('[Classify] alert latency'), () => `a latency line\n${output()}`);
   const line = output().split('\n').find((l) => l.startsWith('[Classify] alert latency'));
-  assert.ok(line, `no latency line\n${output()}`);
   const field = (name) => Number(new RegExp(`${name}=(\\d+)`).exec(line)?.[1]);
   // Published 4 minutes, first seen 30 s and built 60 s before the digest was read.
   assert.ok(field('publish_to_queue_s') >= 240 && field('publish_to_queue_s') < 330, line);
@@ -297,4 +307,43 @@ test('the 15-minute cycle counts as classifying the builds it read', async (t) =
   const result = await watch();
   assert.deepEqual(result.editions, [], 'the watch does not re-read what the cycle just classified');
   assert.deepEqual(digest.requests, EDITIONS);
+});
+
+test('an alert the publisher did not queue leaves no latency sample', async (t) => {
+  // A dedup hit and a failed LPUSH both end with nothing new in the queue.
+  for (const upstashOptions of [{ dedupHit: true }, { lpushFails: true }]) {
+    const { upstash, llm, watch, output } = await startRelay(t, { full: Date.now() - 60_000 }, upstashOptions);
+    await watch();
+    assert.equal(llm.calls.length, 1);
+    // The publish is not awaited by the pass; give it time to finish.
+    await until(
+      () => /Dedup hit|LPUSH failed/.test(output()),
+      () => `the publisher's verdict (${JSON.stringify(upstashOptions)})\n${output()}`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(upstash.queued().length, upstashOptions.lpushFails ? 1 : 0, 'the stand-in records the attempt, not a success');
+    assert.equal(upstash.wrote(LATENCY_KEY), false, `no sample for ${JSON.stringify(upstashOptions)}\n${output()}`);
+    assert.doesNotMatch(output(), /\[Classify\] alert latency/);
+  }
+});
+
+test('a failed digest read does not use up the build: it is read again after a wait', async (t) => {
+  const { upstash, digest, down, watch, output } = await startRelay(t, { full: Date.now() - 60_000 });
+  down.add('full');
+  const failed = await watch();
+  assert.deepEqual(failed.editions, ['full']);
+  assert.deepEqual(digest.requests, ['full']);
+  assert.equal(upstash.queued().length, 0);
+
+  // Not on the very next check: a failing API is not re-read every 20 seconds.
+  down.delete('full');
+  const waiting = await watch();
+  assert.deepEqual(waiting.editions, [], output());
+  assert.deepEqual(digest.requests, ['full']);
+
+  // RELAY_TEST_MODE shortens the wait to 300 ms.
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const retried = await watch();
+  assert.deepEqual(retried.editions, ['full'], 'the same build is still new, because the failed read did not classify it');
+  await until(() => upstash.queued().length === 1, () => `the alert from the retried build\n${output()}`);
 });

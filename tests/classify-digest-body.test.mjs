@@ -27,7 +27,6 @@ function loadVariant(url, observedErrors, { timeoutMs, digests = [] } = {}) {
     CHROME_UA: 'fixture', RELAY_API_KEY: '', console: { log() {}, warn() {} },
     AbortSignal, setTimeout, clearTimeout,
     isStaleDigestReplay: () => false,
-    noteClassifiedDigestBuild: () => {},
     xNewsAccounts: { collectXAlertCandidates: () => [] }, xState: { items: [] },
     RELAY_SOURCE_TIERS: {}, buildClassifyCandidateMap: digest => { digests.push(digest); return new Map(); },
   });

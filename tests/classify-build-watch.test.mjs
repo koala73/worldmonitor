@@ -29,6 +29,8 @@ const {
   alertLatency,
   formatAlertLatency,
   summarizeAlertLatency,
+  strictLatencyVerdict,
+  DIGEST_BUILD_RETRY_MS,
 } = require('../scripts/lib/classify-digest-request.cjs');
 
 const EDITIONS = ['full', 'tech', 'finance', 'commodity', 'happy', 'energy'];
@@ -90,6 +92,19 @@ describe('editionsWithUnclassifiedBuild', () => {
       editionsWithUnclassifiedBuild({ editions: EDITIONS, stamps, classifiedAt: new Map(), now: now + 1 }),
       ['full'],
     );
+  });
+
+  it('leaves an edition alone after a failed read until its retry time', () => {
+    // A failed read does not count as classifying the build, so the build stays
+    // new. Without a wait every 20-second check would re-read a failing API.
+    const stamps = new Map([['full', settled - 1000], ['tech', settled - 1000]]);
+    const retryAt = new Map([['full', now + 1]]);
+    assert.deepEqual(editionsWithUnclassifiedBuild({ editions: EDITIONS, stamps, classifiedAt: new Map(), now, retryAt }), ['tech']);
+    assert.deepEqual(
+      editionsWithUnclassifiedBuild({ editions: EDITIONS, stamps, classifiedAt: new Map(), now: now + 1, retryAt }),
+      ['full', 'tech'],
+    );
+    assert.ok(DIGEST_BUILD_RETRY_MS >= 60_000 && DIGEST_BUILD_RETRY_MS <= 5 * 60_000);
   });
 
   it('ignores editions with no stamp, an unreadable stamp or a stamp from the future', () => {
@@ -189,5 +204,29 @@ describe('summarizeAlertLatency', () => {
     assert.equal(summary.buildToQueue.n, 1);
     assert.equal(summary.overBudget, 0);
     assert.deepEqual(summarizeAlertLatency([]).buildToQueue, { n: 0, p50: null, p90: null, max: null });
+  });
+});
+
+describe('strictLatencyVerdict', () => {
+  const minute = 60_000;
+  const sample = (buildToQueueMs) => ({ publishToQueueMs: 10 * minute, seenToQueueMs: 2 * minute, buildToQueueMs });
+
+  it('passes when build-to-queue p90 is within budget', () => {
+    assert.deepEqual(strictLatencyVerdict(summarizeAlertLatency([sample(20_000), sample(40_000)])), { ok: true, reason: '' });
+  });
+
+  it('fails when build-to-queue p90 is over budget', () => {
+    const verdict = strictLatencyVerdict(summarizeAlertLatency([sample(20_000), sample(14 * minute)]));
+    assert.equal(verdict.ok, false);
+    assert.match(verdict.reason, /build-to-queue p90 14\.0 min is over the 3\.0-minute budget/);
+  });
+
+  it('fails when nothing measured the build stage, instead of passing on no evidence', () => {
+    // A window with only X alerts has samples but no build-to-queue value.
+    for (const samples of [[], [sample(null), sample(null)]]) {
+      const verdict = strictLatencyVerdict(summarizeAlertLatency(samples));
+      assert.equal(verdict.ok, false);
+      assert.match(verdict.reason, /no alert in this window measured digest build to queue/);
+    }
   });
 });
