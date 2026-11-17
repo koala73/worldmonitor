@@ -115,6 +115,37 @@ describe('publisher-direct RSS feeds', () => {
     }
   });
 
+  it('owes every opt-in marker when startup seeds the session from defaults', () => {
+    const app = readFileSync('src/App.ts', 'utf8');
+    const start = app.indexOf('    let sessionDisabledSources');
+    const end = app.indexOf('    // One-time migration: reduce default-enabled sources', start);
+    assert.ok(start >= 0 && end > start);
+    const seed = transpileModule(
+      `(function () {\n${app.slice(start, end)}\nreturn { sessionDisabledSources, pendingMigrationMarkers };\n}).call(host);`,
+      {},
+    ).outputText;
+    for (const storageAvailable of [false, true]) {
+      const result = runInNewContext(seed, {
+        currentVariant: 'full', storageAvailable,
+        computeDefaultDisabledSources: client.computeDefaultDisabledSources,
+        host: { currentSourceCapLanguage: () => 'en' },
+      }) as { sessionDisabledSources?: string[]; pendingMigrationMarkers: string[] };
+      if (!storageAvailable) {
+        // Defaults already disable every opt-in pack, so each migration's
+        // marker must be written when these preferences first persist.
+        for (const name of names) assert.ok(result.sessionDisabledSources?.includes(name), `${name} disabled by default`);
+        for (const marker of [
+          'worldmonitor-country-coverage-optin-v1',
+          'worldmonitor-brazil-optin-v1',
+          'worldmonitor-publisher-direct-optin-v1',
+        ]) assert.ok(result.pendingMigrationMarkers.includes(marker), `${marker} queued`);
+      } else {
+        assert.equal(result.sessionDisabledSources, undefined);
+        assert.deepEqual([...result.pendingMigrationMarkers], []);
+      }
+    }
+  });
+
   it('keeps the new feeds disabled for the session when startup cannot save the migration', () => {
     const app = readFileSync('src/App.ts', 'utf8');
     const start = app.indexOf('      const publisherDirectOptInKey =');

@@ -1369,8 +1369,15 @@ export class App {
       ? computeDefaultDisabledSources(this.currentSourceCapLanguage())
       : undefined;
     // Opt-in migrations that applied only to this session; their markers are
-    // written once the preferences they produced persist.
-    const pendingMigrationMarkers: string[] = [];
+    // written once the preferences they produced persist. Defaults already
+    // disable every opt-in pack, so a session seeded from them owes all three.
+    const pendingMigrationMarkers: string[] = sessionDisabledSources
+      ? [
+        'worldmonitor-country-coverage-optin-v1',
+        'worldmonitor-brazil-optin-v1',
+        'worldmonitor-publisher-direct-optin-v1',
+      ]
+      : [];
     // One-time migration: reduce default-enabled sources (full variant only)
     if (currentVariant === 'full' && storageAvailable) {
       const baseKey = 'worldmonitor-sources-reduction-v3';
@@ -1663,7 +1670,7 @@ export class App {
       disabledSources,
       pendingSourcePreferences: sessionDisabledSources === undefined ? undefined : {
         gateOwned: null,
-        migrationMarkers: ['worldmonitor-country-coverage-optin-v1', ...pendingMigrationMarkers],
+        migrationMarkers: [...new Set(['worldmonitor-country-coverage-optin-v1', ...pendingMigrationMarkers])],
       },
       currentTimeRange: '7d',
       inFlight: new Set(),
