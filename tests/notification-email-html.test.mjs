@@ -96,6 +96,23 @@ describe('quiet-hours batch email', () => {
     assert.match(out, /apnews\.com/);
   });
 
+  // drainHeldForUser drains up to 100 held events. Gmail clips an HTML body
+  // past ~102 KB, hiding the trailing cards and the unsubscribe footer.
+  it('caps the cards for a full batch, names the rest, and stays under the Gmail clip size', () => {
+    const items = Array.from({ length: 100 }, (_, i) => ({
+      title: `${'Ukraine declares state of emergency across the Kharkiv region after overnight strikes '.repeat(3)}${i}`,
+      severity: 'high',
+      coverage: 'Coverage: 4 independent publishers',
+      link: `https://www.reuters.com/world/europe/${'ukraine-declares-state-emergency-kharkiv-region-'.repeat(6)}${i}`,
+    }));
+    const full = html.buildHeldAlertsEmailHtml(items);
+    assert.ok(Buffer.byteLength(full) < 102_000, `held email is ${Buffer.byteLength(full)} bytes`);
+    assert.match(full, /100 alerts held during quiet hours/);
+    assert.equal((full.match(/border-left: 3px solid/g) ?? []).length, html.HELD_EMAIL_MAX_CARDS);
+    assert.match(full, new RegExp(`${100 - html.HELD_EMAIL_MAX_CARDS} more alerts are on your dashboard`));
+    assert.ok(full.indexOf('more alerts are on your dashboard') < full.indexOf(UNSUBSCRIBE_SLOT));
+  });
+
   it('uses the singular for one alert', () => {
     assert.match(html.buildHeldAlertsEmailHtml([{ title: 'Only', severity: 'high' }]), /1 alert held during quiet hours/);
   });

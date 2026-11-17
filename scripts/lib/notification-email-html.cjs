@@ -200,9 +200,16 @@ ${facts}
  *
  * @param {Array<{ title: string; severity?: string; coverage?: string; link?: string }>} items
  */
+// The relay drains up to 100 held alerts. Gmail clips an HTML body past ~102 KB,
+// hiding the trailing cards and the unsubscribe footer, so the email shows the
+// newest few and points to the dashboard for the rest.
+const HELD_EMAIL_MAX_CARDS = 25;
+
 function buildHeldAlertsEmailHtml(items) {
   const count = items.length;
-  const cards = items.map((item) => {
+  const shown = items.slice(-HELD_EMAIL_MAX_CARDS);
+  const omitted = count - shown.length;
+  const cards = shown.map((item) => {
     const color = severityColor(item.severity);
     const link = resolveLink(item.link);
     const titleHtml = link && link.url !== NOTIFY_DASHBOARD_URL
@@ -219,7 +226,8 @@ function buildHeldAlertsEmailHtml(items) {
   const heading = `${count} alert${count !== 1 ? 's' : ''} held during quiet hours`;
   const body = `      <div style="font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 6px;">${escapeHtml(heading)}</div>
       <div style="font-size: 13px; color: #888; line-height: 1.5; margin-bottom: 20px;">These matched your alert rules while quiet hours were on.</div>
-      ${cards}
+      ${cards}${omitted > 0 ? `
+      <div style="font-size: 13px; color: #888; line-height: 1.5; margin-top: 12px;">${omitted} more alert${omitted !== 1 ? 's are' : ' is'} on your dashboard.</div>` : ''}
       <div style="text-align: center; padding: 20px 0 28px;">${primaryButton(NOTIFY_DASHBOARD_URL, 'Open dashboard')}</div>`;
 
   return emailShell({ preheader: heading, kicker: 'Quiet hours', body });
@@ -239,6 +247,7 @@ function buildWelcomeEmailHtml() {
 module.exports = {
   buildAlertEmailHtml,
   buildHeldAlertsEmailHtml,
+  HELD_EMAIL_MAX_CARDS,
   buildWelcomeEmailHtml,
   escapeHtml,
 };
