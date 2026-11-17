@@ -212,6 +212,10 @@ describe('ais-relay wiring', () => {
     assert.match(src, /notifyPolicy\.weatherAlertCoalesceKey\(weatherAlertFamilyKey\(a\), a\.severity\)/);
   });
 
+  it('alerts on fresh equity quotes only, never a retained one', () => {
+    assert.match(src, /const movingStocks = quotes\.filter\(q => lastTradeAtBySymbol\.has\(q\.symbol\) && /);
+  });
+
   it('routes every market severity through the policy', () => {
     assert.equal((src.match(/notifyPolicy\.marketMoveSeverity\(/g) || []).length, 3);
     assert.doesNotMatch(src, /Math\.abs\(q\.change\) >= (10|20) \? 'critical'/);
