@@ -204,7 +204,8 @@ describe('Cmd+K headline history', () => {
     replaceLoadedNews(['Iran talks resume in Vienna']);
     modal!.refreshResultsInBackground();
     expect(rows().map((row) => `${row.title} | ${row.subtitle}`)).toEqual(['Iran talks resume in Vienna | Loaded Source']);
-    expect(requests).toEqual(['iran'], 'no second request');
+    // No second request.
+    expect(requests).toEqual(['iran']);
   });
 
   it('lists loaded news first and never repeats a title the loaded items already cover', async () => {
