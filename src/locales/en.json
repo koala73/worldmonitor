@@ -5838,6 +5838,11 @@
       "seasonalHint": "Alert when the latest measured level is well below what that reservoir usually measures at this time of year.",
       "quietNote": "These alerts arrive even when real-time alerts are set to critical only. Quiet hours silence them.",
       "quietNoteBatch": "These alerts arrive even when real-time alerts are set to critical only. Quiet hours silence them, or hold them until quiet hours end if you choose Batch."
+    },
+    "briefLanguage": {
+      "label": "Brief language",
+      "hint": "Your daily brief will be written in {{language}}.",
+      "sameAsApp": "Same as app language"
     }
   }
 }

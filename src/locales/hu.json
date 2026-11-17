@@ -5859,6 +5859,11 @@
       "seasonalHint": "Riasztás, ha a legutóbb mért szint jelentősen alacsonyabb az adott tározó szokásos értékénél az év ezen időszakában.",
       "quietNote": "Ezek a riasztások akkor is megérkeznek, ha a valós idejű riasztások csak kritikusra vannak állítva. A csendes órák elnémítják őket.",
       "quietNoteBatch": "Ezek a riasztások akkor is megérkeznek, ha a valós idejű riasztások csak kritikusra vannak állítva. A csendes órák elnémítják őket, vagy ha a Batch módot választja, a csendes órák végéig visszatartják őket."
+    },
+    "briefLanguage": {
+      "label": "Az összefoglaló nyelve",
+      "hint": "A napi összefoglaló nyelve: {{language}}.",
+      "sameAsApp": "Megegyezik az alkalmazás nyelvével"
     }
   }
 }
