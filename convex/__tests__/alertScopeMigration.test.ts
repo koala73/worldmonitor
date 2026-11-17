@@ -183,7 +183,33 @@ describe("alert scope notice", () => {
     expect(scoped.html).toContain(`href="${ALERT_SETTINGS_URL}"`);
     const none = alertScopeNoticeContent([]);
     expect(none.subject).toBe("Add countries to keep getting local alerts");
-    expect(none.text).toContain("global critical events only");
+    // Opt-in alerts (chokepoints, watchlist, sites, reservoirs) still arrive
+    // without countries, so the copy must not promise "global critical only".
+    expect(none.text).toContain("global critical events, plus any opt-in alerts you turned on");
+    expect(none.text).not.toContain("global critical events only");
+  });
+
+  // Same frame as the relay's alert emails (scripts/lib/notification-email-html.cjs).
+  test("uses the designed email frame, with the countries as chips and a button", () => {
+    const { html } = alertScopeNoticeContent(["UA", "IL"]);
+    expect(html).toMatch(/^<!DOCTYPE html>/);
+    expect(html).toContain("android-chrome-192x192.png");
+    expect(html).toContain("WORLD MONITOR");
+    expect(html).toContain("background: #4ade80; height: 3px;");
+    expect(html).toMatch(/<span[^>]*>Ukraine<\/span>/);
+    expect(html).toMatch(/<span[^>]*>Israel<\/span>/);
+    expect(html).toMatch(new RegExp(`<a href="${ALERT_SETTINGS_URL.replace(/[?.]/g, "\\$&")}"[^>]*background: #4ade80[^>]*>Edit your countries</a>`));
+    expect(html).not.toMatch(/<style/i);
+    expect(html).not.toMatch(/display:\s*flex/);
+    const none = alertScopeNoticeContent([]).html;
+    expect(none).toContain("WORLD MONITOR");
+    expect(none).toMatch(/>Choose your countries<\/a>/);
+  });
+
+  test("escapes a country name that is not a known region code", () => {
+    const { html } = alertScopeNoticeContent(["<b>"]);
+    expect(html).not.toContain("<b>");
+    expect(html).toContain("&lt;b&gt;");
   });
 
   test("is a dry run unless live, and sends nothing", async () => {

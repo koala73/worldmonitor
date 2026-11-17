@@ -215,34 +215,119 @@ export function alertScopeNoticeContent(countries: readonly string[]): {
   text: string;
   html: string;
 } {
+  const intro = "We've changed how realtime alerts work.";
   const global =
     "Global critical events, such as a market crash, a shipping shock or a national airspace shutdown, still reach you wherever they happen.";
   if (countries.length === 0) {
     const subject = "Add countries to keep getting local alerts";
-    const lines = [
-      "We've changed how realtime alerts work.",
-      "Local events, such as severe weather, airport disruption, sirens and conflict, now reach you only for the countries you choose. You don't follow any countries yet, so for now your realtime alerts send global critical events only.",
-      global,
-      `Choose your countries: ${ALERT_SETTINGS_URL}`,
-    ];
-    return { subject, text: lines.join("\n\n"), html: htmlFor(lines.slice(0, 3), "Choose your countries") };
+    const local =
+      "Local events, such as severe weather, airport disruption, sirens and conflict, now reach you only for the countries you choose. You don't follow any countries yet, so for now your realtime alerts send global critical events, plus any opt-in alerts you turned on.";
+    const cta = "Choose your countries";
+    return {
+      subject,
+      text: [intro, local, global, `${cta}: ${ALERT_SETTINGS_URL}`].join("\n\n"),
+      html: noticeHtml({ heading: subject, intro, local, countries: [], global, cta }),
+    };
   }
   const names = countries.map(countryName);
   const subject = "Your realtime alerts now follow your countries";
-  const lines = [
-    "We've changed how realtime alerts work.",
-    `Local events, such as severe weather, airport disruption, sirens and conflict, now reach you only for the countries you follow: ${names.join(", ")}.`,
-    global,
-    `Edit your countries: ${ALERT_SETTINGS_URL}`,
-  ];
-  return { subject, text: lines.join("\n\n"), html: htmlFor(lines.slice(0, 3), "Edit your countries") };
+  const local = `Local events, such as severe weather, airport disruption, sirens and conflict, now reach you only for the countries you follow: ${names.join(", ")}.`;
+  const cta = "Edit your countries";
+  return {
+    subject,
+    text: [intro, local, global, `${cta}: ${ALERT_SETTINGS_URL}`].join("\n\n"),
+    html: noticeHtml({
+      heading: subject,
+      intro,
+      local: "Local events, such as severe weather, airport disruption, sirens and conflict, now reach you only for the countries you follow:",
+      countries: names,
+      global,
+      cta,
+    }),
+  };
 }
 
-function htmlFor(paragraphs: readonly string[], cta: string): string {
-  const body = paragraphs
-    .map((p) => `<p style="font-size:15px;line-height:1.6;margin:0 0 16px;">${escapeHtml(p)}</p>`)
+// The frame the relay's alert emails use (scripts/lib/notification-email-html.cjs):
+// accent bar, logo header with a kicker, cards, accent button, footer. Inline
+// styles only, no <style> block or flex, so it renders the same across clients.
+const NOTICE_LOGO_URL = "https://www.worldmonitor.app/favico/android-chrome-192x192.png";
+const NOTICE_ACCENT = "#4ade80";
+const NOTICE_FONT_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+
+function noticeCard(label: string, color: string, inner: string): string {
+  return `<div style="background: #111; border: 1px solid #1a1a1a; border-left: 3px solid ${color}; padding: 16px 20px; margin-bottom: 12px;">
+        <div style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; margin-bottom: 8px;">${escapeHtml(label)}</div>
+        ${inner}
+      </div>`;
+}
+
+function noticeHtml(args: {
+  heading: string;
+  intro: string;
+  local: string;
+  countries: readonly string[];
+  global: string;
+  cta: string;
+}): string {
+  const chips = args.countries
+    .map((name) => `<span style="display: inline-block; margin: 8px 6px 0 0; padding: 4px 10px; border: 1px solid #2a2a2a; background: #161616; color: #e0e0e0; font-size: 12px; border-radius: 3px;">${escapeHtml(name)}</span>`)
     .join("");
-  return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111;max-width:560px;">${body}<p style="margin:24px 0 0;"><a href="${ALERT_SETTINGS_URL}" style="color:#15803d;font-weight:600;">${escapeHtml(cta)}</a></p></div>`;
+  const paragraph = (text: string) =>
+    `<div style="font-size: 14px; color: #ccc; line-height: 1.6;">${escapeHtml(text)}</div>`;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="supported-color-schemes" content="dark">
+<title>WorldMonitor</title>
+</head>
+<body style="margin: 0; padding: 0; background: #111;">
+<div style="display: none; max-height: 0; overflow: hidden; opacity: 0; color: #111;">${escapeHtml(args.heading)}</div>
+<div style="font-family: ${NOTICE_FONT_STACK}; background: #111; color: #e0e0e0; padding: 0;">
+  <div style="max-width: 680px; margin: 0 auto;">
+    <div style="background: ${NOTICE_ACCENT}; height: 3px;"></div>
+    <div style="background: #0d0d0d; padding: 32px 36px 8px;">
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" role="presentation" style="margin-bottom: 28px;">
+        <tr>
+          <td style="vertical-align: middle;">
+            <table cellpadding="0" cellspacing="0" border="0" role="presentation">
+              <tr>
+                <td style="width: 36px; height: 36px; vertical-align: middle;">
+                  <img src="${NOTICE_LOGO_URL}" width="36" height="36" alt="WorldMonitor" style="border-radius: 50%; display: block;" />
+                </td>
+                <td style="padding-left: 10px;">
+                  <div style="font-size: 15px; font-weight: 800; color: #fff; letter-spacing: -0.3px;">WORLD MONITOR</div>
+                </td>
+              </tr>
+            </table>
+          </td>
+          <td style="text-align: right; vertical-align: middle;">
+            <span style="font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px;">Alert settings</span>
+          </td>
+        </tr>
+      </table>
+      <div style="font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 8px; line-height: 1.35;">${escapeHtml(args.heading)}</div>
+      <div style="font-size: 14px; color: #888; line-height: 1.5; margin-bottom: 20px;">${escapeHtml(args.intro)}</div>
+      ${noticeCard("Local events", NOTICE_ACCENT, `${paragraph(args.local)}${chips ? `<div>${chips}</div>` : ""}`)}
+      ${noticeCard("Everywhere", "#ef4444", paragraph(args.global))}
+      <div style="padding: 16px 0 28px;"><a href="${ALERT_SETTINGS_URL}" style="display: inline-block; background: ${NOTICE_ACCENT}; color: #0a0a0a; padding: 12px 28px; text-decoration: none; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 3px;">${escapeHtml(args.cta)}</a></div>
+    </div>
+    <div style="background: #0a0a0a; border-top: 1px solid #1a1a1a; padding: 20px 36px; text-align: center;">
+      <div style="margin-bottom: 12px;">
+        <a href="https://x.com/worldmonitorai" style="color: #555; text-decoration: none; font-size: 11px; margin: 0 10px;">X / Twitter</a>
+        <a href="https://github.com/koala73/worldmonitor" style="color: #555; text-decoration: none; font-size: 11px; margin: 0 10px;">GitHub</a>
+      </div>
+      <p style="font-size: 10px; color: #444; margin: 0; line-height: 1.5;">
+        <a href="https://worldmonitor.app" style="color: ${NOTICE_ACCENT}; text-decoration: none;">worldmonitor.app</a>
+      </p>
+      <p style="font-size: 10px; color: #444; margin: 8px 0 0; line-height: 1.5;">You're receiving this because realtime alerts are on for your account.</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>`;
 }
 
 type Recipient = { email: string | null; suppressed: boolean };
