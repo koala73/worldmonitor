@@ -20,6 +20,8 @@ export const BRIEF_L10N_GATED_LANGS = Object.freeze(['ar', 'fa']);
 const SHARED_TTL_SEC = 7 * 24 * 60 * 60;
 // Covers the 360-minute non-due reuse window (brief-synthesis-reuse.mjs).
 const USER_TTL_SEC = 8 * 60 * 60;
+/** Cache writes are best-effort; never let a slow Redis hold up the send loop. */
+const CACHE_WRITE_BUDGET_MS = 2_000;
 const MIN_CHECKED_LENGTH = 20;
 const MIN_RATIO = 0.2;
 const MAX_RATIO = 4;
@@ -172,12 +174,13 @@ function nonEmpty(value) {
 async function translateTexts(texts, { lang, deps, keyFor, callOpts }) {
   const result = new Map();
   const misses = [];
-  for (const text of texts) {
-    let hit = null;
-    try { hit = await deps.cacheGet(keyFor(text)); } catch { hit = null; }
-    if (nonEmpty(hit)) result.set(text, hit);
+  const hits = await Promise.all(
+    texts.map((text) => Promise.resolve().then(() => deps.cacheGet(keyFor(text))).catch(() => null)),
+  );
+  texts.forEach((text, i) => {
+    if (nonEmpty(hits[i])) result.set(text, hits[i]);
     else misses.push(text);
-  }
+  });
   const stats = { hits: result.size, misses: misses.length, ms: 0 };
   if (misses.length === 0) return { map: result, stats, fresh: [] };
   const items = misses.map((text, i) => ({ id: `t${i}`, text }));
@@ -335,12 +338,13 @@ export async function localizeBrief(input) {
       }
     : null;
 
-  for (const [text, translated] of shared.fresh) {
-    try { await sharedDeps.cacheSet(sharedTranslateCacheKey(lang, text), translated, SHARED_TTL_SEC); } catch { /* ignore */ }
-  }
-  for (const [text, translated] of user.fresh) {
-    try { await userDeps.cacheSet(userTranslateCacheKey(userId, lang, text), translated, USER_TTL_SEC); } catch { /* ignore */ }
-  }
+  const writes = [
+    ...shared.fresh.map(([text, translated]) => () =>
+      sharedDeps.cacheSet(sharedTranslateCacheKey(lang, text), translated, SHARED_TTL_SEC)),
+    ...user.fresh.map(([text, translated]) => () =>
+      userDeps.cacheSet(userTranslateCacheKey(userId, lang, text), translated, USER_TTL_SEC)),
+  ].map((write) => Promise.resolve().then(write).catch(() => {}));
+  await withTimeout(Promise.all(writes), CACHE_WRITE_BUDGET_MS);
 
   return { ok: true, envelope: localized, synthesis: localizedSynthesis, stats };
 }

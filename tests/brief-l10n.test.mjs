@@ -250,6 +250,32 @@ describe('localizeBrief', () => {
     assert.equal(shared.sets.length, 0);
   });
 
+  it('localizeBrief reads the translation caches concurrently', async () => {
+    const shared = makeDeps(fakeTranslate());
+    let inFlight = 0;
+    let peak = 0;
+    const get = shared.deps.cacheGet;
+    shared.deps.cacheGet = async (key) => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight -= 1;
+      return get(key);
+    };
+    const { result } = await run({ shared });
+    assert.equal(result.ok, true);
+    assert.ok(peak > 1, `expected concurrent cache reads, peak=${peak}`);
+  });
+
+  it('a hanging cache write does not hold localizeBrief past the write budget', async () => {
+    const user = makeDeps(fakeTranslate());
+    user.deps.cacheSet = () => new Promise(() => {});
+    const started = Date.now();
+    const { result } = await run({ user });
+    assert.equal(result.ok, true);
+    assert.ok(Date.now() - started < 4_000);
+  });
+
   it('localizeBrief returns ok:false on budget timeout', async () => {
     const slow = makeDeps(() => new Promise((resolve) => setTimeout(() => resolve(null), 200)));
     const { result } = await run({ shared: slow, budgetMs: 20 });
