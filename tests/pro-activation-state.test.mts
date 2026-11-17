@@ -867,6 +867,7 @@ describe('buildCriticalAlertsPayload — alerts step write delta (U5)', () => {
       enabled: true,
       channels: ['web_push'],
       sensitivity: 'critical',
+      seedCountriesFromFollowed: true,
     });
   });
 
@@ -889,26 +890,14 @@ describe('buildCriticalAlertsPayload — alerts step write delta (U5)', () => {
       enabled: true,
       channels: ['web_push'],
       sensitivity: 'critical',
+      seedCountriesFromFollowed: true,
     });
   });
   // #10873: a realtime rule with no countries gets global critical events only,
-  // so the seeded rule carries the countries the user already follows.
-  it('seeds the rule with the followed countries, normalized and deduplicated', () => {
-    assert.deepEqual(buildCriticalAlertsPayload([], false, ['ua', 'IL', 'UA', 'bad']), {
-      enabled: true,
-      channels: ['web_push'],
-      sensitivity: 'critical',
-      countries: ['UA', 'IL'],
-    });
-  });
-
-  it('never writes countries over a stored scope or onto an enabled rule', () => {
-    assert.equal(buildCriticalAlertsPayload([], false, ['UA'], ['FR']).countries, undefined);
-    assert.equal(buildCriticalAlertsPayload(['email'], true, ['UA']).countries, undefined);
-  });
-
-  it('seeds no countries when the user follows none', () => {
-    assert.equal(buildCriticalAlertsPayload([], false, []).countries, undefined);
+  // so the seed path asks the server to scope it to the followed countries.
+  it('asks the server to seed countries on the seed path only', () => {
+    assert.equal(buildCriticalAlertsPayload([], false).seedCountriesFromFollowed, true);
+    assert.equal(buildCriticalAlertsPayload(['email'], true).seedCountriesFromFollowed, undefined);
   });
 });
 

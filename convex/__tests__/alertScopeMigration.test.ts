@@ -102,6 +102,16 @@ describe("realtime alert scope migration (#10873)", () => {
     expect((await rule(t, r1)).countries).toEqual(["UA", "IL", "TW"]);
   });
 
+  test("counts a free account's cap across its enabled rules", async () => {
+    const t = convexTest(schema, modules);
+    await seedRule(t, "free-user", { variant: "finance", countries: ["FR"] });
+    const r1 = await seedRule(t, "free-user");
+    await follow(t, "free-user", ["UA", "IL", "TW", "FR"]);
+
+    await migrate(t, false);
+    expect((await rule(t, r1)).countries).toEqual(["UA", "IL", "FR"]);
+  });
+
   test("leaves the rule empty and records global_only when the user follows nothing", async () => {
     const t = convexTest(schema, modules);
     await makePro(t, "u1");
@@ -228,6 +238,33 @@ describe("alert scope notice", () => {
     expect((await notices(t))[0]).toMatchObject({ emailStatus: "pending", emailAttempts: 2 });
     await expect(t.action(fns.sendAlertScopeNotices, { live: true })).rejects.toThrow(/Resend 503/);
     expect((await notices(t))[0]).toMatchObject({ emailStatus: "failed", emailAttempts: 3 });
+  });
+
+  test("sends one email for all of a user's variants even past the batch limit", async () => {
+    const t = convexTest(schema, modules);
+    await seedRule(t, "u1");
+    await seedRule(t, "u1", { variant: "finance" });
+    await migrate(t, false);
+    await seedCustomer(t, "u1", "a@example.com");
+    process.env.RESEND_API_KEY = "test-key";
+    const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ id: "m" }), { status: 200 }));
+    globalThis.fetch = fetchSpy as any;
+
+    await t.action(fns.sendAlertScopeNotices, { live: true, limit: 1 });
+    await t.action(fns.sendAlertScopeNotices, { live: true, limit: 1 });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect((await notices(t)).map((r) => r.emailStatus)).toEqual(["sent", "sent"]);
+  });
+
+  test("a late failure never resets a sent notice", async () => {
+    const t = convexTest(schema, modules);
+    await seedRule(t, "u1");
+    await migrate(t, false);
+    const [row] = await notices(t);
+    await t.mutation(fns.markNoticeStatus, { noticeIds: [row._id], emailStatus: "sent", emailedAt: 1 });
+    await t.mutation(fns.markNoticeStatus, { noticeIds: [row._id], emailStatus: "pending" });
+    expect((await notices(t))[0]).toMatchObject({ emailStatus: "sent" });
+    expect((await notices(t))[0].emailAttempts).toBeUndefined();
   });
 
   test("skips a user with no email address", async () => {

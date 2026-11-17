@@ -704,36 +704,25 @@ export interface CriticalAlertsPayload {
   readonly enabled: true;
   readonly channels: string[];
   readonly sensitivity?: 'critical';
-  readonly countries?: string[];
+  /**
+   * Seed path only (#10873): a realtime rule with no countries receives
+   * global critical events only, so the server scopes a rule with no stored
+   * countries to the user's followed countries, in the same transaction as
+   * the write. A stored scope is never overwritten.
+   */
+  readonly seedCountriesFromFollowed?: true;
 }
-
-/**
- * A seeded rule also carries the countries the user follows (#10873): a
- * realtime rule with no countries receives global critical events only, so
- * seeding it empty would leave a new subscriber without local alerts for the
- * places they already chose. Countries are only written on the seed path, and
- * only when the existing (disabled) row has none, so a stored scope is never
- * overwritten. Capped at the paid plan's country limit: activation is Pro.
- */
-export const ACTIVATION_SEED_MAX_COUNTRIES = 50;
 
 export function buildCriticalAlertsPayload(
   existingChannels: readonly string[],
   hasEnabledRule: boolean,
-  followedCountries: readonly string[] = [],
-  existingRuleCountries: readonly string[] = [],
 ): CriticalAlertsPayload {
   const channels = existingChannels.includes('web_push')
     ? [...existingChannels]
     : [...existingChannels, 'web_push'];
-  if (hasEnabledRule) return { enabled: true, channels };
-  const countries = existingRuleCountries.length > 0
-    ? []
-    : [...new Set(followedCountries.map((c) => c.trim().toUpperCase()).filter((c) => /^[A-Z]{2}$/.test(c)))]
-      .slice(0, ACTIVATION_SEED_MAX_COUNTRIES);
-  return countries.length > 0
-    ? { enabled: true, channels, sensitivity: 'critical', countries }
-    : { enabled: true, channels, sensitivity: 'critical' };
+  return hasEnabledRule
+    ? { enabled: true, channels }
+    : { enabled: true, channels, sensitivity: 'critical', seedCountriesFromFollowed: true };
 }
 
 // ---------------------------------------------------------------------------

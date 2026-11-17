@@ -23,7 +23,8 @@
  *    retired in #10303).
  *  - Clamped to the account's current plan cap: this internal write bypasses
  *    the capability validators, so a lapsed account gets at most the free
- *    ladder's countries, not the paid 50.
+ *    ladder's countries, not the paid 50, counted across all its enabled
+ *    rules as the free ladder counts them.
  *  - Realtime and enabled only: digest rules and disabled rules are untouched.
  */
 
@@ -34,17 +35,12 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
-  type QueryCtx,
 } from "./_generated/server";
-import { loadAlertCapabilities } from "./lib/alertCapabilities";
-import { isValidIso2 } from "./lib/iso2";
+import { seedCountriesForRule } from "./lib/alertScopeSeed";
 import { ResendSendError, sendResendEmail } from "./lib/resendEmail";
 
 const DEFAULT_BATCH_SIZE = 100;
 const MAX_BATCH_SIZE = 200;
-// More followed countries than any plan's cap; only the oldest maxCountries
-// are copied.
-const FOLLOWED_READ_LIMIT = 300;
 const MAX_EMAIL_ATTEMPTS = 3;
 const FROM = "World Monitor <noreply@worldmonitor.app>";
 export const ALERT_SETTINGS_URL = "https://www.worldmonitor.app/dashboard?settings=notifications";
@@ -55,23 +51,6 @@ function isUnscopedRealtime(rule: Doc<"alertRules">): boolean {
   if (!rule.enabled) return false;
   if ((rule.digestMode ?? "realtime") !== "realtime") return false;
   return !Array.isArray(rule.countries) || rule.countries.length === 0;
-}
-
-/** The user's followed countries, oldest first, as canonical ISO-2 codes. */
-async function followedCountriesFor(ctx: QueryCtx, userId: string): Promise<string[]> {
-  const rows = await ctx.db
-    .query("followedCountries")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .take(FOLLOWED_READ_LIMIT);
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const row of [...rows].sort((a, b) => a.addedAt - b.addedAt)) {
-    const code = String(row.country).trim().toUpperCase();
-    if (!isValidIso2(code) || seen.has(code)) continue;
-    seen.add(code);
-    out.push(code);
-  }
-  return out;
 }
 
 export const migrateUnscopedRealtimeRules = internalMutation({
@@ -110,8 +89,8 @@ export const migrateUnscopedRealtimeRules = internalMutation({
         summary.alreadyMigrated += 1;
         continue;
       }
-      const caps = await loadAlertCapabilities(ctx, rule.userId);
-      const countries = (await followedCountriesFor(ctx, rule.userId)).slice(0, caps.maxCountries);
+      // Within the plan cap; a free account's cap spans all its enabled rules.
+      const countries = await seedCountriesForRule(ctx, rule.userId, rule.variant);
       const outcome: RuleOutcome = countries.length > 0 ? "scoped" : "global_only";
       if (outcome === "scoped") summary.scoped += 1;
       else summary.globalOnly += 1;
@@ -145,10 +124,21 @@ type PendingNotice = {
 export const listPendingNotices = internalQuery({
   args: { limit: v.number() },
   handler: async (ctx, args): Promise<PendingNotice[]> => {
-    const rows = await ctx.db
+    const head = await ctx.db
       .query("alertScopeNotices")
       .withIndex("by_emailStatus", (q) => q.eq("emailStatus", "pending"))
       .take(Math.max(1, Math.min(500, Math.floor(args.limit))));
+    // Every pending row of each selected user, so one email covers all their
+    // variants: a user split across runs would get a second email once
+    // Resend's 24h idempotency window has passed.
+    const rows: Doc<"alertScopeNotices">[] = [];
+    for (const userId of new Set(head.map((r) => r.userId))) {
+      const userRows = await ctx.db
+        .query("alertScopeNotices")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .collect();
+      rows.push(...userRows.filter((r) => r.emailStatus === "pending"));
+    }
     return rows.map((r) => ({
       _id: r._id,
       userId: r.userId,
@@ -174,7 +164,9 @@ export const markNoticeStatus = internalMutation({
   handler: async (ctx, args) => {
     for (const id of args.noticeIds) {
       const row = await ctx.db.get(id);
-      if (!row) continue;
+      // Only a pending row moves: a concurrent run's late failure must not
+      // reset a notice another run already sent.
+      if (!row || row.emailStatus !== "pending") continue;
       if (args.emailStatus === "pending") {
         // A failed attempt: count it and keep the row pending until the cap.
         const attempts = (row.emailAttempts ?? 0) + 1;
