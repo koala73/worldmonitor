@@ -25,6 +25,7 @@ export function glossaryPizzaIndex(
   modifiedDate: string | undefined,
   now?: number,
 ): { reading: PizzaIndexRecord | null; dateModified: string | undefined };
+export function withoutExpiredPizzaIndex(html: string, now?: number): string | null;
 export function renderPizzaIndexSection(
   reading: PizzaIndexView | PizzaIndexRecord | null,
   options?: { live?: boolean },

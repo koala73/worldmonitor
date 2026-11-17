@@ -15,7 +15,7 @@ import {
   pizzIntAnswerText,
   pizzIntViewModel,
 } from '../crawlable-live-tools.mjs';
-import { escapeHtml, formatStaticDateTime, liveSectionMarkers } from './common.mjs';
+import { escapeHtml, formatStaticDateTime, liveSectionMarkers, replaceLiveSection } from './common.mjs';
 
 export const PIZZA_INDEX_SLUG = 'pentagon-pizza-index';
 export const PIZZA_INDEX_PAGE_PATH = '/blog/glossary/pentagon-pizza-index/';
@@ -154,4 +154,22 @@ ${venueItems(reading.venues)}
   </div>
 </section>
 ${end}`;
+}
+
+/**
+ * The built page with its published reading swapped for the loading state once
+ * that reading has aged past MAX_PUBLISHED_PIZZA_INDEX_AGE_MS, or null when
+ * there is nothing to drop. The build enforces the limit only when it runs; a
+ * deployment can outlive it, and a crawler never runs the browser's check.
+ */
+export function withoutExpiredPizzaIndex(html, now = Date.now()) {
+  const { start, end } = liveSectionMarkers(PIZZA_INDEX_SLUG);
+  const from = html.indexOf(start);
+  const to = from === -1 ? -1 : html.indexOf(end, from);
+  if (to === -1) return null;
+  const section = html.slice(from, to);
+  if (!section.includes('data-published-reading')) return null;
+  const publishedAt = Date.parse(section.match(/<time data-live-updated datetime="([^"]+)"/)?.[1] ?? '');
+  if (Number.isFinite(publishedAt) && now - publishedAt <= MAX_PUBLISHED_PIZZA_INDEX_AGE_MS) return null;
+  return replaceLiveSection(html, PIZZA_INDEX_SLUG, renderPizzaIndexSection(null));
 }
