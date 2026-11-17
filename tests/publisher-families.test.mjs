@@ -129,6 +129,7 @@ describe('publisher-families map data', () => {
       ndtv: 'both labels arrive via feedburner, which identifies no publisher',
       pivot: 'one show across a tier-only label and a megaphone.fm feed',
       'sightline-media': 'defensenews.com and militarytimes.com — two Sightline Media Group titles, one owner',
+      'grupo-globo': 'g1.globo.com and oglobo.globo.com are Grupo Globo titles under one owner',
     };
 
     const offenders = [];

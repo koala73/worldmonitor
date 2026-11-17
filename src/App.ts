@@ -78,7 +78,7 @@ import type { ParsedMapUrlState } from '@/utils';
 import { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
 import { initBreakingNewsAlerts, destroyBreakingNewsAlerts } from '@/services/breaking-news-alerts';
 import { markLcpDebug } from '@/utils/lcp-debug';
-import { safeStorageGet, safeStorageSet } from '@/utils/safe-storage';
+import { safeStorageGet, safeStorageSet, safeStorageSetChecked, safeStorageRemoveChecked } from '@/utils/safe-storage';
 import type { ServiceStatusPanel } from '@/components/ServiceStatusPanel';
 import type { MonitorPanel } from '@/components/MonitorPanel';
 import type { StablecoinPanel } from '@/components/StablecoinPanel';
@@ -1558,7 +1558,10 @@ export class App {
           STORAGE_KEYS.disabledFeeds,
           JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[],
         );
-        if (persisted) safeStorageSet(brazilOptInKey, 'done');
+        if (persisted && !safeStorageSetChecked(brazilOptInKey, 'done')) {
+          if (current === null) safeStorageRemoveChecked(STORAGE_KEYS.disabledFeeds);
+          else saveToStorage(STORAGE_KEYS.disabledFeeds, current);
+        }
       }
       // Locale boost: additively enable locale-matched sources (runs once per locale).
       // Reads the explicit-choice key (`wm-locale-explicit`, written by Settings →

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import { transpileModule } from 'typescript';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bundleFeedsModule } from './_lib/bundle-feeds-module.mts';
@@ -9,7 +11,8 @@ import { __testing__ } from '../server/worldmonitor/news/v1/list-feed-digest';
 import { isFeedInLanguage } from '../src/services/feed-language';
 import { digestCarriesFeed } from '../shared/news-catalog-browser';
 import { isAllowedDomain } from '../api/_rss-allowed-domain-match.js';
-import { publisherFamilyFor } from '../shared/publisher-families.js';
+import { publisherFamilyFor, publisherFamilyForDomain } from '../shared/publisher-families.js';
+import { assessCorroboration, evidenceFromCluster } from '../server/_shared/corroboration';
 import { SOURCE_PROPAGANDA_RISK } from '../shared/source-provenance';
 import { SOURCE_TIERS } from '../server/_shared/source-tiers';
 import { applyMigrationChain, buildMigrations, migrateBrazilOptInsV11 } from '../src/utils/cloud-prefs-migrations';
@@ -33,6 +36,65 @@ before(async () => { client = await bundleFeedsModule<Client>({ repoRoot: proces
 after(() => rmSync(tempDir, { recursive: true, force: true }));
 
 describe('opt-in Brazil news coverage', () => {
+  it('rolls back startup preferences when the completion marker cannot be saved', () => {
+    const app = readFileSync('src/App.ts', 'utf8');
+    const start = app.indexOf("      const brazilOptInKey =");
+    const end = app.indexOf('      // Locale boost:', start);
+    assert.ok(start >= 0 && end > start);
+    const startup = transpileModule(app.slice(start, end), {}).outputText;
+    const key = 'worldmonitor-disabled-feeds';
+    const marker = 'worldmonitor-brazil-optin-v1';
+    for (const previous of [undefined, '["existing-choice"]']) {
+      const store = new Map<string, string>();
+      if (previous !== undefined) store.set(key, previous);
+      let rejectMarker = true;
+      let rejectPreferences = false;
+      const boot = () => runInNewContext(startup, {
+        STORAGE_KEYS: { disabledFeeds: key }, BRAZIL_OPT_IN_SOURCES: names, userLang: 'pt',
+        computeDefaultDisabledSources: client.computeDefaultDisabledSources,
+        migrateBrazilOptInsV11,
+        safeStorageGet: (name: string) => store.get(name) ?? null,
+        loadFromStorage: (name: string, fallback: unknown) => store.has(name) ? JSON.parse(store.get(name)!) : fallback,
+        saveToStorage: (name: string, value: unknown) => {
+          if (rejectPreferences) return false;
+          store.set(name, JSON.stringify(value));
+          return true;
+        },
+        safeStorageSetChecked: (name: string, value: string) => {
+          if (rejectMarker) return false;
+          store.set(name, value);
+          return true;
+        },
+        safeStorageRemoveChecked: (name: string) => { store.delete(name); return true; },
+      });
+      boot();
+      assert.equal(store.get(key), previous, 'marker failure preserves the prior preferences');
+      assert.equal(store.get(marker), undefined);
+      rejectMarker = false;
+      rejectPreferences = true;
+      boot();
+      assert.equal(store.get(marker), undefined, 'failed preferences stay retryable');
+      rejectPreferences = false;
+      boot();
+      assert.equal(store.get(marker), 'done');
+      for (const name of names) assert.ok(JSON.parse(store.get(key)!).includes(name));
+      store.set(key, '["existing-choice"]');
+      boot();
+      assert.equal(store.get(key), '["existing-choice"]', 'later explicit selections survive startup');
+    }
+  });
+
+  it('does not count Grupo Globo desks as independent corroboration', () => {
+    const family = publisherFamilyFor('O Globo');
+    assert.equal(publisherFamilyFor('G1 Política'), family);
+    for (const host of ['g1.globo.com', 'oglobo.globo.com']) {
+      assert.equal(publisherFamilyForDomain(host), family);
+    }
+    assert.deepEqual(assessCorroboration(evidenceFromCluster({
+      allItems: [{ source: 'G1 Política' }, { source: 'O Globo' }],
+    })), { state: 'single-publisher', publishers: 1 });
+  });
+
   it('starts disabled in English and Portuguese while remaining selectable in every language', () => {
     for (const language of ['en', 'pt', 'pt-BR', 'fr', 'ar']) {
       const disabled = new Set(client.computeDefaultDisabledSources(language));
