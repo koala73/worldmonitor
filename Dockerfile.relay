@@ -67,6 +67,10 @@ COPY scripts/lib/x-poll-cycle.cjs ./scripts/lib/x-poll-cycle.cjs
 COPY scripts/lib/x-post-budget.cjs ./scripts/lib/x-post-budget.cjs
 # Stale-digest alert gate required by ais-relay.cjs (#7084).
 COPY scripts/lib/digest-stale-gate.cjs ./scripts/lib/digest-stale-gate.cjs
+COPY scripts/lib/news-story-key.cjs ./scripts/lib/news-story-key.cjs
+# news-story-key.cjs loads this copy, not /app/shared/: it imports
+# @noble/hashes, which resolves from scripts/node_modules only.
+COPY scripts/shared/story-identity.js ./scripts/shared/story-identity.js
 # Publisher-link relay gate required by digest-stale-gate.cjs (#8398):
 # relay-emitted rss_alert events must not carry off-publisher links.
 COPY scripts/lib/publisher-link-relay-gate.cjs ./scripts/lib/publisher-link-relay-gate.cjs

@@ -86,6 +86,11 @@ const {
   xPostBudgetServiceStatus,
 } = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
+const { newsStoryKey, newsStoryKeyLoadError, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
+if (newsStoryKeyLoadError()) {
+  // Alerts still publish, on the exact-title identity; a repeated headline can alert twice.
+  console.warn('[Notify] News story key unavailable, falling back to exact-title dedup:', newsStoryKeyLoadError().message);
+}
 const {
   buildClassifyDigestUrl,
   classifyDigestTransport,
@@ -990,7 +995,7 @@ function marketMoveFields(assetClass, q) {
   };
 }
 
-async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800 }) {
+async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800, storyKey }) {
   try {
     // Include variant in dedup key so each variant can independently publish the same title
     // (e.g. finance and world users both receive an alert for the same headline).
@@ -999,8 +1004,11 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
     // event collapse at the publisher (queue stays clean) instead of N times
     // per recipient at the relay.
     const variantSuffix = variant ? `:${variant}` : '';
+    // storyKey (news alerts, lib/news-story-key.cjs) replaces the title here
+    // only. Unlike coalesceKey it is not in the payload, so the relay's
+    // per-user dedup still keys on the title, as for browser-submitted alerts.
     const dedupMaterial = buildDedupMaterial(eventType, payload?.title, payload?.coalesceKey);
-    const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(dedupMaterial)}`;
+    const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(storyKey ? `story:${storyKey}` : dedupMaterial)}`;
     const dedupResult = await upstashSetNx(dedupKey, '1', dedupTtl);
     const dedupDecision = recordDedupOutcome(dedupResult, {
       surface: 'ais-relay',
@@ -5659,6 +5667,9 @@ async function seedClassifyForVariant(variant, seenTitles) {
         // The one country the title names anywhere, not the affected target
         // countryCodes keeps ("Russia attacks Ukraine" names two).
         const primaryCountryCode = notifyPolicy.primaryNewsCountryCode(countriesNamedInHeadline(chunk[idx]));
+        // One alert per story per day, not per title string: a second
+        // publisher carrying an alerted headline is the same story.
+        const storyKey = newsStoryKey(chunk[idx], { severity: level, importanceScore });
         publishNotificationEvent({
           eventType: 'rss_alert',
           payload: {
@@ -5680,6 +5691,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
           },
           severity: level,
           variant,
+          ...(storyKey ? { storyKey, dedupTtl: NEWS_STORY_DEDUP_TTL_SECONDS } : {}),
         }).catch(e => console.warn('[Notify] Classify publish error:', e?.message));
       }
     }
