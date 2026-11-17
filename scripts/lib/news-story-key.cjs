@@ -11,7 +11,10 @@
 // The key is the headline as the digest's story tracking normalizes it
 // (normalizeTitle in server/worldmonitor/news/v1/list-feed-digest.ts, kept in
 // step by tests/news-story-key.test.mts): attribution suffix, case and
-// punctuation removed. The publisher's scan-dedup keys on it instead of the
+// punctuation removed. Story tracking then keeps the first 120 characters; the
+// alert key keeps the whole headline, because two long headlines that part
+// only at the end ("... three killed in Kyiv", "... twenty killed in Odesa")
+// are different alerts. The publisher's scan-dedup keys on it instead of the
 // title. It stays out of the payload, so the notification relay's per-user
 // dedup still keys on the title, as it does for the alerts a browser submits.
 //
@@ -31,7 +34,6 @@ const NEWS_STORY_DEDUP_TTL_SECONDS = 86_400;
 const MIN_STORY_WORDS = 4;
 
 const NORMALIZED_TITLE_SCAN = 2_000;
-const NORMALIZED_TITLE_LENGTH = 120;
 
 // scripts/shared/, not repo-root shared/: the module imports @noble/hashes,
 // which the relay image installs under scripts/node_modules only.
@@ -45,7 +47,7 @@ try {
   loadError = err;
 }
 
-/** The headline as story tracking keys it, or '' when the normalizer did not load. */
+/** The headline as story tracking normalizes it, uncut, or '' when the normalizer did not load. */
 function normalizeNewsStoryTitle(title) {
   if (!stripAttributionSuffix || typeof title !== 'string') return '';
   const stripped = stripAttributionSuffix(title.toLowerCase(), { allowPipe: false });
@@ -53,8 +55,7 @@ function normalizeNewsStoryTitle(title) {
   return bounded
     .replace(/[^\p{L}\p{N}\s]/gu, '')
     .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, NORMALIZED_TITLE_LENGTH);
+    .trim();
 }
 
 // The score a critical news alert needs to reach a realtime rule

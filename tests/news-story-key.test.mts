@@ -78,7 +78,7 @@ test('a headline too short to stand for one story keeps the exact-title identity
   assert.ok(newsStoryKey('Iran closes Strait of Hormuz', DELIVERABLE));
 });
 
-test('the key normalizes a headline exactly as digest story tracking does', () => {
+test('the key normalizes a headline as digest story tracking does, without its 120-character cut', () => {
   for (const title of [
     CNN,
     EGYPT_INDEPENDENT,
@@ -89,8 +89,21 @@ test('the key normalizes a headline exactly as digest story tracking does', () =
     'Séisme de magnitude 7,1 au large du Chili – Le Monde',
     `Long headline ${'word '.repeat(60)}`,
   ]) {
-    assert.equal(normalizeNewsStoryTitle(title), digest.normalizeTitle(title), title);
+    const tracked = digest.normalizeTitle(title);
+    const keyed = normalizeNewsStoryTitle(title);
+    if (keyed.length <= 120) assert.equal(keyed, tracked, title);
+    else assert.equal(keyed.slice(0, 120).trim(), tracked.trim(), title);
   }
+});
+
+test('long headlines that part only at the end keep separate keys', () => {
+  const lead = 'Russia launches a major overnight missile and drone attack on energy infrastructure across Ukraine as authorities report';
+  const kyiv = `${lead} three people killed in Kyiv`;
+  const odesa = `${lead} twenty people killed in Odesa`;
+  // Story tracking cuts both to the same 120 characters.
+  assert.equal(digest.normalizeTitle(kyiv), digest.normalizeTitle(odesa));
+  assert.notEqual(newsStoryKey(kyiv, DELIVERABLE), newsStoryKey(odesa, DELIVERABLE));
+  assert.equal(newsStoryKey(`${kyiv} - Reuters`, DELIVERABLE), newsStoryKey(kyiv, DELIVERABLE));
 });
 
 test('a story is claimed for the day an exact repeat is already held for', () => {
