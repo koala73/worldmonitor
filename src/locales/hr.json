@@ -704,7 +704,8 @@
         "techevent": "Tehnološki događaj",
         "techhq": "Tehnološka sjedišta",
         "accelerator": "Akcelerator",
-        "flight": "Let"
+        "flight": "Let",
+        "alert": "Upozorenje"
       },
       "flightOnGround": "Na zemlji",
       "flightAirborne": "FL{{fl}} · {{kts}} čv",
@@ -712,7 +713,9 @@
       "flightMilitaryOnGround": "Vojni · {{type}} · na zemlji",
       "flightSearchHint": "Pritisnite Enter ili kliknite za pronalaženje pozicije",
       "flightNotFound": "Nijedna aktivna pozicija pronađena za {{callsign}}",
-      "addPanel": "Dodaj"
+      "addPanel": "Dodaj",
+      "sentAlerts": "Upozorenja poslana vama",
+      "sentAlertTime": "Poslano {{time}}"
     },
     "signal": {
       "title": "OBAVJEŠTAJNI NALAZ",

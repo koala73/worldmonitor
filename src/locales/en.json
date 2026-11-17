@@ -721,6 +721,8 @@
       "resultAnnouncement_other": "{{count}} results for {{query}}",
       "commands": "Commands",
       "results": "Results",
+      "sentAlerts": "Alerts sent to you",
+      "sentAlertTime": "Sent {{time}}",
       "addPanel": "Add",
       "seeAllCommands": "See all commands",
       "hideCommandList": "Back",
@@ -748,7 +750,8 @@
         "techevent": "Tech Event",
         "techhq": "Tech HQ",
         "accelerator": "Accelerator",
-        "flight": "Flight"
+        "flight": "Flight",
+        "alert": "Alert"
       },
       "flightOnGround": "On ground",
       "flightAirborne": "FL{{fl}} · {{kts}} kts",
