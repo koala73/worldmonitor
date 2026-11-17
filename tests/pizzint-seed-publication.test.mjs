@@ -135,10 +135,16 @@ const liveReading = (live, forecast, extra = {}) => ({
 
 const payloadKey = 'intelligence:pizzint:seed:v1';
 const metaKey = 'seed-meta:intelligence:pizzint';
-// The stored envelope after a poll with nothing new: the same reading, marked stale.
+// A kept reading: the same reading, with it and every venue row marked stale.
+const staleReading = (pizzint) => ({
+  ...pizzint,
+  dataFreshness: 'DATA_FRESHNESS_STALE',
+  locations: pizzint.locations.map(l => ({ ...l, dataFreshness: 'DATA_FRESHNESS_STALE' })),
+});
+// The stored envelope after a poll with nothing new.
 const keptStale = (entry) => {
   const kept = structuredClone(entry.data);
-  kept.data.pizzint.dataFreshness = 'DATA_FRESHNESS_STALE';
+  kept.data.pizzint = staleReading(kept.data.pizzint);
   return kept;
 };
 
@@ -1265,7 +1271,7 @@ test('an hour-old cached all-closed PizzINT response is not published as the cur
   const recordedAt = '2026-11-17T14:19:53.233Z';
   run.state.source = { ...quietMorning, timestamp: recordedAt, data: quietMorning.data.map(d => ({ ...d, recorded_at: recordedAt })) };
   await advance(run);
-  assert.deepEqual(run.status(), { ...reading, dataFreshness: 'DATA_FRESHNESS_STALE' }, 'the last reading is kept, marked stale');
+  assert.deepEqual(run.status(), staleReading(reading), 'the last reading is kept, marked stale');
   assert.equal(run.state.cache.get(metaKey).data.fetchedAt, run.state.now, 'every provider answered cleanly, so the heartbeat advances');
 });
 
@@ -1291,7 +1297,7 @@ test('a poll with nothing to publish keeps the last reading, marked stale, for 2
     await advance(run);
     const stored = run.state.cache.get(payloadKey);
     assert.ok(stored && run.state.now < stored.expiresAt, `kept at +${(run.state.now - livePublishedAt) / 60_000} min`);
-    assert.deepEqual(stored.data.data.pizzint, { ...reading, dataFreshness: 'DATA_FRESHNESS_STALE' }, 'only the freshness changes; updatedAt stays the real reading time');
+    assert.deepEqual(stored.data.data.pizzint, staleReading(reading), 'only the freshness changes; updatedAt stays the real reading time');
     assert.equal(stored.data._seed.fetchedAt, livePublishedAt);
     assert.equal(pizzIntViewModel(stored.data.data, run.state.now).available, false, 'the page never shows a kept reading as current');
   }
@@ -1316,4 +1322,29 @@ test('a stopped loop lets the kept reading expire within one seed TTL, and healt
   run.state.now += 46 * 60_000;
   assert.ok(!(run.state.cache.get(payloadKey).expiresAt > run.state.now), 'no seed loop, no payload');
   assert.equal(classifyPizzint(run.state).status, 'STALE_SEED');
+});
+
+// Closed hours now always ask BestTime, so a rejected key or spent budget there
+// must not pass for a clean answer.
+test('a closed-state publication beside a BestTime that rejects every venue withholds the heartbeat', async () => {
+  const run = await quietAfterLive(lastLiveOnQuietMorning);
+  const heartbeat = run.state.cache.get(metaKey).data.fetchedAt;
+  for (const id of run.ids) run.state.besttime.set(id, { ok: false, status: 401 });
+  run.state.source = quietMorning;
+  run.state.now = quietMorningPoll;
+  await run.seed();
+  assert.equal(run.status().updatedAt, run.state.now, 'the closed state is still published');
+  assert.equal(run.state.cache.get(metaKey).data.fetchedAt, heartbeat, 'BestTime did not answer cleanly');
+});
+
+test('an hour-old cached all-closed response with BestTime down publishes its rows as stale', async () => {
+  const run = await quietAfterLive(Date.parse('2026-11-17T15:06:38Z'));
+  for (const id of run.ids) run.state.besttime.set(id, { ok: false, status: 503 });
+  const recordedAt = '2026-11-17T14:19:53.233Z';
+  run.state.source = { ...quietMorning, timestamp: recordedAt, data: quietMorning.data.map(d => ({ ...d, recorded_at: recordedAt })) };
+  await advance(run);
+  const status = run.status();
+  assert.equal(status.dataFreshness, 'DATA_FRESHNESS_STALE', 'an hour-old closed flag is not current');
+  assert.ok(status.locations.every(l => l.dataFreshness === 'DATA_FRESHNESS_STALE'));
+  assert.equal(pizzIntViewModel({ pizzint: status }, run.state.now).available, false);
 });

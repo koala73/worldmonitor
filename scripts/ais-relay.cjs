@@ -9720,16 +9720,18 @@ async function recordPizzintQuietPoll(recordCount = 0) {
   return upstashSet(PIZZINT_SEED_META_KEY, { fetchedAt: now, recordCount, lastLiveAt }, 604800);
 }
 
-// A poll with nothing new to publish keeps the last reading, marked stale under its
-// own updatedAt, until it is PIZZINT_QUIET_MAX_MS old. Each write lasts at most one
-// seed TTL, so a stopped loop still lets it expire. Returns the outcome for the log.
+// A poll with nothing new to publish keeps the last reading, it and every venue row
+// marked stale under its own updatedAt, until it is PIZZINT_QUIET_MAX_MS old. Each
+// write lasts at most one seed TTL, so a stopped loop still lets it expire. Returns
+// the outcome for the log.
 async function keepLastPizzintReading() {
   const stored = await upstashGet(PIZZINT_REDIS_KEY);
   const reading = stored?.data?.pizzint;
   const age = Date.now() - reading?.updatedAt;
   if (!(age >= 0 && age < PIZZINT_QUIET_MAX_MS)) return 'no reading from the last 24h to keep';
   const at = new Date(reading.updatedAt).toISOString();
-  const kept = { ...stored, data: { ...stored.data, pizzint: { ...reading, dataFreshness: 'DATA_FRESHNESS_STALE' } } };
+  const locations = (reading.locations || []).map(l => ({ ...l, dataFreshness: 'DATA_FRESHNESS_STALE' }));
+  const kept = { ...stored, data: { ...stored.data, pizzint: { ...reading, dataFreshness: 'DATA_FRESHNESS_STALE', locations } } };
   const ttl = Math.min(PIZZINT_SEED_TTL, Math.ceil((PIZZINT_QUIET_MAX_MS - age) / 1000));
   return await upstashSet(PIZZINT_REDIS_KEY, kept, ttl) ? `kept the ${at} reading, marked stale` : `failed to keep the ${at} reading`;
 }
@@ -9774,13 +9776,15 @@ async function seedPizzint() {
       return;
     }
     // PizzINT's CDN can serve an hour-old response still labelled fresh, so a closed
-    // row counts only if it was recorded within one polling interval of now (either
+    // row is fresh only if it was recorded within one polling interval of now (either
     // way: PizzINT's clock runs about 0.1 s ahead of ours).
-    const hasFreshClosed = raw?.data.some(d => d.data_freshness === 'fresh' && d.is_closed_now
-      && Math.abs(Date.now() - Date.parse(d.recorded_at)) <= PIZZINT_SEED_INTERVAL_MS);
+    const freshRow = d => d.data_freshness === 'fresh'
+      && (!d.is_closed_now || Math.abs(Date.now() - Date.parse(d.recorded_at)) <= PIZZINT_SEED_INTERVAL_MS);
+    const hasFreshClosed = raw?.data.some(d => d.is_closed_now && freshRow(d));
     const fallback = besttime?.locations.length > 0 || !hasFreshClosed ? besttime : null;
-    // The heartbeat needs every polled provider to have answered cleanly.
-    const answered = !besttime || besttime.answered;
+    // The heartbeat needs every polled provider to have answered cleanly; a BestTime
+    // that answered no venue at all returns null.
+    const answered = !besttimeKey || besttime?.answered === true;
 
     const locations = fallback?.locations || raw.data.map((d) => ({
       placeId: d.place_id || '',
@@ -9795,7 +9799,7 @@ async function seedPizzint() {
         ? d.current_popularity * 100 / d.percentage_of_usual : 0,
       dataSource: d.data_source || '',
       recordedAt: d.recorded_at || '',
-      dataFreshness: d.data_freshness === 'fresh' ? 'DATA_FRESHNESS_FRESH' : 'DATA_FRESHNESS_STALE',
+      dataFreshness: freshRow(d) ? 'DATA_FRESHNESS_FRESH' : 'DATA_FRESHNESS_STALE',
       isClosedNow: !!d.is_closed_now,
       ...(pizzintVenuePoint(d) ?? { lat: 0, lng: 0 }),
     }));
