@@ -65,9 +65,11 @@ The history is best effort. Without R2 credentials, when R2 fails, or when the u
 | GEO | 2 km | 0.02° | 0.2° |
 | HEO | 5 km | 0.05° | 0.1° |
 
-The detector fails closed. A satellite with fewer than 5 epochs in the 10-day baseline, a gap of more than 3 days between the compared epochs, a newest epoch older than 3 days, or a perigee below 250 km is not judged, and its entry in `satellites` says why. A step on the newest epoch waits for the next one. A fall in LEO semi-major axis is never flagged, because a geomagnetic-storm drag spike looks the same and no space-weather source is wired in yet. An R2 failure fails the run, so the previous list stays and `seed-meta` ages. The record count is the number of satellites judged, so a history too short to judge anything is not published as an empty list. The node is not compared below 1° inclination, where it is poorly defined.
+The baseline is a Theil-Sen line, so one element set that the next set corrects (a refit) cannot tilt it. The J2 nodal rate for each interval comes from elements smoothed over neighbouring epochs, so a real inclination change does not leave a false node step after it. Thresholds and the drag rule follow the regime of the orbit the step started from.
 
-The key ships dark with the rest of Orbital Watch. While it is dark the catalog seeder keeps building the history, so the detector has a baseline at launch.
+The detector fails closed. A satellite with fewer than 5 epochs in the 10-day baseline, a gap of more than 3 days between the compared epochs, a newest epoch older than 3 days, or a perigee below 250 km is not judged, and its entry in `satellites` says why. A satellite is `evaluated` only when every element that applies judged its newest step; otherwise `unjudgedElements` names the ones that did not, for example the element whose trend restarted after a candidate. A step on the newest epoch waits for the next one. A fall in LEO semi-major axis is never flagged, because a geomagnetic-storm drag spike looks the same and no space-weather source is wired in yet; the trend restarts after such a fall. The node is not compared within 1° of an equatorial orbit, prograde or retrograde, where it is poorly defined.
+
+An R2 failure or missing R2 credentials fail the run, so the previous list stays and `seed-meta` ages. A run publishes nothing, and reports itself blocked, when no satellite could be judged or when the history has not been updated for 12 hours. The record count is the number of satellites judged. In the first 11 days after the history starts, no satellite has a full baseline, so the key stays pending in `/api/health` for up to 14 days before its first publication.
 
 ### Matching against archives
 

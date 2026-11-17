@@ -5,8 +5,9 @@
 //
 // Fails closed. Missing R2 config, an R2 read failure or a history of an unknown shape fails the
 // run, so the previous publication stays and seed-meta ages; it never publishes "no manoeuvres".
-// The record count is the number of satellites actually evaluated, so a history too short or too
-// stale to judge anything is not published as an empty all-clear.
+// A history that has stopped updating, or one too young for any satellite to be judged (the first
+// ~11 days after the history starts), publishes nothing either: the run reports PUBLISH_BLOCKED,
+// last-good stays, and health keeps the key pending (first publication) or ages it to STALE.
 import {
   DEFAULT_DETECTION_OPTIONS,
   detectCandidateManeuvers,
@@ -27,6 +28,8 @@ export const MANEUVERS_SCHEMA = 1;
 export const TTL_SECONDS = 7 * 86_400;
 // The climate bundle runs this every 6 hours; 4 missed runs before health calls it stale.
 export const MAX_STALE_MIN = 1440;
+// The catalog seeder adds new epochs every 2 hours; a history older than this has stopped updating.
+export const MAX_HISTORY_AGE_MS = 12 * 3_600_000;
 
 export function buildManeuverPayload(history, nowMs) {
   assertReadableHistory(history);
@@ -54,6 +57,20 @@ export function buildManeuverPayload(history, nowMs) {
   };
 }
 
+/** Why this payload must not be published, or null: a stalled history or nothing judged yet. */
+export function publishBlockReason(payload, history, nowMs) {
+  const updatedAt = Number(history?.updatedAt);
+  if (history && Number.isFinite(updatedAt) && nowMs - updatedAt > MAX_HISTORY_AGE_MS) {
+    return `orbit-element history last updated ${Math.round((nowMs - updatedAt) / 3_600_000)} h ago; the catalog seeder's R2 writes have stopped`;
+  }
+  if (payload.evaluatedSatellites === 0) {
+    return history
+      ? 'no satellite has a full 10-day baseline in the orbit-element history yet'
+      : 'no orbit-element history is stored yet';
+  }
+  return null;
+}
+
 export function makeFetchManeuvers({
   storageConfig = resolveR2StorageConfig(process.env),
   readHistory = (config) => getR2JsonObject(config, ORBITAL_HISTORY_R2_KEY),
@@ -62,9 +79,11 @@ export function makeFetchManeuvers({
   return async function fetchManeuvers() {
     if (!storageConfig) throw new Error('R2 storage is not configured; the orbit-element history cannot be read');
     const history = await readHistory(storageConfig);
-    const payload = buildManeuverPayload(history, now());
+    const nowMs = now();
+    const payload = buildManeuverPayload(history, nowMs);
     console.log(`  History entries: ${payload.history.entries}; evaluated satellites: ${payload.evaluatedSatellites}; candidates: ${payload.candidates.length}`);
-    return payload;
+    const blocked = publishBlockReason(payload, history, nowMs);
+    return blocked ? { ...payload, publishBlocked: blocked } : payload;
   };
 }
 
@@ -72,8 +91,9 @@ export function buildSeedOptions() {
   return {
     validateFn: (data) => data?.schema === MANEUVERS_SCHEMA && Array.isArray(data.candidates) && Array.isArray(data.satellites),
     ttlSeconds: TTL_SECONDS,
-    recordCount: (data) => data?.evaluatedSatellites ?? 0,
-    declareRecords: (data) => data?.evaluatedSatellites ?? 0,
+    // A blocked run declares zero, which sends runSeed down its publish-blocked path.
+    recordCount: (data) => (data?.publishBlocked ? 0 : data?.evaluatedSatellites ?? 0),
+    declareRecords: (data) => (data?.publishBlocked ? 0 : data?.evaluatedSatellites ?? 0),
     sourceVersion: `orbital-elements-history-detector-v${MANEUVER_DETECTION_VERSION}`,
     schemaVersion: MANEUVERS_SCHEMA,
     maxStaleMin: MAX_STALE_MIN,
@@ -85,7 +105,7 @@ export function buildSeedOptions() {
   };
 }
 
-/** Ships dark with the rest of Orbital Watch (#10710); the history keeps building meanwhile. */
+/** Runs only while Orbital Watch is on (ORBITAL_WATCH_ENABLED, #10710); the catalog seeder builds the history regardless. */
 export const maneuversEnabled = (env = process.env) => (env.ORBITAL_WATCH_ENABLED ?? '').trim().toLowerCase() === 'true';
 
 if (isMainModule(import.meta.url, process.argv[1]) && !maneuversEnabled()) {
