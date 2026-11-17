@@ -274,11 +274,14 @@ function urlsIn(text) {
 /**
  * The source URL an output URL stands for, or null. Equal, or the source URL
  * with prose glued on with no space ("…/report详情"): allowed only when the
- * source URL ends in ASCII, so a changed Unicode path never matches.
+ * source URL has a path and ends in ASCII, so a changed host or Unicode path
+ * never matches.
  */
 function sourceUrlFor(outUrl, sourceUrls) {
   if (sourceUrls.includes(outUrl)) return outUrl;
   return sourceUrls.find((src) => outUrl.startsWith(src)
+    // Letters glued to a bare host would change the host (example.comévil).
+    && /^https?:\/\/[^/?#]+[/?#]/i.test(src)
     && /[\x21-\x7E]$/.test(src)
     && NON_ASCII_LETTER_RE.test(outUrl.charAt(src.length))) ?? null;
 }
@@ -302,6 +305,7 @@ const MONTH_NUMBER = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, a
 // it ("mil millones", "mil milhões", "mila miliardi"; see scaleAt). French
 // "milles" (miles) is not "mille".
 const LOCAL_SCALES = [
+  [/^(?:ترليون|تريليون|تریلیون)/u, 1e12],
   [/^(?:milliard|milliárd|miljard|milijard|miliard|miliar|milyar|mld|mrd|bilh[aã]o|bilh[oõ]es|миллиард|млрд|мільярд|милиард|δισεκατομμ|δισ(?:\.|(?!\p{L}))|مليار|میلیارد|tỷ)/iu, 1e9],
   [/^(?:million|millió|millón|millones|milione|milioni|milh[aã]o|milh[oõ]es|miljoen|miljon|milijun|milion|milyon|mln|mio|миллион|млн|мільйон|милион|εκατομμ|εκατ(?:\.|(?!\p{L}))|ล้าน|مليون|ملايين|میلیون|triệu|juta)/iu, 1e6],
   [/^แสน/u, 1e5],
