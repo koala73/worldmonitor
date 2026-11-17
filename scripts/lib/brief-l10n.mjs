@@ -58,10 +58,12 @@ const SCRIPT_RE = {
   fa: /\p{Script=Arabic}/u,
 };
 
-// Whole URLs, Unicode paths included (https://example.com/économie). CJK and
-// fullwidth punctuation end one: Chinese and Japanese put no space before the
-// next sentence ("…/report。更多分析"). Fullwidth letters stay in the path.
-const URL_RE = /https?:\/\/[^\s"'<>)\]\u3000-\u303F\uFF01-\uFF0F\uFF1A-\uFF20\uFF3B-\uFF40\uFF5B-\uFF65]+/g;
+// Whole URLs, Unicode paths included (https://example.com/économie). CJK
+// sentence punctuation, corner quotes and fullwidth parentheses end one:
+// Chinese and Japanese put no space before the next sentence
+// ("…/report。更多分析", "（见https://…）"). Anything else, brackets and
+// fullwidth letters or symbols included (/wiki/【経済】, /wiki/Ａ＋Ｂ), is path.
+const URL_RE = /https?:\/\/[^\s"'<>)\]\u3001\u3002\u300C-\u300F\uFF01\uFF08\uFF09\uFF0C\uFF1A\uFF1B\uFF1F]+/g;
 // Sentence punctuation a translation may move. "!" and "?" can end a real
 // URL (wiki/Yahoo!), so dropping them is an altered URL.
 const URL_TRAILING_PUNCT_RE = /[.,;:\u3001\u3002\uFF0C\uFF1A\uFF1B]+$/;
@@ -188,15 +190,20 @@ export async function undoBriefWriteIfErased(userId, issueSlot, pipeline) {
   const read = await pipelineWithRetry([['GET', briefErasedKey(userId)]], pipeline);
   if (!read) throw new Error('brief erase marker unreadable');
   if (read[0]?.result == null) return false;
-  const cleanup = await pipelineWithRetry([
+  // The envelopes go first. The index and pointer are how the erase finds
+  // them, so they stay until the envelopes are gone.
+  const envelopes = await pipelineWithRetry([
     ['DEL', `brief:${userId}:${issueSlot}`],
     ['DEL', briefLocalizedKey(userId, issueSlot)],
+  ], pipeline);
+  if (!envelopes) throw new Error('brief cleanup after account erase failed');
+  const index = await pipelineWithRetry([
     // Only this slot leaves the index: the erase may not have read it yet, and
     // it finds every other slot there. The pointer holds this compose's slot.
     ['ZREM', briefSlotsKey(userId), issueSlot],
     ['DEL', `brief:latest:${userId}`],
   ], pipeline);
-  if (!cleanup) throw new Error('brief cleanup after account erase failed');
+  if (!index) throw new Error('brief cleanup after account erase failed');
   return true;
 }
 
@@ -290,10 +297,16 @@ const SCALES = [
 ];
 const MONTH_RE = /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sept?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\b/g;
 const MONTH_NUMBER = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
-// The start of a large-number word in a translation the SCALES table does not
-// list (millions, Milliarden, milioni, миллиона, млрд, مليون, ล้าน...). It only
-// says "scaled"; the value is unknown, so only the coefficient can be compared.
-const SCALE_WORD_RE = /^(?:mil|mlj|mln|mld|mrd|mio|bn|tn|bil|tril|милл|мил|млн|млрд|мільй|мільяр|εκατ|δισ|ล้าน|مليون|مليار|ملي|میلیون|میلیارد|triệu|tỷ|juta|miliar)/iu;
+// Scale words of the brief languages, inflections included, by the start of
+// the word. Billions first: "mil millones" is a billion, "mil" a thousand.
+const LOCAL_SCALES = [
+  [/^(?:mil millones|milliard|milliárd|miljard|miliard|miliar|milyar|mld|mrd|bilh[aã]o|bilh[oõ]es|миллиард|млрд|мільярд|милиард|δισ|مليار|میلیارد|tỷ)/iu, 1e9],
+  [/^(?:million|millió|millón|millones|milione|milioni|milh[aã]o|milh[oõ]es|miljoen|miljon|milion|milyon|mln|mio|миллион|млн|мільйон|милион|εκατ|ล้าน|مليون|ملايين|میلیون|triệu|juta)/iu, 1e6],
+  [/^(?:tausend|tsd\.|mille|mila(?!\p{L})|mil(?!\p{L})|duizend|tusen|tusind|tys\.|tysi[aą]c|tysi[eę]cy|tis\.|tisíc|tisuć|ezer|mii(?!\p{L})|bin(?!\p{L})|тысяч|тыс\.|тисяч|хиляд|χιλιάδ|ألف|آلاف|هزار|हज़ार|हजार|nghìn|ngàn|ribu|พัน)/iu, 1e3],
+];
+// Any other large-number word (bilioni, трлн...). It says "scaled" with an
+// unknown value, so only the coefficient can be compared.
+const SCALE_WORD_RE = /^(?:mil|mlj|mln|mld|mrd|mio|bn|tn|bil|tril|милл|мил|млн|млрд|мільй|мільяр|трлн|εκατ|δισ|ล้าน|مليون|مليار|ملي|میلیون|میلیارد|triệu|tỷ|juta|miliar)/iu;
 
 /** Any decimal digit (Arabic-Indic ١٠, Persian ۱۰, Devanagari, fullwidth...) as ASCII. */
 function asciiDigits(text) {
@@ -306,11 +319,12 @@ function asciiDigits(text) {
 }
 
 /**
- * The values a number token can mean. "1,234" and "1.234" are a thousands
- * group or a decimal depending on the language, so they mean either;
- * "18.04.2026" is three numbers.
+ * The values a number token can mean. In a translation "1,234" and "1.234"
+ * are a thousands group or a decimal depending on the language, so they mean
+ * either. The English source writes thousands with a comma and decimals with
+ * a point, so there each means one thing. "18.04.2026" is three numbers.
  */
-function parseNumber(token) {
+function parseNumber(token, english) {
   const t = token.replace(/[\u00A0\u202F ']/g, '');
   const seps = t.match(/[,.]/g) ?? [];
   if (seps.length === 0) return [[Number(t)]];
@@ -323,18 +337,20 @@ function parseNumber(token) {
   }
   if (seps.length === 1) {
     const decimal = Number(`${parts[0]}.${parts[1]}`);
-    return [grouped ? [Number(parts.join('')), decimal] : [decimal]];
+    if (!grouped) return [[decimal]];
+    if (english) return [[seps[0] === ',' ? Number(parts.join('')) : decimal]];
+    return [[Number(parts.join('')), decimal]];
   }
   return grouped ? [[Number(parts.join(''))]] : parts.map((p) => [Number(p)]);
 }
 
 /**
- * Every number in the text: its possible values, its coefficients, and whether
- * a scale follows it. "3 million" is value 3000000, coefficient 3, scaled;
- * "3 millions" (a scale word SCALES does not list) is value 3, coefficient 3,
- * scaled.
+ * Every number in the text: its possible values, its coefficients, whether a
+ * scale follows it and whether that scale's value is known. "3 million" and
+ * "3 millions" are value 3000000, coefficient 3, scaled, known; "3 bilioni"
+ * is value 3, coefficient 3, scaled, unknown.
  */
-function numbersIn(text) {
+function numbersIn(text, english = false) {
   // URLs are blanked to the same length, so match offsets index this string.
   const t = asciiDigits(text.replace(URL_RE, (url) => ' '.repeat(url.length)));
   const out = [];
@@ -344,9 +360,11 @@ function numbersIn(text) {
     const scale = SCALES.find(([word]) => (/[a-z]/.test(word)
       ? after.toLowerCase().startsWith(word) && !/^\p{L}/u.test(after.slice(word.length))
       : after.startsWith(word)));
-    const scaled = Boolean(scale) || SCALE_WORD_RE.test(after);
-    for (const mantissas of parseNumber(m[0])) {
-      out.push({ values: scale ? mantissas.map((v) => v * scale[1]) : mantissas, mantissas, scaled });
+    const factor = scale?.[1] ?? LOCAL_SCALES.find(([re]) => re.test(after))?.[1];
+    const known = factor != null;
+    const scaled = known || SCALE_WORD_RE.test(after);
+    for (const mantissas of parseNumber(m[0], english)) {
+      out.push({ values: known ? mantissas.map((v) => v * factor) : mantissas, mantissas, scaled, known });
     }
   }
   return out;
@@ -359,18 +377,19 @@ const overlaps = (a, b) => a.some((x) => b.some((y) => sameValue(x, y)));
 /**
  * The translation carries exactly the source's numbers, compared by value: a
  * scale, a decimal comma or native digits do not change a number. Each source
- * number pairs with one output number. Two scaled numbers also pair on their
- * coefficient ("3 million" / "3 Millionen"), never a scaled with an unscaled
- * one ("3 million" / "3"). The only extra output numbers allowed are the
+ * number pairs with one output number. Two scaled numbers pair on their
+ * coefficient only when one scale's value is unknown ("3 million" / "3
+ * bilioni"); two known scales must agree ("1 million" / "1 milliard" do not).
+ * A scaled number never pairs with an unscaled one ("3 million" / "3"). The only extra output numbers allowed are the
  * month numbers of month names the source spells out (April 18 -> 4月18日).
  */
 function numbersKept(source, text) {
-  const want = numbersIn(source);
+  const want = numbersIn(source, true);
   const got = numbersIn(text);
   const months = [...source.matchAll(MONTH_RE)].map((m) => MONTH_NUMBER[m[1].slice(0, 3).toLowerCase()]);
   if (got.length < want.length || got.length > want.length + months.length) return false;
   const left = [
-    ...want.map((w) => (o) => overlaps(w.values, o.values) || (w.scaled && o.scaled && overlaps(w.mantissas, o.mantissas))),
+    ...want.map((w) => (o) => overlaps(w.values, o.values) || (w.scaled && o.scaled && !(w.known && o.known) && overlaps(w.mantissas, o.mantissas))),
     ...months.map((month) => (o) => !o.scaled && o.values.some((v) => sameValue(v, month))),
   ];
   // Bipartite matching (Kuhn): source numbers first, so they all stay matched.
@@ -473,8 +492,9 @@ function readsAsLanguage(text, lang) {
  */
 function unchangedIsUntranslated(source, lang) {
   if (looksEnglish(source)) return true;
-  // A title-case headline: one English marker settles it; a list of names has none.
-  if (isTitleCase(source)) return englishMarkerCount(source) > 0;
+  // A title-case headline: one English marker settles it. Without one it may
+  // be a list of names, so the checks below decide.
+  if (isTitleCase(source) && englishMarkerCount(source) > 0) return true;
   const prose = source.replace(URL_RE, '');
   // Accented or non-Latin letters, not typographic punctuation (’ —).
   if (NON_ASCII_LETTER_RE.test(prose)) return false;
@@ -482,6 +502,22 @@ function unchangedIsUntranslated(source, lang) {
   // ASCII prose with lower-case words and no sign of the target language:
   // English unless proven otherwise.
   return /(?:^|[^\p{L}])\p{Ll}{3,}/u.test(prose);
+}
+
+/**
+ * A short text returned unchanged is untranslated when it holds an English
+ * word, or is lower-case prose in a target written in another script. A
+ * label or name ("Cyber", "macOS", "Nvidia, Microsoft") stays as it is, and
+ * so may a short phrase in a Latin-script target with no English word in it
+ * ("Paris sous pression"): it may already be that language, and rejecting it
+ * would send the whole brief in English.
+ */
+function shortUnchangedIsUntranslated(source, lang) {
+  if (englishMarkerCount(source) > 0) return true;
+  const prose = source.replace(URL_RE, '');
+  if (NON_ASCII_LETTER_RE.test(prose)) return false;
+  const lowerWords = prose.split(/[^\p{L}]+/u).filter((w) => /^\p{Ll}{3,}$/u.test(w));
+  return lowerWords.length >= 2 && Boolean(SCRIPT_RE[lang]);
 }
 
 // Soft hyphen and zero-width (non-)joiners are legitimate in Indic, Persian
@@ -520,9 +556,7 @@ function validTranslation(source, out, lang) {
   if (!numbersKept(source, text)) return false;
   if (source.length < MIN_CHECKED_LENGTH) {
     if (text.length > Math.max(SHORT_SOURCE_MAX_LEN, source.length * MAX_RATIO)) return false;
-    // A short label or name may stay as it is ("Cyber", "NATO"); short English
-    // prose ("Oil prices rise") may not.
-    if (normalizeForCompare(text) === normalizeForCompare(source) && unchangedIsUntranslated(source, lang)) return false;
+    if (normalizeForCompare(text) === normalizeForCompare(source) && shortUnchangedIsUntranslated(source, lang)) return false;
   } else {
     // English returned unchanged, or as English prose, is untranslated: in a
     // Latin-script target no other check would catch it, and the brief would
