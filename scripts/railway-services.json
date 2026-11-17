@@ -47,6 +47,7 @@
       "scripts/lib/publisher-link-relay-gate.cjs",
       "scripts/lib/saudi-civil-defense-alerts.cjs",
       "scripts/lib/chokepoint-disruption-alerts.cjs",
+      "scripts/lib/notification-publish-policy.cjs",
       "scripts/lib/middle-east-strikes.cjs",
       "scripts/lib/middle-east-strikes-gazetteer.cjs",
       "scripts/lib/middle-east-strikes-v2.cjs",
