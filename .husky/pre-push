@@ -773,7 +773,7 @@ DOM_TESTS_CHANGED=("${_collected[@]}")
 # Same convention as the invariant lints above, which each fire on their own
 # implementation script.
 if path_matches '^(\.husky/pre-push|scripts/prepush-admission\.mjs|scripts/prepush-changed-tests\.sh|scripts/prepush-attest\.sh|vitest\.dom\.config\.mts|package\.json)$'; then
-  for contract_test in tests/prepush-admission.test.mjs tests/prepush-changed-tests.test.mjs tests/prepush-attest.test.mjs tests/prepush-proto-freshness-inputs.test.mjs; do
+  for contract_test in tests/prepush-admission.test.mjs tests/prepush-changed-tests.test.mjs tests/prepush-attest.test.mjs tests/prepush-proto-freshness-inputs.test.mjs tests/prepush-convex-root-typecheck.test.mjs; do
     [ -f "$contract_test" ] || continue
     already_listed=false
     for listed in "${TESTS_CHANGED[@]}"; do

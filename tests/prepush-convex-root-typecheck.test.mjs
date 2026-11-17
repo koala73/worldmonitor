@@ -30,6 +30,12 @@ describe('pre-push root type check covers convex/', () => {
     assert.ok(new RegExp(trigger[1]).test('convex/alertScopeMigration.ts'), `trigger ${trigger[1]} must match convex/ paths`);
   });
 
+  it('runs on every hook edit, so loosening the trigger fails locally', () => {
+    const list = hook.match(/for contract_test in ([^;]+);/);
+    assert.ok(list, 'contract_test list not found in .husky/pre-push');
+    assert.ok(list[1].split(/\s+/).includes('tests/prepush-convex-root-typecheck.test.mjs'), list[1]);
+  });
+
   it('keys the typecheck cache on convex/ so a convex edit is not a cache hit', () => {
     const inputs = hook.match(/^TYPECHECK_INPUTS=\(([^)]*)\)/m);
     assert.ok(inputs, 'TYPECHECK_INPUTS not found');
