@@ -134,6 +134,9 @@ import { readCooldownConfig } from './lib/digest-cooldown-config.mjs';
 import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
 import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
 import { buildDigestDeliveryPlan } from './lib/digest-delivery-plan.mjs';
+import { selectDigestChannelContent } from './lib/digest-channel-content.mjs';
+import { briefL10nTarget, localizeBrief, readBriefL10nConfig } from './lib/brief-l10n.mjs';
+import { briefLocalizedKey } from '../shared/brief-envelope.js';
 import {
   attachDigestCorroboration,
   digestCoverageText,
@@ -233,6 +236,15 @@ const BRIEF_SIGNING_SECRET_MISSING =
 // toggled independently (e.g. kill the brief LLM without silencing
 // the email's AI summary during a provider outage).
 const BRIEF_LLM_ENABLED = process.env.BRIEF_LLM_ENABLED !== '0';
+// Localized brief siblings (l10n PR 3). Off unless BRIEF_L10N_ENABLED=1;
+// BRIEF_L10N_LANGS is the allowlist. briefL10nSpentMs is the cumulative
+// lookup + translation time this run, capped by passBudgetMs.
+const briefL10nConfig = readBriefL10nConfig(process.env);
+let briefL10nSpentMs = 0;
+let briefL10nBudgetSkipped = 0;
+function briefL10nPassBudgetLeft() {
+  return briefL10nSpentMs < briefL10nConfig.passBudgetMs;
+}
 // #4917: freshness budget for reusing the prior envelope's prose on
 // non-due compose ticks (minutes; 0 disables reuse and restores the
 // pre-#4917 synthesize-every-tick behavior). Due ticks always
@@ -543,11 +555,11 @@ async function getLastSentAt(rule) {
  * @param {number} nowMs
  * @returns {Promise<{ profile: string | null; greeting: string | null }>}
  */
-async function buildSynthesisCtx(rule, nowMs) {
+async function buildSynthesisCtx(rule, nowMs, prefsResult) {
   if (!rule?.userId) return { profile: null, greeting: null };
   let profile = null;
   try {
-    const { data: prefs } = await fetchUserPreferences(rule.userId, rule.variant ?? 'full');
+    const { data: prefs } = prefsResult ?? await fetchUserPreferences(rule.userId, rule.variant ?? 'full');
     if (prefs) {
       const ctx = extractUserContext(prefs);
       profile = formatUserProfile(ctx, rule.variant ?? 'full');
@@ -1620,6 +1632,9 @@ async function composeBriefsForRun(rules, nowMs, { deadlineMs } = {}) {
     `[digest] brief: compose_success=${composeSuccess} compose_failed=${composeFailed} ` +
       `deferred=${composeDeferred} total_users=${annotatedByUser.size}`,
   );
+  if (briefL10nBudgetSkipped > 0) {
+    console.log(`[digest] brief l10n pass budget exhausted after ${briefL10nSpentMs}ms; skipped=${briefL10nBudgetSkipped} users sent English`);
+  }
   return { briefByUser, composeSuccess, composeFailed };
 }
 
@@ -1675,6 +1690,30 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   );
   if (!winnerResult) return null;
   const { winner, stories: winnerStories } = winnerResult;
+
+  // Brief language lookup (l10n PR 3). Off: no call. On: one relay call per
+  // composed user, reused by buildSynthesisCtx below. A failed lookup or an
+  // exhausted pass budget means English.
+  let prefsResult = null;
+  let targetLang = null;
+  if (briefL10nConfig.enabled) {
+    if (briefL10nPassBudgetLeft()) {
+      const lookupStarted = Date.now();
+      try {
+        prefsResult = await fetchUserPreferences(userId, winner.rule.variant ?? 'full', {
+          includeBriefLanguage: true,
+          timeoutMs: 3_000,
+        });
+      } catch {
+        prefsResult = null;
+      }
+      briefL10nSpentMs += Date.now() - lookupStarted;
+      if (prefsResult?.error) prefsResult = null;
+      targetLang = briefL10nTarget(prefsResult?.briefLanguage, briefL10nConfig);
+    } else {
+      briefL10nBudgetSkipped += 1;
+    }
+  }
 
   // ── Canonical synthesis (3-level fallback chain) ────────────────────
   //
@@ -1743,7 +1782,7 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     }
 
     if (!synthesisReused) {
-      const ctx = await buildSynthesisCtx(winner.rule, nowMs);
+      const ctx = await buildSynthesisCtx(winner.rule, nowMs, prefsResult ?? undefined);
       const result = await runSynthesisWithFallback(
         userId,
         synthesisStories,
@@ -2011,6 +2050,47 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     }
   }
 
+  // Localized sibling (l10n PR 3). Runs after the final stories and threads
+  // are fixed so the sibling mirrors the canonical envelope exactly. Any
+  // failure leaves the user on the English brief.
+  let localizedEnvelope = null;
+  let localizedSynthesis = null;
+  if (targetLang && BRIEF_LLM_ENABLED) {
+    if (briefL10nPassBudgetLeft()) {
+      const l10nStarted = Date.now();
+      let outcome;
+      try {
+        outcome = await localizeBrief({
+          envelope: finalEnvelope,
+          synthesis,
+          lang: targetLang,
+          sharedDeps: briefLlmDeps,
+          userDeps: withAiRoutingPolicy(briefLlmDeps, await resolveAiRoutingPolicy(userId)),
+          userId,
+          budgetMs: briefL10nConfig.userBudgetMs,
+        });
+      } catch (err) {
+        outcome = { ok: false, reason: `throw:${err?.message ?? err}`, stats: null };
+      }
+      briefL10nSpentMs += Date.now() - l10nStarted;
+      if (outcome.ok) {
+        localizedEnvelope = outcome.envelope;
+        localizedSynthesis = outcome.synthesis;
+      }
+      const st = outcome.stats ?? {};
+      console.log(
+        `[digest] brief l10n user=${userId} lang=${targetLang} outcome=${outcome.ok ? 'ok' : 'fallback'}`
+          + ` reason=${outcome.ok ? 'none' : outcome.reason}`
+          + ` shared_ms=${st.sharedMs ?? 0} user_ms=${st.userMs ?? 0}`
+          + ` shared_hit=${st.sharedHits ?? 0}/${(st.sharedHits ?? 0) + (st.sharedMisses ?? 0)}`
+          + ` user_hit=${st.userHits ?? 0}/${(st.userHits ?? 0) + (st.userMisses ?? 0)}`,
+      );
+    } else {
+      briefL10nBudgetSkipped += 1;
+    }
+  }
+  const briefLang = localizedEnvelope ? targetLang : 'en';
+
   // Slot (YYYY-MM-DD-HHMM in the user's tz) is what routes the
   // magazine URL + Redis key. Using the same tz the composer used to
   // produce envelope.data.date guarantees the slot's date portion
@@ -2031,10 +2111,18 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   // raw = true pins the bare-key write (#7674): the digest composer publishes
   // the envelopes every api/brief reader resolves raw; see the insights read
   // above for the VERCEL_ENV-leak rationale.
-  const pipelineResult = await redisPipeline([
+  const briefCommands = [
     ['SETEX', key, String(BRIEF_TTL_SECONDS), JSON.stringify(finalEnvelope)],
     ['SETEX', latestPointerKey, String(BRIEF_TTL_SECONDS), latestPointerValue],
-  ], 5_000, true);
+  ];
+  // Flag on: write the sibling, or DEL it so a stale one cannot outlive a
+  // switch back to English. Flag off: no brief:l10n: command at all.
+  if (localizedEnvelope) {
+    briefCommands.push(['SETEX', briefLocalizedKey(userId, issueSlot), String(BRIEF_TTL_SECONDS), JSON.stringify(localizedEnvelope)]);
+  } else if (briefL10nConfig.enabled) {
+    briefCommands.push(['DEL', briefLocalizedKey(userId, issueSlot)]);
+  }
+  const pipelineResult = await redisPipeline(briefCommands, 5_000, true);
   if (!pipelineResult || !Array.isArray(pipelineResult) || pipelineResult.length < 2) {
     throw new Error('null pipeline response from Upstash');
   }
@@ -2065,6 +2153,10 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     // parity contract (the "call site 3" regression). See plan
     // docs/plans/2026-05-14-001-fix-brief-pipeline-parity-grounding-opinion-plan.md.
     synthesis,
+    // l10n PR 3: channel bodies read these; everything else stays canonical.
+    lang: briefLang,
+    localizedEnvelope,
+    localizedSynthesis,
   };
 }
 
@@ -2423,8 +2515,6 @@ async function main() {
       // editorial block this tick (the story list still ships); the
       // path is rare and self-healing on the next compose.
       const brief = briefForUser;
-      let briefSynthesis = null;  // full {lead, threads, signals} when synthesis succeeded
-      let briefLead = null;       // string projection for non-email channels + parity log
       // synthesisLevel is sourced from the compose pass — not recomputed.
       const synthesisLevel = brief?.synthesisLevel ?? 3;
       // Gate: AI_DIGEST_ENABLED + per-rule opt-out + synthesisLevel ∈
@@ -2434,17 +2524,28 @@ async function main() {
       // `digest.lead` (even the L3 stub), so reading the synthesis from
       // the briefByUser entry (NOT the envelope) is what keeps L3 /
       // opt-out users from getting a fake "Executive Summary".
-      if (AI_DIGEST_ENABLED && rule.aiDigestEnabled !== false && synthesisLevel !== 3) {
-        briefSynthesis = brief?.synthesis ?? null;
-        briefLead = briefSynthesis?.lead ?? null;
-      }
+      // briefSynthesis/briefLead stay canonical English (subject, parity
+      // log, webhook); channelSynthesis/channelLead are the localized copies
+      // when the brief was localized (l10n PR 3).
+      const {
+        canonicalSynthesis: briefSynthesis,
+        canonicalLead: briefLead,
+        channelSynthesis,
+        channelLead,
+      } = selectDigestChannelContent({
+        brief,
+        aiDigestEnabled: AI_DIGEST_ENABLED,
+        ruleAiDigestEnabled: rule.aiDigestEnabled,
+      });
 
       const deliveryPlan = buildDigestDeliveryPlan({
         briefStories: brief?.envelope?.data?.stories,
         rawStories: stories,
+        localizedBriefStories: brief?.localizedEnvelope?.data?.stories,
       });
       const {
         formatterStories,
+        canonicalFormatterStories,
         cooldownIterableStories,
         sourceCountByClusterId,
       } = deliveryPlan;
@@ -2460,7 +2561,7 @@ async function main() {
           slack: formatDigest(formatterStories, nowMs, 'slack'),
           discord: formatDigest(formatterStories, nowMs, 'discord'),
         },
-        briefLead,
+        channelLead,
         magazineUrl,
       );
       // Email gets the FULL structured synthesis (lead + threads +
@@ -2483,7 +2584,7 @@ async function main() {
       const { html, truncated: htmlTruncated, bytes: htmlBytes, shownStories } = renderDigestEmailHtml({
         stories: formatterStories,
         nowMs,
-        synthesis: briefSynthesis,
+        synthesis: channelSynthesis,
         magazineUrl,
         maxBytes: DIGEST_EMAIL_MAX_HTML_BYTES - unsubscribeBytes,
       });
@@ -2669,7 +2770,7 @@ async function main() {
             // titles get the same source-suffix strip formatDigest applies.
             ok = await sendTeams(rule.userId, ch.webhookEnvelope, buildTeamsDigestPayload({
               title: storyListPlain.split('\n')[0],
-              summary: briefLead,
+              summary: channelLead,
               stories: formatterStories.map((story) => ({ ...story, title: stripSourceSuffix(story.title) })),
               briefUrl: magazineUrl,
             }), ch);
@@ -2694,7 +2795,7 @@ async function main() {
             // closes the channel-coverage gap so the webhook payload
             // exactly matches what U4 stamped + U5 evaluated for that
             // (user, rule, tick).
-            ok = await sendWebhook(rule.userId, ch.webhookEnvelope, formatterStories, briefLead, ch.webhookSecret, ch);
+            ok = await sendWebhook(rule.userId, ch.webhookEnvelope, canonicalFormatterStories, briefLead, ch.webhookSecret, ch);
           }
           if (ok) {
             anyDelivered = true;
