@@ -379,3 +379,20 @@ describe('maintainer review (#9110 stack)', () => {
     assert.deepEqual(run(entries, { dragDisturbed }).candidates, []);
   });
 });
+
+describe('review round 3 (#10865)', () => {
+  it('does not let a refit on the newest epoch cancel the node step it confirms', () => {
+    // Noise-free daily history at 7000 km and 60°: a real +0.04° node step on day 19, then a
+    // reported inclination of 61° on day 20 only. The newest epoch's J2 rate must not use the refit.
+    const meanMotion = meanMotionFor(7000);
+    const rate = j2RaanRateDegPerDay({ meanMotion, eccentricity: 0.001, inclination: 60 });
+    const entries = (refit) => Array.from({ length: 21 }, (_, d) => ({
+      noradId: 7, epoch: T0 + d * DAY_MS, meanMotion, eccentricity: 0.001, bstar: 0,
+      inclination: refit && d === 20 ? 61 : 60, raan: rate * d + (d >= 19 ? 0.04 : 0),
+    }));
+    for (const refit of [false, true]) {
+      const found = run(entries(refit)).candidates.map((c) => [c.element, c.toEpoch]);
+      assert.deepEqual(found, [['raan', new Date(T0 + 19 * DAY_MS).toISOString()]], `refit=${refit}`);
+    }
+  });
+});
