@@ -347,3 +347,46 @@ test('a failed digest read does not use up the build: it is read again after a w
   assert.deepEqual(retried.editions, ['full'], 'the same build is still new, because the failed read did not classify it');
   await until(() => upstash.queued().length === 1, () => `the alert from the retried build\n${output()}`);
 });
+
+test('a failed read of full stops the pass, and the other editions wait for its retry', async (t) => {
+  const stamps = { full: Date.now() - 60_000, tech: Date.now() - 60_000 };
+  const { upstash, digest, down, watch, output } = await startRelay(t, stamps);
+  down.add('full');
+
+  // tech is not read without full: it would take full's claim on a shared headline.
+  const failed = await watch();
+  assert.deepEqual(failed.editions, ['full'], output());
+  assert.deepEqual(digest.requests, ['full']);
+
+  // A newer tech build must not make the relay read full again during its wait.
+  stamps.tech = Date.now() - 20_000;
+  const held = await watch();
+  assert.deepEqual(held.editions, []);
+  assert.deepEqual(digest.requests, ['full'], 'full is not re-read during its retry wait, and tech waits with it');
+
+  down.delete('full');
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const retried = await watch();
+  assert.deepEqual(retried.editions, ['full', 'tech']);
+  await until(() => upstash.queued().length === 2, () => `both alerts\n${output()}`);
+});
+
+test('a failed read of full, when only another edition was rebuilt, still gets a retry wait', async (t) => {
+  const stamps = { full: Date.now() - 60_000 };
+  const { digest, down, built, watch, output } = await startRelay(t, stamps);
+  await watch();
+  assert.deepEqual(digest.requests, ['full']);
+
+  // full is classified. tech is rebuilt, so full is read first for ordering, and that read fails.
+  digest.requests.length = 0;
+  built.at = Date.now() - 20_000;
+  stamps.tech = built.at;
+  down.add('full');
+  const failed = await watch();
+  assert.deepEqual(failed.editions, ['full'], output());
+  assert.deepEqual(digest.requests, ['full']);
+
+  const held = await watch();
+  assert.deepEqual(held.editions, [], 'the failed ordering read set a retry wait');
+  assert.deepEqual(digest.requests, ['full']);
+});

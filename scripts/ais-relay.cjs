@@ -5919,6 +5919,8 @@ async function seedClassify() {
       try {
         const stats = await runClassifyExclusive(() => seedClassifyForVariant(CLASSIFY_VARIANTS[v], seenTitles));
         noteClassifiedDigestBuild(CLASSIFY_VARIANTS[v], stats.digestBuildAt);
+        // The cycle just read this edition, so the watch need not keep waiting.
+        if (!stats.fetchFailed) digestBuildRetryAt.delete(CLASSIFY_VARIANTS[v]);
         if (stats.fetchFailed) fetchFailed += 1;
         else fetchOk += 1;
         if (stats.staleReplay) staleReplays += 1;
@@ -5988,16 +5990,18 @@ async function checkDigestBuilds() {
     const rows = await upstashPipeline([['MGET', ...CLASSIFY_VARIANTS.map(digestBuildStampKey)]]);
     const values = Array.isArray(rows?.[0]?.result) ? rows[0].result : [];
     const stamps = new Map(CLASSIFY_VARIANTS.map((variant, i) => [variant, digestBuildStampMs(values[i])]));
+    const now = Date.now();
     const rebuilt = editionsWithUnclassifiedBuild({
       editions: CLASSIFY_VARIANTS,
       stamps,
       classifiedAt: classifiedDigestBuildAt,
-      now: Date.now(),
+      now,
       retryAt: digestBuildRetryAt,
     });
-    const editions = buildPassEditions(CLASSIFY_VARIANTS, rebuilt);
+    const editions = [];
     const summary = [];
-    for (const variant of editions) {
+    for (const variant of buildPassEditions(CLASSIFY_VARIANTS, rebuilt, { now, retryAt: digestBuildRetryAt })) {
+      editions.push(variant);
       let stats = null;
       try {
         stats = await runClassifyExclusive(() => seedClassifyForVariant(variant, new Set()));
@@ -6013,11 +6017,15 @@ async function checkDigestBuilds() {
         noteClassifiedDigestBuild(variant, stats.digestBuildAt);
         if (rebuilt.includes(variant)) noteClassifiedDigestBuild(variant, stamps.get(variant));
         digestBuildRetryAt.delete(variant);
-      } else if (rebuilt.includes(variant)) {
-        // The read failed or the pass threw: the build stays new, and the
-        // edition is left alone for a while so a failing API is not re-read
-        // on every check. The cycle still covers it meanwhile.
+      } else {
+        // The read failed or the pass threw: a rebuilt edition's build stays
+        // new, and the edition is left alone for a while so a failing API is
+        // not re-read on every check. That holds for `full` read only for
+        // ordering too. The cycle still covers it meanwhile.
         digestBuildRetryAt.set(variant, Date.now() + DIGEST_BUILD_RETRY_DELAY_MS);
+        // Without `full` the rest of the pass would take its claim on a shared
+        // headline. They stay new and run once `full` can be read again.
+        if (variant === CLASSIFY_VARIANTS[0]) break;
       }
     }
     if (editions.length > 0) {

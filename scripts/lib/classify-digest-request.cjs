@@ -140,12 +140,17 @@ function editionsWithUnclassifiedBuild({ editions, stamps, classifiedAt, now, se
  * its own edition's events. The timed cycle reads `full` before every other
  * edition, so `full` has first claim on a headline two editions carry; a pass
  * triggered by another edition's build reads `full` first for the same reason.
+ *
+ * While `full` is waiting to be retried after a failed read (`retryAt`), the
+ * pass is held: reading the others without it would give away its claim, and
+ * reading it anyway would ignore the wait. The rebuilt editions stay new.
  */
-function buildPassEditions(editions, triggered) {
+function buildPassEditions(editions, triggered, { now = 0, retryAt } = {}) {
   const wanted = new Set(triggered);
   const rebuilt = editions.filter((edition) => wanted.has(edition));
   if (rebuilt.length === 0) return [];
   const first = editions[0];
+  if ((retryAt?.get(first) ?? 0) > now) return [];
   return rebuilt.includes(first) ? rebuilt : [first, ...rebuilt];
 }
 

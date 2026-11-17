@@ -125,6 +125,18 @@ describe('buildPassEditions', () => {
     assert.deepEqual(buildPassEditions(EDITIONS, ['full', 'happy']), ['full', 'happy']);
   });
 
+  it('holds the whole pass while full is waiting to be retried', () => {
+    // Reading another edition without full would hand it full's claim on a
+    // shared headline, and reading full anyway would ignore its retry wait.
+    // The rebuilt editions stay new and run once full can be read again.
+    const now = 1794900600000;
+    const retryAt = new Map([['full', now + 1]]);
+    assert.deepEqual(buildPassEditions(EDITIONS, ['tech'], { now, retryAt }), []);
+    assert.deepEqual(buildPassEditions(EDITIONS, ['tech'], { now: now + 1, retryAt }), ['full', 'tech']);
+    // Another edition's retry wait does not hold the pass.
+    assert.deepEqual(buildPassEditions(EDITIONS, ['tech'], { now, retryAt: new Map([['finance', now + 1]]) }), ['full', 'tech']);
+  });
+
   it('runs nothing when no edition was rebuilt, and skips unknown editions', () => {
     assert.deepEqual(buildPassEditions(EDITIONS, []), []);
     assert.deepEqual(buildPassEditions(EDITIONS, ['sports']), []);
