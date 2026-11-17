@@ -105,6 +105,7 @@ const PUBLISHER_FAMILY_DATA = {
   'fox-business': { publisher: "Fox Business", labels: [] },
   'fox-news': { publisher: "Fox News", labels: [] },
   'france-24': { publisher: "France 24", labels: ["France 24", "France 24 Africa", "France 24 Asia Pacific", "France 24 LatAm"] },
+  'grupo-globo': { publisher: "Grupo Globo", labels: ["G1 Política", "O Globo"] },
   'good-news-network': {
     publisher: "Good News Network",
     labels: [
@@ -123,6 +124,7 @@ const PUBLISHER_FAMILY_DATA = {
       "Guardian Africa",
       "Guardian Americas",
       "Guardian Australia",
+      "Guardian Brazil",
       "Guardian Caribbean",
       "Guardian ME",
       "Guardian Pacific",
@@ -271,6 +273,7 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'fox-business': ['foxbusiness.com'],
   'fox-news': ['foxnews.com'],
   'france-24': ['france24.com'],
+  'grupo-globo': ['g1.globo.com', 'oglobo.globo.com'],
   'good-news-network': ['goodnewsnetwork.org'],
   'guardian': ['theguardian.com'],
   'hromadske': ['hromadske.ua'],

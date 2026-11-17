@@ -33,6 +33,7 @@ const stubs: Record<string, string> = {
     "export const CRISIS_FLOOR_OPT_IN_SOURCES = ['WAFA English'];",
     "export const CURATED_REGIONAL_OPT_IN_SOURCES = ['Guardian Pacific'];",
     "export const GERMAN_RSS_SOURCES = ['Deutschlandfunk', 'ZDFheute'];",
+    "export const BRAZIL_OPT_IN_SOURCES = ['Guardian Brazil', 'Brazil Reports', 'G1 Política', 'Agência Brasil'];",
     'export const FEEDS = {};',
     'export const FRONTLINE_EUROPE_PROTECTED_SOURCES = [];',
     'export const INTEL_SOURCES = [];',
@@ -607,29 +608,31 @@ describe('cloud preference write serialization', () => {
     assert.equal(result.state, 'synced');
   });
 
-  it('preserves German RSS choices made after startup when sign-in uploads a schema-9 local profile', async () => {
+  it('preserves German and Brazil choices made after startup when sign-in uploads an older local profile', async () => {
     const result = await runHarness(async (cloudPrefs) => {
       localStorage.setItem('wm-cloud-prefs-local-schema-version', '9');
       localStorage.setItem('worldmonitor-german-rss-sources-v1', 'done');
       // Startup already applied the locale default; the user then enabled both.
+      localStorage.setItem('worldmonitor-brazil-optin-v1', 'done');
       localStorage.setItem('worldmonitor-disabled-feeds', '["user-choice"]');
       await cloudPrefs.onSignIn('user-1', 'full');
     });
-    assert.equal(result.localSchemaVersion, 10);
+    assert.equal(result.localSchemaVersion, 11);
     assert.equal(result.acceptedDataByToken['test-token']['worldmonitor-disabled-feeds'], '["user-choice"]');
   });
 
-  it('still migrates old incoming cloud settings after the local German RSS migration', async () => {
+  it('still migrates old incoming cloud settings after the local German and Brazil migrations', async () => {
     const result = await runHarness(async (cloudPrefs, controls) => {
       localStorage.setItem('wm-cloud-prefs-local-schema-version', '9');
       localStorage.setItem('worldmonitor-german-rss-sources-v1', 'done');
+      localStorage.setItem('worldmonitor-brazil-optin-v1', 'done');
       controls.seedRow('test-token', { 'worldmonitor-disabled-feeds': '["cloud-choice"]' }, 3, 9);
       await cloudPrefs.onSignIn('user-1', 'full');
       cloudPrefs.install('full');
       await cloudPrefs.syncNow();
     });
-    assert.equal(result.localSchemaVersion, 10);
-    assert.deepEqual(JSON.parse(result.acceptedDataByToken['test-token']['worldmonitor-disabled-feeds']), ['cloud-choice', 'Deutschlandfunk', 'ZDFheute']);
+    assert.equal(result.localSchemaVersion, 11);
+    assert.deepEqual(JSON.parse(result.acceptedDataByToken['test-token']['worldmonitor-disabled-feeds']), ['cloud-choice', 'Deutschlandfunk', 'ZDFheute', 'Guardian Brazil', 'Brazil Reports', 'G1 Política', 'Agência Brasil']);
   });
 
   it('migrates the local blob before a sign-out keepalive upload', async () => {
@@ -643,8 +646,8 @@ describe('cloud preference write serialization', () => {
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
     });
 
-    assert.equal(result.localSchemaVersion, 10);
-    assert.deepEqual(result.acceptedSchemaVersionsByToken['test-token'], [10, 10]);
+    assert.equal(result.localSchemaVersion, 11);
+    assert.deepEqual(result.acceptedSchemaVersionsByToken['test-token'], [11, 11]);
     const disabled = JSON.parse(result.acceptedDataByToken['test-token']['worldmonitor-disabled-feeds']) as string[];
     assert.ok(disabled.includes('user-choice'));
     assert.ok(disabled.includes('Guardian Pacific'));
@@ -1246,8 +1249,8 @@ describe('cloud prefs account switch without an observed sign-out (SM-015)', () 
   it("keeps account B's row intact when A's failed sign-in left B's marker over A's version", async () => {
     const result = await runHarness(async (cloudPrefs, controls) => {
       // Current schemas isolate account ownership from an intentional migration upload.
-      controls.seedRow('a-token', { 'worldmonitor-theme': 'dark' }, 2, 10);
-      controls.seedRow('b-token', { 'worldmonitor-theme': 'light' }, 3, 10);
+      controls.seedRow('a-token', { 'worldmonitor-theme': 'dark' }, 2, 11);
+      controls.seedRow('b-token', { 'worldmonitor-theme': 'light' }, 3, 11);
       controls.setToken('b-token');
       await cloudPrefs.onSignIn('user-b', 'full');
       cloudPrefs.onSignOut();
