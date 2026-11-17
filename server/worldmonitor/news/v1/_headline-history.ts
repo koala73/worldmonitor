@@ -316,6 +316,26 @@ const indexes = new Map<string, { at: number; promise: Promise<HeadlineIndex> }>
 type IndexReadLimiter = typeof checkScopedRateLimit;
 let indexReadLimiter: IndexReadLimiter | null = null;
 
+/**
+ * Charges under way, by caller and index. Requests from one caller that miss
+ * one index together share one read, so they share one charge. An entry lives
+ * only until the limiter answers.
+ */
+const charging = new Map<string, ReturnType<IndexReadLimiter>>();
+
+function chargeIndexRead(id: string, caller: string): ReturnType<IndexReadLimiter> {
+  const key = `${caller}\n${id}`;
+  let charge = charging.get(key);
+  if (!charge) {
+    charge = (indexReadLimiter
+      ? indexReadLimiter(INDEX_READ_SCOPE, INDEX_READS_PER_CALLER, INDEX_READ_WINDOW, caller)
+      : checkScopedRateLimit(INDEX_READ_SCOPE, INDEX_READS_PER_CALLER, INDEX_READ_WINDOW, caller)
+    ).finally(() => charging.delete(key));
+    charging.set(key, charge);
+  }
+  return charge;
+}
+
 /** The held copy of an index, if it is no older than maxAgeMs. */
 function heldIndex(id: string, nowMs: number, maxAgeMs: number): Promise<HeadlineIndex> | null {
   const held = indexes.get(id);
@@ -335,9 +355,7 @@ async function loadIndex(
   // No Redis (local dev, the desktop sidecar): no index to read or to charge for.
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar' || !isRedisConfigured()) return UNREADABLE;
   // A miss: the read is charged to this caller before Redis is asked.
-  const budget = indexReadLimiter
-    ? await indexReadLimiter(INDEX_READ_SCOPE, INDEX_READS_PER_CALLER, INDEX_READ_WINDOW, caller)
-    : await checkScopedRateLimit(INDEX_READ_SCOPE, INDEX_READS_PER_CALLER, INDEX_READ_WINDOW, caller);
+  const budget = await chargeIndexRead(id, caller);
   // Another caller may have started the read meanwhile: join it, not read again.
   const started = heldIndex(id, nowMs, INDEX_TTL_MS);
   if (started) return started;
@@ -458,7 +476,7 @@ export async function searchHeadlineHistory(
 }
 
 export const __testing__ = {
-  resetPools(): void { indexes.clear(); },
+  resetPools(): void { indexes.clear(); charging.clear(); },
   /** Replace the limiter that charges index reads; null restores the shared one. */
   setIndexReadLimiter(limiter: IndexReadLimiter | null): void { indexReadLimiter = limiter; },
 };

@@ -713,6 +713,19 @@ describe('headline search index-read budget', () => {
     assert.equal(reads(), 1);
   });
 
+  it('charges a caller once for requests that miss one cell together', async () => {
+    await serveEveryCell();
+    const together = await Promise.all(['rat', 'rate', 'rates', 'rates held', 'held'].map(query =>
+      search(freeRoute, query, '', from('203.0.113.7'))));
+    assert.ok(together.every(({ payload }) => payload.state === 'complete'));
+    assert.equal(reads(), 1);
+    assert.equal(charges.length, 1, 'one read, one charge');
+    // Another cell, or another caller on the same cell, is its own charge.
+    await Promise.all([searchCell(CELLS[1]!, '203.0.113.7'), searchCell(CELLS[2]!, '203.0.113.7'), searchCell(CELLS[2]!, '198.51.100.9')]);
+    assert.equal(charges.length, 4);
+    assert.equal(reads(), 3);
+  });
+
   it('keeps searching when the limiter cannot decide', async () => {
     // A self-hosted Redis 6 behind the REST proxy is degraded on every scoped
     // call. Refusing there would leave the history unavailable for good.
@@ -728,7 +741,7 @@ describe('headline search index-read budget', () => {
     assert.equal(charges.length, CELLS.length, 'the limiter was still asked');
   });
 
-  it('charges the signed-in account before the address, on both routes', async () => {
+  it('charges the account the gateway stamped before the address, on both routes', async () => {
     await serveEveryCell();
     await search(archiveRoute, 'rates', '', { 'x-real-ip': '203.0.113.7', 'x-wm-rl-principal': 'session:user_1' });
     await search(freeRoute, 'rates', '', { 'x-real-ip': '203.0.113.7', 'x-wm-rl-principal': 'api_key:user_2' });
