@@ -26,7 +26,7 @@ const guideFiles = ['vs', 'alternatives', 'best'].flatMap((category) =>
 // Filtering worldmonitor.app alone let a github.com/koala73/worldmonitor
 // permalink satisfy the external-citation assertion below, and nine posts
 // shipped with no third-party source while this suite stayed green (#10880).
-const SELF_REPOSITORY_URL = /^https:\/\/(?:www\.)?github\.com\/koala73\/worldmonitor(?:[/?#]|$)/;
+const SELF_REPOSITORY_URL = /^https?:\/\/(?:www\.)?github\.com\/koala73\/worldmonitor(?:[/?#]|$)/i;
 
 function isSelfReference(url) {
   return /(^|\.)worldmonitor\.app$/.test(url.hostname) || SELF_REPOSITORY_URL.test(url.href);
