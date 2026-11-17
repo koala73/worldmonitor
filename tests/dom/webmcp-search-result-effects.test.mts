@@ -204,6 +204,7 @@ function createHarness(matches: SearchMatch[], enabledPanels: Record<string, boo
     resolveExecutableNewsPanel: vi.fn(() => null),
     saveToStorage,
     setTheme: vi.fn(),
+    openExternalLink: vi.fn(),
     setTimeout: (callback, delay) => setTimeout(callback, delay),
     clearTimeout: (timer) => clearTimeout(timer),
   });

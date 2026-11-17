@@ -219,6 +219,12 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     notes: "brief:latest:{userId} and brief:{userId}:{slot} from that pointer",
   },
   {
+    target: "redis:sent-alerts",
+    action: "delete",
+    notes: "wm:notif:sent:v1:{userId}, the alerts delivered to the account; also expires 7 days after the last one. "
+      + "Sets wm:notif:sent-erased:v1:{userId} for 7 days first, which makes the relay refuse a late write for the account",
+  },
+  {
     target: "clerk.users",
     action: "delete",
     notes: "Backend Users API; 404 is success",

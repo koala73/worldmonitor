@@ -1916,6 +1916,41 @@ describe('welcome landing page routing', () => {
     );
   });
 
+  it('redirects blog and /pro URLs onto the form their canonical declares', () => {
+    const www = 'www.worldmonitor.app';
+    const cases = [
+      ['/blog', '/blog/'],
+      ['/blog/posts', '/blog/'],
+      ['/blog/posts/osint-for-everyone-open-source-intelligence-democratized', '/blog/posts/:slug/'],
+      ['/blog/glossary/country-instability-index', '/blog/glossary/:slug/'],
+      ['/blog/vs/example-tool', '/blog/:category/:slug/'],
+      ['/blog/alternatives/example-tool', '/blog/:category/:slug/'],
+      ['/blog/best/intelligence-apis-for-developers', '/blog/:category/:slug/'],
+      ['/pro/', '/pro'],
+    ];
+    for (const [path, destination] of cases) {
+      const redirect = firstRedirectFor({ host: www, path });
+      assert.equal(redirect?.destination, destination, `${path} must 308 to ${destination}`);
+      assert.equal(redirect.permanent, true, `${path} redirect must be permanent`);
+    }
+    for (const path of [
+      '/blog/',
+      '/blog/posts/osint-for-everyone-open-source-intelligence-democratized/',
+      '/blog/posts/osint-for-everyone-open-source-intelligence-democratized.md',
+      '/blog/glossary/',
+      '/blog/glossary/country-instability-index/',
+      '/blog/vs/example-tool/',
+      '/blog/authors/elie-habib/',
+      '/blog/rss.xml',
+      '/blog/og/post.png',
+      '/pro',
+    ]) {
+      assert.equal(firstRedirectFor({ host: www, path }), null, `${path} is final and must not redirect`);
+    }
+    const variant = firstRedirectFor({ host: 'tech.worldmonitor.app', path: '/blog' });
+    assert.equal(variant?.destination, 'https://www.worldmonitor.app/blog/', 'variant hosts still leave for www first');
+  });
+
   it('redirects bare corpus roots to canonical generated pages', () => {
     const changelog = vercelConfig.redirects.find((r) => r.source === '/changelog');
     assert.ok(changelog, 'expected a redirect for /changelog');
@@ -2898,7 +2933,7 @@ describe('security header guardrails', () => {
         rule.has?.some((condition) => condition.type === 'host' && condition.value === hostPattern)
       );
       const expectedSources = host === 'www.worldmonitor.app'
-        ? ['/', '/(es|pt|ru|fr|de|ar)/', '/dashboard', '/dashboard.html']
+        ? ['/', '/(es|pt|ru|fr|de|ar|id|ja)/', '/dashboard', '/dashboard.html']
         : ['/dashboard', '/dashboard.html'];
       assert.deepEqual(
         hostRules.map((rule) => rule.source).sort(),
@@ -2920,7 +2955,7 @@ describe('security header guardrails', () => {
           false,
           host + ' must not attach an Origin-Trial token to /?mode=agent',
         );
-        const landingRule = hostRules.find((rule) => rule.source === '/(es|pt|ru|fr|de|ar)/');
+        const landingRule = hostRules.find((rule) => rule.source === '/(es|pt|ru|fr|de|ar|id|ja)/');
         assert.ok(landingRule, host + ' must enroll prerendered locale landings');
         assert.deepEqual(
           landingRule.missing,

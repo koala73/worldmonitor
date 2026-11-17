@@ -16,7 +16,7 @@ const SITUATION_SECTIONS = situationSections(CHOKEPOINT_REGISTRY);
 export { SITUATION_PAGE_PATH };
 
 /** Bump when the page copy changes so its lastmod advances without touching every sibling. */
-export const SITUATION_CONTENT_VERSION = '2026-10-28';
+export const SITUATION_CONTENT_VERSION = '2026-11-17';
 
 /** Every file whose change alters this page's HTML, for its lastmod clock. */
 export const SITUATION_PAGE_INPUT_PATHS = Object.freeze([
@@ -160,6 +160,7 @@ ${sections.headlines}
 ${renderActiveSituations({ crises, livePulse, escapeHtml })}
 ${sections.chokepoints}
 ${sections.outages}
+      <p>For a lighter signal, the <a href="/blog/glossary/pentagon-pizza-index/">Pentagon Pizza Index</a> compares how busy pizza places near the Pentagon are against their usual level for the hour. It is an OSINT folk indicator, not a forecast.</p>
       <h2 id="how-to">How to monitor the situation</h2>
       <ol class="routine">
         <li>Open the <a href="/dashboard">live map</a>. The map and its panels are free and need no account.</li>

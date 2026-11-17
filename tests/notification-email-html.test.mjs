@@ -49,6 +49,15 @@ describe('real-time alert email', () => {
     assert.match(out, /Open dashboard/);
   });
 
+  it('lets the publisher see a referrer: the article anchor never asks for noreferrer', () => {
+    assert.match(out, /<a href="https:\/\/reuters\.com\/world\/asia\/x" rel="noopener" referrerpolicy="strict-origin-when-cross-origin" /);
+    assert.ok(!out.includes('noreferrer'));
+    // First-party anchors are left as they were.
+    assert.match(out, /<a href="https:\/\/worldmonitor\.app\/" style=/);
+    const firstParty = html.buildAlertEmailHtml({ ...ALERT, link: 'https://www.worldmonitor.app/brief/x' });
+    assert.ok(!firstParty.includes('referrerpolicy'));
+  });
+
   it('escapes every field, so a hostile title or source renders as text', () => {
     const hostile = html.buildAlertEmailHtml({
       ...ALERT,
@@ -94,6 +103,8 @@ describe('quiet-hours batch email', () => {
     assert.match(out, /border-left: 3px solid #f97316/);
     assert.match(out, /border-left: 3px solid #ef4444/);
     assert.match(out, /apnews\.com/);
+    assert.match(out, /<a href="https:\/\/apnews\.com\/a" rel="noopener" referrerpolicy="strict-origin-when-cross-origin" /);
+    assert.ok(!out.includes('noreferrer'));
   });
 
   // drainHeldForUser drains up to 100 held events. Gmail clips an HTML body
@@ -193,5 +204,31 @@ describe('notification relay email delivery', () => {
     assert.match(email.html, /Kazakhstan \(KZ\)/);
     assert.match(email.html, />Unsubscribe from alert emails</);
     assert.ok(!email.html.includes(UNSUBSCRIBE_SLOT));
+  });
+
+  // 2026-11-17: a critical alert for an Egypt Independent story arrived with
+  // no article link. The link now reaches the email, tagged for the publisher.
+  it('links the article in both parts, tagged as a WorldMonitor email alert', async () => {
+    sent.length = 0;
+    await relay.processEvent({
+      eventType: 'rss_alert',
+      severity: 'critical',
+      payload: {
+        title: 'Synthetic critical story',
+        countryCode: 'KZ',
+        source: 'Egypt Independent',
+        link: 'https://www.egyptindependent.com/synthetic-story/?ref=feed#top',
+      },
+    });
+    assert.equal(sent.length, 1);
+    const [email] = sent;
+    const tagged = 'https://www.egyptindependent.com/synthetic-story/?ref=feed&utm_source=worldmonitor&utm_medium=alert&utm_campaign=email#top';
+    assert.ok(email.text.includes(`${tagged} (source: www.egyptindependent.com)`), email.text);
+    assert.ok(
+      email.html.includes(`<a href="${tagged.replaceAll('&', '&amp;')}" rel="noopener" referrerpolicy="strict-origin-when-cross-origin" `),
+      'the button opens the tagged article link',
+    );
+    assert.match(email.html, /Read the original report/);
+    assert.match(email.html, /The report opens on www\.egyptindependent\.com\./);
   });
 });

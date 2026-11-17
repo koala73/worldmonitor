@@ -447,7 +447,8 @@
       "trendRising": "rastući",
       "trendFalling": "padajući",
       "trendStable": "stabilan",
-      "situationLink": "Pratite situaciju: krize, vijesti, kritične točke i prekidi na jednoj ploči"
+      "situationLink": "Pratite situaciju: krize, vijesti, kritične točke i prekidi na jednoj ploči",
+      "pizzaIndexLink": "Pentagonov indeks pizze: koliko su pune pizzerije u blizini Pentagona"
     },
     "moments": {
       "eyebrow": "Mehanizam za korelaciju",

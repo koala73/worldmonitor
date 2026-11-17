@@ -195,6 +195,27 @@ const VECTORS = {
     [null],
     [undefined],
   ],
+  withAlertReferrer: [
+    ['https://www.egyptindependent.com/story/', 'email'],
+    ['https://example.com/a?q=a%20b&flag#x', 'telegram'],
+    ['https://example.com/a?utm_source=rss', 'slack'],
+    ['https://example.com/a?utm_source=rss&utm_medium=feed&utm_campaign=x', 'discord'],
+    ['https://example.com/a?', 'web_push'],
+    ['https://example.com/a#frag', 'teams'],
+    ['https://example.com/a', undefined],
+    ['https://example.com/a', 'Not A Channel'],
+    ['https://example.com/a', 42],
+    ['https://worldmonitor.app/dashboard', 'email'],
+    ['https://www.worldmonitor.app/brief/x?y=1', 'email'],
+    ['javascript:alert(1)', 'email'],
+    ['http://example.com/', 'email'],
+    ['https://worldmonitor.app@example.com/', 'email'],
+    ['not a url', 'email'],
+    ['', 'email'],
+    [null, 'email'],
+    [undefined, 'email'],
+    [123, 'email'],
+  ],
 };
 
 describe('notify-fields TS/CJS parity', () => {
@@ -262,4 +283,63 @@ describe('notify-fields TS/CJS parity', () => {
       );
     }
   });
+});
+
+describe('withAlertReferrer tags an outbound article link, and only that', () => {
+  const TAG = 'utm_source=worldmonitor&utm_medium=alert';
+
+  for (const [label, mod] of [['cjs', cjs], ['ts', ts]]) {
+    it(`${label}: adds source, medium and the channel as campaign`, () => {
+      assert.equal(
+        mod.withAlertReferrer('https://www.egyptindependent.com/story/', 'email'),
+        `https://www.egyptindependent.com/story/?${TAG}&utm_campaign=email`,
+      );
+    });
+
+    it(`${label}: keeps the host, path, existing query and fragment byte for byte`, () => {
+      const raw = 'https://example.com/a%2Fb/c?q=a%20b&flag&x=%E2%9C%93#sec-2';
+      const tagged = mod.withAlertReferrer(raw, 'telegram');
+      assert.equal(tagged, `https://example.com/a%2Fb/c?q=a%20b&flag&x=%E2%9C%93&${TAG}&utm_campaign=telegram#sec-2`);
+      // Removing exactly the additions gives back the URL the sinks sent before.
+      assert.equal(tagged.replace(`&${TAG}&utm_campaign=telegram`, ''), mod.classifyNotificationLink(raw).url);
+      assert.equal(new URL(tagged).host, new URL(raw).host);
+    });
+
+    it(`${label}: never overwrites a parameter the publisher already set`, () => {
+      assert.equal(
+        mod.withAlertReferrer('https://example.com/a?utm_source=rss', 'slack'),
+        'https://example.com/a?utm_source=rss&utm_medium=alert&utm_campaign=slack',
+      );
+      const full = 'https://example.com/a?utm_source=rss&utm_medium=feed&utm_campaign=x';
+      assert.equal(mod.withAlertReferrer(full, 'discord'), full);
+    });
+
+    it(`${label}: leaves first-party, rejected and absent links unchanged`, () => {
+      for (const value of [
+        'https://worldmonitor.app/dashboard',
+        'https://www.worldmonitor.app/brief/x?y=1',
+        'javascript:alert(1)',
+        'http://example.com/',
+        'https://worldmonitor.app@example.com/',
+        'not a url',
+        '',
+        null,
+        undefined,
+      ]) {
+        assert.equal(mod.withAlertReferrer(value, 'email'), value, String(value));
+      }
+    });
+
+    it(`${label}: omits the campaign for a channel it cannot name`, () => {
+      for (const channel of [undefined, '', 'Not A Channel', 'a&b=c', 42]) {
+        assert.equal(mod.withAlertReferrer('https://example.com/a', channel), `https://example.com/a?${TAG}`);
+      }
+    });
+
+    it(`${label}: a tagged link classifies as the same article host`, () => {
+      const tagged = mod.withAlertReferrer('https://example.com/a?x=1#y', 'web_push');
+      assert.deepEqual(mod.classifyNotificationLink(tagged), { kind: 'article', url: tagged, host: 'example.com' });
+      assert.equal(mod.withAlertReferrer(tagged, 'web_push'), tagged, 'tagging twice changes nothing');
+    });
+  }
 });

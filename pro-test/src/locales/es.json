@@ -447,7 +447,8 @@
       "trendRising": "en alza",
       "trendFalling": "en caída",
       "trendStable": "estable",
-      "situationLink": "Monitorear la situación: crisis, titulares, puntos críticos e interrupciones en un panel"
+      "situationLink": "Monitorear la situación: crisis, titulares, puntos críticos e interrupciones en un panel",
+      "pizzaIndexLink": "Índice Pizza del Pentágono: cuánta gente hay en las pizzerías cerca del Pentágono"
     },
     "moments": {
       "eyebrow": "Motor de correlación",

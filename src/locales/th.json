@@ -629,7 +629,8 @@
         "techevent": "งานเทคโนโลยี",
         "techhq": "สำนักงานใหญ่เทคโนโลยี",
         "accelerator": "แอคเซเลอเรเตอร์",
-        "flight": "เที่ยวบิน"
+        "flight": "เที่ยวบิน",
+        "alert": "การแจ้งเตือน"
       },
       "flightOnGround": "บนพื้นดิน",
       "flightAirborne": "FL{{fl}} · {{kts}} นอต",
@@ -637,7 +638,9 @@
       "flightMilitaryOnGround": "ทหาร · {{type}} · บนพื้นดิน",
       "flightSearchHint": "กด Enter หรือคลิกเพื่อค้นหาตำแหน่งสด",
       "flightNotFound": "ไม่พบตำแหน่งสดสำหรับ {{callsign}}",
-      "addPanel": "เพิ่ม"
+      "addPanel": "เพิ่ม",
+      "sentAlerts": "การแจ้งเตือนที่ส่งให้คุณ",
+      "sentAlertTime": "ส่งแล้ว {{time}}"
     },
     "signal": {
       "title": "ผลการตรวจสอบข่าวกรอง",
