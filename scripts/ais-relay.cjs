@@ -11573,9 +11573,15 @@ async function seedTransitSummaries() {
 
   const now = Date.now();
   const summaries = {};
-  const unavailable = await transitTracker.flush(now);
-  if (unavailable.size) console.warn(`[Transit] Capacity-limited waterways: ${[...unavailable].join(', ')}`);
-  const window = await readTransitWindow(chokepointCrossings, now, upstashEval);
+  let window;
+  try {
+    const unavailable = await transitTracker.flush(now);
+    if (unavailable.size) console.warn(`[Transit] Capacity-limited waterways: ${[...unavailable].join(', ')}`);
+    window = await readTransitWindow(chokepointCrossings, now, upstashEval);
+    for (const name of unavailable) window.delete(name);
+  } catch (error) {
+    console.warn('[TransitSummary] Publishing PortWatch data with AIS counts unavailable:', error?.message || error);
+  }
   // Iterate the canonical chokepoint ID set rather than whatever pw happens to
   // carry today. If seed-portwatch dropped 3 of 13 (flaky ArcGIS), those 3
   // would otherwise vanish from summaries and the RPC would render zero-state
@@ -11608,8 +11614,8 @@ async function seedTransitSummaries() {
     let relayTransit = null;
     for (const [relayName, canonicalId] of Object.entries(RELAY_NAME_TO_ID)) {
       if (canonicalId === cpId) {
-        const recent = unavailable.has(relayName) ? [] : window.get(relayName) || [];
-        if (recent.length > 0) {
+        const recent = window?.get(relayName);
+        if (recent?.length) {
           relayTransit = {
             tanker: recent.filter(c => c.type === 'tanker').length,
             cargo: recent.filter(c => c.type === 'cargo').length,

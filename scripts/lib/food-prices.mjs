@@ -313,14 +313,17 @@ export function seriesKey(row) {
   return JSON.stringify([row.market, row.marketType, row.item, row.unit, row.currency, row.origin ?? '']);
 }
 
-export function mergeHistory(previous, incoming, refreshedReports = [...new Set(incoming.map(row => row.date))].map(date => ({ date }))) {
+export function mergeHistory(previous, incoming, refreshedReports = [...new Set(incoming.map(row => row.date))].map(date => ({ date })), { keepIncoming = false } = {}) {
   const rows = new Map();
   const newest = incoming.map(row => row.date).sort().at(-1);
   if (!newest) throw new Error('no dated food prices');
   const cutoff = new Date(Date.parse(newest) - 14 * 86400000).toISOString().slice(0, 10);
   const retained = previous.filter(row => !refreshedReports.some(report => report.date === row.date && (!report.item || report.item === row.item)));
-  for (const row of [...retained, ...incoming]) {
-    if (row.date >= cutoff && row.date <= newest && Number.isFinite(row.price) && row.price > 0) rows.set(`${seriesKey(row)}|${row.date}`, row);
+  // keepIncoming: the collector re-sends every row it needs (a survey item's latest survey and its baseline can
+  // predate the 14-day window), so this run's rows are kept while older history is still pruned.
+  for (const [index, row] of [...retained, ...incoming].entries()) {
+    const fresh = row.date >= cutoff || (keepIncoming && index >= retained.length);
+    if (fresh && row.date <= newest && Number.isFinite(row.price) && row.price > 0) rows.set(`${seriesKey(row)}|${row.date}`, row);
   }
   return [...rows.values()].sort((a, b) => a.date.localeCompare(b.date) || seriesKey(a).localeCompare(seriesKey(b)));
 }
