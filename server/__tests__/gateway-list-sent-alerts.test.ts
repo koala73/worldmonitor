@@ -10,9 +10,10 @@
  *     trusted `x-user-id` header is stripped, so user A cannot read user B.
  *   - An anonymous caller, a signed-in free account and an operator key with no
  *     user never reach a read.
- *   - A signed-in session is the account. A `wm_` key for another account on
- *     the same request (a desktop holding user A's key while user B is signed
- *     in) never selects whose alerts are read.
+ *   - Only a signed-in session is the account. A `wm_` key never selects
+ *     whose alerts are read: not next to another user's session (a desktop
+ *     holding user A's key while user B is signed in), and not alone (the same
+ *     desktop forwards no bearer for a signed-in user who is not Pro).
  *   - The response is `no-store`.
  */
 
@@ -51,7 +52,10 @@ vi.mock('../_shared/rate-limit', async (importActual) => {
   };
 });
 
-// A `wm_` key resolves to whichever owner the test names.
+// A `wm_` key resolves to whichever owner the test names. The key path is
+// stubbed to admit that owner in full (validation, entitlement, the desktop
+// meter below), so a gateway that consults the key answers 200 with the
+// owner's alerts and the tests fail on the leak itself, not on a side effect.
 const validateUserApiKeyPrincipal = vi.fn();
 vi.mock('../_shared/user-api-key', async (importActual) => ({
   ...(await importActual<typeof import('../_shared/user-api-key')>()),
@@ -231,12 +235,28 @@ describe('gateway: a wm_ key never overrides the signed-in account on list-sent-
     });
   }
 
-  test('control: a key with no session reads its owner\'s alerts', async () => {
+  for (const header of ['X-WorldMonitor-Key', 'X-Api-Key']) {
+    test(`a key alone (${header}) is refused before any read`, async () => {
+      // What a desktop sends for a signed-in user it forwards no bearer for.
+      await keyFor('user_a');
+      const res = await gateway(get({ [header]: 'wm_key_of_user_a' }), ctx);
+      expect(res.status).toBe(401);
+      const text = await res.text();
+      expect(text).not.toContain('Headline sent to');
+      // The refusal says what to do, not that the key needs more validation.
+      expect(text).toContain('Sign in to read account data');
+      expect(historyReads).toEqual([]);
+    });
+  }
+
+  test('a key next to a bearer that names no session is refused before any read', async () => {
+    // B's token expired: the session resolves to nobody, and A's key must not fill in.
     await keyFor('user_a');
-    const res = await gateway(get({ 'X-WorldMonitor-Key': 'wm_key_of_user_a' }), ctx);
-    expect(res.status).toBe(200);
-    expect(await res.text()).toContain('Headline sent to A');
-    expect(historyReads).toEqual([sentAlertsKey('user_a')]);
+    session(null);
+    const res = await gateway(get({ 'X-WorldMonitor-Key': 'wm_key_of_user_a', Authorization: 'Bearer expired' }), ctx);
+    expect(res.status).toBe(401);
+    expect(await res.text()).not.toContain('Headline sent to');
+    expect(historyReads).toEqual([]);
   });
 
   for (const header of ['X-WorldMonitor-Key', 'X-Api-Key']) {
@@ -261,8 +281,9 @@ describe('gateway: a wm_ key never overrides the signed-in account on list-sent-
     expect(historyReads).toEqual([]);
   });
 
-  test('the key lookup is skipped, so a key outage cannot fail the signed-in read', async () => {
+  test('the key is never looked up, with or without a session', async () => {
     await keyFor('user_a');
+    await gateway(get({ 'X-WorldMonitor-Key': 'wm_key_of_user_a' }), ctx);
     session('user_b');
     await gateway(get({ 'X-WorldMonitor-Key': 'wm_key_of_user_a', Authorization: 'Bearer b' }), ctx);
     expect(validateUserApiKeyPrincipal).not.toHaveBeenCalled();
