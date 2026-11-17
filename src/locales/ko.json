@@ -5387,9 +5387,10 @@
       "maneuverRaised": "궤도 {{km}} km 상승",
       "maneuverLowered": "궤도 {{km}} km 하강",
       "maneuverInclination": "궤도 경사 {{deg}}° 변경",
-      "maneuverPlane": "궤도면 {{deg}}° 이동",
+      "maneuverPlane": "승교점 {{deg}}° 이동",
       "maneuverHint": "궤도 요소가 위성 자체의 추세에서 벗어났습니다. 확인된 기동이 아니라 가능성입니다.",
-      "maneuverShort": "기동 가능성 {{date}}"
+      "maneuverShort": "기동 가능성 {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · 추세 이탈 {{residual}}, 임계값 {{threshold}} · 궤도 요소 {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "이 지점 상공의 추적 위성 · 다음 {{hours}}시간",

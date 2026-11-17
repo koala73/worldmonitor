@@ -5483,9 +5483,10 @@
       "maneuverRaised": "орбита поднята на {{km}} км",
       "maneuverLowered": "орбита понижена на {{km}} км",
       "maneuverInclination": "наклонение изменено на {{deg}}°",
-      "maneuverPlane": "плоскость орбиты смещена на {{deg}}°",
+      "maneuverPlane": "восходящий узел сместился на {{deg}}°",
       "maneuverHint": "Элементы орбиты отклонились от собственного тренда спутника. Это возможный, а не подтверждённый манёвр.",
-      "maneuverShort": "возможный манёвр {{date}}"
+      "maneuverShort": "возможный манёвр {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · отклонение от тренда {{residual}}, порог {{threshold}} · наборы элементов {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "Отслеживаемые спутники над объектом · ближайшие {{hours}} ч",

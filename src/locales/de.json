@@ -5419,9 +5419,10 @@
       "maneuverRaised": "Bahn um {{km}} km angehoben",
       "maneuverLowered": "Bahn um {{km}} km abgesenkt",
       "maneuverInclination": "Inklination um {{deg}}° geändert",
-      "maneuverPlane": "Bahnebene um {{deg}}° verschoben",
+      "maneuverPlane": "aufsteigender Knoten verschoben um {{deg}}°",
       "maneuverHint": "Die Bahnelemente weichen vom eigenen Verlauf des Satelliten ab. Das ist ein mögliches, kein bestätigtes Manöver.",
-      "maneuverShort": "mögliches Manöver {{date}}"
+      "maneuverShort": "mögliches Manöver {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · Abweichung vom Trend {{residual}}, Schwelle {{threshold}} · Bahnelementsätze {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "Verfolgte Satelliten über diesem Ort · nächste {{hours}} h",

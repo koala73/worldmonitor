@@ -11,7 +11,7 @@ import {
   type SiteCoverage,
   type TrackedSatelliteTle,
 } from '@/services/orbital/satellite-site-coverage';
-import { loadRecentManeuvers, maneuverChange, maneuverDay, type ManeuverCandidate } from '@/services/orbital/satellite-maneuvers';
+import { loadRecentManeuvers, maneuverChange, maneuverDay, maneuverReceipt, type ManeuverCandidate } from '@/services/orbital/satellite-maneuvers';
 
 const HOUR_MS = 3_600_000;
 const MINUTE_MS = 60_000;
@@ -59,12 +59,20 @@ function siteRow(entry: SiteCoverage, nowMs: number): HTMLElement {
   return row;
 }
 
-/** The candidate-manoeuvre line under the heading: a step in the orbit elements, never a confirmed burn (#9110). Exported for tests. */
+/**
+ * The candidate-manoeuvre line under the heading: a step in the orbit elements, never a confirmed
+ * burn (#9110). It opens to the receipt: what a candidate is, both element sets' values, how far
+ * the step left the trend and the threshold it crossed, and the epochs compared. Exported for tests.
+ */
 export function maneuverNote(candidate: ManeuverCandidate): HTMLElement {
   const change = maneuverChange(candidate);
-  const node = el('div', 'osat-sites-maneuver', t(`${KEY}.maneuver`, { date: maneuverDay(candidate), change: t(`${KEY}.${change.key}`, change.values) }));
-  node.title = t(`${KEY}.maneuverHint`);
+  const node = el('details', 'osat-sites-maneuver');
   node.dataset.element = candidate.element;
+  const summary = el('summary', 'osat-sites-maneuver-summary', t(`${KEY}.maneuver`, { date: maneuverDay(candidate), change: t(`${KEY}.${change.key}`, change.values) }));
+  const hint = el('p', 'osat-sites-maneuver-hint', t(`${KEY}.maneuverHint`));
+  const values = maneuverReceipt(candidate);
+  const receipt = values ? [el('p', 'osat-sites-maneuver-receipt', t(`${KEY}.maneuverReceipt`, values))] : [];
+  node.replaceChildren(summary, hint, ...receipt);
   return node;
 }
 
@@ -113,6 +121,8 @@ function draw(host: HTMLElement, state: SectionState, nowMs: number): void {
   const heading = el('span', 'osat-sites-label', t(`${KEY}.heading`, { hours: COVERAGE_WINDOW_HOURS }));
   const body = state.kind === 'note' ? [note(t(state.key))] : coverageNodes(state.coverage, nowMs);
   const maneuver = state.kind === 'coverage' && state.maneuver ? [maneuverNote(state.maneuver)] : [];
+  // The clock tick and the language redraw rebuild the section; an opened receipt stays open.
+  if (maneuver[0] && host.querySelector<HTMLDetailsElement>('details.osat-sites-maneuver')?.open) (maneuver[0] as HTMLDetailsElement).open = true;
   host.replaceChildren(heading, ...maneuver, ...body);
   const list = host.querySelector('.osat-sites-list');
   const scroll = listScroll.get(host) ?? 0;

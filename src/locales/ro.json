@@ -5451,9 +5451,10 @@
       "maneuverRaised": "orbita ridicată cu {{km}} km",
       "maneuverLowered": "orbita coborâtă cu {{km}} km",
       "maneuverInclination": "înclinația schimbată cu {{deg}}°",
-      "maneuverPlane": "planul orbitei deplasat cu {{deg}}°",
+      "maneuverPlane": "nodul ascendent deplasat cu {{deg}}°",
       "maneuverHint": "Elementele orbitale s-au abătut de la tendința proprie a satelitului. Este o manevră posibilă, nu confirmată.",
-      "maneuverShort": "manevră posibilă {{date}}"
+      "maneuverShort": "manevră posibilă {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · abatere de la tendință {{residual}}, prag {{threshold}} · seturi de elemente {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "Sateliți urmăriți deasupra acestei locații · următoarele {{hours}} h",

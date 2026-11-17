@@ -5387,9 +5387,10 @@
       "maneuverRaised": "quỹ đạo nâng {{km}} km",
       "maneuverLowered": "quỹ đạo hạ {{km}} km",
       "maneuverInclination": "độ nghiêng thay đổi {{deg}}°",
-      "maneuverPlane": "mặt phẳng quỹ đạo dịch {{deg}}°",
+      "maneuverPlane": "nút lên dịch chuyển {{deg}}°",
       "maneuverHint": "Các yếu tố quỹ đạo đã lệch khỏi xu hướng riêng của vệ tinh. Đây là khả năng, chưa phải điều chỉnh đã xác nhận.",
-      "maneuverShort": "khả năng điều chỉnh quỹ đạo {{date}}"
+      "maneuverShort": "khả năng điều chỉnh quỹ đạo {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · lệch khỏi xu hướng {{residual}}, ngưỡng {{threshold}} · bộ phần tử {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "Vệ tinh được theo dõi trên địa điểm này · {{hours}} giờ tới",

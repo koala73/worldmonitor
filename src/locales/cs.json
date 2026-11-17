@@ -5483,9 +5483,10 @@
       "maneuverRaised": "dráha zvýšena o {{km}} km",
       "maneuverLowered": "dráha snížena o {{km}} km",
       "maneuverInclination": "sklon změněn o {{deg}}°",
-      "maneuverPlane": "rovina dráhy posunuta o {{deg}}°",
+      "maneuverPlane": "výstupní uzel se posunul o {{deg}}°",
       "maneuverHint": "Dráhové elementy se odchýlily od vlastního trendu družice. Jde o možný, nikoli potvrzený manévr.",
-      "maneuverShort": "možný manévr {{date}}"
+      "maneuverShort": "možný manévr {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · odchylka od trendu {{residual}}, práh {{threshold}} · sady prvků {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "Sledované satelity nad tímto místem · dalších {{hours}} h",

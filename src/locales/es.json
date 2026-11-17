@@ -5451,9 +5451,10 @@
       "maneuverRaised": "órbita elevada {{km}} km",
       "maneuverLowered": "órbita descendida {{km}} km",
       "maneuverInclination": "inclinación cambiada {{deg}}°",
-      "maneuverPlane": "plano orbital desplazado {{deg}}°",
+      "maneuverPlane": "nodo ascendente desplazado {{deg}}°",
       "maneuverHint": "Sus elementos orbitales se apartaron de la tendencia propia del satélite. Es una maniobra posible, no confirmada.",
-      "maneuverShort": "posible maniobra {{date}}"
+      "maneuverShort": "posible maniobra {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · desviación de la tendencia {{residual}}, umbral {{threshold}} · conjuntos de elementos {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "Satélites rastreados sobre este sitio · próximas {{hours}} h",

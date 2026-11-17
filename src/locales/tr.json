@@ -5419,9 +5419,10 @@
       "maneuverRaised": "yörünge {{km}} km yükseltildi",
       "maneuverLowered": "yörünge {{km}} km alçaltıldı",
       "maneuverInclination": "eğim {{deg}}° değişti",
-      "maneuverPlane": "yörünge düzlemi {{deg}}° kaydı",
+      "maneuverPlane": "çıkış düğümü {{deg}}° kaydı",
       "maneuverHint": "Yörünge elemanları uydunun kendi eğiliminden ayrıldı. Bu doğrulanmış değil, olası bir manevradır.",
-      "maneuverShort": "olası manevra {{date}}"
+      "maneuverShort": "olası manevra {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · eğilimden sapma {{residual}}, eşik {{threshold}} · eleman setleri {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "Bu konum üzerindeki izlenen uydular · önümüzdeki {{hours}} sa",

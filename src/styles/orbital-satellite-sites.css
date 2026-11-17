@@ -47,13 +47,28 @@
   color: var(--yellow-text, var(--yellow));
 }
 
-/* A candidate manoeuvre (#9110): a fact about the orbit, amber like other caveats, never an alert colour. */
+/* A candidate manoeuvre (#9110): a fact about the orbit, amber like other caveats, never an alert colour.
+   It opens to its receipt, so the evidence is one tap away on a phone as well. */
 .osat-sites-maneuver {
   margin-bottom: 4px;
   font-size: 11px;
   line-height: 16px;
-  color: var(--yellow-text, var(--yellow));
   overflow-wrap: anywhere;
+}
+
+.osat-sites-maneuver-summary {
+  color: var(--yellow-text, var(--yellow));
+  cursor: pointer;
+}
+
+.osat-sites-maneuver-hint,
+.osat-sites-maneuver-receipt {
+  margin: 2px 0 0;
+  color: var(--text-dim);
+}
+
+.osat-sites-maneuver-receipt {
+  font-variant-numeric: tabular-nums;
 }
 
 .osat-sites-list {

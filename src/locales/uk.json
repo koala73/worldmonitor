@@ -5483,9 +5483,10 @@
       "maneuverRaised": "орбіту піднято на {{km}} км",
       "maneuverLowered": "орбіту знижено на {{km}} км",
       "maneuverInclination": "нахил змінено на {{deg}}°",
-      "maneuverPlane": "площину орбіти зміщено на {{deg}}°",
+      "maneuverPlane": "висхідний вузол змістився на {{deg}}°",
       "maneuverHint": "Елементи орбіти відхилилися від власного тренду супутника. Це можливий, а не підтверджений маневр.",
-      "maneuverShort": "можливий маневр {{date}}"
+      "maneuverShort": "можливий маневр {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · відхилення від тренду {{residual}}, поріг {{threshold}} · набори елементів {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "Відстежувані супутники над об'єктом · найближчі {{hours}} год",

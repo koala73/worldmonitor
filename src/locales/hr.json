@@ -5461,9 +5461,10 @@
       "maneuverRaised": "orbita podignuta za {{km}} km",
       "maneuverLowered": "orbita spuštena za {{km}} km",
       "maneuverInclination": "nagib promijenjen za {{deg}}°",
-      "maneuverPlane": "ravnina orbite pomaknuta za {{deg}}°",
+      "maneuverPlane": "uzlazni čvor pomaknut za {{deg}}°",
       "maneuverHint": "Orbitalni elementi odstupili su od vlastitog trenda satelita. Riječ je o mogućem, a ne potvrđenom manevru.",
-      "maneuverShort": "mogući manevar {{date}}"
+      "maneuverShort": "mogući manevar {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · odstupanje od trenda {{residual}}, prag {{threshold}} · skupovi elemenata {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "Praćeni sateliti iznad ovog mjesta · sljedećih {{hours}} h",

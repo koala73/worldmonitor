@@ -5419,9 +5419,10 @@
       "maneuverRaised": "a pálya {{km}} km-rel emelkedett",
       "maneuverLowered": "a pálya {{km}} km-rel süllyedt",
       "maneuverInclination": "a pályahajlás {{deg}}°-kal változott",
-      "maneuverPlane": "a pályasík {{deg}}°-kal elmozdult",
+      "maneuverPlane": "a felszálló csomó {{deg}}°-kal elmozdult",
       "maneuverHint": "A pályaelemei eltértek a műhold saját trendjétől. Ez lehetséges, nem megerősített manőver.",
-      "maneuverShort": "lehetséges manőver {{date}}"
+      "maneuverShort": "lehetséges manőver {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · eltérés a trendtől {{residual}}, küszöb {{threshold}} · elemkészletek {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "Követett műholdak a hely felett · következő {{hours}} h",

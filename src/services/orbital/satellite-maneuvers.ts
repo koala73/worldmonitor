@@ -32,18 +32,35 @@ export function recentManeuvers(response: ListSatelliteManeuversResponse, nowMs:
   return recent;
 }
 
-let cached: { promise: Promise<Map<string, ManeuverCandidate>>; loadedAt: number } | null = null;
+/** When the first of these candidates ages out of the marker window, or Infinity. */
+function firstExpiryMs(recent: ReadonlyMap<string, ManeuverCandidate>): number {
+  let first = Number.POSITIVE_INFINITY;
+  for (const candidate of recent.values()) first = Math.min(first, candidate.toEpoch + MANEUVER_MARKER_DAYS * DAY_MS);
+  return first;
+}
 
-/** Recent candidates, shared for 15 minutes. Never rejects: a failed read is an empty map and is retried next time. */
+/** A failed read answers "no marker" for this long, so an open sheet does not refetch and redraw every tick. */
+const FAILURE_TTL_MS = 60_000;
+
+let cached: { promise: Promise<Map<string, ManeuverCandidate>>; expiresAt: number } | null = null;
+
+/**
+ * Recent candidates, shared for 15 minutes, or until the first of them ages out of the marker
+ * window. Never rejects: a failed read is an empty map for a minute, then retried.
+ */
 export function loadRecentManeuvers(nowMs = Date.now()): Promise<Map<string, ManeuverCandidate>> {
-  if (cached && nowMs - cached.loadedAt < LIST_TTL_MS) return cached.promise;
+  if (cached && nowMs < cached.expiresAt) return cached.promise;
   const entry = {
-    loadedAt: nowMs,
+    expiresAt: nowMs + LIST_TTL_MS,
     promise: getOrbitalClient().listSatelliteManeuvers({ noradId: 0 })
-      .then((response) => recentManeuvers(response, Date.now()))
+      .then((response) => {
+        const recent = recentManeuvers(response, Date.now());
+        entry.expiresAt = Math.min(entry.expiresAt, firstExpiryMs(recent));
+        return recent;
+      })
       .catch((error: unknown) => {
         console.warn('[orbital] candidate manoeuvres unavailable', error);
-        if (cached === entry) cached = null;
+        entry.expiresAt = Math.min(entry.expiresAt, Date.now() + FAILURE_TTL_MS);
         return new Map<string, ManeuverCandidate>();
       }),
   };
@@ -64,6 +81,32 @@ export function maneuverChange(candidate: ManeuverCandidate): { key: string; val
   }
   const deg = size < 0.1 ? size.toFixed(3) : size.toFixed(2);
   return { key: candidate.element === 'inclination' ? 'maneuverInclination' : 'maneuverPlane', values: { deg } };
+}
+
+const SYMBOL: Record<string, string> = { semiMajorAxis: 'a', inclination: 'i', raan: 'Ω' };
+const utcMinute = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
+
+/**
+ * The receipt's values for the locale key maneuverReceipt: the element in both element sets, how
+ * far the step left the trend, the threshold it crossed, and the two epochs compared (#9110).
+ * The node is shown as published; the trend it is judged against has J2 regression removed.
+ */
+export function maneuverReceipt(candidate: ManeuverCandidate): Record<string, string> | null {
+  const { before, after } = candidate;
+  if (!before || !after) return null;
+  const km = candidate.element === 'semiMajorAxis';
+  const value = (set: NonNullable<ManeuverCandidate['before']>) => (km ? set.semiMajorAxisKm : candidate.element === 'inclination' ? set.inclination : set.raan);
+  const fmt = (n: number) => (km ? `${n.toFixed(2)} km` : `${n.toFixed(4)}°`);
+  const delta = (n: number) => (km ? `${n >= 0 ? '+' : ''}${n.toFixed(2)} km` : `${n >= 0 ? '+' : ''}${n.toFixed(4)}°`);
+  return {
+    symbol: SYMBOL[candidate.element] ?? candidate.element,
+    before: fmt(value(before)),
+    after: fmt(value(after)),
+    residual: delta(candidate.residual),
+    threshold: `±${km ? `${candidate.threshold.toFixed(2)} km` : `${candidate.threshold.toFixed(4)}°`}`,
+    from: utcMinute(candidate.fromEpoch),
+    to: utcMinute(candidate.toEpoch),
+  };
 }
 
 /** The UTC day of the epoch after the step, YYYY-MM-DD. */

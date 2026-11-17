@@ -24,9 +24,9 @@ vi.mock('@/services/orbital/satellite-site-coverage', async (importOriginal) => 
 }));
 
 import type { ListSatelliteManeuversResponse, ManeuverCandidate } from '@/generated/client/worldmonitor/orbital/v1/service_client';
-import { maneuverNote, renderSatelliteSites } from '@/components/orbital-satellite-sites-view';
+import { advanceSatelliteSites, maneuverNote, renderSatelliteSites } from '@/components/orbital-satellite-sites-view';
 import { siteSatellitesSection } from '@/components/orbital-site-satellites-view';
-import { loadRecentManeuvers, MANEUVER_MARKER_DAYS, recentManeuvers, resetManeuverCache } from '@/services/orbital/satellite-maneuvers';
+import { loadRecentManeuvers, MANEUVER_MARKER_DAYS, maneuverReceipt, recentManeuvers, resetManeuverCache } from '@/services/orbital/satellite-maneuvers';
 
 const NOW = Date.UTC(2026, 10, 16, 12, 0);
 const DAY_MS = 86_400_000;
@@ -75,30 +75,62 @@ describe('recentManeuvers', () => {
 });
 
 describe('loadRecentManeuvers', () => {
-  it('shares one read, and turns a failure into no marker that is retried next time', async () => {
+  it('shares one read, and turns a failure into no marker for a minute, then retries', async () => {
     mocks.listSatelliteManeuvers.mockRejectedValueOnce(new Error('HTTP 503')).mockResolvedValue(response([candidate()]));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    expect((await loadRecentManeuvers(NOW)).size).toBe(0);
+    vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(NOW);
-    const first = loadRecentManeuvers(NOW);
-    expect(loadRecentManeuvers(NOW + 60_000)).toBe(first);
+    const failed = loadRecentManeuvers(NOW);
+    expect((await failed).size).toBe(0);
+    // An open site sheet ticks every 30 s: it gets the same answer, not a new read and a redraw.
+    expect(loadRecentManeuvers(NOW + 30_000)).toBe(failed);
+    expect(mocks.listSatelliteManeuvers).toHaveBeenCalledTimes(1);
+    vi.setSystemTime(NOW + 61_000);
+    const first = loadRecentManeuvers(NOW + 61_000);
+    expect(loadRecentManeuvers(NOW + 120_000)).toBe(first);
     expect((await first).has('40697')).toBe(true);
     expect(mocks.listSatelliteManeuvers).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it('reads again once a shared candidate ages out of the marker window', async () => {
+    const expiresAt = NOW + 5 * 60_000;
+    mocks.listSatelliteManeuvers.mockResolvedValue(response([candidate({ toEpoch: expiresAt - MANEUVER_MARKER_DAYS * DAY_MS })]));
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    const first = loadRecentManeuvers(NOW);
+    expect((await first).has('40697')).toBe(true);
+    expect(loadRecentManeuvers(expiresAt - 1)).toBe(first);
+    vi.setSystemTime(expiresAt + 1);
+    expect(loadRecentManeuvers(expiresAt + 1)).not.toBe(first);
+    expect((await loadRecentManeuvers(expiresAt + 1)).has('40697')).toBe(false);
     vi.useRealTimers();
   });
 });
 
 describe('maneuverNote', () => {
+  const summary = (node: HTMLElement) => node.querySelector('summary')!.textContent;
+
   it('names the day and the change, and says it is a candidate', () => {
     const node = maneuverNote(candidate());
-    expect(node.textContent).toBe('Candidate maneuver 2026-11-14: orbit raised 1.2 km');
-    expect(node.title).toMatch(/candidate, not a confirmed maneuver/);
+    expect(node.tagName).toBe('DETAILS');
+    expect(summary(node)).toBe('Candidate maneuver 2026-11-14: orbit raised 1.2 km');
+    expect(node.querySelector('.osat-sites-maneuver-hint')!.textContent).toMatch(/candidate, not a confirmed maneuver/);
     expect(node.dataset.element).toBe('semiMajorAxis');
-    expect(maneuverNote(candidate({ residual: -0.6 })).textContent).toBe('Candidate maneuver 2026-11-14: orbit lowered 0.6 km');
-    expect(maneuverNote(candidate({ element: 'inclination', unit: 'deg', residual: -0.031 })).textContent)
+    expect(summary(maneuverNote(candidate({ residual: -0.6 })))).toBe('Candidate maneuver 2026-11-14: orbit lowered 0.6 km');
+    expect(summary(maneuverNote(candidate({ element: 'inclination', unit: 'deg', residual: -0.031 }))))
       .toBe('Candidate maneuver 2026-11-14: inclination changed 0.031°');
-    expect(maneuverNote(candidate({ element: 'raan', unit: 'deg', residual: 0.15 })).textContent)
-      .toBe('Candidate maneuver 2026-11-14: orbit plane shifted 0.15°');
+    expect(summary(maneuverNote(candidate({ element: 'raan', unit: 'deg', residual: 0.15 }))))
+      .toBe('Candidate maneuver 2026-11-14: ascending node shifted 0.15°');
+  });
+
+  it('opens to both element sets, the step off the trend, the threshold and the epochs compared', () => {
+    const receipt = maneuverNote(candidate()).querySelector('.osat-sites-maneuver-receipt')!.textContent;
+    expect(receipt).toBe('a 7164.10 km → 7165.30 km · off trend +1.20 km, threshold ±0.20 km · element sets 2026-11-13 15:03 → 2026-11-14 15:03 UTC');
+    expect(maneuverReceipt(candidate({ element: 'inclination', unit: 'deg', residual: -0.031, threshold: 0.01 }))).toMatchObject({
+      symbol: 'i', before: '98.5600°', after: '98.5600°', residual: '-0.0310°', threshold: '±0.0100°',
+    });
+    expect(maneuverReceipt(candidate({ before: undefined }))).toBeNull();
   });
 });
 
@@ -127,6 +159,19 @@ describe('satellite card', () => {
     expect(names()).toEqual(['Alpha Base', 'Bravo Port']);
   });
 
+  it('keeps an opened receipt open across the clock redraw', async () => {
+    mocks.getTrackedSatelliteTle.mockReturnValue(tle);
+    mocks.sitesCoveredBySatellite.mockResolvedValue({ ...coverage, windowStartMs: Date.now() });
+    mocks.listSatelliteManeuvers.mockResolvedValue(response([candidate({ toEpoch: Date.now() - DAY_MS })]));
+    const host = document.createElement('div');
+    document.body.append(host);
+    await renderSatelliteSites(host, '40697', 'SENTINEL-2A');
+    await vi.waitFor(() => expect(host.querySelector('details.osat-sites-maneuver')).not.toBeNull());
+    host.querySelector<HTMLDetailsElement>('details.osat-sites-maneuver')!.open = true;
+    expect(advanceSatelliteSites(host, Date.now() + 30_000)).toBe('current');
+    expect(host.querySelector<HTMLDetailsElement>('details.osat-sites-maneuver')!.open).toBe(true);
+  });
+
   it('puts the candidate line under the heading, and leaves it out when the list is unavailable', async () => {
     mocks.getTrackedSatelliteTle.mockReturnValue(tle);
     mocks.sitesCoveredBySatellite.mockResolvedValue(coverage);
@@ -135,7 +180,7 @@ describe('satellite card', () => {
     document.body.append(host);
     await renderSatelliteSites(host, '40697', 'SENTINEL-2A');
     await vi.waitFor(() => expect(host.children[1]!.classList.contains('osat-sites-maneuver')).toBe(true));
-    expect(host.querySelector('.osat-sites-maneuver')!.textContent).toMatch(/^Candidate maneuver \d{4}-\d{2}-\d{2}: orbit raised 1\.2 km$/);
+    expect(host.querySelector('.osat-sites-maneuver summary')!.textContent).toMatch(/^Candidate maneuver \d{4}-\d{2}-\d{2}: orbit raised 1\.2 km$/);
 
     resetManeuverCache();
     vi.spyOn(console, 'warn').mockImplementation(() => {});

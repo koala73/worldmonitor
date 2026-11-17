@@ -5419,9 +5419,10 @@
       "maneuverRaised": "obiti imepandishwa km {{km}}",
       "maneuverLowered": "obiti imeshushwa km {{km}}",
       "maneuverInclination": "mwinamo umebadilika {{deg}}°",
-      "maneuverPlane": "bapa la obiti limehamishwa {{deg}}°",
+      "maneuverPlane": "nodi inayopanda imehama {{deg}}°",
       "maneuverHint": "Vipengele vya obiti yake vimeacha mwelekeo wa setilaiti yenyewe. Huu ni uendeshaji unaowezekana, si uliothibitishwa.",
-      "maneuverShort": "uendeshaji unaowezekana {{date}}"
+      "maneuverShort": "uendeshaji unaowezekana {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · mkengeuko kutoka mwelekeo {{residual}}, kizingiti {{threshold}} · seti za vipengele {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "Setilaiti zinazofuatiliwa juu ya eneo hili · saa {{hours}} zijazo",

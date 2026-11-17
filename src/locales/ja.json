@@ -5387,9 +5387,10 @@
       "maneuverRaised": "軌道を {{km}} km 上昇",
       "maneuverLowered": "軌道を {{km}} km 下降",
       "maneuverInclination": "軌道傾斜角が {{deg}}° 変化",
-      "maneuverPlane": "軌道面が {{deg}}° 移動",
+      "maneuverPlane": "昇交点が{{deg}}°移動",
       "maneuverHint": "軌道要素がこの衛星自身の傾向から外れました。確認されたマヌーバではなく、その可能性です。",
-      "maneuverShort": "マヌーバの可能性 {{date}}"
+      "maneuverShort": "マヌーバの可能性 {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · 傾向からの乖離 {{residual}}、しきい値 {{threshold}} · 軌道要素 {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "この地点上空の追跡衛星 · 今後{{hours}}時間",

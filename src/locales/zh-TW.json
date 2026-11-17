@@ -5387,9 +5387,10 @@
       "maneuverRaised": "軌道抬升 {{km}} 公里",
       "maneuverLowered": "軌道降低 {{km}} 公里",
       "maneuverInclination": "傾角變化 {{deg}}°",
-      "maneuverPlane": "軌道面偏移 {{deg}}°",
+      "maneuverPlane": "升交點偏移 {{deg}}°",
       "maneuverHint": "其軌道根數偏離了該衛星自身的趨勢。這是疑似機動，並非已確認的機動。",
-      "maneuverShort": "疑似機動 {{date}}"
+      "maneuverShort": "疑似機動 {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · 偏離趨勢 {{residual}}，閾值 {{threshold}} · 軌道根數 {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "此地點上空的跟蹤衛星 · 未來 {{hours}} 小時",

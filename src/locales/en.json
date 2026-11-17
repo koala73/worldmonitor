@@ -4883,9 +4883,10 @@
       "maneuverRaised": "orbit raised {{km}} km",
       "maneuverLowered": "orbit lowered {{km}} km",
       "maneuverInclination": "inclination changed {{deg}}°",
-      "maneuverPlane": "orbit plane shifted {{deg}}°",
+      "maneuverPlane": "ascending node shifted {{deg}}°",
       "maneuverHint": "Its orbit elements left the satellite's own trend. This is a candidate, not a confirmed maneuver.",
-      "maneuverShort": "candidate maneuver {{date}}"
+      "maneuverShort": "candidate maneuver {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · off trend {{residual}}, threshold {{threshold}} · element sets {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "Tracked satellites over this site · next {{hours}} h",

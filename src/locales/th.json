@@ -5387,9 +5387,10 @@
       "maneuverRaised": "วงโคจรสูงขึ้น {{km}} กม.",
       "maneuverLowered": "วงโคจรต่ำลง {{km}} กม.",
       "maneuverInclination": "ความเอียงเปลี่ยน {{deg}}°",
-      "maneuverPlane": "ระนาบวงโคจรเลื่อน {{deg}}°",
+      "maneuverPlane": "โหนดขึ้นเลื่อน {{deg}}°",
       "maneuverHint": "องค์ประกอบวงโคจรเบี่ยงออกจากแนวโน้มของดาวเทียมเอง นี่เป็นเพียงความเป็นไปได้ ไม่ใช่การปรับวงโคจรที่ยืนยันแล้ว",
-      "maneuverShort": "การปรับวงโคจรที่เป็นไปได้ {{date}}"
+      "maneuverShort": "การปรับวงโคจรที่เป็นไปได้ {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · เบี่ยงจากแนวโน้ม {{residual}} เกณฑ์ {{threshold}} · ชุดองค์ประกอบ {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "ดาวเทียมที่ติดตามเหนือสถานที่นี้ · {{hours}} ชม. ถัดไป",
