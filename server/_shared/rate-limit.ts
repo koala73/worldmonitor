@@ -606,6 +606,11 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/news/v1/search-fact-checks': { limit: 20, window: '60 s' },
   // /verify claim search: public; a cache miss reads every feed cache.
   '/api/news/v1/search-claim-headlines': { limit: 30, window: '60 s' },
+  // Cmd+K headline search: one request per typing pause. A memo miss reads up
+  // to eight day buckets (about 4 MB) from Redis, so misses have their own
+  // per-caller budget in the handler (_headline-history.ts).
+  '/api/news/v1/search-headlines': { limit: 60, window: '60 s' },
+  '/api/news/v1/search-headline-archive': { limit: 60, window: '60 s' },
   '/api/aviation/v1/track-aircraft': { limit: 30, window: '60 s' },
   '/api/aviation/v1/list-aircraft-emergencies': { limit: 20, window: '60 s' },
   '/api/aviation/v1/search-google-flights': { limit: 30, window: '60 s' },

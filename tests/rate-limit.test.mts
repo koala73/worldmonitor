@@ -719,6 +719,11 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
       reason: 'place-name search spends the provider-wide Nominatim bucket and must fail closed before upstream work',
     },
     {
+      path: 'server/worldmonitor/news/v1/_headline-history.ts',
+      expected: /Redis-degraded scoped limits intentionally stay availability-first here[\s\S]*?if\s*\(!budget\.allowed && !budget\.degraded\) return/,
+      reason: 'the per-caller Cmd+K index-read budget refuses only on a decided limit: a self-hosted Redis 6 is degraded on every scoped call, and refusing there would switch headline history off for good; the route limit still caps requests',
+    },
+    {
       path: 'api/a2a.ts',
       expected: /Redis-degraded scoped limits intentionally stay availability-first/,
       reason: 'A2A concierge serves only anonymous, quota-free, cheap catalog matching — degradation is logged and stays availability-first',
