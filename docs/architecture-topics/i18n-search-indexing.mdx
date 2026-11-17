@@ -19,16 +19,20 @@ page canonical. Query-string locale URLs do not belong in hreflang, robots, or
 sitemap output.
 
 The apex welcome page also ships prerendered landings at `/es/`, `/pt/`, `/ru/`,
-`/fr/`, `/de/`, and `/ar/`. Those URLs return HTTP 200 HTML with translated
-visible copy and metadata. There is no Accept-Language redirect: crawlers and
-direct visits receive the localized document. The locale set lives in
-`shared/indexable-landing-locales.ts`.
+`/fr/`, `/de/`, `/ar/`, `/id/`, and `/ja/`. Those URLs return HTTP 200 HTML with
+translated visible copy and metadata. There is no Accept-Language redirect:
+crawlers and direct visits receive the localized document. The locale set lives
+in `shared/indexable-landing-locales.ts`.
+
+Indonesian is a landing-only language. `/id/` has a welcome and Pro dictionary,
+and the dashboard has no Indonesian interface, so `/dashboard?lang=id` stays
+English.
 
 **hreflang policy by surface:**
 
 | Surface | Indexable languages | Declaration |
 | --- | --- | --- |
-| Apex `/` and localized welcome landings (`/es/`, `/pt/`, `/ru/`, `/fr/`, `/de/`, `/ar/`) | English plus those locales | Reciprocal cluster; `x-default` is English `/` |
+| Apex `/` and localized welcome landings (`/es/`, `/pt/`, `/ru/`, `/fr/`, `/de/`, `/ar/`, `/id/`, `/ja/`) | English plus those locales | Reciprocal cluster; `x-default` is English `/` |
 | `/dashboard`, `/pro`, and English crawlable corpus pages (`/countries/`, `/chokepoints/`, …) | English only | Self-pointing `en` + `x-default` |
 | Mintlify docs (`/docs/…` and `/docs/zh/…`) | English + Simplified Chinese | Reciprocal `en` / `zh-Hans` / `x-default` (English is `x-default`) |
 | Application UI via `?lang=` | Not indexable alternates | Never advertised in hreflang |

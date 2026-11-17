@@ -7,7 +7,10 @@ import { isTraditionalChineseTag, resolveEffectiveWelcomeContentLanguage } from 
 
 type TranslationDictionary = Record<string, unknown>;
 
-const SUPPORTED_LANGUAGES = ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'zh-TW', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi', 'sw'] as const;
+// The dashboard's languages in src/services/i18n.ts order, then the languages
+// only this root ships. `id` exists for the prerendered /id/ homepage; the
+// dashboard has no Indonesian dictionary (tests/pro-locale-registry.test.mjs).
+const SUPPORTED_LANGUAGES = ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'zh-TW', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi', 'sw', 'id'] as const;
 type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
 const SUPPORTED_SET = new Set<SupportedLanguage>(SUPPORTED_LANGUAGES);
 const loadedLanguages = new Set<SupportedLanguage>(['en']);
@@ -44,14 +47,15 @@ async function ensureLoaded(lng: string): Promise<SupportedLanguage> {
 //
 // Mirror of ogLocaleMap in src/App.ts. The two packages have separate Vite
 // roots and bundlers and can't share an import — keep the tables aligned by
-// hand when adding a locale here OR there.
+// hand when adding a locale here OR there. `id` is the one entry with no
+// counterpart there: it is a language only this root ships.
 const OG_LOCALE: Record<string, string> = {
   en: 'en_US', bg: 'bg_BG', cs: 'cs_CZ', fr: 'fr_FR', de: 'de_DE', el: 'el_GR',
   es: 'es_ES', hr: 'hr_HR', hu: 'hu_HU', it: 'it_IT', pl: 'pl_PL', pt: 'pt_BR',
   nl: 'nl_NL', sv: 'sv_SE', ru: 'ru_RU', uk: 'uk_UA', ar: 'ar_SA', fa: 'fa_IR', zh: 'zh_CN',
   'zh-TW': 'zh_TW',
   ja: 'ja_JP', ko: 'ko_KR', ro: 'ro_RO', tr: 'tr_TR', th: 'th_TH', vi: 'vi_VN',
-  hi: 'hi_IN', sw: 'sw_TZ',
+  hi: 'hi_IN', sw: 'sw_TZ', id: 'id_ID',
 };
 
 function applyMetaTags(prefix = 'meta', contentLanguage = currentLanguageBase()): void {
