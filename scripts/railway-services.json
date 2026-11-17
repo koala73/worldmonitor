@@ -418,6 +418,8 @@
       "shared/brief-strings.d.ts",
       "shared/brief-strings.data.js",
       "shared/brief-strings.js",
+      "shared/brief-text.d.ts",
+      "shared/brief-text.js",
       "shared/diplomacy-keywords.json",
       "shared/ephemeral-live-classifier.d.ts",
       "shared/ephemeral-live-classifier.js",
