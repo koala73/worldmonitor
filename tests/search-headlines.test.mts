@@ -187,6 +187,28 @@ describe('headline history write', () => {
     assert.equal(commands.length, 0);
   });
 
+  it('gives up on a write Redis never answers at the digest deadline, not at the Redis timeout', async () => {
+    // The digest build joins this write before it assembles the response, so
+    // the join must end by the deadline the build's other writes run under.
+    globalThis.fetch = ((_url: unknown, init?: RequestInit) => new Promise((_resolve, reject) => {
+      init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason));
+    })) as typeof fetch;
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    const started = performance.now();
+    try {
+      const ok = await digest.recordServedHeadlines([
+        { source: 'Reuters World', title: 'Rates held', link: 'https://www.reuters.com/world/rates', publishedAt: NOW,
+          originPublisher: '', originPublisherTrusted: false },
+      ] as never, 'full', 'en', NOW + 50);
+      assert.equal(ok, false);
+    } finally {
+      console.warn = originalWarn;
+    }
+    const waited = performance.now() - started;
+    assert.ok(waited >= 40 && waited < 1500, `waited ${Math.round(waited)} ms for a 50 ms deadline (the Redis timeout is 5,000 ms)`);
+  });
+
   it('says so when Redis does not confirm the write, and when the deadline left no time for it', async () => {
     const served = [{ source: 'Reuters World', title: 'Rates held', link: 'https://www.reuters.com/world/rates', publishedAt: NOW,
       originPublisher: '', originPublisherTrusted: false }] as never;
