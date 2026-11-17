@@ -324,9 +324,10 @@ completes, which can be more than 24 hours later; dispatch **CodeQL** on `main`
 to scan sooner. Scheduled and manual runs use separate
 concurrency groups, and neither cancels a running scan.
 
-After each default-branch scan, the `prune-overlay-bases` job deletes every CodeQL
-overlay-base cache except the newest per workflow/job/language group, because
-CodeQL saves a new base under a unique key on every run and never removes old ones.
+The `analyze` job sets `CODEQL_OVERLAY_DATABASE_MODE: none`. Otherwise every
+default-branch scan saves an overlay-base database (about 2 GB a day) to the
+Actions cache, and only pull request scans, which this workflow does not run,
+would ever restore it.
 
 The repository owner must coordinate activation with the approved merge:
 
