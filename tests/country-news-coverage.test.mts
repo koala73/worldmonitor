@@ -8,7 +8,9 @@ import { transpileModule } from 'typescript';
 import { bundleFeedsModule } from './_lib/bundle-feeds-module.mts';
 import { NEWS_CATALOG, buildDigestWarmCells } from '../shared/news-catalog';
 import { NEWS_LANGUAGES } from '../src/shared/public-rpc-cache';
-import { migrateCountryCoverageOptInsV12, buildMigrations, applyMigrationChain } from '../src/utils/cloud-prefs-migrations';
+import { migrateCountryCoverageOptInsV12, migrateBrazilOptInsV11, buildMigrations, applyMigrationChain } from '../src/utils/cloud-prefs-migrations';
+import { SOURCE_PROPAGANDA_RISK } from '../shared/source-provenance';
+import { resolveHostOrigin } from '../scripts/source-origin.mjs';
 import type { Feed } from '../src/types';
 
 const audit = JSON.parse(readFileSync('shared/country-news-coverage.json', 'utf8')) as {
@@ -71,6 +73,47 @@ describe('optional country news coverage', () => {
     assert.equal(audit.additions['Al-Sumaria'].url, 'https://www.alsumaria.tv/Rss/iraq-latest-news/ar');
   });
 
+  it('records publisher countries and government ownership separately from coverage', () => {
+    const profiles = JSON.parse(readFileSync('shared/outlet-profile.json', 'utf8'));
+    assert.equal(resolveHostOrigin('www.larepublica.co'), 'CO');
+    assert.equal(profiles['La República Colombia'].country, 'CO');
+    assert.equal(resolveHostOrigin('n1info.hr'), profiles['N1 Croatia'].country);
+    for (const [name, country] of [['Ahram Online', 'Egypt'], ['Bernama', 'Malaysia']]) {
+      assert.equal(SOURCE_PROPAGANDA_RISK[name].stateAffiliated, country);
+      assert.equal(profiles[name].ownershipClass, 'state');
+    }
+  });
+
+  it('keeps new sources disabled for the session when preference or marker writes fail', () => {
+    const app = readFileSync('src/App.ts', 'utf8');
+    const start = app.indexOf('      const countryCoverageOptInKey =');
+    const end = app.indexOf('      // Locale boost:', start);
+    const initialization = app.match(/    const disabledSources = new Set\([^\n]+/)!;
+    const code = transpileModule(`let sessionDisabledSources;\n${app.slice(start, end)}\n${initialization[0]}\n[...disabledSources];`, {}).outputText;
+    for (const failedWrite of ['preferences', 'marker']) {
+      const store = new Map([[key, '["existing-choice"]']]);
+      const disabled = runInNewContext(code, {
+        STORAGE_KEYS: { disabledFeeds: key }, COUNTRY_COVERAGE_OPT_IN_SOURCES: optIns,
+        BRAZIL_OPT_IN_SOURCES: ['Brazil fixture'], userLang: 'en',
+        computeDefaultDisabledSources: client.computeDefaultDisabledSources,
+        migrateCountryCoverageOptInsV12, migrateBrazilOptInsV11,
+        safeStorageGet: (name: string) => store.get(name) ?? null,
+        loadFromStorage: (name: string, fallback: unknown) => store.has(name) ? JSON.parse(store.get(name)!) : fallback,
+        saveToStorage: (name: string, value: unknown) => {
+          if (failedWrite === 'preferences') return false;
+          store.set(name, JSON.stringify(value)); return true;
+        },
+        safeStorageSetChecked: (name: string, value: string) => {
+          if (failedWrite === 'marker') return false;
+          store.set(name, value); return true;
+        },
+        safeStorageRemoveChecked: (name: string) => store.delete(name),
+      }) as string[];
+      for (const name of [...optIns, 'existing-choice', 'Brazil fixture']) assert.ok(disabled.includes(name), `${failedWrite}: ${name}`);
+      assert.ok(!store.has('worldmonitor-country-coverage-optin-v1'));
+    }
+  });
+
   it('registers verified feeds for ingestion without adding invalid warm languages', () => {
     for (const [name, evidence] of Object.entries(audit.additions)) {
       const feed = NEWS_CATALOG.feeds.find(feed => feed.name === name);
@@ -116,7 +159,7 @@ describe('optional country news coverage', () => {
     const start = app.indexOf('      const countryCoverageOptInKey =');
     const end = app.indexOf('      const brazilOptInKey =', start);
     assert.ok(start >= 0 && end > start);
-    const startup = transpileModule(app.slice(start, end), {}).outputText;
+    const startup = transpileModule(`let sessionDisabledSources;\n${app.slice(start, end)}`, {}).outputText;
     const marker = 'worldmonitor-country-coverage-optin-v1';
     const store = new Map<string, string>([[key, '["existing-choice"]']]);
     let failMarker = true;

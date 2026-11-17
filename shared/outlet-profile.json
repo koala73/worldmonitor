@@ -5576,7 +5576,7 @@
     "country": "EG",
     "audience": "domestic",
     "language": "en",
-    "ownershipClass": "private"
+    "ownershipClass": "state"
   },
   "Akipress": {
     "country": "KG",
@@ -5846,7 +5846,7 @@
     "country": "MY",
     "audience": "domestic",
     "language": "en",
-    "ownershipClass": "private"
+    "ownershipClass": "state"
   },
   "Bhutan Broadcasting Service": {
     "country": "BT",
@@ -6926,7 +6926,7 @@
     "ownershipClass": "state"
   },
   "La República Colombia": {
-    "country": "PE",
+    "country": "CO",
     "audience": "domestic",
     "language": "es",
     "ownershipClass": "private"

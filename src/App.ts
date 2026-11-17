@@ -1360,6 +1360,9 @@ export class App {
     if (!CYBER_LAYER_ENABLED) {
       mapLayers.cyberThreats = false;
     }
+    let sessionDisabledSources: string[] | undefined = currentVariant === 'full' && !storageAvailable
+      ? computeDefaultDisabledSources(this.currentSourceCapLanguage())
+      : undefined;
     // One-time migration: reduce default-enabled sources (full variant only)
     if (currentVariant === 'full' && storageAvailable) {
       const baseKey = 'worldmonitor-sources-reduction-v3';
@@ -1556,20 +1559,24 @@ export class App {
         const current = loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
         const blob = { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current ?? computeDefaultDisabledSources(userLang)) };
         const migrated = migrateCountryCoverageOptInsV12(blob, COUNTRY_COVERAGE_OPT_IN_SOURCES);
+        const updated = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
         const persisted = (current !== null && migrated === blob) || saveToStorage(
           STORAGE_KEYS.disabledFeeds,
-          JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[],
+          updated,
         );
+        if (!persisted) sessionDisabledSources = updated;
         if (persisted && !safeStorageSetChecked(countryCoverageOptInKey, 'done')) {
+          sessionDisabledSources = updated;
           if (current === null) safeStorageRemoveChecked(STORAGE_KEYS.disabledFeeds);
           else saveToStorage(STORAGE_KEYS.disabledFeeds, current);
         }
       }
       const brazilOptInKey = 'worldmonitor-brazil-optin-v1';
       if (!safeStorageGet(brazilOptInKey)) {
-        const current = loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+        const current = sessionDisabledSources ?? loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
         const blob = { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current ?? computeDefaultDisabledSources(userLang)) };
         const migrated = migrateBrazilOptInsV11(blob, BRAZIL_OPT_IN_SOURCES);
+        if (sessionDisabledSources) sessionDisabledSources = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
         const persisted = (current !== null && migrated === blob) || saveToStorage(
           STORAGE_KEYS.disabledFeeds,
           JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[],
@@ -1593,8 +1600,9 @@ export class App {
       if (userLang !== 'en' && !localStorage.getItem(localeKey)) {
         const boosted = getLocaleBoostedSources(userLang);
         if (boosted.size > 0) {
-          const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+          const current = sessionDisabledSources ?? loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
           const updated = current.filter(name => !boosted.has(name));
+          if (sessionDisabledSources) sessionDisabledSources = updated;
           saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
           console.log(`[App] Locale boost (${userLang}): enabled ${current.length - updated.length} sources`);
         }
@@ -1602,7 +1610,7 @@ export class App {
       }
     }
 
-    const disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+    const disabledSources = new Set(sessionDisabledSources ?? loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
 
     // Build shared state object
     this.state = {
