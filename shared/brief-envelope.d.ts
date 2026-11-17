@@ -30,6 +30,8 @@ export function briefLocalizedKey(userId: string, issueSlot: string): string;
 
 /** `brief:slots:${userId}`: ZSET of issue slots, scored by write time in ms. */
 export function briefSlotsKey(userId: string): string;
+/** Redis marker account deletion sets before reading the slot index. */
+export function briefErasedKey(userId: string): string;
 
 /**
  * Versions the renderer accepts from Redis on READ. Always contains
