@@ -14,11 +14,11 @@ message ListSentAlertsRequest {}
 
 // One realtime alert delivered to the caller.
 message SentAlert {
-  // Headline as the alert showed it.
+  // Alert headline.
   string title = 1;
-  // Publisher as the alert showed it; may be empty.
+  // Publisher; may be empty.
   string source = 2;
-  // Article URL; empty when the alert linked to none.
+  // Article URL, or empty.
   string link = 3;
   // Delivery time, Unix epoch milliseconds.
   int64 sent_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
@@ -27,6 +27,6 @@ message SentAlert {
 message ListSentAlertsResponse {
   // Newest first, last seven days, at most 200.
   repeated SentAlert alerts = 1;
-  // ok | unavailable (the record could not be read; not the same as no alerts).
+  // ok | unavailable (record unreadable, not zero alerts).
   string state = 2;
 }

@@ -1719,7 +1719,7 @@ paths:
             tags:
                 - NewsService
             summary: ListSentAlerts
-            description: ListSentAlerts returns the realtime alerts delivered to the calling account in the last seven days. Each caller reads only their own. PRO-gated. Requires entitlement tier >= 1.
+            description: ListSentAlerts returns the realtime alerts sent to the caller in the last seven days. PRO-gated. Requires entitlement tier >= 1.
             operationId: ListSentAlerts
             security:
                 - WorldMonitorKey: []
@@ -3085,19 +3085,19 @@ components:
                         $ref: '#/components/schemas/SentAlert'
                 state:
                     type: string
-                    description: ok | unavailable (the record could not be read; not the same as no alerts).
+                    description: ok | unavailable (record unreadable, not zero alerts).
         SentAlert:
             type: object
             properties:
                 title:
                     type: string
-                    description: Headline as the alert showed it.
+                    description: Alert headline.
                 source:
                     type: string
-                    description: Publisher as the alert showed it; may be empty.
+                    description: Publisher; may be empty.
                 link:
                     type: string
-                    description: Article URL; empty when the alert linked to none.
+                    description: Article URL, or empty.
                 sentAt:
                     type: integer
                     format: int64
