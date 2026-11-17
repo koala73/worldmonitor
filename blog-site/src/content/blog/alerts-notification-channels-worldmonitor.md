@@ -34,7 +34,7 @@ Choose a narrower rule first. A digest helps review a collection of material; it
 
 ## Scope the event, not just the country
 
-Country selection narrows attributed events and excludes unattributed global market and shipping-stress events. Some unattributed news-origin events remain eligible so relevant reporting is not lost. Chokepoint-disruption alerts require explicit event selection and use chokepoint scope rather than a country filter: an empty chokepoint selection matches every chokepoint. Select identifiers to narrow it.
+Each supported event type belongs to one of three delivery tiers. A global type reaches every rule, scoped or not: a market-wide move, global shipping stress, a national air-traffic collapse, and news that names no single country or clears the critical importance bar. A local type reaches only a rule that lists the event's country, or for a regional event a member country of its region, so a rule with no countries receives none of them and a local event with no resolvable country reaches nobody. An opt-in type uses its own scope instead of a country filter: chokepoint-disruption alerts require explicit event selection, and an empty chokepoint selection matches every chokepoint, so select identifiers to narrow it.
 
 Start with the place or corridor you genuinely monitor and the supported event type that answers your question. Do not assume that arbitrary market thresholds, private portfolio rules or every observed map change can trigger a notification.
 
@@ -72,7 +72,7 @@ Realtime uses the critical sensitivity setting. Enabled watched-site and reservo
 
 **Does Country Scope filter chokepoint alerts?**
 
-Chokepoint alerts use their own explicit event selection and chokepoint scope. An empty chokepoint selection matches all chokepoints; select identifiers to narrow it. Country metadata does not apply uniformly to all events.
+No. Chokepoint alerts use their own explicit event selection and chokepoint scope. An empty chokepoint selection matches all chokepoints; select identifiers to narrow it. Country scope gates the local tier only, so it does not apply uniformly to all events.
 
 **Does a connected channel guarantee delivery?**
 
