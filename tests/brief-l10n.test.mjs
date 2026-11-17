@@ -10,6 +10,7 @@ import {
   briefL10nTarget,
   briefL10nEnvOverrideWarning,
   briefPipelineErrors,
+  sharedTranslateCacheKey,
   buildTranslatePrompt,
   fetchBriefL10nConfig,
   localizeBrief,
@@ -407,7 +408,8 @@ describe('localizeBrief', () => {
     const { shared, user } = await run();
     assert.ok(shared.sets.length > 0 && user.sets.length > 0);
     for (const s of shared.sets) {
-      assert.match(s.key, /^brief:llm:translate:v1:[0-9a-f]{8}:fr:[0-9a-f]{64}$/);
+      // The scope names where the text came from: a label, a story, or text on its own.
+      assert.match(s.key, /^brief:llm:translate:v2:[0-9a-f]{8}:fr:(label|solo|[0-9a-f]{32}):[0-9a-f]{64}$/);
       assert.equal(s.ttl, 7 * 24 * 60 * 60);
     }
     for (const s of user.sets) {
@@ -422,7 +424,7 @@ describe('localizeBrief', () => {
       if (model) env.BRIEF_LLM_OPENROUTER_MODEL = model; else delete env.BRIEF_LLM_OPENROUTER_MODEL;
       const out = execFileSync(process.execPath, ['--input-type=module', '-e', `
         const m = await import(${JSON.stringify(new URL('../scripts/lib/brief-l10n.mjs', import.meta.url).href)});
-        console.log(JSON.stringify([m.sharedTranslateCacheKey('fr', 'Oil'), m.userTranslateCacheKey('u1', 'fr', 'Oil')]));`], { env });
+        console.log(JSON.stringify([m.sharedTranslateCacheKey('fr', 'Oil', 'label'), m.userTranslateCacheKey('u1', 'fr', 'Oil')]));`], { env });
       return JSON.parse(out.toString().trim().split('\n').pop());
     };
     const base = keysFor(null);
@@ -636,6 +638,53 @@ describe('localizeBrief', () => {
     }
     assert.equal(result.envelope.data.stories[0].description, toFr(copied));
     assert.equal(result.envelope.data.stories[2].headline, 'FR Energy');
+  });
+
+  // The shared cache is read by every brief in the language. A hostile story
+  // in one reader's brief can use a category label as its headline, or copy
+  // another story's description; the row its call writes for that text must
+  // not be the row a different brief reads for the label or the real story.
+  it('a row written from one story\'s call is not read for a category label or for another story', async () => {
+    const victim = story(7, { category: 'Politics' });
+    const hostile = canonical();
+    hostile.data.stories = [story(9, { headline: 'Politics', description: victim.description })];
+    hostile.data.digest.numbers.surfaced = 1;
+    const first = makeDeps(fakeTranslate('EVIL '));
+    assert.equal((await run({ envelope: hostile, shared: first })).result.ok, true);
+
+    const other = canonical();
+    other.data.stories = [victim];
+    other.data.digest.numbers.surfaced = 1;
+    const second = makeDeps(fakeTranslate());
+    for (const [key, value] of first.cache) second.cache.set(key, value);
+    const { result } = await run({ envelope: other, shared: second });
+    assert.equal(result.ok, true);
+    assert.equal(result.envelope.data.stories[0].category, 'FR Politics');
+    assert.equal(result.envelope.data.stories[0].description, toFr(victim.description));
+  });
+
+  it('a story translated for one brief is served from the cache in a brief with other stories', async () => {
+    const common = story(5);
+    const firstEnv = canonical();
+    firstEnv.data.stories = [story(1), common];
+    const first = makeDeps(fakeTranslate());
+    assert.equal((await run({ envelope: firstEnv, shared: first })).result.ok, true);
+
+    const secondEnv = canonical();
+    secondEnv.data.stories = [common, story(8)];
+    const second = makeDeps(fakeTranslate('NEW '));
+    for (const [key, value] of first.cache) second.cache.set(key, value);
+    const { result } = await run({ envelope: secondEnv, shared: second });
+    assert.equal(result.ok, true);
+    assert.equal(result.envelope.data.stories[0].headline, toFr(common.headline));
+    assert.equal(result.envelope.data.stories[0].category, 'FR Energy');
+    assert.equal(result.envelope.data.stories[1].headline, toFr(story(8).headline, 'NEW '));
+    assert.ok(second.calls.every((call) => !call.user.includes(common.headline)), 'the cached story is not sent to the model again');
+  });
+
+  it('a shared cache key cannot be built without a scope', () => {
+    assert.throws(() => sharedTranslateCacheKey('fr', 'Oil'), /scope/);
+    assert.notEqual(sharedTranslateCacheKey('fr', 'Oil', 'label'), sharedTranslateCacheKey('fr', 'Oil', 'solo'));
   });
 
   it('a batch that runs to the deadline still leaves time to cache the batches that finished', async () => {

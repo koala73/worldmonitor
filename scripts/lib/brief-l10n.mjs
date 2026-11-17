@@ -343,8 +343,16 @@ function sha256(text) {
 // A model change must not serve the previous model's rows.
 const TRANSLATE_MODEL_TAG = sha256(JSON.stringify(BRIEF_LLM_MODEL_OVERRIDES ?? {})).slice(0, 8);
 
-export function sharedTranslateCacheKey(lang, text) {
-  return `brief:llm:translate:v1:${TRANSLATE_MODEL_TAG}:${lang}:${sha256(text)}`;
+/**
+ * `scope` names where the text came from: 'label' (a category label), 'solo'
+ * (text translated in a call of its own) or a story's scope hash. The cache
+ * is read by every brief in the language, so a row is only ever written by a
+ * call that carried nothing from outside its scope. There is no default: an
+ * unscoped row would be one any call could write and any brief could read.
+ */
+export function sharedTranslateCacheKey(lang, text, scope) {
+  if (typeof scope !== 'string' || scope.length === 0) throw new TypeError('sharedTranslateCacheKey: scope is required');
+  return `brief:llm:translate:v2:${TRANSLATE_MODEL_TAG}:${lang}:${scope}:${sha256(text)}`;
 }
 
 export function userTranslateCacheKey(userId, lang, text) {
@@ -516,6 +524,20 @@ export async function localizeBrief(input) {
     if (missing.size > 0) batches.push([...missing]);
     return batches;
   };
+  // A row is keyed by the call that may write it: a story's own text by the
+  // texts of that story's call, a label as a label, anything else as text
+  // translated alone. A row written while translating one story is then never
+  // the row another brief reads for a label or for a different story, even
+  // when the text is identical.
+  const scopeOf = new Map();
+  for (const group of storyGroups) {
+    const scope = sha256(JSON.stringify(group)).slice(0, 32);
+    for (const text of group) {
+      if (ownedByOneStory(text)) scopeOf.set(text, scope);
+    }
+  }
+  const sharedKeyFor = (text) =>
+    sharedTranslateCacheKey(lang, text, scopeOf.get(text) ?? (labels.has(text) ? 'label' : 'solo'));
   // Text that is also story text (reuse-tick threads are story category and
   // description) is translated once, on the shared route, never through the
   // user's routing policy.
@@ -533,7 +555,7 @@ export async function localizeBrief(input) {
     translateTexts(sharedTexts, {
       lang,
       deps: sharedDeps,
-      keyFor: (text) => sharedTranslateCacheKey(lang, text),
+      keyFor: sharedKeyFor,
       deadlineAt: callDeadlineAt,
       batchesFor: sharedBatchesFor,
       callOpts: { maxTokens: 4096, temperature: 0.2, timeoutMs: 15_000, stage: 'brief-l10n-shared' },
@@ -566,7 +588,7 @@ export async function localizeBrief(input) {
   // batch, failed: the next user or tick then pays only for what is missing.
   const writes = [
     ...shared.fresh.map(([text, translated]) => () =>
-      sharedDeps.cacheSet(sharedTranslateCacheKey(lang, text), translated, SHARED_TTL_SEC)),
+      sharedDeps.cacheSet(sharedKeyFor(text), translated, SHARED_TTL_SEC)),
     ...user.fresh.map(([text, translated]) => () =>
       userDeps.cacheSet(userTranslateCacheKey(userId, lang, text), translated, USER_TTL_SEC)),
   ];
