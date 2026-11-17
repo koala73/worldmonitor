@@ -39,7 +39,7 @@ const INDEX_FIELDS = [
 ];
 
 function rows(text, columns, label) {
-  const parsed = Papa.parse(String(text).replace(/^﻿/, ''), { header: true, skipEmptyLines: true });
+  const parsed = Papa.parse(String(text).replace(/^\uFEFF/, ''), { header: true, skipEmptyLines: true });
   if (parsed.errors.length || !columns.every((column) => parsed.meta.fields?.includes(column))) {
     throw new Error(`DOSM ${label} CSV format changed`);
   }
