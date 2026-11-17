@@ -682,3 +682,30 @@ it('a stale, mismatched or unreadable extended key adds nothing and leaves the c
 it('rejects a heading in neither catalogue', async () => {
   await expect(read({ iso2: 'JP', hs4: '9999' })).rejects.toBeInstanceOf(ValidationError);
 });
+
+it('an extended sibling from a different run is not merged into the extended row', async () => {
+  const fetchedAt = fresh();
+  redis.store.set(CANONICAL('JP'), canonicalHelium('JP'));
+  redis.store.set(EXT('JP'), extRubber('JP', fetchedAt));
+  redis.store.set(EXT_PARTNERS('JP'), {
+    iso2: 'JP', fetchedAt: new Date(Date.parse(fetchedAt) + 60_000).toISOString(), requestedHs4s: ['4001'],
+    products: [{ hs4: '4001', year: 2025, denominatorBasis: 'reported_world', totalValue: 9999,
+      partners: [{ partnerCode: 360, partnerIso2: '', value: 9999, share: 1, netWeightKg: null, netWeightEstimated: false, quantity: null, quantityUnitCode: null }],
+      omittedCount: 0, omittedShare: 0 }],
+  });
+  upstream(url => rows(url, []));
+
+  const rubber = (await read({ iso2: 'JP', hs4: '4001' })).products.find(p => p.hs4 === '4001')!;
+  expect(rubber.partnerBasis).toBe('leading_5');
+  expect(rubber.totalValue).toBe(1000);
+  expect(rubber.fetchedAt).toBe(fetchedAt);
+});
+
+it('an extended-heading request with no core payload makes no upstream catalogue fetch', async () => {
+  redis.store.set(EXT('JP'), extRubber('JP'));
+  upstream(url => rows(url, [{ cmdCode: '2804', partnerCode: '842', primaryValue: 1, period: 2024 }]));
+
+  const result = await read({ iso2: 'JP', hs4: '4001' });
+  expect(upstreamCalls).toBe(0);
+  expect(result.products.map(p => p.hs4)).toEqual(['4001']);
+});

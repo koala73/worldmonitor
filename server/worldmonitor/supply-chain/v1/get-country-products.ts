@@ -283,7 +283,9 @@ export async function getCountryProducts(
   const lazyDeadline = Date.now() + LAZY_BUDGET_MS;
   let refreshed: LazyFetchResult | null = null;
   // Cache read failure is not a cache miss. Do not overwrite unseen last-good data.
-  if (!cacheFailed && (!payload || isStale(payload.fetchedAt))) {
+  // An extended-heading request is answered from the extended key family
+  // alone, so it never spends the core catalogue's upstream budget.
+  if (!cacheFailed && !extHeading && (!payload || isStale(payload.fetchedAt))) {
     // Nothing stored, or the whole payload is past its freshness window: the
     // full catalogue is refetched, exactly as get-route-impact does.
     refreshed = await lazyFetchBilateralHs4(iso2, payload ?? undefined);
@@ -334,7 +336,12 @@ export async function getCountryProducts(
   // The extended sibling's threshold detail is served for the requested heading
   // exactly as the core sibling is.
   for (const product of ext.products) {
-    const detail = hs4 === product.hs4 && siblingIsCurrent(extSibling.fetchedAt, ext.fetchedAt) ? extSibling.rows.get(product.hs4) : undefined;
+    // The extended seeder stamps both keys of a run with one fetchedAt, so only
+    // an exact match is the same generation. A pair left mixed by a partially
+    // rejected write falls back to the leading 5 rather than pairing one run's
+    // detail with another run's row and fetch time.
+    const sameRun = extSibling.fetchedAt != null && extSibling.fetchedAt === ext.fetchedAt;
+    const detail = hs4 === product.hs4 && sameRun ? extSibling.rows.get(product.hs4) : undefined;
     merged.push(defined({ ...mergeProduct(product, detail), fetchedAt: ext.fetchedAt }));
   }
   if (recovered) {
