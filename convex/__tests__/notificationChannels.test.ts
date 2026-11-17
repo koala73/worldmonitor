@@ -36,14 +36,45 @@ describe("delivery failure lifecycle", () => {
       userId: USER.subject, channelType: "webhook", webhookEnvelope: "encrypted",
       verified: true, linkedAt: 1,
     }));
-    const report = (error?: string, linkedAt = 1) => t.fetch("/relay/delivery-result", {
+    const begin = async () => {
+      const response = await t.fetch("/relay/channels", {
+        method: "POST", headers: { Authorization: "Bearer delivery-secret", "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: USER.subject, deliveryChannels: ["webhook"] }),
+      });
+      const channels = await response.json();
+      return channels.find((channel: { _id: string }) => channel._id === id)?.deliveryAttempt?.sequence as number | undefined;
+    };
+    const complete = (sequence: number | undefined, error?: string, linkedAt = 1) => t.fetch("/relay/delivery-result", {
       method: "POST",
       headers: { Authorization: "Bearer delivery-secret", "Content-Type": "application/json" },
       body: JSON.stringify({ userId: USER.subject, channelType: "webhook",
-        delivery: { channelId: id, linkedAt, error: error ?? null } }),
+        delivery: { channelId: id, linkedAt, sequence, error: error ?? null } }),
     });
-    return { t, id, report, row: () => t.run(ctx => ctx.db.get(id)) };
+    const report = async (error?: string, linkedAt = 1) => complete(await begin(), error, linkedAt);
+    return { t, id, begin, complete, report, row: () => t.run(ctx => ctx.db.get(id)) };
   }
+
+  test("a lost success report cannot join the old streak after a new worker reads channels", async () => {
+    const { begin, complete, report, row } = await setup();
+    for (let i = 0; i < 9; i++) await report("HTTP 503");
+    vi.setSystemTime(Date.now() + 25 * 60 * 60 * 1000);
+    await begin(); // Provider succeeded, but its result was lost before Convex saw it.
+    const restartedWorkerAttempt = await begin();
+    await complete(restartedWorkerAttempt, "HTTP 503");
+    expect(await row()).toMatchObject({ verified: true, deliveryFailure: { count: 1 } });
+  });
+
+  test("overlapping held and realtime attempts cannot disable before a delayed success", async () => {
+    const { begin, complete, report, row } = await setup();
+    for (let i = 0; i < 9; i++) await report("HTTP 503");
+    vi.setSystemTime(Date.now() + 25 * 60 * 60 * 1000);
+    const heldAttempt = await begin();
+    const realtimeAttempt = await begin();
+    await complete(realtimeAttempt, "HTTP 503");
+    expect(await row()).toMatchObject({ verified: true, deliveryFailure: { count: 1 } });
+    await complete(heldAttempt);
+    expect(await row()).toMatchObject({ verified: true, deliveryFailure: { count: 1 } });
+  });
 
   test("transient failures need both ten attempts and a 24 hour streak", async () => {
     vi.useFakeTimers();
@@ -94,32 +125,93 @@ describe("delivery failure lifecycle", () => {
   });
 
   test("a successful digest batch resets a day-old realtime failure streak", async () => {
-    const { t, id, report, row } = await setup();
+    const { t, id, begin, report, row } = await setup();
     for (let i = 0; i < 9; i++) await report("HTTP 503");
     vi.setSystemTime(Date.now() + 25 * 60 * 60 * 1000);
+    const sequence = await begin();
     expect((await t.fetch("/relay/delivery-result", {
       method: "POST", headers: { Authorization: "Bearer delivery-secret", "Content-Type": "application/json" },
       body: JSON.stringify({ results: [{ userId: USER.subject, channelType: "webhook",
-        delivery: { channelId: id, linkedAt: 1, error: null } }] }),
+        delivery: { channelId: id, linkedAt: 1, sequence, error: null } }] }),
     })).status).toBe(200);
     await report("HTTP 503");
     expect(await row()).toMatchObject({ verified: true, deliveryFailure: { count: 1, firstFailedAt: Date.now() } });
   });
 
-  test("batches preserve failure/success order and reject invalid batches before writing", async () => {
-    const { t, id, row } = await setup();
+  test("duplicate completions count once and invalid batches cannot partially complete an attempt", async () => {
+    const { t, id, begin, row } = await setup();
+    let sequence = await begin();
     const send = (results: unknown[]) => t.fetch("/relay/delivery-result", {
       method: "POST", headers: { Authorization: "Bearer delivery-secret", "Content-Type": "application/json" },
       body: JSON.stringify({ results }),
     });
     const result = (error: string | null) => ({ userId: USER.subject, channelType: "webhook",
-      delivery: { channelId: id, linkedAt: 1, error } });
+      delivery: { channelId: id, linkedAt: 1, sequence, error } });
     expect((await send([result("HTTP 503"), result(null), result("Request timed out")])).status).toBe(200);
-    expect((await row())?.deliveryFailure).toMatchObject({ count: 1, lastError: "Request timed out" });
+    expect((await row())?.deliveryFailure).toMatchObject({ count: 1, lastError: "HTTP 503" });
+    sequence = await begin();
     for (const invalid of [[], Array(101).fill(result(null)), [result(null), result("private host")]]) {
       expect((await send(invalid)).status).toBe(400);
       expect((await row())?.deliveryFailure?.count).toBe(1);
+      expect((await row())?.deliveryAttempt?.pending).toBe(true);
     }
+  });
+
+  test("an older terminal result cannot disable after a newer success", async () => {
+    const { begin, complete, row } = await setup();
+    const older = await begin();
+    const newer = await begin();
+    await complete(newer);
+    await complete(older, "HTTP 401");
+    expect((await row())?.verified).toBe(true);
+    expect((await row())?.deliveryFailure).toBeUndefined();
+  });
+
+  test("a lost acknowledgement can be replayed without incrementing the failure count", async () => {
+    const { begin, complete, row } = await setup();
+    const sequence = await begin();
+    await complete(sequence, "HTTP 503");
+    await complete(sequence, "HTTP 503");
+    expect((await row())?.deliveryFailure?.count).toBe(1);
+    await complete(await begin(), "HTTP 503");
+    expect((await row())?.deliveryFailure?.count).toBe(2);
+  });
+
+  test("legacy reads stay read-only and legacy results cannot disable during rollout", async () => {
+    const { t, id, begin, complete, row } = await setup();
+    await t.run(ctx => ctx.db.patch(id, { deliveryFailure: {
+      count: 9, firstFailedAt: Date.now() - 25 * 60 * 60 * 1000, lastError: "HTTP 503",
+    } }));
+    const before = await row();
+    expect((await t.fetch("/relay/channels", {
+      method: "POST", headers: { Authorization: "Bearer delivery-secret", "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: USER.subject }),
+    })).status).toBe(200);
+    expect(await row()).toEqual(before);
+    await complete(undefined, "HTTP 401");
+    expect(await row()).toEqual(before);
+    await complete(await begin(), "HTTP 503");
+    expect(await row()).toMatchObject({ verified: true, deliveryFailure: { count: 1 } });
+  });
+
+  test("only selected channels reserve attempts and invalid requests leave state intact", async () => {
+    const { t, begin, complete, row } = await setup();
+    const request = (deliveryChannels: unknown, authorized = true) => t.fetch("/relay/channels", {
+      method: "POST", headers: { "Content-Type": "application/json", ...(authorized ? { Authorization: "Bearer delivery-secret" } : {}) },
+      body: JSON.stringify({ userId: USER.subject, deliveryChannels }),
+    });
+    expect((await request(["slack"])).status).toBe(200);
+    expect((await row())?.deliveryAttempt).toBeUndefined();
+    await begin();
+    const before = await row();
+    expect((await request(["webhook"], false)).status).toBe(401);
+    for (const invalid of [null, "webhook", ["unknown"], Array(8).fill("webhook")]) {
+      expect((await request(invalid)).status).toBe(400);
+    }
+    for (const invalid of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      expect((await complete(invalid, "HTTP 401")).status).toBe(400);
+    }
+    expect(await row()).toEqual(before);
   });
 
   test("rejects untrusted callers and unsanitized error details", async () => {

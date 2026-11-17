@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { detectTrafficAnomaly, THREAT_LEVEL } from '../server/worldmonitor/supply-chain/v1/_scoring.mjs';
 import { summarizePortwatchHistory } from '../shared/chokepoint-traffic-anomaly.js';
 import {
@@ -512,6 +513,7 @@ describe('seedTransitSummaries (relay)', () => {
         'fetch', 'envelopeRead', 'envelopeWrite', 'upstashSet', 'console', 'UPSTASH_ENABLED',
         'chokepointCrossings', 'detectTrafficAnomaly', 'summarizePortwatchHistory', 'CHOKEPOINT_THREAT_LEVELS',
         'CORRIDOR_RISK_NAME_MAP', 'deriveCorridorRiskLevel', 'CHROME_UA', 'publishNotificationEvent', 'readTransitWindow', 'upstashEval', 'transitTracker',
+        'notifyPolicy',
         source,
       )(
         async () => Response.json([{ name: 'Strait of Hormuz', score: 80, incident_count_7d: 628,
@@ -525,6 +527,7 @@ describe('seedTransitSummaries (relay)', () => {
         CORRIDOR_RISK_NAME_MAP, deriveCorridorRiskLevel, 'test-agent',
         async event => { notifications.push(event); },
         readTransitWindow, transitStore(), { flush: async () => new Set() },
+        createRequire(import.meta.url)('../scripts/lib/notification-publish-policy.cjs'),
       );
       await seed.seedCorridorRisk();
       await seed.seedTransitSummaries();
@@ -539,7 +542,7 @@ describe('seedTransitSummaries (relay)', () => {
       }
       assert.equal(summary.todayTotal, null);
       assert.equal(summary.dataAvailable, true);
-      assert.equal(notifications.length, 1);
+      assert.equal(notifications.length, 0);
       assert.doesNotMatch(JSON.stringify([...writes.values(), notifications]), /REROUTE|50-80K|Salalah/);
     }
   });
