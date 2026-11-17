@@ -1727,6 +1727,8 @@ async function refreshAlertCoverage(events) {
     const { refreshPublisherCounts } = await import('./lib/news-alert-coverage.mjs');
     await refreshPublisherCounts(events);
   } catch (err) {
+    // A held event can carry an old snapshot even if the reader never loaded.
+    for (const event of events) delete event.observedPublisherCount;
     console.warn('[relay] publisher coverage unavailable:', err?.name);
   }
 }

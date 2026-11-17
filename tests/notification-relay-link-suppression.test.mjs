@@ -170,6 +170,26 @@ function installHarness({ smembers = [], smembersOk = true, pipelineOk = true, p
 }
 
 describe('notification-relay link suppression (#8401)', () => {
+  it('uses the original build count for held news when the coverage reader cannot load', async () => {
+    const event = { ...makeEvent('https://reuters.com/x'), variant: 'full', observedPublisherCount: 7 };
+    event.payload.corroborationCount = 1;
+    const h = installHarness({ held: [JSON.stringify(event)] });
+    const hook = Module.registerHooks({
+      resolve(specifier, context, nextResolve) {
+        if (specifier === './lib/news-alert-coverage.mjs') throw new Error('coverage reader unavailable');
+        return nextResolve(specifier, context);
+      },
+    });
+    try {
+      await relay.processEvent({ eventType: 'flush_quiet_held', userId: 'user-1', variant: 'full' });
+      assert.match(h.calls.telegramBodies.join(' '), /Coverage: single publisher/);
+      assert.ok(h.logs.some(line => line.includes('publisher coverage unavailable')));
+    } finally {
+      hook.deregister();
+      h.restore();
+    }
+  });
+
   it('drops a blocked exact-URL event before any channel send, and logs the blast radius', async () => {
     const h = installHarness({ smembers: [EVIL] });
     try {
