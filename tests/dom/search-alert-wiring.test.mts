@@ -77,6 +77,15 @@ describe('opening a selected alert', () => {
     expect(windowOpen).not.toHaveBeenCalled();
   });
 
+  it('does not fall back to the app WebView when the OS browser refuses on desktop', async () => {
+    runtime.desktop = true;
+    invokeTauri.mockRejectedValue(new Error('open_url failed'));
+    openSentAlertLink(HTTPS_LINK);
+    await vi.waitFor(() => expect(invokeTauri).toHaveBeenCalledWith('open_url', { url: HTTPS_LINK }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(windowOpen).not.toHaveBeenCalled();
+  });
+
   it('opens a new tab on the web, with no opener and no referrer', () => {
     openSentAlertLink(HTTPS_LINK);
     expect(windowOpen).toHaveBeenCalledWith(HTTPS_LINK, '_blank', 'noopener,noreferrer');
