@@ -194,16 +194,22 @@ describe('Cmd+K headline history', () => {
     expect(rows().map((row) => `${row.title} | ${row.subtitle}`)).toEqual(['Iran talks resume in Vienna | Loaded Source']);
 
     // The dashboard refreshes while the query is still on screen, and the
-    // headline is no longer among the loaded items.
+    // headline is no longer among the loaded items. The list on screen
+    // changes without another keystroke.
+    const rerender = vi.spyOn(modal!, 'refreshResultsInBackground');
     replaceLoadedNews(['Rates held at 4.5%']);
-    modal!.refreshResultsInBackground();
     expect(rows().map((row) => `${row.title} | ${row.subtitle}`)).toEqual(['Iran talks resume in Vienna | Reuters World · 5h ago']);
     expect(requests).toEqual(['iran']);
+    expect(rerender).toHaveBeenCalledTimes(1);
+
+    // A refresh that changes nothing the history lists leaves the list alone.
+    replaceLoadedNews(['Rates held at 4.5%', 'Port strike ends']);
+    expect(rerender).toHaveBeenCalledTimes(1);
 
     // And back: loaded again, the loaded row is the one listed.
     replaceLoadedNews(['Iran talks resume in Vienna']);
-    modal!.refreshResultsInBackground();
     expect(rows().map((row) => `${row.title} | ${row.subtitle}`)).toEqual(['Iran talks resume in Vienna | Loaded Source']);
+    expect(rerender).toHaveBeenCalledTimes(2);
     // No second request.
     expect(requests).toEqual(['iran']);
   });

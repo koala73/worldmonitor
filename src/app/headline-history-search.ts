@@ -63,6 +63,8 @@ export class HeadlineHistorySearch {
   /** The query the source currently answers, or is being fetched for. */
   private activeQuery = '';
   private published = false;
+  /** The links of the rows last published, to tell whether a re-listing changed them. */
+  private listedLinks = '';
   private timer: ReturnType<typeof setTimeout> | null = null;
   private inFlight: AbortController | null = null;
   /** Answers by query, so backspacing to an earlier query needs no second request. */
@@ -108,14 +110,15 @@ export class HeadlineHistorySearch {
    * The loaded news changed (a dashboard refresh). Which server rows are
    * listed depends on it: a title the loaded items cover is left out, so when
    * that item leaves the dashboard its history row has to be listed instead.
-   * Lists the answer for the query on screen again; no request and no
-   * re-render, the modal reads the source the next time it renders the query.
+   * Lists the answer for the query on screen again, without a request. The
+   * modal re-renders only when the rows listed from the history changed, so
+   * a refresh that leaves them alone does not redraw the list under the user.
    */
   public onLoadedNewsChange(): void {
     // Only while the source holds the answer for this query, not mid-fetch.
     if (this.timer !== null || this.inFlight !== null) return;
     const remembered = this.answers.get(this.activeQuery);
-    if (remembered) this.publishHeadlines(this.activeQuery, remembered.headlines, false);
+    if (remembered) this.publishHeadlines(this.activeQuery, remembered.headlines, 'if-changed');
   }
 
   /** Forget everything fetched: the caller's window changed (plan, edition or language). */
@@ -139,6 +142,7 @@ export class HeadlineHistorySearch {
   private clear(): void {
     if (!this.published) return;
     this.published = false;
+    this.listedLinks = '';
     this.deps.publish([], false);
   }
 
@@ -171,7 +175,11 @@ export class HeadlineHistorySearch {
     this.deps.setPending(false);
   }
 
-  private publishHeadlines(query: string, headlines: readonly HistoryHeadline[], refresh: boolean): void {
+  private publishHeadlines(
+    query: string,
+    headlines: readonly HistoryHeadline[],
+    refresh: boolean | 'if-changed',
+  ): void {
     const items: SearchableSource['items'] = [];
     const seen = new Set<string>();
     for (const headline of headlines) {
@@ -202,6 +210,9 @@ export class HeadlineHistorySearch {
     }
     if (items.length === 0 && !this.published) return;
     this.published = items.length > 0;
-    this.deps.publish(items, refresh);
+    const listedLinks = items.map((item) => item.id).join('\n');
+    const changed = listedLinks !== this.listedLinks;
+    this.listedLinks = listedLinks;
+    this.deps.publish(items, refresh === 'if-changed' ? changed : refresh);
   }
 }
