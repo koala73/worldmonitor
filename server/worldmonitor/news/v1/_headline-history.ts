@@ -76,7 +76,6 @@ const MAX_TITLES_PER_LINK = 12;
 const MAX_TITLE_CHARS = 500;
 const MAX_SOURCE_CHARS = 200;
 const MAX_LINK_CHARS = 2048;
-const MAX_QUERY_WORDS = 12;
 const INDEX_TTL_MS = 60_000;
 const MAX_INDEXES = 6;
 
@@ -289,11 +288,16 @@ function loadIndex(variant: string, lang: string, windowHours: number, nowMs: nu
   return promise;
 }
 
-/** The query as the words to match, or null when it is too short to search. */
+/**
+ * The query as the words to match, or null when it is too short to search.
+ * Every word is kept: the route promises that all of them match, and the last
+ * word of a pasted headline is often the one that tells two stories apart.
+ * The request validator caps the query at 120 characters, which caps the words.
+ */
 export function headlineQueryWords(query: string): string[] | null {
   const key = headlineTitleKey(query);
   if (key.length < HEADLINE_SEARCH_MIN_QUERY_CHARS) return null;
-  return key.split(' ').slice(0, MAX_QUERY_WORDS);
+  return key.split(' ');
 }
 
 export interface HeadlineHistorySearch {
@@ -328,6 +332,8 @@ export async function searchHeadlineHistory(
     return { headlines: [], searchedHeadlines: 0, windowHours, state: 'unavailable', newestServedAt: 0 };
   }
   const phrase = words.join(' ');
+  // A repeated word asks nothing new, so each distinct word is tested once.
+  const distinctWords = [...new Set(words)];
   const matches: Array<{ entry: PoolEntry; phrase: boolean }> = [];
   // One row per title, so a wire story syndicated under two URLs is listed
   // once. Decided after the revoked URLs are out, so revoking one copy leaves
@@ -338,7 +344,7 @@ export async function searchHeadlineHistory(
     if (revoked.urls.has(entry.link) || titles.has(entry.key)) continue;
     titles.add(entry.key);
     if (entry.lastServedAt > newestServedAt) newestServedAt = entry.lastServedAt;
-    if (!words.every((word) => entry.key.includes(word))) continue;
+    if (!distinctWords.every((word) => entry.key.includes(word))) continue;
     matches.push({ entry, phrase: entry.key.includes(phrase) });
   }
   matches.sort((a, b) =>

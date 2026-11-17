@@ -371,6 +371,28 @@ describe('headline search', () => {
     assert.deepEqual(titles((await search(freeRoute, 'bravo')).payload), [], 'the thirteenth wording back is not searched');
   });
 
+  it('matches every word of a long pasted headline, including the last', async () => {
+    const stem = 'EU and US agree to cut tariffs on steel and cars in a deal';
+    await served(NOW, [
+      item(`${stem} signed Tuesday`, 'https://www.reuters.com/signed'),
+      item(`${stem} delayed again`, 'https://www.reuters.com/delayed'),
+    ]);
+    const pasted = `${stem} signed Tuesday`;
+    assert.ok(pasted.split(' ').length > 12 && pasted.length <= 120);
+    assert.deepEqual(titles((await search(freeRoute, pasted)).payload), [pasted]);
+    // The fourteenth word decides it even when the words are out of order.
+    assert.deepEqual(
+      titles((await search(freeRoute, 'deal a in cars and steel on tariffs cut to agree US and EU delayed')).payload),
+      [`${stem} delayed again`],
+    );
+    // 120 characters is the longest query the route accepts: sixty words here.
+    const sixty = Array.from({ length: 60 }, (_, index) => 'abcdefghijklmnopqrstuvwxyz'[index % 26]).join(' ');
+    assert.equal(sixty.length, 119);
+    assert.equal((await search(freeRoute, sixty)).status, 200);
+    assert.equal((await search(freeRoute, `${sixty} ab`)).status, 400, 'a longer query is refused, not cut short');
+    assert.deepEqual(titles((await search(freeRoute, `${'e u a o '.repeat(13)}tariffs zebra`)).payload), [], 'a word no title holds, last of 54 in the query');
+  });
+
   it('returns at most 20 headlines, newest first', async () => {
     await served(NOW, Array.from({ length: 30 }, (_, index) =>
       item(`Quake update ${index}`, `https://www.reuters.com/q${index}`, 'Reuters World', NOW - index * 60_000)));
