@@ -5,6 +5,7 @@ import {
   internalMutation,
   internalQuery,
   type MutationCtx,
+  type QueryCtx,
   query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -185,14 +186,36 @@ export const queueChannelWelcome = internalAction({
 
 export const getChannelsByUserId = internalQuery({
   args: { userId: v.string() },
-  handler: async (ctx, args) => {
-    const channels = await ctx.db
-      .query("notificationChannels")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect();
-    return channels.map(channel => (channel.channelType === "email" && channel.emailOwnership !== "verified_account")
+  handler: (ctx, args) => readChannelsForDelivery(ctx, args.userId),
+});
+
+async function readChannelsForDelivery(ctx: Pick<QueryCtx, "db">, userId: string) {
+  const channels = await ctx.db
+    .query("notificationChannels")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  return channels.map(channel => (channel.channelType === "email" && channel.emailOwnership !== "verified_account")
       || (channel.channelType === "telegram" && channel.telegramOwnership !== "verified_callback")
       ? { ...channel, verified: false } : channel);
+}
+
+export const beginChannelDeliveries = internalMutation({
+  args: { userId: v.string(), channelTypes: v.array(channelTypeValidator) },
+  handler: async (ctx, { userId, channelTypes }) => {
+    const channels = await readChannelsForDelivery(ctx, userId);
+    const selected = new Set(channelTypes);
+    for (const channel of channels) {
+      if (!channel.verified || !selected.has(channel.channelType)
+        || !["webhook", "slack", "discord", "teams", "web_push"].includes(channel.channelType)) continue;
+      // An unfinished attempt may have succeeded. It cannot extend a known failure streak.
+      const deliveryFailure = !channel.deliveryAttempt || channel.deliveryAttempt.pending
+        ? undefined : channel.deliveryFailure;
+      const deliveryAttempt = { sequence: (channel.deliveryAttempt?.sequence ?? 0) + 1, pending: true };
+      await ctx.db.patch(channel._id, { deliveryAttempt, deliveryFailure });
+      channel.deliveryAttempt = deliveryAttempt;
+      channel.deliveryFailure = deliveryFailure;
+    }
+    return channels;
   },
 });
 
@@ -618,8 +641,11 @@ async function applyDeliveryResult(ctx: MutationCtx, { userId, channelType, deli
   const channel = await ctx.db.query("notificationChannels")
     .withIndex("by_user_channel", q => q.eq("userId", userId).eq("channelType", channelType)).unique();
   if (!channel?.verified || String(channel._id) !== delivery.channelId || channel.linkedAt !== delivery.linkedAt) return;
+  const attempt = channel.deliveryAttempt;
+  if (!attempt?.pending || delivery.sequence !== attempt.sequence) return;
+  const deliveryAttempt = { ...attempt, pending: false };
   if (delivery.error === null) {
-    if (channel.deliveryFailure) await ctx.db.patch(channel._id, { deliveryFailure: undefined });
+    await ctx.db.patch(channel._id, { deliveryAttempt, deliveryFailure: undefined });
     return;
   }
   const now = Date.now();
@@ -631,6 +657,7 @@ async function applyDeliveryResult(ctx: MutationCtx, { userId, channelType, deli
   const terminal = /^HTTP (401|403|404|410)$/.test(delivery.error);
   const disable = terminal || (failure.count >= 10 && now - failure.firstFailedAt >= 24 * 60 * 60 * 1000);
   await ctx.db.patch(channel._id, {
+    deliveryAttempt,
     deliveryFailure: { ...failure, ...(disable ? { disabledAt: now } : {}) },
     ...(disable ? { verified: false } : {}),
   });

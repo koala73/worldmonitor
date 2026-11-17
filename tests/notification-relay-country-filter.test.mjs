@@ -163,8 +163,8 @@ describe('notification-relay eventMatchesCountryScope — source-grep contract',
     // Without this wiring, the filter exists but is never consulted.
     assert.match(
       relaySrc,
-      /shouldNotify\(r,\s*event\)\s*&&\s*\n?\s*eventMatchesCountryScope\(event,\s*r\)/,
-      'eventMatchesCountryScope must be in the matching filter alongside shouldNotify',
+      /shouldNotify\(r,\s*event\)\s*&&\s*\n?\s*eventMatchesDeliveryScope\(event,\s*r\)/,
+      'the tier gate (eventMatchesDeliveryScope, #10873) must be in the matching filter alongside shouldNotify',
     );
   });
 });

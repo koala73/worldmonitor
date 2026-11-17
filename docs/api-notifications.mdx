@@ -50,6 +50,20 @@ Clients should honor that `503` with at least one retry at the advertised `Retry
 
 - **Idempotency**: optional `Idempotency-Key` supported on `POST /api/notification-channels`. Retrying the same key with an identical body replays the original response instead of applying the channel action again. The exception is a successful webhook `set-channel`: its response carries a one-time signing secret, so it is never cached, and a retry registers the URL again with a new secret.
 
+## Realtime delivery scope
+
+A realtime rule's `countries` list decides which events reach it, depending on the event's tier:
+
+- **Global** events reach every realtime rule, whether or not it lists countries:
+  - global shipping stress;
+  - a national air traffic collapse;
+  - a market-wide move (an equity index, a commodity or a crypto asset, but not a volatility gauge);
+  - news that names no single country, or names one but clears the critical importance bar.
+- **Local** events reach only rules whose `countries` list includes the event's country. For `regional_*` events, the list must include a member of the event's region. Local events are weather warnings, airport and airspace closures, sirens, conflict escalations, cyber threats, single-stock moves, and news about one country. A rule with no countries receives no local events. An event without a resolvable country is not delivered.
+- **Opt-in** events ignore `countries`: watchlist stories, chokepoint disruption, satellite site alerts, and reservoir levels. Each is scoped by its own list, as described below.
+
+Events submitted through `POST /api/notify` reach only the submitter's own rules and keep the earlier country semantics.
+
 ## Chokepoint disruption alerts
 
 A rule receives `chokepoint_disruption` only when its `eventTypes` lists it. A rule with an empty `eventTypes` list, which otherwise means every event type, does not receive it. Listing it does not narrow the rule's other alerts.
@@ -89,14 +103,14 @@ A Pro rule receives `reservoir_level_alert` only when its `eventTypes` lists it.
 
 ## National air traffic collapse alerts
 
-`aviation_traffic_collapse` tells a user that airline departures have collapsed across a country, as in a national ground stop or an air traffic control system failure, and again when they recover. It covers the US, the UK, France, Germany, Spain and Italy. It is a broadcast type: a rule whose `eventTypes` is empty receives it, and a rule that lists event types receives it only when the list includes it.
+`aviation_traffic_collapse` tells a user that airline departures have collapsed across a country, as in a national ground stop or an air traffic control system failure, and again when they recover. It covers the US, the UK, France, Germany, Spain and Italy. It is a broadcast type: a rule whose `eventTypes` is empty receives it, and a rule that lists event types receives it only when the list includes it. It is a global event (see [Realtime delivery scope](#realtime-delivery-scope)), so it reaches every realtime rule whatever its `countries` list.
 
 - **When it fires in the US**: checked every 5 minutes against the OpenSky air traffic series. The signal is the number of airline aircraft climbing out at low altitude over the contiguous US, which counts departures. Each 5-minute bin is compared with the median of the same New York local-time bin on the four prior weeks, or with the most recent of those weeks when it is lower, and at least two of those weeks must be recorded, so alerts start two weeks after the series begins. A collapse fires when two bins in a row read below 40% of that median. Bins whose median is under a quarter of the day's busiest bin are skipped, because overnight counts are too small for a ratio to mean anything.
 - **Feed checks**: before a collapse fires, OpenSky must still be alive (Europe's airborne count at least 30% of its own same-time median) and must still see the US (its US aircraft count at least 80% of Wingbits' count for the same bin, or 60% of its own median when no Wingbits point exists). A failing feed blocks the alert instead of raising one.
 - **Europe**: each European country counts airline aircraft climbing out within 48 km of its main airports (for the UK: Heathrow, Gatwick, Manchester, Stansted, Edinburgh, Birmingham, Glasgow and Bristol). A country has a few to about 17 departures per 5 minutes, so it is compared over a 20-minute window, in its own local time, and fires below 30% rather than 40%. A window under 30 departures is skipped as quiet, so Italy is checked only around its daily peaks. The feed check uses the US airborne count, and the coverage check needs 40% of the country's usual aircraft near its airports. The Netherlands has too few departures to check. The most-recent-week cap matters most here: after the 2026-10-25 winter timetable, German departures wound down earlier in the evening and started later in the morning, and against a median still made of summer weeks two ordinary days read as collapses.
 - **Recovery**: once two bins in a row read above 70% of the median, a recovery event follows with the onset of the drop it closes.
 - **Severity**: the collapse is `critical`, so it reaches real-time rules and breaks through quiet hours under the default critical-only override. The recovery is `high`. It is delivered to real-time rules even when sensitivity is critical only, but quiet hours treat it as non-critical: the default override and `silence_all` silence it, and `batch_on_wake` holds it for the batch when quiet hours end. Neither event is delivered to digests.
-- **Scope**: each event carries the country it is about in `countryCode` (`US`, `GB`, `FR`, `DE`, `ES` or `IT`). A rule with a `countries` scope receives it only when the list includes that country.
+- **Scope**: each event carries the country it is about in `countryCode` (`US`, `GB`, `FR`, `DE`, `ES` or `IT`). A `countries` scope does not filter it.
 - **Validation**: replaying 111 days of the adsb.lol archive for the US, holidays and the 2026-11-01 DST change included, raises one collapse, for the 2026-11-13 national ground stop, 16 minutes after the official stop. Replaying 97 European days (2026-08-10 to 2026-11-14) raises one collapse, for the UK NATS flight-plan failure of 2026-09-08, and nothing in France, Germany, Spain or Italy, including Italy's partial air traffic control strike of 2026-09-30 and the weeks after the winter timetable change.
 - **Payload**: `title`, `source` (`WorldMonitor air traffic (OpenSky)`), `countryCode`, `kind` (`collapse` or `recovery`), `ratio` (departures as a share of the median, three decimals), `onset` (ISO time of the first low bin), and `coalesceKey`, which names one event and stays the same if the relay re-sends it.
 
@@ -104,7 +118,9 @@ A Pro rule receives `reservoir_level_alert` only when its `eventTypes` lists it.
 
 ## Webhook delivery contract
 
-The notification relay tracks consecutive delivery failures for webhooks, Slack, Discord, Microsoft Teams, and browser push. HTTP 401, 403, 404, or 410 disables the channel immediately. Other failures, including DNS lookup, URL rejection, decryption, connection, and timeout failures, disable it only after at least 10 consecutive failures spanning at least 24 hours. A successful delivery clears the streak.
+The notification relay tracks consecutive delivery failures for webhooks, Slack, Discord, Microsoft Teams, and browser push. HTTP 401, 403, 404, or 410 disables the channel immediately. Other failures, including DNS lookup, URL rejection, decryption, connection, and timeout failures, disable it only after at least 10 consecutive failures spanning at least 24 hours. A successful delivery clears the streak. Workers reserve an attempt before sending and report its sequence with the result. Duplicate or superseded results cannot change the streak. If a previous attempt is still incomplete when another starts, its outcome is unknown, so the streak resets conservatively; this includes lost reports and overlapping deliveries.
+
+For rollout, deploy the Convex attempt reservation and result handling before updating the relay and digest workers. Legacy channel reads remain supported, but results without a reserved sequence do not affect failure tracking. The first reserved attempt clears any pre-upgrade streak.
 
 Notification settings show **Disabled after repeated delivery failures**. A transactional notice goes to the verified account email, subject to delivery suppression, with the error class and first-failure time. Save or reconnect the channel in [notification settings](https://www.worldmonitor.app/dashboard?settings=notifications) to clear the failure state and resume delivery. A result from an older connection cannot disable a newly saved channel. Digest deliveries to webhooks, Slack, Discord, and Teams use the same failure streak, so a successful digest also resets failures from real-time alerts.
 

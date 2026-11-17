@@ -105,8 +105,8 @@ describe('notification-relay watchlist ticker filter — source-grep contract', 
   it('filter is wired into the per-rule matching loop alongside shouldNotify + country scope', () => {
     assert.match(
       relaySrc,
-      /ruleMatchesEventType\(r,\s*event\)\s*&&\s*\n?\s*shouldNotify\(r,\s*event\)\s*&&\s*\n?\s*eventMatchesCountryScope\(event,\s*r\)\s*&&\s*\n?\s*eventMatchesTickerScope\(event,\s*r\)/,
-      'eventMatchesTickerScope must be in the matching filter alongside shouldNotify/eventMatchesCountryScope',
+      /ruleMatchesEventType\(r,\s*event\)\s*&&\s*\n?\s*shouldNotify\(r,\s*event\)\s*&&\s*\n?\s*eventMatchesDeliveryScope\(event,\s*r\)\s*&&\s*\n?\s*eventMatchesTickerScope\(event,\s*r\)/,
+      'eventMatchesTickerScope must be in the matching filter alongside shouldNotify/eventMatchesDeliveryScope (#10873)',
     );
   });
 
@@ -156,7 +156,7 @@ describe('notification-relay watchlist ticker filter — source-grep contract', 
     );
     assert.match(
       relaySrc,
-      /drainTier < 1 && \(!drainScope\.ok \|\| !eventMatchesCountryScope\(ev, \{ countries: drainScope\.countries \}\)\)/,
+      /drainTier < 1 && \(!drainScope\.ok \|\| !eventMatchesDeliveryScope\(ev, \{ countries: drainScope\.countries \}\)\)/,
       'the held-queue drain must re-apply the free country rung per entry',
     );
     // Strix review 6 on #10303: the AI-composed impact block is paid output;

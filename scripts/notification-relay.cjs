@@ -3,7 +3,8 @@
 const { createDeliveryReporter, deliveryErrorClass } = require('./lib/notification-delivery.cjs');
 const { createHash, randomUUID } = require('node:crypto');
 const { Resend } = require('resend');
-const { appendUnsubscribeText, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
+const { appendUnsubscribeText, injectUnsubscribeFooterHtml, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
+const { buildAlertEmailHtml, buildHeldAlertsEmailHtml, buildWelcomeEmailHtml } = require('./lib/notification-email-html.cjs');
 const { sendResendEmail } = require('./lib/resend-send.cjs');
 const { decrypt } = require('./lib/crypto.cjs');
 const { freeTierAllowsEvent, freeTierAllowsEventType, freeTierAllowsChannel, freeTierCountryScope } = require('./lib/free-tier-delivery.cjs');
@@ -40,6 +41,7 @@ const {
 const { COMPARE_AND_DELETE_SCRIPT } = require('./shared/compare-and-delete-script.cjs');
 const { ORBITAL_SITE_EVENT_TYPES } = require('./lib/orbital-site-alerts.cjs');
 const { RESERVOIR_ALERT_EVENT_TYPE, reservoirAlertDecision } = require('./lib/reservoir-level-alerts.cjs');
+const { TIER_GLOBAL, TIER_OPT_IN, resolveDeliveryTier } = require('./lib/notification-delivery-tiers.cjs');
 const {
   parseSuppressionEntries,
   isLinkSuppressed,
@@ -632,7 +634,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
   for (const ev of parsedEvents) {
     const pastLadder = !freeTierAllowsEvent(drainTier, ev.severity ?? 'high')
       || !freeTierAllowsEventType(drainTier, ev.eventType)
-      || (drainTier < 1 && (!drainScope.ok || !eventMatchesCountryScope(ev, { countries: drainScope.countries })));
+      || (drainTier < 1 && (!drainScope.ok || !eventMatchesDeliveryScope(ev, { countries: drainScope.countries })));
     if (pastLadder) { clampHeld.add(items[itemIndex.get(ev)]); continue; }
     if ((await suppressedLinksFor(ev, 1, 'stage=quiet-hours-drain')).length === 0) events.push(ev);
   }
@@ -654,7 +656,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
     const chRes = await fetch(`${CONVEX_SITE_URL}/relay/channels`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RELAY_SECRET}`, 'User-Agent': 'worldmonitor-relay/1.0' },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({ userId, deliveryChannels: allowedChannelTypes ?? ['webhook', 'slack', 'discord', 'teams', 'web_push'] }),
       signal: AbortSignal.timeout(10000),
     });
     if (chRes.ok) channels = await chRes.json();
@@ -721,8 +723,9 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
         // newly blocked link changes `text`, and reusing the key with a
         // different payload would be rejected as an idempotency conflict.
         const unsubscribeUrl = unsubscribeUrlFor(ch, 'alerts');
-        const batchKey = createHash('sha256').update(JSON.stringify([userId, variant, ch.email, subject, text, unsubscribeUrl])).digest('hex');
-        ok = await sendEmail(ch.email, subject, text, unsubscribeUrl, `quiet-held-${batchKey}`);
+        const html = buildHeldAlertsEmailHtml(heldEmailItems(events));
+        const batchKey = createHash('sha256').update(JSON.stringify([userId, variant, ch.email, subject, text, html, unsubscribeUrl])).digest('hex');
+        ok = await sendEmail(ch.email, subject, text, unsubscribeUrl, `quiet-held-${batchKey}`, html);
       }
       else if (ch.channelType === 'webhook' && ch.webhookEnvelope) ok = await sendWebhook(userId, ch.webhookEnvelope, {
         eventType: 'quiet_hours_batch',
@@ -1024,8 +1027,28 @@ async function sendTeamsCards(userId, webhookEnvelope, payloads, channel) {
 
 /** Adaptive Card for a realtime event, shaped by the same field helpers as the text sinks. */
 function buildTeamsAlertForEvent(event, impact) {
+  return buildTeamsAlertPayload(alertFieldsForEvent(event, impact));
+}
+
+/** Email body for a realtime event: the same shaped fields as the Teams card. */
+function buildAlertEmailForEvent(event, impact) {
+  return buildAlertEmailHtml(alertFieldsForEvent(event, impact));
+}
+
+/** Held alerts for the quiet-hours email, shaped like the held text lines. */
+function heldEmailItems(events) {
+  return events.map((ev) => ({
+    title: formatEventTitle(ev),
+    severity: ev.severity ?? 'high',
+    coverage: formatEventCoverage(ev),
+    link: ev.payload?.link ?? ev.payload?.url,
+  }));
+}
+
+/** The shaped fields every rich sink (Teams card, email) lays out for a realtime event. */
+function alertFieldsForEvent(event, impact) {
   const rawCountry = event.payload?.countryCode ?? event.payload?.country ?? event.country;
-  return buildTeamsAlertPayload({
+  return {
     title: formatEventTitle(event),
     severity: event.severity ?? 'high',
     countryCode: typeof rawCountry === 'string' && rawCountry.trim() ? normalizeEventCountryCode(rawCountry) : null,
@@ -1035,16 +1058,24 @@ function buildTeamsAlertForEvent(event, impact) {
     link: event.payload?.link ?? event.payload?.url,
     eventType: sanitizeNotificationTitle(event.eventType),
     impact,
-  });
+  };
 }
 
 // ── Delivery: Email ───────────────────────────────────────────────────────────
 
-async function sendEmail(email, subject, text, unsubscribeUrl, idempotencyKey) {
+/**
+ * `html` is the designed body (scripts/lib/notification-email-html.cjs);
+ * `text` stays as the plain-text part. The footer of the HTML always gets a
+ * visible unsubscribe link, or a Settings link when there is no one-click URL.
+ */
+async function sendEmail(email, subject, text, unsubscribeUrl, idempotencyKey, html) {
   const payload = { from: RESEND_FROM, to: email, subject, text };
   if (unsubscribeUrl !== undefined) {
     payload.text = appendUnsubscribeText(text, unsubscribeUrl, 'Unsubscribe from alert emails');
     payload.headers = listUnsubscribeHeaders(unsubscribeUrl);
+  }
+  if (typeof html === 'string' && html) {
+    payload.html = injectUnsubscribeFooterHtml(html, unsubscribeUrl, 'Unsubscribe from alert emails');
   }
   const result = await sendResendEmail(resend, payload, { logPrefix: '[relay]', idempotencyKey });
   return result.ok;
@@ -1431,6 +1462,36 @@ function eventMatchesCountryScope(event, rule) {
   return rule.countries.includes(normalized);
 }
 
+/**
+ * Whether a rule's scope admits the event under its delivery tier (#10873,
+ * scripts/lib/notification-delivery-tiers.cjs):
+ *
+ *  - global: every rule, scoped or not, so a scoped rule now also receives a
+ *    market-wide crash or global shipping stress it used to drop as
+ *    unattributed.
+ *  - opt_in: country scope does not apply; the type's own scope gates
+ *    (tickers, chokepoints, watched sites, reservoirs) decide.
+ *  - local: only a rule that lists the event's country (or a member country
+ *    of its region). A rule with no countries no longer receives every local
+ *    event in the world, and an unattributed local event goes nowhere.
+ *
+ * Browser-submitted events (event.userId) are delivered only to their own
+ * submitter's rules and keep the legacy country semantics.
+ */
+function eventMatchesDeliveryScope(event, rule) {
+  if (event?.userId) return eventMatchesCountryScope(event, rule);
+  const { tier, country } = resolveDeliveryTier(event);
+  if (tier === TIER_GLOBAL || tier === TIER_OPT_IN) return true;
+  if (!Array.isArray(rule.countries) || rule.countries.length === 0) return false;
+  if (typeof event?.eventType === 'string' && event.eventType.startsWith('regional_')) {
+    return regionalEventMatchesCountryScope(event, rule);
+  }
+  const raw = country ?? event?.payload?.countryCode ?? event?.payload?.country ?? event?.country ?? null;
+  if (typeof raw !== 'string' || raw.trim().length === 0) return false;
+  const normalized = normalizeEventCountryCode(raw);
+  return normalized !== null && rule.countries.includes(normalized);
+}
+
 // ── Watchlist story alerts (#4922 item e / U3) ───────────────────────────────
 
 const WATCHLIST_STORY_EVENT_TYPE = 'watchlist_story_alert';
@@ -1793,7 +1854,7 @@ async function processWelcomeDelivery(event) {
     const chRes = await fetch(`${CONVEX_SITE_URL}/relay/channels`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RELAY_SECRET}`, 'User-Agent': 'worldmonitor-relay/1.0' },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({ userId, deliveryChannels: [channelType] }),
       signal: AbortSignal.timeout(10000),
     });
     if (chRes.ok) channels = (await chRes.json()) ?? [];
@@ -1823,7 +1884,7 @@ async function processWelcomeDelivery(event) {
       linkTitle: 'Open WorldMonitor',
     }), ch);
   } else if (channelType === 'email' && ch.email) {
-    await sendEmail(ch.email, 'WorldMonitor Notifications Connected', text);
+    await sendEmail(ch.email, 'WorldMonitor Notifications Connected', text, undefined, undefined, buildWelcomeEmailHtml());
   } else if (channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {
     // Welcome push on first web_push connect. Short body — Chrome's
     // notification shelf clips past ~80 chars on most OSes. Click
@@ -2106,7 +2167,7 @@ async function processEventDelivery(event) {
     (!r.digestMode || r.digestMode === 'realtime') &&
     ruleMatchesEventType(r, event) &&
     shouldNotify(r, event) &&
-    eventMatchesCountryScope(event, r) &&
+    eventMatchesDeliveryScope(event, r) &&
     eventMatchesTickerScope(event, r) &&
     eventMatchesChokepointScope(event, r) &&
     eventMatchesOrbitalSiteScope(event, r) &&
@@ -2123,7 +2184,7 @@ async function processEventDelivery(event) {
     (!r.digestMode || r.digestMode === 'realtime') &&
     ruleMatchesEventType(r, event) &&
     shouldNotify(r, event) &&
-    !eventMatchesCountryScope(event, r) &&
+    !eventMatchesDeliveryScope(event, r) &&
     eventMatchesTickerScope(event, r) &&
     eventMatchesChokepointScope(event, r) &&
     eventMatchesOrbitalSiteScope(event, r) &&
@@ -2188,7 +2249,7 @@ async function processEventDelivery(event) {
     // its first entries — mirroring the write-path ladder. Runs before the
     // quiet-hours hold so held batches are scope-clamped at hold time too.
     const scope = freeTierCountryScope(userTier, rule.countries);
-    if (!scope.ok || (userTier < 1 && !eventMatchesCountryScope(event, { ...rule, countries: scope.countries }))) {
+    if (!scope.ok || (userTier < 1 && !eventMatchesDeliveryScope(event, { ...rule, countries: scope.countries }))) {
       freeScopeDrops += 1;
       continue;
     }
@@ -2252,7 +2313,7 @@ async function processEventDelivery(event) {
           'Authorization': `Bearer ${RELAY_SECRET}`,
           'User-Agent': 'worldmonitor-relay/1.0',
         },
-        body: JSON.stringify({ userId: rule.userId }),
+        body: JSON.stringify({ userId: rule.userId, deliveryChannels: rule.channels ?? [] }),
         signal: AbortSignal.timeout(10000),
       });
       if (!chRes.ok) throw new Error(`HTTP ${chRes.status}`);
@@ -2303,7 +2364,7 @@ async function processEventDelivery(event) {
         } else if (ch.channelType === 'teams' && ch.webhookEnvelope) {
           await sendTeams(rule.userId, ch.webhookEnvelope, buildTeamsAlertForEvent(event, impactText), ch);
         } else if (ch.channelType === 'email' && ch.email) {
-          await sendEmail(ch.email, subject, deliveryText, unsubscribeUrlFor(ch, 'alerts'));
+          await sendEmail(ch.email, subject, deliveryText, unsubscribeUrlFor(ch, 'alerts'), undefined, buildAlertEmailForEvent(event, impactText));
         } else if (ch.channelType === 'webhook' && ch.webhookEnvelope) {
           await sendWebhook(rule.userId, ch.webhookEnvelope, shapeEventForWebhook(event), ch.webhookSecret, ch);
         } else if (ch.channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {
@@ -2417,6 +2478,7 @@ module.exports = {
   checkDedup,
   upstashDedupSetNx,
   eventMatchesCountryScope,
+  eventMatchesDeliveryScope,
   // Exported for tests: the link-suppression suite drives the real helpers
   // (not mirrors) so matcher drift fails the suite instead of the incident.
   eventLinks,

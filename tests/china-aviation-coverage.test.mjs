@@ -65,7 +65,8 @@ describe('China hub recovery before international publication', () => {
         if (omitted) return { ok: true, json: async () => ({ data: [] }) };
         throw new Error('synthetic timeout');
       }
-      return { ok: true, json: async () => ({ data: [flight({ delay: ['KMG', 'CAN'].includes(iata) ? 65 : 0 })] }) };
+      // 12 rows: a delay band above moderate needs a sample of 10+ flights (#10873).
+      return { ok: true, json: async () => ({ data: Array.from({ length: 12 }, () => flight({ delay: ['KMG', 'CAN'].includes(iata) ? 65 : 0 })) }) };
     });
     return { calls, initialAt, counter: () => counter };
   }
@@ -157,7 +158,7 @@ describe('China AviationStack hub contract', () => {
       if (iata === 'URC') throw new Error('simulated timeout');
       if (iata === 'KMG') return { ok: true, json: async () => ({ data: [] }) };
       if (iata === 'CAN') {
-        return { ok: true, json: async () => ({ data: [flight({ delay: 65 })] }) };
+        return { ok: true, json: async () => ({ data: Array.from({ length: 12 }, () => flight({ delay: 65 })) }) };
       }
       return { ok: true, json: async () => ({ data: [flight()] }) };
     };

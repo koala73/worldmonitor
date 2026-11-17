@@ -29,24 +29,30 @@ function createDeliveryReporter({ siteUrl, secret, source }) {
 
   async function withDeliveryReports(deliver) {
     if (deliveryReports.getStore()) return deliver();
-    const results = [];
+    const results = new Map();
     return deliveryReports.run(results, async () => {
       try {
         return await deliver();
       } finally {
-        for (let i = 0; i < results.length; i += 100) {
-          await submitDeliveryReports(results.slice(i, i + 100));
+        const reports = [...results.values()];
+        for (let i = 0; i < reports.length; i += 100) {
+          await submitDeliveryReports(reports.slice(i, i + 100));
         }
       }
     });
   }
 
   async function recordDelivery(userId, channelType, channel, error = null) {
-    if (!channel?._id || !Number.isFinite(channel.linkedAt)) return error === null;
-    const result = { userId, channelType, delivery: { channelId: channel._id, linkedAt: channel.linkedAt, error } };
+    const sequence = channel?.deliveryAttempt?.sequence;
+    if (!channel?._id || !Number.isFinite(channel.linkedAt) || !Number.isSafeInteger(sequence) || sequence < 1) return error === null;
+    const result = { userId, channelType, delivery: { channelId: channel._id, linkedAt: channel.linkedAt, sequence, error } };
     const results = deliveryReports.getStore();
-    if (results) results.push(result);
-    else await submitDeliveryReports([result]);
+    if (results) {
+      const key = JSON.stringify([channel._id, channel.linkedAt, sequence]);
+      const previous = results.get(key);
+      // Split cards form one attempt; one failed card makes that attempt fail.
+      if (!previous || previous.delivery.error === null) results.set(key, result);
+    } else await submitDeliveryReports([result]);
     return error === null;
   }
 
