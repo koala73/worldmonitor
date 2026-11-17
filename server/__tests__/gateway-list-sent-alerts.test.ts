@@ -20,7 +20,10 @@ vi.hoisted(() => {
   process.env.CONVEX_SERVER_SHARED_SECRET = 'shared-secret';
 });
 
-const readCachedJsonList = vi.fn();
+// Every alert-history key the handler read. Other pipeline callers (rate
+// limits, usage) get an empty answer.
+const historyReads: string[] = [];
+const runRedisPipeline = vi.fn();
 vi.mock('../_shared/redis', async (importActual) => {
   const actual = await importActual<typeof import('../_shared/redis')>();
   return {
@@ -28,8 +31,7 @@ vi.mock('../_shared/redis', async (importActual) => {
     // Entitlements: always a cache miss, so the gate asks the Convex stub below.
     getCachedJson: vi.fn().mockResolvedValue(null),
     setCachedJson: vi.fn().mockResolvedValue(true),
-    runRedisPipeline: vi.fn().mockResolvedValue([]),
-    readCachedJsonList: (...a: unknown[]) => readCachedJsonList(...a),
+    runRedisPipeline: (...a: unknown[]) => runRedisPipeline(...a),
   };
 });
 
@@ -60,7 +62,7 @@ vi.mock('../_shared/usage', async (importActual) => {
 
 import { createDomainGateway, serverOptions } from '../gateway';
 import { __resetEntitlementNegativeCacheForTests } from '../_shared/entitlement-check';
-import { sentAlertsKey } from '../_shared/sent-alert-history';
+import { SENT_ALERTS_KEY_PREFIX, sentAlertsKey } from '../_shared/sent-alert-history';
 import { newsHandler } from '../worldmonitor/news/v1/handler';
 import { createNewsServiceRoutes } from '../../src/generated/server/worldmonitor/news/v1/service_server';
 
@@ -113,9 +115,11 @@ function session(userId: string | null, role: 'free' | 'pro' = 'free') {
 
 beforeEach(() => {
   __resetEntitlementNegativeCacheForTests();
-  readCachedJsonList.mockReset().mockImplementation(async (key: string) => {
-    const value = lists[key];
-    return value ? { status: 'hit', value } : { status: 'miss' };
+  historyReads.length = 0;
+  runRedisPipeline.mockReset().mockImplementation(async (commands: string[][]) => {
+    if (!String(commands[0]?.[1]).startsWith(SENT_ALERTS_KEY_PREFIX)) return [];
+    historyReads.push(commands[0]![1]!);
+    return [{ result: (lists[commands[0]![1]!] ?? []).map((row) => JSON.stringify(row)) }, { result: [] }];
   });
   resolveClerkSession.mockReset().mockResolvedValue(null);
   validateApiKey.mockReset().mockResolvedValue({ valid: false, required: true, error: 'API key required' });
@@ -135,7 +139,7 @@ describe('gateway: list-sent-alerts is account-private', () => {
     expect(res.status).toBe(200);
     const body = await res.json() as { alerts: Array<{ title: string }> };
     expect(body.alerts.map((alert) => alert.title)).toEqual(['Headline sent to A']);
-    expect(readCachedJsonList.mock.calls.map((call) => call[0])).toEqual([sentAlertsKey('user_a')]);
+    expect(historyReads).toEqual([sentAlertsKey('user_a')]);
   });
 
   test('a forged x-user-id header does not change whose alerts are read', async () => {
@@ -145,7 +149,7 @@ describe('gateway: list-sent-alerts is account-private', () => {
     const text = await res.text();
     expect(text).toContain('Headline sent to A');
     expect(text).not.toContain('Headline sent to B');
-    expect(readCachedJsonList.mock.calls.map((call) => call[0])).toEqual([sentAlertsKey('user_a')]);
+    expect(historyReads).toEqual([sentAlertsKey('user_a')]);
   });
 
   test('the response is never cacheable', async () => {
@@ -159,7 +163,7 @@ describe('gateway: list-sent-alerts is account-private', () => {
     const res = await gateway(get({ 'x-user-id': 'user_b' }), ctx);
     expect(res.status).toBe(401);
     expect(await res.text()).not.toContain('Headline sent to');
-    expect(readCachedJsonList).not.toHaveBeenCalled();
+    expect(historyReads).toEqual([]);
   });
 
   test('an anonymous browser session token is refused before any read', async () => {
@@ -171,7 +175,7 @@ describe('gateway: list-sent-alerts is account-private', () => {
     ));
     const res = await gateway(get({ 'X-WorldMonitor-Key': 'wms_anonymous', 'x-user-id': 'user_b' }), ctx);
     expect(res.status).toBe(401);
-    expect(readCachedJsonList).not.toHaveBeenCalled();
+    expect(historyReads).toEqual([]);
   });
 
   test('a signed-in free account is refused before any read', async () => {
@@ -179,7 +183,7 @@ describe('gateway: list-sent-alerts is account-private', () => {
     const res = await gateway(get({ Authorization: 'Bearer free', 'x-user-id': 'user_b' }), ctx);
     expect(res.status).toBe(403);
     expect(await res.text()).not.toContain('Headline sent to');
-    expect(readCachedJsonList).not.toHaveBeenCalled();
+    expect(historyReads).toEqual([]);
   });
 
   test('an operator key with no user is refused by the handler before any read', async () => {
@@ -188,6 +192,6 @@ describe('gateway: list-sent-alerts is account-private', () => {
     const res = await gateway(get({ 'X-WorldMonitor-Key': 'operator-key', 'x-user-id': 'user_b' }), ctx);
     expect(res.status).toBe(401);
     expect(await res.text()).not.toContain('Headline sent to');
-    expect(readCachedJsonList).not.toHaveBeenCalled();
+    expect(historyReads).toEqual([]);
   });
 });

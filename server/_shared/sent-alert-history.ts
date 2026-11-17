@@ -6,6 +6,8 @@
 export const SENT_ALERTS_KEY_PREFIX = 'wm:notif:sent:v1:';
 export const SENT_ALERTS_MAX = 200;
 export const SENT_ALERTS_RETENTION_DAYS = 7;
+// The operator link-suppression set the relay consults before delivery (#8401).
+export const BLOCKED_NOTIFICATION_LINKS_KEY = 'notif:blocked-links:v1';
 
 /** The fields ListSentAlerts returns. The stored row also carries the alert type, severity and channels. */
 export interface SentAlertRecord {

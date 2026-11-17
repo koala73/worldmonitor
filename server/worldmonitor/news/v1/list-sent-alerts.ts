@@ -4,9 +4,11 @@ import {
   type ListSentAlertsResponse,
   type ServerContext,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
+import { isLinkSuppressed, parseSuppressionEntries } from '../../../../scripts/shared/notification-link-suppression.cjs';
 import { TRUSTED_USER_ID_HEADER } from '../../../_shared/mcp-internal-hmac';
-import { readCachedJsonList } from '../../../_shared/redis';
+import { runRedisPipeline } from '../../../_shared/redis';
 import {
+  BLOCKED_NOTIFICATION_LINKS_KEY,
   SENT_ALERTS_MAX,
   SENT_ALERTS_RETENTION_DAYS,
   parseSentAlert,
@@ -15,6 +17,16 @@ import {
 } from '../../../_shared/sent-alert-history';
 
 const RETENTION_MS = SENT_ALERTS_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+const UNAVAILABLE: ListSentAlertsResponse = { alerts: [], state: 'unavailable' };
+
+function parseRow(row: unknown): SentAlertRecord | null {
+  if (typeof row !== 'string') return parseSentAlert(row);
+  try {
+    return parseSentAlert(JSON.parse(row));
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The realtime alerts delivered to the calling account, newest first, so the
@@ -26,6 +38,11 @@ const RETENTION_MS = SENT_ALERTS_RETENTION_DAYS * 24 * 60 * 60 * 1000;
  * such as an operator key, is refused before any read. The route is `no-store`
  * in the gateway and nothing here is cached, so one user's alerts cannot be
  * served to another.
+ *
+ * An alert whose link an operator has since blocked (#8401) is left out: the
+ * search opens the link in one click, the same navigation the service worker
+ * refuses for an already-delivered push. When the block list cannot be read
+ * the answer is `unavailable`, never an unchecked list.
  */
 export async function listSentAlerts(
   ctx: ServerContext,
@@ -34,19 +51,29 @@ export async function listSentAlerts(
   const userId = ctx.request.headers.get(TRUSTED_USER_ID_HEADER)?.trim();
   if (!userId) throw new ApiError(401, 'Sign in to read the alerts sent to you', '');
 
-  // raw: the relay writes this key without the deployment prefix.
-  const read = await readCachedJsonList(sentAlertsKey(userId), SENT_ALERTS_MAX, true);
-  if (read.status === 'error') {
-    console.warn('[list-sent-alerts] history read failed:', read.error instanceof Error ? read.error.message : String(read.error));
-    return { alerts: [], state: 'unavailable' };
+  // raw: the relay writes both keys without the deployment prefix.
+  const results = await runRedisPipeline([
+    ['LRANGE', sentAlertsKey(userId), '0', String(SENT_ALERTS_MAX - 1)],
+    ['SMEMBERS', BLOCKED_NOTIFICATION_LINKS_KEY],
+  ], true);
+  const [history, blocked] = results;
+  if (
+    results.length !== 2
+    || history?.error || blocked?.error
+    || !Array.isArray(history?.result) || !Array.isArray(blocked?.result)
+  ) {
+    console.warn('[list-sent-alerts] history or link block list could not be read');
+    return UNAVAILABLE;
   }
 
-  const rows = read.status === 'hit' && Array.isArray(read.value) ? read.value : [];
+  const suppressed = parseSuppressionEntries(blocked.result);
   // The list keeps its TTL as long as alerts keep arriving, so an old row can
   // outlive the stated window; the window is applied here.
   const cutoff = Date.now() - RETENTION_MS;
-  const alerts = rows
-    .map(parseSentAlert)
-    .filter((alert): alert is SentAlertRecord => alert !== null && alert.sentAt >= cutoff);
+  const alerts = history.result
+    .map(parseRow)
+    .filter((alert): alert is SentAlertRecord => (
+      alert !== null && alert.sentAt >= cutoff && !isLinkSuppressed(alert.link, suppressed)
+    ));
   return { alerts, state: 'ok' };
 }

@@ -10,6 +10,7 @@
  */
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
 import { newsHandler } from '../server/worldmonitor/news/v1/handler';
@@ -18,6 +19,7 @@ import { validateGeneratedRequest } from '../server/request-validator';
 import { TRUSTED_USER_ID_HEADER } from '../server/_shared/mcp-internal-hmac';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
 import {
+  BLOCKED_NOTIFICATION_LINKS_KEY,
   SENT_ALERTS_KEY_PREFIX,
   SENT_ALERTS_MAX,
   SENT_ALERTS_RETENTION_DAYS,
@@ -39,8 +41,10 @@ const oldEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]));
 const originalFetch = globalThis.fetch;
 
 let lists: Map<string, string[]>;
+let blockedLinks: string[];
 let reads: string[][];
 let redisFails: boolean;
+let blockListFails: boolean;
 
 function record(title: string, extra: Record<string, unknown> = {}) {
   return relayHistory.buildSentAlertRecord({
@@ -59,6 +63,11 @@ function seed(userId: string, records: unknown[]) {
   lists.set(relayHistory.sentAlertsKey(userId), records.map(item => (typeof item === 'string' ? item : JSON.stringify(item))));
 }
 
+/** The alert-history keys a call read. */
+function historyReads(): string[] {
+  return reads.filter(command => command[0] === 'LRANGE').map(command => command[1]!);
+}
+
 async function call(headers: Record<string, string> = {}): Promise<{ status: number; body: ListSentAlertsResponse & { message?: string } }> {
   const response = await route.handler(new Request('https://worldmonitor.app/api/news/v1/list-sent-alerts', { headers }));
   return { status: response.status, body: await response.json() };
@@ -66,21 +75,26 @@ async function call(headers: Record<string, string> = {}): Promise<{ status: num
 
 beforeEach(() => {
   lists = new Map();
+  blockedLinks = [];
   reads = [];
   redisFails = false;
+  blockListFails = false;
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
   delete process.env.VERCEL_ENV;
   delete process.env.LOCAL_API_MODE;
   __resetKeyPrefixCacheForTests();
   globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
-    const command = JSON.parse(String(init?.body)) as string[];
-    reads.push(command);
+    const commands = JSON.parse(String(init?.body)) as string[][];
+    reads.push(...commands);
     if (redisFails) return new Response(JSON.stringify({ error: 'ERR down' }), { status: 500 });
-    const [name, key, start, stop] = command;
-    assert.equal(name, 'LRANGE', 'the handler only reads a list');
-    const items = lists.get(key!) ?? [];
-    return new Response(JSON.stringify({ result: items.slice(Number(start), Number(stop) + 1) }));
+    return new Response(JSON.stringify(commands.map(([name, key, start, stop]) => {
+      if (name === 'LRANGE') return { result: (lists.get(key!) ?? []).slice(Number(start), Number(stop) + 1) };
+      if (name === 'SMEMBERS' && key === BLOCKED_NOTIFICATION_LINKS_KEY) {
+        return blockListFails ? { error: 'ERR block list down' } : { result: blockedLinks };
+      }
+      throw new Error(`unexpected Redis command: ${name} ${key}`);
+    })));
   }) as typeof fetch;
 });
 
@@ -130,7 +144,7 @@ describe('ListSentAlerts', () => {
     const b = await call({ [TRUSTED_USER_ID_HEADER]: 'user-b' });
     assert.deepEqual(b.body.alerts.map(alert => alert.title), ['Headline sent to B']);
 
-    assert.deepEqual(reads.map(command => command[1]), [sentAlertsKey('user-a'), sentAlertsKey('user-b')]);
+    assert.deepEqual(historyReads(), [sentAlertsKey('user-a'), sentAlertsKey('user-b')]);
   });
 
   it('ignores a user id sent as a query parameter or body field', async () => {
@@ -142,7 +156,7 @@ describe('ListSentAlerts', () => {
     ));
     const body = await response.json() as ListSentAlertsResponse;
     assert.deepEqual(body.alerts.map(alert => alert.title), ['Headline sent to A']);
-    assert.deepEqual(reads.map(command => command[1]), [sentAlertsKey('user-a')]);
+    assert.deepEqual(historyReads(), [sentAlertsKey('user-a')]);
   });
 
   it('reads the unprefixed key the relay writes, also on a preview deployment', async () => {
@@ -152,7 +166,7 @@ describe('ListSentAlerts', () => {
     seed('user-a', [record('Headline sent to A')]);
     const { body } = await call({ [TRUSTED_USER_ID_HEADER]: 'user-a' });
     assert.equal(body.alerts.length, 1);
-    assert.equal(reads[0]![1], 'wm:notif:sent:v1:user-a');
+    assert.deepEqual(reads.map(command => command[1]), ['wm:notif:sent:v1:user-a', 'notif:blocked-links:v1']);
   });
 
   it('answers ok with no alerts for an account that has none', async () => {
@@ -191,6 +205,28 @@ describe('ListSentAlerts', () => {
     await call({ [TRUSTED_USER_ID_HEADER]: 'user-a' });
     assert.deepEqual(reads[0], ['LRANGE', sentAlertsKey('user-a'), '0', String(SENT_ALERTS_MAX - 1)]);
   });
+
+  it('leaves out an alert whose link an operator blocked after it was sent', async () => {
+    seed('user-a', [
+      record('Blocked by exact link', { link: 'https://bad.example/phish?id=1' }),
+      record('Blocked by host rule', { link: 'https://www.evil.example/story' }),
+      record('Still listed', { link: 'https://www.reuters.com/world/ok' }),
+      record('No link, still listed', { link: '' }),
+    ]);
+    blockedLinks = ['https://bad.example/phish?id=1', 'host:evil.example'];
+    const { body } = await call({ [TRUSTED_USER_ID_HEADER]: 'user-a' });
+    assert.equal(body.state, 'ok');
+    assert.deepEqual(body.alerts.map(alert => alert.title), ['Still listed', 'No link, still listed']);
+  });
+
+  it('reports unavailable instead of an unchecked list when the link block list cannot be read', async () => {
+    seed('user-a', [record('Headline sent to A')]);
+    blockListFails = true;
+    const { status, body } = await call({ [TRUSTED_USER_ID_HEADER]: 'user-a' });
+    assert.equal(status, 200);
+    assert.deepEqual(body.alerts, []);
+    assert.equal(body.state, 'unavailable');
+  });
 });
 
 describe('sent-alert history contract between the relay and the server', () => {
@@ -199,5 +235,10 @@ describe('sent-alert history contract between the relay and the server', () => {
     assert.equal(sentAlertsKey('user_2abc'), relayHistory.sentAlertsKey('user_2abc'));
     assert.equal(SENT_ALERTS_MAX, relayHistory.SENT_ALERTS_MAX);
     assert.equal(SENT_ALERTS_RETENTION_DAYS * 24 * 60 * 60, relayHistory.SENT_ALERTS_TTL_SECONDS);
+  });
+
+  it('reads the link block list the relay consults before delivery', () => {
+    const relaySource = readFileSync(new URL('../scripts/notification-relay.cjs', import.meta.url), 'utf8');
+    assert.ok(relaySource.includes(`const BLOCKED_LINKS_KEY = '${BLOCKED_NOTIFICATION_LINKS_KEY}';`));
   });
 });
