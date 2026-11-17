@@ -670,6 +670,8 @@ const STANDALONE_KEYS = {
   worldCpiEurostat:      'seed-meta:economic:world-cpi-eurostat',
   worldCpiEstat:         'seed-meta:economic:world-cpi-estat',
   worldCpiAbs:           'seed-meta:economic:world-cpi-abs',
+  // Meta-only probe: the DOSM SITC history (~0.5 MB) is served by GetMonthlySitcTrade.
+  sitcTradeMy:           'seed-meta:trade:monthly-sitc-my',
   // Meta-only probes for the yield-curve bundle. Every market's history is
   // sharded per year; the canonical payloads are too large to probe directly.
   yieldCurveJp:          'seed-meta:economic:yield-curve-jp',
@@ -2334,6 +2336,20 @@ const SEED_META = {
       activationKey: 'seed-activated:economic:world-cpi-abs',
     },
   },
+  // Malaysia DOSM monthly trade by SITC section (macro bundle, daily). Monthly
+  // releases land about four weeks after the reference month; content age is
+  // checked separately by the seed's maxContentAgeMin.
+  sitcTradeMy: {
+    key: 'seed-meta:trade:monthly-sitc-my',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:trade:monthly-sitc-my',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 0,
+      activationKey: 'seed-activated:trade:monthly-sitc-my',
+    },
+  },
   yieldCurveJp: {
     key: 'seed-meta:economic:yield-curve-jp',
     maxStaleMin: 4320, // daily business-day source; 72h covers the Fri→Mon gap. Curve content age is separate.
@@ -2988,6 +3004,9 @@ const ON_DEMAND_KEYS = new Set([
   'worldCpiEurostat',
   'worldCpiEstat',
   'worldCpiAbs',
+  // Same bridge for the DOSM SITC trade reader, which ships before the macro
+  // bundle's tail section first publishes.
+  'sitcTradeMy',
   // Scheduled Toronto CAD producer deployment bridges. Each seeder writes a
   // permanent marker after its first successful canonical publish; health is
   // strict from that point onward.
@@ -3208,6 +3227,7 @@ const ACTIVATION_MARKERS = {
   worldCpiEurostat: SEED_META.worldCpiEurostat.activationKey,
   worldCpiEstat: SEED_META.worldCpiEstat.activationKey,
   worldCpiAbs: SEED_META.worldCpiAbs.activationKey,
+  sitcTradeMy: SEED_META.sitcTradeMy.activationKey,
   foodPricesPihps: SEED_META.foodPricesPihps.activationKey,
   foodPricesPbs: SEED_META.foodPricesPbs.activationKey,
   foodPricesDa: SEED_META.foodPricesDa.activationKey,

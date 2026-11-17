@@ -214,6 +214,42 @@ export interface CustomsRevenueMonth {
   fytdAmountBillions: number;
 }
 
+export interface GetMonthlySitcTradeRequest {
+  country: string;
+  sections: string[];
+  months: number;
+}
+
+export interface GetMonthlySitcTradeResponse {
+  country: string;
+  currency: string;
+  source: string;
+  sourceUrl: string;
+  indexBase: string;
+  latestMonth: string;
+  latestIndexMonth: string;
+  fetchedAt: string;
+  series: SitcTradeSeries[];
+  upstreamUnavailable: boolean;
+  unavailableReason: TradeFlowUnavailableReason;
+}
+
+export interface SitcTradeSeries {
+  section: string;
+  label: string;
+  months: SitcTradeMonth[];
+}
+
+export interface SitcTradeMonth {
+  month: string;
+  exports: number;
+  imports: number;
+  exportsUnitValueIndex?: number;
+  exportsVolumeIndex?: number;
+  importsUnitValueIndex?: number;
+  importsVolumeIndex?: number;
+}
+
 export interface ListComtradeFlowsRequest {
   reporterCode: string;
   cmdCode: string;
@@ -487,6 +523,33 @@ export class TradeServiceClient {
     }
 
     return await resp.json() as GetCustomsRevenueResponse;
+  }
+
+  async getMonthlySitcTrade(req: GetMonthlySitcTradeRequest, options?: TradeServiceCallOptions): Promise<GetMonthlySitcTradeResponse> {
+    let path = "/api/trade/v1/get-monthly-sitc-trade";
+    const params = new URLSearchParams();
+    if (req.country != null && req.country !== "") params.set("country", String(req.country));
+    if (req.sections && req.sections.length > 0) req.sections.forEach(v => params.append("sections", v));
+    if (req.months != null && req.months !== 0) params.set("months", String(req.months));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetMonthlySitcTradeResponse;
   }
 
   async listComtradeFlows(req: ListComtradeFlowsRequest, options?: TradeServiceCallOptions): Promise<ListComtradeFlowsResponse> {
