@@ -1007,8 +1007,14 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
     // storyKey (news alerts, lib/news-story-key.cjs) replaces the title here
     // only. Unlike coalesceKey it is not in the payload, so the relay's
     // per-user dedup still keys on the title, as for browser-submitted alerts.
+    // A story claim is held for a day, so it hashes with SHA-256: distinct
+    // headlines collide on the 32-bit notifySimpleHash and would silence each
+    // other for the whole window.
     const dedupMaterial = buildDedupMaterial(eventType, payload?.title, payload?.coalesceKey);
-    const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(storyKey ? `story:${storyKey}` : dedupMaterial)}`;
+    const dedupHash = storyKey
+      ? `story-${crypto.createHash('sha256').update(storyKey).digest('hex').slice(0, 32)}`
+      : notifySimpleHash(dedupMaterial);
+    const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${dedupHash}`;
     const dedupResult = await upstashSetNx(dedupKey, '1', dedupTtl);
     const dedupDecision = recordDedupOutcome(dedupResult, {
       surface: 'ais-relay',

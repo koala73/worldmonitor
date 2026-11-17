@@ -274,6 +274,17 @@ test('a differently worded report of the same event still alerts', async (t) => 
   assert.deepEqual(titles(upstash.alerts()), [CNN_TITLE, NDTV_TITLE], output());
 });
 
+test('two different headlines never share a story claim', async (t) => {
+  // These two normalized headlines collide on the relay's 32-bit string hash.
+  // Held for a day, a collision would silence the second story's alert.
+  const first = 'Missile strike reported near fervdljnzkjd port overnight';
+  const second = 'Missile strike reported near skdgosnlcthv port overnight';
+  const { upstash, cycle, output } = await startRelay(t);
+  await cycle([{ title: first, source: 'CNN World' }]);
+  await cycle([{ title: second, source: 'CNN World' }]);
+  assert.deepEqual(titles(upstash.alerts()), [first, second], output());
+});
+
 test('a story whose queue write failed is not claimed, so the next sighting alerts', async (t) => {
   const { upstash, cycle, output } = await startRelay(t);
   upstash.state.failLpush = true;
