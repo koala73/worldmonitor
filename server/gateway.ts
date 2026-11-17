@@ -2148,9 +2148,12 @@ export function createDomainGateway(
         return createGatewayAuthErrorResponse(403, 'Request intent required for cookie-authorized AI work', corsHeaders);
       }
     }
+    // On ACCOUNT_PRIVATE_RPC_PATHS the session is the account, so its own
+    // entitlement decides even when an operator key rides along. With no
+    // session the handler refuses the operator key itself (401).
     if (
       !dockerSelfHostSessionAuthorized &&
-      !isEnterpriseAuth &&
+      (!isEnterpriseAuth || (isAccountPrivateRpc && Boolean(sessionUserId))) &&
       !internalMcpVerified &&
       !seedRefreshVerified &&
       !relayWarmPingVerified
