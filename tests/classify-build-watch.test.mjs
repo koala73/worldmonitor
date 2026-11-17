@@ -53,7 +53,7 @@ describe('digest build stamp', () => {
     );
     assert.match(
       digestSrc,
-      /async function writeCoverageLedger\(key: string, ledger: unknown, deadlineAt: number\)[^]*?setCachedJson\(key, ledger, 7200\)/,
+      /async function writeCoverageLedger\(key: string, ledger: unknown, deadlineAt: number\)[\s\S]*?setCachedJson\(key, ledger, 7200\)/,
       'writeCoverageLedger must still SET the ledger under the key it is given',
     );
     assert.match(digestSrc, /const ledger = \{\s*v: 1,\s*generatedAt: Date\.now\(\),/);
