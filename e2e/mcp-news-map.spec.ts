@@ -354,8 +354,14 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
   await expect.poll(() => page.evaluate(() => (window as any).calls.find((call: any) => call.id === 'fixture-mobile-news')?.result?.structuredContent?.applied)).toBe(true);
   await expect(app.locator('.news-location-marker')).toHaveCount(4);
   await evidenceScreenshot(page, { path: testInfo.outputPath('news-markers-mobile.png'), fullPage: true });
-  await app.locator('.news-location-marker').first().press('Enter');
-  await expect(app.locator('.map-popup-sheet')).toContainText('Ports review shipping schedules as trade routes shift');
+  // The applied view re-renders the overlays a few hundred ms later, replacing every
+  // marker element. A marker focused just before that loses focus to the body, and
+  // Enter then opens nothing (twice on CI). Press again until a marker that survived
+  // the re-render opens the sheet; a marker that never opens one still fails here.
+  await expect(async () => {
+    await app.locator('.news-location-marker').first().press('Enter');
+    await expect(app.locator('.map-popup-sheet')).toContainText('Ports review shipping schedules as trade routes shift', { timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
   await evidenceScreenshot(page, { path: testInfo.outputPath('news-marker-mobile-details.png'), fullPage: true });
   await app.locator('.map-popup .popup-close').press('Enter');
   await expect(app.locator('.map-popup')).toHaveCount(0);
