@@ -1111,6 +1111,10 @@ export default defineSchema({
     normalizedEmail: v.optional(v.string()), // Lowercased mirror of email; joined against registrations
     localeTag: v.optional(v.string()), // Full BCP 47 tag (e.g. "zh-CN", "en-US"); kept for future analytics
     localePrimary: v.optional(v.string()), // Lowercased primary subtag (e.g. "zh", "en"); broadcast filter target
+    // Explicit Settings → Language choice (wm-locale-explicit). Absent = never chosen.
+    uiLanguage: v.optional(v.string()),
+    // Notification-settings override for the brief. Absent = follow uiLanguage.
+    briefLanguage: v.optional(v.string()),
     timezone: v.optional(v.string()), // IANA zone (e.g. "Asia/Shanghai")
     country: v.optional(v.string()), // ISO 3166-1 alpha-2; CLIENT-REPORTED — see warning above
     firstSeenAt: v.number(),

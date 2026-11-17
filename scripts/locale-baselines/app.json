@@ -4649,5 +4649,8 @@
   "popups.displacement.kinds.return": "Returns",
   "popups.displacement.kinds.arrival": "Arrivals",
   "popups.displacement.kinds.death": "Deaths",
-  "popups.displacement.kinds.encounter": "Encounters"
+  "popups.displacement.kinds.encounter": "Encounters",
+  "settings.briefLanguage.label": "Brief language",
+  "settings.briefLanguage.hint": "Your daily brief will be written in {{language}}.",
+  "settings.briefLanguage.sameAsApp": "Same as app language"
 }

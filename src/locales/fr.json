@@ -5895,6 +5895,11 @@
       "seasonalHint": "Alerte lorsque le dernier niveau mesuré est bien inférieur à ce que ce réservoir mesure généralement à cette période de l'année.",
       "quietNote": "Ces alertes arrivent même quand les alertes en temps réel sont définies sur critique uniquement. Les heures silencieuses les désactivent.",
       "quietNoteBatch": "Ces alertes arrivent même quand les alertes en temps réel sont définies sur critique uniquement. Les heures silencieuses les désactivent, ou les mettent en attente jusqu'à la fin des heures silencieuses si vous choisissez Batch."
+    },
+    "briefLanguage": {
+      "label": "Langue du briefing",
+      "hint": "Votre briefing quotidien sera rédigé en {{language}}.",
+      "sameAsApp": "Identique à la langue de l'application"
     }
   }
 }

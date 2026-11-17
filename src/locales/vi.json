@@ -5823,6 +5823,11 @@
       "seasonalHint": "Cảnh báo khi mức nước đo được mới nhất thấp hơn đáng kể so với những gì hồ chứa thường đo được vào thời điểm này trong năm.",
       "quietNote": "Những cảnh báo này đến ngay cả khi cảnh báo thời gian thực chỉ được đặt ở mức quan trọng. Giờ yên tĩnh sẽ tắt chúng.",
       "quietNoteBatch": "Những cảnh báo này đến ngay cả khi cảnh báo thời gian thực chỉ được đặt ở mức quan trọng. Giờ yên tĩnh sẽ tắt chúng hoặc giữ lại chúng cho đến khi giờ yên tĩnh kết thúc nếu bạn chọn Batch."
+    },
+    "briefLanguage": {
+      "label": "Ngôn ngữ bản tin",
+      "hint": "Bản tin hằng ngày của bạn sẽ được viết bằng {{language}}.",
+      "sameAsApp": "Giống ngôn ngữ ứng dụng"
     }
   }
 }

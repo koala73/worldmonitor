@@ -5859,6 +5859,11 @@
       "seasonalHint": "Få varning när den senaste uppmätta nivån är väsentligt lägre än vad denna reservoar normalt mäter vid denna årstid.",
       "quietNote": "Dessa aviseringar kommer fram även när realtidsaviseringar är inställda på endast kritiska. Tysta timmar tystar dem.",
       "quietNoteBatch": "Dessa aviseringar kommer fram även när realtidsaviseringar är inställda på endast kritiska. Tysta timmar tystar dem, eller håller kvar dem tills de tysta timmarna är slut om du väljer Batch."
+    },
+    "briefLanguage": {
+      "label": "Språk för sammanfattningen",
+      "hint": "Din dagliga sammanfattning skrivs på {{language}}.",
+      "sameAsApp": "Samma som appens språk"
     }
   }
 }

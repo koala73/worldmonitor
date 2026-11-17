@@ -5859,6 +5859,11 @@
       "seasonalHint": "En son ölçülen seviye, o rezervuarın yılın bu döneminde genellikle ölçtüğü değerin önemli ölçüde altında olduğunda uyarı alın.",
       "quietNote": "Bu uyarılar, gerçek zamanlı uyarılar yalnızca kritik olarak ayarlanmış olsa bile gelir. Sessiz saatler bunları susturur.",
       "quietNoteBatch": "Bu uyarılar, gerçek zamanlı uyarılar yalnızca kritik olarak ayarlanmış olsa bile gelir. Sessiz saatler bunları susturur veya Batch seçeneğini seçerseniz sessiz saatler bitene kadar bekletir."
+    },
+    "briefLanguage": {
+      "label": "Brifing dili",
+      "hint": "Günlük brifinginiz {{language}} dilinde yazılacak.",
+      "sameAsApp": "Uygulama diliyle aynı"
     }
   }
 }

@@ -5859,6 +5859,11 @@
       "seasonalHint": "Waarschuwing wanneer het laatst gemeten niveau aanzienlijk lager is dan wat dat reservoir op dit moment van het jaar gewoonlijk meet.",
       "quietNote": "Deze waarschuwingen komen binnen, ook als real-time waarschuwingen alleen op kritiek zijn ingesteld. Stille uren dempen ze.",
       "quietNoteBatch": "Deze waarschuwingen komen binnen, ook als real-time waarschuwingen alleen op kritiek zijn ingesteld. Stille uren dempen ze, of houden ze tot het einde van de stille uren als je Batch kiest."
+    },
+    "briefLanguage": {
+      "label": "Taal van de briefing",
+      "hint": "Je dagelijkse briefing wordt geschreven in het {{language}}.",
+      "sameAsApp": "Zelfde als de app-taal"
     }
   }
 }

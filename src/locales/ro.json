@@ -5895,6 +5895,11 @@
       "seasonalHint": "Avertizează când cel mai recent nivel măsurat este mult sub ceea ce măsoară de obicei acel rezervor în această perioadă a anului.",
       "quietNote": "Aceste alerte sosesc chiar și atunci când alertele în timp real sunt setate numai la critic. Orele liniștite le opresc.",
       "quietNoteBatch": "Aceste alerte sosesc chiar și atunci când alertele în timp real sunt setate numai la critic. Orele liniștite le opresc, sau le rețin până la sfârșitul orelor liniștite dacă alegi Batch."
+    },
+    "briefLanguage": {
+      "label": "Limba rezumatului",
+      "hint": "Rezumatul zilnic va fi scris în {{language}}.",
+      "sameAsApp": "La fel ca limba aplicației"
     }
   }
 }
