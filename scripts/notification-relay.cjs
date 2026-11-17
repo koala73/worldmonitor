@@ -3,7 +3,8 @@
 const { createDeliveryReporter, deliveryErrorClass } = require('./lib/notification-delivery.cjs');
 const { createHash, randomUUID } = require('node:crypto');
 const { Resend } = require('resend');
-const { appendUnsubscribeText, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
+const { appendUnsubscribeText, injectUnsubscribeFooterHtml, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
+const { buildAlertEmailHtml, buildHeldAlertsEmailHtml, buildWelcomeEmailHtml } = require('./lib/notification-email-html.cjs');
 const { sendResendEmail } = require('./lib/resend-send.cjs');
 const { decrypt } = require('./lib/crypto.cjs');
 const { freeTierAllowsEvent, freeTierAllowsEventType, freeTierAllowsChannel, freeTierCountryScope } = require('./lib/free-tier-delivery.cjs');
@@ -722,8 +723,9 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
         // newly blocked link changes `text`, and reusing the key with a
         // different payload would be rejected as an idempotency conflict.
         const unsubscribeUrl = unsubscribeUrlFor(ch, 'alerts');
-        const batchKey = createHash('sha256').update(JSON.stringify([userId, variant, ch.email, subject, text, unsubscribeUrl])).digest('hex');
-        ok = await sendEmail(ch.email, subject, text, unsubscribeUrl, `quiet-held-${batchKey}`);
+        const html = buildHeldAlertsEmailHtml(heldEmailItems(events));
+        const batchKey = createHash('sha256').update(JSON.stringify([userId, variant, ch.email, subject, text, html, unsubscribeUrl])).digest('hex');
+        ok = await sendEmail(ch.email, subject, text, unsubscribeUrl, `quiet-held-${batchKey}`, html);
       }
       else if (ch.channelType === 'webhook' && ch.webhookEnvelope) ok = await sendWebhook(userId, ch.webhookEnvelope, {
         eventType: 'quiet_hours_batch',
@@ -1025,8 +1027,28 @@ async function sendTeamsCards(userId, webhookEnvelope, payloads, channel) {
 
 /** Adaptive Card for a realtime event, shaped by the same field helpers as the text sinks. */
 function buildTeamsAlertForEvent(event, impact) {
+  return buildTeamsAlertPayload(alertFieldsForEvent(event, impact));
+}
+
+/** Email body for a realtime event: the same shaped fields as the Teams card. */
+function buildAlertEmailForEvent(event, impact) {
+  return buildAlertEmailHtml(alertFieldsForEvent(event, impact));
+}
+
+/** Held alerts for the quiet-hours email, shaped like the held text lines. */
+function heldEmailItems(events) {
+  return events.map((ev) => ({
+    title: formatEventTitle(ev),
+    severity: ev.severity ?? 'high',
+    coverage: formatEventCoverage(ev),
+    link: ev.payload?.link ?? ev.payload?.url,
+  }));
+}
+
+/** The shaped fields every rich sink (Teams card, email) lays out for a realtime event. */
+function alertFieldsForEvent(event, impact) {
   const rawCountry = event.payload?.countryCode ?? event.payload?.country ?? event.country;
-  return buildTeamsAlertPayload({
+  return {
     title: formatEventTitle(event),
     severity: event.severity ?? 'high',
     countryCode: typeof rawCountry === 'string' && rawCountry.trim() ? normalizeEventCountryCode(rawCountry) : null,
@@ -1036,16 +1058,24 @@ function buildTeamsAlertForEvent(event, impact) {
     link: event.payload?.link ?? event.payload?.url,
     eventType: sanitizeNotificationTitle(event.eventType),
     impact,
-  });
+  };
 }
 
 // ── Delivery: Email ───────────────────────────────────────────────────────────
 
-async function sendEmail(email, subject, text, unsubscribeUrl, idempotencyKey) {
+/**
+ * `html` is the designed body (scripts/lib/notification-email-html.cjs);
+ * `text` stays as the plain-text part. The footer of the HTML always gets a
+ * visible unsubscribe link, or a Settings link when there is no one-click URL.
+ */
+async function sendEmail(email, subject, text, unsubscribeUrl, idempotencyKey, html) {
   const payload = { from: RESEND_FROM, to: email, subject, text };
   if (unsubscribeUrl !== undefined) {
     payload.text = appendUnsubscribeText(text, unsubscribeUrl, 'Unsubscribe from alert emails');
     payload.headers = listUnsubscribeHeaders(unsubscribeUrl);
+  }
+  if (typeof html === 'string' && html) {
+    payload.html = injectUnsubscribeFooterHtml(html, unsubscribeUrl, 'Unsubscribe from alert emails');
   }
   const result = await sendResendEmail(resend, payload, { logPrefix: '[relay]', idempotencyKey });
   return result.ok;
@@ -1866,7 +1896,7 @@ async function processWelcomeDelivery(event) {
       linkTitle: 'Open WorldMonitor',
     }), ch);
   } else if (channelType === 'email' && ch.email) {
-    await sendEmail(ch.email, 'WorldMonitor Notifications Connected', text);
+    await sendEmail(ch.email, 'WorldMonitor Notifications Connected', text, undefined, undefined, buildWelcomeEmailHtml());
   } else if (channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {
     // Welcome push on first web_push connect. Short body — Chrome's
     // notification shelf clips past ~80 chars on most OSes. Click
@@ -2346,7 +2376,7 @@ async function processEventDelivery(event) {
         } else if (ch.channelType === 'teams' && ch.webhookEnvelope) {
           await sendTeams(rule.userId, ch.webhookEnvelope, buildTeamsAlertForEvent(event, impactText), ch);
         } else if (ch.channelType === 'email' && ch.email) {
-          await sendEmail(ch.email, subject, deliveryText, unsubscribeUrlFor(ch, 'alerts'));
+          await sendEmail(ch.email, subject, deliveryText, unsubscribeUrlFor(ch, 'alerts'), undefined, buildAlertEmailForEvent(event, impactText));
         } else if (ch.channelType === 'webhook' && ch.webhookEnvelope) {
           await sendWebhook(rule.userId, ch.webhookEnvelope, shapeEventForWebhook(event), ch.webhookSecret, ch);
         } else if (ch.channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {
