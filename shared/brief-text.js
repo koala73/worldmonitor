@@ -36,10 +36,15 @@ export function truncateForDisplay(text, max, lang = 'en') {
   const head = clusters.slice(0, max).join('');
   // Space-separated text: drop the trailing partial word, as English always did.
   if (!UNSPACED_LANGS.has(lang) && /\S\s/u.test(head)) return `${head.replace(/\s+\S*$/u, '')}${ELLIPSIS}`;
-  // Scripts without spaces (ja, zh, th): last word boundary from the segmenter.
+  // Scripts without spaces (ja, zh, th): the last word boundary of the whole
+  // text that fits the budget. Segmenting only the prefix would split a word
+  // the cut itself truncated (ประเทศไ|ทย reads as ประ|เทศ|ไ). No whole word
+  // fits: cut at the grapheme budget.
   let cut = 0;
-  for (const { index, segment, isWordLike } of segmenter(lang, 'word').segment(head)) {
-    if (isWordLike && index + segment.length < head.length) cut = index + segment.length;
+  for (const { index, segment, isWordLike } of segmenter(lang, 'word').segment(str)) {
+    const end = index + segment.length;
+    if (end > head.length) break;
+    if (isWordLike) cut = end;
   }
   return `${(cut > 0 ? head.slice(0, cut) : head).trimEnd()}${ELLIPSIS}`;
 }

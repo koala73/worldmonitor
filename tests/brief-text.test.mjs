@@ -68,4 +68,12 @@ describe('truncateForDisplay', () => {
       Intl.Segmenter = original;
     }
   });
+  it('cuts on word boundaries of the whole text, not of the truncated prefix', () => {
+    // The prefix "ประเทศไ" segments as ประ|เทศ|ไ, but in the full text
+    // ประเทศไทย is one word: a cut after เทศ would split it.
+    assert.notEqual(truncateForDisplay('ประเทศไทยประกาศ', 7, 'th'), 'ประเทศ…');
+    // No whole word fits: fall back to the grapheme budget.
+    assert.equal(truncateForDisplay('ประเทศไทยประกาศ', 7, 'th'), 'ประเทศไ…');
+    assert.equal(truncateForDisplay('ประเทศไทยประกาศ', 12, 'th'), 'ประเทศไทย…');
+  });
 });
