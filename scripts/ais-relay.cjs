@@ -8324,14 +8324,10 @@ async function seedCorridorRisk() {
     await upstashSet('seed-meta:supply_chain:corridorrisk', { fetchedAt: Date.now(), recordCount: Object.keys(result).length }, 604800);
     console.log(`[CorridorRisk] Seeded ${Object.keys(result).length} corridors (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     seedTransitSummaries().catch(e => console.warn('[TransitSummary] Post-CorridorRisk seed error:', e?.message || e));
-    // Keyed on corridor + band for a day (#10873): an unchanged score used to
-    // re-notify hourly because the dedup hash covered the title's live score.
-    for (const [corridorId, c] of Object.entries(result)) {
-      const notification = notifyPolicy.corridorRiskNotification(corridorId, c.riskScore);
-      if (!notification) continue;
-      publishNotificationEvent({ ...notification, variant: undefined })
-        .catch(err => console.warn('[Notify] CorridorRisk publish error:', err?.message));
-    }
+    // No corridor_risk alert: the feed's score sits at its 85 ceiling with
+    // 100% disruption on every corridor, so a band crossing carried no news
+    // and paged every subscriber for all five corridors. chokepoint_disruption
+    // (#9217) alerts on measured transits instead.
   } catch (e) {
     console.warn('[CorridorRisk] Seed error:', e?.message || e);
   } finally {

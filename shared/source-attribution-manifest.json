@@ -22450,6 +22450,9 @@
           "path": "scripts/lib/internal-links.mjs"
         },
         {
+          "path": "scripts/lib/notification-email-html.cjs"
+        },
+        {
           "path": "scripts/live-pages/common.mjs"
         },
         {
