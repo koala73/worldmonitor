@@ -37,8 +37,9 @@ const CRYPTO_MOVE_DEDUP_TTL_SECONDS = DAY_SECONDS;
 const STATE_BAND_DEDUP_TTL_SECONDS = DAY_SECONDS;
 
 const VOLATILITY_SYMBOLS = new Set(['^VIX', 'VIX']);
-// Catalog indexes (shared/stocks.json) whose Yahoo symbol has no caret.
-const UNCARETED_EQUITY_INDEXES = new Set(['000001.SS', 'FTSEMIB.MI']);
+// Catalog symbols (shared/stocks.json) that track a whole market but have no
+// caret: uncareted indexes, an index future, and index or country ETFs.
+const UNCARETED_EQUITY_INDEXES = new Set(['000001.SS', 'FTSEMIB.MI', 'DFMGI.AE', 'NQ=F', 'QQQ', 'QAT', 'UAE']);
 
 function normalizedSymbol(symbol) {
   return String(symbol || '').trim().toUpperCase();
