@@ -495,12 +495,22 @@ export async function localizeBrief(input) {
   // story's translation, and that row is cached for every reader of the
   // language. A story can then only rewrite its own text.
   const storyGroups = stories.map((s) => uniqueTexts([s.headline, s.description, s.whyMatters]));
+  // A text more than one story carries (a copied description), or that is
+  // also a category label, has a cache row other stories read. It goes in a
+  // call of its own, never next to one story's other fields.
+  const carriers = new Map();
+  for (const text of storyGroups.flat()) carriers.set(text, (carriers.get(text) ?? 0) + 1);
+  const labels = new Set(uniqueTexts(stories.map((s) => s.category)));
+  const ownedByOneStory = (text) => carriers.get(text) === 1 && !labels.has(text);
   const sharedBatchesFor = (misses) => {
     const missing = new Set(misses);
     const batches = [];
     for (const group of storyGroups) {
-      const batch = group.filter((text) => missing.delete(text));
+      const batch = group.filter((text) => ownedByOneStory(text) && missing.delete(text));
       if (batch.length > 0) batches.push(batch);
+    }
+    for (const text of [...missing]) {
+      if (carriers.has(text) && missing.delete(text)) batches.push([text]);
     }
     // What is left is category labels only.
     if (missing.size > 0) batches.push([...missing]);

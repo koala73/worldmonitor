@@ -617,6 +617,27 @@ describe('localizeBrief', () => {
     }
   });
 
+  // A story can copy another story's description, or use a category label as
+  // its headline. That text's shared cache row is read by other stories, so
+  // it must not ride in the copying story's call next to its other fields.
+  it('text carried by two stories, or by a story and a category label, is translated alone', async () => {
+    const env = canonical();
+    const copied = story(2).description;
+    env.data.stories = [story(1, { description: copied }), story(2), story(3, { headline: 'Energy' })];
+    env.data.digest.numbers.surfaced = 3;
+    const shared = makeDeps(fakeTranslate());
+    const { result } = await run({ envelope: env, shared });
+    assert.equal(result.ok, true);
+    const batches = shared.calls.map((call) =>
+      JSON.parse(call.user.slice(call.user.indexOf('['), call.user.lastIndexOf(']') + 1)).map((it) => it.text));
+    for (const text of [copied, 'Energy']) {
+      const carrying = batches.filter((batch) => batch.includes(text));
+      assert.deepEqual(carrying, [[text]], `${text} must be translated once, alone`);
+    }
+    assert.equal(result.envelope.data.stories[0].description, toFr(copied));
+    assert.equal(result.envelope.data.stories[2].headline, 'FR Energy');
+  });
+
   it('a batch that runs to the deadline still leaves time to cache the batches that finished', async () => {
     const env = canonical();
     env.data.stories = Array.from({ length: 12 }, (_, i) => story(i + 1, {
