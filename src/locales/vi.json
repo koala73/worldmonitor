@@ -629,7 +629,8 @@
         "techevent": "Sự kiện Công nghệ",
         "techhq": "Trụ sở Công nghệ",
         "accelerator": "Vườn ươm",
-        "flight": "Chuyến bay"
+        "flight": "Chuyến bay",
+        "alert": "Cảnh báo"
       },
       "flightOnGround": "Đang đỗ tại sân bay",
       "flightAirborne": "FL{{fl}} · {{kts}} hải lý/giờ",
@@ -637,7 +638,9 @@
       "flightMilitaryOnGround": "Quân sự · {{type}} · đang đỗ tại sân bay",
       "flightSearchHint": "Nhấn Enter hoặc nhấp để tra cứu vị trí trực tiếp",
       "flightNotFound": "Không tìm thấy vị trí trực tiếp cho {{callsign}}",
-      "addPanel": "Thêm"
+      "addPanel": "Thêm",
+      "sentAlerts": "Cảnh báo được gửi cho bạn",
+      "sentAlertTime": "Được gửi {{time}}"
     },
     "signal": {
       "title": "PHÁT HIỆN TÌNH BÁO",

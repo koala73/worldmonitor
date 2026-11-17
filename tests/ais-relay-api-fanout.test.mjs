@@ -25,7 +25,7 @@ function blockAfter(marker, length = 1200) {
 describe('ais-relay API fan-out tee', () => {
   it('requires the shared id module and tees only the fan-out event types after a confirmed queue push', () => {
     assert.match(relaySrc, /require\('\.\/lib\/occurrence-events\.cjs'\)/);
-    const publish = blockAfter('async function publishNotificationEvent(', 3500);
+    const publish = blockAfter('async function publishNotificationEvent(', 5000);
     assert.match(publish, /const fanout = API_FANOUT_EVENT_TYPES\.has\(eventType\)/);
     // Id first, so the queue message and the tee copy are the same bytes.
     assert.ok(publish.indexOf('occurrenceEventIdFor(eventType, payload, publishedAt)') < publish.indexOf("upstashLpush('wm:events:queue', msg)"));

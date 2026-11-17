@@ -242,7 +242,8 @@
         "techevent": "Teknikevenemang",
         "techhq": "Teknikhuvudkontor",
         "accelerator": "Accelerator",
-        "flight": "Flyg"
+        "flight": "Flyg",
+        "alert": "Avisering"
       },
       "placeholderTech": "Sök eller skriv ett kommando...",
       "placeholderFinance": "Sök eller skriv ett kommando...",
@@ -256,7 +257,9 @@
       "flightMilitaryOnGround": "Militär · {{type}} · på marken",
       "flightSearchHint": "Tryck Enter eller klicka för att slå upp live-position",
       "flightNotFound": "Ingen live-position hittad för {{callsign}}",
-      "addPanel": "Lägg till"
+      "addPanel": "Lägg till",
+      "sentAlerts": "Aviseringar skickade till dig",
+      "sentAlertTime": "Skickat {{time}}"
     },
     "signal": {
       "source": "Source",

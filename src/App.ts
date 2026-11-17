@@ -10,6 +10,7 @@ import { normalizeExclusiveChoropleths } from '@/components/resilience-choroplet
 import type { AppContext } from '@/app/app-context';
 import type { LoadAllDataTrigger } from '@/app/viewport-hydration-ledger';
 import { applyVisibleMapDimension } from '@/app/map-dimension-control';
+import { localizeShellMeta } from '@/app/shell-meta';
 import {
   REFRESH_INTERVALS,
   DEFAULT_PANELS,
@@ -124,7 +125,7 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { BETA_MODE } from '@/config/beta';
 import { track, trackEvent, trackDeeplinkOpened, initAuthAnalytics, trackMapViewChange } from '@/services/analytics';
 import { preloadCountryGeometry, isCountryGeometryLoaded, getCountryNameByCode } from '@/services/country-geometry';
-import { initI18n, t, I18N_RESOURCES_LOADED_EVENT, type I18nResourcesLoadedDetail } from '@/services/i18n';
+import { getCurrentLanguage, initI18n, t, I18N_RESOURCES_LOADED_EVENT, type I18nResourcesLoadedDetail } from '@/services/i18n';
 import { initDeferredDashboardFonts } from '@/bootstrap/secondary-startup';
 import { applyFontScale, FONT_SCALE_STORAGE_KEY } from '@/services/font-scale-settings';
 
@@ -2546,16 +2547,11 @@ export class App {
     // Localize the static index.html shell — <title>, meta description, and
     // the accessible <h1> are baked in English before the app boots; once i18n
     // is ready we swap them to the user's locale.
-    document.title = t('shell.documentTitle');
+    localizeShellMeta(document, getCurrentLanguage(), t);
     const setMeta = (sel: string, val: string) => {
       const el = document.querySelector(sel);
       if (el) el.setAttribute('content', val);
     };
-    setMeta('meta[name="description"]', t('shell.metaDescription'));
-    setMeta('meta[property="og:title"]', t('shell.documentTitle'));
-    setMeta('meta[property="og:description"]', t('shell.metaDescription'));
-    setMeta('meta[name="twitter:title"]', t('shell.documentTitle'));
-    setMeta('meta[name="twitter:description"]', t('shell.metaDescription'));
     // Mirror of OG_LOCALE in pro-test/src/i18n.ts. The two packages have
     // separate Vite roots and bundlers and can't share an import — keep the
     // tables aligned by hand when adding a locale here OR there.

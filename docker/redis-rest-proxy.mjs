@@ -841,6 +841,20 @@ const TENDER_RECEIPT_UPSERT_SCRIPT = [
   "",
 ].join('\n');
 
+// Pinned copy of scripts/lib/sent-alert-history.cjs for the single-file proxy
+// image. The notification relay stores a delivered alert only while the
+// recipient's account-deletion marker is absent; command-parity tests check
+// exact bytes.
+const SENT_ALERT_WRITE_SCRIPT = [
+  "if redis.call('EXISTS', KEYS[2]) == 1 then",
+  '  return 0',
+  'end',
+  "redis.call('LPUSH', KEYS[1], ARGV[1])",
+  "redis.call('LTRIM', KEYS[1], 0, tonumber(ARGV[2]) - 1)",
+  "redis.call('EXPIRE', KEYS[1], ARGV[3])",
+  'return 1',
+].join('\n');
+
 // PINNED COPIES of scripts/seed-military-bases.mjs version-switch scripts.
 // The seeder publishes a new bases version, sweeps leaked version keys, arms
 // staging TTLs and backfills seed-meta with these; command-parity tests check
@@ -921,6 +935,7 @@ const ALLOWED_EVAL_SCRIPTS = new Set([
   MILITARY_BASES_ARM_LEAKED_KEY_IF_INACTIVE_SCRIPT,
   MILITARY_BASES_ARM_STAGING_KEY_TTL_IF_INACTIVE_SCRIPT,
   MILITARY_BASES_BACKFILL_META_IF_ACTIVE_SCRIPT,
+  SENT_ALERT_WRITE_SCRIPT,
 ]);
 const LEGACY_EVAL_REPLACEMENTS = new Map([
   [LEGACY_COMPARE_AND_DELETE_SCRIPT, COMPARE_AND_DELETE_SCRIPT],

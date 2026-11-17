@@ -702,14 +702,17 @@
         "techevent": "Tukio la Teknolojia",
         "techhq": "Makao makuu ya teknolojia",
         "accelerator": "Kiongeza kasi",
-        "flight": "Ndege"
+        "flight": "Ndege",
+        "alert": "Arifa"
       },
       "flightOnGround": "Juu ya ardhi",
       "flightAirborne": "FL{{fl}} · noti {{kts}}",
       "flightMilitary": "Wanajeshi · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Wanajeshi · {{type}} · ardhini",
       "flightSearchHint": "Bonyeza Enter au ubofye ili kutafuta nafasi ya moja kwa moja",
-      "flightNotFound": "Hakuna nafasi ya moja kwa moja iliyopatikana ya {{callsign}}"
+      "flightNotFound": "Hakuna nafasi ya moja kwa moja iliyopatikana ya {{callsign}}",
+      "sentAlerts": "Arifa zilizokupelekwa",
+      "sentAlertTime": "Zilipelekwa {{time}}"
     },
     "signal": {
       "title": "KUTAFUTA AKILI",

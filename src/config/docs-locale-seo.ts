@@ -10,6 +10,7 @@
  * - English docs: <html lang="en"> + reciprocal en / zh-Hans / x-default
  * - Chinese docs: <html lang="zh-Hans"> + reciprocal en / zh-Hans / x-default
  * - x-default points at the English URL
+ * - Pages without a twin in the other locale get no cluster, only lang
  */
 
 import { CANONICAL_ORIGIN, ORGANIZATION_ID, PERSON_ID, WEBSITE_ID } from './schema-graph-ids';
@@ -90,9 +91,18 @@ export function docsAbsoluteUrl(path: string): string {
   return `${DOCS_PUBLIC_ORIGIN}${path}`;
 }
 
+function docsPageExists(path: string): boolean {
+  return Object.prototype.hasOwnProperty.call(DOCS_PAGE_DATES, path.slice(DOCS_PREFIX.length).replace(/\/$/, ''));
+}
+
+/**
+ * The generated API reference and the .md methodology notes have no Chinese
+ * twin, so a cluster there would point crawlers at a 404. The build-time page
+ * manifest is the only page inventory routing middleware can read.
+ */
 export function buildDocsHreflangLinkTags(pathname: string): string[] {
   const pair = resolveDocsLocalePair(pathname);
-  if (!pair) return [];
+  if (!pair || !docsPageExists(pair.active === 'en' ? pair.zhPath : pair.enPath)) return [];
   const enHref = docsAbsoluteUrl(pair.enPath);
   const zhHref = docsAbsoluteUrl(pair.zhPath);
   return [

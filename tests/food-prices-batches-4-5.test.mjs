@@ -9,7 +9,7 @@ import { parseStatec, collect as collectStatec } from '../scripts/lib/food-price
 import { parseLatvia } from '../scripts/lib/food-prices-adapters/csblv.mjs';
 import { parseMakstat } from '../scripts/lib/food-prices-adapters/makstat.mjs';
 import { parseFoag, FOAG_CUBES, observationQuery } from '../scripts/lib/food-prices-adapters/foag.mjs';
-import { aggregatePrices, readPricecatcher, collect as collectPricecatcher } from '../scripts/lib/food-prices-adapters/pricecatcher.mjs';
+import { PRICECATCHER_ITEM_CODES, addPriceRows, aggregatePrices, priceAccumulator, readPricecatcher, summarizePrices, collect as collectPricecatcher } from '../scripts/lib/food-prices-adapters/pricecatcher.mjs';
 import { parseMercado, readMercadoArchive, collect as collectMercado } from '../scripts/lib/food-prices-adapters/mcba.mjs';
 import { cubeCells, csvRows } from '../scripts/lib/food-prices-adapters/monthly.mjs';
 import { collectFoodSource } from '../scripts/lib/food-prices-fetch.mjs';
@@ -117,29 +117,63 @@ test('all Swiss cubes preserve series dimensions and convert centimes to CHF', (
   assert.throws(() => observationQuery('other', '2026-09'), /unknown/);
 });
 
-test('Malaysia decodes the publisher Brotli parquet and computes per-item medians across unique premises', async () => {
-  const rows = await readPricecatcher(file('pricecatcher.parquet'));
-  const lookup = new Map(csvRows(file('pricecatcher-items.csv').toString(), ['item_code', 'unit']).map(row => [row.item_code, row]));
-  const prices = aggregatePrices(rows, lookup, { before: '2026-11-05', since: '2026-11-01' });
+const pricecatcherLookup = () => new Map(csvRows(file('pricecatcher-items.csv').toString(), ['item_code', 'item', 'unit']).map(row => [row.item_code, row]));
+const pricecatcherCtx = (nowValue, get) => ({ now: new Date(nowValue), get, warn: () => {},
+  dated: (date, offset) => new Date(+date + offset * 86400000).toISOString().slice(0, 10) });
+
+test('Malaysia folds the publisher Brotli parquet into per-item medians across unique premises without keeping rows', async () => {
+  const lookup = pricecatcherLookup();
+  assert.deepEqual([...lookup.keys()].sort(), [...PRICECATCHER_ITEM_CODES].sort(), 'fixture lookup holds exactly the selected publisher rows');
+  const acc = await readPricecatcher(file('pricecatcher.parquet'), priceAccumulator({ before: '2026-11-05', since: '2026-11-01' }));
+  assert.ok(acc.quotes > 100_000 && acc.groups.size === 4 * PRICECATCHER_ITEM_CODES.length, 'every staple reports on each fixture day');
+  const prices = summarizePrices(acc, lookup);
+  assert.equal(prices.filter(row => row.date === '2026-11-04').length, PRICECATCHER_ITEM_CODES.length);
   assert.equal(prices.find(row => row.date === '2026-11-04' && row.item === 'Eggs (grade A)').unit, '30 pieces');
   assert.equal(prices.find(row => row.date === '2026-11-04' && row.item === 'Tomatoes').price, 5.5);
-  assert.ok(aggregatePrices(rows, lookup, { before: '2026-11-04', since: '2026-11-01' }).every(row => row.date < '2026-11-04'));
-  assert.equal(aggregatePrices(rows.slice(0, 1), lookup, { before: '2026-11-05', since: '2026-11-01' }).length, 0);
-  const wrong = new Map(lookup); wrong.set('1', { unit: 'piece' });
-  assert.throws(() => aggregatePrices(rows, wrong, { before: '2026-11-05', since: '2026-11-01' }), /unit or product changed/);
+  assert.ok(prices.every(row => row.currency === 'MYR' && ['kg', '30 pieces'].includes(row.unit) && row.price > 0));
+  const early = summarizePrices(await readPricecatcher(file('pricecatcher.parquet'), priceAccumulator({ before: '2026-11-04', since: '2026-11-02' })), lookup);
+  assert.deepEqual([...new Set(early.map(row => row.date))].sort(), ['2026-11-02', '2026-11-03']);
+  const wrong = new Map(lookup); wrong.set('1', { item: 'AYAM BERSIH - STANDARD', unit: 'piece' });
+  assert.throws(() => summarizePrices(acc, wrong), /unit or product changed/);
+  const renamed = new Map(lookup); renamed.set('114', { item: 'TOMATO CERI', unit: '1kg' });
+  assert.throws(() => summarizePrices(acc, renamed), /unit or product changed/);
+});
+
+test('Malaysia keeps one quote per premise, rejects conflicts, requires ten premises and bounds stored quotes', () => {
+  const lookup = pricecatcherLookup();
+  const window = { before: '2026-11-05', since: '2026-11-01' };
+  const quotes = (count, price = index => index + 1) => Array.from({ length: count }, (_, index) => ({ date: '2026-11-04', premise_code: index + 1, item_code: 114, price: price(index) }));
+  assert.equal(aggregatePrices(quotes(9), lookup, window).length, 0);
+  assert.equal(aggregatePrices([...quotes(10), ...quotes(10)], lookup, window)[0].price, 5.5, 'repeated identical quotes count once');
+  assert.throws(() => aggregatePrices([...quotes(10), { date: '2026-11-04', premise_code: 1, item_code: 114, price: 9 }], lookup, window), /conflicting/);
+  assert.throws(() => aggregatePrices([{ date: '2026-11-04', premise_code: 'x', item_code: 114, price: 1 }], lookup, window), /premise code/);
+  assert.equal(aggregatePrices([...quotes(10), { date: '2026-11-04', premise_code: 99, item_code: 999999, price: 1 }], lookup, window).length, 1, 'unselected items are ignored');
+  assert.throws(() => addPriceRows(priceAccumulator({ ...window, limit: 5 }), quotes(6)), /quotes exceed limit/);
+});
+
+test('Malaysia reports the latest completed local day carrying every selected staple', async () => {
+  const warnings = [];
+  const ctx = pricecatcherCtx('2026-11-04T20:00:00Z', async url => {
+    if (url.endsWith('.csv')) return file('pricecatcher-items.csv').toString();
+    if (url.endsWith('2026-11.parquet')) return file('pricecatcher.parquet');
+    throw new Error('pricecatcher HTTP 404');
+  });
+  ctx.warn = message => warnings.push(message);
+  const report = await collectPricecatcher(ctx);
+  // 20:00Z is 04:00 on 5 November in Malaysia, so 4 November is complete; 28 October is outside the fixture.
+  assert.deepEqual(report.refreshedReports, [{ date: '2026-11-04' }]);
+  assert.equal(report.observations.length, PRICECATCHER_ITEM_CODES.length);
+  assert.match(warnings.join(), /prior-month prices unavailable/);
 });
 
 test('Malaysia chooses current and previous archives by local month and tolerates an unpublished current file', async () => {
   const calls = [];
-  await assert.rejects(collectPricecatcher({ now: new Date('2026-10-31T20:00:00Z'),
-    dated: (date, offset) => new Date(+date + offset * 86400000).toISOString().slice(0, 10), warn: () => {},
-    get: async url => {
-      calls.push(url);
-      if (url.endsWith('.csv')) return file('pricecatcher-items.csv').toString();
-      if (url.endsWith('2026-11.parquet')) throw new Error('pricecatcher HTTP 404');
-      return file('pricecatcher.parquet');
-    },
-  }), /no prices/); // The November fixture has no completed October day; publishing must fail.
+  await assert.rejects(collectPricecatcher(pricecatcherCtx('2026-10-31T20:00:00Z', async url => {
+    calls.push(url);
+    if (url.endsWith('.csv')) return file('pricecatcher-items.csv').toString();
+    if (url.endsWith('2026-11.parquet')) throw new Error('pricecatcher HTTP 404');
+    return file('pricecatcher.parquet');
+  })), /no prices/); // The November fixture has no completed October day; publishing must fail.
   assert.ok(calls.some(url => url.endsWith('2026-10.parquet')));
   assert.ok(!calls.some(url => url.endsWith('2026-09.parquet')));
 });

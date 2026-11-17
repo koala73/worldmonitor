@@ -264,11 +264,11 @@ export const DATASET_SCHEMA_CONTENT_VERSION = {
   crisis: '2026-09-03',
   tools: '2026-09-03',
 };
-export const CRISIS_PAGE_CONTENT_VERSION = '2026-10-24';
+export const CRISIS_PAGE_CONTENT_VERSION = '2026-11-17';
 // TOOLS_PAGE_CONTENT_VERSION and RESEARCH_PAGE_CONTENT_VERSION are exported
 // for the same reason as the constants above: the #7533 guard recomputes
 // their families' clocks from the real values.
-export const TOOLS_PAGE_CONTENT_VERSION = '2026-09-10';
+export const TOOLS_PAGE_CONTENT_VERSION = '2026-11-17';
 export const RESEARCH_PAGE_CONTENT_VERSION = '2026-09-10';
 const DATASET_LICENSE = {
   '@type': 'CreativeWork',
@@ -1736,10 +1736,14 @@ function editorialText(value, where) {
 // Search demand for a conflict is phrased as a question ("what is happening in
 // Sudan" ~8,100/mo US) far more than as "<conflict> tracker" (~200). The year
 // comes from the review date, so a title never claims a year the copy was not
-// checked in. Past ~70 characters Google cuts the brand, not the question.
-const CRISIS_TITLE_MAX = 72;
+// checked in. Search results cut a title near 60 characters, so a question
+// too long to carry the brand drops the brand: results show the site name on
+// their own, and the question is what matches the query.
+const CRISIS_TITLE_MAX = 60;
 export function crisisPageTitle(question, lastReviewed) {
-  return `${question} ${lastReviewed.slice(0, 4)} tracker | World Monitor`;
+  const tracker = `${question} ${lastReviewed.slice(0, 4)} tracker`;
+  const branded = `${tracker} | World Monitor`;
+  return [...branded].length <= CRISIS_TITLE_MAX ? branded : tracker;
 }
 
 // Sourced, dated editorial copy for each crisis tracker (#8605). Build-only, so
@@ -5000,7 +5004,7 @@ function activeWarsDescription(activeWars, crisisCount) {
   const names = activeWars.conflicts.map((row) => row.name);
   for (let leaders = Math.min(3, names.length); leaders >= 0; leaders -= 1) {
     const led = leaders > 0 ? `, led by ${listPhrase(names.slice(0, leaders))}` : '';
-    const description = `${activeWars.countryCount} ${activeWars.countryCount === 1 ? 'country' : 'countries'} had ${activeWars.threshold}+ deaths in state-based armed conflict in ${activeWars.monthLabel} (UCDP)${led}. Ranked list and ${crisisCount} crisis trackers.`;
+    const description = `Live global conflict tracker: ${activeWars.countryCount} ${activeWars.countryCount === 1 ? 'country' : 'countries'} had ${activeWars.threshold}+ deaths in state-based armed conflict in ${activeWars.monthLabel} (UCDP)${led}. Ranked list and ${crisisCount} crisis trackers.`;
     if (description.length <= META_DESCRIPTION_MAX) return description;
   }
   throw new Error('crises hub description exceeds the meta description limit');
@@ -5056,7 +5060,7 @@ function renderCrisesIndex({ crises, baseUrl, lastmod, activeWars = null, countr
   const lede = 'Curated, bounded crisis trackers that combine stable coverage definitions with World Monitor’s maintained country-level humanitarian summaries.';
   const description = activeWars
     ? activeWarsDescription(activeWars, crises.length)
-    : `Monthly conflict trackers for ${crises.length} crises, including Ukraine, Sudan, Myanmar, Palestine and the Red Sea, built from UN OCHA HDX HAPI event and fatality data.`;
+    : `Live global conflict tracker: ${crises.length} crisis trackers, including Ukraine, Sudan, Myanmar, Palestine and the Red Sea, from UN OCHA HDX HAPI data.`;
   const trackers = `      <p${activeWars ? '' : ' class="lede"'}>${escapeHtml(lede)}</p>
       <p>Each tracker has a fixed, reviewable geographic boundary. The static page explains that boundary and ships a dated maintained-month pulse; JavaScript can refresh newer values and fails closed when a country summary is unavailable.</p>
       <p>For the step-by-step verification procedure, see <a href="/use-cases/verify-breaking-news/">Verify breaking news</a>.</p>
@@ -5104,9 +5108,10 @@ ${trackers}`;
   return pageDocument({
     baseUrl,
     path,
+    // Both phrases rank and fill the length budget, so the brand suffix gives way.
     title: activeWars
-      ? `Wars Happening Right Now: ${activeWars.countryCount} Active Conflicts | World Monitor`
-      : 'Crisis Trackers: Ukraine, Sudan, Red Sea | World Monitor',
+      ? 'Wars Happening Right Now: Global Conflict Tracker'
+      : 'Global Conflict Tracker: Ukraine, Sudan, Red Sea | World Monitor',
     description,
     lastmod,
     jsonLd: [
@@ -5519,6 +5524,7 @@ function renderToolsIndex({ baseUrl, lastmod, crisisCount, chokepointCount }) {
         <a class="card" href="/chokepoints/"><strong>Maritime chokepoint status</strong><br><span>${chokepointCount} canonical waterways</span></a>
         <a class="card" href="/crises/"><strong>Bounded crisis trackers</strong><br><span>${crisisCount} curated geographic scopes</span></a>
         <a class="card" href="/monitor-the-situation/"><strong>Monitor the situation</strong><br><span>Headlines, crisis trackers, chokepoints and outages on one board</span></a>
+        <a class="card" href="/blog/glossary/pentagon-pizza-index/"><strong>Pentagon Pizza Index</strong><br><span>What is the pizza index level right now?</span></a>
 ${LIVE_TOPIC_PAGES.map((page) => `        <a class="card" href="${escapeHtml(page.path)}"><strong>${escapeHtml(page.h1)}</strong><br><span>${escapeHtml(page.question)}</span></a>`).join('\n')}
       </div>
       <h2>How these tools work</h2>

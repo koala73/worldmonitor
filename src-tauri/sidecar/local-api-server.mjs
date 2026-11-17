@@ -1492,6 +1492,8 @@ const cloudPreferredExact = new Set([
   '/api/military/v1/get-usni-fleet-report',
   '/api/military/v1/list-defense-patents',
   '/api/news/v1/list-news-pool',
+  // Alert history is written by the cloud relay; the desktop holds none.
+  '/api/news/v1/list-sent-alerts',
   '/api/news/v1/list-source-items',
   '/api/news/v1/summarize-article-cache',
   '/api/research/v1/list-arxiv-papers',
