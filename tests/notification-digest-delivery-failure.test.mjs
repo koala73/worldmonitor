@@ -41,16 +41,32 @@ for (const [type, name] of [['slack', 'sendSlack'], ['discord', 'sendDiscord'], 
         sendTeamsPayload: async () => ({ ok: error === null, status: error?.startsWith('HTTP ') ? status : 0,
           error: error === 'DNS lookup failed' ? 'getaddrinfo ENOTFOUND private host' : 'Request timed out' }),
       });
-      const channel = { _id: 'digest-channel', linkedAt: 123 };
+      const channel = { _id: 'digest-channel', linkedAt: 123, deliveryAttempt: { sequence: 1, pending: true } };
       const ok = await reporter.withDeliveryReports(() => type === 'webhook'
         ? send('owner', 'https://hooks.example.com', [], null, undefined, channel)
         : send('owner', 'https://hooks.example.com', 'Digest', channel));
       assert.equal(ok, error === null);
       assert.deepEqual(batches, [[{ userId: 'owner', channelType: type,
-        delivery: { channelId: channel._id, linkedAt: channel.linkedAt, error } }]]);
+        delivery: { channelId: channel._id, linkedAt: channel.linkedAt, sequence: 1, error } }]]);
     });
   }
 }
+
+test('split cards report one attempt, retaining a failure across later successful cards', async () => {
+  const results = [];
+  globalThis.fetch = async (_url, init) => { results.push(...JSON.parse(init.body).results); return Response.json({ ok: true }); };
+  const reporter = createDeliveryReporter({ siteUrl: 'https://convex.test', secret: 'test', source: 'digest' });
+  const channel = { _id: 'channel', linkedAt: 1, deliveryAttempt: { sequence: 2, pending: true } };
+  await reporter.withDeliveryReports(async () => {
+    await reporter.recordDelivery('owner', 'slack', channel);
+    await reporter.recordDelivery('owner', 'slack', channel, 'HTTP 503');
+    await reporter.recordDelivery('owner', 'slack', channel);
+    await reporter.recordDelivery('owner', 'slack', { _id: 'legacy', linkedAt: 1 });
+  });
+  assert.deepEqual(results, [{ userId: 'owner', channelType: 'slack', delivery: {
+    channelId: 'channel', linkedAt: 1, sequence: 2, error: 'HTTP 503',
+  } }]);
+});
 
 test('shared reporter preserves order, batches at 100, and flushes completed sends after an exception', async () => {
   const batches = [];
@@ -58,7 +74,7 @@ test('shared reporter preserves order, batches at 100, and flushes completed sen
   const reporter = createDeliveryReporter({ siteUrl: 'https://convex.test', secret: 'test', source: 'digest' });
   await assert.rejects(reporter.withDeliveryReports(async () => {
     for (let i = 0; i < 205; i++) {
-      await reporter.recordDelivery('owner', 'webhook', { _id: String(i), linkedAt: 1 });
+      await reporter.recordDelivery('owner', 'webhook', { _id: String(i), linkedAt: 1, deliveryAttempt: { sequence: 1, pending: true } });
     }
     assert.equal(batches.length, 0, 'reporting must wait until delivery completes');
     throw new Error('later bookkeeping failed');

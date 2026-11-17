@@ -104,7 +104,9 @@ A Pro rule receives `reservoir_level_alert` only when its `eventTypes` lists it.
 
 ## Webhook delivery contract
 
-The notification relay tracks consecutive delivery failures for webhooks, Slack, Discord, Microsoft Teams, and browser push. HTTP 401, 403, 404, or 410 disables the channel immediately. Other failures, including DNS lookup, URL rejection, decryption, connection, and timeout failures, disable it only after at least 10 consecutive failures spanning at least 24 hours. A successful delivery clears the streak.
+The notification relay tracks consecutive delivery failures for webhooks, Slack, Discord, Microsoft Teams, and browser push. HTTP 401, 403, 404, or 410 disables the channel immediately. Other failures, including DNS lookup, URL rejection, decryption, connection, and timeout failures, disable it only after at least 10 consecutive failures spanning at least 24 hours. A successful delivery clears the streak. Workers reserve an attempt before sending and report its sequence with the result. Duplicate or superseded results cannot change the streak. If a previous attempt is still incomplete when another starts, its outcome is unknown, so the streak resets conservatively; this includes lost reports and overlapping deliveries.
+
+For rollout, deploy the Convex attempt reservation and result handling before updating the relay and digest workers. Legacy channel reads remain supported, but results without a reserved sequence do not affect failure tracking. The first reserved attempt clears any pre-upgrade streak.
 
 Notification settings show **Disabled after repeated delivery failures**. A transactional notice goes to the verified account email, subject to delivery suppression, with the error class and first-failure time. Save or reconnect the channel in [notification settings](https://www.worldmonitor.app/dashboard?settings=notifications) to clear the failure state and resume delivery. A result from an older connection cannot disable a newly saved channel. Digest deliveries to webhooks, Slack, Discord, and Teams use the same failure streak, so a successful digest also resets failures from real-time alerts.
 

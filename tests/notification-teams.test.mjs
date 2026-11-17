@@ -297,7 +297,7 @@ describe('realtime relay Teams dispatch', () => {
     const posts = [];
     const loaded = loadRelayWithTeamsStub(posts, { status });
     restore = loaded.restore;
-    const channel = { _id: 'teams-channel', linkedAt: 1, channelType: 'teams', webhookEnvelope: crypto.encrypt(TEAMS_URL), verified: true };
+    const channel = { _id: 'teams-channel', linkedAt: 1, deliveryAttempt: { sequence: 1, pending: true }, channelType: 'teams', webhookEnvelope: crypto.encrypt(TEAMS_URL), verified: true };
     const deactivations = [];
     const held = [];
     const deletedHeld = [];
@@ -350,7 +350,7 @@ describe('realtime relay Teams dispatch', () => {
     const { relay, deactivations } = setup({ status: 404 });
     await relay.processEvent({ eventType: 'conflict_escalation', severity: 'critical', payload: { title: 'Gone' } });
     assert.deepEqual(deactivations, [{ userId: 'owner', channelType: 'teams',
-      delivery: { channelId: 'teams-channel', linkedAt: 1, error: 'HTTP 404' } }]);
+      delivery: { channelId: 'teams-channel', linkedAt: 1, sequence: 1, error: 'HTTP 404' } }]);
   });
 
   it('sends the connect/test welcome card to the exact Teams channel', async () => {
@@ -429,7 +429,7 @@ describe('digest cron Teams dispatch', () => {
       decrypt: (envelope) => envelope.replace(/^enc:/, ''),
       withDeliveryReports: async deliver => deliver(),
       recordDelivery: async (userId, channelType, channel, error = null) => {
-        deactivations.push({ userId, channelType, delivery: { channelId: channel._id, linkedAt: channel.linkedAt, error } });
+        deactivations.push({ userId, channelType, delivery: { channelId: channel._id, linkedAt: channel.linkedAt, sequence: channel.deliveryAttempt.sequence, error } });
         return error === null;
       },
       buildTeamsDigestPayload: teams.buildTeamsDigestPayload,
@@ -455,7 +455,7 @@ describe('digest cron Teams dispatch', () => {
     return { sends, deactivations, metadata };
   }
 
-  const verified = { _id: 'teams-channel', linkedAt: 1, channelType: 'teams', webhookEnvelope: `enc:${TEAMS_URL}`, verified: true };
+  const verified = { _id: 'teams-channel', linkedAt: 1, deliveryAttempt: { sequence: 1, pending: true }, channelType: 'teams', webhookEnvelope: `enc:${TEAMS_URL}`, verified: true };
 
   it('delivers the digest to a verified Teams channel as an Adaptive Card', async () => {
     const { sends, metadata } = await runDigest({ channel: verified });
@@ -479,7 +479,7 @@ describe('digest cron Teams dispatch', () => {
 
   it('reports a Teams channel whose workflow is gone', async () => {
     const { deactivations, metadata } = await runDigest({ channel: verified, status: 404 });
-    assert.deepEqual(deactivations, [{ userId: 'owner', channelType: 'teams', delivery: { channelId: 'teams-channel', linkedAt: 1, error: 'HTTP 404' } }]);
+    assert.deepEqual(deactivations, [{ userId: 'owner', channelType: 'teams', delivery: { channelId: 'teams-channel', linkedAt: 1, sequence: 1, error: 'HTTP 404' } }]);
     assert.equal(metadata[0].sentCount, 0);
   });
 });

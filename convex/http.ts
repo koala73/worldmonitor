@@ -1036,11 +1036,12 @@ http.route({
       if (!input || typeof input.userId !== "string" || !input.userId || !isChannelType(input.channelType)
         || !delivery || typeof delivery.channelId !== "string" || !delivery.channelId
         || typeof delivery.linkedAt !== "number" || !Number.isFinite(delivery.linkedAt)
+        || (delivery.sequence !== undefined && (!Number.isSafeInteger(delivery.sequence) || delivery.sequence < 1))
         || (delivery.error !== null && !isDeliveryError(delivery.error))) {
         return Response.json({ error: "INVALID_DELIVERY_RESULT" }, { status: 400 });
       }
       results.push({ userId: input.userId, channelType: input.channelType,
-        delivery: { channelId: delivery.channelId, linkedAt: delivery.linkedAt, error: delivery.error } });
+        delivery: { channelId: delivery.channelId, linkedAt: delivery.linkedAt, sequence: delivery.sequence, error: delivery.error } });
     }
     await ctx.runMutation(internal.notificationChannels.recordDeliveryResult, { results });
     return Response.json({ ok: true });
@@ -1185,7 +1186,7 @@ http.route({
     const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
     if (unauthorized) return unauthorized;
 
-    const body = await parseJsonObjectBody<{ userId?: string }>(request);
+    const body = await parseJsonObjectBody<{ userId?: string; deliveryChannels?: unknown }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
@@ -1200,10 +1201,16 @@ http.route({
       });
     }
 
-    const channels: Array<{ channelType?: string; email?: string }> =
-      await ctx.runQuery((internal as any).notificationChannels.getChannelsByUserId, {
-        userId: body.userId,
-      }) ?? [];
+    const deliveryChannels = body.deliveryChannels;
+    if (deliveryChannels !== undefined && (!Array.isArray(deliveryChannels)
+      || deliveryChannels.length > CHANNEL_TYPES.size || !deliveryChannels.every(isChannelType))) {
+      return Response.json({ error: "INVALID_DELIVERY_CHANNELS" }, { status: 400 });
+    }
+    const channels = deliveryChannels === undefined
+      ? await ctx.runQuery(internal.notificationChannels.getChannelsByUserId, { userId: body.userId })
+      : await ctx.runMutation(internal.notificationChannels.beginChannelDeliveries, {
+        userId: body.userId, channelTypes: deliveryChannels,
+      });
 
     // Delivery workers send alert and digest mail to whatever this returns.
     // Drop email channels whose address bounced, complained or was suppressed

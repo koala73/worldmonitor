@@ -205,6 +205,7 @@
 *Could not find public function for 'mcpProTokens:issueProMcpToken'*
 *Could not find public function for 'mcpProTokens:touchProMcpTokenLastUsed'*
 *Could not find public function for 'mcpProTokens:validateProMcpToken'*
+*Could not find public function for 'notificationChannels:beginChannelDeliveries'*
 *Could not find public function for 'notificationChannels:claimPairingToken'*
 *Could not find public function for 'notificationChannels:createPairingToken'*
 *Could not find public function for 'notificationChannels:createPairingTokenForUser'*
