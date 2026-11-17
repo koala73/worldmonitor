@@ -3,6 +3,7 @@ import { before, describe, it } from 'node:test';
 import nodePath, { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { NEWS_LANGUAGES } from '../src/shared/public-rpc-cache';
 
 import {
   ATTEMPT_META_TTL_S,
@@ -36,8 +37,10 @@ describe('durable last-good policy (#7084)', () => {
     assert.notEqual(lastGoodKey('full', 'en'), lastGoodKey('tech', 'en'));
   });
 
-  it('clamps scope keys to known-shape variants and 2-letter languages', () => {
-    assert.ok(isEligibleScope('full', 'en'));
+  it('accepts supported digest languages and rejects unsupported scope keys', () => {
+    for (const lang of NEWS_LANGUAGES) assert.ok(isEligibleScope('full', lang), lang);
+    assert.ok(!isEligibleScope('full', 'zz'));
+    assert.ok(!isEligibleScope('full', 'zzz'));
     assert.ok(!isEligibleScope('full', 'english'));
     assert.ok(!isEligibleScope('../etc', 'en'));
     assert.ok(!isEligibleScope('full', 'E1'));
@@ -833,6 +836,33 @@ describe('durable last-good wiring (#7084)', () => {
       false,
       'healthy/cache-hit requests must not read the large last-good body',
     );
+  });
+
+  it('publishes canonical and last-good records for every accepted language on Edge and sidecar', async () => {
+    const originalMode = process.env.LOCAL_API_MODE;
+    try {
+      for (const lang of NEWS_LANGUAGES) {
+        const canonicalKey = `news:digest:v1:full:${lang}`;
+        const data = body(['https://a/1'], COVERAGE, new Date().toISOString());
+        delete process.env.LOCAL_API_MODE;
+        reset();
+        stub.pipeline = async (commands) => commands.map((command: any) => ({ result: command[0] === 'EVAL' ? 1 : [] }));
+        stub.fetchMeta = { data, source: 'fresh', leader: true };
+        await mod.listFeedDigest(ctx(), { variant: 'full', lang });
+        assert.equal(evalCalls().length, 1, `${lang}: fresh Edge build publishes once`);
+        const command = evalCalls()[0] as string[];
+        assert.equal(command[3], lastGoodKey('full', lang));
+        assert.equal(command[6], canonicalKey);
+
+        reset();
+        process.env.LOCAL_API_MODE = 'tauri-sidecar';
+        assert.equal(await mod.__testing__.publishAcceptedSnapshot('full', lang, data, canonicalKey), 'accepted');
+        assert.deepEqual(stub.writes.map(write => write.key), [lastGoodKey('full', lang), canonicalKey]);
+      }
+    } finally {
+      if (originalMode === undefined) delete process.env.LOCAL_API_MODE;
+      else process.env.LOCAL_API_MODE = originalMode;
+    }
   });
 
   it('a real BUILD does publish the snapshot', async () => {
