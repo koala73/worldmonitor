@@ -24,7 +24,7 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../_sentry-edge.js';
-import { renderBriefMagazine, selectBriefEnvelope } from '../../../server/_shared/brief-render.js';
+import { assertBriefEnvelope, renderBriefMagazine, selectBriefEnvelope } from '../../../server/_shared/brief-render.js';
 import { briefLocalizedKey } from '../../../shared/brief-envelope.js';
 import { briefFontPlatform } from '../../../server/_shared/brief-font-platform.js';
 import { readRawJsonFromUpstash, redisPipeline } from '../../_upstash-json.js';
@@ -288,13 +288,17 @@ export default async function handler(
   // empty watchlist yields an empty list, so all stories stamp
   // `followed=false`. Visible content and story order are unchanged.
   const followedCountries = await followedCountriesPromise;
-  const selectedEnvelope = selectBriefEnvelope(envelope, await siblingPromise);
+  const sibling = await siblingPromise;
 
   // Cast to BriefEnvelope; renderBriefMagazine runs its own
   // assertBriefEnvelope at the top and will throw on any shape
   // mismatch, which we catch below.
   let html: string;
   try {
+    // Validate canonical first so a malformed canonical stays a 404 even
+    // when a matching sibling would render.
+    assertBriefEnvelope(envelope);
+    const selectedEnvelope = selectBriefEnvelope(envelope, sibling);
     html = renderBriefMagazine(
       selectedEnvelope as Parameters<typeof renderBriefMagazine>[0],
       { shareUrl, followedCountries, fontPlatform: briefFontPlatform(req.headers.get('user-agent') ?? '') },

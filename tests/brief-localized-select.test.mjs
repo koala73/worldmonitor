@@ -95,6 +95,8 @@ describe('selectBriefEnvelope', () => {
   it('selectBriefEnvelope returns canonical when the sibling fails assertBriefEnvelope', () => {
     const can = canonical();
     assert.equal(selectBriefEnvelope(can, localized({ lang: 'en' })), can);
+    assert.equal(selectBriefEnvelope(can, localized({ lang: 'en-US' })), can);
+    assert.equal(selectBriefEnvelope(can, localized({ lang: 'en-GB' })), can);
     assert.equal(selectBriefEnvelope(can, localized({ extra: 1 })), can);
     assert.equal(selectBriefEnvelope(can, 'not an envelope'), can);
     // A valid v4 envelope in the sibling slot is not a localized copy.
@@ -178,6 +180,14 @@ describe('brief readers and the localized sibling', () => {
     assert.match(await res.text(), /English lead/);
   });
 
+  it('magazine route 404s on a malformed canonical even with a matching sibling', async () => {
+    const broken = canonical();
+    delete broken.data.digest.lead;
+    stubUpstash({ [`brief:${USER}:${SLOT}`]: broken, [briefLocalizedKey(USER, SLOT)]: localized() });
+    const res = await magazine();
+    assert.equal(res.status, 404);
+  });
+
   it('magazine route still 404s when only the sibling exists', async () => {
     stubUpstash({ [briefLocalizedKey(USER, SLOT)]: localized() });
     const res = await magazine();
@@ -197,6 +207,7 @@ describe('brief readers and the localized sibling', () => {
     const res = await handler(new Request(`https://worldmonitor.app/api/brief/public/${built.hash}`, {
       headers: { origin: 'https://worldmonitor.app' },
     }));
+    assert.equal(res.status, 200);
     assert.ok(requested.some((key) => key === `brief:${USER}:${SLOT}`), `canonical read expected; got ${requested.join(', ')}`);
     assert.equal(requested.some((key) => key.includes('brief:l10n:')), false);
     assert.doesNotMatch(await res.text(), /français|Bonsoir/);

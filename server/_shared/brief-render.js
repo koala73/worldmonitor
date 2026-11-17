@@ -250,7 +250,7 @@ export function assertBriefEnvelope(envelope) {
   if (!isFiniteNumber(env.issuedAt)) {
     throw new Error('renderBriefMagazine: envelope.issuedAt must be a finite number');
   }
-  if (isLocalized && (typeof env.lang !== 'string' || !LOCALIZED_LANG_RE.test(env.lang) || env.lang === 'en')) {
+  if (isLocalized && (typeof env.lang !== 'string' || !LOCALIZED_LANG_RE.test(env.lang) || env.lang.split('-')[0] === 'en')) {
     throw new Error(
       `renderBriefMagazine: envelope.lang must be a non-English UI language code on v${BRIEF_LOCALIZED_ENVELOPE_VERSION} envelopes (got ${JSON.stringify(env.lang)})`,
     );
