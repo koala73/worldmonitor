@@ -262,8 +262,7 @@ function docsRoutes() {
 
 /** Astro blog routes: the index pages plus one route per post, author and glossary term. */
 function blogRoutes(manifest) {
-  // `/blog` answers 200 without the trailing slash as well (probed).
-  const routes = new Set(['/blog', '/blog/', '/blog/glossary/', '/blog/guides/']);
+  const routes = new Set(['/blog/', '/blog/glossary/', '/blog/guides/']);
   for (const file of readdirSync(join(repoRoot, 'blog-site/src/content/blog'))) {
     if (file.endsWith('.md')) routes.add(`/blog/posts/${file.slice(0, -'.md'.length)}/`);
   }
@@ -714,11 +713,11 @@ describe('internal links never redirect or 404 (#8603)', () => {
     // twelve dashboard CTAs by shape; this pins every welcome href by URL
     // semantics, which is what catches a bare variant host or a redirect
     // source that a tail-only shape check cannot see.
-    // 40 welcome-section hrefs (the hero's Pro-price CTA is the 40th), 12 Footer anchors (including status.worldmonitor.app
+    // 41 welcome-section hrefs (the live strip's Pentagon Pizza Index link is the 41st), 12 Footer anchors (including status.worldmonitor.app
     // and the author byline),
     // and the 5 LEGAL_FOOTER_LINKS paths. Exact, so a footer href that drops
     // out of the scan does not hide behind the section count.
-    assert.equal(scanned, 57, `expected every welcome same-site href to be scanned, saw ${scanned}`);
+    assert.equal(scanned, 58, `expected every welcome same-site href to be scanned, saw ${scanned}`);
     assert.deepEqual(violations, [], `${violations.length} welcome links do not answer 200:\n${violations.join('\n')}`);
   });
 
@@ -751,6 +750,9 @@ describe('internal links never redirect or 404 (#8603)', () => {
       ['/zh/terms', /matches a vercel\.json redirect/],
       ['https://tech.worldmonitor.app/sources/geopolitics/', /matches a vercel\.json redirect/],
       ['https://api.worldmonitor.app', /matches a vercel\.json redirect/],
+      ['/blog', /matches a vercel\.json redirect/],
+      ['/blog/posts/osint-for-everyone-open-source-intelligence-democratized', /matches a vercel\.json redirect/],
+      ['/pro/', /matches a vercel\.json redirect/],
       ['/corrections', /rootless docs path 308s to \/docs\/corrections/],
       ['/countries/norway', /slashless form of a slash-normalised corpus route/],
       ['/countries/not-a-country/', /resolves to no published route \(404\)/],
@@ -783,6 +785,9 @@ describe('internal links never redirect or 404 (#8603)', () => {
       '/docs/corrections',
       '/docs/api-reference/supplychainservice/listfuelshortages',
       '/blog/glossary/suez-canal/',
+      '/blog/',
+      '/blog/posts/osint-for-everyone-open-source-intelligence-democratized/',
+      '/pro',
       '/llms.txt',
       '/api/product-catalog',
     ]) {

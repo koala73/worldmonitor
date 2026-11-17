@@ -242,7 +242,8 @@
         "techevent": "Tech-evenement",
         "techhq": "Tech-hoofdkantoor",
         "accelerator": "Gaspedaal",
-        "flight": "Vlucht"
+        "flight": "Vlucht",
+        "alert": "Melding"
       },
       "placeholderTech": "Zoeken of commando typen...",
       "placeholderFinance": "Zoeken of commando typen...",
@@ -256,7 +257,9 @@
       "flightMilitaryOnGround": "Militair · {{type}} · op de grond",
       "flightSearchHint": "Druk op Enter of klik om live positie op te zoeken",
       "flightNotFound": "Geen live positie gevonden voor {{callsign}}",
-      "addPanel": "Toevoegen"
+      "addPanel": "Toevoegen",
+      "sentAlerts": "Meldingen die naar u zijn verzonden",
+      "sentAlertTime": "Verzonden {{time}}"
     },
     "signal": {
       "source": "Source",

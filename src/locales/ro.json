@@ -635,7 +635,8 @@
         "techevent": "Eveniment tehnic",
         "techhq": "Sediu central tech",
         "accelerator": "Accelerator",
-        "flight": "Zbor"
+        "flight": "Zbor",
+        "alert": "Alertă"
       },
       "flightOnGround": "Pe sol",
       "flightAirborne": "FL{{fl}} · {{kts}} noduri",
@@ -643,7 +644,9 @@
       "flightMilitaryOnGround": "Militar · {{type}} · pe sol",
       "flightSearchHint": "Apăsați Enter sau faceți clic pentru a căuta poziția live",
       "flightNotFound": "Nu s-a găsit poziție live pentru {{callsign}}",
-      "addPanel": "Adaugă"
+      "addPanel": "Adaugă",
+      "sentAlerts": "Alerte trimise către tine",
+      "sentAlertTime": "Trimisă {{time}}"
     },
     "signal": {
       "title": "DESCOPERIRE INFORMAȚII",

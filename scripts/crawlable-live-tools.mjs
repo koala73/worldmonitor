@@ -1025,7 +1025,13 @@ const MAX_PIZZINT_AGE_MS = 60 * 60 * 1_000;
 
 // English activity labels as the dashboard header shows them
 // (components.pizzint.defconLabels in src/locales/en.json).
-const PIZZINT_LEVEL_LABELS = {
+// The relay publishes a level only while a venue reports live busyness, so the
+// weekly freeze often finds none and carries the previous edition's reading.
+// Past two weeks a dated level says more about the archive than the index. The
+// build drops such a reading, and an open page drops it once it ages past this.
+export const MAX_PUBLISHED_PIZZA_INDEX_AGE_MS = 14 * 24 * 60 * 60 * 1_000;
+
+export const PIZZINT_LEVEL_LABELS = {
   1: 'Maximum Activity',
   2: 'High Activity',
   3: 'Elevated Activity',
@@ -1758,6 +1764,14 @@ export function resumePizzIntRefresh(tool, now = Date.now()) {
   void loadPizzInt(tool);
 }
 
+function keepsPublishedPizzIntReading(tool, now = Date.now()) {
+  if (!tool.hasAttribute('data-published-reading')) return false;
+  const publishedAt = Date.parse(tool.querySelector('[data-live-updated]')?.getAttribute('datetime') ?? '');
+  if (Number.isFinite(publishedAt) && now - publishedAt <= MAX_PUBLISHED_PIZZA_INDEX_AGE_MS) return true;
+  tool.removeAttribute('data-published-reading');
+  return false;
+}
+
 export async function loadPizzInt(tool) {
   cancelPizzIntRefresh(tool);
   setToolState(tool, 'loading', 'Connecting…');
@@ -1769,6 +1783,13 @@ export async function loadPizzInt(tool) {
         preflightSession: true,
       })),
       (view) => {
+        // The build's dated last reading stays up until a current one replaces it.
+        if (!view.available && keepsPublishedPizzIntReading(tool)) {
+          setToolState(tool, 'ready', 'Last published reading');
+          schedulePizzIntRefresh(tool, view);
+          return;
+        }
+        tool.removeAttribute('data-published-reading');
         renderPizzIntView(tool, view, Date.now());
         if (view.available) setToolState(tool, 'ready', 'Live reading');
         else setToolState(tool, 'empty', 'Live feed checked');
@@ -1776,6 +1797,11 @@ export async function loadPizzInt(tool) {
       },
     );
   } catch {
+    if (keepsPublishedPizzIntReading(tool)) {
+      setToolState(tool, 'ready', 'Last published reading');
+      schedulePizzIntRefresh(tool, null);
+      return;
+    }
     setPizzIntLevel(tool, '—', 'Unavailable');
     const answer = tool.querySelector('[data-live-answer]');
     if (answer) answer.hidden = true;

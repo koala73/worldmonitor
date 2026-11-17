@@ -701,7 +701,8 @@
         "techevent": "Technológiai Esemény",
         "techhq": "Technológiai Központ",
         "accelerator": "Akcelerátor",
-        "flight": "Járat"
+        "flight": "Járat",
+        "alert": "Értesítés"
       },
       "flightOnGround": "Földön",
       "flightAirborne": "FL{{fl}} · {{kts}} csomó",
@@ -709,7 +710,9 @@
       "flightMilitaryOnGround": "Katonai · {{type}} · földön",
       "flightSearchHint": "Nyomj Enter-t vagy kattints az élő pozíció megjelenítéséhez",
       "flightNotFound": "Nincs elérhető élő pozíció a {{callsign}} járathoz",
-      "addPanel": "Hozzáadás"
+      "addPanel": "Hozzáadás",
+      "sentAlerts": "Önnek küldött értesítések",
+      "sentAlertTime": "Elküldve: {{time}}"
     },
     "signal": {
       "title": "INTELLIGENCIA TALÁLAT",

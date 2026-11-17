@@ -9,13 +9,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { __testing__ } from '../server/worldmonitor/news/v1/list-feed-digest';
+import { __testing__, toProtoItem } from '../server/worldmonitor/news/v1/list-feed-digest';
 import { VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds';
 import catalog from '../shared/news-catalog.json' with { type: 'json' };
 import { publisherFamilyFor, PUBLISHER_FAMILY_DOMAIN_TABLE } from '../shared/publisher-families.js';
 
 const require = createRequire(import.meta.url);
 const { gateRelayStoryLink } = require('../scripts/lib/publisher-link-relay-gate.cjs');
+const { buildClassifyCandidateMap } = require('../scripts/lib/digest-stale-gate.cjs');
 
 // Feed URL and an article link on the host each feed actually links to (live, 2026-10-28).
 const DELIVERY_HOST_FEEDS = [
@@ -111,5 +112,68 @@ describe('publisher-link gate: a feed that lists other owners links to the hosts
     const unlisted = __testing__.parseRssXml(rssWithLink(repo), { name: 'Some Feed', url: trending.url }, 'tech');
     assert.equal(unlisted!.items[0]!.link, '');
     assert.equal(persisted('Some Feed'), '');
+  });
+});
+
+describe('publisher-link gate: the relay sends the links the digest verified, and no others', () => {
+  // The digest knows the feed host; the relay sees only the served item. A
+  // publisher outside the relay's family table (Egypt Independent, 2026-11-17)
+  // used to lose its link in every alert.
+  const feed = { name: 'Egypt Independent', url: 'https://www.egyptindependent.com/feed/', lang: 'en' };
+  const article = 'https://www.egyptindependent.com/exclusive-us-intel-indicates-iran-developing-plans/';
+  const now = Date.now();
+
+  /** Parse one feed, serve it as the digest does, and read the link the relay would alert with. */
+  function relayLinkFor(xml: string): string {
+    const parsed = __testing__.parseRssXml(xml, feed, 'full');
+    assert.equal(parsed?.items.length, 1);
+    const served = toProtoItem(parsed!.items[0]!);
+    const digest = { coverage: { servedStale: false }, categories: { middleeast: { items: [served] } } };
+    return buildClassifyCandidateMap(digest, [], 'full', now, 6 * 3600_000).get('Headline').link;
+  }
+
+  it('the relay table alone still blanks this publisher', () => {
+    assert.equal(gateRelayStoryLink(article, feed.name), '');
+  });
+
+  it('a link on the feed host is stamped verified and reaches the relay', () => {
+    const parsed = __testing__.parseRssXml(rssWithLink(article), feed, 'full');
+    assert.equal(parsed!.items[0]!.linkVerified, true);
+    assert.equal(toProtoItem(parsed!.items[0]!).linkVerified, true);
+    assert.equal(relayLinkFor(rssWithLink(article)), article);
+  });
+
+  it('a spoofed link off the publisher is blanked, unverified, and never reaches the relay', () => {
+    for (const hostile of [
+      'https://evil.example/phish',
+      'https://egyptindependent.com.evil.example/x',
+      'https://evilegyptindependent.com/x',
+    ]) {
+      const parsed = __testing__.parseRssXml(rssWithLink(hostile), feed, 'full');
+      assert.equal(parsed!.items[0]!.link, '', hostile);
+      assert.equal(parsed!.items[0]!.linkVerified, false, hostile);
+      const served = toProtoItem(parsed!.items[0]!);
+      assert.equal(served.link, '');
+      assert.equal(served.linkVerified, false);
+      assert.equal(relayLinkFor(rssWithLink(hostile)), '', hostile);
+    }
+  });
+
+  it('a feed cannot stamp its own item', () => {
+    const pubDate = new Date(now - 3600_000).toUTCString();
+    const xml = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><item>
+      <title>Headline</title><link>https://evil.example/phish</link><pubDate>${pubDate}</pubDate>
+      <linkVerified>true</linkVerified><link_verified>true</link_verified></item></channel></rss>`;
+    assert.equal(relayLinkFor(xml), '');
+  });
+
+  it('a row with a link but no stamp is served unverified, and the relay falls back to its table', () => {
+    const parsed = __testing__.parseRssXml(rssWithLink(article), feed, 'full');
+    const { linkVerified: _stamp, ...cachedBeforeStamp } = parsed!.items[0]!;
+    const served = toProtoItem(cachedBeforeStamp);
+    assert.equal(served.link, article);
+    assert.equal(served.linkVerified, false);
+    const digest = { coverage: { servedStale: false }, categories: { middleeast: { items: [served] } } };
+    assert.equal(buildClassifyCandidateMap(digest, [], 'full', now, 6 * 3600_000).get('Headline').link, '');
   });
 });

@@ -626,7 +626,8 @@
         "techevent": "Tech-Event",
         "techhq": "Tech-Zentrale",
         "accelerator": "Accelerator",
-        "flight": "Flug"
+        "flight": "Flug",
+        "alert": "Benachrichtigung"
       },
       "placeholderTech": "Suchen oder Befehl eingeben...",
       "placeholderFinance": "Suchen oder Befehl eingeben...",
@@ -640,7 +641,9 @@
       "flightMilitaryOnGround": "Militär · {{type}} · am Boden",
       "flightSearchHint": "Drücken Sie die Eingabetaste oder klicken Sie, um die aktuelle Position nachzuschlagen",
       "flightNotFound": "Keine aktuelle Position für {{callsign}} gefunden",
-      "addPanel": "Hinzufügen"
+      "addPanel": "Hinzufügen",
+      "sentAlerts": "An dich gesendete Benachrichtigungen",
+      "sentAlertTime": "Gesendet {{time}}"
     },
     "signal": {
       "title": "NACHRICHTENDIENSTLICHE ERKENNTNIS",

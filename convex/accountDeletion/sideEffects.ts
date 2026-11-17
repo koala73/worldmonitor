@@ -17,6 +17,15 @@ const REDIS_FETCH_TIMEOUT_MS = 5_000;
 const CLERK_FETCH_TIMEOUT_MS = 8_000;
 const DODO_ATTEMPT_TIMEOUT_MS = 8_000;
 const MCP_NEG_CACHE_TTL_SECONDS = 60;
+// The relay writes a recipient's alert history when its delivery pass ends,
+// which can be after the account's Redis keys were deleted here. Its write
+// (scripts/lib/sent-alert-history.cjs) is refused while this per-user marker
+// exists, so a late write cannot recreate the history. The marker only has to
+// outlive a pass that loaded the account's alert rules before the `personal`
+// step deleted them (minutes); it uses the history's own 7-day TTL.
+// tests/list-sent-alerts.test.mts fails when the key or the TTL drift from the
+// relay module.
+const SENT_ALERTS_ERASED_TTL_SECONDS = 7 * 24 * 60 * 60;
 const USER_AGENT = "worldmonitor-convex/1.0";
 const MAX_EXTERNAL_ATTEMPTS = 5;
 const RETRY_BASE_DELAY_MS = 30_000;
@@ -221,6 +230,11 @@ async function redisResult(response: Response, operation: string): Promise<unkno
  *
  * Upstash counts its request-size cap per command, not per pipeline, and this
  * set is bounded by the account's own key/token counts, so batching is safe.
+ *
+ * The SETs go first. A pipeline runs its commands in order but is not a
+ * transaction, and the alert-history marker has to exist before that history
+ * is deleted: a relay write landing between a DEL and a later SET would bring
+ * the history back.
  */
 async function redisRevoke(
   delKeys: string[],
@@ -228,10 +242,10 @@ async function redisRevoke(
 ): Promise<void> {
   const uniqueDels = mergeUniqueStrings([], delKeys);
   const commands: string[][] = [
-    ...uniqueDels.map((key) => ["DEL", key]),
     ...setExEntries.map(({ key, value, ttlSeconds }) => [
       "SET", key, value, "EX", String(ttlSeconds),
     ]),
+    ...uniqueDels.map((key) => ["DEL", key]),
   ];
   if (commands.length === 0) return;
   const response = await redisCommand("/pipeline", {
@@ -260,6 +274,8 @@ async function deleteAccountRedisKeys(args: {
 }): Promise<void> {
   const keys = [
     entitlementKey(args.userId),
+    // Alerts delivered to the account (scripts/lib/sent-alert-history.cjs).
+    `wm:notif:sent:v1:${args.userId}`,
     ...args.keyHashes.flatMap((hash) => [
       `user-api-key:${hash}`,
       `bootstrap-user-api-key-invalid:${hash}`,
@@ -282,17 +298,20 @@ async function deleteAccountRedisKeys(args: {
   // Pointer last: a partial pipeline keeps it, so a retry still finds the slot.
   keys.push(`brief:latest:${args.userId}`);
 
-  // Deletes and the MCP negative-cache sentinels go in one pipeline. The
-  // sentinels used to be a per-token await, each its own fetch with its own
-  // 5s budget, serialized inside the same action that still has to reach Dodo
-  // and Clerk.
+  // Deletes, the alert-history marker and the MCP negative-cache sentinels go
+  // in one pipeline. The sentinels used to be a per-token await, each its own
+  // fetch with its own 5s budget, serialized inside the same action that still
+  // has to reach Dodo and Clerk.
   await redisRevoke(
     keys,
-    args.mcpTokenIds.map((tokenId) => ({
-      key: `pro-mcp-token-neg:${tokenId}`,
-      value: "1",
-      ttlSeconds: MCP_NEG_CACHE_TTL_SECONDS,
-    })),
+    [
+      { key: `wm:notif:sent-erased:v1:${args.userId}`, value: "1", ttlSeconds: SENT_ALERTS_ERASED_TTL_SECONDS },
+      ...args.mcpTokenIds.map((tokenId) => ({
+        key: `pro-mcp-token-neg:${tokenId}`,
+        value: "1",
+        ttlSeconds: MCP_NEG_CACHE_TTL_SECONDS,
+      })),
+    ],
   );
 }
 

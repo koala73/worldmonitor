@@ -59,6 +59,7 @@ export interface NewsItem {
   snippet: string;
   tickers: string[];
   credibilityScore: number;
+  linkVerified: boolean;
 }
 
 export interface ThreatClassification {
@@ -353,6 +354,21 @@ export interface ClaimHeadline {
   title: string;
   link: string;
   publishedAt: number;
+}
+
+export interface ListSentAlertsRequest {
+}
+
+export interface ListSentAlertsResponse {
+  alerts: SentAlert[];
+  state: string;
+}
+
+export interface SentAlert {
+  title: string;
+  source: string;
+  link: string;
+  sentAt: number;
 }
 
 export type StoryPhase = "STORY_PHASE_UNSPECIFIED" | "STORY_PHASE_BREAKING" | "STORY_PHASE_DEVELOPING" | "STORY_PHASE_SUSTAINED" | "STORY_PHASE_FADING";
@@ -740,6 +756,29 @@ export class NewsServiceClient {
     }
 
     return await resp.json() as SearchClaimHeadlinesResponse;
+  }
+
+  async listSentAlerts(_req: ListSentAlertsRequest, options?: NewsServiceCallOptions): Promise<ListSentAlertsResponse> {
+    let path = "/api/news/v1/list-sent-alerts";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListSentAlertsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

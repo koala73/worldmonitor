@@ -14000,6 +14000,8 @@ button.popup-link {
   .search-overlay.search-mobile .search-section-header { min-height: 32px; padding: 0 14px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); }
   .search-overlay.search-mobile .search-result-subtitle,
   .search-overlay.search-mobile .search-result-type { display: none; }
+  /* An alert is recognised by its publisher and sent time, so its second line stays on a phone. */
+  .search-overlay.search-mobile .search-result-alert .search-result-subtitle { display: block; }
   .search-overlay.search-mobile .search-launch-grid { grid-template-columns: minmax(0, 1fr); }
   .search-overlay.search-mobile .search-launch-grid .search-result-item { min-height: 60px; }
 }

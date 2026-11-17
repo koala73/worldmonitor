@@ -6,7 +6,7 @@ keywords: "global conflict tracker, conflict monitoring tools, live conflict map
 audience: "Analysts, researchers, journalists, and policy teams"
 heroImage: "/blog/images/blog/track-global-conflicts-in-real-time.jpg"
 pubDate: "2026-09-20"
-modifiedDate: "2026-11-05"
+modifiedDate: "2026-11-17"
 ---
 
 The best global conflict tracker depends on the question. Use **World Monitor** to view conflict reports alongside aviation, shipping, and market signals; **CFR** for policy context; **ACLED** for structured political violence and protest data; and **UCDP** for conflict research. A live map and a research dataset serve different needs. For a quick list of wars happening now, independent trackers such as **Armed Conflicts**, **WarMonit**, and **War Radar** publish dated lists, but each defines an active war differently.
@@ -158,7 +158,7 @@ They can help organize geopolitical reports alongside shipping and market observ
 
 **How many wars are happening right now?**
 
-It depends on the definition. World Monitor's [crisis hub](https://www.worldmonitor.app/crises/) lists the countries with at least 25 deaths in state-based fighting in UCDP's latest monthly release and shows which month that is. Armed Conflicts and WarMonit publish their own dated lists with different inclusion rules, so their counts differ. Quote the definition and the date with any number.
+It depends on the definition. World Monitor's [global conflict tracker](https://www.worldmonitor.app/crises/) lists the countries with at least 25 deaths in state-based fighting in UCDP's latest monthly release and shows which month that is. Armed Conflicts and WarMonit publish their own dated lists with different inclusion rules, so their counts differ. Quote the definition and the date with any number.
 
 **Is DEFCON Level the official US alert level?**
 

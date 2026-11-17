@@ -629,7 +629,8 @@
         "techevent": "기술 이벤트",
         "techhq": "기술 본사",
         "accelerator": "액셀러레이터",
-        "flight": "항공편"
+        "flight": "항공편",
+        "alert": "알림"
       },
       "flightOnGround": "지상",
       "flightAirborne": "FL{{fl}} · {{kts}}노트",
@@ -637,7 +638,9 @@
       "flightMilitaryOnGround": "군용기 · {{type}} · 지상",
       "flightSearchHint": "Enter를 누르거나 클릭하여 실시간 위치 조회",
       "flightNotFound": "{{callsign}}의 실시간 위치를 찾을 수 없음",
-      "addPanel": "추가"
+      "addPanel": "추가",
+      "sentAlerts": "나에게 전송된 알림",
+      "sentAlertTime": "{{time}}에 전송됨"
     },
     "signal": {
       "title": "정보 발견",

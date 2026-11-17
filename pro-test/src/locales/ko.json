@@ -447,7 +447,8 @@
       "trendRising": "상승 중",
       "trendFalling": "하락 중",
       "trendStable": "안정적",
-      "situationLink": "상황 모니터링: 위기, 속보, 병목 지점, 장애를 하나의 대시보드에서 추적하세요"
+      "situationLink": "상황 모니터링: 위기, 속보, 병목 지점, 장애를 하나의 대시보드에서 추적하세요",
+      "pizzaIndexLink": "펜타곤 피자 지수: 펜타곤 주변 피자 가게의 혼잡도"
     },
     "moments": {
       "eyebrow": "상관관계 엔진",

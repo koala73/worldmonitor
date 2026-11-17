@@ -842,6 +842,7 @@ describe("account deletion — external side effects", () => {
     expect(fetchCalls.some((call) => call.includes("entitlements:test:user_deletion_a"))).toBe(true);
     expect(fetchCalls.some((call) => call.includes(`pro-mcp-token-neg:${String(tokenId)}`))).toBe(true);
     expect(fetchCalls.some((call) => call.includes("brief:latest:user_deletion_a"))).toBe(true);
+    expect(fetchCalls.some((call) => call.includes("wm:notif:sent:v1:user_deletion_a"))).toBe(true);
     expect(fetchCalls.some((call) => call.includes("brief:user_deletion_a:2026-09-21-1200"))).toBe(true);
     const pipeline = fetchCalls.find((call) => call.includes("brief:l10n:user_deletion_a:2026-09-21-1200"));
     const commands = JSON.parse(pipeline?.slice(pipeline.indexOf("[")) ?? "[]") as string[][];
@@ -1092,6 +1093,12 @@ describe("webhook deletions record and can repair the email-keyed gap", () => {
       { userId: USER_A.subject },
     );
     expect(row?.emailKeyedSkipped).toBeUndefined();
+    // The operator-supplied address is proof for the sweep, not data to keep:
+    // markExternalComplete already ran, so nothing else will clear it.
+    const stored = await t.run((ctx) => ctx.db.query("accountDeletions")
+      .withIndex("by_userId", (q) => q.eq("userId", USER_A.subject)).unique());
+    expect(stored?.status).toBe("complete");
+    expect(stored?.verifiedEmail).toBeUndefined();
   });
 
   test("the repair command refuses an empty email and reports an unknown subject", async () => {

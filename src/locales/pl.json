@@ -632,7 +632,8 @@
         "techevent": "Wydarzenie technologiczne",
         "techhq": "Siedziba technologiczna",
         "accelerator": "Akcelerator",
-        "flight": "Lot"
+        "flight": "Lot",
+        "alert": "Alert"
       },
       "placeholderTech": "Szukaj lub wpisz polecenie...",
       "placeholderFinance": "Szukaj lub wpisz polecenie...",
@@ -646,7 +647,9 @@
       "flightMilitaryOnGround": "Wojskowy · {{type}} · na ziemi",
       "flightSearchHint": "Naciśnij Enter lub kliknij, aby wyszukać bieżącą pozycję",
       "flightNotFound": "Nie znaleziono bieżącej pozycji dla {{callsign}}",
-      "addPanel": "Dodaj"
+      "addPanel": "Dodaj",
+      "sentAlerts": "Wysłane Ci alerty",
+      "sentAlertTime": "Wysłano {{time}}"
     },
     "signal": {
       "title": "WYKONANIE INTELIGENCJI",
