@@ -246,6 +246,21 @@ let briefL10nBudgetSkipped = 0;
 function briefL10nPassBudgetLeft() {
   return briefL10nSpentMs < briefL10nConfig.passBudgetMs;
 }
+// One read of the Convex switch per run (the cron is one process per tick);
+// both compose passes share it.
+let briefL10nConfigLoad = null;
+function loadBriefL10nConfigOnce() {
+  briefL10nConfigLoad ??= fetchBriefL10nConfig({
+    siteUrl: CONVEX_SITE_URL,
+    secret: RELAY_SECRET,
+    env: process.env,
+    fetchImpl: (...args) => globalThis.fetch(...args),
+  }).then((config) => {
+    briefL10nConfig = config;
+    if (config.enabled) console.log(`[digest] brief l10n on: langs=${[...config.allow].join(',')}`);
+  });
+  return briefL10nConfigLoad;
+}
 // #4917: freshness budget for reusing the prior envelope's prose on
 // non-due compose ticks (minutes; 0 disables reuse and restores the
 // pre-#4917 synthesize-every-tick behavior). Due ticks always
@@ -1543,6 +1558,7 @@ function buildChannelBodies(storyLists, aiSummary, magazineUrl) {
  */
 async function composeBriefsForRun(rules, nowMs, { deadlineMs } = {}) {
   const briefByUser = new Map();
+  await loadBriefL10nConfigOnce();
   // Missing secret without explicit operator-disable = misconfigured
   // rollout. Count it as a compose failure so the end-of-run exit
   // gate trips and Railway flags the run red. Digest send still
@@ -2365,13 +2381,6 @@ async function main() {
   // enter the send loop below (it iterates `rules`), so nothing is delivered;
   // they are composed after deliveries (see the default-brief pass below).
   const briefOnlyRules = buildBriefOnlyRules(briefOnlyUserIds, rules);
-  briefL10nConfig = await fetchBriefL10nConfig({
-    siteUrl: CONVEX_SITE_URL,
-    secret: RELAY_SECRET,
-    env: process.env,
-    fetchImpl: (...args) => globalThis.fetch(...args),
-  });
-  if (briefL10nConfig.enabled) console.log(`[digest] brief l10n on: langs=${[...briefL10nConfig.allow].join(',')}`);
   let { briefByUser, composeSuccess, composeFailed } = await composeBriefsForRun(rules, nowMs);
 
   // Sprint 1 / U2 — option (a) canonical-send mapping. Build a per-user
