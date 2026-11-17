@@ -185,6 +185,103 @@ The owner chose option 1 on 2026-11-16, with a margin below the volume floors. T
 **Confirmation of every screened episode.** Every screened episode's peak day is rebuilt from the 2.0 exports (days `T-35` to `T`, 96 exports each) and tested against the registered criteria 1–7 at their registered thresholds, plus the scorer eligibility check, exactly as in "Confirmation on the 2.0 stream". An episode that fails anywhere is dropped, and the reasons are recorded. The selection ordering (peak ratio ascending, then date, then ISO2) and the lower median are applied to the confirmed episodes only, with each episode's peak ratio taken from the 2.0 rebuild. The selected episode and every confirmed episode above or below it in the ranking therefore pass every registered threshold on the 2.0 rebuild. The report gives the number of screened episodes that fail on 2.0 and the failed criteria for each one. If no screened episode confirms, P15b has no episode.
 
 Everything else in this section stands as registered: thresholds, clustering, selection position and copied magnitudes. All copied magnitudes come from the 2.0 rebuild.
+
+### Results of amendment 1 (2026-11-17)
+
+**Admission gate: passes.** All 14 country-days are within 10%. The largest difference is DE on 2026-11-14 at −5.8% and on 2026-11-13 at −6.1%. Daily-file ratios run from −6.1% to +0.5% of the 2.0 ratios, mostly a little low. The screen is therefore more likely to drop a borderline episode than to add a spurious one.
+
+| Country | 2026-11-13: 2.0 ratio | daily ratio | difference | 2026-11-14: 2.0 ratio | daily ratio | difference |
+|---|---|---|---|---|---|---|
+| DE | 0.4446 | 0.4173 | −6.12% | 0.5186 | 0.4887 | −5.76% |
+| FR | 0.3008 | 0.2911 | −3.23% | 0.2565 | 0.2460 | −4.08% |
+| GB | 1.0232 | 1.0261 | +0.28% | 0.9565 | 0.9611 | +0.48% |
+| JP | 1.1395 | 1.1425 | +0.26% | 0.8948 | 0.8965 | +0.19% |
+| KR | 1.3936 | 1.3796 | −1.00% | 1.1879 | 1.1751 | −1.07% |
+| PL | 0.4603 | 0.4408 | −4.23% | 0.4393 | 0.4210 | −4.17% |
+| US | 0.6607 | 0.6414 | −2.92% | 0.6795 | 0.6552 | −3.57% |
+
+**Screen.** It read every daily file from 2015-02-25 to 2026-10-31. GDELT's archive has no daily file for 20 days, which count as missing: 2022-11-10, 2023-03-23, and 2025-06-14 to 2025-07-01. For 2023-03-22, GDELT's `md5sums` list gives `9fa71d95…`, but the stored object and two downloads of it are `a246cae9…`. The file was accepted on the stored object's own MD5 header and recorded (`md5ListMismatches` in the scan output). 167 capture days qualified on the screen. They form 48 episodes.
+
+**Confirmation: 26 of 48 confirm, 22 fail on 2.0.**
+
+- **19 fail completeness.** A week day or the capture day has fewer than 96 quarter-hour exports in GDELT's 2.0 archive, so under the registered rule that day is missing, as it would be for the scorer. Eleven of the 19 are short on one to four days, by 1 to 9 exports a day. The other eight fall in long archive gaps: late July to August 2017, October 2017, March 2018, July 2018, and late October to early November 2020 (as few as 21 exports a day). In those eight, the norm also has 0 to 3 complete days, and the scorer's readiness checks fail too. The daily file has no such gaps, which is why the screen admitted them.
+- **3 fail a registered threshold on complete data.**
+  - DE 2019-08-28 fails the current-day share (1.30% against 2n = 1.40%).
+  - DE 2020-08-08 fails duration: 3 of 7 elevated days on 2.0, against 5 or more on the screen.
+  - JP 2026-10-11 has 25 norm protest articles on 2.0, under 28. It passed the screen's 90% floor of 25.2 on the daily file. This is the near-floor case the margin was registered to keep for confirmation.
+- Every episode that met criteria 1–7 on 2.0 also passed the scorer eligibility check.
+
+**Every screened episode.** In screen order (peak ratio ascending on the daily file). Qualifying days are counted on the screen. For incomplete days, the number of exports present is in brackets. The 2.0 ratio is blank where the 2.0 week is incomplete.
+
+| Screen rank | Country | Qualifying days | Peak | Screen ratio | 2.0 ratio | 2.0 result |
+|---|---|---|---|---|---|---|
+| 0 | US | 2024-04-26 to 2024-05-02 (6) | 2024-05-02 | 2.23 | 2.24 | confirmed, position 0 |
+| 1 | DE | 2019-03-18 to 2019-03-18 (1) | 2019-03-18 | 2.27 | – | fails: incomplete: 03-13 (95) |
+| 2 | JP | 2023-03-13 to 2023-03-13 (1) | 2023-03-13 | 2.47 | – | fails: incomplete: 03-08 (95), 03-09 (95), 03-11 (94), 03-12 (95) |
+| 3 | JP | 2024-03-06 to 2024-03-07 (2) | 2024-03-06 | 2.55 | 2.57 | confirmed, position 3 |
+| 4 | DE | 2019-08-28 to 2019-08-28 (1) | 2019-08-28 | 2.55 | 2.45 | fails: current share 1.30% < 2n = 1.40% |
+| 5 | US | 2026-01-13 to 2026-01-13 (1) | 2026-01-13 | 2.55 | 2.44 | confirmed, position 1 |
+| 6 | FR | 2021-07-21 to 2021-07-21 (1) | 2021-07-21 | 2.56 | 2.51 | confirmed, position 2 |
+| 7 | JP | 2017-08-01 to 2017-08-01 (1) | 2017-08-01 | 2.57 | – | fails: incomplete: 07-25 (91), 07-26 (94), 07-27 (92), 07-28 (94), 07-29 (92), 07-30 (95), 07-31 (92), 08-01 (92); norm 1 of 28 days |
+| 8 | US | 2016-07-13 to 2016-07-13 (1) | 2016-07-13 | 2.72 | – | fails: incomplete: 07-11 (95) |
+| 9 | FR | 2026-10-24 to 2026-10-25 (2) | 2026-10-24 | 2.78 | 2.70 | confirmed, position 4 |
+| 10 | FR | 2020-11-01 to 2020-11-03 (3) | 2020-11-03 | 2.80 | – | fails: incomplete: 10-27 (44), 10-28 (46), 10-29 (36), 10-30 (23), 10-31 (21), 11-01 (38), 11-02 (46), 11-03 (30); norm 1 of 28 days |
+| 11 | DE | 2020-08-08 to 2020-08-08 (1) | 2020-08-08 | 2.83 | 2.74 | fails: 3 of 7 elevated days |
+| 12 | JP | 2021-02-10 to 2021-02-13 (4) | 2021-02-10 | 2.89 | 2.87 | confirmed, position 5 |
+| 13 | DE | 2020-06-07 to 2020-06-07 (1) | 2020-06-07 | 3.01 | 2.94 | confirmed, position 6 |
+| 14 | FR | 2023-03-18 to 2023-03-19 (2) | 2023-03-19 | 3.04 | – | fails: incomplete: 03-12 (95), 03-14 (94), 03-16 (95), 03-19 (95) |
+| 15 | PL | 2016-03-17 to 2016-03-17 (1) | 2016-03-17 | 3.10 | – | fails: incomplete: 03-12 (95), 03-13 (95) |
+| 16 | KR | 2016-07-17 to 2016-07-19 (2) | 2016-07-19 | 3.16 | – | fails: incomplete: 07-18 (95) |
+| 17 | US | 2025-06-13 to 2025-06-13 (1) | 2025-06-13 | 3.31 | – | fails: incomplete: 06-12 (87) |
+| 18 | KR | 2020-08-21 to 2020-08-21 (1) | 2020-08-21 | 3.36 | – | fails: incomplete: 08-14 (95) |
+| 19 | FR | 2024-05-02 to 2024-05-05 (3) | 2024-05-03 | 3.41 | 3.42 | confirmed, position 7 |
+| 20 | US | 2017-08-17 to 2017-08-20 (4) | 2017-08-19 | 3.48 | – | fails: incomplete: 08-12 (90), 08-13 (93), 08-14 (91), 08-16 (94), 08-17 (92), 08-18 (93), 08-19 (92); norm 1 of 28 days |
+| 21 | FR | 2024-01-30 to 2024-02-04 (6) | 2024-02-04 | 3.50 | 3.46 | confirmed, position 8 |
+| 22 | PL | 2018-03-13 to 2018-03-15 (3) | 2018-03-15 | 3.67 | – | fails: incomplete: 03-08 (86), 03-09 (95), 03-11 (92), 03-12 (93), 03-13 (85), 03-14 (94), 03-15 (89); norm 1 of 28 days |
+| 23 | FR | 2018-11-22 to 2018-12-10 (12) | 2018-11-24 | 3.89 | 3.94 | confirmed, position 11 |
+| 24 | DE | 2018-09-02 to 2018-09-08 (5) | 2018-09-03 | 3.94 | 3.98 | confirmed, position 12 (**selected**) |
+| 25 | PL | 2017-07-23 to 2017-07-25 (3) | 2017-07-24 | 3.96 | – | fails: incomplete: 07-17 (90), 07-18 (89), 07-20 (93), 07-21 (87), 07-22 (91), 07-23 (93), 07-24 (91); norm 0 of 28 days |
+| 26 | GB | 2024-08-05 to 2024-08-11 (7) | 2024-08-08 | 3.97 | 3.72 | confirmed, position 9 |
+| 27 | FR | 2025-09-09 to 2025-09-11 (2) | 2025-09-11 | 4.02 | 3.98 | confirmed, position 13 |
+| 28 | JP | 2020-06-04 to 2020-06-07 (4) | 2020-06-07 | 4.05 | 3.91 | confirmed, position 10 |
+| 29 | PL | 2016-12-19 to 2016-12-19 (1) | 2016-12-19 | 4.18 | 4.75 | confirmed, position 16 |
+| 30 | PL | 2017-10-20 to 2017-10-21 (2) | 2017-10-20 | 4.28 | – | fails: incomplete: 10-13 (95), 10-14 (91), 10-15 (95), 10-16 (95), 10-17 (94), 10-18 (92), 10-19 (95); norm 1 of 28 days |
+| 31 | JP | 2023-08-25 to 2023-08-31 (6) | 2023-08-28 | 4.38 | 4.54 | confirmed, position 15 |
+| 32 | PL | 2020-08-11 to 2020-08-13 (2) | 2020-08-11 | 4.38 | 4.45 | confirmed, position 14 |
+| 33 | KR | 2024-02-25 to 2024-02-27 (3) | 2024-02-27 | 4.94 | 4.95 | confirmed, position 17 |
+| 34 | KR | 2015-11-20 to 2015-11-20 (1) | 2015-11-20 | 5.01 | – | fails: incomplete: 11-15 (95), 11-18 (95) |
+| 35 | JP | 2026-10-11 to 2026-10-11 (1) | 2026-10-11 | 5.34 | 5.60 | fails: norm protest 25 < 28 |
+| 36 | KR | 2016-11-03 to 2016-11-07 (4) | 2016-11-05 | 5.39 | – | fails: incomplete: 11-01 (95), 11-04 (95) |
+| 37 | JP | 2022-09-26 to 2022-09-28 (3) | 2022-09-28 | 5.54 | 5.36 | confirmed, position 19 |
+| 38 | FR | 2020-06-05 to 2020-06-13 (8) | 2020-06-08 | 5.56 | 5.41 | confirmed, position 20 |
+| 39 | KR | 2024-12-05 to 2024-12-14 (9) | 2024-12-10 | 5.73 | 5.42 | confirmed, position 21 |
+| 40 | FR | 2023-07-04 to 2023-07-07 (4) | 2023-07-05 | 5.80 | 5.25 | confirmed, position 18 |
+| 41 | PL | 2018-07-06 to 2018-07-09 (4) | 2018-07-08 | 5.90 | – | fails: incomplete: 07-01 (92), 07-02 (95), 07-03 (91), 07-04 (95), 07-05 (95), 07-06 (92), 07-07 (95), 07-08 (91); norm 3 of 28 days |
+| 42 | GB | 2020-06-05 to 2020-06-14 (9) | 2020-06-07 | 6.15 | 5.94 | confirmed, position 22 |
+| 43 | KR | 2020-06-07 to 2020-06-08 (2) | 2020-06-08 | 6.35 | 6.41 | confirmed, position 24 |
+| 44 | FR | 2026-10-04 to 2026-10-13 (9) | 2026-10-07 | 6.59 | 6.39 | confirmed, position 23 |
+| 45 | PL | 2020-10-29 to 2020-11-03 (5) | 2020-10-30 | 6.76 | – | fails: incomplete: 10-23 (30), 10-24 (33), 10-25 (46), 10-26 (44), 10-27 (44), 10-28 (46), 10-29 (36), 10-30 (23); norm 1 of 28 days |
+| 46 | PL | 2016-10-06 to 2016-10-10 (4) | 2016-10-07 | 6.79 | – | fails: incomplete: 10-04 (95) |
+| 47 | US | 2020-06-02 to 2020-06-09 (8) | 2020-06-05 | 10.81 | 10.53 | confirmed, position 25 |
+
+**Selection.** The 26 confirmed episodes, ordered by 2.0 peak ratio ascending, then date and ISO2, give a lower median at position `floor((26 - 1) / 2) = 12`: **DE, episode 2018-09-02 to 2018-09-08, peak day 2018-09-03**. Ratio 3.98: a week share of 4.06% (165 of 4,065 articles) against a norm share of 1.02% (114 of 11,172). Six of seven week days are at 2n or above. The current-day share is 5.12% (31 of 606). Binomial tail 3.1 × 10⁻⁴⁸. Every confirmed episode passes every registered threshold on the 2.0 rebuild, so the condition that the selected episode and every episode ranked above it confirm on 2.0 holds.
+
+### Episode manifest entry: P15b sustained unrest (amendment 1)
+
+| Anchor | Episode | Selection statistic | Candidates considered |
+|---|---|---|---|
+| Sustained unrest above norm | DE, capture clock 2018-09-03T23:59:59.999Z (cursor `20180903234500`, `nowMs` 1536019199999), from the GDELT 2.0 archive rebuild | week share / norm share = 0.04059 / 0.01020 = 3.98, the lower median (position 12) of 26 confirmed episodes | 48 screened episodes in the table above; 26 confirmed |
+
+- **Source.** GDELT 2.0 quarter-hour exports, each verified against the master list's size and MD5. Rebuilt by `scripts/cii-gdelt-archive-rebuild.mjs` and selected by `scripts/cii-unrest-episode-scan.mjs confirm`, with tools as of commit `98d61a1dff`.
+- **Dates.** Week 2018-08-27 to 2018-09-02. Current day 2018-09-03 (96 of 96 exports). Rule norm 2018-07-30 to 2018-08-26: 26 of 28 days complete, because 2018-08-10 has 94 exports and 2018-08-21 has 88. The scorer baseline covers 2018-08-05 to 2018-09-01 at that clock, 26 days, with `baselineReady`.
+- **Copied magnitudes, exactly as recorded** (`summarizeCountryEvents` for DE at that clock, coded articles per day):
+  - GDELT protest current 31 against median 4.
+  - Conflict current 78 against median 43.5.
+  - Week of 4,065 articles: 454 conflict-coded and 165 protest-coded.
+
+  Applied to each of DE, FR, GB, JP, KR, PL and US. Strike days are not copied, and other evidence stays at zero. The AE9 check repeats this week's level for eight weeks with current equal to median.
+- **Replaces** the KR 2026-11-13T0952Z episode in the frozen U18 manifest for the next study's registration. The U18 manifest itself stays as frozen.
+
 ## Frozen inputs (2026-11-15, before any candidate evaluation)
 
 Frozen at `cii-v15@b28c37a312` after the second U21 capture landed (#10618). Nothing in this section was chosen after a candidate score was computed; this commit precedes every candidate result.
