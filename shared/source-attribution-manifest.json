@@ -332,6 +332,20 @@
       ]
     },
     {
+      "host": "adiac-congo.com",
+      "provider": "adiac-congo.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit adiac-congo.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "admin.gse.com.ge",
       "provider": "admin.gse.com.ge",
       "kind": "structured",
@@ -2798,20 +2812,6 @@
       "observed": true,
       "license": "Publisher terms apply; verify before redistribution.",
       "attribution": "Burkina24 — headlines and publisher links.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        }
-      ]
-    },
-    {
-      "host": "businessbhutan.bt",
-      "provider": "businessbhutan.bt",
-      "kind": "feed",
-      "observed": true,
-      "license": "Publisher terms apply; verify before redistribution.",
-      "attribution": "Business Bhutan — headlines and publisher links.",
       "status": "terms-review",
       "references": [
         {
@@ -8469,20 +8469,6 @@
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit lequotidien.sn and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        }
-      ]
-    },
-    {
-      "host": "lerepublicain-mali.com",
-      "provider": "lerepublicain-mali.com",
-      "kind": "feed",
-      "observed": true,
-      "license": "Publisher terms apply; verify before redistribution.",
-      "attribution": "Le Républicain — headlines and publisher links.",
       "status": "terms-review",
       "references": [
         {
@@ -16102,15 +16088,10 @@
       "host": "www.adiac-congo.com",
       "provider": "www.adiac-congo.com",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.adiac-congo.com and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.africanews.com",
@@ -18169,20 +18150,6 @@
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.francetvinfo.fr and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        }
-      ]
-    },
-    {
-      "host": "www.fraternitebj.info",
-      "provider": "www.fraternitebj.info",
-      "kind": "feed",
-      "observed": true,
-      "license": "Provider terms for this feed publisher; verify before redistribution",
-      "attribution": "Credit www.fraternitebj.info and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
@@ -21595,20 +21562,6 @@
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.telanon.info and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        }
-      ]
-    },
-    {
-      "host": "www.telefuturo.com.py",
-      "provider": "www.telefuturo.com.py",
-      "kind": "feed",
-      "observed": true,
-      "license": "Provider terms for this feed publisher; verify before redistribution",
-      "attribution": "Credit www.telefuturo.com.py and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {

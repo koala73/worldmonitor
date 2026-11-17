@@ -41,6 +41,10 @@
   },
   {
     "edition": "full",
+    "lang": "crs"
+  },
+  {
+    "edition": "full",
     "lang": "cs"
   },
   {
@@ -50,6 +54,10 @@
   {
     "edition": "full",
     "lang": "de"
+  },
+  {
+    "edition": "full",
+    "lang": "dv"
   },
   {
     "edition": "full",
@@ -114,6 +122,10 @@
   {
     "edition": "full",
     "lang": "kk"
+  },
+  {
+    "edition": "full",
+    "lang": "km"
   },
   {
     "edition": "full",

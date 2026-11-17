@@ -43,6 +43,34 @@ describe('optional country news coverage', () => {
     }
   });
 
+  it('uses the language of the verified content, including feeds with incorrect publisher language tags', () => {
+    const profiles = JSON.parse(readFileSync('shared/outlet-profile.json', 'utf8'));
+    const languages = {
+      Franceinfo: 'fr', 'Le Soir': 'fr', Sme: 'sk', TA3: 'sk',
+      'Al Mada Newspaper': 'ar', 'Bahrain Mirror': 'ar', 'Carta de Moçambique': 'pt',
+      'De West': 'nl', Dhauru: 'dv', IciLome: 'fr', Kallxo: 'sq', Nawaat: 'ar',
+      'Online Khabar': 'ne', 'Página/12': 'es', 'RTV Slovenija': 'sl',
+      'RTVE Noticias': 'es', 'The Cambodia Daily': 'km', 'Sudan War Monitor': 'ar',
+      'Le Nouvelliste': 'en', 'Palestine News Network': 'en', Tatoli: 'tet',
+      'Habari Za Comores': 'fr', 'Seychelles Broadcasting Corporation': 'crs',
+    };
+    for (const [name, lang] of Object.entries(languages)) {
+      assert.equal(NEWS_CATALOG.feeds.find(feed => feed.name === name)?.lang, lang, name);
+      assert.equal(profiles[name].language, lang, name);
+      assert.equal(audit.additions[name].language, lang, name);
+      assert.ok(NEWS_LANGUAGES.has(lang), lang);
+    }
+  });
+
+  it('excludes rejected content and uses article endpoints rather than RSS error or index entries', () => {
+    for (const name of ['Business Bhutan', 'Fraternité', 'Le Républicain', 'Telefuturo']) {
+      assert.ok(!NEWS_CATALOG.feeds.some(feed => feed.name === name), name);
+      assert.ok(!optIns.includes(name), name);
+    }
+    assert.equal(audit.additions['RÚV (Ríkisútvarpið)'].url, 'https://www.ruv.is/rss/frettir');
+    assert.equal(audit.additions['Al-Sumaria'].url, 'https://www.alsumaria.tv/Rss/iraq-latest-news/ar');
+  });
+
   it('registers verified feeds for ingestion without adding invalid warm languages', () => {
     for (const [name, evidence] of Object.entries(audit.additions)) {
       const feed = NEWS_CATALOG.feeds.find(feed => feed.name === name);

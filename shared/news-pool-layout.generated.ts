@@ -101,9 +101,11 @@ export const NEWS_POOL_LAYOUT: NewsPoolLayout = {
     "bs",
     "ca",
     "cnr",
+    "crs",
     "cs",
     "da",
     "de",
+    "dv",
     "el",
     "es",
     "et",
@@ -120,6 +122,7 @@ export const NEWS_POOL_LAYOUT: NewsPoolLayout = {
     "ja",
     "ka",
     "kk",
+    "km",
     "ko",
     "ky",
     "lt",
@@ -231,6 +234,13 @@ export const NEWS_POOL_LAYOUT: NewsPoolLayout = {
     },
     {
       "edition": "full",
+      "lang": "crs",
+      "contentLanguages": [
+        "crs"
+      ]
+    },
+    {
+      "edition": "full",
       "lang": "cs",
       "contentLanguages": [
         "cs"
@@ -248,6 +258,13 @@ export const NEWS_POOL_LAYOUT: NewsPoolLayout = {
       "lang": "de",
       "contentLanguages": [
         "de"
+      ]
+    },
+    {
+      "edition": "full",
+      "lang": "dv",
+      "contentLanguages": [
+        "dv"
       ]
     },
     {
@@ -360,6 +377,13 @@ export const NEWS_POOL_LAYOUT: NewsPoolLayout = {
       "lang": "kk",
       "contentLanguages": [
         "kk"
+      ]
+    },
+    {
+      "edition": "full",
+      "lang": "km",
+      "contentLanguages": [
+        "km"
       ]
     },
     {

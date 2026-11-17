@@ -640,7 +640,6 @@
   "Borneo Bulletin": 2,
   "Brecha": 2,
   "Burkina24": 2,
-  "Business Bhutan": 2,
   "Business Recorder": 2,
   "CNC3": 2,
   "CNN Chile": 2,
@@ -721,7 +720,6 @@
   "Fiji Times": 2,
   "Foroyaa": 2,
   "Franceinfo": 2,
-  "Fraternité": 2,
   "FrontPage Africa": 2,
   "GMA News": 2,
   "Gabon Actu": 2,
@@ -827,7 +825,6 @@
   "Le Nouvelliste": 2,
   "Le Pays Tchad": 2,
   "Le Potentiel": 2,
-  "Le Républicain": 2,
   "Le Sahel": 3,
   "Le Soir": 2,
   "Le Soleil": 3,
@@ -1062,7 +1059,6 @@
   "Talamua Online News": 2,
   "Tatoli": 3,
   "TelQuel": 2,
-  "Telefuturo": 2,
   "Telenoticias (Teletica)": 2,
   "Tempo Indonesia": 2,
   "Thanh Niên": 3,
@@ -1158,5 +1154,9 @@
   "ČT24": 2,
   "Le Quotidien Luxembourg": 2,
   "N1 Slovenia": 2,
-  "Matichon": 2
+  "Matichon": 2,
+  "Reuters — Bhutan": 1,
+  "Reuters — Benin": 1,
+  "Reuters — Mali": 1,
+  "Guardian — Paraguay": 2
 }

@@ -1010,7 +1010,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Franceinfo",
           "url": "https://www.francetvinfo.fr/titres.rss",
-          "lang": "en",
+          "lang": "fr",
           "fetchInAllLanguages": true
         },
         {
@@ -1106,7 +1106,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Kallxo",
           "url": "https://kallxo.com/feed/",
-          "lang": "en",
+          "lang": "sq",
           "fetchInAllLanguages": true
         },
         {
@@ -1142,7 +1142,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Le Soir",
           "url": "https://lesoir.be/rss.xml",
-          "lang": "nl",
+          "lang": "fr",
           "fetchInAllLanguages": true
         },
         {
@@ -1328,13 +1328,13 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "RTV Slovenija",
           "url": "https://img.rtvslo.si/feeds/00.xml",
-          "lang": "en",
+          "lang": "sl",
           "fetchInAllLanguages": true
         },
         {
           "name": "RTVE Noticias",
-          "url": "https://news.google.com/rss/search?q=site%3Artve.es+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
-          "lang": "en",
+          "url": "https://news.google.com/rss/search?q=site%3Artve.es+when%3A7d&hl=es&gl=ES&ceid=ES%3Aes",
+          "lang": "es",
           "fetchInAllLanguages": true
         },
         {
@@ -1441,7 +1441,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "RÚV (Ríkisútvarpið)",
-          "url": "https://www.ruv.is/rss/headlines",
+          "url": "https://www.ruv.is/rss/frettir",
           "lang": "is",
           "fetchInAllLanguages": true
         },
@@ -1466,7 +1466,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Sme",
           "url": "https://www.sme.sk/rss",
-          "lang": "en",
+          "lang": "sk",
           "fetchInAllLanguages": true
         },
         {
@@ -1478,7 +1478,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "TA3",
           "url": "https://www.ta3.com/rss/top-spravy",
-          "lang": "en",
+          "lang": "sk",
           "fetchInAllLanguages": true
         },
         {
@@ -1793,7 +1793,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Al Mada Newspaper",
           "url": "https://almadapaper.net/feed/",
-          "lang": "en",
+          "lang": "ar",
           "fetchInAllLanguages": true
         },
         {
@@ -1828,7 +1828,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Al-Sumaria",
-          "url": "https://www.alsumaria.tv/rss/news",
+          "url": "https://www.alsumaria.tv/Rss/iraq-latest-news/ar",
           "lang": "ar",
           "fetchInAllLanguages": true
         },
@@ -1853,7 +1853,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Bahrain Mirror",
           "url": "https://bahrainmirror.com/rss.xml",
-          "lang": "en",
+          "lang": "ar",
           "fetchInAllLanguages": true
         },
         {
@@ -2003,7 +2003,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Nawaat",
           "url": "https://nawaat.org/feed/",
-          "lang": "en",
+          "lang": "ar",
           "fetchInAllLanguages": true
         },
         {
@@ -2015,7 +2015,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Palestine News Network",
           "url": "https://english.pnn.ps/feed",
-          "lang": "ar",
+          "lang": "en",
           "fetchInAllLanguages": true
         },
         {
@@ -2734,7 +2734,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Carta de Moçambique",
           "url": "https://cartamz.com/feed/",
-          "lang": "en",
+          "lang": "pt",
           "fetchInAllLanguages": true
         },
         {
@@ -2804,9 +2804,9 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
           "fetchInAllLanguages": true
         },
         {
-          "name": "Fraternité",
-          "url": "https://www.fraternitebj.info/feed/",
-          "lang": "fr",
+          "name": "Reuters — Benin",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+Benin+when%3A30d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
           "fetchInAllLanguages": true
         },
         {
@@ -2890,7 +2890,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Habari Za Comores",
           "url": "https://www.habarizacomores.com/feeds/posts/default",
-          "lang": "sw",
+          "lang": "fr",
           "fetchInAllLanguages": true
         },
         {
@@ -2902,7 +2902,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "IciLome",
           "url": "https://icilome.com/feed/",
-          "lang": "en",
+          "lang": "fr",
           "fetchInAllLanguages": true
         },
         {
@@ -3002,9 +3002,9 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
           "fetchInAllLanguages": true
         },
         {
-          "name": "Le Républicain",
-          "url": "https://lerepublicain-mali.com/feed/",
-          "lang": "fr",
+          "name": "Reuters — Mali",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+Mali+when%3A30d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
           "fetchInAllLanguages": true
         },
         {
@@ -3021,7 +3021,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Les Dépêches de Brazzaville",
-          "url": "https://www.adiac-congo.com/rss.xml",
+          "url": "https://news.google.com/rss/search?q=site%3Aadiac-congo.com+when%3A7d&hl=fr&gl=FR&ceid=FR%3Afr",
           "lang": "fr",
           "fetchInAllLanguages": true
         },
@@ -3364,7 +3364,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Seychelles Broadcasting Corporation",
           "url": "https://www.sbc.sc/feed/",
-          "lang": "en",
+          "lang": "crs",
           "fetchInAllLanguages": true
         },
         {
@@ -3394,7 +3394,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Sudan War Monitor",
           "url": "https://sudanwarmonitor.com/feed",
-          "lang": "en",
+          "lang": "ar",
           "fetchInAllLanguages": true
         },
         {
@@ -3893,7 +3893,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "De West",
           "url": "https://dagbladdewest.com/feed/",
-          "lang": "en",
+          "lang": "nl",
           "fetchInAllLanguages": true
         },
         {
@@ -4115,7 +4115,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Le Nouvelliste",
           "url": "https://lenouvelliste.com/feed/",
-          "lang": "fr",
+          "lang": "en",
           "fetchInAllLanguages": true
         },
         {
@@ -4181,7 +4181,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Página/12",
           "url": "https://www.pagina12.com.ar/arc/outboundfeeds/rss/portada/",
-          "lang": "en",
+          "lang": "es",
           "fetchInAllLanguages": true
         },
         {
@@ -4311,9 +4311,9 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
           "fetchInAllLanguages": true
         },
         {
-          "name": "Telefuturo",
-          "url": "https://www.telefuturo.com.py/index.atom",
-          "lang": "es",
+          "name": "Guardian — Paraguay",
+          "url": "https://news.google.com/rss/search?q=site%3Atheguardian.com+Paraguay+when%3A30d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
           "fetchInAllLanguages": true
         },
         {
@@ -4786,8 +4786,8 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
           "fetchInAllLanguages": true
         },
         {
-          "name": "Business Bhutan",
-          "url": "https://businessbhutan.bt/feed/",
+          "name": "Reuters — Bhutan",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Bhutan%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen-US",
           "lang": "en",
           "fetchInAllLanguages": true
         },
@@ -4824,7 +4824,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Dhauru",
           "url": "https://dhauru.com/feed",
-          "lang": "en",
+          "lang": "dv",
           "fetchInAllLanguages": true
         },
         {
@@ -5070,7 +5070,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Online Khabar",
           "url": "https://www.onlinekhabar.com/feed",
-          "lang": "en",
+          "lang": "ne",
           "fetchInAllLanguages": true
         },
         {
@@ -5286,7 +5286,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Tatoli",
           "url": "https://tatoli.tl/feed/",
-          "lang": "pt",
+          "lang": "tet",
           "fetchInAllLanguages": true
         },
         {
@@ -5316,7 +5316,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "The Cambodia Daily",
           "url": "https://www.cambodiadaily.com/feed/",
-          "lang": "en",
+          "lang": "km",
           "fetchInAllLanguages": true
         },
         {

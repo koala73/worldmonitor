@@ -170,6 +170,10 @@ function isPublisherLink(link, expectedHosts) {
 // the `label:<name>` singleton namespace, which names no domains and
 // therefore blanks at the gate (fail-closed).
 const PUBLISHER_LINK_LABELS = {
+  "guardian — paraguay": "guardian",
+  "reuters — mali": "reuters",
+  "reuters — benin": "reuters",
+  "reuters — bhutan": "reuters",
   "n1 and danas": "n1-danas",
   "n1 croatia": "n1-danas",
   "n1 bosna i hercegovina": "n1-danas",

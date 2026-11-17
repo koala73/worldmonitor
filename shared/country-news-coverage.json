@@ -331,16 +331,21 @@
     },
     "BJ": {
       "name": "Benin",
-      "unavailableCandidates": [],
+      "unavailableCandidates": [
+        {
+          "name": "Fraternité",
+          "reason": "Current domain carries unrelated international commentary; the former Beninese newsroom identity was not verified."
+        }
+      ],
       "sources": [
         "La Nouvelle Tribune",
-        "Fraternité",
+        "Reuters — Benin",
         "Matin Libre",
         "ORTB Benin"
       ],
       "existingSources": [],
-      "localSourceCount": 4,
-      "internationalSourceCount": 0
+      "localSourceCount": 3,
+      "internationalSourceCount": 1
     },
     "BN": {
       "name": "Brunei",
@@ -410,16 +415,21 @@
     },
     "BT": {
       "name": "Bhutan",
-      "unavailableCandidates": [],
+      "unavailableCandidates": [
+        {
+          "name": "Business Bhutan",
+          "reason": "Casino spam in publisher RSS; rejected after headline review."
+        }
+      ],
       "sources": [
         "Kuensel",
         "The Bhutanese",
-        "Business Bhutan",
+        "Reuters — Bhutan",
         "Bhutan Broadcasting Service"
       ],
       "existingSources": [],
-      "localSourceCount": 4,
-      "internationalSourceCount": 0
+      "localSourceCount": 3,
+      "internationalSourceCount": 1
     },
     "BW": {
       "name": "Botswana",
@@ -1931,18 +1941,23 @@
     },
     "ML": {
       "name": "Mali",
-      "unavailableCandidates": [],
+      "unavailableCandidates": [
+        {
+          "name": "Le Républicain",
+          "reason": "Current domain carries generic automotive and business advice, not the expected national newsroom reporting."
+        }
+      ],
       "sources": [
         "Studio Tamani",
-        "Le Républicain",
+        "Reuters — Mali",
         "Journal du Mali",
         "Sahelien.com"
       ],
       "existingSources": [
         "Studio Tamani"
       ],
-      "localSourceCount": 4,
-      "internationalSourceCount": 0
+      "localSourceCount": 3,
+      "internationalSourceCount": 1
     },
     "MM": {
       "name": "Myanmar (Burma)",
@@ -2448,17 +2463,21 @@
         {
           "name": "Última Hora Paraguay",
           "reason": "No active publisher-matched RSS feed verified in this audit."
+        },
+        {
+          "name": "Telefuturo",
+          "reason": "Atom feed lists television programs rather than current news articles; news-only RSS not verified."
         }
       ],
       "sources": [
         "La Nación Paraguay",
-        "Telefuturo",
+        "Guardian — Paraguay",
         "Reuters — Paraguay",
         "AP — Paraguay"
       ],
       "existingSources": [],
-      "localSourceCount": 2,
-      "internationalSourceCount": 2
+      "localSourceCount": 1,
+      "internationalSourceCount": 3
     },
     "QA": {
       "name": "Qatar",
@@ -4022,13 +4041,20 @@
       "publisherCountry": "IQ",
       "home": "https://almadapaper.net/",
       "url": "https://almadapaper.net/feed/",
-      "language": "en",
+      "language": "ar",
       "ownershipClass": "private",
       "tier": 2,
       "selectionBasis": "Established newsroom selected for country coverage.",
       "items": 10,
       "newest": "2026-11-16T21:10:00+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "زعل داخل \"الإطار\" بسبب جرف الصخر.. (المدى) تكشف اعتراضات المالكي على مأسسة حمودي وتحولات الخزعلي",
+          "في «يوم بغداد».. تكريمد. غادة العاملي تقديرا لدورها في صون الهوية البغدادية"
+        ]
+      }
     },
     "Al Wasat": {
       "kind": "local",
@@ -4105,13 +4131,13 @@
       "coverageCountry": "IQ",
       "publisherCountry": "IQ",
       "home": "https://www.alsumaria.tv/",
-      "url": "https://www.alsumaria.tv/rss/news",
+      "url": "https://www.alsumaria.tv/Rss/iraq-latest-news/ar",
       "language": "ar",
       "ownershipClass": "private",
       "tier": 2,
-      "selectionBasis": "Established newsroom selected for country coverage.",
-      "items": 24,
-      "newest": "2026-11-17T01:51:38+00:00",
+      "selectionBasis": "Established newsroom selected for country coverage. News-item endpoint verified; excludes the former error, index, or edition-listing endpoint.",
+      "items": 20,
+      "newest": "2026-11-16T22:28:00+00:00",
       "verificationStatus": "dated-items"
     },
     "Alakhbar": {
@@ -4554,13 +4580,20 @@
       "publisherCountry": "GB",
       "home": "https://bahrainmirror.com/",
       "url": "https://bahrainmirror.com/rss.xml",
-      "language": "en",
+      "language": "ar",
       "ownershipClass": "private",
       "tier": 2,
       "selectionBasis": "Established newsroom selected for country coverage.",
       "items": 12,
       "newest": "2026-11-16T18:20:00+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "الشيخ ناظم السعيدي يدين أحكام السجن بحق 53 من علماء البحرين ويدعو إلى تحرك شعبي",
+          "الخزعلي يدين أحكام المؤبد بحق علماء البحرين ويدعو إلى تحرك دولي للإفراج عنهم"
+        ]
+      }
     },
     "Barbados Today": {
       "kind": "local",
@@ -4702,20 +4735,6 @@
       "newest": "2026-11-16T21:05:56+00:00",
       "verificationStatus": "dated-items"
     },
-    "Business Bhutan": {
-      "kind": "local",
-      "coverageCountry": "BT",
-      "publisherCountry": "BT",
-      "home": "https://businessbhutan.bt/",
-      "url": "https://businessbhutan.bt/feed/",
-      "language": "en",
-      "ownershipClass": "private",
-      "tier": 2,
-      "selectionBasis": "Established newsroom selected for country coverage.",
-      "items": 10,
-      "newest": "2026-11-17T00:14:10+00:00",
-      "verificationStatus": "dated-items"
-    },
     "Business Recorder": {
       "kind": "local",
       "coverageCountry": "PK",
@@ -4822,13 +4841,20 @@
       "publisherCountry": "MZ",
       "home": "https://cartamz.com/",
       "url": "https://cartamz.com/feed/",
-      "language": "en",
+      "language": "pt",
       "ownershipClass": "private",
       "tier": 2,
       "selectionBasis": "Established newsroom selected for country coverage.",
       "items": 10,
       "newest": "2026-11-16T18:58:26+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "Crónicas Sobre a “Descoberta” de Mapai e Chicualacuala – Fim",
+          "Congestionamento em Machipanda expõe dificuldades dos camionistas e ameaça a eficiência do Corredor da Beira"
+        ]
+      }
     },
     "Catholic Radio Network": {
       "kind": "local",
@@ -5202,13 +5228,20 @@
       "publisherCountry": "SR",
       "home": "https://dagbladdewest.com/",
       "url": "https://dagbladdewest.com/feed/",
-      "language": "en",
+      "language": "nl",
       "ownershipClass": "private",
       "tier": 2,
       "selectionBasis": "Established newsroom selected for country coverage.",
       "items": 10,
       "newest": "2026-11-16T23:30:27+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "STARLINK IN SURINAME",
+          "Debipersad positief over hogere kredietwaardigheid"
+        ]
+      }
     },
     "Delfi Latvia": {
       "kind": "local",
@@ -5286,13 +5319,20 @@
       "publisherCountry": "MV",
       "home": "https://dhauru.com/",
       "url": "https://dhauru.com/feed",
-      "language": "en",
+      "language": "dv",
       "ownershipClass": "private",
       "tier": 2,
-      "selectionBasis": "Established newsroom selected for country coverage.",
+      "selectionBasis": "Established newsroom selected for country coverage. Romanized Dhivehi headlines; publisher RSS declares en-US incorrectly.",
       "items": 50,
       "newest": "2026-11-16T18:02:39+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "Ihavandhippolhu bainalagvaamee viyafaari bandharu hadhan Abu Dhabi kunfunyakah",
+          "PNC aai Adaalat Party riyaasee inthihaabah gulhijje"
+        ]
+      }
     },
     "Diari d'Andorra": {
       "kind": "local",
@@ -5832,27 +5872,20 @@
       "publisherCountry": "FR",
       "home": "https://francetvinfo.fr/",
       "url": "https://www.francetvinfo.fr/titres.rss",
-      "language": "en",
+      "language": "fr",
       "ownershipClass": "public-service",
       "tier": 2,
       "selectionBasis": "Public-service newsroom.",
       "items": 30,
       "newest": "2026-11-16T23:08:36+00:00",
-      "verificationStatus": "dated-items"
-    },
-    "Fraternité": {
-      "kind": "local",
-      "coverageCountry": "BJ",
-      "publisherCountry": "BJ",
-      "home": "https://www.fraternitebj.info/",
-      "url": "https://www.fraternitebj.info/feed/",
-      "language": "fr",
-      "ownershipClass": "private",
-      "tier": 2,
-      "selectionBasis": "Established newsroom selected for country coverage.",
-      "items": 10,
-      "newest": "2026-11-15T05:56:58+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "Grève dans la fonction publique, perturbations dans les transports, manifestations… A quoi s'attendre pour la mobilisation du 17 novembre ?",
+          "Marine Le Pen critiquée en plein débat de la présidentielle pour sa volonté de couper les subventions des associations \"politisées\""
+        ]
+      }
     },
     "FrontPage Africa": {
       "kind": "local",
@@ -6295,13 +6328,20 @@
       "publisherCountry": "KM",
       "home": "https://www.habarizacomores.com/",
       "url": "https://www.habarizacomores.com/feeds/posts/default",
-      "language": "sw",
+      "language": "fr",
       "ownershipClass": "private",
       "tier": 2,
       "selectionBasis": "Established newsroom selected for country coverage.",
       "items": 25,
       "newest": "2026-11-16T15:13:05.543000+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "Affaire Naïcha M'madi : compassion pour la victime, exigence absolue de vérité derrière les barreaux",
+          "Commune de Bambao ya Mboini : Ibrahim Boina prend officiellement les rênes de la Mairie"
+        ]
+      }
     },
     "Hankyoreh": {
       "kind": "local",
@@ -6449,13 +6489,20 @@
       "publisherCountry": "TG",
       "home": "https://icilome.com/",
       "url": "https://icilome.com/feed/",
-      "language": "en",
+      "language": "fr",
       "ownershipClass": "private",
       "tier": 2,
       "selectionBasis": "Established newsroom selected for country coverage.",
       "items": 50,
       "newest": "2026-11-16T12:42:31+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "Togo : des stations-service sous le coup de sanctions pour fraude au marquage des carburants",
+          "Togo : vol de matériels musicaux dans une église à Bè"
+        ]
+      }
     },
     "Il Post": {
       "kind": "local",
@@ -6757,13 +6804,20 @@
       "publisherCountry": "XK",
       "home": "https://kallxo.com/",
       "url": "https://kallxo.com/feed/",
-      "language": "en",
+      "language": "sq",
       "ownershipClass": "private",
       "tier": 2,
       "selectionBasis": "Established newsroom selected for country coverage.",
       "items": 11,
       "newest": "2026-11-16T22:18:33+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "Prizren, rigjykimi i të akuzuarit për vrasje të rëndë në tentativë, i pandehuri nuk e pranon fajësinë",
+          "Kush është ajatollahu iranian që vizitoi Sarajevën?"
+        ]
+      }
     },
     "Khaleej Times": {
       "kind": "local",
@@ -6900,7 +6954,7 @@
       "language": "en",
       "ownershipClass": "private",
       "tier": 2,
-      "selectionBasis": "Established newsroom selected for country coverage.",
+      "selectionBasis": "Established newsroom selected for country coverage. Mixed English and Dzongkha feed; English is the catalog primary language.",
       "items": 20,
       "newest": "2026-11-16T04:21:14+00:00",
       "verificationStatus": "dated-items"
@@ -7289,13 +7343,20 @@
       "publisherCountry": "HT",
       "home": "https://lenouvelliste.com/",
       "url": "https://lenouvelliste.com/feed/",
-      "language": "fr",
+      "language": "en",
       "ownershipClass": "private",
       "tier": 2,
       "selectionBasis": "Established newsroom selected for country coverage.",
       "items": 27,
       "newest": "2026-11-16T19:58:58+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "The European Union sanctions 4 criminal groups in Haiti",
+          "Salvadorans seize the EDH offices on the bicentennial and the Portail Léogane sub-police station"
+        ]
+      }
     },
     "Le Pays Tchad": {
       "kind": "local",
@@ -7325,20 +7386,6 @@
       "newest": "2026-11-16T22:12:07+00:00",
       "verificationStatus": "dated-items"
     },
-    "Le Républicain": {
-      "kind": "local",
-      "coverageCountry": "ML",
-      "publisherCountry": "ML",
-      "home": "https://lerepublicain-mali.com/",
-      "url": "https://lerepublicain-mali.com/feed/",
-      "language": "fr",
-      "ownershipClass": "private",
-      "tier": 2,
-      "selectionBasis": "Established newsroom selected for country coverage.",
-      "items": 10,
-      "newest": "2026-10-30T11:48:24+00:00",
-      "verificationStatus": "dated-items"
-    },
     "Le Sahel": {
       "kind": "local",
       "coverageCountry": "NE",
@@ -7359,7 +7406,7 @@
       "publisherCountry": "BE",
       "home": "https://lesoir.be/",
       "url": "https://lesoir.be/rss.xml",
-      "language": "nl",
+      "language": "fr",
       "ownershipClass": "private",
       "tier": 2,
       "selectionBasis": "Established newsroom selected for country coverage.",
@@ -7400,13 +7447,13 @@
       "coverageCountry": "CG",
       "publisherCountry": "CG",
       "home": "https://www.adiac-congo.com/",
-      "url": "https://www.adiac-congo.com/rss.xml",
+      "url": "https://news.google.com/rss/search?q=site%3Aadiac-congo.com+when%3A7d&hl=fr&gl=FR&ceid=FR%3Afr",
       "language": "fr",
       "ownershipClass": "private",
       "tier": 2,
-      "selectionBasis": "Established newsroom selected for country coverage.",
-      "items": 10,
-      "newest": "2026-11-15T23:19:40+00:00",
+      "selectionBasis": "Established newsroom selected for country coverage. News-item endpoint verified; excludes the former error, index, or edition-listing endpoint.",
+      "items": 64,
+      "newest": "2026-11-15T17:34:00+00:00",
       "verificationStatus": "dated-items"
     },
     "Lesotho Times": {
@@ -8062,13 +8109,20 @@
       "publisherCountry": "TN",
       "home": "https://nawaat.org/",
       "url": "https://nawaat.org/feed/",
-      "language": "en",
+      "language": "ar",
       "ownershipClass": "nonprofit",
       "tier": 2,
-      "selectionBasis": "Nonprofit newsroom.",
+      "selectionBasis": "Nonprofit newsroom. Mixed Arabic and French feed; Arabic is the catalog primary language.",
       "items": 10,
       "newest": "2026-11-16T13:28:16+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "Détenus d’opinion en Tunisie : à quand la fin de l’acharnement judiciaire ?",
+          "Addictions en Tunisie : Jeunesse otage du Lyrica"
+        ]
+      }
     },
     "Nepali Times": {
       "kind": "local",
@@ -8357,13 +8411,20 @@
       "publisherCountry": "NP",
       "home": "https://www.onlinekhabar.com/",
       "url": "https://www.onlinekhabar.com/feed",
-      "language": "en",
+      "language": "ne",
       "ownershipClass": "private",
       "tier": 2,
       "selectionBasis": "Established newsroom selected for country coverage.",
       "items": 55,
       "newest": "2026-11-17T01:15:40+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "साउदीका अमेजन गोदाममा कार्यरत नेपालीमाथि श्रम शोषण",
+          "अब छाप हेरेर मात्रै मासु किन्नुहोला, उपत्यकामा आजदेखि ‘मासु जाँच ऐन’ लागु"
+        ]
+      }
     },
     "Oslobođenje": {
       "kind": "local",
@@ -8385,13 +8446,20 @@
       "publisherCountry": "PS",
       "home": "https://english.pnn.ps/",
       "url": "https://english.pnn.ps/feed",
-      "language": "ar",
+      "language": "en",
       "ownershipClass": "private",
       "tier": 2,
       "selectionBasis": "Established newsroom selected for country coverage.",
       "items": 20,
       "newest": "2026-11-14T20:06:00+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "Political Restrictions Deny Palestinians Access to Major International Environmental Funding, COP31 Session Hears",
+          "APIC Delivers Robust Financial Results in the First Nine Months of 2026"
+        ]
+      }
     },
     "Papua New Guinea Post-Courier": {
       "kind": "local",
@@ -8595,13 +8663,20 @@
       "publisherCountry": "AR",
       "home": "https://www.pagina12.com.ar/",
       "url": "https://www.pagina12.com.ar/arc/outboundfeeds/rss/portada/",
-      "language": "en",
+      "language": "es",
       "ownershipClass": "private",
       "tier": 2,
       "selectionBasis": "Established newsroom selected for country coverage.",
       "items": 6,
       "newest": "2026-11-17T00:19:20+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "Una guerra de recusaciones cruzadas",
+          "Reforma política: las colectoras terminarían chocando con la Justicia"
+        ]
+      }
     },
     "RNZ": {
       "kind": "local",
@@ -8693,27 +8768,41 @@
       "publisherCountry": "SI",
       "home": "https://img.rtvslo.si/",
       "url": "https://img.rtvslo.si/feeds/00.xml",
-      "language": "en",
+      "language": "sl",
       "ownershipClass": "public-service",
       "tier": 2,
       "selectionBasis": "Public-service newsroom.",
       "items": 20,
       "newest": "2026-11-16T22:44:21+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "Tako aktualni župan Janković kot izzivalec Mesec sta prepričana o zmagi",
+          "Danec Frank bo reševal krizo Crystal Palacea"
+        ]
+      }
     },
     "RTVE Noticias": {
       "kind": "local",
       "coverageCountry": "ES",
       "publisherCountry": "ES",
       "home": "https://rtve.es/noticias/",
-      "url": "https://news.google.com/rss/search?q=site%3Artve.es+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
-      "language": "en",
+      "url": "https://news.google.com/rss/search?q=site%3Artve.es+when%3A7d&hl=es&gl=ES&ceid=ES%3Aes",
+      "language": "es",
       "ownershipClass": "public-service",
       "tier": 2,
-      "selectionBasis": "Public-service newsroom.",
-      "items": 6,
-      "newest": "2026-11-16T16:22:56+00:00",
-      "verificationStatus": "dated-items"
+      "selectionBasis": "Public-service newsroom. News-item endpoint verified; excludes the former error, index, or edition-listing endpoint.",
+      "items": 100,
+      "newest": "2026-11-17T01:27:07+00:00",
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "Qué sabemos de un supuesto apagón el 17 de noviembre: una mezcla de hechos tergiversados y videos falsos - RTVE.es",
+          "Lula muestra su apoyo a Sánchez de cara el 29N: \"Es muy importante que tú ganes las elecciones en España\" - RTVE.es"
+        ]
+      }
     },
     "RTÉ News": {
       "kind": "local",
@@ -9911,13 +10000,13 @@
       "coverageCountry": "IS",
       "publisherCountry": "IS",
       "home": "https://www.ruv.is/",
-      "url": "https://www.ruv.is/rss/headlines",
+      "url": "https://www.ruv.is/rss/frettir",
       "language": "is",
       "ownershipClass": "public-service",
       "tier": 2,
-      "selectionBasis": "Public-service newsroom.",
-      "items": 1,
-      "newest": "2026-11-17T01:45:38+00:00",
+      "selectionBasis": "Public-service newsroom. News-item endpoint verified; excludes the former error, index, or edition-listing endpoint.",
+      "items": 40,
+      "newest": "2026-11-17T02:38:11+00:00",
       "verificationStatus": "dated-items"
     },
     "Rádio Nacional de Angola (RNA)": {
@@ -10165,13 +10254,20 @@
       "publisherCountry": "SC",
       "home": "https://sbc.sc/",
       "url": "https://www.sbc.sc/feed/",
-      "language": "en",
+      "language": "crs",
       "ownershipClass": "state",
       "tier": 3,
-      "selectionBasis": "State-owned newsroom; government context, not independent corroboration.",
+      "selectionBasis": "State-owned newsroom; government context, not independent corroboration. Seychellois Creole headlines in the verified RSS window.",
       "items": 10,
       "newest": "2026-11-16T06:11:33+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "Lamazorite dimoun ki’n koze kot rankont proze lotel Grand Police i kont sa proze.",
+          "Etidyan lekol La Misere in fer tes lizye pou idanditfye si zot annan okenn problenm avek zot vizyon."
+        ]
+      }
     },
     "Seychelles Nation": {
       "kind": "local",
@@ -10235,7 +10331,7 @@
       "publisherCountry": "SK",
       "home": "https://www.sme.sk/",
       "url": "https://www.sme.sk/rss",
-      "language": "en",
+      "language": "sk",
       "ownershipClass": "private",
       "tier": 2,
       "selectionBasis": "Established newsroom selected for country coverage.",
@@ -10375,13 +10471,20 @@
       "publisherCountry": "SD",
       "home": "https://sudanwarmonitor.com/",
       "url": "https://sudanwarmonitor.com/feed",
-      "language": "en",
+      "language": "ar",
       "ownershipClass": "private",
       "tier": 2,
       "selectionBasis": "Established newsroom selected for country coverage.",
       "items": 20,
       "newest": "2026-11-16T21:11:18+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "مقتل وجرح 35 مدنياً بقصف مُسيّرات الجيش السوداني لمناطق بولاية غرب كردفان ",
+          "بيان مشترك للمجموعة الخماسية بشأن تصاعد الأعمال العدائية في السودان"
+        ]
+      }
     },
     "Sudans Post": {
       "kind": "local",
@@ -10473,13 +10576,20 @@
       "publisherCountry": "SK",
       "home": "https://www.ta3.com/",
       "url": "https://www.ta3.com/rss/top-spravy",
-      "language": "en",
+      "language": "sk",
       "ownershipClass": "private",
       "tier": 2,
       "selectionBasis": "Established newsroom selected for country coverage.",
       "items": 4,
       "newest": "2026-11-16T23:05:07+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "Putin už pre nich nie je šéf, ale dedo. Najbohatší Rusi potichu premýšľajú o krajine bez neho",
+          "Súboj PS a Smeru je podľa prieskumu Infostatu mimoriadne tesný. Republika si drží tretiu priečku"
+        ]
+      }
     },
     "TSA Algérie (Tout Sur l'Algérie)": {
       "kind": "local",
@@ -10600,13 +10710,20 @@
       "publisherCountry": "TL",
       "home": "https://tatoli.tl/",
       "url": "https://tatoli.tl/feed/",
-      "language": "pt",
+      "language": "tet",
       "ownershipClass": "state",
       "tier": 3,
       "selectionBasis": "State-owned newsroom; government context, not independent corroboration.",
       "items": 10,
       "newest": "2026-11-17T01:49:44+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "Autoridade Bobonaru husu lideransa lokál mobiliza eleitór partisipa REABD Biométriku",
+          "PNDS iha Likisá atinje 76%, PAM garante finaliza iha Dezembru"
+        ]
+      }
     },
     "TelQuel": {
       "kind": "local",
@@ -10620,20 +10737,6 @@
       "selectionBasis": "Established newsroom selected for country coverage.",
       "items": 100,
       "newest": "2026-11-16T18:52:12+00:00",
-      "verificationStatus": "dated-items"
-    },
-    "Telefuturo": {
-      "kind": "local",
-      "coverageCountry": "PY",
-      "publisherCountry": "PY",
-      "home": "https://www.telefuturo.com.py/",
-      "url": "https://www.telefuturo.com.py/index.atom",
-      "language": "es",
-      "ownershipClass": "private",
-      "tier": 2,
-      "selectionBasis": "Established newsroom selected for country coverage.",
-      "items": 79,
-      "newest": "2026-11-16T19:40:50+00:00",
       "verificationStatus": "dated-items"
     },
     "Telenoticias (Teletica)": {
@@ -10740,13 +10843,20 @@
       "publisherCountry": "US",
       "home": "https://www.cambodiadaily.com/",
       "url": "https://www.cambodiadaily.com/feed/",
-      "language": "en",
+      "language": "km",
       "ownershipClass": "private",
       "tier": 2,
       "selectionBasis": "Established newsroom selected for country coverage.",
       "items": 10,
       "newest": "2026-11-15T08:57:07+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "languageEvidence": {
+        "reviewedAt": "2026-11-17",
+        "headlines": [
+          "អង្គការសិទ្ធិមនុស្សជំរុញឱ្យកម្ពុជាដោះលែងសកម្មជនមាតាធម្មជាតិទាំង៥ មុនកិច្ចប្រជុំកំពូលហ្វ្រង់កូហ្វូនី ",
+          "មន្ត្រីទីស្តីការគណៈរដ្ឋមន្ត្រីស្នើឱ្យស៊ើបអង្កេតលោក ទិត សុធា ជុំវិញការចោទប្រកាន់កិបកេងថវិកាជិត ១លានដុល្លារ"
+        ]
+      }
     },
     "The Chanzo": {
       "kind": "local",
@@ -11796,7 +11906,7 @@
       "language": "de",
       "ownershipClass": "private",
       "tier": 2,
-      "selectionBasis": "Established newsroom selected for country coverage.",
+      "selectionBasis": "Established newsroom selected for country coverage. Mixed German and French feed; German is the catalog primary language.",
       "items": 20,
       "newest": "2026-11-13T06:00:16+00:00",
       "verificationStatus": "dated-items"
@@ -11983,6 +12093,62 @@
       "selectionBasis": "Established Thai-language newspaper; native publisher RSS.",
       "items": 50,
       "newest": "2026-11-17T02:31:34+00:00",
+      "verificationStatus": "dated-items"
+    },
+    "Reuters — Bhutan": {
+      "kind": "international",
+      "coverageCountry": "BT",
+      "publisherCountry": "GB",
+      "home": "https://reuters.com/",
+      "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Bhutan%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen-US",
+      "language": "en",
+      "ownershipClass": "private",
+      "tier": 1,
+      "selectionBasis": "Country-specific feed from Reuters.",
+      "items": 5,
+      "newest": "2026-11-13T14:41:18+00:00",
+      "verificationStatus": "dated-items"
+    },
+    "Reuters — Benin": {
+      "kind": "international",
+      "coverageCountry": "BJ",
+      "publisherCountry": "GB",
+      "home": "https://reuters.com/",
+      "url": "https://news.google.com/rss/search?q=site%3Areuters.com+Benin+when%3A30d&hl=en&gl=US&ceid=US%3Aen",
+      "language": "en",
+      "ownershipClass": "private",
+      "tier": 1,
+      "selectionBasis": "Country-specific feed from Reuters.",
+      "items": 11,
+      "newest": "2026-11-16T19:03:43+00:00",
+      "verificationStatus": "dated-items"
+    },
+    "Reuters — Mali": {
+      "kind": "international",
+      "coverageCountry": "ML",
+      "publisherCountry": "GB",
+      "home": "https://reuters.com/",
+      "url": "https://news.google.com/rss/search?q=site%3Areuters.com+Mali+when%3A30d&hl=en&gl=US&ceid=US%3Aen",
+      "language": "en",
+      "ownershipClass": "private",
+      "tier": 1,
+      "selectionBasis": "Country-specific feed from Reuters.",
+      "items": 34,
+      "newest": "2026-11-16T12:11:09+00:00",
+      "verificationStatus": "dated-items"
+    },
+    "Guardian — Paraguay": {
+      "kind": "international",
+      "coverageCountry": "PY",
+      "publisherCountry": "GB",
+      "home": "https://theguardian.com/",
+      "url": "https://news.google.com/rss/search?q=site%3Atheguardian.com+Paraguay+when%3A30d&hl=en&gl=US&ceid=US%3Aen",
+      "language": "en",
+      "ownershipClass": "private",
+      "tier": 2,
+      "selectionBasis": "Country-specific feed from Guardian.",
+      "items": 57,
+      "newest": "2026-11-17T03:07:27+00:00",
       "verificationStatus": "dated-items"
     }
   }

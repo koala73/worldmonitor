@@ -5599,7 +5599,7 @@
   "Al Mada Newspaper": {
     "country": "IQ",
     "audience": "domestic",
-    "language": "en",
+    "language": "ar",
     "ownershipClass": "private"
   },
   "Al Wasat": {
@@ -5827,7 +5827,7 @@
   "Bahrain Mirror": {
     "country": "GB",
     "audience": "diaspora",
-    "language": "en",
+    "language": "ar",
     "ownershipClass": "private"
   },
   "Barbados Today": {
@@ -5890,12 +5890,6 @@
     "language": "fr",
     "ownershipClass": "private"
   },
-  "Business Bhutan": {
-    "country": "BT",
-    "audience": "domestic",
-    "language": "en",
-    "ownershipClass": "private"
-  },
   "Business Recorder": {
     "country": "PK",
     "audience": "domestic",
@@ -5941,7 +5935,7 @@
   "Carta de Moçambique": {
     "country": "MZ",
     "audience": "domestic",
-    "language": "en",
+    "language": "pt",
     "ownershipClass": "private"
   },
   "Catholic Radio Network": {
@@ -6105,7 +6099,7 @@
   "De West": {
     "country": "SR",
     "audience": "domestic",
-    "language": "en",
+    "language": "nl",
     "ownershipClass": "private"
   },
   "Delfi Latvia": {
@@ -6141,7 +6135,7 @@
   "Dhauru": {
     "country": "MV",
     "audience": "domestic",
-    "language": "en",
+    "language": "dv",
     "ownershipClass": "private"
   },
   "Diari d'Andorra": {
@@ -6375,14 +6369,8 @@
   "Franceinfo": {
     "country": "FR",
     "audience": "domestic",
-    "language": "en",
-    "ownershipClass": "public-service"
-  },
-  "Fraternité": {
-    "country": "BJ",
-    "audience": "domestic",
     "language": "fr",
-    "ownershipClass": "private"
+    "ownershipClass": "public-service"
   },
   "FrontPage Africa": {
     "country": "LR",
@@ -6574,7 +6562,7 @@
   "Habari Za Comores": {
     "country": "KM",
     "audience": "domestic",
-    "language": "sw",
+    "language": "fr",
     "ownershipClass": "private"
   },
   "Hankyoreh": {
@@ -6640,7 +6628,7 @@
   "IciLome": {
     "country": "TG",
     "audience": "domestic",
-    "language": "en",
+    "language": "fr",
     "ownershipClass": "private"
   },
   "Il Post": {
@@ -6772,7 +6760,7 @@
   "Kallxo": {
     "country": "XK",
     "audience": "domestic",
-    "language": "en",
+    "language": "sq",
     "ownershipClass": "private"
   },
   "Khaleej Times": {
@@ -7000,7 +6988,7 @@
   "Le Nouvelliste": {
     "country": "HT",
     "audience": "domestic",
-    "language": "fr",
+    "language": "en",
     "ownershipClass": "private"
   },
   "Le Pays Tchad": {
@@ -7015,12 +7003,6 @@
     "language": "fr",
     "ownershipClass": "private"
   },
-  "Le Républicain": {
-    "country": "ML",
-    "audience": "domestic",
-    "language": "fr",
-    "ownershipClass": "private"
-  },
   "Le Sahel": {
     "country": "NE",
     "audience": "domestic",
@@ -7030,7 +7012,7 @@
   "Le Soir": {
     "country": "BE",
     "audience": "domestic",
-    "language": "nl",
+    "language": "fr",
     "ownershipClass": "private"
   },
   "Le Soleil": {
@@ -7333,7 +7315,7 @@
   "Nawaat": {
     "country": "TN",
     "audience": "domestic",
-    "language": "en",
+    "language": "ar",
     "ownershipClass": "nonprofit"
   },
   "Nepali Times": {
@@ -7459,7 +7441,7 @@
   "Online Khabar": {
     "country": "NP",
     "audience": "domestic",
-    "language": "en",
+    "language": "ne",
     "ownershipClass": "private"
   },
   "Oslobođenje": {
@@ -7471,7 +7453,7 @@
   "Palestine News Network": {
     "country": "PS",
     "audience": "domestic",
-    "language": "ar",
+    "language": "en",
     "ownershipClass": "private"
   },
   "Papua New Guinea Post-Courier": {
@@ -7561,7 +7543,7 @@
   "Página/12": {
     "country": "AR",
     "audience": "domestic",
-    "language": "en",
+    "language": "es",
     "ownershipClass": "private"
   },
   "RNZ": {
@@ -7603,13 +7585,13 @@
   "RTV Slovenija": {
     "country": "SI",
     "audience": "domestic",
-    "language": "en",
+    "language": "sl",
     "ownershipClass": "public-service"
   },
   "RTVE Noticias": {
     "country": "ES",
     "audience": "domestic",
-    "language": "en",
+    "language": "es",
     "ownershipClass": "public-service"
   },
   "RTÉ News": {
@@ -8234,7 +8216,7 @@
   "Seychelles Broadcasting Corporation": {
     "country": "SC",
     "audience": "domestic",
-    "language": "en",
+    "language": "crs",
     "ownershipClass": "state"
   },
   "Seychelles Nation": {
@@ -8264,7 +8246,7 @@
   "Sme": {
     "country": "SK",
     "audience": "domestic",
-    "language": "en",
+    "language": "sk",
     "ownershipClass": "private"
   },
   "Solomon Star": {
@@ -8324,7 +8306,7 @@
   "Sudan War Monitor": {
     "country": "SD",
     "audience": "domestic",
-    "language": "en",
+    "language": "ar",
     "ownershipClass": "private"
   },
   "Sudans Post": {
@@ -8366,7 +8348,7 @@
   "TA3": {
     "country": "SK",
     "audience": "domestic",
-    "language": "en",
+    "language": "sk",
     "ownershipClass": "private"
   },
   "TSA Algérie (Tout Sur l'Algérie)": {
@@ -8420,19 +8402,13 @@
   "Tatoli": {
     "country": "TL",
     "audience": "domestic",
-    "language": "pt",
+    "language": "tet",
     "ownershipClass": "state"
   },
   "TelQuel": {
     "country": "MA",
     "audience": "domestic",
     "language": "fr",
-    "ownershipClass": "private"
-  },
-  "Telefuturo": {
-    "country": "PY",
-    "audience": "domestic",
-    "language": "es",
     "ownershipClass": "private"
   },
   "Telenoticias (Teletica)": {
@@ -8480,7 +8456,7 @@
   "The Cambodia Daily": {
     "country": "US",
     "audience": "diaspora",
-    "language": "en",
+    "language": "km",
     "ownershipClass": "private"
   },
   "The Chanzo": {
@@ -9010,6 +8986,30 @@
     "country": "TH",
     "audience": "domestic",
     "language": "th",
+    "ownershipClass": "private"
+  },
+  "Reuters — Bhutan": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Benin": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Mali": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Guardian — Paraguay": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
     "ownershipClass": "private"
   }
 }

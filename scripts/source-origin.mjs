@@ -285,7 +285,6 @@ const HOST_ORIGINS = Object.freeze({
   "lecalame.info": "MR",
   "lejour.cm": "CM",
   "lenouvelliste.com": "HT",
-  "lerepublicain-mali.com": "ML",
   "lestimes.com": "LS",
   "lovefm.com": "BZ",
   "malagen.org": "GM",

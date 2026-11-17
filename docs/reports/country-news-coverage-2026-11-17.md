@@ -6,10 +6,10 @@ The target is at least four selectable source feeds per country. This review cov
 
 - 197 countries have four configured source choices.
 - New entries in this dated audit: 617. Every addition is opt-in in every interface language.
-- 486 additions are country-focused newsrooms, including local-language and exile publishers. 131 are publisher-scoped international country feeds.
+- 482 additions are country-focused newsrooms, including local-language and exile publishers. 135 are publisher-scoped international country feeds.
 - International feeds fill documented local gaps. These entries do not represent additional domestic newsrooms.
-- 373 additions use native publisher RSS/Atom; the others use publisher-scoped Google News RSS.
-- 53 additions had no item within the default four-day display window at the audit time. They remain usable feeds, but may show no recent headline until the publisher reports again. These are marked † below.
+- 368 additions use native publisher RSS/Atom; the others use publisher-scoped Google News RSS.
+- 52 additions had no item within the default four-day display window at the audit time. They remain usable feeds, but may show no recent headline until the publisher reports again. These are marked † below.
 
 ## Selection and limits
 
@@ -19,7 +19,7 @@ Ownership and editorial independence are separate from transport availability. S
 
 There is no comparable trust ranking for all 197 countries. The [Reuters Institute country analysis](https://reutersinstitute.politics.ox.ac.uk/digital-news-report/2026/country-and-market-data) informs the preference for established newsrooms and public-service reporting in the markets it covers. Press restrictions also constrain local choices: [RSF documents the absence of independent media inside Eritrea](https://rsf.org/en/country/eritrea). This review does not turn popularity or a working RSS endpoint into an objective reliability score.
 
-Feed verification required parseable RSS/Atom. Native feeds had dated items. Google News queries use seven-day windows for local publishers and thirty-day windows for international country coverage; 11 returned a valid but empty window and are explicitly recorded as such. Publisher-scoped Google feeds were accepted only when item source domains matched the selected publisher. Native feeds were preferred, and stale endpoints, unverified identities, broad regional substitutes, and duplicate labels were excluded. Examples include the tourism successor to Ara Andorra, the unverified Le Rénovateur directory host, and a directory that mislabeled the Croatian N1 feed as Serbian. The Serbian endpoint was verified separately.
+Feed verification required parseable RSS/Atom. Native feeds had dated items. Google News queries use seven-day windows for local publishers and thirty-day windows for international country coverage; 11 returned a valid but empty window and are explicitly recorded as such. Publisher-scoped Google feeds were accepted only when item source domains matched the selected publisher. Native feeds were preferred, and stale endpoints, unverified identities, broad regional substitutes, and duplicate labels were excluded. Examples include the tourism successor to Ara Andorra, the unverified Le Rénovateur directory host, and a directory that mislabeled the Croatian N1 feed as Serbian. The Serbian endpoint was verified separately. Content review also rejected casino spam in Business Bhutan, unrelated content on the former Fraternité and Le Républicain domains, and a Telefuturo program index. RÚV and Al-Sumaria now use news-item endpoints. Language labels were checked against actual headlines; mixed-language publisher feeds retain a documented primary language.
 
 The [machine-readable review](../../shared/country-news-coverage.json) records every country, rejected candidate, publisher home country, ownership class, feed URL, verification item count, and latest item time. “Country-focused” includes domestic and exile newsrooms plus existing regional reporting used for that country; publisher domicile is not used as a substitute for coverage.
 
@@ -31,8 +31,6 @@ Existing is the number of these selected sources already in the catalog. Country
 
 | Country | Existing | Country-focused | International | Sources |
 | --- | ---: | ---: | ---: | --- |
-| Andorra (AD) | 0 | 3 | 1 | Diari d'Andorra; El Periòdic d'Andorra; Bondia; Reuters — Andorra |
-| United Arab Emirates (AE) | 1 | 3 | 1 | The National; Khaleej Times; Gulf News; Reuters — United Arab Emirates |
 | Afghanistan (AF) | 2 | 4 | 0 | Pajhwok Afghan News; Etilaat Roz; Amu TV; Rukhshana Media |
 | Albania (AL) | 1 | 4 | 0 | Tirana Times; Balkan Insight; Reporter.al; ABC News Albania |
 | Algeria (DZ) | 0 | 3 | 1 | TSA Algérie (Tout Sur l'Algérie); El Khabar; Algérie Presse Service; Reuters — Algeria |
@@ -51,8 +49,8 @@ Existing is the number of these selected sources already in the catalog. Country
 | Belarus (BY) | 1 | 4 | 0 | Zerkalo; Belsat TV; Nasha Niva; Euroradio |
 | Belgium (BE) | 0 | 4 | 0 | VRT NWS; RTBF Info; De Standaard; Le Soir |
 | Belize (BZ) | 0 | 4 | 0 | Channel 5 Belize; Love FM; Amandala †; The San Pedro Sun |
-| Benin (BJ) | 0 | 4 | 0 | La Nouvelle Tribune; Fraternité; Matin Libre †; ORTB Benin |
-| Bhutan (BT) | 0 | 4 | 0 | Kuensel; The Bhutanese; Business Bhutan; Bhutan Broadcasting Service |
+| Benin (BJ) | 0 | 3 | 1 | La Nouvelle Tribune; Reuters — Benin; Matin Libre †; ORTB Benin |
+| Bhutan (BT) | 0 | 3 | 1 | Kuensel; The Bhutanese; Reuters — Bhutan; Bhutan Broadcasting Service |
 | Bolivia (BO) | 0 | 2 | 2 | El Deber; Los Tiempos †; Reuters — Bolivia; Guardian — Bolivia |
 | Bosnia & Herzegovina (BA) | 1 | 4 | 0 | Balkan Insight; N1 Bosna i Hercegovina; Oslobođenje; Klix.ba |
 | Botswana (BW) | 0 | 3 | 1 | The Botswana Gazette; The Voice †; Mmegi; Reuters — Botswana |
@@ -138,7 +136,7 @@ Existing is the number of these selected sources already in the catalog. Country
 | Malawi (MW) | 0 | 4 | 0 | The Times Group Malawi; The Nation Malawi; Malawi Nyasa Times; Malawi24 |
 | Malaysia (MY) | 1 | 4 | 0 | The Star (Malaysia); Malay Mail; Malaysiakini; Bernama |
 | Maldives (MV) | 0 | 3 | 1 | Maldives Independent; Sun Online; Dhauru; Reuters — Maldives |
-| Mali (ML) | 1 | 4 | 0 | Studio Tamani; Le Républicain †; Journal du Mali; Sahelien.com |
+| Mali (ML) | 1 | 3 | 1 | Studio Tamani; Reuters — Mali; Journal du Mali; Sahelien.com |
 | Malta (MT) | 0 | 4 | 0 | Times of Malta; MaltaToday; The Shift News; Newsbook Malta |
 | Marshall Islands (MH) | 0 | 1 | 3 | The Marshall Islands Journal †; Reuters — Marshall Islands; AP — Marshall Islands; Guardian — Marshall Islands |
 | Mauritania (MR) | 0 | 3 | 1 | Le Calame; Sahara Medias; Alakhbar; Reuters — Mauritania |
@@ -169,7 +167,7 @@ Existing is the number of these selected sources already in the catalog. Country
 | Palestinian Territories (PS) | 1 | 3 | 1 | WAFA English; Al-Quds Newspaper; Palestine News Network; Reuters — Palestinian Territories |
 | Panama (PA) | 0 | 2 | 2 | La Prensa; TVN Noticias; Reuters — Panama; AP — Panama † |
 | Papua New Guinea (PG) | 0 | 3 | 1 | Papua New Guinea Post-Courier; The National PNG; EMTV Online; Reuters — Papua New Guinea |
-| Paraguay (PY) | 0 | 2 | 2 | La Nación Paraguay †; Telefuturo; Reuters — Paraguay; AP — Paraguay |
+| Paraguay (PY) | 0 | 1 | 3 | La Nación Paraguay †; Guardian — Paraguay; Reuters — Paraguay; AP — Paraguay |
 | Peru (PE) | 0 | 4 | 0 | La República Peru; El Comercio Peru; RPP Noticias; IDL-Reporteros |
 | Philippines (PH) | 1 | 4 | 0 | Rappler; Philippine Daily Inquirer; GMA News; ABS-CBN News |
 | Poland (PL) | 4 | 4 | 0 | TVN24; Rzeczpospolita; Gazeta Wyborcza; OKO.press |
