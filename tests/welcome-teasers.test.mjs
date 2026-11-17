@@ -296,7 +296,7 @@ describe('welcome teaser strip carries its snapshot stamp (#7654)', () => {
 
     const localeDir = join(repoRoot, 'pro-test/src/locales');
     const locales = readdirSync(localeDir).filter((file) => file.endsWith('.json'));
-    assert.equal(locales.length, 28);
+    assert.equal(locales.length, 29);
     for (const file of locales) {
       const asOf = JSON.parse(readFileSync(join(localeDir, file), 'utf8')).welcome.hero.asOf;
       assert.equal(asOf.match(/\{\{date\}\}/g)?.length, 1, `${file} asOf must carry one {{date}}`);
