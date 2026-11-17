@@ -39,7 +39,7 @@ describe('carouselPageText', () => {
   it('lists every string each page draws', () => {
     const env = CAROUSEL_FIXTURES.en;
     const cover = carouselPageText(env, 'cover');
-    for (const s of ['WORLDMONITOR', 'ISSUE Nº 27.05', '27 May 2026', 'WorldMonitor', 'Brief.', 'Good evening', 'Open for full brief →']) assert.ok(cover.includes(s), `cover: ${s}`);
+    for (const s of ['WORLDMONITOR', 'ISSUE Nº 27.05', '27 May 2026', 'WorldMonitor', 'Brief.', 'Good evening', 'Open for full brief']) assert.ok(cover.includes(s), `cover: ${s}`);
     const threads = carouselPageText(env, 'threads');
     for (const s of ['Energy —', env.data.digest.threads[0].teaser, "Today's Threads"]) assert.ok(threads.includes(s), `threads: ${s}`);
     const story = carouselPageText(env, 'story');
@@ -48,13 +48,14 @@ describe('carouselPageText', () => {
 });
 
 describe('loadCarouselFonts', () => {
-  it('English and Latin-1 French request no text font; only the arrow glyph is fetched', async () => {
+  it('English and Latin-1 French request no font at all', async () => {
+    // The "open" arrow is drawn as a vector, so the base Latin file covers the whole cover.
     for (const lang of ['en', 'fr']) {
       const log = installFontStub();
       const fonts = await loadCarouselFonts(allText(CAROUSEL_FIXTURES[lang]), lang);
-      // Memoized per isolate, so the second language may reuse the arrow subset.
-      assert.ok(log.loader.every((f) => f === 'Noto+Sans+Symbols'), `${lang}: only → needs a font the base file lacks`);
-      assert.deepEqual(fonts.map((f) => f.name), ['NotoSansSymbols']);
+      assert.deepEqual(log.loader, [], `${lang}: no extra font request`);
+      assert.deepEqual(fonts, []);
+      assert.ok(!allText(CAROUSEL_FIXTURES[lang]).join('').includes('→'), `${lang}: no arrow glyph in the drawn text`);
     }
   });
 
@@ -76,6 +77,27 @@ describe('loadCarouselFonts', () => {
     await assert.rejects(loadCarouselFonts(['日本 fail'], 'ja'), (err) => err instanceof CarouselFontError && err.family === 'Noto+Sans+JP');
     installFontStub({ timeout: 'Noto+Sans+Thai' });
     await assert.rejects(loadCarouselFonts(['ไทย timeout'], 'th'), (err) => err instanceof CarouselFontError && /timed out/.test(err.message));
+  });
+
+  it('routes supplementary-plane Han to the language Han family', async () => {
+    // U+20BB7 is a Japanese name character above U+FFFF.
+    const log = installFontStub();
+    await assert.rejects(loadCarouselFonts(['\u{20BB7}野家'], 'ja'), CarouselFontError);
+    assert.ok(log.loader.includes('Noto+Sans+JP'), 'requested from the Japanese family');
+    assert.ok(!log.loader.includes('Noto+Serif'), 'not from the Latin serif');
+  });
+
+  it('a downloaded subset that lacks a requested character throws CarouselFontError', async () => {
+    // The fixture JP font is a subset of the fixture text, so U+20BB7 is absent:
+    // the same as Google omitting a character the family does not have.
+    installFontStub();
+    await assert.rejects(
+      loadCarouselFonts(['\u{20BB7}野家'], 'ja'),
+      (err) => err instanceof CarouselFontError && err.family === 'Noto+Sans+JP' && /U\+20BB7/.test(err.message),
+    );
+    // Characters the subset has load normally.
+    const fonts = await loadCarouselFonts(allText(CAROUSEL_FIXTURES.ja), 'ja');
+    assert.ok(fonts.some((f) => f.name === 'NotoSansJP'));
   });
 });
 

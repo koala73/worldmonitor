@@ -46,7 +46,7 @@ import { RTL_UI_LANGUAGES, isUiLanguage, scriptClassFor } from '../../shared/ui-
 //
 // RUNTIME DEPENDENCY on Google Fonts for text outside that Latin file
 // (Latin Extended, Cyrillic, Greek, CJK, Devanagari, Thai, Arabic,
-// arrows). loadCarouselFonts() fetches a `text=` subset per script
+// arrows in story text). loadCarouselFonts() fetches a `text=` subset per script
 // family with a 5-second timeout and throws CarouselFontError on any
 // failure, so the route returns 503 no-store instead of a PNG with
 // missing glyphs. Because every drawn character is covered up front,
@@ -115,7 +115,8 @@ function familyForChar(ch: string, lang: string): ExtraFamily | null {
   if ((cp >= 0x1100 && cp <= 0x11ff) || (cp >= 0x3130 && cp <= 0x318f) || (cp >= 0xac00 && cp <= 0xd7af)) return FAMILIES.kr;
   if ((cp >= 0x3040 && cp <= 0x30ff) || (cp >= 0x31f0 && cp <= 0x31ff) || (cp >= 0xff65 && cp <= 0xff9f)) return FAMILIES.jp;
   if ((cp >= 0x2e80 && cp <= 0x303f) || (cp >= 0x3400 && cp <= 0x4dbf) || (cp >= 0x4e00 && cp <= 0x9fff)
-    || (cp >= 0xf900 && cp <= 0xfaff) || (cp >= 0xfe30 && cp <= 0xfe4f) || (cp >= 0xff00 && cp <= 0xffef)) return hanFamily(lang);
+    || (cp >= 0xf900 && cp <= 0xfaff) || (cp >= 0xfe30 && cp <= 0xfe4f) || (cp >= 0xff00 && cp <= 0xffef)
+    || (cp >= 0x20000 && cp <= 0x3ffff)) return hanFamily(lang);
   if ((cp >= 0x0900 && cp <= 0x097f) || (cp >= 0xa8e0 && cp <= 0xa8ff)) return FAMILIES.devanagari;
   if (cp >= 0x0e00 && cp <= 0x0e7f) return FAMILIES.thai;
   if ((cp >= 0x0600 && cp <= 0x06ff) || (cp >= 0x0750 && cp <= 0x077f) || (cp >= 0x08a0 && cp <= 0x08ff)
@@ -173,6 +174,68 @@ function loadGoogleSubset(family: string, chars: string): Promise<ArrayBuffer> {
   return pending;
 }
 
+/**
+ * The code points a TrueType/OpenType font maps to a glyph, read from its
+ * cmap (format 12, else format 4). Null when the data has no readable cmap.
+ */
+export function fontCodePoints(data: ArrayBuffer): ((cp: number) => boolean) | null {
+  try {
+    const v = new DataView(data);
+    const numTables = v.getUint16(4);
+    let cmap = -1;
+    for (let i = 0; i < numTables; i += 1) {
+      const rec = 12 + i * 16;
+      if (v.getUint32(rec) === 0x636d6170 /* 'cmap' */) cmap = v.getUint32(rec + 8);
+    }
+    if (cmap < 0) return null;
+    let f4 = -1;
+    let f12 = -1;
+    for (let i = 0, n = v.getUint16(cmap + 2); i < n; i += 1) {
+      const rec = cmap + 4 + i * 8;
+      const platform = v.getUint16(rec);
+      const encoding = v.getUint16(rec + 2);
+      const sub = cmap + v.getUint32(rec + 4);
+      if (platform !== 0 && !(platform === 3 && (encoding === 1 || encoding === 10))) continue;
+      const format = v.getUint16(sub);
+      if (format === 12 && f12 < 0) f12 = sub;
+      if (format === 4 && f4 < 0) f4 = sub;
+    }
+    if (f12 >= 0) {
+      const groups: Array<readonly [number, number, number]> = [];
+      for (let i = 0, n = v.getUint32(f12 + 12); i < n; i += 1) {
+        const g = f12 + 16 + i * 12;
+        groups.push([v.getUint32(g), v.getUint32(g + 4), v.getUint32(g + 8)]);
+      }
+      return (cp) => groups.some(([lo, hi, glyph]) => cp >= lo && cp <= hi && glyph + (cp - lo) !== 0);
+    }
+    if (f4 < 0) return null;
+    const segs = v.getUint16(f4 + 6) / 2;
+    const ends = f4 + 14;
+    const starts = ends + segs * 2 + 2;
+    const deltas = starts + segs * 2;
+    const offsets = deltas + segs * 2;
+    return (cp) => {
+      if (cp > 0xffff) return false;
+      for (let i = 0; i < segs; i += 1) {
+        if (cp > v.getUint16(ends + i * 2)) continue;
+        const start = v.getUint16(starts + i * 2);
+        if (cp < start) return false;
+        const delta = v.getInt16(deltas + i * 2);
+        const rangeOffset = v.getUint16(offsets + i * 2);
+        if (rangeOffset === 0) return ((cp + delta) & 0xffff) !== 0;
+        const glyph = v.getUint16(offsets + i * 2 + rangeOffset + (cp - start) * 2);
+        return glyph !== 0 && ((glyph + delta) & 0xffff) !== 0;
+      }
+      return false;
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Format and joining controls draw nothing; a subset may leave them out.
+const INVISIBLE_RE = /[\p{Cf}\s]/u;
+
 export type CarouselFont = { name: string; data: ArrayBuffer; weight: 400; style: 'normal'; lang?: string };
 
 /** Fetches text-subset fonts for everything in `text` that the base font cannot draw. Throws CarouselFontError. */
@@ -189,6 +252,14 @@ export async function loadCarouselFonts(text: string[], lang: string): Promise<C
   }
   return Promise.all([...byFamily].map(async ([fam, chars]) => {
     const data = await loadGoogleSubset(fam.family, [...chars].sort().join(''));
+    // Google leaves out characters the family lacks. Drawing those would hand
+    // them to @vercel/og's unbounded fallback, so fail like a failed fetch.
+    const covers = fontCodePoints(data);
+    const missing = covers ? [...chars].filter((ch) => !INVISIBLE_RE.test(ch) && !covers(ch.codePointAt(0)!)) : [];
+    if (missing.length > 0) {
+      const list = missing.slice(0, 5).map((ch) => `U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`).join(' ');
+      throw new CarouselFontError(fam.family, `subset lacks ${list}`);
+    }
     return { name: fam.name, data, weight: 400 as const, style: 'normal' as const, ...(fam.lang ? { lang: fam.lang } : {}) };
   }));
 }
@@ -322,9 +393,29 @@ function buildCover(env: Envelope): any {
           type: 'div',
           props: {
             style: { display: 'flex', justifyContent: 'space-between', opacity: 0.6, fontSize: 16, letterSpacing: '0.2em', textTransform: 'uppercase' },
-            children: [data.digest.greeting, briefT(lang, 'carousel.openFull')],
+            children: [data.digest.greeting, openFullLabel(lang)],
           },
         },
+      ],
+    },
+  };
+}
+
+// The "open" arrow is drawn as a vector. As a glyph it is outside the base
+// Latin file, so every English cover would need an extra font request (and a
+// 503 when that request fails).
+function openFullLabel(lang: string): any {
+  const label = briefT(lang, 'carousel.openFull');
+  const m = label.match(/^(.*?)\s*([→←])$/u);
+  if (!m) return label;
+  const d = m[2] === '→' ? 'M1 7h18M13 1l6 6-6 6' : 'M21 7H3M9 1L3 7l6 6';
+  return {
+    type: 'div',
+    props: {
+      style: { display: 'flex', alignItems: 'center', gap: 12 },
+      children: [
+        m[1],
+        { type: 'svg', props: { width: 22, height: 14, viewBox: '0 0 22 14', children: { type: 'path', props: { d, stroke: 'currentColor', strokeWidth: 1.6, fill: 'none' } } } },
       ],
     },
   };

@@ -65,7 +65,9 @@ async function installLocalFontFetch() {
           headers: { 'Content-Type': 'font/ttf' },
         });
       }
-      return originalFetch(input, init);
+      // Smoke renders are English and Latin-1: they need no font beyond the
+      // base file, so any other request is a regression, never a network call.
+      throw new Error(`carousel smoke render fetched ${inputUrl(input)}`);
     };
   })();
 
@@ -314,14 +316,14 @@ describe('carousel chrome language', () => {
 
   it('keeps English chrome for v1-v4 envelopes', () => {
     const out = texts(v4);
-    for (const label of ['ISSUE Nº 001', '1 thread that shaped the world today.', 'Open for full brief →', 'Digest / On The Desk', "Today's Threads", 'Source · Reuters']) {
+    for (const label of ['ISSUE Nº 001', '1 thread that shaped the world today.', 'Open for full brief', 'Digest / On The Desk', "Today's Threads", 'Source · Reuters']) {
       assert.ok(out.includes(label), label);
     }
   });
 
   it('translates chrome for a v5 envelope', () => {
     const out = texts({ ...v4, version: 5, lang: 'fr' });
-    for (const label of ['NUMÉRO 001', 'Ouvrir le brief complet →', 'Source · Reuters']) {
+    for (const label of ['NUMÉRO 001', 'Ouvrir le brief complet', 'Source · Reuters']) {
       assert.ok(out.includes(label), label);
     }
     assert.ok(!out.includes('Open for full brief'));
@@ -329,10 +331,10 @@ describe('carousel chrome language', () => {
 
   it('ignores lang on non-v5 envelopes and keeps right-to-left languages English', () => {
     for (const env of [{ ...v4, lang: 'fr' }, ...['ar', 'fa'].map((lang) => ({ ...v4, version: 5, lang }))]) {
-      assert.ok(texts(env).includes('Open for full brief →'), JSON.stringify(env.lang));
+      assert.ok(texts(env).includes('Open for full brief'), JSON.stringify(env.lang));
     }
     for (const lang of ['ja', 'ru', 'pl', 'th']) {
-      assert.ok(!texts({ ...v4, version: 5, lang }).includes('Open for full brief →'), lang);
+      assert.ok(!texts({ ...v4, version: 5, lang }).includes('Open for full brief'), lang);
     }
   });
 
