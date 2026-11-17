@@ -11,7 +11,8 @@
 // The key is the headline as the digest's story tracking normalizes it
 // (normalizeTitle in server/worldmonitor/news/v1/list-feed-digest.ts, kept in
 // step by tests/news-story-key.test.mts): attribution suffix, case and
-// punctuation removed. Story tracking then keeps the first 120 characters; the
+// punctuation removed, except that punctuation inside a number becomes a
+// space. Story tracking then keeps the first 120 characters; the
 // alert key keeps the whole headline, because two long headlines that part
 // only at the end ("... three killed in Kyiv", "... twenty killed in Odesa")
 // are different alerts. The publisher's scan-dedup keys on it instead of the
@@ -53,6 +54,10 @@ function normalizeNewsStoryTitle(title) {
   const stripped = stripAttributionSuffix(title.toLowerCase(), { allowPipe: false });
   const bounded = stripped.length > NORMALIZED_TITLE_SCAN ? stripped.slice(0, NORMALIZED_TITLE_SCAN) : stripped;
   return bounded
+    // Story tracking drops all punctuation, which makes "1.5 million" and
+    // "15 million" one headline. Held for a day, that would silence the
+    // second, so punctuation inside a number becomes a space instead.
+    .replace(/(?<=\p{N})[^\p{L}\p{N}\s]+(?=\p{N})/gu, ' ')
     .replace(/[^\p{L}\p{N}\s]/gu, '')
     .replace(/\s+/g, ' ')
     .trim();
