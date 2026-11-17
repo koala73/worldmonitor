@@ -93,6 +93,10 @@ export interface AppContext {
   cyberThreatsCache: CyberThreat[] | null;
 
   disabledSources: Set<string>;
+  pendingSourcePreferences?: {
+    gateOwned: Set<string> | null;
+    countryCoverageMigration: boolean;
+  };
   currentTimeRange: import('@/components').TimeRange;
 
   inFlight: Set<string>;
