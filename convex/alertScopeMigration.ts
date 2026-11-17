@@ -404,7 +404,8 @@ export const sendAlertScopeNotices = internalAction({
         summary.skipped += 1;
         continue;
       }
-      const content = alertScopeNoticeContent(noticeCountries(rows), rows[0].audience);
+      // Every row of one user carries the same audience (one capabilities read per user).
+      const content = alertScopeNoticeContent(noticeCountries(rows), rows[0]?.audience);
       try {
         const result = await sendResendEmail(ctx, {
           apiKey,
