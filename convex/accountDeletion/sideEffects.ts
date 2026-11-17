@@ -260,7 +260,6 @@ async function deleteAccountRedisKeys(args: {
 }): Promise<void> {
   const keys = [
     entitlementKey(args.userId),
-    `brief:latest:${args.userId}`,
     ...args.keyHashes.flatMap((hash) => [
       `user-api-key:${hash}`,
       `bootstrap-user-api-key-invalid:${hash}`,
@@ -280,6 +279,8 @@ async function deleteAccountRedisKeys(args: {
     // Localized sibling; source of truth is briefLocalizedKey in shared/brief-envelope.js.
     keys.push(`brief:l10n:${args.userId}:${slot}`);
   }
+  // Pointer last: a partial pipeline keeps it, so a retry still finds the slot.
+  keys.push(`brief:latest:${args.userId}`);
 
   // Deletes and the MCP negative-cache sentinels go in one pipeline. The
   // sentinels used to be a per-token await, each its own fetch with its own

@@ -182,5 +182,20 @@ describe('notification settings brief language', () => {
     await vi.waitFor(() => expect(select.value).toBe('es'));
     expect(select.disabled).toBe(false);
     expect(q(container, '#usBriefLanguageRow .us-notif-error').getAttribute('role')).toBe('alert');
+    expect(q(container, '#usBriefLanguageRow .us-notif-error').textContent).toBe("Couldn't save that. Try again.");
+  });
+
+  it('a failed load shows a retry that loads the saved value', async () => {
+    briefMocks.loadBriefLanguage.mockResolvedValueOnce(null);
+    const container = await mount(rule());
+    const select = q<HTMLSelectElement>(container, '#usBriefLanguage');
+    const error = await vi.waitFor(() => q(container, '#usBriefLanguageRow .us-notif-error'));
+    expect(error.textContent).toContain('Failed to load');
+    expect(select.disabled).toBe(true);
+    briefMocks.loadBriefLanguage.mockResolvedValueOnce({ uiLanguage: 'fr', briefLanguage: 'ja', effective: 'ja' });
+    q<HTMLButtonElement>(error, 'button').click();
+    await vi.waitFor(() => expect(select.disabled).toBe(false));
+    expect(select.value).toBe('ja');
+    expect(container.querySelector('#usBriefLanguageRow .us-notif-error')).toBeNull();
   });
 });

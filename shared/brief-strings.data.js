@@ -4,6 +4,20 @@
 
 export const BRIEF_STRINGS = {
   "en": {
+    "phase.breaking": "Breaking",
+    "phase.developing": "Developing",
+    "phase.sustained": "Sustained",
+    "phase.fading": "Fading",
+    "coverage.label": "Coverage: {text}",
+    "coverage.single": "single publisher",
+    "coverage.tier4": {
+      "one": "{n} publishers, all tier 4",
+      "other": "{n} publishers, all tier 4"
+    },
+    "coverage.independent": {
+      "one": "{n} independent publishers",
+      "other": "{n} independent publishers"
+    },
     "threat.critical": "Critical",
     "threat.high": "High",
     "threat.medium": "Medium",
@@ -95,6 +109,20 @@ export const BRIEF_STRINGS = {
     "teams.more": "… and {n} more in the full brief"
   },
   "bg": {
+    "phase.breaking": "Извънредно",
+    "phase.developing": "Развиващо се",
+    "phase.sustained": "Продължаващо",
+    "phase.fading": "Затихващо",
+    "coverage.label": "Покритие: {text}",
+    "coverage.single": "един издател",
+    "coverage.tier4": {
+      "one": "{n} издател, всички от ниво 4",
+      "other": "{n} издатели, всички от ниво 4"
+    },
+    "coverage.independent": {
+      "one": "{n} независим издател",
+      "other": "{n} независими издатели"
+    },
     "threat.critical": "Критично",
     "threat.high": "Високо",
     "threat.medium": "Средно",
@@ -186,6 +214,24 @@ export const BRIEF_STRINGS = {
     "teams.more": "… и още {n} в целия брой"
   },
   "cs": {
+    "phase.breaking": "Mimořádné",
+    "phase.developing": "Vyvíjí se",
+    "phase.sustained": "Trvající",
+    "phase.fading": "Odeznívá",
+    "coverage.label": "Pokrytí: {text}",
+    "coverage.single": "jediný vydavatel",
+    "coverage.tier4": {
+      "one": "{n} vydavatel, všichni úrovně 4",
+      "few": "{n} vydavatelé, všichni úrovně 4",
+      "many": "{n} vydavatele, všichni úrovně 4",
+      "other": "{n} vydavatelů, všichni úrovně 4"
+    },
+    "coverage.independent": {
+      "one": "{n} nezávislý vydavatel",
+      "few": "{n} nezávislí vydavatelé",
+      "many": "{n} nezávislého vydavatele",
+      "other": "{n} nezávislých vydavatelů"
+    },
     "threat.critical": "Kritická",
     "threat.high": "Vysoká",
     "threat.medium": "Střední",
@@ -289,6 +335,22 @@ export const BRIEF_STRINGS = {
     "teams.more": "… a dalších {n} v celém vydání"
   },
   "fr": {
+    "phase.breaking": "Urgent",
+    "phase.developing": "En développement",
+    "phase.sustained": "Durable",
+    "phase.fading": "En recul",
+    "coverage.label": "Couverture : {text}",
+    "coverage.single": "un seul média",
+    "coverage.tier4": {
+      "one": "{n} média, tous de niveau 4",
+      "many": "{n} médias, tous de niveau 4",
+      "other": "{n} médias, tous de niveau 4"
+    },
+    "coverage.independent": {
+      "one": "{n} média indépendant",
+      "many": "{n} médias indépendants",
+      "other": "{n} médias indépendants"
+    },
     "threat.critical": "Critique",
     "threat.high": "Élevé",
     "threat.medium": "Moyen",
@@ -386,6 +448,20 @@ export const BRIEF_STRINGS = {
     "teams.more": "… et {n} de plus dans le brief complet"
   },
   "de": {
+    "phase.breaking": "Eilmeldung",
+    "phase.developing": "In Entwicklung",
+    "phase.sustained": "Anhaltend",
+    "phase.fading": "Abklingend",
+    "coverage.label": "Abdeckung: {text}",
+    "coverage.single": "eine einzige Quelle",
+    "coverage.tier4": {
+      "one": "{n} Quelle, alle Stufe 4",
+      "other": "{n} Quellen, alle Stufe 4"
+    },
+    "coverage.independent": {
+      "one": "{n} unabhängige Quelle",
+      "other": "{n} unabhängige Quellen"
+    },
     "threat.critical": "Kritisch",
     "threat.high": "Hoch",
     "threat.medium": "Mittel",
@@ -477,6 +553,20 @@ export const BRIEF_STRINGS = {
     "teams.more": "… und {n} weitere im vollständigen Brief"
   },
   "el": {
+    "phase.breaking": "Έκτακτο",
+    "phase.developing": "Σε εξέλιξη",
+    "phase.sustained": "Διαρκές",
+    "phase.fading": "Σε ύφεση",
+    "coverage.label": "Κάλυψη: {text}",
+    "coverage.single": "ένας μόνο εκδότης",
+    "coverage.tier4": {
+      "one": "{n} εκδότης, όλοι επιπέδου 4",
+      "other": "{n} εκδότες, όλοι επιπέδου 4"
+    },
+    "coverage.independent": {
+      "one": "{n} ανεξάρτητος εκδότης",
+      "other": "{n} ανεξάρτητοι εκδότες"
+    },
     "threat.critical": "Κρίσιμο",
     "threat.high": "Υψηλό",
     "threat.medium": "Μέτριο",
@@ -568,6 +658,22 @@ export const BRIEF_STRINGS = {
     "teams.more": "… και {n} ακόμη στο πλήρες τεύχος"
   },
   "es": {
+    "phase.breaking": "Última hora",
+    "phase.developing": "En desarrollo",
+    "phase.sustained": "Continuada",
+    "phase.fading": "En retroceso",
+    "coverage.label": "Cobertura: {text}",
+    "coverage.single": "un solo medio",
+    "coverage.tier4": {
+      "one": "{n} medio, todos de nivel 4",
+      "many": "{n} medios, todos de nivel 4",
+      "other": "{n} medios, todos de nivel 4"
+    },
+    "coverage.independent": {
+      "one": "{n} medio independiente",
+      "many": "{n} medios independientes",
+      "other": "{n} medios independientes"
+    },
     "threat.critical": "Crítico",
     "threat.high": "Alto",
     "threat.medium": "Medio",
@@ -665,6 +771,22 @@ export const BRIEF_STRINGS = {
     "teams.more": "… y {n} más en el brief completo"
   },
   "hr": {
+    "phase.breaking": "Hitno",
+    "phase.developing": "U razvoju",
+    "phase.sustained": "Trajno",
+    "phase.fading": "Jenjava",
+    "coverage.label": "Pokrivenost: {text}",
+    "coverage.single": "jedan izdavač",
+    "coverage.tier4": {
+      "one": "{n} izdavač, svi razine 4",
+      "few": "{n} izdavača, svi razine 4",
+      "other": "{n} izdavača, svi razine 4"
+    },
+    "coverage.independent": {
+      "one": "{n} neovisni izdavač",
+      "few": "{n} neovisna izdavača",
+      "other": "{n} neovisnih izdavača"
+    },
     "threat.critical": "Kritično",
     "threat.high": "Visoko",
     "threat.medium": "Srednje",
@@ -762,6 +884,20 @@ export const BRIEF_STRINGS = {
     "teams.more": "… i još {n} u cijelom izdanju"
   },
   "hu": {
+    "phase.breaking": "Rendkívüli",
+    "phase.developing": "Fejlődő",
+    "phase.sustained": "Tartós",
+    "phase.fading": "Halványuló",
+    "coverage.label": "Lefedettség: {text}",
+    "coverage.single": "egyetlen kiadó",
+    "coverage.tier4": {
+      "one": "{n} kiadó, mind 4. szintű",
+      "other": "{n} kiadó, mind 4. szintű"
+    },
+    "coverage.independent": {
+      "one": "{n} független kiadó",
+      "other": "{n} független kiadó"
+    },
     "threat.critical": "Kritikus",
     "threat.high": "Magas",
     "threat.medium": "Közepes",
@@ -853,6 +989,22 @@ export const BRIEF_STRINGS = {
     "teams.more": "… és további {n} a teljes számban"
   },
   "it": {
+    "phase.breaking": "Ultim'ora",
+    "phase.developing": "In sviluppo",
+    "phase.sustained": "Persistente",
+    "phase.fading": "In calo",
+    "coverage.label": "Copertura: {text}",
+    "coverage.single": "una sola testata",
+    "coverage.tier4": {
+      "one": "{n} testata, tutte di livello 4",
+      "many": "{n} testate, tutte di livello 4",
+      "other": "{n} testate, tutte di livello 4"
+    },
+    "coverage.independent": {
+      "one": "{n} testata indipendente",
+      "many": "{n} testate indipendenti",
+      "other": "{n} testate indipendenti"
+    },
     "threat.critical": "Critico",
     "threat.high": "Alto",
     "threat.medium": "Medio",
@@ -950,6 +1102,24 @@ export const BRIEF_STRINGS = {
     "teams.more": "… e altre {n} nel brief completo"
   },
   "pl": {
+    "phase.breaking": "Pilne",
+    "phase.developing": "Rozwija się",
+    "phase.sustained": "Trwające",
+    "phase.fading": "Wygasa",
+    "coverage.label": "Pokrycie: {text}",
+    "coverage.single": "jeden wydawca",
+    "coverage.tier4": {
+      "one": "{n} wydawca, wszyscy poziomu 4",
+      "few": "{n} wydawcy, wszyscy poziomu 4",
+      "many": "{n} wydawców, wszyscy poziomu 4",
+      "other": "{n} wydawcy, wszyscy poziomu 4"
+    },
+    "coverage.independent": {
+      "one": "{n} niezależny wydawca",
+      "few": "{n} niezależni wydawcy",
+      "many": "{n} niezależnych wydawców",
+      "other": "{n} niezależnego wydawcy"
+    },
     "threat.critical": "Krytyczny",
     "threat.high": "Wysoki",
     "threat.medium": "Średni",
@@ -1053,6 +1223,22 @@ export const BRIEF_STRINGS = {
     "teams.more": "… i {n} więcej w pełnym wydaniu"
   },
   "pt": {
+    "phase.breaking": "Urgente",
+    "phase.developing": "Em desenvolvimento",
+    "phase.sustained": "Contínua",
+    "phase.fading": "Em declínio",
+    "coverage.label": "Cobertura: {text}",
+    "coverage.single": "um único veículo",
+    "coverage.tier4": {
+      "one": "{n} veículo, todos de nível 4",
+      "many": "{n} veículos, todos de nível 4",
+      "other": "{n} veículos, todos de nível 4"
+    },
+    "coverage.independent": {
+      "one": "{n} veículo independente",
+      "many": "{n} veículos independentes",
+      "other": "{n} veículos independentes"
+    },
     "threat.critical": "Crítico",
     "threat.high": "Alto",
     "threat.medium": "Médio",
@@ -1150,6 +1336,20 @@ export const BRIEF_STRINGS = {
     "teams.more": "… e mais {n} no brief completo"
   },
   "nl": {
+    "phase.breaking": "Breaking",
+    "phase.developing": "In ontwikkeling",
+    "phase.sustained": "Aanhoudend",
+    "phase.fading": "Afnemend",
+    "coverage.label": "Dekking: {text}",
+    "coverage.single": "één uitgever",
+    "coverage.tier4": {
+      "one": "{n} uitgever, allemaal niveau 4",
+      "other": "{n} uitgevers, allemaal niveau 4"
+    },
+    "coverage.independent": {
+      "one": "{n} onafhankelijke uitgever",
+      "other": "{n} onafhankelijke uitgevers"
+    },
     "threat.critical": "Kritiek",
     "threat.high": "Hoog",
     "threat.medium": "Gemiddeld",
@@ -1241,6 +1441,20 @@ export const BRIEF_STRINGS = {
     "teams.more": "… en nog {n} in de volledige brief"
   },
   "sv": {
+    "phase.breaking": "Senaste nytt",
+    "phase.developing": "Under utveckling",
+    "phase.sustained": "Pågående",
+    "phase.fading": "Avtagande",
+    "coverage.label": "Täckning: {text}",
+    "coverage.single": "en enda utgivare",
+    "coverage.tier4": {
+      "one": "{n} utgivare, alla nivå 4",
+      "other": "{n} utgivare, alla nivå 4"
+    },
+    "coverage.independent": {
+      "one": "{n} oberoende utgivare",
+      "other": "{n} oberoende utgivare"
+    },
     "threat.critical": "Kritisk",
     "threat.high": "Hög",
     "threat.medium": "Medel",
@@ -1332,6 +1546,24 @@ export const BRIEF_STRINGS = {
     "teams.more": "… och {n} till i hela briefen"
   },
   "ru": {
+    "phase.breaking": "Срочно",
+    "phase.developing": "Развивается",
+    "phase.sustained": "Продолжается",
+    "phase.fading": "Затухает",
+    "coverage.label": "Охват: {text}",
+    "coverage.single": "один издатель",
+    "coverage.tier4": {
+      "one": "{n} издатель, все уровня 4",
+      "few": "{n} издателя, все уровня 4",
+      "many": "{n} издателей, все уровня 4",
+      "other": "{n} издателя, все уровня 4"
+    },
+    "coverage.independent": {
+      "one": "{n} независимый издатель",
+      "few": "{n} независимых издателя",
+      "many": "{n} независимых издателей",
+      "other": "{n} независимого издателя"
+    },
     "threat.critical": "Критический",
     "threat.high": "Высокий",
     "threat.medium": "Средний",
@@ -1435,6 +1667,24 @@ export const BRIEF_STRINGS = {
     "teams.more": "… и ещё {n} в полном выпуске"
   },
   "uk": {
+    "phase.breaking": "Терміново",
+    "phase.developing": "Розвивається",
+    "phase.sustained": "Триває",
+    "phase.fading": "Згасає",
+    "coverage.label": "Охоплення: {text}",
+    "coverage.single": "один видавець",
+    "coverage.tier4": {
+      "one": "{n} видавець, усі рівня 4",
+      "few": "{n} видавці, усі рівня 4",
+      "many": "{n} видавців, усі рівня 4",
+      "other": "{n} видавця, усі рівня 4"
+    },
+    "coverage.independent": {
+      "one": "{n} незалежний видавець",
+      "few": "{n} незалежні видавці",
+      "many": "{n} незалежних видавців",
+      "other": "{n} незалежного видавця"
+    },
     "threat.critical": "Критичний",
     "threat.high": "Високий",
     "threat.medium": "Середній",
@@ -1538,6 +1788,28 @@ export const BRIEF_STRINGS = {
     "teams.more": "… і ще {n} у повному випуску"
   },
   "ar": {
+    "phase.breaking": "عاجل",
+    "phase.developing": "متطور",
+    "phase.sustained": "مستمر",
+    "phase.fading": "متراجع",
+    "coverage.label": "التغطية: {text}",
+    "coverage.single": "ناشر واحد",
+    "coverage.tier4": {
+      "zero": "{n} ناشر، جميعهم من المستوى 4",
+      "one": "{n} ناشر، من المستوى 4",
+      "two": "ناشران، كلاهما من المستوى 4",
+      "few": "{n} ناشرين، جميعهم من المستوى 4",
+      "many": "{n} ناشرًا، جميعهم من المستوى 4",
+      "other": "{n} ناشر، جميعهم من المستوى 4"
+    },
+    "coverage.independent": {
+      "zero": "{n} ناشر مستقل",
+      "one": "ناشر مستقل واحد",
+      "two": "ناشران مستقلان",
+      "few": "{n} ناشرين مستقلين",
+      "many": "{n} ناشرًا مستقلًا",
+      "other": "{n} ناشر مستقل"
+    },
     "threat.critical": "حرج",
     "threat.high": "مرتفع",
     "threat.medium": "متوسط",
@@ -1653,6 +1925,20 @@ export const BRIEF_STRINGS = {
     "teams.more": "… و{n} أخرى في الموجز الكامل"
   },
   "fa": {
+    "phase.breaking": "فوری",
+    "phase.developing": "در حال گسترش",
+    "phase.sustained": "ادامه\u200Cدار",
+    "phase.fading": "رو به کاهش",
+    "coverage.label": "پوشش: {text}",
+    "coverage.single": "یک ناشر",
+    "coverage.tier4": {
+      "one": "{n} ناشر، همه سطح ۴",
+      "other": "{n} ناشر، همه سطح ۴"
+    },
+    "coverage.independent": {
+      "one": "{n} ناشر مستقل",
+      "other": "{n} ناشر مستقل"
+    },
     "threat.critical": "بحرانی",
     "threat.high": "زیاد",
     "threat.medium": "متوسط",
@@ -1744,6 +2030,18 @@ export const BRIEF_STRINGS = {
     "teams.more": "… و {n} مورد دیگر در خلاصه کامل"
   },
   "zh": {
+    "phase.breaking": "突发",
+    "phase.developing": "发展中",
+    "phase.sustained": "持续",
+    "phase.fading": "减弱",
+    "coverage.label": "报道情况：{text}",
+    "coverage.single": "单一来源",
+    "coverage.tier4": {
+      "other": "{n} 家媒体，均为第 4 级"
+    },
+    "coverage.independent": {
+      "other": "{n} 家独立媒体"
+    },
     "threat.critical": "严重",
     "threat.high": "高",
     "threat.medium": "中",
@@ -1829,6 +2127,18 @@ export const BRIEF_STRINGS = {
     "teams.more": "… 完整简报中另有 {n} 条"
   },
   "zh-TW": {
+    "phase.breaking": "突發",
+    "phase.developing": "發展中",
+    "phase.sustained": "持續",
+    "phase.fading": "減弱",
+    "coverage.label": "報導情況：{text}",
+    "coverage.single": "單一來源",
+    "coverage.tier4": {
+      "other": "{n} 家媒體，皆為第 4 級"
+    },
+    "coverage.independent": {
+      "other": "{n} 家獨立媒體"
+    },
     "threat.critical": "嚴重",
     "threat.high": "高",
     "threat.medium": "中",
@@ -1914,6 +2224,18 @@ export const BRIEF_STRINGS = {
     "teams.more": "… 完整簡報中另有 {n} 則"
   },
   "ja": {
+    "phase.breaking": "速報",
+    "phase.developing": "進行中",
+    "phase.sustained": "継続",
+    "phase.fading": "沈静化",
+    "coverage.label": "報道状況：{text}",
+    "coverage.single": "単一の媒体",
+    "coverage.tier4": {
+      "other": "{n} 媒体（すべてティア4）"
+    },
+    "coverage.independent": {
+      "other": "独立系媒体 {n} 社"
+    },
     "threat.critical": "重大",
     "threat.high": "高",
     "threat.medium": "中",
@@ -1999,6 +2321,18 @@ export const BRIEF_STRINGS = {
     "teams.more": "… 全文ではほか {n} 件"
   },
   "ko": {
+    "phase.breaking": "속보",
+    "phase.developing": "진행 중",
+    "phase.sustained": "지속",
+    "phase.fading": "약화",
+    "coverage.label": "보도 현황: {text}",
+    "coverage.single": "단일 매체",
+    "coverage.tier4": {
+      "other": "매체 {n}곳, 모두 4등급"
+    },
+    "coverage.independent": {
+      "other": "독립 매체 {n}곳"
+    },
     "threat.critical": "심각",
     "threat.high": "높음",
     "threat.medium": "보통",
@@ -2084,6 +2418,22 @@ export const BRIEF_STRINGS = {
     "teams.more": "… 전체 브리프에 {n}건 더"
   },
   "ro": {
+    "phase.breaking": "De ultimă oră",
+    "phase.developing": "În desfășurare",
+    "phase.sustained": "Persistent",
+    "phase.fading": "În scădere",
+    "coverage.label": "Acoperire: {text}",
+    "coverage.single": "o singură publicație",
+    "coverage.tier4": {
+      "one": "{n} publicație, toate de nivel 4",
+      "few": "{n} publicații, toate de nivel 4",
+      "other": "{n} de publicații, toate de nivel 4"
+    },
+    "coverage.independent": {
+      "one": "{n} publicație independentă",
+      "few": "{n} publicații independente",
+      "other": "{n} de publicații independente"
+    },
     "threat.critical": "Critic",
     "threat.high": "Ridicat",
     "threat.medium": "Mediu",
@@ -2181,6 +2531,20 @@ export const BRIEF_STRINGS = {
     "teams.more": "… și încă {n} în numărul complet"
   },
   "tr": {
+    "phase.breaking": "Son dakika",
+    "phase.developing": "Gelişiyor",
+    "phase.sustained": "Süregelen",
+    "phase.fading": "Azalıyor",
+    "coverage.label": "Kapsam: {text}",
+    "coverage.single": "tek yayıncı",
+    "coverage.tier4": {
+      "one": "{n} yayıncı, hepsi 4. seviye",
+      "other": "{n} yayıncı, hepsi 4. seviye"
+    },
+    "coverage.independent": {
+      "one": "{n} bağımsız yayıncı",
+      "other": "{n} bağımsız yayıncı"
+    },
     "threat.critical": "Kritik",
     "threat.high": "Yüksek",
     "threat.medium": "Orta",
@@ -2272,6 +2636,18 @@ export const BRIEF_STRINGS = {
     "teams.more": "… ve tam sayıda {n} tane daha"
   },
   "th": {
+    "phase.breaking": "ด่วน",
+    "phase.developing": "กำลังพัฒนา",
+    "phase.sustained": "ต่อเนื่อง",
+    "phase.fading": "กำลังจางลง",
+    "coverage.label": "การรายงาน: {text}",
+    "coverage.single": "สำนักข่าวเดียว",
+    "coverage.tier4": {
+      "other": "{n} สำนักข่าว ทั้งหมดระดับ 4"
+    },
+    "coverage.independent": {
+      "other": "{n} สำนักข่าวอิสระ"
+    },
     "threat.critical": "วิกฤต",
     "threat.high": "สูง",
     "threat.medium": "ปานกลาง",
@@ -2357,6 +2733,18 @@ export const BRIEF_STRINGS = {
     "teams.more": "… และอีก {n} รายการในฉบับเต็ม"
   },
   "vi": {
+    "phase.breaking": "Nóng",
+    "phase.developing": "Đang diễn biến",
+    "phase.sustained": "Kéo dài",
+    "phase.fading": "Đang lắng xuống",
+    "coverage.label": "Mức độ đưa tin: {text}",
+    "coverage.single": "một nguồn duy nhất",
+    "coverage.tier4": {
+      "other": "{n} nguồn, tất cả cấp 4"
+    },
+    "coverage.independent": {
+      "other": "{n} nguồn độc lập"
+    },
     "threat.critical": "Nghiêm trọng",
     "threat.high": "Cao",
     "threat.medium": "Trung bình",
@@ -2442,6 +2830,20 @@ export const BRIEF_STRINGS = {
     "teams.more": "… và {n} tin khác trong bản tin đầy đủ"
   },
   "hi": {
+    "phase.breaking": "ब्रेकिंग",
+    "phase.developing": "विकासशील",
+    "phase.sustained": "जारी",
+    "phase.fading": "घटता हुआ",
+    "coverage.label": "कवरेज: {text}",
+    "coverage.single": "एक ही प्रकाशक",
+    "coverage.tier4": {
+      "one": "{n} प्रकाशक, सभी स्तर 4",
+      "other": "{n} प्रकाशक, सभी स्तर 4"
+    },
+    "coverage.independent": {
+      "one": "{n} स्वतंत्र प्रकाशक",
+      "other": "{n} स्वतंत्र प्रकाशक"
+    },
     "threat.critical": "गंभीर",
     "threat.high": "उच्च",
     "threat.medium": "मध्यम",
@@ -2533,6 +2935,20 @@ export const BRIEF_STRINGS = {
     "teams.more": "… और पूरे अंक में {n} और"
   },
   "sw": {
+    "phase.breaking": "Habari za dharura",
+    "phase.developing": "Inaendelea",
+    "phase.sustained": "Endelevu",
+    "phase.fading": "Inafifia",
+    "coverage.label": "Uenezi: {text}",
+    "coverage.single": "mchapishaji mmoja",
+    "coverage.tier4": {
+      "one": "mchapishaji {n}, wote wa daraja la 4",
+      "other": "wachapishaji {n}, wote wa daraja la 4"
+    },
+    "coverage.independent": {
+      "one": "mchapishaji {n} huru",
+      "other": "wachapishaji {n} huru"
+    },
     "threat.critical": "Hatari kubwa",
     "threat.high": "Juu",
     "threat.medium": "Wastani",

@@ -300,7 +300,7 @@ export async function getConvexClient(): Promise<ConvexClient | null> {
  */
 function isUnknownArgError(err: unknown, field: string): boolean {
   const message = (err as Error | undefined)?.message ?? '';
-  return /validat/i.test(message) && message.includes(field);
+  return /validat/i.test(message) && new RegExp('extra field [`\'"]?' + field + '\\b', 'i').test(message);
 }
 
 /** The explicit Settings language only; `?lang=` and navigator never count. */

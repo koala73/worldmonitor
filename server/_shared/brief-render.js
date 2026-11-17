@@ -252,7 +252,7 @@ export function assertBriefEnvelope(envelope) {
   if (!isFiniteNumber(env.issuedAt)) {
     throw new Error('renderBriefMagazine: envelope.issuedAt must be a finite number');
   }
-  if (isLocalized && (typeof env.lang !== 'string' || !LOCALIZED_LANG_RE.test(env.lang) || !isUiLanguage(env.lang) || env.lang === 'en')) {
+  if (isLocalized && (typeof env.lang !== 'string' || !LOCALIZED_LANG_RE.test(env.lang) || !isUiLanguage(env.lang) || env.lang.split('-')[0] === 'en')) {
     throw new Error(
       `renderBriefMagazine: envelope.lang must be a non-English UI language code on v${BRIEF_LOCALIZED_ENVELOPE_VERSION} envelopes (got ${JSON.stringify(env.lang)})`,
     );
@@ -668,7 +668,7 @@ function renderDigestThreadsPage({
     '<section class="page digest">' +
     digestRunningHead(dateShort, label, lang) +
     '<div class="body">' +
-    '<div class="label mono">Today\u2019s Threads</div>' +
+    `<div class="label mono">${escapeHtml(briefT(lang, 'mag.todaysThreads'))}</div>` +
     `<h2>${escapeHtml(heading)}</h2>` +
     `<div class="threads">${rows}</div>` +
     endMarker +

@@ -5899,7 +5899,9 @@
     "briefLanguage": {
       "label": "Lingua del briefing",
       "hint": "Il tuo briefing quotidiano sarà scritto in {{language}}.",
-      "sameAsApp": "Uguale alla lingua dell'app"
+      "sameAsApp": "Uguale alla lingua dell'app",
+      "loadFailed": "Caricamento non riuscito",
+      "saveFailed": "Non è stato possibile salvare. Riprova."
     }
   }
 }

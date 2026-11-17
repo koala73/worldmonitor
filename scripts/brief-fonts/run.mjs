@@ -33,12 +33,15 @@ function collectRuns(families) {
   const add = (el, text, cs) => {
     const family = cs.fontFamily.split(',')[0].trim().replace(/^["']|["']$/g, '');
     if (!families.includes(family)) return;
-    const t = cs.textTransform === 'uppercase' ? text.toUpperCase() : cs.textTransform === 'lowercase' ? text.toLowerCase() : text;
+    const lang = el.closest('[lang]')?.getAttribute('lang') || '';
+    // CSS case transforms follow the content language (Turkish dotted İ, Greek).
+    const locale = lang || 'en';
+    const t = cs.textTransform === 'uppercase' ? text.toLocaleUpperCase(locale) : cs.textTransform === 'lowercase' ? text.toLocaleLowerCase(locale) : text;
     runs.push({
       family, weight: Number(cs.fontWeight), style: cs.fontStyle, text: t,
       onFirstPage: !!firstPage && firstPage.contains(el),
       variants: [cs.fontFeatureSettings, cs.fontVariationSettings, cs.fontVariantNumeric, cs.fontVariantCaps, cs.fontVariantLigatures, cs.fontVariantPosition, cs.fontVariantAlternates, cs.fontVariantEastAsian].join(' '),
-      lang: el.closest('[lang]')?.getAttribute('lang') || '',
+      lang,
     });
   };
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);

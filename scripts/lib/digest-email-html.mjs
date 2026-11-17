@@ -85,11 +85,11 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
     const borderColor = SEVERITY_BORDER[s.severity] ?? '#4ade80';
     const phaseBadge = formatStoryPhaseBadge(s.phase);
     const phaseColor = phaseBadge?.color;
-    const phaseCap = phaseBadge?.label ?? '';
+    const phaseCap = phaseBadge ? (lang === 'en' ? phaseBadge.label : chromeHtml(lang, `phase.${s.phase}`)) : '';
     const srcText = s.sources.length > 0
       ? s.sources.slice(0, 3).join(', ') + (s.sources.length > 3 ? ` +${s.sources.length - 3}` : '')
       : '';
-    const coverageText = digestCoverageText(s);
+    const coverageText = digestCoverageText(s, lang);
     const cleanTitle = stripSourceSuffix(s.title);
     const href = safeHttpUrl(s.link);
     const titleEl = href

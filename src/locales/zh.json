@@ -5827,7 +5827,9 @@
     "briefLanguage": {
       "label": "简报语言",
       "hint": "您的每日简报将使用{{language}}撰写。",
-      "sameAsApp": "与应用语言相同"
+      "sameAsApp": "与应用语言相同",
+      "loadFailed": "加载失败",
+      "saveFailed": "保存失败。请重试。"
     }
   }
 }
