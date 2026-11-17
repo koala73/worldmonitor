@@ -123,7 +123,9 @@ describe('known manoeuvres are flagged once', () => {
   it('a LEO reboost of 1.2 km against steady drag decay', () => {
     const entries = history({ aKm: 6793, inclination: 51.64, decayKmPerDay: -0.05, events: [{ day: 15, dSma: 1.2 }] });
     const result = run(entries);
-    assert.equal(result.status, 'evaluated');
+    // The burn restarts the semi-major-axis trend, so the newest step (day 19) is not judged yet.
+    assert.equal(result.status, 'insufficient-baseline');
+    assert.deepEqual(result.unjudgedElements, ['semiMajorAxis']);
     assert.equal(result.candidates.length, 1);
     const [found] = result.candidates;
     assert.equal(found.kind, 'candidate');
@@ -271,10 +273,11 @@ describe('detectCandidateManeuvers', () => {
     const nowMs = T0 + 20.25 * DAY_MS;
     const result = detectCandidateManeuvers([...burnEarly, ...short, ...burnLate].reverse(), { nowMs });
     assert.equal(result.version, 1);
-    assert.deepEqual(result.satellites.map((s) => [s.noradId, s.status, s.candidateCount]), [
-      [1, 'evaluated', 1],
-      [2, 'stale', 0],
-      [3, 'evaluated', 1],
+    // Each burn restarts its element's trend, so neither satellite has judged its newest step yet.
+    assert.deepEqual(result.satellites.map((s) => [s.noradId, s.status, s.candidateCount, s.unjudgedElements]), [
+      [1, 'insufficient-baseline', 1, ['inclination']],
+      [2, 'stale', 0, undefined],
+      [3, 'insufficient-baseline', 1, ['semiMajorAxis']],
     ]);
     assert.deepEqual(result.candidates.map((c) => [c.noradId, c.element]), [[1, 'inclination'], [3, 'semiMajorAxis']]);
   });
@@ -322,5 +325,57 @@ describe('review round 2 (#10865)', () => {
       assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, [field]: false }), null, field);
     }
     assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, BSTAR: true }).bstar, null);
+  });
+});
+
+describe('maintainer review (#9110 stack)', () => {
+  const quiet = { sma: 0, inc: 0, raan: 0 };
+  const dayIso = (day) => new Date(T0 + day * DAY_MS).toISOString();
+
+  it('keeps a refit inside the first baseline window out of the trend', () => {
+    // Day 5 is the only epoch off the trend; the first comparison (day 11) fits days 0-10.
+    const entries = history({ aKm: 7071, inclination: 98.56, days: 21, noise: quiet });
+    entries[5] = { ...entries[5], inclination: entries[5].inclination + 0.3 };
+    assert.deepEqual(run(entries).candidates, []);
+    const sma = history({ aKm: 6900, inclination: 97.4, days: 21, noise: { sma: 0.02, inc: 0.0005, raan: 0.001 } });
+    sma[4] = { ...sma[4], meanMotion: meanMotionFor(6903) };
+    assert.deepEqual(run(sma).candidates, []);
+  });
+
+  it('follows the nodal rate an inclination manoeuvre leaves, so it raises no node candidate', () => {
+    for (const dInc of [-0.3, 0.1]) {
+      const entries = history({ aKm: 7071, inclination: 98.56, days: 24, noise: quiet, events: [{ day: 12, dInc }] });
+      assert.deepEqual(run(entries).candidates.map((c) => [c.element, c.toEpoch]), [['inclination', dayIso(12)]], `dInc ${dInc}`);
+    }
+  });
+
+  it('judges a step by the regime it happened in, not the newest orbit', () => {
+    // LEO at 1990 km: the day-12 fall is drag-ambiguous; the day-25 raise lifts the orbit into MEO.
+    const entries = history({ aKm: 6378.137 + 1990, inclination: 60, days: 30, noise: quiet, events: [{ day: 12, dSma: -2 }, { day: 25, dSma: 20 }] });
+    const result = run(entries);
+    assert.equal(result.regime, 'meo');
+    assert.deepEqual(result.candidates.map((c) => [c.toEpoch, c.regime]), [[dayIso(25), 'leo']]);
+  });
+
+  it('says evaluated only when every element judged the newest step', () => {
+    // The day-12 raise restarts the semi-major-axis baseline, so the day-15 raise is not judged by day 20.
+    const entries = history({ aKm: 6793, inclination: 51.64, days: 20, noise: quiet, events: [{ day: 12, dSma: 1.2 }, { day: 15, dSma: 1.2 }] });
+    const result = run(entries);
+    assert.deepEqual(result.candidates.map((c) => c.toEpoch), [dayIso(12)]);
+    assert.equal(result.status, 'insufficient-baseline');
+    assert.deepEqual(result.unjudgedElements, ['semiMajorAxis']);
+  });
+
+  it('never compares the node of a near-equatorial retrograde orbit', () => {
+    const entries = history({ aKm: 7000, inclination: 179.6, days: 20, noise: quiet, events: [{ day: 12, dRaan: 0.5 }] });
+    assert.deepEqual(run(entries).candidates, []);
+  });
+
+  it('does not publish a drag-suppressed fall later, once drag reads quiet', () => {
+    // Six-hourly epochs: a storm drop on day 15 that the later quiet intervals must not re-flag.
+    const entries = history({ aKm: 6800, inclination: 53, days: 20, stepDays: 0.25, noise: quiet, events: [{ day: 15, dSma: -0.6 }] });
+    const stormEnd = T0 + 15 * DAY_MS;
+    const dragDisturbed = (_from, to) => to <= stormEnd;
+    assert.deepEqual(run(entries, { dragDisturbed }).candidates, []);
   });
 });

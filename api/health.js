@@ -1014,8 +1014,9 @@ const SEED_META = {
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10714, activationKey: 'seed-activated:orbital:water-extent' } },
   // Climate bundle member every 6h; 1440 = 4 missed runs. Counts satellites the detector could evaluate
   // (full baseline, fresh epochs), so a history too short or stale to judge anything is EMPTY, never an all-clear.
-  // NOT_CONFIGURED while Orbital Watch is dark (DARK_LAUNCHED_KEYS).
-  orbitalManeuvers: { key: 'seed-meta:orbital:maneuvers', maxStaleMin: 1440, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:orbital:maneuvers',
+  // First publication waits for the R2 history to hold a 10-day baseline plus a confirming epoch (~11 days
+  // after it starts), so the wait is 14 days. NOT_CONFIGURED while Orbital Watch is dark (DARK_LAUNCHED_KEYS).
+  orbitalManeuvers: { key: 'seed-meta:orbital:maneuvers', maxStaleMin: 1440, firstPublicationMaxWaitMin: 20160, activationKey: 'seed-activated:orbital:maneuvers',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9110, activationKey: 'seed-activated:orbital:maneuvers' } },
   unrestEvents:     { key: 'seed-meta:unrest:events',           maxStaleMin: 120 }, // 45min cron; 120 = 2h grace (was 75 = 30min buffer, too tight)
   cyberThreats:     { key: 'seed-meta:cyber:threats',           maxStaleMin: 240 }, // 2h interval; 240min = 2x interval

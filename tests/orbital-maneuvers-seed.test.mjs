@@ -37,7 +37,9 @@ describe('buildManeuverPayload', () => {
   it('lists the candidate with both element sets, the threshold and the method used', () => {
     const payload = buildManeuverPayload(historyWithBurn(), NOW);
     assert.equal(payload.schema, 1);
-    assert.equal(payload.evaluatedSatellites, 2);
+    // Satellite 2's burn restarts its semi-major-axis trend, so only satellite 1 judged its newest step.
+    assert.equal(payload.evaluatedSatellites, 1);
+    assert.deepEqual(payload.satellites.map((s) => [s.noradId, s.status]), [[1, 'evaluated'], [2, 'insufficient-baseline']]);
     assert.equal(payload.history.entries, 42);
     assert.equal(payload.candidates.length, 1);
     const [candidate] = payload.candidates;
@@ -84,7 +86,8 @@ describe('seed options and registration', () => {
     const empty = buildManeuverPayload(null, NOW);
     assert.equal(options.validateFn(empty), true);
     assert.equal(options.declareRecords(empty), 0);
-    assert.equal(options.declareRecords(buildManeuverPayload(historyWithBurn(), NOW)), 2);
+    assert.equal(options.declareRecords(buildManeuverPayload(historyWithBurn(), NOW)), 1);
+    assert.equal(options.declareRecords({ ...buildManeuverPayload(historyWithBurn(), NOW), publishBlocked: 'stalled' }), 0);
     assert.equal(options.zeroIsValid, undefined);
   });
 
@@ -102,9 +105,38 @@ describe('seed options and registration', () => {
     assert.match(health, /ORBITAL_WATCH_ENABLED \? \[\] : \[[^\]]*'orbitalManeuvers'[^\]]*\]/);
     const bundle = readFileSync(new URL('../scripts/seed-bundle-climate.mjs', import.meta.url), 'utf8');
     assert.ok(bundle.indexOf("'seed-orbital-catalog.mjs'") < bundle.indexOf("'seed-orbital-maneuvers.mjs'"), 'runs after the catalog that feeds its history');
+    assert.match(health, /orbitalManeuvers: \{[^}]*firstPublicationMaxWaitMin: 20160/, 'pending through the ~11-day baseline warm-up');
+    assert.match(bundle, /label: 'Orbital-Maneuvers'[^\n]*requiredEnv: \['CLOUDFLARE_R2_ACCOUNT_ID'/, 'a missing R2 credential is a config error, not a crash');
     const railway = readFileSync(new URL('../scripts/railway-services.json', import.meta.url), 'utf8');
     for (const file of ['seed-orbital-maneuvers.mjs', '_orbital-maneuvers.mjs', '_orbital-history.mjs', '_r2-storage.mjs']) {
       assert.ok(railway.includes(`"scripts/${file}"`), `${file} is in the climate service watch paths`);
     }
+  });
+});
+
+describe('publish blocking (maintainer review)', () => {
+  const fetchWith = (history) => makeFetchManeuvers({ storageConfig: { mode: 'api' }, readHistory: async () => history, now: () => NOW })();
+
+  it('blocks, never fails, while no satellite has a full baseline', async () => {
+    const young = historyWithBurn();
+    young.entries = young.entries.filter((e) => e.epoch >= NOW - 6 * DAY_MS);
+    const payload = await fetchWith(young);
+    assert.equal(payload.evaluatedSatellites, 0);
+    assert.match(payload.publishBlocked, /full 10-day baseline/);
+    assert.equal(buildSeedOptions().declareRecords(payload), 0);
+    assert.match((await fetchWith(null)).publishBlocked, /no orbit-element history/);
+  });
+
+  it('blocks a history the catalog seeder stopped updating', async () => {
+    const stalled = { ...historyWithBurn(), updatedAt: NOW - 13 * 3_600_000 };
+    const payload = await fetchWith(stalled);
+    assert.match(payload.publishBlocked, /last updated 13 h ago/);
+    assert.equal(buildSeedOptions().declareRecords(payload), 0);
+  });
+
+  it('publishes a fresh history with judged satellites', async () => {
+    const payload = await fetchWith(historyWithBurn());
+    assert.equal(payload.publishBlocked, undefined);
+    assert.equal(buildSeedOptions().declareRecords(payload), 1);
   });
 });

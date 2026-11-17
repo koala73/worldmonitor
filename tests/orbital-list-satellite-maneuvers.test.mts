@@ -34,7 +34,8 @@ describe('toManeuversResponse', () => {
   it('serves every candidate with both element sets and each satellite status', () => {
     const response = toManeuversResponse(stored(), NOW);
     assert.equal(response.stale, false);
-    assert.equal(response.evaluatedSatellites, 3);
+    // Satellites 2 and 3 burned on day 15, which restarts their trend: only satellite 1 judged its newest step.
+    assert.equal(response.evaluatedSatellites, 1);
     assert.deepEqual(response.candidates.map((c) => c.noradId).sort(), [2, 3]);
     const [first] = response.candidates;
     assert.equal(first.element, 'semiMajorAxis');
@@ -42,14 +43,14 @@ describe('toManeuversResponse', () => {
     assert.ok(first.threshold > 0 && first.residual > first.threshold);
     assert.ok(first.after!.semiMajorAxisKm > first.before!.semiMajorAxisKm);
     assert.match(response.methodNote, /not flagged/);
-    assert.deepEqual(response.satellites.map((s) => [s.noradId, s.status]), [[1, 'evaluated'], [2, 'evaluated'], [3, 'evaluated']]);
+    assert.deepEqual(response.satellites.map((s) => [s.noradId, s.status]), [[1, 'evaluated'], [2, 'insufficient-baseline'], [3, 'insufficient-baseline']]);
   });
 
   it('narrows to one satellite', () => {
     const response = toManeuversResponse(stored(), NOW, 2);
     assert.deepEqual(response.candidates.map((c) => c.noradId), [2]);
     assert.deepEqual(response.satellites.map((s) => s.noradId), [2]);
-    assert.equal(response.evaluatedSatellites, 1);
+    assert.equal(response.evaluatedSatellites, 0);
     assert.deepEqual(toManeuversResponse(stored(), NOW, 999).satellites, []);
   });
 
