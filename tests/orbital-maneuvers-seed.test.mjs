@@ -11,6 +11,7 @@ import {
   buildManeuverPayload,
   buildSeedOptions,
   makeFetchManeuvers,
+  maneuverBundleRequiredEnv,
   maneuversEnabled,
   ORBITAL_MANEUVERS_ACTIVATION_KEY,
   ORBITAL_MANEUVERS_KEY,
@@ -106,7 +107,7 @@ describe('seed options and registration', () => {
     const bundle = readFileSync(new URL('../scripts/seed-bundle-climate.mjs', import.meta.url), 'utf8');
     assert.ok(bundle.indexOf("'seed-orbital-catalog.mjs'") < bundle.indexOf("'seed-orbital-maneuvers.mjs'"), 'runs after the catalog that feeds its history');
     assert.match(health, /orbitalManeuvers: \{[^}]*firstPublicationMaxWaitMin: 20160/, 'pending through the ~11-day baseline warm-up');
-    assert.match(bundle, /label: 'Orbital-Maneuvers'[^\n]*requiredEnv: \['CLOUDFLARE_R2_ACCOUNT_ID'/, 'a missing R2 credential is a config error, not a crash');
+    assert.match(bundle, /label: 'Orbital-Maneuvers'[^\n]*requiredEnv: maneuverBundleRequiredEnv\(\)/, 'the member takes its requiredEnv from the seeder');
     const railway = readFileSync(new URL('../scripts/railway-services.json', import.meta.url), 'utf8');
     for (const file of ['seed-orbital-maneuvers.mjs', '_orbital-maneuvers.mjs', '_orbital-history.mjs', '_r2-storage.mjs']) {
       assert.ok(railway.includes(`"scripts/${file}"`), `${file} is in the climate service watch paths`);
@@ -138,5 +139,25 @@ describe('publish blocking (maintainer review)', () => {
     const payload = await fetchWith(historyWithBurn());
     assert.equal(payload.publishBlocked, undefined);
     assert.equal(buildSeedOptions().declareRecords(payload), 1);
+  });
+});
+
+describe('review round 3 (#10867)', () => {
+  it('requires the R2 credentials in the bundle only while Orbital Watch is on', () => {
+    assert.equal(maneuverBundleRequiredEnv({}), undefined);
+    assert.equal(maneuverBundleRequiredEnv({ ORBITAL_WATCH_ENABLED: 'false' }), undefined);
+    const required = maneuverBundleRequiredEnv({ ORBITAL_WATCH_ENABLED: ' TRUE ' });
+    assert.equal(required[0], 'CLOUDFLARE_R2_ACCOUNT_ID');
+    assert.deepEqual(required[1], ['CLOUDFLARE_R2_TRACE_BUCKET', 'CLOUDFLARE_R2_BUCKET']);
+  });
+
+  it('blocks publication when the history has no readable update time', async () => {
+    for (const updatedAt of [undefined, null, 'yesterday', Number.NaN, '1794000000000']) {
+      const history = { ...historyWithBurn(), updatedAt };
+      const payload = await makeFetchManeuvers({ storageConfig: { mode: 'api' }, readHistory: async () => history, now: () => NOW })();
+      assert.match(payload.publishBlocked ?? '', /no readable update time/, String(updatedAt));
+    }
+    const current = await makeFetchManeuvers({ storageConfig: { mode: 'api' }, readHistory: async () => historyWithBurn(), now: () => NOW })();
+    assert.equal(current.publishBlocked, undefined);
   });
 });
