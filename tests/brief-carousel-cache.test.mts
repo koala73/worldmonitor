@@ -5,9 +5,10 @@
 
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+// @ts-expect-error -- JS fixture module without declarations
+import { installFontStub } from './fixtures/brief-carousel-fonts/stub.mjs';
+// @ts-expect-error -- JS fixture module without declarations
+import { CAROUSEL_FIXTURES } from './fixtures/brief-carousel-fonts/envelopes.mjs';
 
 const SECRET = 'carousel-cache-test-secret';
 const PATH = 'https://worldmonitor.app/api/brief/carousel/user_test/2026-04-18-0800/0';
@@ -63,8 +64,6 @@ describe('api/brief/carousel cache policy', () => {
     process.env.BRIEF_URL_SIGNING_SECRET = SECRET;
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.invalid';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'tok';
-    const fontUrl = 'https://cdn.jsdelivr.net/npm/@fontsource/noto-serif/files/noto-serif-latin-400-normal.woff';
-    const font = await readFile(resolve(dirname(fileURLToPath(import.meta.url)), '../blog-site/scripts/fonts/inter-regular.ttf'));
     const envelope = {
       version: 1,
       issuedAt: 1_700_000_000_000,
@@ -85,13 +84,7 @@ describe('api/brief/carousel cache policy', () => {
         }],
       },
     };
-    globalThis.fetch = async (input: RequestInfo | URL) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-      if (url === fontUrl) {
-        return new Response(font, { status: 200, headers: { 'Content-Type': 'font/ttf' } });
-      }
-      return new Response(JSON.stringify({ result: JSON.stringify(envelope) }), { status: 200 });
-    };
+    installFontStub({ fallback: () => new Response(JSON.stringify({ result: JSON.stringify(envelope) }), { status: 200 }) });
     const { signBriefToken } = await import('../server/_shared/brief-url.ts');
     const token = await signBriefToken('user_test', '2026-04-18-0800', SECRET);
     const { default: handler } = await import('../api/brief/carousel/[userId]/[issueDate]/[page].ts');
@@ -111,8 +104,6 @@ describe('api/brief/carousel cache policy', () => {
     process.env.BRIEF_URL_SIGNING_SECRET = SECRET;
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.invalid';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'tok';
-    const fontUrl = 'https://cdn.jsdelivr.net/npm/@fontsource/noto-serif/files/noto-serif-latin-400-normal.woff';
-    const font = await readFile(resolve(dirname(fileURLToPath(import.meta.url)), '../blog-site/scripts/fonts/inter-regular.ttf'));
     const canonical = {
       version: 4,
       issuedAt: 1_700_000_000_000,
@@ -130,13 +121,11 @@ describe('api/brief/carousel cache policy', () => {
       data: { ...canonical.data, dateLong: '18 avril 2026', digest: { ...canonical.data.digest, greeting: 'Bonjour à tous' } },
     };
     const render = async (siblingValue: unknown): Promise<Uint8Array> => {
-      globalThis.fetch = async (input: RequestInfo | URL) => {
-        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-        if (url === fontUrl) return new Response(font, { status: 200, headers: { 'Content-Type': 'font/ttf' } });
+      installFontStub({ fallback: (url: string) => {
         const key = decodeURIComponent(url.split('/get/')[1] ?? '');
         const value = key.startsWith('brief:l10n:') ? siblingValue : canonical;
         return new Response(JSON.stringify({ result: value == null ? null : JSON.stringify(value) }), { status: 200 });
-      };
+      } });
       const { signBriefToken } = await import('../server/_shared/brief-url.ts');
       const token = await signBriefToken('user_test', '2026-04-18-0800', SECRET);
       const { default: handler } = await import('../api/brief/carousel/[userId]/[issueDate]/[page].ts');
@@ -153,5 +142,68 @@ describe('api/brief/carousel cache policy', () => {
       const rtl = await render({ ...sibling, lang, data: { ...sibling.data, digest: { ...sibling.data.digest, greeting: 'مساء الخير' } } });
       assert.deepEqual(rtl, english, `a ${lang} sibling must render the canonical English image`);
     }
+  });
+});
+
+describe('api/brief/carousel render failures', () => {
+  const ROUTE = 'https://worldmonitor.app/api/brief/carousel/user_test/2026-04-18-0800';
+  const canonical = CAROUSEL_FIXTURES.en;
+  let n = 0;
+
+  /** Serves `sibling` (with a headline unique to this call, so no font is memoized) beside the canonical brief. */
+  async function call(sibling: any, stub: Record<string, string> = {}, { page = 2, method = 'GET' } = {}) {
+    process.env.BRIEF_URL_SIGNING_SECRET = SECRET;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'tok';
+    n += 1;
+    const story = sibling.data.stories[0];
+    const fresh = { ...sibling, data: { ...sibling.data, stories: [{ ...story, headline: `${story.headline} ${'ЖЗИЙКЛМН'.slice(0, n % 8)}${n}` }] } };
+    installFontStub({
+      ...stub,
+      fallback: (url: string) => {
+        const key = decodeURIComponent(url.split('/get/')[1] ?? '');
+        return new Response(JSON.stringify({ result: JSON.stringify(key.startsWith('brief:l10n:') ? fresh : canonical) }), { status: 200 });
+      },
+    });
+    const { signBriefToken } = await import('../server/_shared/brief-url.ts');
+    const token = await signBriefToken('user_test', '2026-04-18-0800', SECRET);
+    const { default: handler } = await import('../api/brief/carousel/[userId]/[issueDate]/[page].ts');
+    return handler(new Request(`${ROUTE}/${page}?t=${token}`, { method }));
+  }
+
+  function assertNoStore503(res: Response, label: string) {
+    assert.equal(res.status, 503, label);
+    for (const h of ['Cache-Control', 'CDN-Cache-Control', 'Vercel-CDN-Cache-Control']) assert.equal(res.headers.get(h), 'no-store', `${label}: ${h}`);
+  }
+
+  it('a render error raised after the Response exists returns 503 no-store', { timeout: 60_000 }, async () => {
+    // The font fetch succeeds but is not a font, so Satori throws inside the lazy body stream.
+    assertNoStore503(await call(CAROUSEL_FIXTURES.ru, { garbage: 'Noto+Serif' }), 'unparseable font');
+  });
+
+  it('a failed extra-font fetch returns 503 no-store', { timeout: 60_000 }, async () => {
+    assertNoStore503(await call(CAROUSEL_FIXTURES.ja, { fail: 'Noto+Sans+JP' }), 'font 500');
+  });
+
+  it('a font fetch timeout returns 503 no-store', { timeout: 60_000 }, async () => {
+    assertNoStore503(await call(CAROUSEL_FIXTURES.hi, { timeout: 'Noto+Sans+Devanagari' }), 'font timeout');
+  });
+
+  it('a localized render keeps the 7-day cache policy', { timeout: 60_000 }, async () => {
+    const res = await call(CAROUSEL_FIXTURES.ja);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('Cache-Control'), 'public, max-age=604800');
+    assert.equal(res.headers.get('Content-Type'), 'image/png');
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    assert.deepEqual([...bytes.slice(0, 4)], [0x89, 0x50, 0x4e, 0x47]);
+  });
+
+  it('HEAD returns the GET status and headers with no body', { timeout: 60_000 }, async () => {
+    const get = await call(CAROUSEL_FIXTURES.th);
+    const head = await call(CAROUSEL_FIXTURES.th, {}, { method: 'HEAD' });
+    assert.equal(head.status, get.status);
+    for (const h of ['Cache-Control', 'CDN-Cache-Control', 'Vercel-CDN-Cache-Control', 'Content-Type']) assert.equal(head.headers.get(h), get.headers.get(h), h);
+    assert.equal(head.body, null);
+    assertNoStore503(await call(CAROUSEL_FIXTURES.ko, { fail: 'Noto+Sans+KR' }, { method: 'HEAD' }), 'HEAD on font failure');
   });
 });

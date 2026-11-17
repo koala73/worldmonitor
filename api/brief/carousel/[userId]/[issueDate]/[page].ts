@@ -11,6 +11,10 @@
  *   -> 403 on bad token (shared signer with the magazine route)
  *   -> 404 on Redis miss (no brief composed for that user/slot)
  *   -> 404 on invalid page (must be one of 0, 1, 2)
+ *   -> 503 render_failed when the render or any font fetch fails
+ *      (non-Latin-1 text needs Google Fonts; see the renderer header).
+ *      The PNG is read in full before responding, so a lazy render
+ *      error never ships as a 200.
  *   -> 4xx/5xx always Cache-Control: no-store. NEVER returns a
  *      placeholder PNG — a 1x1 blank cached by Telegram + CDN is worse
  *      than a clean 503 that sendMediaGroup skips. The digest cron
@@ -42,7 +46,7 @@ import { isRtlLanguage } from '../../../../../shared/ui-languages.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../_sentry-edge.js';
 import { verifyBriefToken, BriefUrlError } from '../../../../../server/_shared/brief-url';
-import { renderCarouselImageResponse, pageFromIndex } from '../../../../../server/_shared/brief-carousel-render';
+import { CarouselFontError, renderCarouselImageResponse, pageFromIndex } from '../../../../../server/_shared/brief-carousel-render';
 
 // Matches the signer's slot format (YYYY-MM-DD-HHMM).
 const ISSUE_DATE_RE = /^\d{4}-\d{2}-\d{2}-\d{4}$/;
@@ -161,13 +165,12 @@ export default async function handler(
 
   try {
     const response = await renderCarouselImageResponse(envelope, page, extraHeaders);
-    if (req.method === 'HEAD') {
-      // ImageResponse doesn't expose a HEAD mode, so echo the status
-      // and headers without the body. Telegram's preflight + CDN
-      // validation both respect this.
-      return withCacheControl(response, null);
-    }
-    return withCacheControl(response, response.body);
+    // ImageResponse renders lazily inside its body stream, after the 200
+    // Response exists. Read the whole PNG here so a render error reaches
+    // the catch below as a 503 instead of a truncated, cached 200.
+    const png = await response.arrayBuffer();
+    // ImageResponse has no HEAD mode: echo status and headers, no body.
+    return withCacheControl(response, req.method === 'HEAD' ? null : png);
   } catch (err) {
     // AbortSignal.timeout / AbortController.abort firing somewhere inside
     // `renderCarouselImageResponse` (remote image fetch, font load, OG
@@ -178,7 +181,7 @@ export default async function handler(
     // bug). Non-timeout errors stay at default `error` level. Pattern mirrors
     // PR #3660's MCP dispatcher gate. WORLDMONITOR-QJ.
     const errName = err instanceof Error ? err.name : '';
-    const isTransientTimeout = errName === 'AbortError' || errName === 'TimeoutError';
+    const isTransientTimeout = errName === 'AbortError' || errName === 'TimeoutError' || err instanceof CarouselFontError;
     const log = isTransientTimeout ? console.warn : console.error;
     log(
       `[api/brief/carousel] render failed for ${userId}/${issueDate}/${page}:`,
