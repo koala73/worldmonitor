@@ -12,6 +12,8 @@
     <xhtml:link rel="alternate" hreflang="fr" href="https://www.worldmonitor.app/fr/"/>
     <xhtml:link rel="alternate" hreflang="de" href="https://www.worldmonitor.app/de/"/>
     <xhtml:link rel="alternate" hreflang="ar" href="https://www.worldmonitor.app/ar/"/>
+    <xhtml:link rel="alternate" hreflang="id" href="https://www.worldmonitor.app/id/"/>
+    <xhtml:link rel="alternate" hreflang="ja" href="https://www.worldmonitor.app/ja/"/>
   </url>
   <url>
     <loc>https://www.worldmonitor.app/es/</loc>
@@ -24,6 +26,8 @@
     <xhtml:link rel="alternate" hreflang="fr" href="https://www.worldmonitor.app/fr/"/>
     <xhtml:link rel="alternate" hreflang="de" href="https://www.worldmonitor.app/de/"/>
     <xhtml:link rel="alternate" hreflang="ar" href="https://www.worldmonitor.app/ar/"/>
+    <xhtml:link rel="alternate" hreflang="id" href="https://www.worldmonitor.app/id/"/>
+    <xhtml:link rel="alternate" hreflang="ja" href="https://www.worldmonitor.app/ja/"/>
   </url>
   <url>
     <loc>https://www.worldmonitor.app/pt/</loc>
@@ -36,6 +40,8 @@
     <xhtml:link rel="alternate" hreflang="fr" href="https://www.worldmonitor.app/fr/"/>
     <xhtml:link rel="alternate" hreflang="de" href="https://www.worldmonitor.app/de/"/>
     <xhtml:link rel="alternate" hreflang="ar" href="https://www.worldmonitor.app/ar/"/>
+    <xhtml:link rel="alternate" hreflang="id" href="https://www.worldmonitor.app/id/"/>
+    <xhtml:link rel="alternate" hreflang="ja" href="https://www.worldmonitor.app/ja/"/>
   </url>
   <url>
     <loc>https://www.worldmonitor.app/ru/</loc>
@@ -48,6 +54,8 @@
     <xhtml:link rel="alternate" hreflang="fr" href="https://www.worldmonitor.app/fr/"/>
     <xhtml:link rel="alternate" hreflang="de" href="https://www.worldmonitor.app/de/"/>
     <xhtml:link rel="alternate" hreflang="ar" href="https://www.worldmonitor.app/ar/"/>
+    <xhtml:link rel="alternate" hreflang="id" href="https://www.worldmonitor.app/id/"/>
+    <xhtml:link rel="alternate" hreflang="ja" href="https://www.worldmonitor.app/ja/"/>
   </url>
   <url>
     <loc>https://www.worldmonitor.app/fr/</loc>
@@ -60,6 +68,8 @@
     <xhtml:link rel="alternate" hreflang="fr" href="https://www.worldmonitor.app/fr/"/>
     <xhtml:link rel="alternate" hreflang="de" href="https://www.worldmonitor.app/de/"/>
     <xhtml:link rel="alternate" hreflang="ar" href="https://www.worldmonitor.app/ar/"/>
+    <xhtml:link rel="alternate" hreflang="id" href="https://www.worldmonitor.app/id/"/>
+    <xhtml:link rel="alternate" hreflang="ja" href="https://www.worldmonitor.app/ja/"/>
   </url>
   <url>
     <loc>https://www.worldmonitor.app/de/</loc>
@@ -72,6 +82,8 @@
     <xhtml:link rel="alternate" hreflang="fr" href="https://www.worldmonitor.app/fr/"/>
     <xhtml:link rel="alternate" hreflang="de" href="https://www.worldmonitor.app/de/"/>
     <xhtml:link rel="alternate" hreflang="ar" href="https://www.worldmonitor.app/ar/"/>
+    <xhtml:link rel="alternate" hreflang="id" href="https://www.worldmonitor.app/id/"/>
+    <xhtml:link rel="alternate" hreflang="ja" href="https://www.worldmonitor.app/ja/"/>
   </url>
   <url>
     <loc>https://www.worldmonitor.app/ar/</loc>
@@ -84,6 +96,36 @@
     <xhtml:link rel="alternate" hreflang="fr" href="https://www.worldmonitor.app/fr/"/>
     <xhtml:link rel="alternate" hreflang="de" href="https://www.worldmonitor.app/de/"/>
     <xhtml:link rel="alternate" hreflang="ar" href="https://www.worldmonitor.app/ar/"/>
+    <xhtml:link rel="alternate" hreflang="id" href="https://www.worldmonitor.app/id/"/>
+    <xhtml:link rel="alternate" hreflang="ja" href="https://www.worldmonitor.app/ja/"/>
+  </url>
+  <url>
+    <loc>https://www.worldmonitor.app/id/</loc>
+    <lastmod>2026-11-16</lastmod>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://www.worldmonitor.app/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://www.worldmonitor.app/"/>
+    <xhtml:link rel="alternate" hreflang="es" href="https://www.worldmonitor.app/es/"/>
+    <xhtml:link rel="alternate" hreflang="pt-BR" href="https://www.worldmonitor.app/pt/"/>
+    <xhtml:link rel="alternate" hreflang="ru" href="https://www.worldmonitor.app/ru/"/>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://www.worldmonitor.app/fr/"/>
+    <xhtml:link rel="alternate" hreflang="de" href="https://www.worldmonitor.app/de/"/>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://www.worldmonitor.app/ar/"/>
+    <xhtml:link rel="alternate" hreflang="id" href="https://www.worldmonitor.app/id/"/>
+    <xhtml:link rel="alternate" hreflang="ja" href="https://www.worldmonitor.app/ja/"/>
+  </url>
+  <url>
+    <loc>https://www.worldmonitor.app/ja/</loc>
+    <lastmod>2026-11-16</lastmod>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://www.worldmonitor.app/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://www.worldmonitor.app/"/>
+    <xhtml:link rel="alternate" hreflang="es" href="https://www.worldmonitor.app/es/"/>
+    <xhtml:link rel="alternate" hreflang="pt-BR" href="https://www.worldmonitor.app/pt/"/>
+    <xhtml:link rel="alternate" hreflang="ru" href="https://www.worldmonitor.app/ru/"/>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://www.worldmonitor.app/fr/"/>
+    <xhtml:link rel="alternate" hreflang="de" href="https://www.worldmonitor.app/de/"/>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://www.worldmonitor.app/ar/"/>
+    <xhtml:link rel="alternate" hreflang="id" href="https://www.worldmonitor.app/id/"/>
+    <xhtml:link rel="alternate" hreflang="ja" href="https://www.worldmonitor.app/ja/"/>
   </url>
   <url>
     <loc>https://www.worldmonitor.app/dashboard</loc>

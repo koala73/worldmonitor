@@ -107,3 +107,15 @@ export function briefLocalizedKey(userId, issueSlot) {
 export function briefSlotsKey(userId) {
   return `brief:slots:${userId}`;
 }
+
+/**
+ * Redis marker account deletion sets before it reads the slot index. A digest
+ * compose reads it after its envelope write and removes what it wrote when it
+ * is set, so a compose racing an erase leaves nothing behind.
+ *
+ * @param {string} userId
+ * @returns {string}
+ */
+export function briefErasedKey(userId) {
+  return `brief:erased:${userId}`;
+}

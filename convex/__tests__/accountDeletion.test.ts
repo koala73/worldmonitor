@@ -871,6 +871,24 @@ describe("account deletion — external side effects", () => {
     expect(await t.query(internal.mcpProTokens.validateProMcpToken, { tokenId })).toBeNull();
   });
 
+  test("erase marks the account erased before it reads the brief slot index", async () => {
+    // A digest compose re-reads this marker after its envelope write: either it
+    // sees the marker and removes what it wrote, or this index read sees its slot.
+    const t = await makeT();
+    await seedUser(t, USER_A);
+    await t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
+      userId: USER_A.subject,
+      source: "support",
+    });
+    await drainErase(t);
+    const marker = fetchCalls.findIndex((call) => call.includes('"SET","brief:erased:user_deletion_a","1","EX","86400"'));
+    const indexRead = fetchCalls.findIndex((call) => call.includes("/zrange/brief:slots:user_deletion_a/0/"));
+    const pointerRead = fetchCalls.findIndex((call) => call.includes("/get/brief:latest:user_deletion_a"));
+    expect(marker).toBeGreaterThanOrEqual(0);
+    expect(marker).toBeLessThan(indexRead);
+    expect(marker).toBeLessThan(pointerRead);
+  });
+
   test("a failed brief delete keeps the slot index and pointer so a retry finds the brief", async () => {
     const t = await makeT();
     await seedUser(t, USER_A);

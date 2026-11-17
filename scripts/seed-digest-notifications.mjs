@@ -135,7 +135,7 @@ import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
 import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
 import { buildDigestDeliveryPlan } from './lib/digest-delivery-plan.mjs';
 import { selectDigestChannelContent } from './lib/digest-channel-content.mjs';
-import { briefL10nEnvOverrideWarning, briefL10nTarget, briefPipelineErrors, briefSlotIndexCommands, fetchBriefL10nConfig, localizeBrief, readBriefL10nConfig, writeBriefSlotIndex } from './lib/brief-l10n.mjs';
+import { briefL10nEnvOverrideWarning, briefL10nTarget, briefPipelineErrors, briefSlotIndexCommands, fetchBriefL10nConfig, localizeBrief, readBriefL10nConfig, undoBriefWriteIfErased, writeBriefSlotIndex } from './lib/brief-l10n.mjs';
 import { briefLocalizedKey, briefSlotsKey } from '../shared/brief-envelope.js';
 import { briefIntlLocale, briefPlural, briefT, formatBriefDate } from '../shared/brief-strings.js';
 import {
@@ -2193,6 +2193,10 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     localizedSynthesis = null;
   }
   const briefLang = localizedEnvelope ? targetLang : 'en';
+  // The account may have been erased while this compose ran; see briefErasedKey.
+  if (await undoBriefWriteIfErased(userId, issueSlot, (commands) => redisPipeline(commands, 5_000, true))) {
+    throw new Error('account erased during compose; brief removed');
+  }
 
   const magazineUrl = await signBriefUrl({
     userId,
