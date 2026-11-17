@@ -23,11 +23,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
+      # The push-only verdict reuse below reads commits, compares and Test runs.
+      actions: read
+      contents: read
     outputs:
-      code: ${{ steps.diff.outputs.code }}
-      browser: ${{ steps.diff.outputs.browser }}
+      # A push to main whose tree a green pull_request run already tested may
+      # switch these off (the reuse step); it can never switch one on.
+      code: ${{ steps.reuse.outputs.code || steps.diff.outputs.code }}
+      browser: ${{ steps.reuse.outputs.browser || steps.diff.outputs.browser }}
       digest: ${{ steps.diff.outputs.digest }}
-      validation: ${{ steps.diff.outputs.validation }}
+      validation: ${{ steps.reuse.outputs.validation || steps.diff.outputs.validation }}
       umami: ${{ steps.diff.outputs.umami }}
       consumer_prices: ${{ steps.diff.outputs.consumer_prices }}
       desktop_config: ${{ steps.diff.outputs.desktop_config }}
@@ -126,6 +131,7 @@ jobs:
             emit_all_true
             exit 0
           fi
+          echo "files_json=$(printf '%s\n' "$FILES" | jq -Rsc 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
           CODE=$(printf '%s\n' "$FILES" | awk '
             /^docs\/research\/seo-ai-visibility\// { count++; next }
             # Committed resilience acceptance artifacts are docs-path data that
@@ -296,6 +302,32 @@ jobs:
             END { print count + 0 }
           ')
           echo "desktop_rust=$( [ "$DESKTOP_RUST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+      # A squash merge whose PR head already contained main's previous tip has
+      # the same tree that PR's runs tested (13 of 100 merges sampled on
+      # 2026-11-17, 19% of main-push Test minutes). Same tree, same verdict:
+      # the script switches off the unit and browser groups a green
+      # pull_request run on that head passed within 24 h. It never reuses when
+      # a lockfile, .npmrc, vendor/ or .github/ changed (main saves the shared
+      # caches those key), and any lookup doubt or error leaves every job on.
+      - name: Check out the verdict reuse script
+        if: github.event_name == 'push'
+        continue-on-error: true
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          sparse-checkout: |
+            .github/scripts/reuse-pr-test-verdict.mjs
+            scripts/lib/main-module.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Reuse a green pull request verdict on an identical tree
+        id: reuse
+        if: github.event_name == 'push'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+          FILES_JSON: ${{ steps.diff.outputs.files_json }}
+        run: node .github/scripts/reuse-pr-test-verdict.mjs
 
   zapier:
     needs: changes
