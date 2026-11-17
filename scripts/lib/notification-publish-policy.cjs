@@ -10,7 +10,7 @@
  *  - Local or routine conditions labelled critical: one stock out of ~100
  *    moving 10%, a VIX swing, a single malicious IP.
  *  - Ongoing STATES re-sent every tick. The publisher dedup key was a hash of
- *    a title carrying the live score ("Hormuz Strait: risk score 85"), with a
+ *    a title carrying the live score ("Global shipping stress: score 91/100"), with a
  *    1h TTL, so an unchanged condition re-notified hourly for as long as it
  *    held. Dedup now keys on the subject plus its band and lasts a day (or the
  *    alert's own lifetime): an unchanged condition is sent once, a crossing
@@ -32,7 +32,7 @@ const DAY_SECONDS = 86_400;
 const MARKET_MOVE_DEDUP_TTL_SECONDS = 4 * DAY_SECONDS;
 // Crypto's change is a rolling 24h window, so the same move is visible for a day.
 const CRYPTO_MOVE_DEDUP_TTL_SECONDS = DAY_SECONDS;
-// Band-keyed states (corridor risk, shipping stress): an unchanged band is
+// Band-keyed states (shipping stress): an unchanged band is
 // re-sent at most once a day.
 const STATE_BAND_DEDUP_TTL_SECONDS = DAY_SECONDS;
 
@@ -109,40 +109,6 @@ function isGlobalMarketMove(payload) {
   if (isVolatilitySymbol(symbol)) return false;
   if (assetClass === 'commodity' || assetClass === 'crypto') return true;
   return assetClass === 'equity' && isEquityIndexSymbol(symbol);
-}
-
-function corridorRiskBand(score) {
-  if (score >= 70) return 'critical';
-  if (score >= 50) return 'high';
-  return null;
-}
-
-function titleCaseId(id) {
-  return String(id).replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase());
-}
-
-/**
- * The corridor-risk notification for one corridor, or null below the alert
- * band. corridorId is the chokepoint id (shared/corridor-risk.js maps the feed
- * onto shared/chokepoint-alert-ids.ts), carried as payload.chokepointId so the
- * relay can scope it to the rules that chose that chokepoint.
- */
-function corridorRiskNotification(corridorId, riskScore) {
-  const score = Number(riskScore);
-  if (!corridorId || !Number.isFinite(score)) return null;
-  const band = corridorRiskBand(score);
-  if (!band) return null;
-  return {
-    eventType: 'corridor_risk',
-    payload: {
-      title: `${titleCaseId(corridorId)}: risk score ${score}`,
-      source: 'Corridor Risk',
-      chokepointId: corridorId,
-      coalesceKey: `corridor:${corridorId}:${band}`,
-    },
-    severity: band,
-    dedupTtl: STATE_BAND_DEDUP_TTL_SECONDS,
-  };
 }
 
 /** The global shipping-stress notification, or null below the alert band. */
@@ -274,7 +240,6 @@ module.exports = {
   isGlobalMarketMove,
   isEquityIndexSymbol,
   isVolatilitySymbol,
-  corridorRiskNotification,
   shippingStressNotification,
   countryDisplayName,
   weatherAlertNotifyTitle,

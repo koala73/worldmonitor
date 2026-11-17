@@ -128,8 +128,9 @@ describe('MCP analyze_news_headlines language', () => {
 });
 
 describe('translation language names', () => {
-  it('TRANSLATE_LANGUAGE_NAMES is derived from the shared list', () => {
-    assert.equal(TRANSLATE_LANGUAGE_NAMES, UI_LANGUAGE_NAMES);
+  // A copy, not an import: shared/ui-languages.js would grow api/mcp.ts past its budget.
+  it('TRANSLATE_LANGUAGE_NAMES matches the shared list', () => {
+    assert.deepEqual({ ...TRANSLATE_LANGUAGE_NAMES }, { ...UI_LANGUAGE_NAMES });
     for (const code of UI_LANGUAGES) assert.ok(TRANSLATE_LANGUAGE_NAMES[code], code);
   });
 });
