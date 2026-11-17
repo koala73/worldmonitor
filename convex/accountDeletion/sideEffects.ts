@@ -294,8 +294,6 @@ async function deleteAccountRedisKeys(args: {
     // Localized sibling; source of truth is briefLocalizedKey in shared/brief-envelope.js.
     keys.push(`brief:l10n:${args.userId}:${s}`);
   }
-  // Index and pointer last: a partial pipeline keeps them, so a retry still finds every slot.
-  keys.push(slotsKey, `brief:latest:${args.userId}`);
 
   // Deletes and the MCP negative-cache sentinels go in one pipeline. The
   // sentinels used to be a per-token await, each its own fetch with its own
@@ -309,6 +307,11 @@ async function deleteAccountRedisKeys(args: {
       ttlSeconds: MCP_NEG_CACHE_TTL_SECONDS,
     })),
   );
+  // The index and pointer are how a retry finds the slots. Upstash runs every
+  // command in a pipeline even after one fails, so they are deleted in a
+  // separate request, only once every slot delete above has succeeded
+  // (redisRevoke throws on any failed command).
+  await redisRevoke([slotsKey, `brief:latest:${args.userId}`], []);
 }
 
 async function deleteClerkUser(userId: string): Promise<"deleted" | "missing"> {
