@@ -77,6 +77,11 @@ describe('market move severity', () => {
       assert.equal(policy.isEquityIndexSymbol(symbol), true, `${symbol} (${name})`);
     }
     assert.equal(policy.marketMoveSeverity({ assetClass: 'equity', symbol: 'FTSEMIB.MI', changePct: -11 }), 'critical');
+    // Market-wide trackers the name keywords miss.
+    for (const symbol of ['DFMGI.AE', 'NQ=F', 'QQQ', 'QAT', 'UAE']) {
+      assert.equal(policy.isEquityIndexSymbol(symbol), true, symbol);
+      assert.equal(policy.marketMoveSeverity({ assetClass: 'equity', symbol, changePct: -11 }), 'critical', symbol);
+    }
     assert.equal(policy.marketMoveSeverity({ assetClass: 'equity', symbol: '600519.SS', changePct: -11 }), 'high');
   });
 
