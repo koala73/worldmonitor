@@ -58,12 +58,13 @@ function readBody(req) {
 // Upstash REST stand-in that keeps state, so SET NX answers as Redis does:
 // "OK" for a new key and null for one that exists. `failLpush` makes the event
 // queue refuse writes; `failLpushCount` refuses only that many. `failSetNx`
-// answers SET NX with an error, as Upstash does in a partial outage.
+// answers SET NX with an error, as Upstash does in a partial outage; `failDel`
+// does the same for DEL, leaving the key in place.
 async function startUpstash(t) {
   const store = new Map();
   const queued = [];
   const apiFanout = [];
-  const state = { failLpush: false, failLpushCount: 0, failSetNx: false, truncateDel: false };
+  const state = { failLpush: false, failLpushCount: 0, failSetNx: false, truncateDel: false, failDel: false };
   const run = (command) => {
     const [name, key, value, ...rest] = command;
     if (name === 'GET') return store.has(key) ? store.get(key).value : null;
@@ -74,7 +75,7 @@ async function startUpstash(t) {
       store.set(key, { value, ttl: ex >= 0 ? Number(rest[ex + 1]) : null });
       return 'OK';
     }
-    if (name === 'DEL') return store.delete(key) ? 1 : 0;
+    if (name === 'DEL') return state.failDel ? 'ERR simulated outage' : (store.delete(key) ? 1 : 0);
     if (name === 'LPUSH') {
       if (key === EVENT_QUEUE) {
         if (state.failLpush) return 0;
@@ -330,6 +331,41 @@ test('a Redis response cut off mid-body does not stall later copies of the story
     { title: EGYPT_INDEPENDENT_TITLE, source: 'Egypt Independent' },
   ]);
   await waitForAlerts(upstash, 1);
+  assert.deepEqual(titles(upstash.alerts()), [EGYPT_INDEPENDENT_TITLE], output());
+});
+
+test('a failed queue write whose rollback also fails does not lose a copy published in the same cycle', async (t) => {
+  const { upstash, cycle, output } = await startRelay(t);
+  // The first copy's queue write fails and so does the DEL that would release
+  // its claim, so the claim stays in Redis although nothing was queued.
+  upstash.state.failLpushCount = 1;
+  upstash.state.failDel = true;
+  await cycle([
+    { title: CNN_TITLE, source: 'CNN World' },
+    { title: EGYPT_INDEPENDENT_TITLE, source: 'Egypt Independent' },
+  ]);
+  await waitForAlerts(upstash, 1);
+  assert.deepEqual(titles(upstash.alerts()), [EGYPT_INDEPENDENT_TITLE], output());
+});
+
+test('a failed queue write whose rollback also fails does not hold the story for the next sighting', async (t) => {
+  const { upstash, cycle, output } = await startRelay(t);
+  upstash.state.failLpush = true;
+  upstash.state.failDel = true;
+  await cycle([{ title: CNN_TITLE, source: 'CNN World' }]);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.deepEqual(titles(upstash.alerts()), []);
+
+  // Redis recovers; the stale claim is still there.
+  upstash.state.failLpush = false;
+  upstash.state.failDel = false;
+  await cycle([{ title: EGYPT_INDEPENDENT_TITLE, source: 'Egypt Independent' }]);
+  await waitForAlerts(upstash, 1);
+  assert.deepEqual(titles(upstash.alerts()), [EGYPT_INDEPENDENT_TITLE], output());
+
+  // Once a copy is queued, the claim holds again.
+  await cycle([{ title: CNN_TITLE, source: 'CNN World' }]);
+  await new Promise((resolve) => setTimeout(resolve, 200));
   assert.deepEqual(titles(upstash.alerts()), [EGYPT_INDEPENDENT_TITLE], output());
 });
 

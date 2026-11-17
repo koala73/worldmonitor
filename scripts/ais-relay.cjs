@@ -1003,6 +1003,32 @@ function marketMoveFields(assetClass, q) {
   };
 }
 
+// Dedup claims this process took, whose queue write failed and whose rollback
+// DEL failed too (key -> expiry ms). Redis still holds the claim although
+// nothing was queued; without this, every later copy reads it as a duplicate
+// and the alert is lost for the claim's whole TTL.
+const unreleasedDedupClaims = new Map();
+const MAX_UNRELEASED_DEDUP_CLAIMS = 1_000;
+
+function holdsUnreleasedDedupClaim(key) {
+  const expiresAt = unreleasedDedupClaims.get(key);
+  if (expiresAt == null) return false;
+  if (expiresAt > Date.now()) return true;
+  unreleasedDedupClaims.delete(key);
+  return false;
+}
+
+function rememberUnreleasedDedupClaim(key, ttlSeconds) {
+  if (unreleasedDedupClaims.size >= MAX_UNRELEASED_DEDUP_CLAIMS) {
+    const now = Date.now();
+    for (const [k, expiresAt] of unreleasedDedupClaims) if (expiresAt <= now) unreleasedDedupClaims.delete(k);
+    if (unreleasedDedupClaims.size >= MAX_UNRELEASED_DEDUP_CLAIMS) {
+      unreleasedDedupClaims.delete(unreleasedDedupClaims.keys().next().value);
+    }
+  }
+  unreleasedDedupClaims.set(key, Date.now() + ttlSeconds * 1000);
+}
+
 async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800, storyKey }) {
   try {
     // Include variant in dedup key so each variant can independently publish the same title
@@ -1023,7 +1049,9 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
       ? `story-${crypto.createHash('sha256').update(storyKey).digest('hex').slice(0, 32)}`
       : notifySimpleHash(dedupMaterial);
     const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${dedupHash}`;
-    const dedupResult = await upstashSetNx(dedupKey, '1', dedupTtl);
+    let dedupResult = await upstashSetNx(dedupKey, '1', dedupTtl);
+    // The existing claim is ours and was never queued: take it again.
+    if (dedupResult === 'duplicate' && holdsUnreleasedDedupClaim(dedupKey)) dedupResult = 'new';
     const dedupDecision = recordDedupOutcome(dedupResult, {
       surface: 'ais-relay',
       eventType,
@@ -1060,6 +1088,7 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
     }
     const ok = await upstashLpush('wm:events:queue', msg);
     if (ok) {
+      unreleasedDedupClaims.delete(dedupKey);
       if (fanout) teeApiFanout(eventType, msg);
       console.log(`[Notify] Queued ${dedupDecision.severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
       return true;
@@ -1069,7 +1098,10 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
       console.warn(`[Notify] LPUSH failed for ${eventType} — rolling back dedup key`);
       // Awaited so a story publish queued behind this one (publishInStoryOrder)
       // claims after the rollback, not before it.
-      await upstashDel(dedupKey).catch(() => {});
+      const released = await upstashDel(dedupKey).catch(() => false);
+      // false also covers an absent key, which costs at most one re-claim.
+      if (released) unreleasedDedupClaims.delete(dedupKey);
+      else rememberUnreleasedDedupClaim(dedupKey, dedupTtl);
       // During a SET NX outage the claim is an in-process reservation; drop
       // it too, or it suppresses the story for the rest of its TTL.
       if (dedupDecision.action === 'fail_open') releaseFailOpenFallback(dedupKey);
