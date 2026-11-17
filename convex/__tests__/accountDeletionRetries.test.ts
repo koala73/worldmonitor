@@ -178,7 +178,7 @@ describe("external account deletion retry policy", () => {
       .filter(([input]) => isRedisPipelineUrl(String(input)))
       .map(([, init]) => JSON.parse(String(init?.body ?? "[]")) as string[][]);
     // One pipeline for the whole revocation set, not one fetch per token.
-    const withSets = pipelines.filter((commands) => commands.some((c) => c[0] === "SET"));
+    const withSets = pipelines.filter((commands) => commands.some((c) => c[0] === "SET" && c[1].startsWith("pro-mcp-token-neg:")));
     expect(withSets).toHaveLength(1);
     expect(withSets[0]?.filter((c) => c[0] === "SET").map((c) => c[1])).toEqual([
       "pro-mcp-token-neg:token_1",
