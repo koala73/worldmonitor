@@ -43,6 +43,14 @@ describe('truncateForDisplay', () => {
     assert.deepEqual(head, clusters(hindi).slice(0, head.length));
   });
 
+  it('a stray space does not send unspaced scripts down the word-drop path', () => {
+    const zh = `Google 发布${'新的人工智能模型并宣布扩展云服务'.repeat(15)}`;
+    const cut = truncateForDisplay(zh, 200, 'zh');
+    assert.ok(graphemes(cut) > 150, `kept ${graphemes(cut)} clusters: ${cut}`);
+    assert.ok(cut.startsWith('Google 发布'));
+    assert.ok(cut.endsWith('…'));
+  });
+
   it('counts grapheme clusters, not UTF-16 units', () => {
     const flags = '🇫🇷🇩🇪🇪🇸🇮🇹';
     assert.equal(truncateForDisplay(flags, 4), flags);
