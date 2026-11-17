@@ -1,128 +1,87 @@
 ---
-title: "Stress-Test Your Supply Chain with WorldMonitor's Scenario Engine"
-description: "How Scenario Engine turns chokepoint, trade, and HS2 exposure data into async stress tests for Hormuz, Taiwan, Suez, Panama, tariffs, and grain routes."
-metaTitle: "Supply Chain Scenario Engine Stress Test | WorldMonitor"
+title: "Stress-Test a Supply Chain Against a Chokepoint Disruption"
+description: "Choose a disruption scenario, set country and closure severity, inspect coverage and save the assumptions without treating modeled scores as financial losses."
+metaTitle: "Stress-Test a Supply Chain Against a Chokepoint Disruption"
 keywords: "supply chain scenario engine, geopolitical stress test, chokepoint scenario, supply chain risk simulation, trade exposure analysis"
 audience: "Supply chain teams, commodity desks, risk managers, policy analysts"
 heroImage: "/blog/images/blog/stress-test-supply-chain-scenario-engine-worldmonitor.jpg"
 pubDate: "2026-06-13"
-modifiedDate: "2026-09-10"
+modifiedDate: "2026-11-17"
 ---
 
-Most supply-chain dashboards answer a live-state question: which ports, corridors, commodities, or countries are under pressure right now?
+To stress-test a supply chain, choose a disruption scenario, define the country and closure severity, and inspect the evidence behind the result. World Monitor's PRO Scenario Engine supports named templates and country/sector coverage details. Its scores describe modeled exposure; they are not shipment delays, dollar losses or probabilities of disruption.
 
-That is necessary, but it does not answer the planning question:
+*Cover: an archived dashboard image. Displayed readings and interface details are illustrative, not current observations.*
 
-> What breaks if the next chokepoint closes, tariff shock lands, or weather event cuts capacity?
+## Separate today's observations from the scenario
 
-WorldMonitor's [Scenario Engine](https://www.worldmonitor.app/docs/scenario-engine) is built for that what-if layer. It takes named disruption templates, runs them through the supply-chain exposure graph, and returns the affected chokepoints, sectors, and countries so analysts can compare the projected impact against the live baseline.
+Start with a planning question: which exposures should our team review if a shipping corridor becomes less available? Record current observations and their source dates before opening a hypothetical scenario.
 
-This is not a free-form simulator with arbitrary sliders. Version 1 is deliberately constrained: curated templates, fixed assumptions, async jobs, and explicit output fields. The constraint is useful. It makes every run comparable and keeps the conversation anchored to a named scenario instead of a hand-tuned model.
+The scenario overlay applies assumptions to exposure data. It is not a report that the corridor has closed. Your supplier locations, booked routes and inventory constraints remain necessary: the dashboard does not know your company's full supply chain.
 
-## What Scenario Engine does
+## Choose supported inputs
 
-Scenario Engine lives in the Supply Chain panel. A PRO user selects a pre-built scenario, starts a run, and the system computes impact through the current chokepoint and trade-exposure data.
+Open the **Supply Chain** panel and choose an available physical chokepoint template. Select the country scope and closure severity. Physical severity accepts integer values from 0 through 100; the template supplies a default when an override is omitted.
 
-The result can paint affected chokepoints on the map, highlight impacted countries, and inject a scenario summary into the Supply Chain panel. Programmatic users can do the same through the scenarios API: list templates, run a scenario, then poll job status until the worker returns a terminal state.
+Templates remain curated. Country and physical closure controls do not make this an unrestricted simulator. Duration is descriptive metadata and does not change the score calculation. Tariff scenarios use different logic and do not accept a physical severity override.
 
-A completed result includes:
+Scenario runs require PRO access. Check [current plans](/docs/pricing) for the appropriate access and use requirements.
 
-- affected chokepoints
-- top affected seeded reporter countries
-- relative weighted impact scores
-- duration, disruption percent, and cost-shock multiplier metadata
-- projected scenario state that can be dismissed back to the live baseline
+## Run, then inspect coverage first
 
-The important word is relative. `totalImpact` is not a dollar amount, and it is not a forecast of GDP loss. It is a weighted exposure score for comparing which countries look more exposed under the named template.
+A job can be queued, processing, completed or failed. Do not treat failure as zero impact or assume a fixed completion time. When a result is available, read **Evidence coverage** before interpreting its ranking.
 
-## The shipped scenario templates
+“Complete within seeded scope” does not mean complete global trade coverage. Missing, malformed, incomplete-route and unseeded records must remain distinct from evaluated zero impact. A partial score is a lower bound over the evidence available for that run, not proof of low exposure.
 
-The live template catalog is defined in the codebase, and the API response should be treated as the source of truth. Current templates include:
+The data basis matters too. Flow-weighted scores use recorded trade shares with modeled routes; geographic fallback routes are a different basis. Neither is a record of your actual shipment booking. Cache production dates are not necessarily trade observation dates.
 
-| Template | Core question |
-|---|---|
-| [Taiwan Strait](https://www.worldmonitor.app/chokepoints/taiwan-strait/) Full Closure | What happens to electronics, machinery, and vehicle routes if East Asia traffic is blocked? |
-| [Suez](https://www.worldmonitor.app/chokepoints/suez-canal/) + [Bab el-Mandeb](https://www.worldmonitor.app/chokepoints/bab-el-mandeb/) Simultaneous Disruption | What happens if the Red Sea corridor is heavily impaired? |
-| [Panama Canal](https://www.worldmonitor.app/chokepoints/panama-canal/) Drought - 50% Capacity | What happens when climate stress cuts a key canal's throughput? |
-| [Hormuz Strait](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/) Tanker Blockade | What happens when Persian Gulf energy and petrochemical exports are severed? |
-| Russia Baltic Grain Export Suspension | What happens to cereals and oilseeds when a grain route is suspended? |
-| US Tariff Escalation - Electronics | What happens when a tariff shock hits electronics without a physical chokepoint closure? |
+## Read the score in its own units
 
-Open a linked waterway to compare its published observations with the hypothetical scenario.
+| Result | Meaning |
+| --- | --- |
+| Raw impact | Modeled exposure units, not money or lost trade. |
+| Relative ranking | Normalized against returned results, not a percentage loss. |
+| Coverage | Which requested country/sector records could be evaluated. |
+| Duration | Template context, not an extra multiplier in the calculation. |
 
-The templates cover conflict, weather, sanctions, and tariff-shock categories. The type system leaves room for infrastructure and pandemic categories, but those categories do not ship templates today.
+For a physical scenario, an exposure contribution depends on the exposure score, closure fraction and cost multiplier. Relative rankings also depend on normalization. Doubling severity does not mean the displayed relative percentage must double. The [Scenario Engine methodology](/docs/scenario-engine) provides the calculation details.
 
-## How a run works
+## Compare two assumptions fairly
 
-The workflow is async because the edge function does not compute the full impact inline. It enqueues a job and returns a `jobId`. The worker processes that job and writes a result. The caller polls for status.
+As a hypothetical exercise, run the same physical template and country at 50% and 100% closure. Retain other assumptions. Compare raw impact and coverage as well as rankings; do not invent expected output values.
 
-The lifecycle is straightforward:
+If source evidence changes between runs, the comparison has another variable. Save the dates and coverage, and say when the evidence base differs. Then ask which actual supplier or route is implicated and what operational information would change the plan.
 
-1. List available templates.
-2. Run one template, optionally scoped to a single ISO-2 country.
-3. Poll status until it is `done` or `failed`.
-4. Read the result and compare it with live chokepoint status.
-5. Dismiss the scenario state when finished.
+The model helps prioritize those questions. It does not automatically choose a new route, price a contract or recommend a trade.
 
-If no country is supplied, v1 computes across the seeded reporter set: US, CN, RU, IR, IN, and TW. That scope is a current implementation detail, not a claim that only those countries matter. It keeps the first version bounded while the underlying exposure graph expands.
+## Save the run and return to baseline
 
-The run endpoint is PRO-gated. It also has gateway rate limits and queue backpressure, because scenario runs consume worker capacity and Redis queue space.
+Use **Download scenario JSON** to retain the captured run. Inspect the file for its inputs, raw score units, coverage records and dates. Keep unanswered questions in your team's own notes beside it.
 
-## What the impact score means
+This download is a scenario snapshot, not a universal data export or a spreadsheet/BI integration. Use the **Dismiss scenario** control to clear the hypothetical state and return to the baseline view.
 
-For physical chokepoint scenarios, the worker combines exposure, disruption percent, and cost-shock multiplier. For tariff-shock scenarios without physical chokepoints, it uses vulnerability and cost-shock logic instead.
+For current observations, use the [shipping chokepoint workflow](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/). For programmatic access, see the [Scenarios API](/docs/api-scenarios).
 
-That distinction matters. A Hormuz run is about physical energy-route exposure. An electronics tariff run is about cost shock and trade vulnerability. Both can be supply-chain scenarios, but the transmission path is different.
+The public [scenario methodology](https://github.com/koala73/worldmonitor/blob/5c50df116c/docs/scenario-engine.mdx) documents the behavior behind this guide.
 
-Treat the output as a ranked diagnostic:
-
-- Which countries rise to the top?
-- Which chokepoints turn into the critical visual state?
-- Which HS2 sectors are in scope?
-- Does the template affect all sectors or a named set?
-- Does the result agree with your supplier, route, or commodity watchlist?
-
-The value is not that the engine predicts the exact future. The value is that it forces a consistent stress test before the crisis hits.
-
-## A practical workflow
-
-Start with one decision. For example: should a procurement team pre-book alternate logistics capacity before the next Red Sea escalation?
-
-Then run the workflow:
-
-1. Open the live Supply Chain panel and record the current chokepoint state.
-2. Run the closest scenario template, such as Suez + Bab el-Mandeb.
-3. Note top impacted countries and any sectors in scope.
-4. Compare the output to supplier locations, shipping lanes, and commodity exposure.
-5. Decide which mitigations are cheap enough to activate early.
-6. Save the assumptions, not just the result.
-
-The last step is the one teams skip. A stress test is only useful when someone can later ask, "What did we believe, what changed, and which signal would have invalidated the plan?"
-
-Use the [maritime chokepoint explainer](/blog/posts/what-is-a-maritime-chokepoint/) and the [global trade route monitoring guide](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/) as inputs before choosing a template.
-
-## Source transparency
-
-Scenario Engine sits on top of WorldMonitor's chokepoint registry, live chokepoint status, HS2 exposure caches, and supply-chain panel state. The template catalog is curated in code. The job queue and worker output are explicit: callers can see pending, processing, done, and failed states rather than receiving an opaque spinner.
-
-That is the right shape for geopolitical modeling. A useful stress test should show its assumptions, expose its scope, and avoid pretending a relative impact score is a dollar-denominated forecast.
-
-The template assumptions and execution path are inspectable in the public [scenario-engine source](https://github.com/koala73/worldmonitor/tree/main/server/worldmonitor/scenario) and [scenario template catalog](https://github.com/koala73/worldmonitor/blob/main/server/worldmonitor/supply-chain/v1/scenario-templates.ts).
+Inspect the published observations for the [Taiwan Strait](https://www.worldmonitor.app/chokepoints/taiwan-strait/), [Suez Canal](https://www.worldmonitor.app/chokepoints/suez-canal/), [Bab el-Mandeb](https://www.worldmonitor.app/chokepoints/bab-el-mandeb/), [Panama Canal](https://www.worldmonitor.app/chokepoints/panama-canal/) or [Strait of Hormuz](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/) before choosing the corresponding hypothetical scenario.
 
 ## Frequently Asked Questions
 
-**Is Scenario Engine free?**
+**Can I choose a country and closure severity?**
 
-The Supply Chain panel is available on public variants, but Scenario Engine activation is PRO. The API also enforces PRO entitlement for scenario runs.
+Yes, within supported physical-template controls. Tariff scenarios have different rules; duration is descriptive.
 
-**Can I create arbitrary custom scenarios?**
+**Does the result estimate dollars lost?**
 
-Not in v1. The shipped engine uses curated templates. That keeps comparisons stable and prevents users from overfitting a scenario to the answer they wanted.
+No. It reports modeled exposure. Commercial terms and company-specific logistics evidence are needed for a loss estimate.
 
-**Does `totalImpact` mean dollars lost?**
+**What does partial coverage mean?**
 
-No. It is a relative weighted impact score. Use it to rank exposure inside a template, not as a financial loss estimate.
+Some requested evidence was unavailable or unsuitable. Read record statuses and do not present a partial total as low exposure.
 
----
+**Can I save a run for review?**
 
-**Run scenarios before the headline, not after it. The best supply-chain stress test is one your team has already argued through.**
+Download scenario JSON preserves the captured scenario and evidence context. It does not imply every dataset supports the same export.
+
+Open [World Monitor](https://www.worldmonitor.app), choose a scenario and inspect its coverage before using the ranking.
