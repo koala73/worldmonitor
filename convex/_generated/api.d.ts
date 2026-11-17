@@ -16,6 +16,7 @@ import type * as accountDeletion_sideEffects from "../accountDeletion/sideEffect
 import type * as agentFeedback from "../agentFeedback.js";
 import type * as agentSources from "../agentSources.js";
 import type * as alertRules from "../alertRules.js";
+import type * as alertScopeMigration from "../alertScopeMigration.js";
 import type * as apiKeys from "../apiKeys.js";
 import type * as apiPlanLimitEmails from "../apiPlanLimitEmails.js";
 import type * as apiPlanLimitNotices from "../apiPlanLimitNotices.js";
@@ -111,6 +112,7 @@ declare const fullApi: ApiFromModules<{
   agentFeedback: typeof agentFeedback;
   agentSources: typeof agentSources;
   alertRules: typeof alertRules;
+  alertScopeMigration: typeof alertScopeMigration;
   apiKeys: typeof apiKeys;
   apiPlanLimitEmails: typeof apiPlanLimitEmails;
   apiPlanLimitNotices: typeof apiPlanLimitNotices;

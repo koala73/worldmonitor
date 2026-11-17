@@ -128,16 +128,29 @@ describe('news pool layout', () => {
   });
 
   it('files a feed with no lang under its own cell by content language', () => {
-    // NRK publishes in Norwegian with no feed lang, so only the English cell is its own.
+    // NRK is unscoped; the added Norwegian-tagged publishers have a native cell too.
     assert.equal(sourceLanguage('NRK'), 'no');
     const owners = NEWS_POOL_LAYOUT.cells.filter(cell => cell.contentLanguages.includes('no'));
-    assert.deepEqual(owners.map(cell => `${cell.edition}:${cell.lang}`), ['full:en']);
+    assert.deepEqual(owners.map(cell => `${cell.edition}:${cell.lang}`), ['full:en', 'full:no']);
     // Bangkok Post is fetched for Thai readers but publishes in English.
     assert.ok(NEWS_POOL_LAYOUT.cells.find(cell => cell.edition === 'full' && cell.lang === 'th')!.contentLanguages.includes('en'));
   });
 });
 
 describe('ListNewsPool', () => {
+  it('selects Jordan Times English and Pagina/12 Spanish by their content languages', async () => {
+    fresh('full', 'en', digest({ middleeast: [article('The Jordan Times', 'Jordan talks resume')] }));
+    feedRow('full', 'Página/12', ['Debate en Argentina']);
+    const english = await request({ languages: ['en'] });
+    assert.ok(english.payload.items.some(entry => entry.item?.source === 'The Jordan Times' && entry.language === 'en'));
+    assert.ok(!english.payload.items.some(entry => entry.item?.source === 'Página/12'));
+    const spanish = await request({ languages: ['es'] });
+    assert.ok(spanish.payload.items.some(entry => entry.item?.source === 'Página/12' && entry.language === 'es'));
+    assert.ok(!spanish.payload.items.some(entry => entry.item?.source === 'The Jordan Times'));
+    const arabic = await request({ languages: ['ar'] });
+    assert.ok(!arabic.payload.items.some(entry => entry.item?.source === 'The Jordan Times'));
+  });
+
   it('defaults to English items from the full digest', async () => {
     fresh('full', 'en', digest({ europe: [article('BBC World', 'Talks resume'), article('NRK', 'Stortinget stemmer')] }));
     fresh('full', 'th', digest({ asia: [article('Bangkok Post', 'Baht steadies')] }));

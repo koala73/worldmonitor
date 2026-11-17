@@ -1,0 +1,82 @@
+name: Go tools cache
+
+# Writes the buf + protoc-plugin cache that proto-check.yml's jobs restore.
+# Those jobs run only on pull requests, and a cache a PR saves is readable
+# only by that PR, so every codegen PR's first run compiled buf from scratch
+# (75 s, in two jobs at once) and saved a copy no other PR could use. Main is
+# now the only writer, and proto-check.yml only restores. This lives outside
+# proto-check.yml because deploy-gate.yml requires every job of the workflows
+# it aggregates (#5402), and a cache warmer should not gate merges.
+#
+# It runs when the Makefile (the key's only input) or this file changes on
+# main, and weekly: an entry unused for 7 days is evicted, and the run is a
+# lookup with no download when the entry still exists.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Makefile'
+      - '.github/workflows/go-tools-cache.yml'
+  schedule:
+    - cron: '37 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: go-tools-cache
+  cancel-in-progress: false
+
+jobs:
+  warm:
+    # Main only: a dispatch on another branch would save a copy PRs cannot read.
+    if: ${{ (github.ref == 'refs/heads/main') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          sparse-checkout: Makefile
+          sparse-checkout-cone-mode: false
+
+      # Same key as proto-check.yml's restore steps; tests/ci-cache-scope.test.mjs
+      # holds them equal.
+      - name: Look up the Go binaries cache
+        id: lookup
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/go/bin
+          key: go-bin-${{ runner.os }}-${{ hashFiles('Makefile') }}
+          lookup-only: true
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        if: steps.lookup.outputs.cache-hit != 'true'
+        with:
+          # setup-go v6 uses GOTOOLCHAIN=local; match the pinned sebuf toolchain requirement.
+          go-version: '1.26'
+          cache: false
+
+      - name: Install buf and the protoc plugins
+        if: steps.lookup.outputs.cache-hit != 'true'
+        run: |
+          GOBIN_DIR="$(go env GOPATH)/bin"
+          export PATH="$GOBIN_DIR:$PATH"
+          make install-buf install-plugins
+          # install-buf exits 0 when its `go install` fails (the recipe ends in
+          # an echo), and skips when another buf is on PATH. A saved entry
+          # without these binaries would be a permanent hit, so check the
+          # directory being cached before the save step runs.
+          "$GOBIN_DIR/buf" --version
+          for p in protoc-gen-ts-client protoc-gen-ts-server protoc-gen-openapiv3; do
+            [ -x "$GOBIN_DIR/$p" ] || { echo "::error::$p missing from $GOBIN_DIR"; exit 1; }
+          done
+
+      - name: Save the Go binaries cache
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/go/bin
+          key: ${{ steps.lookup.outputs.cache-primary-key }}

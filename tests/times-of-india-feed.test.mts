@@ -27,6 +27,7 @@ interface ClientFeedsModule {
   computeDefaultDisabledSources: (locale?: string) => string[];
 }
 
+const countryAdditions = new Set<string>(JSON.parse(readFileSync('shared/country-news-opt-ins.json', 'utf8')));
 const SOURCE = 'Times of India';
 const URL = 'https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms';
 const HOST = 'timesofindia.indiatimes.com';
@@ -104,7 +105,7 @@ describe('Times of India licensed India feed', () => {
   it('is opt-in and appended so adding it cannot evict an existing free-tier source', () => {
     // Appended: only feeds from later packs may follow it.
     const asia = client.FULL_FEEDS.asia.map((feed) => feed.name);
-    const later = new Set<string>(client.MAJOR_PUBLISHER_DEFAULT_SOURCES);
+    const later = new Set<string>([...client.MAJOR_PUBLISHER_DEFAULT_SOURCES, ...countryAdditions]);
     assert.ok(asia.includes(SOURCE));
     assert.ok(asia.slice(asia.indexOf(SOURCE) + 1).every((name) => later.has(name)), `${SOURCE} follows every earlier asia feed`);
 

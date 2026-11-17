@@ -377,6 +377,7 @@ interface PostBody {
   orbitalSites?: string[];
   // Reservoir level alert settings; bounded by the shared rule shape.
   reservoirAlert?: { reservoirs: string[]; belowPercent?: number; seasonalDrop?: boolean };
+  seedCountriesFromFollowed?: boolean;
 }
 
 export default async function handler(req: Request, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<Response> {
@@ -926,7 +927,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       if (action === 'set-notification-config') {
         const VALID_SENSITIVITY = new Set(['all', 'high', 'critical']);
         const VALID_DIGEST_MODE = new Set(['realtime', 'daily', 'twice_daily', 'weekly']);
-        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, digestMode, digestHour, digestTimezone, countries, tickers, chokepoints, orbitalSites, reservoirAlert } = body;
+        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, digestMode, digestHour, digestTimezone, countries, tickers, chokepoints, orbitalSites, reservoirAlert, seedCountriesFromFollowed } = body;
         if (!variant) return finish(json({ error: 'variant required' }, 400, corsHeaders));
         const shapeError = alertRuleShapeError({ variant, eventTypes, channels, orbitalSites, reservoirAlert }, corsHeaders);
         if (shapeError) return finish(shapeError);
@@ -962,6 +963,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           chokepoints,
           orbitalSites,
           reservoirAlert,
+          ...(seedCountriesFromFollowed === true ? { seedCountriesFromFollowed: true } : {}),
         });
         if (!resp.ok) {
           // 400 from convex/http means user-facing validation failure (e.g.

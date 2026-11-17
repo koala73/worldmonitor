@@ -135,6 +135,7 @@ import {
   CURATED_REGIONAL_OPT_IN_SOURCES,
   GERMAN_RSS_SOURCES,
   BRAZIL_OPT_IN_SOURCES,
+  COUNTRY_COVERAGE_OPT_IN_SOURCES,
   computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
   FEEDS,
@@ -244,6 +245,7 @@ import {
   migrateCuratedRegionalOptInsV9,
   migrateGermanRssSourcesV10,
   migrateBrazilOptInsV11,
+  migrateCountryCoverageOptInsV12,
 } from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
@@ -605,7 +607,9 @@ export class App {
       if (!tierReconciliationDeferred && !freeTierLimitsInvoked) {
         this.enforceFreeTierLimits(cloudSyncVersion);
       }
-      this.state.disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+      if (!this.state.pendingSourcePreferences) {
+        this.state.disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+      }
     }
 
     if (keySet.has(STORAGE_KEYS.monitors)) {
@@ -1358,6 +1362,9 @@ export class App {
     if (!CYBER_LAYER_ENABLED) {
       mapLayers.cyberThreats = false;
     }
+    let sessionDisabledSources: string[] | undefined = currentVariant === 'full' && !storageAvailable
+      ? computeDefaultDisabledSources(this.currentSourceCapLanguage())
+      : undefined;
     // One-time migration: reduce default-enabled sources (full variant only)
     if (currentVariant === 'full' && storageAvailable) {
       const baseKey = 'worldmonitor-sources-reduction-v3';
@@ -1549,11 +1556,29 @@ export class App {
         );
         if (persisted) safeStorageSet(germanRssKey, 'done');
       }
-      const brazilOptInKey = 'worldmonitor-brazil-optin-v1';
-      if (!safeStorageGet(brazilOptInKey)) {
+      const countryCoverageOptInKey = 'worldmonitor-country-coverage-optin-v1';
+      if (!safeStorageGet(countryCoverageOptInKey)) {
         const current = loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
         const blob = { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current ?? computeDefaultDisabledSources(userLang)) };
+        const migrated = migrateCountryCoverageOptInsV12(blob, COUNTRY_COVERAGE_OPT_IN_SOURCES);
+        const updated = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
+        const persisted = (current !== null && migrated === blob) || saveToStorage(
+          STORAGE_KEYS.disabledFeeds,
+          updated,
+        );
+        if (!persisted) sessionDisabledSources = updated;
+        if (persisted && !safeStorageSetChecked(countryCoverageOptInKey, 'done')) {
+          sessionDisabledSources = updated;
+          if (current === null) safeStorageRemoveChecked(STORAGE_KEYS.disabledFeeds);
+          else saveToStorage(STORAGE_KEYS.disabledFeeds, current);
+        }
+      }
+      const brazilOptInKey = 'worldmonitor-brazil-optin-v1';
+      if (!safeStorageGet(brazilOptInKey)) {
+        const current = sessionDisabledSources ?? loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+        const blob = { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current ?? computeDefaultDisabledSources(userLang)) };
         const migrated = migrateBrazilOptInsV11(blob, BRAZIL_OPT_IN_SOURCES);
+        if (sessionDisabledSources) sessionDisabledSources = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
         const persisted = (current !== null && migrated === blob) || saveToStorage(
           STORAGE_KEYS.disabledFeeds,
           JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[],
@@ -1577,8 +1602,9 @@ export class App {
       if (userLang !== 'en' && !localStorage.getItem(localeKey)) {
         const boosted = getLocaleBoostedSources(userLang);
         if (boosted.size > 0) {
-          const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+          const current = sessionDisabledSources ?? loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
           const updated = current.filter(name => !boosted.has(name));
+          if (sessionDisabledSources) sessionDisabledSources = updated;
           saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
           console.log(`[App] Locale boost (${userLang}): enabled ${current.length - updated.length} sources`);
         }
@@ -1586,7 +1612,7 @@ export class App {
       }
     }
 
-    const disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+    const disabledSources = new Set(sessionDisabledSources ?? loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
 
     // Build shared state object
     this.state = {
@@ -1608,6 +1634,10 @@ export class App {
       intelligenceCache: {},
       cyberThreatsCache: null,
       disabledSources,
+      pendingSourcePreferences: sessionDisabledSources === undefined ? undefined : {
+        gateOwned: null,
+        countryCoverageMigration: true,
+      },
       currentTimeRange: '7d',
       inFlight: new Set(),
       seenGeoAlerts: new Set(),
@@ -3491,16 +3521,20 @@ export class App {
     const persistedDisabled = new Set(
       loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []),
     );
+    const pending = this.state.pendingSourcePreferences;
+    const baselineDisabled = pending
+      ? this.state.disabledSources
+      : persistedDisabled;
     const persistedGateOwned = new Set(
       loadFromStorage<string[]>(STORAGE_KEYS.sourceGateOwnership, []),
     );
-    let gateOwned = new Set(persistedGateOwned);
+    let gateOwned = new Set(pending?.gateOwned ?? persistedGateOwned);
     const userLang = this.currentSourceCapLanguage();
     const protectedNames = this.sourceCapProtectedNames(userLang);
 
     // Heal untouched profiles capped before ownership metadata existed. Exact
     // matching preserves every customized denylist.
-    if (!ownershipMetadataExists) {
+    if (!ownershipMetadataExists && !pending?.gateOwned) {
       const defaultUserDisabled = new Set(computeDefaultDisabledSources(userLang));
       const expectedGateOwned = selectSourcesUnderCap(
         FEEDS,
@@ -3510,7 +3544,7 @@ export class App {
         protectedNames,
       ).autoDisabled;
       gateOwned = inferExactSourceGateOwnership(
-        persistedDisabled,
+        baselineDisabled,
         defaultUserDisabled,
         expectedGateOwned,
       ) ?? gateOwned;
@@ -3519,10 +3553,10 @@ export class App {
     let nextDisabled: Set<string>;
     let nextGateOwned: Set<string>;
     if (pro) {
-      nextDisabled = restoreGateOwnedSources(persistedDisabled, gateOwned);
+      nextDisabled = restoreGateOwnedSources(baselineDisabled, gateOwned);
       nextGateOwned = new Set();
     } else {
-      const userDisabled = restoreGateOwnedSources(persistedDisabled, gateOwned);
+      const userDisabled = restoreGateOwnedSources(baselineDisabled, gateOwned);
       const nextAutoDisabled = selectSourcesUnderCap(
         FEEDS,
         INTEL_SOURCES,
@@ -3553,7 +3587,13 @@ export class App {
     );
     const disabledPersisted = disabledChanged && persistence.preferencePersisted;
     const ownershipPersisted = ownershipChanged && persistence.ownershipPersisted;
-    if (disabledChanged) {
+    const migrationPending = pending?.countryCoverageMigration === true
+      && !(persistence.preferencePersisted
+        && safeStorageSetChecked('worldmonitor-country-coverage-optin-v1', 'done'));
+    this.state.pendingSourcePreferences = persistence.complete && !migrationPending
+      ? undefined
+      : { gateOwned: nextGateOwned, countryCoverageMigration: migrationPending };
+    if (!stringSetsEqual(this.state.disabledSources, nextDisabled)) {
       // The live entitlement boundary must not depend on localStorage health.
       // Durable writes remain ordered/retryable above, but free users stay
       // capped and Pro users unlock immediately even when quota is exhausted.
