@@ -5862,6 +5862,13 @@
       "seasonalHint": "Pokea onyo wakati kiwango kilichopimwa karibuni kiko chini sana ya kile ambacho bwawa hilo hupimwa kwa kawaida wakati huu wa mwaka.",
       "quietNote": "Arifa hizi hufika hata wakati arifa za wakati halisi zimewekwa kwa muhimu tu. Saa za kimya huzinyamazisha.",
       "quietNoteBatch": "Arifa hizi hufika hata wakati arifa za wakati halisi zimewekwa kwa muhimu tu. Saa za kimya huzinyamazisha, au huzishikilia hadi saa za kimya ziishe ukichagua Batch."
+    },
+    "briefLanguage": {
+      "label": "Lugha ya muhtasari",
+      "hint": "Muhtasari wako wa kila siku utaandikwa kwa {{language}}.",
+      "sameAsApp": "Sawa na lugha ya programu",
+      "loadFailed": "Imeshindwa kupakia",
+      "saveFailed": "Haiwezi kufanya hivyo. Jaribu tena."
     }
   }
 }

@@ -5898,6 +5898,13 @@
       "seasonalHint": "Ricevi un avviso quando l'ultimo livello misurato è significativamente inferiore a quello che il serbatoio di solito misura in questo periodo dell'anno.",
       "quietNote": "Questi avvisi arrivano anche quando gli avvisi in tempo reale sono impostati solo su critico. Le ore silenziose li silenziano.",
       "quietNoteBatch": "Questi avvisi arrivano anche quando gli avvisi in tempo reale sono impostati solo su critico. Le ore silenziose li silenziano, oppure li trattengono fino alla fine delle ore silenziose se scegli Batch."
+    },
+    "briefLanguage": {
+      "label": "Lingua del briefing",
+      "hint": "Il tuo briefing quotidiano sarà scritto in {{language}}.",
+      "sameAsApp": "Uguale alla lingua dell'app",
+      "loadFailed": "Caricamento non riuscito",
+      "saveFailed": "Non è stato possibile salvare. Riprova."
     }
   }
 }

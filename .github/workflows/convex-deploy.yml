@@ -157,6 +157,7 @@ jobs:
               'shared/desktop-key-access.js' \
               'shared/legal.ts' \
               'shared/agent-client-source.js' \
+              'shared/ui-languages.js' \
               'shared/acquisition-source.ts' \
               'shared/audience-profile.ts' \
               'shared/email-frame.ts' \

@@ -4652,5 +4652,10 @@
   "widgets.saveFailed": "Widget could not be saved. Please try again.",
   "widgets.send": "Send",
   "widgets.serverError": "Server error: {{status}}",
-  "widgets.unknownError": "Unknown error"
+  "widgets.unknownError": "Unknown error",
+  "settings.briefLanguage.label": "Brief language",
+  "settings.briefLanguage.hint": "Your daily brief will be written in {{language}}.",
+  "settings.briefLanguage.sameAsApp": "Same as app language",
+  "settings.briefLanguage.loadFailed": "Failed to load",
+  "settings.briefLanguage.saveFailed": "Couldn't save that. Try again."
 }

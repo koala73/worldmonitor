@@ -13,6 +13,9 @@ import type { ConvexClient } from 'convex/browser';
 import { getClerkToken, clearClerkTokenCache, getCurrentClerkUser } from './clerk';
 import { clearAgentRef, loadAgentRef } from '../../shared/agent-client-source';
 import { agentRefStorage } from '@/services/agent-ref';
+import { UI_LANGUAGE_SET } from '../../shared/ui-languages';
+import { readExplicitLanguage } from '@/utils/i18n-url';
+import { safeStorageGet } from '@/utils/safe-storage';
 
 // Use typeof to get the exact generated API type without importing statically
 type ConvexApi = typeof import('../../convex/_generated/api').api;
@@ -291,13 +294,22 @@ export async function getConvexClient(): Promise<ConvexClient | null> {
 }
 
 /**
- * Convex argument validation rejecting `signupRef` because the deployed
- * function predates it ("ArgumentValidationError: Object contains extra field
- * `signupRef` ...").
+ * Convex argument validation rejecting an optional `ensureRecord` field
+ * because the deployed function predates it ("ArgumentValidationError:
+ * Object contains extra field `signupRef` ...").
  */
-function isUnknownSignupRefError(err: unknown): boolean {
+function isUnknownArgError(err: unknown, field: string): boolean {
   const message = (err as Error | undefined)?.message ?? '';
-  return /validat/i.test(message) && message.includes('signupRef');
+  return /validat/i.test(message) && new RegExp('extra field [`\'"]?' + field + '\\b', 'i').test(message);
+}
+
+/** The explicit Settings language only; `?lang=` and navigator never count. */
+function readExplicitUiLanguage(): string | null {
+  try {
+    return readExplicitLanguage({ getItem: safeStorageGet }, UI_LANGUAGE_SET);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -373,16 +385,26 @@ async function callEnsureRecord(c: ConvexClient): Promise<void> {
     const refStorage = agentRefStorage();
     const signupRef = loadAgentRef(refStorage) ?? undefined;
     const baseArgs = { localeTag, localePrimary, timezone, country };
+    const uiLanguage = readExplicitUiLanguage();
+    const optionalArgs: { signupRef?: string; uiLanguage?: string } = {
+      ...(signupRef ? { signupRef } : {}),
+      ...(uiLanguage ? { uiLanguage } : {}),
+    };
 
+    // A Convex deployment older than this client rejects an unknown optional
+    // argument. Neither attribution nor the language may cost the account
+    // record, so drop the field the error names and retry, once per field.
     let result;
-    try {
-      result = await c.mutation(api.users.ensureRecord, { ...baseArgs, ...(signupRef ? { signupRef } : {}) });
-    } catch (err) {
-      // A Convex deployment older than this client rejects the unknown
-      // `signupRef` argument. Attribution must never cost the account record,
-      // so retry once without it.
-      if (!signupRef || !isUnknownSignupRefError(err)) throw err;
-      result = await c.mutation(api.users.ensureRecord, baseArgs);
+    for (;;) {
+      try {
+        result = await c.mutation(api.users.ensureRecord, { ...baseArgs, ...optionalArgs });
+        break;
+      } catch (err) {
+        const field = (['signupRef', 'uiLanguage'] as const)
+          .find((name) => optionalArgs[name] !== undefined && isUnknownArgError(err, name));
+        if (!field) throw err;
+        delete optionalArgs[field];
+      }
     }
 
     if (result?.ok === true) {

@@ -432,3 +432,96 @@ describe("users:ensureRecord — idempotency invariants", () => {
     expect(localesByUserId[USER_B.subject]).toBe("fr");
   });
 });
+
+describe("users — brief language (#10883)", () => {
+  const T0 = new Date("2026-11-17T00:00:00Z").getTime();
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function readRow(t: ReturnType<typeof convexTest>) {
+    return t.run(async (ctx) =>
+      await ctx.db
+        .query("users")
+        .withIndex("by_userId", (q) => q.eq("userId", USER_A.subject))
+        .unique(),
+    );
+  }
+
+  const base = { localeTag: "en-US", localePrimary: "en" };
+
+  test("ensureRecord stores uiLanguage when provided", async () => {
+    const t = convexTest(schema, modules);
+    const result = await t.withIdentity(USER_A).mutation(api.users.ensureRecord, { ...base, uiLanguage: "zh-TW" });
+    expect(result.ok).toBe(true);
+    expect((await readRow(t))?.uiLanguage).toBe("zh-TW");
+  });
+
+  test("ensureRecord leaves uiLanguage untouched when the arg is omitted", async () => {
+    const t = convexTest(schema, modules);
+    const asA = t.withIdentity(USER_A);
+    await asA.mutation(api.users.ensureRecord, { ...base, uiLanguage: "fr" });
+    await asA.mutation(api.users.ensureRecord, { ...base, localeTag: "de-DE", localePrimary: "de" });
+    const row = await readRow(t);
+    expect(row?.uiLanguage).toBe("fr");
+    expect(row?.localePrimary).toBe("de");
+  });
+
+  test("ensureRecord writes a uiLanguage change inside the lastSeen debounce window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+    const t = convexTest(schema, modules);
+    const asA = t.withIdentity(USER_A);
+    await asA.mutation(api.users.ensureRecord, { ...base, uiLanguage: "fr" });
+    vi.setSystemTime(T0 + 60_000);
+    const changed = await asA.mutation(api.users.ensureRecord, { ...base, uiLanguage: "ja" });
+    expect(changed.ok && changed.action).toBe("patched");
+    expect((await readRow(t))?.uiLanguage).toBe("ja");
+  });
+
+  test("ensureRecord rejects a uiLanguage outside the list", async () => {
+    const t = convexTest(schema, modules);
+    const result = await t.withIdentity(USER_A).mutation(api.users.ensureRecord, { ...base, uiLanguage: "xx" });
+    expect(result).toMatchObject({ ok: false, reason: "invalid-input", field: "uiLanguage" });
+    expect(await readRow(t)).toBeNull();
+  });
+
+  test("setBriefLanguage stores, clears with null, and rejects unknown codes", async () => {
+    const t = convexTest(schema, modules);
+    const asA = t.withIdentity(USER_A);
+    expect(await t.mutation(api.users.setBriefLanguage, { lang: "fr" })).toEqual({ ok: false, reason: "unauthenticated" });
+    expect(await asA.mutation(api.users.setBriefLanguage, { lang: "fr" })).toEqual({ ok: false, reason: "no-user-record" });
+    await asA.mutation(api.users.ensureRecord, base);
+
+    expect(await asA.mutation(api.users.setBriefLanguage, { lang: "de" })).toEqual({ ok: true });
+    expect((await readRow(t))?.briefLanguage).toBe("de");
+    expect(await asA.mutation(api.users.setBriefLanguage, { lang: "xx" })).toEqual({ ok: false, reason: "invalid-input" });
+    expect((await readRow(t))?.briefLanguage).toBe("de");
+    expect(await asA.mutation(api.users.setBriefLanguage, { lang: null })).toEqual({ ok: true });
+    expect((await readRow(t))?.briefLanguage).toBeUndefined();
+  });
+
+  test("setBriefLanguage is a no-op when the value is unchanged", async () => {
+    const t = convexTest(schema, modules);
+    const asA = t.withIdentity(USER_A);
+    await asA.mutation(api.users.ensureRecord, base);
+    await asA.mutation(api.users.setBriefLanguage, { lang: "it" });
+    const before = await readRow(t);
+    expect(await asA.mutation(api.users.setBriefLanguage, { lang: "it" })).toEqual({ ok: true });
+    const after = await readRow(t);
+    expect(after?._creationTime).toBe(before?._creationTime);
+    expect(after).toEqual(before);
+  });
+
+  test("getBriefLanguage returns the effective language", async () => {
+    const t = convexTest(schema, modules);
+    const asA = t.withIdentity(USER_A);
+    expect(await t.query(api.users.getBriefLanguage, {})).toBeNull();
+    expect(await asA.query(api.users.getBriefLanguage, {})).toEqual({ uiLanguage: null, briefLanguage: null, effective: "en" });
+    await asA.mutation(api.users.ensureRecord, { ...base, uiLanguage: "fa" });
+    expect(await asA.query(api.users.getBriefLanguage, {})).toEqual({ uiLanguage: "fa", briefLanguage: null, effective: "fa" });
+    await asA.mutation(api.users.setBriefLanguage, { lang: "ko" });
+    expect(await asA.query(api.users.getBriefLanguage, {})).toEqual({ uiLanguage: "fa", briefLanguage: "ko", effective: "ko" });
+  });
+});

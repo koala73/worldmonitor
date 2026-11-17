@@ -17,11 +17,12 @@
  * so a transient validation or auth blip on session init never crashes
  * the auth path. Client retries on next session.
  */
-import { internalMutation, mutation } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { TERMS_VERSION } from "../shared/legal";
 import { isAccountDeleting } from "./accountDeletion/guard";
 import { agentRefColumns } from "../shared/agent-client-source";
+import { isUiLanguage, resolveBriefLanguage } from "../shared/ui-languages";
 
 // Validation invariants. Length-bounded BEFORE regex (defense in depth
 // against memory-exhaustion via huge strings).
@@ -83,6 +84,8 @@ export const ensureRecord = mutation({
     // First-touch agent link (`agent-claude`), stored by the browser from an
     // inbound `?ref=`. Kept only on insert, as the sign-up source.
     signupRef: v.optional(v.string()),
+    // Explicit Settings language (wm-locale-explicit). Never navigator or ?lang=.
+    uiLanguage: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // ──── Validation ────
@@ -121,6 +124,12 @@ export const ensureRecord = mutation({
       );
       return { ok: false as const, reason: "invalid-input" as const, field: "country" };
     }
+    if (args.uiLanguage !== undefined && !isUiLanguage(args.uiLanguage)) {
+      console.warn(
+        `[users:ensureRecord] invalid uiLanguage rejected: ${args.uiLanguage.slice(0, 64)}`,
+      );
+      return { ok: false as const, reason: "invalid-input" as const, field: "uiLanguage" };
+    }
 
     // ──── Auth ────
     const identity = await ctx.auth.getUserIdentity();
@@ -147,7 +156,7 @@ export const ensureRecord = mutation({
       // Patch policy:
       // - locale fields: always refresh (last-write-wins; users do switch
       //   browser locale legitimately).
-      // - timezone / country: refresh only if explicitly provided in this
+      // - timezone / country / uiLanguage: refresh only if explicitly provided in this
       //   call. An omitted optional arg means "no new data this session",
       //   not "clear it".
       // - email / normalizedEmail: refresh on every call when identity
@@ -171,6 +180,7 @@ export const ensureRecord = mutation({
         existing.localePrimary !== args.localePrimary ||
         (args.timezone !== undefined && existing.timezone !== args.timezone) ||
         (args.country !== undefined && existing.country !== args.country) ||
+        (args.uiLanguage !== undefined && existing.uiLanguage !== args.uiLanguage) ||
         emailChanged;
       if (!materialChange && now - existing.lastSeenAt < LAST_SEEN_REFRESH_WINDOW_MS) {
         return { ok: true as const, action: "unchanged" as const };
@@ -183,6 +193,7 @@ export const ensureRecord = mutation({
       };
       if (args.timezone !== undefined) patch.timezone = args.timezone;
       if (args.country !== undefined) patch.country = args.country;
+      if (args.uiLanguage !== undefined) patch.uiLanguage = args.uiLanguage;
       if (incomingEmail.length > 0) {
         patch.email = incomingEmail;
         patch.normalizedEmail = incomingNormalizedEmail;
@@ -205,6 +216,7 @@ export const ensureRecord = mutation({
       localePrimary: args.localePrimary,
       timezone: args.timezone,
       country: args.country,
+      uiLanguage: args.uiLanguage,
       firstSeenAt: now,
       lastSeenAt: now,
       termsAcceptedAt: now,
@@ -289,5 +301,64 @@ export const recordTermsAcceptance = internalMutation({
       lastSeenAt: now,
     });
     return { ok: true as const, action: "recorded" as const };
+  },
+});
+
+/**
+ * Notification-settings override for the brief language (epic #10877).
+ * `null` clears it, so the brief follows the explicit Settings language.
+ * Identity from `ctx.auth` only. An unchanged value is a read, not a write
+ * (read-only mutations cannot OCC-conflict). No row → `no-user-record`: the
+ * settings UI is reached only from the dashboard, where `ensureRecord` ran.
+ */
+export const setBriefLanguage = mutation({
+  args: { lang: v.union(v.string(), v.null()) },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return { ok: false as const, reason: "unauthenticated" as const };
+    const userId = identity.subject;
+    if (args.lang !== null && !isUiLanguage(args.lang)) {
+      return { ok: false as const, reason: "invalid-input" as const };
+    }
+    if (await isAccountDeleting(ctx, userId)) {
+      return { ok: false as const, reason: "account-deletion" as const };
+    }
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .unique();
+    if (!existing) return { ok: false as const, reason: "no-user-record" as const };
+    const next = args.lang ?? undefined;
+    if (existing.briefLanguage === next) return { ok: true as const };
+    await ctx.db.patch(existing._id, { briefLanguage: next, lastSeenAt: Date.now() });
+    return { ok: true as const };
+  },
+});
+
+/** The caller's stored languages and the brief language they resolve to. */
+export const getBriefLanguage = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
+    const row = await ctx.db
+      .query("users")
+      .withIndex("by_userId", (q) => q.eq("userId", identity.subject))
+      .unique();
+    const uiLanguage = row?.uiLanguage ?? null;
+    const briefLanguage = row?.briefLanguage ?? null;
+    return { uiLanguage, briefLanguage, effective: resolveBriefLanguage({ uiLanguage, briefLanguage }) };
+  },
+});
+
+/** Effective brief language for the digest cron; `'en'` when there is no row. */
+export const getBriefLanguageForUser = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, args): Promise<string> => {
+    const row = await ctx.db
+      .query("users")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .unique();
+    return resolveBriefLanguage({ uiLanguage: row?.uiLanguage, briefLanguage: row?.briefLanguage });
   },
 });

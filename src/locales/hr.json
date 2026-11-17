@@ -5908,6 +5908,13 @@
       "seasonalHint": "Upozorenje kada je posljednja izmjerena razina značajno ispod onoga što ta akumulacija obično mjeri u isto vrijeme godine.",
       "quietNote": "Ove obavijesti stižu čak i kada su obavijesti u stvarnom vremenu postavljene samo na kritične. Tihi sati ih utišavaju.",
       "quietNoteBatch": "Ove obavijesti stižu čak i kada su obavijesti u stvarnom vremenu postavljene samo na kritične. Tihi sati ih utišavaju ili ih, ako odaberete Batch, zadržavaju do kraja tihih sati."
+    },
+    "briefLanguage": {
+      "label": "Jezik sažetka",
+      "hint": "Vaš dnevni sažetak bit će na jeziku: {{language}}.",
+      "sameAsApp": "Isto kao jezik aplikacije",
+      "loadFailed": "Učitavanje nije uspjelo",
+      "saveFailed": "Nisam mogao to spremiti. Pokušajte ponovno."
     }
   },
   "app": {}

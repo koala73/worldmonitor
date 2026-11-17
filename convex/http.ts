@@ -1723,7 +1723,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
     if (unauthorized) return unauthorized;
-    const body = await parseJsonObjectBody<{ userId?: string; variant?: string }>(request);
+    const body = await parseJsonObjectBody<{ userId?: string; variant?: string; includeBriefLanguage?: boolean }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
@@ -1746,7 +1746,18 @@ http.route({
       (internal as any).userPreferences.getPreferencesByUserId,
       { userId: body.userId, variant: body.variant },
     );
-    return new Response(JSON.stringify(prefs?.data ?? null), {
+    // Opt-in wrapped shape for the digest cron (brief l10n #10877). Without
+    // the flag the response stays the raw prefs blob older callers expect.
+    const payload = body.includeBriefLanguage === true
+      ? {
+        data: prefs?.data ?? null,
+        briefLanguage: await ctx.runQuery(
+          (internal as any).users.getBriefLanguageForUser,
+          { userId: body.userId },
+        ),
+      }
+      : prefs?.data ?? null;
+    return new Response(JSON.stringify(payload), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });

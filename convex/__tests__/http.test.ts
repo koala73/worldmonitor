@@ -186,6 +186,46 @@ describe("preference HTTP variant boundaries", () => {
     expect(await read.json()).toEqual({ error: "UNAUTHORIZED" });
   });
 
+  function relayPostWithFlag(userId: string, variant: string, includeBriefLanguage?: boolean): RequestInit {
+    vi.stubEnv("CONVEX_NOTIFICATION_RELAY_SECRET", "prefs-test-delivery-secret");
+    return {
+      method: "POST",
+      headers: { Authorization: "Bearer prefs-test-delivery-secret", "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, variant, ...(includeBriefLanguage === undefined ? {} : { includeBriefLanguage }) }),
+    };
+  }
+
+  test("/relay/user-preferences without the flag returns the raw blob", async () => {
+    const t = convexTest(schema, modules);
+    await t.withIdentity(USER).fetch("/api/user-prefs", preferencePost("full"));
+    for (const flag of [undefined, false]) {
+      const read = await t.fetch("/relay/user-preferences", relayPostWithFlag(USER.subject, "full", flag));
+      expect(read.status).toBe(200);
+      expect(await read.json()).toEqual({ theme: "full" });
+    }
+  });
+
+  test("/relay/user-preferences with includeBriefLanguage returns { data, briefLanguage }", async () => {
+    const t = convexTest(schema, modules);
+    await t.withIdentity(USER).fetch("/api/user-prefs", preferencePost("full"));
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: USER.subject, localeTag: "en-US", localePrimary: "en",
+        firstSeenAt: 1, lastSeenAt: 1, uiLanguage: "fr", briefLanguage: "de",
+      });
+    });
+    const read = await t.fetch("/relay/user-preferences", relayPostWithFlag(USER.subject, "full", true));
+    expect(read.status).toBe(200);
+    expect(await read.json()).toEqual({ data: { theme: "full" }, briefLanguage: "de" });
+  });
+
+  test("briefLanguage is \"en\" for a user with no users row", async () => {
+    const t = convexTest(schema, modules);
+    const read = await t.fetch("/relay/user-preferences", relayPostWithFlag("user-without-row", "full", true));
+    expect(read.status).toBe(200);
+    expect(await read.json()).toEqual({ data: null, briefLanguage: "en" });
+  });
+
   test("round-trips every supported variant through write and relay facades", async () => {
     const t = convexTest(schema, modules);
     for (const variant of PREFERENCE_VARIANTS) {
