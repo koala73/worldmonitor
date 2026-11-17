@@ -240,11 +240,13 @@ describe('ListSentAlerts', () => {
   });
 
   it('leaves out an alert whose link an operator blocked after it was sent', async () => {
+    // One sent time, so the newest-first sort keeps the stored order.
+    const sentAt = Date.now() - 60_000;
     seed('user-a', [
-      record('Blocked by exact link', { link: 'https://bad.example/phish?id=1' }),
-      record('Blocked by host rule', { link: 'https://www.evil.example/story' }),
-      record('Still listed', { link: 'https://www.reuters.com/world/ok' }),
-      record('No link, still listed', { link: '' }),
+      record('Blocked by exact link', { link: 'https://bad.example/phish?id=1', sentAt }),
+      record('Blocked by host rule', { link: 'https://www.evil.example/story', sentAt }),
+      record('Still listed', { link: 'https://www.reuters.com/world/ok', sentAt }),
+      record('No link, still listed', { link: '', sentAt }),
     ]);
     blockedLinks = ['https://bad.example/phish?id=1', 'host:evil.example'];
     const { body } = await call({ [TRUSTED_USER_ID_HEADER]: 'user-a' });
