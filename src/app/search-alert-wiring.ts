@@ -45,7 +45,9 @@ export function canOpenSentAlertLink(link: string): boolean {
  * would open it inside the app's WebView. Web opens a new tab.
  */
 export function openSentAlertLink(url: string): void {
-  if (isDesktopRuntime()) void openExternalUrl(url);
+  // No WebView fallback: if the OS browser refuses, opening the article inside
+  // the app is the outcome this function exists to avoid.
+  if (isDesktopRuntime()) void openExternalUrl(url, null, { desktopPopupFallback: false });
   else window.open(url, '_blank', 'noopener,noreferrer');
 }
 
