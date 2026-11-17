@@ -1211,13 +1211,16 @@ jobs:
     # full setup: each builds /pro (the legacy WebMCP tests load
     # /pro/welcome.html).
     #
-    # The plugin parts run the MCP Apps view specs (news and country views) on
-    # the built views in dist/plugin. No other job ran them, so a change could
-    # break a view spec and still merge green (#10494 broke 31 metering tests).
+    # The plugin parts run the MCP Apps view specs on the built views in
+    # dist/plugin. No other job ran them, so a change could break a view spec
+    # and still merge green (#10494 broke 31 metering tests). plugin-news runs
+    # the news metering spec alone and plugin-views runs the rest: with all
+    # news specs in one part it was the last browser job in 43 of 73 green PR
+    # runs (258s of work against 123s for the country view).
     strategy:
       fail-fast: false
       matrix:
-        part: [webmcp, pro-gates, plugin-news, plugin-country]
+        part: [webmcp, pro-gates, plugin-news, plugin-views]
     runs-on: ubuntu-latest
     # No secrets are injected here. The smoke allows provider-level
     # unavailable/stale states and gates app-level boot, variant, 401,
@@ -1228,16 +1231,19 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
           # node_modules comes from install-root-deps, so ~/.npm serves only
           # the pro-test install inside build:pro. Keyed on the root lockfile
           # it restored the 583 MB root download cache, and both parts pulling
-          # it at once took 12-62s instead of ~6s.
+          # it at once took 12-62s instead of ~6s. The plugin parts never build
+          # /pro, so they skip the restore (8s median).
+          cache: ${{ !startsWith(matrix.part, 'plugin-') && 'npm' || '' }}
           cache-dependency-path: pro-test/package-lock.json
       - uses: ./.github/actions/install-root-deps
         with:
-          # setup-node restores the npm cache for this job's other install.
-          npm-cache: 'false'
+          # The /pro parts restore ~/.npm through setup-node. The plugin parts
+          # restore nothing there, so a node_modules miss uses the action's
+          # root download cache instead.
+          npm-cache: ${{ startsWith(matrix.part, 'plugin-') && 'true' || 'false' }}
       - name: Resolve Playwright version
         id: playwright-version
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
