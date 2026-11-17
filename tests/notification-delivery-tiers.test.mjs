@@ -67,7 +67,7 @@ describe('every published event type has an explicit tier', () => {
 
   it('finds the publishers it is meant to police', () => {
     const types = publishedTypes();
-    for (const t of ['weather_alert', 'market_alert', 'corridor_risk', 'rss_alert', 'aviation_closure', 'regional_regime_shift']) {
+    for (const t of ['weather_alert', 'market_alert', 'shipping_stress', 'rss_alert', 'aviation_closure', 'regional_regime_shift']) {
       assert.ok(types.includes(t), `scan missed ${t}`);
     }
   });
@@ -185,18 +185,13 @@ describe('opt-in events', () => {
     assert.equal(relay.eventMatchesDeliveryScope(event, UNSCOPED), true);
   });
 
-  it('corridor_risk rides the chokepoint_disruption opt-in and its chokepoint list', () => {
+  // No publisher sends corridor_risk since #10905; one still in the queue at
+  // deploy is local with no country, so it reaches no rule.
+  it('delivers a leftover corridor_risk event to no rule', () => {
     const corridor = ev('corridor_risk', { chokepointId: 'hormuz_strait' });
-    assert.equal(relay.ruleMatchesEventType({ eventTypes: [] }, corridor), false);
-    assert.equal(relay.ruleMatchesEventType({ eventTypes: ['corridor_risk'] }, corridor), false);
-    assert.equal(relay.ruleMatchesEventType({ eventTypes: ['chokepoint_disruption'] }, corridor), true);
-    assert.equal(relay.eventMatchesChokepointScope(corridor, { chokepoints: [] }), true);
-    assert.equal(relay.eventMatchesChokepointScope(corridor, { chokepoints: ['hormuz_strait'] }), true);
-    assert.equal(relay.eventMatchesChokepointScope(corridor, { chokepoints: ['suez'] }), false);
-  });
-
-  it('drops a corridor_risk event from before it carried its chokepoint', () => {
-    assert.equal(relay.eventMatchesChokepointScope(ev('corridor_risk', {}), { chokepoints: [] }), false);
+    assert.equal(tiers.hasExplicitTier('corridor_risk'), false);
+    assert.equal(relay.eventMatchesDeliveryScope(corridor, UNSCOPED), false);
+    assert.equal(relay.eventMatchesDeliveryScope(corridor, KZ_RULE), false);
   });
 });
 
