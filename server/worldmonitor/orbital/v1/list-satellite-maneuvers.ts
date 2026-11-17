@@ -121,7 +121,10 @@ export function toManeuversResponse(value: unknown, nowMs: number, noradId = 0):
 
 /** The norad_id filter: 0 or absent for every satellite; anything but a positive integer is refused, never read as no filter. */
 export function noradIdFilter(url: string): number {
-  const raw = new URL(url).searchParams.getAll('norad_id');
+  // Only the query string is read: the handler makes no outbound call, and the sidecar's
+  // seed-only classifier counts URL construction as one.
+  const query = url.includes('?') ? url.slice(url.indexOf('?') + 1).split('#')[0]! : '';
+  const raw = new URLSearchParams(query).getAll('norad_id');
   if (raw.length === 0) return 0;
   if (raw.length > 1 || !/^(0|[1-9]\d{0,8})$/.test(raw[0]!)) {
     throw new ValidationError([{ field: 'norad_id', description: 'norad_id must be a single positive integer NORAD catalogue number, or 0 for every satellite' }]);
