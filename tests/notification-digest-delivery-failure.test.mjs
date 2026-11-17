@@ -29,7 +29,7 @@ for (const [type, name] of [['slack', 'sendSlack'], ['discord', 'sendDiscord'], 
         ...reporter, deliveryErrorClass,
         decrypt: value => { if (error === 'Decrypt failed') throw new Error('secret envelope'); return value; },
         SLACK_RE: /./, DISCORD_RE: /./, truncateDiscordContent: value => value,
-        resolveWebhookSigningSecret: () => undefined, buildWebhookDeliveryHeaders: () => ({}), digestWebhookStory: value => value,
+        resolveWebhookSigningSecret: () => undefined, buildWebhookDeliveryHeaders: () => ({}), buildDigestWebhookPayload: (stories, summary) => ({ version: '1', eventType: 'digest', lang: 'en', stories, summary: summary ?? null, storyCount: stories.length }),
         assertNotificationWebhookDeliveryUrlSafe: async url => {
           if (error === 'DNS lookup failed') throw Object.assign(new Error('getaddrinfo ENOTFOUND private host'), { code: 'ERR_SSRF_BLOCKED' });
           return { url, resolvedAddresses: ['93.184.216.34'] };
