@@ -221,6 +221,30 @@ Nothing counts as live until production matches. Capture a fixture with `--wait-
 - A "confirmed" strike feed that was half retrospective reposts.
 - Version churn that blanked the trend label and the movers for about 68 hours.
 
+## 6. Amendments
+
+Each amendment is dated and records an owner ruling. The rows in sections 1 and 2 keep their registered wording; where an amendment applies, it overrides that row from its date. The measured basis for each is in `docs/methodology/cii-v15-recalibration.md`.
+
+**2026-11-15** (rulings at the U18 stop)
+
+- P5: a country is exempt from the band count when live evidence moves its score by less than 1 point (the score minus the prior-only score). The exempt set is reported on every run and labelled "structural estimate, no live inputs". The limit stays at 7 of 31.
+- P3: the 4 to 6 day half-life is measured on the latent strike term. Continuity stays on the score, and a finished campaign's contribution never rises by more than 0.2 between 3-hour samples. The strike half-life is 5 days.
+
+**2026-11-16** (rulings on the open questions)
+
+- Section 1, structural prior: the prior enters once, as a member of the violence union, `P = b·max(0, 1.5 − PV)`, not as a separate additive term. It is still never summed with the violence it overlaps.
+- P1: headlines are context only, and a headline injection must move the score by exactly 0. The violence injection is per capita. Each injection is the larger of its base amount and 25% of the country's current level in that channel. Every (country, channel) pair stays in the test, and the 0.5-point threshold is unchanged. P3c's strike injection uses the same form.
+- P4: a listed miss for v15, entered in `KNOWN_GAPS` with its measured values and causes.
+- P5: the ordering check counts pairs where a country with an equal or higher prior and every family term at least as high scores lower.
+- P6: within a family, sources merge by the bounded union `C·(1 − exp(−Σ/C))` after incident deduplication. The union never exceeds the sum, so it is not a sum.
+- P8: UCDP and GDELT may read a last-good snapshot of their own source, with an age limit (GDELT 72 hours, UCDP about 45 days). An expired snapshot reads unknown and raises the input-down alarm. K stays 10.
+- P12: the volume test applies to the strike backstop, which measures strike articles as a share against the country's own baseline. The credibility weight stays; any residual above 1 point is listed with its measured value.
+- P13: the live share is measured over each source's full window and published as "live-source share". A 30-day split is reported and does not gate.
+- P14: the tolerance is 0.05, the rounding bound.
+- P15: the chronic-war anchor copies a recorded war's deaths-per-million profile. The absolute-death scenario is a reported diagnostic.
+- War burden abroad: a primary state party carries a conflict's deaths outside its borders, per million of its own population, at weight `w` in {0.5, 0.75}, chosen by the confirmation run.
+- Economic weight: `ke` is above zero, pre-registered in {0.1, 0.25}.
+
 ## The harness
 
 | Piece | Path |
