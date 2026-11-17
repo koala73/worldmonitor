@@ -99,9 +99,13 @@ function stripFences(text) {
   return m ? m[1] : t;
 }
 
+// Joiners, soft hyphens and BOMs are ordinary in Persian, Arabic and Indic
+// text; sanitizeForPrompt strips them, so drop them before comparing.
+const INVISIBLE_FORMAT_RE = /[\u00AD\u200B-\u200D\uFEFF]/g;
+
 function hasPromptMarker(text) {
-  const normalised = text.replace(/\s{2,}/g, ' ').trim();
-  return sanitizeForPrompt(text) !== normalised;
+  const visible = text.replace(INVISIBLE_FORMAT_RE, '');
+  return sanitizeForPrompt(visible) !== visible.replace(/\s{2,}/g, ' ').trim();
 }
 
 function scriptShareOk(text, lang) {
