@@ -108,17 +108,23 @@ describe('satellite card', () => {
 
   it('draws the sites without waiting for the candidate read, then adds the line when it answers', async () => {
     mocks.getTrackedSatelliteTle.mockReturnValue(tle);
-    mocks.sitesCoveredBySatellite.mockResolvedValue(coverage);
+    const pass = { timeMs: Date.now() + 30 * 60_000, groundDistanceKm: 12, edgeOfSwath: false, direction: 'ascending' as const, tier: 'opportunity' as const };
+    const site = (id: string, name: string) => ({ site: { id, name, lat: 0, lon: 0, countryCode: 'XX' }, passes: [pass] });
+    mocks.sitesCoveredBySatellite.mockResolvedValue({ ...coverage, sites: [site('a', 'Alpha Base'), site('b', 'Bravo Port')] });
     let answer!: (value: ListSatelliteManeuversResponse) => void;
     mocks.listSatelliteManeuvers.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
     const host = document.createElement('div');
     document.body.append(host);
     await renderSatelliteSites(host, '40697', 'SENTINEL-2A');
     expect(host.dataset.coverage).toBe('ok');
+    // The populated list is on screen while the candidate read is still pending.
+    const names = () => [...host.querySelectorAll('li.osat-site .osat-site-name')].map((el) => el.textContent);
+    expect(names()).toEqual(['Alpha Base', 'Bravo Port']);
     expect(host.querySelector('.osat-sites-maneuver')).toBeNull();
     answer(response([candidate({ toEpoch: Date.now() - DAY_MS })]));
     await vi.waitFor(() => expect(host.querySelector('.osat-sites-maneuver')).not.toBeNull());
     expect(host.children[1]!.classList.contains('osat-sites-maneuver')).toBe(true);
+    expect(names()).toEqual(['Alpha Base', 'Bravo Port']);
   });
 
   it('puts the candidate line under the heading, and leaves it out when the list is unavailable', async () => {
