@@ -27,9 +27,9 @@ const WRITE_RESERVE_MS = 500;
 /** Below this much time left, a model call cannot finish; do not start one. */
 const MIN_MODEL_CALL_MS = 3_000;
 /**
- * Source characters per model call. A cold 12-story brief is ~8-13k chars,
- * which as one call can exceed the output token cap; a failed call caches
- * nothing, so the cache would never warm. Batches run concurrently.
+ * Source characters per per-user model call (story text goes one story per
+ * call). One oversized call can exceed the output token cap, and a failed
+ * call caches nothing. Batches run concurrently.
  */
 const BATCH_SOURCE_CHARS = 2_500;
 const MIN_CHECKED_LENGTH = 20;
@@ -219,15 +219,46 @@ function looksEnglish(text) {
 }
 
 /**
+ * Function words of each Latin-script brief language that are not English
+ * words, so two of them are positive evidence a text is already in that
+ * language even without accents ("Le gouvernement annonce un plan pour Paris").
+ */
+const TARGET_MARKERS = {
+  fr: ['le', 'la', 'les', 'des', 'du', 'une', 'est', 'dans', 'pour', 'sur', 'avec', 'et', 'aux', 'qui', 'pas', 'ses', 'nouveau', 'nouvelle'],
+  es: ['el', 'los', 'las', 'del', 'una', 'por', 'para', 'con', 'que', 'en', 'y', 'sus', 'nuevo', 'nueva'],
+  de: ['der', 'die', 'das', 'und', 'mit', 'von', 'den', 'dem', 'ein', 'eine', 'ist', 'nicht', 'auf', 'zu', 'neues', 'neue'],
+  it: ['il', 'lo', 'gli', 'della', 'delle', 'del', 'una', 'per', 'con', 'che', 'di', 'nuovo', 'nuova', 'un'],
+  pt: ['os', 'do', 'da', 'dos', 'das', 'uma', 'para', 'com', 'que', 'em', 'novo', 'nova', 'um'],
+  nl: ['de', 'het', 'een', 'van', 'en', 'met', 'voor', 'niet', 'op', 'nieuw', 'nieuwe'],
+  sv: ['och', 'att', 'det', 'som', 'en', 'med', 'av', 'ny', 'nya'],
+  pl: ['w', 'z', 'na', 'nie', 'do', 'oraz', 'dla', 'nowy', 'nowa'],
+  ro: ['cu', 'la', 'de', 'pentru', 'din', 'care', 'nou'],
+  tr: ['ve', 'bir', 'ile', 'bu', 'da', 'de', 'yeni'],
+  cs: ['v', 'na', 'se', 'je', 's', 'z', 'pro', 've'],
+  hr: ['u', 'na', 'je', 'za', 'se', 'od', 'novi'],
+  hu: ['az', 'egy', 'hogy', 'nem', 'meg'],
+  sw: ['na', 'wa', 'ya', 'za', 'kwa', 'katika', 'ni', 'mpya'],
+};
+
+function readsAsLanguage(text, lang) {
+  const markers = TARGET_MARKERS[lang];
+  if (!markers) return false;
+  return wordsOf(text).filter((w) => markers.includes(w)).length >= 2;
+}
+
+/**
  * A text returned unchanged is untranslated when it is English. It is a
- * correct translation when the source is already in another language (a
+ * correct translation when the source is already in the target language (a
  * French feed in a French brief) or is only names ("Nvidia, Microsoft").
  */
-function unchangedIsUntranslated(source) {
+function unchangedIsUntranslated(source, lang) {
   if (looksEnglish(source)) return true;
-  if (/[^\x00-\x7F]/.test(source.replace(URL_RE, ''))) return false;
-  // ASCII prose with lower-case words: English unless proven otherwise.
-  return /(?:^|[^\p{L}])\p{Ll}{3,}/u.test(source.replace(URL_RE, ''));
+  const prose = source.replace(URL_RE, '');
+  if (/[^\x00-\x7F]/.test(prose)) return false;
+  if (readsAsLanguage(prose, lang)) return false;
+  // ASCII prose with lower-case words and no sign of the target language:
+  // English unless proven otherwise.
+  return /(?:^|[^\p{L}])\p{Ll}{3,}/u.test(prose);
 }
 
 // Soft hyphen and zero-width (non-)joiners are legitimate in Indic, Persian
@@ -270,7 +301,7 @@ function validTranslation(source, out, lang) {
     // Latin-script target no other check would catch it, and the brief would
     // ship mixed-language.
     if (normalizeForCompare(text) === normalizeForCompare(source)) {
-      if (unchangedIsUntranslated(source)) return false;
+      if (unchangedIsUntranslated(source, lang)) return false;
     } else if (looksEnglish(text)) {
       return false;
     }
@@ -364,7 +395,7 @@ async function translateBatch(batch, { lang, deps, callOpts, deadlineAt }) {
  * those of successful batches when another failed, so they are still cached.
  * @param {string[]} texts
  */
-async function translateTexts(texts, { lang, deps, keyFor, callOpts, deadlineAt }) {
+async function translateTexts(texts, { lang, deps, keyFor, callOpts, deadlineAt, batchesFor = (misses) => batchBySourceChars(misses, BATCH_SOURCE_CHARS) }) {
   const result = new Map();
   const misses = [];
   const hits = await Promise.all(
@@ -380,7 +411,7 @@ async function translateTexts(texts, { lang, deps, keyFor, callOpts, deadlineAt 
   });
   const stats = { hits: result.size, misses: misses.length, ms: 0, batches: 0 };
   if (misses.length === 0) return { map: result, stats, fresh: [], timedOut: false };
-  const batches = batchBySourceChars(misses, BATCH_SOURCE_CHARS);
+  const batches = batchesFor(misses);
   stats.batches = batches.length;
   const started = Date.now();
   const outcomes = await Promise.all(batches.map((batch) =>
@@ -457,6 +488,23 @@ export async function localizeBrief(input) {
   const sharedTexts = uniqueTexts(
     stories.flatMap((s) => [s.headline, s.description, s.whyMatters, s.category]),
   );
+  // One model call per story (its headline, description and whyMatters), plus
+  // one for the category labels (a fixed enum). Feed text is untrusted: in a
+  // shared call, an instruction in one story's headline could rewrite another
+  // story's translation, and that row is cached for every reader of the
+  // language. A story can then only rewrite its own text.
+  const storyGroups = stories.map((s) => uniqueTexts([s.headline, s.description, s.whyMatters]));
+  const sharedBatchesFor = (misses) => {
+    const missing = new Set(misses);
+    const batches = [];
+    for (const group of storyGroups) {
+      const batch = group.filter((text) => missing.delete(text));
+      if (batch.length > 0) batches.push(batch);
+    }
+    // What is left is category labels only.
+    if (missing.size > 0) batches.push([...missing]);
+    return batches;
+  };
   // Text that is also story text (reuse-tick threads are story category and
   // description) is translated once, on the shared route, never through the
   // user's routing policy.
@@ -476,6 +524,7 @@ export async function localizeBrief(input) {
       deps: sharedDeps,
       keyFor: (text) => sharedTranslateCacheKey(lang, text),
       deadlineAt: callDeadlineAt,
+      batchesFor: sharedBatchesFor,
       callOpts: { maxTokens: 4096, temperature: 0.2, timeoutMs: 15_000, stage: 'brief-l10n-shared' },
     }),
     translateTexts(userTexts, {

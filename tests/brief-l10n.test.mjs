@@ -179,6 +179,14 @@ describe('translate prompt and parser', () => {
     assert.equal(one(de, de, 'de'), de);
     const names = 'Nvidia, Microsoft, Apple, Alphabet, Amazon';
     assert.equal(one(names, names, 'es'), names);
+    // No accents, but plainly French or Italian.
+    const frAscii = 'Le gouvernement annonce un nouveau plan pour Paris';
+    assert.equal(one(frAscii, frAscii, 'fr'), frAscii);
+    const itAscii = 'Il governo annuncia un nuovo piano per Roma';
+    assert.equal(one(itAscii, itAscii, 'it'), itAscii);
+    // Plain English with no function words is still untranslated.
+    assert.equal(one('European Central Bank raises interest rates', 'European Central Bank raises interest rates', 'fr'), null);
+    assert.equal(one('Le gouvernement annonce un nouveau plan pour Paris', 'Le gouvernement annonce un nouveau plan pour Paris', 'de'), null);
   });
 
   it('rejects a reply that is mostly English words, in any script', () => {
@@ -344,8 +352,8 @@ describe('localizeBrief', () => {
   it('localizeBrief sends story fields only through sharedDeps', async () => {
     const { result, shared, user } = await run();
     assert.equal(result.ok, true);
-    assert.equal(shared.calls.length, 1);
-    assert.ok(shared.calls[0].user.includes('Oil tanker seized near strait 1'));
+    assert.ok(shared.calls.length >= 1);
+    assert.ok(shared.calls.some((c) => c.user.includes('Oil tanker seized near strait 1')));
     assert.equal(user.calls[0].user.includes('Oil tanker seized'), false);
   });
 
@@ -355,7 +363,7 @@ describe('localizeBrief', () => {
     assert.ok(user.calls[0].user.includes('Tensions in the Gulf'));
     assert.ok(user.calls[0].user.includes('Watch insurance premiums'));
     assert.ok(user.calls[0].user.includes('Gulf shipping under pressure.'));
-    assert.equal(shared.calls[0].user.includes('Tensions in the Gulf'), false);
+    assert.equal(shared.calls.some((c) => c.user.includes('Tensions in the Gulf')), false);
     assert.equal(user.calls[0].opts.stage, 'brief-l10n-user');
   });
 
@@ -586,6 +594,25 @@ describe('localizeBrief', () => {
     for (const call of shared.calls) assert.ok(call.user.length < 6_000, `batch of ${call.user.length} chars`);
     assert.equal(result.ok, false);
     assert.ok(shared.sets.length > 0, 'successful batches not cached');
+  });
+
+  it('no model call carries text from two stories, so one story cannot rewrite another', async () => {
+    const env = canonical();
+    env.data.stories = Array.from({ length: 4 }, (_, i) => story(i + 1));
+    env.data.digest.numbers.surfaced = 4;
+    const shared = makeDeps(fakeTranslate());
+    const { result } = await run({ envelope: env, shared });
+    assert.equal(result.ok, true);
+    const categories = new Set(env.data.stories.map((s) => s.category));
+    for (const call of shared.calls) {
+      const owners = env.data.stories.filter((s) =>
+        [s.headline, s.description, s.whyMatters].some((t) => t && call.user.includes(JSON.stringify(t).slice(1, -1))));
+      assert.ok(owners.length <= 1, `one call carries ${owners.length} stories`);
+      if (owners.length === 0) {
+        const items = JSON.parse(call.user.slice(call.user.indexOf('['), call.user.lastIndexOf(']') + 1));
+        assert.ok(items.every((it) => categories.has(it.text)), 'a story-less call carries only category labels');
+      }
+    }
   });
 
   it('a batch that runs to the deadline still leaves time to cache the batches that finished', async () => {
