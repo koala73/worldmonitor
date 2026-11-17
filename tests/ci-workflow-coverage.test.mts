@@ -172,7 +172,7 @@ describe('root dependency cache (#8710)', () => {
   // first group.
   for (const [workflowText, jobIds, setupCache] of [
     [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'resilience-validation-smoke', 'unit-shards', 'unit-built-output'], undefined],
-    [testWorkflow, ['variant-smoke-pro-webmcp'], 'npm'],
+    [testWorkflow, ['variant-smoke-pro-webmcp'], "${{ !startsWith(matrix.part, 'plugin-') && 'npm' || '' }}"],
     [read(resolve(workflowsDir, 'perf-style-layout-budget.yml')), ['measure'], undefined],
     [lintCodeWorkflow, ['biome', 'markdown'], undefined],
     [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck'], 'npm'],
@@ -188,7 +188,7 @@ describe('root dependency cache (#8710)', () => {
         assert.ok(install, `${jobId} must use the shared root dependency action`);
         assert.equal(setup.with['node-version'], '24');
         assert.equal(setup.with.cache, setupCache);
-        assert.equal(install.with?.['npm-cache'], setupCache === 'npm' ? 'false' : undefined);
+        assert.equal(install.with?.['npm-cache'], setupCache === undefined ? undefined : 'false');
         assert.ok(steps.indexOf(setup) < steps.indexOf(install));
         assert.equal(steps.some((step) => step.run === 'npm ci'), false);
       });
@@ -3469,7 +3469,7 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
 
   it('splits the job into webmcp, pro-gates and the two MCP Apps view parts', () => {
     // webmcp first: it is the longer part, so it should take a runner first.
-    assert.deepEqual(job.strategy.matrix.part, ['webmcp', 'pro-gates', 'plugin-news', 'plugin-country']);
+    assert.deepEqual(job.strategy.matrix.part, ['webmcp', 'pro-gates', 'plugin-news', 'plugin-views']);
     assert.equal(job.strategy['fail-fast'], false, 'a red half must not cancel the other half\'s evidence');
   });
 
@@ -3512,7 +3512,8 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
     // that blob at the same moment took 12-62s instead of ~6s (PR #9626).
     const setup = flat.find((step) => (step as { uses?: string }).uses?.startsWith('actions/setup-node@')) as
       { with: Record<string, string> } | undefined;
-    assert.equal(setup?.with.cache, 'npm');
+    // The plugin parts never build /pro, so they restore nothing.
+    assert.equal(setup?.with.cache, "${{ !startsWith(matrix.part, 'plugin-') && 'npm' || '' }}");
     assert.equal(setup?.with['cache-dependency-path'], 'pro-test/package-lock.json');
   });
 
