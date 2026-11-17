@@ -12,6 +12,8 @@ export interface BriefLanguageState {
   uiLanguage: string | null;
   briefLanguage: string | null;
   effective: string;
+  /** Languages the brief is delivered in now; absent from an older Convex deploy. */
+  deliverableLanguages?: string[];
 }
 
 export type BriefLanguageWriteResult = { ok: true } | { ok: false; reason: string };

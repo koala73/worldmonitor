@@ -1012,6 +1012,9 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // until the stored override is known so a save never races the read.
       let briefLanguageSaved = '';
       let briefUiLanguage: string | null = null;
+      // Languages the brief is delivered in now (Convex BRIEF_L10N_* env). The
+      // hint promises a language only when it is in this list.
+      let briefDeliverable: readonly string[] = [];
       // A reload during a save reads only after the save settles, so it never
       // shows the value from before the commit.
       let briefLanguageSaveInFlight: Promise<unknown> | null = null;
@@ -1034,6 +1037,12 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       function renderBriefLanguageHint(effective: string): void {
         const hint = container.querySelector<HTMLElement>('#usBriefLanguageHint');
         if (!hint) return;
+        // English is always true; any other language only once it is live.
+        if (effective !== 'en' && !briefDeliverable.includes(effective)) {
+          hint.textContent = '';
+          hint.hidden = true;
+          return;
+        }
         const label = LANGUAGES.find((lang) => lang.code === effective)?.label ?? 'English';
         hint.textContent = t('settings.briefLanguage.hint', { language: label });
         hint.hidden = false;
@@ -1052,6 +1061,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           }
           briefLanguageSaved = state.briefLanguage ?? '';
           briefUiLanguage = state.uiLanguage;
+          briefDeliverable = Array.isArray(state.deliverableLanguages) ? state.deliverableLanguages : [];
           select.value = briefLanguageSaved;
           select.disabled = false;
           renderBriefLanguageHint(state.effective);

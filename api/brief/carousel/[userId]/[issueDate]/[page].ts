@@ -37,7 +37,7 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders, isDisallowedOrigin } from '../../../../_cors.js';
 import { readRawJsonFromUpstash } from '../../../../_upstash-json.js';
 import { briefLocalizedKey } from '../../../../../shared/brief-envelope.js';
-import { selectBriefEnvelope } from '../../../../../server/_shared/brief-render.js';
+import { assertBriefEnvelope, selectBriefEnvelope } from '../../../../../server/_shared/brief-render.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../_sentry-edge.js';
 import { verifyBriefToken, BriefUrlError } from '../../../../../server/_shared/brief-url';
@@ -130,8 +130,9 @@ export default async function handler(
     throw err;
   }
 
-  // Optional localized sibling; a failed read falls back to canonical but is
-  // not cached, so the localized image is served once the read recovers.
+  // Optional localized sibling. A failed read, or a sibling that was read but
+  // rejected (stale mid-regeneration, or invalid), falls back to canonical
+  // without caching it, so the localized image is served once it is valid.
   let siblingReadFailed = false;
   const siblingPromise = readRawJsonFromUpstash(briefLocalizedKey(userId, issueDate), 3_000, true)
     .catch(() => {
@@ -149,7 +150,19 @@ export default async function handler(
     return jsonError('service_unavailable', 503, cors);
   }
   if (!envelope) return jsonError('not_found', 404, cors);
-  envelope = selectBriefEnvelope(envelope, await siblingPromise);
+  try {
+    // A malformed canonical is a 404 even when a matching sibling would
+    // render, as on the magazine route.
+    assertBriefEnvelope(envelope);
+  } catch (err) {
+    console.error('[api/brief/carousel] malformed envelope:', (err as Error).message);
+    captureSilentError(err, { tags: { route: 'api/brief/carousel', step: 'malformed-envelope' }, fingerprint: ['api/brief/carousel', 'malformed-envelope', err instanceof Error ? err.name : 'Error'], ctx });
+    return jsonError('not_found', 404, cors);
+  }
+  const sibling = await siblingPromise;
+  const canonicalEnvelope = envelope;
+  envelope = selectBriefEnvelope(canonicalEnvelope, sibling);
+  const cacheable = !siblingReadFailed && (sibling == null || envelope !== canonicalEnvelope);
 
   // @vercel/og sets Cache-Control to
   // `public, immutable, no-transform, max-age=31536000` and extraHeaders
@@ -167,9 +180,9 @@ export default async function handler(
       // ImageResponse doesn't expose a HEAD mode, so echo the status
       // and headers without the body. Telegram's preflight + CDN
       // validation both respect this.
-      return withCacheControl(response, null, !siblingReadFailed);
+      return withCacheControl(response, null, cacheable);
     }
-    return withCacheControl(response, response.body, !siblingReadFailed);
+    return withCacheControl(response, response.body, cacheable);
   } catch (err) {
     // AbortSignal.timeout / AbortController.abort firing somewhere inside
     // `renderCarouselImageResponse` (remote image fetch, font load, OG

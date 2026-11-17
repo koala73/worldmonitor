@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { renderDigestEmailHtml, DIGEST_EMAIL_MAX_HTML_BYTES } from '../scripts/lib/digest-email-html.mjs';
 import { buildBriefOnlyRules, orderBriefOnlyRulesByStaleness } from '../scripts/lib/brief-compose.mjs';
+import { selectDigestChannelContent } from '../scripts/lib/digest-channel-content.mjs';
 
 // A transient Upstash timeout in one user's send path used to reach
 // main().catch and end the whole cron tick, so every user after it in the
@@ -84,7 +85,8 @@ function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = 
     shouldExitOnBriefFailures: () => false,
     flushPendingLlmEvents: async () => { lifecycle.push('flush'); },
     AI_DIGEST_ENABLED: false,
-    buildDigestDeliveryPlan: ({ rawStories }: any) => ({ formatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
+    selectDigestChannelContent,
+    buildDigestDeliveryPlan: ({ rawStories }: any) => ({ formatterStories: rawStories, canonicalFormatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
     formatDigest: () => 'Synthetic digest',
     renderDigestEmailHtml,
     buildChannelBodies: (lists: { plain: string }) => ({ text: lists.plain }),
@@ -219,4 +221,36 @@ test('the Resend key separates scheduled occurrences but not retries within an h
   assert.equal(morning.length, 3);
   assert.deepEqual(morningRetry, morning);
   for (let i = 0; i < morning.length; i++) assert.notEqual(evening[i], morning[i]);
+});
+
+// l10n PR 3 (#10884): a compose miss has no brief entry, so no localized
+// copy exists and the raw English stories ship.
+test('a compose miss sends English', async () => {
+  const { run, delivered } = runDigest({ failingUsers: new Set() , briefOnlyUserIds: [] });
+  await run();
+  assert.ok(delivered.length > 0);
+});
+
+test('sendWebhook is called with canonicalFormatterStories and the canonical lead', () => {
+  assert.match(mainSource, /sendWebhook\(rule\.userId, ch\.webhookEnvelope, canonicalFormatterStories, briefLead,/);
+});
+
+test('the parity block compares briefLead, not channelLead', () => {
+  assert.match(mainSource, /channelsEqual = hasChannelSynthesis \? \(briefLead === envLead\)/);
+  const parityStart = mainSource.indexOf('const hasChannelSynthesis');
+  assert.ok(parityStart > 0);
+  assert.equal(mainSource.slice(parityStart, parityStart + 600).includes('channelLead'), false);
+});
+
+test('the delivered-log loop iterates cooldownIterableStories', () => {
+  const sendIdx = mainSource.indexOf('ok = await sendWebhook(');
+  const loopIdx = mainSource.indexOf('of cooldownIterableStories', sendIdx);
+  assert.ok(sendIdx > 0 && loopIdx > sendIdx);
+});
+
+test('the l10n call site sits after deriveThreadsFromOrderedStories and before the envelope SETEX', () => {
+  const threadsIdx = source.indexOf('deriveThreadsFromOrderedStories(finalEnvelope.data.stories)');
+  const l10nIdx = source.indexOf('await localizeBrief(');
+  const setexIdx = source.indexOf("['SETEX', key, String(BRIEF_TTL_SECONDS), JSON.stringify(finalEnvelope)]");
+  assert.ok(threadsIdx > 0 && l10nIdx > threadsIdx && setexIdx > l10nIdx);
 });

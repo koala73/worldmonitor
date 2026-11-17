@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { DIGEST_EMAIL_MAX_HTML_BYTES } from '../scripts/lib/digest-email-html.mjs';
+import { selectDigestChannelContent } from '../scripts/lib/digest-channel-content.mjs';
 
 const require = createRequire(import.meta.url);
 const savedEnv = { ...process.env };
@@ -101,7 +102,8 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
       readCooldownConfig: () => ({ invalidRaw: null, mode: 'off' }),
       getLastSentAt: async () => 0, isDue: () => true, isUserPro: async () => true,
       digestWindowStartMs: () => 0, buildDigest: async () => [{ title: 'Synthetic alert' }],
-      buildDigestDeliveryPlan: ({ rawStories }: any) => ({ formatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
+      selectDigestChannelContent,
+      buildDigestDeliveryPlan: ({ rawStories }: any) => ({ formatterStories: rawStories, canonicalFormatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
       formatDigest: () => 'Synthetic alert',
       renderDigestEmailHtml: () => ({ html: '<p>Synthetic alert</p>', bytes: 0, truncated: false, shownStories: 1 }),
       buildChannelBodies: (lists: any) => ({ text: lists.plain, telegramText: lists.telegram }),

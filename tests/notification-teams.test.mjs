@@ -10,6 +10,7 @@ import { runInNewContext } from 'node:vm';
 import { afterEach, describe, it } from 'node:test';
 import ts from 'typescript';
 import { ALLOWED_CHANNELS } from '../scripts/lib/digest-delivered-log.mjs';
+import { selectDigestChannelContent } from '../scripts/lib/digest-channel-content.mjs';
 
 const require = createRequire(import.meta.url);
 const https = require('node:https');
@@ -445,7 +446,8 @@ describe('digest cron Teams dispatch', () => {
       getLastSentAt: async () => 0, isDue: () => true, isUserPro: async () => true,
       digestWindowStartMs: () => 0,
       buildDigest: async () => [{ title: 'Synthetic digest story - Reuters', severity: 'critical', sources: ['Reuters'] }],
-      buildDigestDeliveryPlan: ({ rawStories }) => ({ formatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
+      selectDigestChannelContent,
+      buildDigestDeliveryPlan: ({ rawStories }) => ({ formatterStories: rawStories, canonicalFormatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
       formatDigest: () => 'WorldMonitor Daily Digest — October 17, 2026\n\nSynthetic digest story',
       renderDigestEmailHtml: () => ({ html: '<p>x</p>', bytes: 0, truncated: false, shownStories: 1 }),
       buildChannelBodies: (text) => ({ text, telegramText: text, slackText: text, discordText: text }),

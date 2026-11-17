@@ -518,10 +518,25 @@ describe("users — brief language (#10883)", () => {
     const t = convexTest(schema, modules);
     const asA = t.withIdentity(USER_A);
     expect(await t.query(api.users.getBriefLanguage, {})).toBeNull();
-    expect(await asA.query(api.users.getBriefLanguage, {})).toEqual({ uiLanguage: null, briefLanguage: null, effective: "en" });
+    expect(await asA.query(api.users.getBriefLanguage, {})).toEqual({ uiLanguage: null, briefLanguage: null, effective: "en", deliverableLanguages: [] });
     await asA.mutation(api.users.ensureRecord, { ...base, uiLanguage: "fa" });
-    expect(await asA.query(api.users.getBriefLanguage, {})).toEqual({ uiLanguage: "fa", briefLanguage: null, effective: "fa" });
+    expect(await asA.query(api.users.getBriefLanguage, {})).toEqual({ uiLanguage: "fa", briefLanguage: null, effective: "fa", deliverableLanguages: [] });
     await asA.mutation(api.users.setBriefLanguage, { lang: "ko" });
-    expect(await asA.query(api.users.getBriefLanguage, {})).toEqual({ uiLanguage: "fa", briefLanguage: "ko", effective: "ko" });
+    expect(await asA.query(api.users.getBriefLanguage, {})).toEqual({ uiLanguage: "fa", briefLanguage: "ko", effective: "ko", deliverableLanguages: [] });
+  });
+
+  test("getBriefLanguage reports the languages the brief is delivered in now", async () => {
+    vi.stubEnv("BRIEF_L10N_ENABLED", "1");
+    vi.stubEnv("BRIEF_L10N_LANGS", "fr,de,fa");
+    try {
+      const t = convexTest(schema, modules);
+      const asA = t.withIdentity(USER_A);
+      await asA.mutation(api.users.ensureRecord, { ...base, uiLanguage: "fr" });
+      expect(await asA.query(api.users.getBriefLanguage, {})).toEqual({
+        uiLanguage: "fr", briefLanguage: null, effective: "fr", deliverableLanguages: ["fr", "de"],
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

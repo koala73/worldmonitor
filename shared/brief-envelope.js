@@ -95,3 +95,27 @@ export const SUPPORTED_ENVELOPE_VERSIONS = new Set([1, 2, 3, 4, 5]);
 export function briefLocalizedKey(userId, issueSlot) {
   return `brief:l10n:${userId}:${issueSlot}`;
 }
+
+/**
+ * Redis key of the per-user index of issue slots (ZSET, member = slot,
+ * score = write time in ms). Account deletion reads it to delete every
+ * slot's canonical and localized envelope, not only the latest one.
+ *
+ * @param {string} userId
+ * @returns {string}
+ */
+export function briefSlotsKey(userId) {
+  return `brief:slots:${userId}`;
+}
+
+/**
+ * Redis marker account deletion sets before it reads the slot index. A digest
+ * compose reads it after its envelope write and removes what it wrote when it
+ * is set, so a compose racing an erase leaves nothing behind.
+ *
+ * @param {string} userId
+ * @returns {string}
+ */
+export function briefErasedKey(userId) {
+  return `brief:erased:${userId}`;
+}

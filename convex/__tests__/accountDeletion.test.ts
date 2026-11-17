@@ -66,6 +66,8 @@ const INVITEE = {
 };
 
 const fetchCalls: string[] = [];
+// When set, a pipeline that deletes a brief envelope answers that DEL with an error.
+let failBriefEnvelopeDelete = false;
 
 function hostnameOf(urlLike: string): string | null {
   try {
@@ -112,11 +114,17 @@ async function makeT() {
           result: JSON.stringify({ issueSlot: "2026-09-21-1200" }),
         });
       }
-      return Response.json(
-        url.includes("/pipeline")
-          ? [{ result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }]
-          : { result: "OK" },
-      );
+      if (url.includes("/zrange/")) {
+        return Response.json({ result: ["2026-09-14-1200", "2026-09-21-1200"] });
+      }
+      if (url.includes("/pipeline")) {
+        const commands = JSON.parse(body || "[]") as string[][];
+        return Response.json(commands.map((cmd) =>
+          failBriefEnvelopeDelete && cmd[0] === "DEL" && /^brief:user_deletion_a:/.test(String(cmd[1]))
+            ? { error: "ERR simulated" }
+            : { result: 1 }));
+      }
+      return Response.json({ result: "OK" });
     }
     return new Response(`unexpected fetch ${url}`, { status: 500 });
   });
@@ -130,6 +138,7 @@ afterEach(() => {
   dodoUpdateMock.mockReset();
   vi.unstubAllGlobals();
   fetchCalls.length = 0;
+  failBriefEnvelopeDelete = false;
   delete process.env.CLERK_SECRET_KEY;
   delete process.env.DODO_API_KEY;
   delete process.env.UPSTASH_REDIS_REST_URL;
@@ -849,8 +858,51 @@ describe("account deletion — external side effects", () => {
     const delIndex = (key: string) => commands.findIndex((cmd) => cmd[0] === "DEL" && cmd[1] === key);
     expect(delIndex("brief:l10n:user_deletion_a:2026-09-21-1200")).toBeGreaterThanOrEqual(0);
     expect(delIndex("brief:user_deletion_a:2026-09-21-1200")).toBeGreaterThanOrEqual(0);
-    expect(delIndex("brief:latest:user_deletion_a")).toBeGreaterThan(delIndex("brief:l10n:user_deletion_a:2026-09-21-1200"));
+    // Every slot in the per-user index is deleted, not only the latest one.
+    expect(fetchCalls.some((call) => call.includes("/zrange/brief:slots:user_deletion_a/0/"))).toBe(true);
+    expect(delIndex("brief:user_deletion_a:2026-09-14-1200")).toBeGreaterThanOrEqual(0);
+    expect(delIndex("brief:l10n:user_deletion_a:2026-09-14-1200")).toBeGreaterThanOrEqual(0);
+    // The index and the pointer go in a later request, once every slot delete
+    // succeeded, so a failed slot delete leaves a retry able to find the slot.
+    expect(delIndex("brief:latest:user_deletion_a")).toBe(-1);
+    expect(delIndex("brief:slots:user_deletion_a")).toBe(-1);
+    const later = fetchCalls.slice(fetchCalls.indexOf(pipeline!) + 1);
+    expect(later.some((call) => call.includes('"DEL","brief:slots:user_deletion_a"'))).toBe(true);
+    expect(later.some((call) => call.includes('"DEL","brief:latest:user_deletion_a"'))).toBe(true);
     expect(await t.query(internal.mcpProTokens.validateProMcpToken, { tokenId })).toBeNull();
+  });
+
+  test("erase marks the account erased before it reads the brief slot index", async () => {
+    // A digest compose re-reads this marker after its envelope write: either it
+    // sees the marker and removes what it wrote, or this index read sees its slot.
+    const t = await makeT();
+    await seedUser(t, USER_A);
+    await t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
+      userId: USER_A.subject,
+      source: "support",
+    });
+    await drainErase(t);
+    const marker = fetchCalls.findIndex((call) => call.includes('"SET","brief:erased:user_deletion_a","1","EX","86400"'));
+    const indexRead = fetchCalls.findIndex((call) => call.includes("/zrange/brief:slots:user_deletion_a/0/"));
+    const pointerRead = fetchCalls.findIndex((call) => call.includes("/get/brief:latest:user_deletion_a"));
+    expect(marker).toBeGreaterThanOrEqual(0);
+    expect(marker).toBeLessThan(indexRead);
+    expect(marker).toBeLessThan(pointerRead);
+  });
+
+  test("a failed brief delete keeps the slot index and pointer so a retry finds the brief", async () => {
+    const t = await makeT();
+    await seedUser(t, USER_A);
+    failBriefEnvelopeDelete = true;
+    await t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
+      userId: USER_A.subject,
+      source: "support",
+    }).catch(() => {});
+    await drainErase(t);
+    expect(fetchCalls.some((call) => call.includes('"DEL","brief:user_deletion_a:2026-09-21-1200"'))).toBe(true);
+    expect(fetchCalls.some((call) => call.includes('"DEL","brief:slots:user_deletion_a"'))).toBe(false);
+    expect(fetchCalls.some((call) => call.includes('"DEL","brief:latest:user_deletion_a"'))).toBe(false);
+    expect((await deletionRow(t, USER_A.subject))?.status).not.toBe("complete");
   });
 
   test("Dodo timeout records last error and retries without double-cancel", async () => {
