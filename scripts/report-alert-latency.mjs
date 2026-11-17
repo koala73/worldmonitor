@@ -4,6 +4,7 @@
  *
  *   node scripts/report-alert-latency.mjs              # last 24 hours
  *   node scripts/report-alert-latency.mjs --hours 168  # last 7 days
+ *   node scripts/report-alert-latency.mjs --hours 168 --by-source  # alert volume and first-sight latency by outlet
  *   node scripts/report-alert-latency.mjs --strict     # exit 1 if build-to-queue p90 is over budget,
  *                                                      # or if nothing measured that stage
  *
@@ -37,7 +38,7 @@ function parseArgs(argv) {
   const hoursAt = argv.indexOf('--hours');
   const hours = hoursAt === -1 ? 24 : Number(argv[hoursAt + 1]);
   if (!Number.isFinite(hours) || hours <= 0) throw new Error('--hours needs a positive number');
-  return { hours, strict: argv.includes('--strict') };
+  return { hours, bySource: argv.includes('--by-source'), strict: argv.includes('--strict') };
 }
 
 async function readRange(url, token, key, fromMs) {
@@ -68,7 +69,7 @@ const SLICES = [
 ];
 
 async function main() {
-  const { hours, strict } = parseArgs(process.argv.slice(2));
+  const { hours, bySource, strict } = parseArgs(process.argv.slice(2));
   loadEnvFile(import.meta.url);
   const { url, token } = getRedisCredentials();
   const fromMs = Date.now() - hours * 60 * 60 * 1000;
@@ -90,6 +91,17 @@ async function main() {
     printStage('publisher timestamp -> queue', summary.publishToQueue);
     printStage('story tracking first sight -> queue', summary.seenToQueue);
     printStage('digest build -> queue', summary.buildToQueue);
+  }
+  if (bySource) {
+    console.log('\nPublisher timestamp to digest first sight by source (alerts from score log, n from paired latency samples)');
+    const counts = new Map();
+    for (const row of scoreLog) counts.set(row.source, (counts.get(row.source) ?? 0) + 1);
+    const byOutlet = Map.groupBy(samples, row => row.source);
+    const sources = new Set([...counts.keys(), ...byOutlet.keys()]);
+    for (const source of [...sources].sort((a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0))) {
+      const summary = summarizeAlertLatency(byOutlet.get(source) ?? []);
+      printStage(`${source} (alerts=${counts.get(source) ?? 0})`, summary.publishToSeen);
+    }
   }
   if (strict) {
     const verdict = strictLatencyVerdict(summarizeAlertLatency(samples));

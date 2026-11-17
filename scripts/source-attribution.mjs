@@ -98,6 +98,18 @@ const publisherMetadataFeed = (provider) => ({
  * become a provider rename or regroup.
  */
 export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
+  cnn: Object.freeze({
+    provider: 'CNN',
+    memberHosts: Object.freeze(['cnn.com', 'www.cnn.com']),
+    reason: 'The publisher supplies the direct news feed and the articles indexed by its existing Google News search.',
+    reviewReference: 'Issue #10937',
+  }),
+  ukrinform: Object.freeze({
+    provider: 'Ukrinform',
+    memberHosts: Object.freeze(['ukrinform.net', 'www.ukrinform.net']),
+    reason: 'The publisher supplies the direct news feed and the articles indexed by its existing Google News search.',
+    reviewReference: 'Issue #10937',
+  }),
   'world-bank-open-data': Object.freeze({
     provider: 'World Bank Open Data',
     memberHosts: Object.freeze(['api.worldbank.org', 'datacatalogfiles.worldbank.org']),
@@ -466,14 +478,22 @@ const PROVIDER_OVERRIDES = {
   'thedailystar.net': publisherMetadataFeed('The Daily Star'),
   'dhakatribune.com': publisherMetadataFeed('Dhaka Tribune'),
   // Major publishers after the 2026-10-16 Google News World audit; Google News site: feeds.
+  'cnn.com': { ...publisherMetadataFeed('CNN'), identityGroup: 'cnn' },
+  'www.cnn.com': { ...publisherMetadataFeed('CNN'), identityGroup: 'cnn' },
+  'ukrinform.net': { ...publisherMetadataFeed('Ukrinform'), identityGroup: 'ukrinform' },
+  'www.ukrinform.net': { ...publisherMetadataFeed('Ukrinform'), identityGroup: 'ukrinform' },
   'nytimes.com': publisherMetadataFeed('The New York Times'),
+  'rss.nytimes.com': publisherMetadataFeed('The New York Times'),
   // Al Jazeera's claim-pool depth search (2026-10-17 /verify audit).
   'aljazeera.com': { ...publisherMetadataFeed('Al Jazeera'), identityGroup: 'al-jazeera' },
   'www.aljazeera.com': { provider: 'Al Jazeera', identityGroup: 'al-jazeera' },
   'washingtonpost.com': publisherMetadataFeed('The Washington Post'),
+  'feeds.washingtonpost.com': publisherMetadataFeed('The Washington Post'),
   'economist.com': publisherMetadataFeed('The Economist'),
   'independent.co.uk': publisherMetadataFeed('The Independent'),
+  'www.independent.co.uk': publisherMetadataFeed('The Independent'),
   'news.sky.com': publisherMetadataFeed('Sky News'),
+  'feeds.skynews.com': publisherMetadataFeed('Sky News'),
   'timesofisrael.com': publisherMetadataFeed('Times of Israel'),
   'middleeasteye.net': publisherMetadataFeed('Middle East Eye'),
   'japantimes.co.jp': publisherMetadataFeed('Japan Times'),
@@ -1180,7 +1200,7 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '9b147ba2da242b6dd891c82c1beb3f96083c8bd279ce1c3ce24ed3605bb080c3',
+  sha256: 'b973167af31bb62016048b0517171231abb26311b9e00b794264c238f13d1859',
   // 2026-11-13: name CelesTrak as the provider of the orbit elements behind
   // satellite tracking and the point lookup (issue #10615), with its licence.
   // 2026-11-13: add the browser-direct satellite image archives for the point
@@ -1212,7 +1232,7 @@ export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'PR #9385 NVD identity review; Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, the 2026-09-04 FIRMS partial-coverage incident, and the 2026-09-05 Barchart WAF outage that moved S&P 500 breadth to the TradingView screener scan; plus Issue #7838, which added the read-only Sentry resolve-pin audit; plus PR #8394 JODI publication catalog lineage; plus the 2026-10-17 /verify audit that added the Al Jazeera claim-pool depth search; plus Issue #9352 part C, the US Consolidated Screening List export-control lists; plus Issue #10051 fuel-price batch 3, the DOE media host and SONABHY CMS groups; plus the Strategic Water Levels ICESat-2 ATL13 provider identity review.',
+  reviewReference: 'PR #9385 NVD identity review; Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, the 2026-09-04 FIRMS partial-coverage incident, and the 2026-09-05 Barchart WAF outage that moved S&P 500 breadth to the TradingView screener scan; plus Issue #7838, which added the read-only Sentry resolve-pin audit; plus PR #8394 JODI publication catalog lineage; plus the 2026-10-17 /verify audit that added the Al Jazeera claim-pool depth search; plus Issue #9352 part C, the US Consolidated Screening List export-control lists; plus Issue #10051 fuel-price batch 3, the DOE media host and SONABHY CMS groups; plus the Strategic Water Levels ICESat-2 ATL13 provider identity review and the direct publisher feeds in issue #10937.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {

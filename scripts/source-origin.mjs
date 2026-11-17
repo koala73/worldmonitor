@@ -894,6 +894,7 @@ const HOST_ORIGINS = Object.freeze({
   'japantimes.co.jp': 'JP',
   'middleeasteye.net': 'GB',
   'news.sky.com': 'GB',
+  'feeds.skynews.com': 'GB',
   'noaadata.apps.nsidc.org': 'US',
   'nsidc.org': 'US',
   'cmr.earthdata.nasa.gov': 'US',
@@ -903,8 +904,10 @@ const HOST_ORIGINS = Object.freeze({
   'sliderule.slideruleearth.io': 'US',
   'slideruleearth.io': 'US',
   'nytimes.com': 'US',
+  'rss.nytimes.com': 'US',
   'timesofisrael.com': 'IL',
   'washingtonpost.com': 'US',
+  'feeds.washingtonpost.com': 'US',
 });
 
 // Provider-level overrides win when the host is a CDN, cloud, or shared

@@ -36,6 +36,7 @@ test('the shared normalizer loads', () => {
 
 test('a headline repeated by a second publisher has the story key of the first', () => {
   assert.ok(newsStoryKey(CNN, DELIVERABLE));
+  assert.equal(newsStoryKey(CNN.replace(/ - CNN$/, ''), DELIVERABLE), newsStoryKey(CNN, DELIVERABLE));
   assert.equal(newsStoryKey(EGYPT_INDEPENDENT, DELIVERABLE), newsStoryKey(CNN, DELIVERABLE));
 });
 

@@ -838,7 +838,11 @@ function createTimeoutLinkedController(parentSignal: AbortSignal): {
 export function looksLikeRssXml(text: string): boolean {
   const head = text.slice(0, 2048).toLowerCase();
   if (/<!doctype\s+html|<html[\s>]/.test(head)) return false;
-  return /<rss[\s>]|<feed[\s>]|<rdf:rdf[\s>]/.test(head);
+  return isNewsSitemap(head) || /<rss[\s>]|<feed[\s>]|<rdf:rdf[\s>]/.test(head);
+}
+
+function isNewsSitemap(head: string): boolean {
+  return /<urlset\b[^<>]*\sxmlns:news=["']http:\/\/www\.google\.com\/schemas\/sitemap-news\/0\.9["']/.test(head);
 }
 
 /** HTTP validators from a direct 200, replayed as a conditional GET on refresh. */
@@ -1297,8 +1301,21 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
   let droppedUndated = 0;
 
   const xmlLower = asciiLower(xml);
-  let matches = scanTagBlocks(xml, xmlLower, 'item');
-  const isAtom = matches.length === 0;
+  const sitemap = isNewsSitemap(xmlLower.slice(0, 2048));
+  let matches = scanTagBlocks(xml, xmlLower, sitemap ? 'url' : 'item');
+  if (sitemap) {
+    // News sitemaps can be ordered by last modification. Rank once by the
+    // original publication date so updated articles cannot crowd out new ones.
+    const dated = matches.flatMap(block => {
+      const lower = asciiLower(block);
+      if (!extractTag(block, 'news:title', lower) || !extractTag(block, 'loc', lower)) return [];
+      const publishedAt = usableFeedDateMs(extractTag(block, 'news:publication_date', lower));
+      return [{ block, publishedAt: publishedAt ?? -Infinity }];
+    });
+    dated.sort((a, b) => b.publishedAt - a.publishedAt);
+    matches = dated.map(row => row.block);
+  }
+  const isAtom = !sitemap && matches.length === 0;
   if (isAtom) matches = scanTagBlocks(xml, xmlLower, 'entry');
   const originPublisherTrusted = !isAtom && isTrustedOriginAggregator(feed.url);
   const snapshotDateMs = feed.channelDated ? channelDateMs(xml, xmlLower, isAtom) : null;
@@ -1314,7 +1331,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     const blockLower = asciiLower(block);
     const forDigest = index < ITEMS_PER_FEED;
 
-    const title = extractTag(block, 'title', blockLower);
+    const title = extractTag(block, sitemap ? 'news:title' : 'title', blockLower);
     if (!title) continue;
 
     if (forDigest) parsedTotal++;
@@ -1327,7 +1344,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       const hrefMatch = block.match(/<link[^<>]+href=["']([^"']+)["']/);
       link = hrefMatch?.[1] ?? '';
     } else {
-      link = extractTag(block, 'link', blockLower);
+      link = extractTag(block, sitemap ? 'loc' : 'link', blockLower);
     }
     // A publisher click counter carries the article URL after a `*`
     // (redir.folha.com.br/.../*https://www1.folha.uol.com.br/...). Keep the
@@ -1349,7 +1366,8 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     // (which is the bug that let static institutional pages reach the brief).
     // A channel-dated snapshot feed's undated item takes the channel's date,
     // which passes the same gate.
-    const pubDateStr = extractFirstDateTag(block, isAtom, blockLower);
+    const pubDateStr = sitemap ? extractTag(block, 'news:publication_date', blockLower)
+      : extractFirstDateTag(block, isAtom, blockLower);
     const publishedAt = pubDateStr ? usableFeedDateMs(pubDateStr) : snapshotDateMs;
     if (publishedAt === null) {
       if (forDigest) droppedUndated++;
@@ -1362,7 +1380,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     // dialect is read; extractTag's [^<]* body would not match a container
     // anyway, but skipping Atom keeps that an invariant rather than a
     // regex accident.
-    const extractedOriginPublisher = isAtom ? '' : extractTag(block, 'source', blockLower);
+    const extractedOriginPublisher = isAtom || sitemap ? '' : extractTag(block, 'source', blockLower);
     // Ordinary feeds cannot vouch for RSS <source>. The country reader already
     // ignores untrusted origin metadata, so keep those late headlines and store
     // an empty publisher. Trusted aggregators still have the 200-character

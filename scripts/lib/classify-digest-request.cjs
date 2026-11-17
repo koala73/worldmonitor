@@ -199,15 +199,17 @@ function percentile(sorted, p) {
  * build-to-queue stage exceeded BUILD_TO_QUEUE_BUDGET_MS.
  */
 function summarizeAlertLatency(samples) {
-  const stage = (field) => {
-    const values = samples.map((sample) => sample[field]).filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+  const stage = (read) => {
+    const values = samples.map(read).filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
     return { n: values.length, p50: percentile(values, 0.5), p90: percentile(values, 0.9), max: values.at(-1) ?? null };
   };
   return {
     count: samples.length,
-    publishToQueue: stage('publishToQueueMs'),
-    seenToQueue: stage('seenToQueueMs'),
-    buildToQueue: stage('buildToQueueMs'),
+    publishToSeen: stage(s => Number.isFinite(s.publishToQueueMs) && Number.isFinite(s.seenToQueueMs)
+      && s.publishToQueueMs >= s.seenToQueueMs ? s.publishToQueueMs - s.seenToQueueMs : null),
+    publishToQueue: stage(s => s.publishToQueueMs),
+    seenToQueue: stage(s => s.seenToQueueMs),
+    buildToQueue: stage(s => s.buildToQueueMs),
     overBudget: samples.filter((sample) => sample.buildToQueueMs > BUILD_TO_QUEUE_BUDGET_MS).length,
   };
 }

@@ -212,6 +212,7 @@ describe('summarizeAlertLatency', () => {
       { publishToQueueMs: 60_000, seenToQueueMs: null, buildToQueueMs: null },
       { publishToQueueMs: 120_000, seenToQueueMs: 30_000, buildToQueueMs: 20_000 },
     ]);
+    assert.deepEqual(summary.publishToSeen, { n: 1, p50: 90_000, p90: 90_000, max: 90_000 });
     assert.equal(summary.publishToQueue.n, 2);
     assert.equal(summary.buildToQueue.n, 1);
     assert.equal(summary.overBudget, 0);
