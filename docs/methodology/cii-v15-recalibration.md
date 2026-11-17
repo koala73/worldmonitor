@@ -76,6 +76,212 @@ Randomise presentation order and left/right position with a recorded seed held b
 
 A pair is decided only when at least two thirds of all participating judges choose the same strict ordering. Ties, abstentions and unresolved pairs remain in the report but not the denominator. The candidate passes when it matches **at least two thirds of decided disagreement pairs**. Zero decided pairs is undefined, never a pass. Report decided and undecided counts, judge agreement, all disagreement outcomes and control outcomes separately. Controls cannot inflate the primary pass fraction. Preserve ballots and the selection seed for audit. This is a reported measurement only and ends at the owner-ruling stop, even if it fails.
 
+## P15b historical unrest episode
+
+Registered on 2026-11-15, before any GDELT data inside the search window was downloaded or inspected. The U18 study found the P15b episode from the calibration captures (KR, week to 2026-11-13, protest share 1.81%) is not an unrest episode: the rule above takes the largest eligible week without requiring anything unusual to have happened. The owner ruled that anchor unavailable on the current captures and asked for it to be rebuilt from a recorded historical episode. This section replaces only P15b's selection rule. The P15b scenario and its 35–55 band are unchanged. Before this commit, the only GDELT files downloaded were for days on or after 2026-11-10, which are used to validate the rebuild tool and lie outside the window.
+
+### Construct
+
+Sustained unrest above norm is a stable democracy in which protest makes up a much larger share of its news coverage than usual, on most days of a week, at a volume large enough for the share to be measured. The share is used rather than the count because GDELT's article volume per country moves with the media cycle and has drifted over the years, while the share does not. The norm is the country's own, never another country's.
+
+### Data and tools
+
+- **Countries.** DE, FR, GB, JP, KR, PL and US, the seven stable democracies already named in the brief.
+- **Window.** Capture days `T` from 2015-04-01 to 2026-10-31. The GDELT 2.0 export stream starts on 2015-02-18. 2015-04-01 is the first month start with the 35 prior days each rule needs. The end is the last full month before the calibration captures the owner has already ruled on.
+- **Counts.** For each country and UTC day: articles `A` and protest-coded articles `P` (CAMEO root 14), counted by the seeder's own `parseCountryEventsExport` (`scripts/_gdelt-country-events.mjs`).
+- **Selection source.** Rebuilding every day of the window from its 96 quarter-hour GDELT 2.0 exports is about 400,000 requests. At GDELT's sequential rate of about one per second, that takes more than four days. Selection therefore reads GDELT's one-file-a-day event export. It uses the same engine and the 1.0 column layout, and is mapped column-for-column to the 2.0 layout and parsed by the same parser (`scripts/cii-gdelt-archive-rebuild.mjs daily`). The daily file is admissible only if, on every validation day, each of the seven countries has article counts within 5% of the 2.0 rebuild and protest-coded counts within 10% of it (or within 3 when the 2.0 count is under 30). Otherwise the scan is not run and the finding is a blocker. The selected episode is then rebuilt from the 2.0 exports and must re-qualify there (below). All copied magnitudes come from the 2.0 rebuild.
+- **Rebuild validity.** The 2.0 rebuild (`scripts/cii-gdelt-archive-rebuild.mjs v2`) must reproduce the `gdeltCountryEvents` block of both `calibration: true` captures. Integer counts must match exactly, `current` to within 0.05 (its one-decimal rounding) and `baselineMedian` exactly. A mismatch stops the study until it is explained.
+
+### Rule
+
+For country `c` and capture day `T`, using the scorer's clock at the end of day `T` (cursor `T 23:45:00`):
+
+- **Week** `W`: the seven days `T-7` to `T-1`, the scorer's `week` at that clock. All seven must be present.
+- **Current day**: `T` itself, the scorer's `current` at that clock. It must be present.
+- **Norm** `N`: the 28 days `T-35` to `T-8`, the four weeks before the week, so the episode cannot raise its own norm. At least 21 of the 28 days must be present (the scorer's own minimum baseline). The norm share is `n = ΣP / ΣA` over the present days.
+
+A missing day is unknown, never quiet. `T` qualifies when all of the following hold:
+
+| # | Criterion | Threshold | Reason from the construct |
+|---|---|---|---|
+| 1 | Week articles `ΣA_W` | ≥ 200 | OQ11's volume floor. Below it, a share is a handful of articles. |
+| 2 | Week protest articles `ΣP_W` | ≥ 35 | An average of five a day. Sustained unrest is reported every day, and below this, one multi-article story can make the week. |
+| 3 | Norm protest articles `ΣP_N` | ≥ 28 | An average of one a day, so the norm is an estimate rather than a few events. The Poisson relative error is then at most 19%. |
+| 4 | Magnitude: week share `ΣP_W / ΣA_W` | ≥ 2n | "Well above norm" is taken as protest's share of coverage at least doubling. A ratio of two is the conventional threshold for a large relative change in a rate. It is fixed here without reference to how shares vary in these countries. |
+| 5 | Sustained: week days with daily share `P/A` ≥ 2n | ≥ 5 of 7 | Most days of the week, allowing two quiet days such as a weekend. Five is also the scorer's own minimum for a measured week (`COUNTRY_EVENTS_MIN_WEEK_DAYS`). |
+| 6 | Current day share `P_T / A_T` | ≥ 2n | The scorer's `current` must lie inside the episode, not after it. |
+| 7 | Significance: binomial upper tail `P(X ≥ ΣP_W)` with `X ~ Bin(ΣA_W, n)` | ≤ 1 × 10⁻⁶ | The scan makes about 30,000 country-day tests. A Bonferroni bound for a 5% family-wise error rate is 1.7 × 10⁻⁶, rounded down. |
+
+**Episodes.** The qualifying days of one country that are at most seven days apart form one episode. An episode's statistic is the ratio `week share / n` on its peak day, the qualifying day with the greatest ratio. Ties go to the earliest day.
+
+**Selection.** Sort all episodes of all seven countries by peak ratio ascending, then by earliest peak date, then by ISO2. Take the lower median, position `floor((m - 1) / 2)` with zero-based indexing, as the chronic-war rule does. The 35–55 band sits mid-scale, so the anchor should be a typical qualifying episode. The maximum over eleven years and seven countries is an extreme value that grows with the window. The median does not.
+
+**Confirmation on the 2.0 stream.** Rebuild days `T-35` to `T` of the selected episode's peak day from the 2.0 exports. The peak day must satisfy criteria 1–7 on those counts. Every day must have all 96 exports, or the day counts as missing. `summarizeCountryEvents` at nowMs `T 23:59:59.999Z` with cursor `T 23:45:00` must also report `weekReady`, `baselineReady` and `currentComplete`, a positive protest `baselineMedian` and protest `current` above it (the original P15b eligibility). If confirmation fails, remove that episode and take the lower median of the rest. Repeat until one confirms or none remain. If none qualifies or confirms, report that P15b has no episode. Do not loosen any threshold after the scan.
+
+### Copied magnitudes
+
+From the confirmed episode's `summarizeCountryEvents` output for that country, unchanged: `protest.current`, `protest.baselineMedian`, `conflict.current`, `conflict.baselineMedian` and `week.articles`, `week.conflict` and `week.protest`. The same values go to each of DE, FR, GB, JP, KR, PL and US, as in the existing P15b scenario. GDELT strike days are not copied, and other evidence stays at zero. The AE9 check repeats this week's level for eight weeks, with current equal to median, as before. The manifest records the episode country, the capture clock, the week and norm dates, every criterion's value and the full candidate list with each episode's statistics. The country identifies evidence, never a score target.
+
+### Validation results (2026-11-15)
+
+**The 2.0 rebuild reproduces both captures exactly.** Days 2026-10-15 to 2026-11-14 were rebuilt from 2,904 quarter-hour exports, every one verified against the master list's size and MD5. `compare` then ran `summarizeCountryEvents` at each capture's own clock (cursor `20261113094500` and `20261114054500`). For each of the 37 captured countries, it checked protest and conflict `current` and `baselineMedian`, the three `week` counts and the strike days, plus the readiness flags and `strikeDays`. All 300 fields match on both captures, with no mismatch at any tolerance: `current` matches to its rounded decimal.
+
+```
+node scripts/cii-gdelt-archive-rebuild.mjs v2 --from 2026-10-15 --to 2026-11-13 --out full.json
+node scripts/cii-gdelt-archive-rebuild.mjs v2 --from 2026-11-13 --to 2026-11-13 --cursor 20261113094500 --out partial.json
+node scripts/cii-gdelt-archive-rebuild.mjs compare --snapshot full.json,partial.json --cursor 20261113094500 --fixture tests/fixtures/cii/2026-11-13T0952Z.json
+```
+
+**The daily-file gate fails, so the scan was not run.** Daily-file counts compared with the 2.0 rebuild, for the seven countries:
+
+| Day | Country | 2.0 articles | Daily articles | Difference | 2.0 protest | Daily protest | Gate |
+|---|---|---|---|---|---|---|---|
+| 2026-11-10 | DE | 298 | 305 | 2.3% | 4 | 4 | pass |
+| 2026-11-10 | FR | 455 | 472 | 3.7% | 5 | 5 | pass |
+| 2026-11-10 | GB | 1,452 | 1,526 | 5.1% | 19 | 19 | **fail** |
+| 2026-11-10 | JP | 194 | 199 | 2.6% | 1 | 1 | pass |
+| 2026-11-10 | KR | 108 | 110 | 1.9% | 1 | 1 | pass |
+| 2026-11-10 | PL | 85 | 87 | 2.4% | 3 | 3 | pass |
+| 2026-11-10 | US | 7,351 | 7,631 | 3.8% | 67 | 69 | pass |
+| 2026-11-11 | DE | 247 | 256 | 3.6% | 3 | 3 | pass |
+| 2026-11-11 | FR | 367 | 376 | 2.5% | 3 | 3 | pass |
+| 2026-11-11 | GB | 1,452 | 1,523 | 4.9% | 12 | 14 | pass |
+| 2026-11-11 | JP | 180 | 184 | 2.2% | 0 | 0 | pass |
+| 2026-11-11 | KR | 120 | 122 | 1.7% | 2 | 2 | pass |
+| 2026-11-11 | PL | 99 | 99 | 0.0% | 3 | 3 | pass |
+| 2026-11-11 | US | 7,213 | 7,487 | 3.8% | 51 | 51 | pass |
+| 2026-11-12 | DE | 219 | 224 | 2.3% | 3 | 3 | pass |
+| 2026-11-12 | FR | 353 | 358 | 1.4% | 9 | 9 | pass |
+| 2026-11-12 | GB | 1,397 | 1,456 | 4.2% | 13 | 13 | pass |
+| 2026-11-12 | JP | 187 | 192 | 2.7% | 1 | 1 | pass |
+| 2026-11-12 | KR | 135 | 141 | 4.4% | 1 | 1 | pass |
+| 2026-11-12 | PL | 60 | 62 | 3.3% | 2 | 2 | pass |
+| 2026-11-12 | US | 7,304 | 7,573 | 3.7% | 53 | 55 | pass |
+
+One of 21 country-days exceeds the registered 5% article tolerance. As registered, the scan was not run. A queued scan process started when the validation run finished. It was stopped before it had fetched any daily file inside the window. No in-window count has been read.
+
+**Cause.** The daily file for 2026-11-10 holds exactly the same 124,504 events as that day's 96 quarter-hour exports: identical `GLOBALEVENTID` set, identical `SOURCEURL` and identical `ActionGeo_CountryCode` on every event. The only field that differs is `IsRootEvent`. 2,904 events (2.3%) are root events in the daily file but not in the quarter-hour exports, and none differ the other way. The seeder counts only root events, so the daily file over-counts articles by a few percent. The excess varies by country and day, and protest counts are almost unaffected. The daily file cannot reproduce the 2.0 root flag, so no column mapping repairs it.
+
+**Status.** P15b still has no recorded episode. Running the registered rule needs one of these owner rulings, each made before any in-window data is read:
+
+1. Amend the selection source: keep the daily file for screening, with the amended gate on the ratio the rule uses (week share over norm share) rather than on raw articles. The 2.0 confirmation step already re-tests every criterion on the scorer's own stream.
+2. Run the rule on the 2.0 stream at full resolution: about 400,000 sequential requests, more than four days.
+3. Shorten the window to what the 2.0 stream can cover in an acceptable time, justified from the construct.
+
+The criteria, thresholds, clustering, lower-median selection and copied magnitudes above stay as registered under any of the three.
+
+### Amendment 1: daily-file screen, 2.0 confirmation (registered 2026-11-16)
+
+The owner chose option 1 on 2026-11-16, with a margin below the volume floors. This amendment is registered before any in-window count is read. The only in-window bytes fetched so far are 20 quarter-hour exports for 2024-03-15, downloaded by a throughput test that recorded their byte size and never unzipped or parsed them.
+
+**Why the registered gate failed.** On 2026-11-10, GB's daily-file article count was 5.1% above the 2.0 rebuild, against a 5% limit. The daily file and the 2.0 rebuild hold the same events. The daily file flags 2.3% more of them `IsRootEvent=1`, and the seeder counts root events only (see "Validation results"). Article counts in both the week and the norm rise by a few percent together, so protest share falls slightly in both and the ratio between them barely moves.
+
+**The daily file only screens.** No episode is selected from daily-file counts, and no magnitude is copied from them.
+
+**Admission gate, replacing the 5% article gate.** The daily file is admissible as a screen if, for each of the seven countries, the rule's ratio `week share / n` computed from daily files is within 10% of the same ratio from the 2.0 rebuild. The check is made at capture days 2026-11-13 and 2026-11-14. Both lie outside the window, and the 2.0 rebuild already covers 2026-10-15 to 2026-11-14. On these days the norm is 22 and 23 present days, above the 21-day minimum. A country whose 2.0 norm share is zero has no ratio and is not tested. The 10% tolerance matches the margin below the volume floors. Ratio criteria 4–6 are tested at the threshold, so a screen that shifted the ratio by more than the margin would drop real episodes. If the gate fails, the scan is not run and the finding is reported.
+
+**Screen criteria.** Criteria 1–3, the article-volume floors, admit weeks at 90% of each floor or above: week articles ≥ 180, week protest ≥ 31.5 (so 32), and norm protest ≥ 25.2 (so 26). This keeps near-floor weeks the daily file's root-flag noise could otherwise drop. The ratio (4, 6), duration (5), significance (7), norm-day and completeness requirements are unchanged. Episodes, peak days and their ordering are formed from screen results exactly as registered.
+
+**Confirmation of every screened episode.** Every screened episode's peak day is rebuilt from the 2.0 exports (days `T-35` to `T`, 96 exports each) and tested against the registered criteria 1–7 at their registered thresholds, plus the scorer eligibility check, exactly as in "Confirmation on the 2.0 stream". An episode that fails anywhere is dropped, and the reasons are recorded. The selection ordering (peak ratio ascending, then date, then ISO2) and the lower median are applied to the confirmed episodes only, with each episode's peak ratio taken from the 2.0 rebuild. The selected episode and every confirmed episode above or below it in the ranking therefore pass every registered threshold on the 2.0 rebuild. The report gives the number of screened episodes that fail on 2.0 and the failed criteria for each one. If no screened episode confirms, P15b has no episode.
+
+Everything else in this section stands as registered: thresholds, clustering, selection position and copied magnitudes. All copied magnitudes come from the 2.0 rebuild.
+
+### Results of amendment 1 (2026-11-17)
+
+**Admission gate: passes.** All 14 country-days are within 10%. The largest difference is DE on 2026-11-14 at −5.8% and on 2026-11-13 at −6.1%. Daily-file ratios run from −6.1% to +0.5% of the 2.0 ratios, mostly a little low. The screen is therefore more likely to drop a borderline episode than to add a spurious one.
+
+| Country | 2026-11-13: 2.0 ratio | daily ratio | difference | 2026-11-14: 2.0 ratio | daily ratio | difference |
+|---|---|---|---|---|---|---|
+| DE | 0.4446 | 0.4173 | −6.12% | 0.5186 | 0.4887 | −5.76% |
+| FR | 0.3008 | 0.2911 | −3.23% | 0.2565 | 0.2460 | −4.08% |
+| GB | 1.0232 | 1.0261 | +0.28% | 0.9565 | 0.9611 | +0.48% |
+| JP | 1.1395 | 1.1425 | +0.26% | 0.8948 | 0.8965 | +0.19% |
+| KR | 1.3936 | 1.3796 | −1.00% | 1.1879 | 1.1751 | −1.07% |
+| PL | 0.4603 | 0.4408 | −4.23% | 0.4393 | 0.4210 | −4.17% |
+| US | 0.6607 | 0.6414 | −2.92% | 0.6795 | 0.6552 | −3.57% |
+
+**Screen.** It read every daily file from 2015-02-25 to 2026-10-31. GDELT's archive has no daily file for 20 days, which count as missing: 2022-11-10, 2023-03-23, and 2025-06-14 to 2025-07-01. For 2023-03-22, GDELT's `md5sums` list gives `9fa71d95…`, but the stored object and two downloads of it are `a246cae9…`. The file was accepted on the stored object's own MD5 header and recorded (`md5ListMismatches` in the scan output). 167 capture days qualified on the screen. They form 48 episodes.
+
+**Confirmation: 26 of 48 confirm, 22 fail on 2.0.**
+
+- **19 fail completeness.** A week day or the capture day has fewer than 96 quarter-hour exports in GDELT's 2.0 archive, so under the registered rule that day is missing, as it would be for the scorer. Eleven of the 19 are short on one to four days, by 1 to 9 exports a day. The other eight fall in long archive gaps: late July to August 2017, October 2017, March 2018, July 2018, and late October to early November 2020 (as few as 21 exports a day). In those eight, the norm also has 0 to 3 complete days, and the scorer's readiness checks fail too. The daily file has no such gaps, which is why the screen admitted them.
+- **3 fail a registered threshold on complete data.**
+  - DE 2019-08-28 fails the current-day share (1.30% against 2n = 1.40%).
+  - DE 2020-08-08 fails duration: 3 of 7 elevated days on 2.0, against 5 or more on the screen.
+  - JP 2026-10-11 has 25 norm protest articles on 2.0, under 28. It passed the screen's 90% floor of 25.2 on the daily file. This is the near-floor case the margin was registered to keep for confirmation.
+- Every episode that met criteria 1–7 on 2.0 also passed the scorer eligibility check.
+
+**Every screened episode.** In screen order (peak ratio ascending on the daily file). Qualifying days are counted on the screen. For incomplete days, the number of exports present is in brackets. The 2.0 ratio is blank where the 2.0 week is incomplete.
+
+| Screen rank | Country | Qualifying days | Peak | Screen ratio | 2.0 ratio | 2.0 result |
+|---|---|---|---|---|---|---|
+| 0 | US | 2024-04-26 to 2024-05-02 (6) | 2024-05-02 | 2.23 | 2.24 | confirmed, position 0 |
+| 1 | DE | 2019-03-18 to 2019-03-18 (1) | 2019-03-18 | 2.27 | – | fails: incomplete: 03-13 (95) |
+| 2 | JP | 2023-03-13 to 2023-03-13 (1) | 2023-03-13 | 2.47 | – | fails: incomplete: 03-08 (95), 03-09 (95), 03-11 (94), 03-12 (95) |
+| 3 | JP | 2024-03-06 to 2024-03-07 (2) | 2024-03-06 | 2.55 | 2.57 | confirmed, position 3 |
+| 4 | DE | 2019-08-28 to 2019-08-28 (1) | 2019-08-28 | 2.55 | 2.45 | fails: current share 1.30% < 2n = 1.40% |
+| 5 | US | 2026-01-13 to 2026-01-13 (1) | 2026-01-13 | 2.55 | 2.44 | confirmed, position 1 |
+| 6 | FR | 2021-07-21 to 2021-07-21 (1) | 2021-07-21 | 2.56 | 2.51 | confirmed, position 2 |
+| 7 | JP | 2017-08-01 to 2017-08-01 (1) | 2017-08-01 | 2.57 | – | fails: incomplete: 07-25 (91), 07-26 (94), 07-27 (92), 07-28 (94), 07-29 (92), 07-30 (95), 07-31 (92), 08-01 (92); norm 1 of 28 days |
+| 8 | US | 2016-07-13 to 2016-07-13 (1) | 2016-07-13 | 2.72 | – | fails: incomplete: 07-11 (95) |
+| 9 | FR | 2026-10-24 to 2026-10-25 (2) | 2026-10-24 | 2.78 | 2.70 | confirmed, position 4 |
+| 10 | FR | 2020-11-01 to 2020-11-03 (3) | 2020-11-03 | 2.80 | – | fails: incomplete: 10-27 (44), 10-28 (46), 10-29 (36), 10-30 (23), 10-31 (21), 11-01 (38), 11-02 (46), 11-03 (30); norm 1 of 28 days |
+| 11 | DE | 2020-08-08 to 2020-08-08 (1) | 2020-08-08 | 2.83 | 2.74 | fails: 3 of 7 elevated days |
+| 12 | JP | 2021-02-10 to 2021-02-13 (4) | 2021-02-10 | 2.89 | 2.87 | confirmed, position 5 |
+| 13 | DE | 2020-06-07 to 2020-06-07 (1) | 2020-06-07 | 3.01 | 2.94 | confirmed, position 6 |
+| 14 | FR | 2023-03-18 to 2023-03-19 (2) | 2023-03-19 | 3.04 | – | fails: incomplete: 03-12 (95), 03-14 (94), 03-16 (95), 03-19 (95) |
+| 15 | PL | 2016-03-17 to 2016-03-17 (1) | 2016-03-17 | 3.10 | – | fails: incomplete: 03-12 (95), 03-13 (95) |
+| 16 | KR | 2016-07-17 to 2016-07-19 (2) | 2016-07-19 | 3.16 | – | fails: incomplete: 07-18 (95) |
+| 17 | US | 2025-06-13 to 2025-06-13 (1) | 2025-06-13 | 3.31 | – | fails: incomplete: 06-12 (87) |
+| 18 | KR | 2020-08-21 to 2020-08-21 (1) | 2020-08-21 | 3.36 | – | fails: incomplete: 08-14 (95) |
+| 19 | FR | 2024-05-02 to 2024-05-05 (3) | 2024-05-03 | 3.41 | 3.42 | confirmed, position 7 |
+| 20 | US | 2017-08-17 to 2017-08-20 (4) | 2017-08-19 | 3.48 | – | fails: incomplete: 08-12 (90), 08-13 (93), 08-14 (91), 08-16 (94), 08-17 (92), 08-18 (93), 08-19 (92); norm 1 of 28 days |
+| 21 | FR | 2024-01-30 to 2024-02-04 (6) | 2024-02-04 | 3.50 | 3.46 | confirmed, position 8 |
+| 22 | PL | 2018-03-13 to 2018-03-15 (3) | 2018-03-15 | 3.67 | – | fails: incomplete: 03-08 (86), 03-09 (95), 03-11 (92), 03-12 (93), 03-13 (85), 03-14 (94), 03-15 (89); norm 1 of 28 days |
+| 23 | FR | 2018-11-22 to 2018-12-10 (12) | 2018-11-24 | 3.89 | 3.94 | confirmed, position 11 |
+| 24 | DE | 2018-09-02 to 2018-09-08 (5) | 2018-09-03 | 3.94 | 3.98 | confirmed, position 12 (**selected**) |
+| 25 | PL | 2017-07-23 to 2017-07-25 (3) | 2017-07-24 | 3.96 | – | fails: incomplete: 07-17 (90), 07-18 (89), 07-20 (93), 07-21 (87), 07-22 (91), 07-23 (93), 07-24 (91); norm 0 of 28 days |
+| 26 | GB | 2024-08-05 to 2024-08-11 (7) | 2024-08-08 | 3.97 | 3.72 | confirmed, position 9 |
+| 27 | FR | 2025-09-09 to 2025-09-11 (2) | 2025-09-11 | 4.02 | 3.98 | confirmed, position 13 |
+| 28 | JP | 2020-06-04 to 2020-06-07 (4) | 2020-06-07 | 4.05 | 3.91 | confirmed, position 10 |
+| 29 | PL | 2016-12-19 to 2016-12-19 (1) | 2016-12-19 | 4.18 | 4.75 | confirmed, position 16 |
+| 30 | PL | 2017-10-20 to 2017-10-21 (2) | 2017-10-20 | 4.28 | – | fails: incomplete: 10-13 (95), 10-14 (91), 10-15 (95), 10-16 (95), 10-17 (94), 10-18 (92), 10-19 (95); norm 1 of 28 days |
+| 31 | JP | 2023-08-25 to 2023-08-31 (6) | 2023-08-28 | 4.38 | 4.54 | confirmed, position 15 |
+| 32 | PL | 2020-08-11 to 2020-08-13 (2) | 2020-08-11 | 4.38 | 4.45 | confirmed, position 14 |
+| 33 | KR | 2024-02-25 to 2024-02-27 (3) | 2024-02-27 | 4.94 | 4.95 | confirmed, position 17 |
+| 34 | KR | 2015-11-20 to 2015-11-20 (1) | 2015-11-20 | 5.01 | – | fails: incomplete: 11-15 (95), 11-18 (95) |
+| 35 | JP | 2026-10-11 to 2026-10-11 (1) | 2026-10-11 | 5.34 | 5.60 | fails: norm protest 25 < 28 |
+| 36 | KR | 2016-11-03 to 2016-11-07 (4) | 2016-11-05 | 5.39 | – | fails: incomplete: 11-01 (95), 11-04 (95) |
+| 37 | JP | 2022-09-26 to 2022-09-28 (3) | 2022-09-28 | 5.54 | 5.36 | confirmed, position 19 |
+| 38 | FR | 2020-06-05 to 2020-06-13 (8) | 2020-06-08 | 5.56 | 5.41 | confirmed, position 20 |
+| 39 | KR | 2024-12-05 to 2024-12-14 (9) | 2024-12-10 | 5.73 | 5.42 | confirmed, position 21 |
+| 40 | FR | 2023-07-04 to 2023-07-07 (4) | 2023-07-05 | 5.80 | 5.25 | confirmed, position 18 |
+| 41 | PL | 2018-07-06 to 2018-07-09 (4) | 2018-07-08 | 5.90 | – | fails: incomplete: 07-01 (92), 07-02 (95), 07-03 (91), 07-04 (95), 07-05 (95), 07-06 (92), 07-07 (95), 07-08 (91); norm 3 of 28 days |
+| 42 | GB | 2020-06-05 to 2020-06-14 (9) | 2020-06-07 | 6.15 | 5.94 | confirmed, position 22 |
+| 43 | KR | 2020-06-07 to 2020-06-08 (2) | 2020-06-08 | 6.35 | 6.41 | confirmed, position 24 |
+| 44 | FR | 2026-10-04 to 2026-10-13 (9) | 2026-10-07 | 6.59 | 6.39 | confirmed, position 23 |
+| 45 | PL | 2020-10-29 to 2020-11-03 (5) | 2020-10-30 | 6.76 | – | fails: incomplete: 10-23 (30), 10-24 (33), 10-25 (46), 10-26 (44), 10-27 (44), 10-28 (46), 10-29 (36), 10-30 (23); norm 1 of 28 days |
+| 46 | PL | 2016-10-06 to 2016-10-10 (4) | 2016-10-07 | 6.79 | – | fails: incomplete: 10-04 (95) |
+| 47 | US | 2020-06-02 to 2020-06-09 (8) | 2020-06-05 | 10.81 | 10.53 | confirmed, position 25 |
+
+**Selection.** The 26 confirmed episodes, ordered by 2.0 peak ratio ascending, then date and ISO2, give a lower median at position `floor((26 - 1) / 2) = 12`: **DE, episode 2018-09-02 to 2018-09-08, peak day 2018-09-03**. Ratio 3.98: a week share of 4.06% (165 of 4,065 articles) against a norm share of 1.02% (114 of 11,172). Six of seven week days are at 2n or above. The current-day share is 5.12% (31 of 606). Binomial tail 3.1 × 10⁻⁴⁸. Every confirmed episode passes every registered threshold on the 2.0 rebuild, so the condition that the selected episode and every episode ranked above it confirm on 2.0 holds.
+
+### Episode manifest entry: P15b sustained unrest (amendment 1)
+
+| Anchor | Episode | Selection statistic | Candidates considered |
+|---|---|---|---|
+| Sustained unrest above norm | DE, capture clock 2018-09-03T23:59:59.999Z (cursor `20180903234500`, `nowMs` 1536019199999), from the GDELT 2.0 archive rebuild | week share / norm share = 0.04059 / 0.01020 = 3.98, the lower median (position 12) of 26 confirmed episodes | 48 screened episodes in the table above; 26 confirmed |
+
+- **Source.** GDELT 2.0 quarter-hour exports, each verified against the master list's size and MD5. Rebuilt by `scripts/cii-gdelt-archive-rebuild.mjs` and selected by `scripts/cii-unrest-episode-scan.mjs confirm`, with tools as of commit `98d61a1dff`.
+- **Dates.** Week 2018-08-27 to 2018-09-02. Current day 2018-09-03 (96 of 96 exports). Rule norm 2018-07-30 to 2018-08-26: 26 of 28 days complete, because 2018-08-10 has 94 exports and 2018-08-21 has 88. The scorer baseline covers 2018-08-05 to 2018-09-01 at that clock, 26 days, with `baselineReady`.
+- **Copied magnitudes, exactly as recorded** (`summarizeCountryEvents` for DE at that clock, coded articles per day):
+  - GDELT protest current 31 against median 4.
+  - Conflict current 78 against median 43.5.
+  - Week of 4,065 articles: 454 conflict-coded and 165 protest-coded.
+
+  Applied to each of DE, FR, GB, JP, KR, PL and US. Strike days are not copied, and other evidence stays at zero. The AE9 check repeats this week's level for eight weeks with current equal to median.
+- **Replaces** the KR 2026-11-13T0952Z episode in the frozen U18 manifest for the next study's registration. The U18 manifest itself stays as frozen.
+
 ## Frozen inputs (2026-11-15, before any candidate evaluation)
 
 Frozen at `cii-v15@b28c37a312` after the second U21 capture landed (#10618). Nothing in this section was chosen after a candidate score was computed; this commit precedes every candidate result.
