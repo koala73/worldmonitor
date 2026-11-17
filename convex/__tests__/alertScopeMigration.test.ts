@@ -183,7 +183,127 @@ describe("alert scope notice", () => {
     expect(scoped.html).toContain(`href="${ALERT_SETTINGS_URL}"`);
     const none = alertScopeNoticeContent([]);
     expect(none.subject).toBe("Add countries to keep getting local alerts");
-    expect(none.text).toContain("global critical events only");
+    // Opt-in alerts (chokepoints, watchlist, sites, reservoirs) still arrive
+    // without countries, so the copy must not promise "global critical only".
+    expect(none.text).toContain("global critical events, plus any opt-in alerts you turned on");
+    expect(none.text).not.toContain("global critical events only");
+  });
+
+  // Same frame as the relay's alert emails (scripts/lib/notification-email-html.cjs).
+  test("uses the designed email frame, with the countries as chips and a button", () => {
+    const { html } = alertScopeNoticeContent(["UA", "IL"]);
+    expect(html).toMatch(/^<!DOCTYPE html>/);
+    expect(html).toContain("android-chrome-192x192.png");
+    expect(html).toContain("WORLD MONITOR");
+    expect(html).toContain("background: #4ade80; height: 3px;");
+    expect(html).toMatch(/<span[^>]*>Ukraine<\/span>/);
+    expect(html).toMatch(/<span[^>]*>Israel<\/span>/);
+    expect(html).toMatch(new RegExp(`<a href="${ALERT_SETTINGS_URL.replace(/[?.]/g, "\\$&")}"[^>]*background: #4ade80[^>]*>Edit your countries</a>`));
+    expect(html).not.toMatch(/<style/i);
+    expect(html).not.toMatch(/display:\s*flex/);
+    const none = alertScopeNoticeContent([]).html;
+    expect(none).toContain("WORLD MONITOR");
+    expect(none).toMatch(/>Choose your countries<\/a>/);
+  });
+
+  // The relay's free ladder (freeTierCountryScope) delivers nothing on a free
+  // rule with no countries: no global critical events, no opt-in alerts.
+  test("tells a free account with no countries that realtime alerts are off until they choose some", () => {
+    const free = alertScopeNoticeContent([], { requireCountryScope: true, maxCountries: 3 });
+    expect(free.subject).toBe("Choose countries to turn realtime alerts back on");
+    expect(free.text).toContain("off until you choose up to 3 countries");
+    expect(free.text).not.toContain("opt-in");
+    expect(free.text).not.toContain("still reach you wherever they happen");
+    expect(free.html).toContain("WORLD MONITOR");
+    expect(free.html).toMatch(/>Choose your countries<\/a>/);
+    // A free account that was scoped gets the scoped copy: global critical
+    // events do reach a free rule with countries.
+    const freeScoped = alertScopeNoticeContent(["UA"], { requireCountryScope: true, maxCountries: 3 });
+    expect(freeScoped.text).toContain("still reach you wherever they happen");
+  });
+
+  test("sends the free-account copy to a free user and the paid copy to a paid one", async () => {
+    const t = convexTest(schema, modules);
+    await seedRule(t, "free1");
+    await makePro(t, "pro1");
+    await seedRule(t, "pro1");
+    await migrate(t, false);
+    await seedCustomer(t, "free1", "free@example.com");
+    await seedCustomer(t, "pro1", "pro@example.com");
+    process.env.RESEND_API_KEY = "test-key";
+    const bodies: any[] = [];
+    globalThis.fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ id: "msg_1" }), { status: 200 });
+    }) as any;
+
+    await t.action(fns.sendAlertScopeNotices, { live: true });
+    const byTo = new Map(bodies.map((b) => [b.to[0], b]));
+    expect(byTo.get("free@example.com").text).toContain("off until you choose up to 3 countries");
+    expect(byTo.get("free@example.com").text).not.toContain("opt-in");
+    expect(byTo.get("pro@example.com").text).toContain("plus any opt-in alerts you turned on");
+  });
+
+  async function sendAll(t: T) {
+    process.env.RESEND_API_KEY = "test-key";
+    const bodies: any[] = [];
+    globalThis.fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ id: "msg_1" }), { status: 200 });
+    }) as any;
+    await t.action(fns.sendAlertScopeNotices, { live: true });
+    return bodies;
+  }
+
+  // The free ladder gates each rule on its own countries, so a scoped rule on
+  // another variant still delivers: the notice must not say all alerts are off.
+  test("does not tell a free user all alerts are off while another rule still lists countries", async () => {
+    const t = convexTest(schema, modules);
+    await seedRule(t, "free1");
+    await seedRule(t, "free1", { variant: "tech", countries: ["UA"] });
+    await migrate(t, false);
+    await seedCustomer(t, "free1", "free@example.com");
+
+    const [body] = await sendAll(t);
+    expect(body.text).not.toContain("so yours are off");
+    expect(body.text).toContain("alerts that list no countries are off until you choose up to 3 countries");
+    expect(body.text).toContain("Alerts that already list countries keep working.");
+  });
+
+  // Countries chosen between the migration and the send win over the
+  // migration-time snapshot, so the email never describes a state that is gone.
+  test("describes the rule's current countries, not the migration-time snapshot", async () => {
+    const t = convexTest(schema, modules);
+    const ruleId = await seedRule(t, "free1");
+    await migrate(t, false);
+    await t.run(async (ctx) => ctx.db.patch(ruleId as any, { countries: ["IL"] }));
+    await seedCustomer(t, "free1", "free@example.com");
+
+    const [body] = await sendAll(t);
+    expect(body.subject).toBe("Your realtime alerts now follow your countries");
+    expect(body.text).toContain("Israel");
+    expect(body.text).not.toContain("off until");
+  });
+
+  // freeTierCountryScope delivers a free rule only within its first 3
+  // countries, so a lapsed account's notice names only those.
+  test("names only the countries the free ladder delivers after a plan lapses", async () => {
+    const t = convexTest(schema, modules);
+    const ruleId = await seedRule(t, "lapsed1");
+    await migrate(t, false);
+    await t.run(async (ctx) => ctx.db.patch(ruleId as any, { countries: ["UA", "IL", "FR", "DE", "JP"] }));
+    await seedCustomer(t, "lapsed1", "lapsed@example.com");
+
+    const [body] = await sendAll(t);
+    expect(body.text).toContain("Ukraine, Israel, France.");
+    expect(body.text).not.toContain("Germany");
+    expect(body.text).not.toContain("Japan");
+  });
+
+  test("escapes a country name that is not a known region code", () => {
+    const { html } = alertScopeNoticeContent(["<b>"]);
+    expect(html).not.toContain("<b>");
+    expect(html).toContain("&lt;b&gt;");
   });
 
   test("is a dry run unless live, and sends nothing", async () => {

@@ -130,8 +130,9 @@ export default async function handler(
     throw err;
   }
 
-  // Optional localized sibling; a failed read falls back to canonical but is
-  // not cached, so the localized image is served once the read recovers.
+  // Optional localized sibling. A failed read, or a sibling that was read but
+  // rejected (stale mid-regeneration, or invalid), falls back to canonical
+  // without caching it, so the localized image is served once it is valid.
   let siblingReadFailed = false;
   const siblingPromise = readRawJsonFromUpstash(briefLocalizedKey(userId, issueDate), 3_000, true)
     .catch(() => {
@@ -149,7 +150,10 @@ export default async function handler(
     return jsonError('service_unavailable', 503, cors);
   }
   if (!envelope) return jsonError('not_found', 404, cors);
-  envelope = selectBriefEnvelope(envelope, await siblingPromise);
+  const sibling = await siblingPromise;
+  const canonicalEnvelope = envelope;
+  envelope = selectBriefEnvelope(canonicalEnvelope, sibling);
+  const cacheable = !siblingReadFailed && (sibling == null || envelope !== canonicalEnvelope);
 
   // @vercel/og sets Cache-Control to
   // `public, immutable, no-transform, max-age=31536000` and extraHeaders
@@ -167,9 +171,9 @@ export default async function handler(
       // ImageResponse doesn't expose a HEAD mode, so echo the status
       // and headers without the body. Telegram's preflight + CDN
       // validation both respect this.
-      return withCacheControl(response, null, !siblingReadFailed);
+      return withCacheControl(response, null, cacheable);
     }
-    return withCacheControl(response, response.body, !siblingReadFailed);
+    return withCacheControl(response, response.body, cacheable);
   } catch (err) {
     // AbortSignal.timeout / AbortController.abort firing somewhere inside
     // `renderCarouselImageResponse` (remote image fetch, font load, OG

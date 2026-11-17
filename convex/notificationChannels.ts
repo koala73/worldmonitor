@@ -13,6 +13,7 @@ import { channelTypeValidator } from "./constants";
 import { requireVerifiedAccountEmail, lookupVerifiedAccountEmail } from "./lib/notificationEmail";
 import { deliveryResultValidator, isDeliveryError } from "./lib/notificationDelivery";
 import { sendResendEmail } from "./lib/resendEmail";
+import { EMAIL_RED, emailButton, emailCard, emailFactRow, emailFacts, emailFrame, emailHeading, emailParagraph, escapeEmailHtml } from "../shared/email-frame";
 import { assertAlertCapabilities, loadAlertCapabilities } from "./lib/alertCapabilities";
 
 type ChannelType = Infer<typeof channelTypeValidator>;
@@ -670,6 +671,26 @@ async function applyDeliveryResult(ctx: MutationCtx, { userId, channelType, deli
   }
 }
 
+const NOTIFICATION_SETTINGS_URL = "https://www.worldmonitor.app/dashboard?settings=notifications";
+
+/** The channel-disabled notice, plain text and HTML. Exported for tests. */
+export function disabledChannelNotice(args: { channelType: string; error: string; firstFailedAt: number }): { text: string; html: string } {
+  const started = new Date(args.firstFailedAt).toISOString();
+  const headline = `Your ${args.channelType} notification channel was disabled after delivery failures.`;
+  const text = `${headline}\n\nError: ${args.error}\nFailures started: ${started}\n\nUpdate and save your channel to resume notifications:\n${NOTIFICATION_SETTINGS_URL}`;
+  const html = emailFrame({
+    preheader: headline,
+    kicker: "Alert settings",
+    accent: EMAIL_RED,
+    bodyHtml: `${emailHeading("Notification channel disabled", escapeEmailHtml(headline))}
+      ${emailCard(emailFacts(emailFactRow("Channel", escapeEmailHtml(args.channelType)) + emailFactRow("Error", escapeEmailHtml(args.error)) + emailFactRow("Failing since", escapeEmailHtml(started))), { label: "Delivery failures", color: EMAIL_RED })}
+      ${emailParagraph("Update and save your channel to resume notifications.")}
+      ${emailButton(NOTIFICATION_SETTINGS_URL, "Fix your channel")}`,
+    footerNote: "You're receiving this because notifications are on for your account.",
+  });
+  return { text, html };
+}
+
 export const sendDisabledChannelNotice = internalAction({
   args: {
     userId: v.string(), channelType: channelTypeValidator, firstFailedAt: v.number(),
@@ -683,11 +704,11 @@ export const sendDisabledChannelNotice = internalAction({
       if (!email) return;
       const apiKey = process.env.RESEND_API_KEY;
       if (!apiKey) throw new Error("EMAIL_UNAVAILABLE");
-      const text = `Your ${args.channelType} notification channel was disabled after delivery failures.\n\nError: ${args.error}\nFailures started: ${new Date(args.firstFailedAt).toISOString()}\n\nUpdate and save your channel to resume notifications:\nhttps://www.worldmonitor.app/dashboard?settings=notifications`;
+      const { text, html } = disabledChannelNotice(args);
       await sendResendEmail(ctx, {
         apiKey, from: process.env.RESEND_FROM ?? "WorldMonitor <notifications@worldmonitor.app>",
         to: email, subject: "WorldMonitor notification channel disabled",
-        text, html: `<p>${text.replace(/\n/g, "<br>")}</p>`, purpose: "transactional",
+        text, html, purpose: "transactional",
         idempotencyKey: `channel-disabled-${args.noticeId}`,
       });
     } catch {

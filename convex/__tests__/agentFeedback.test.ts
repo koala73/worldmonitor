@@ -55,6 +55,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// Owner emails use the WorldMonitor frame (shared/email-frame.ts), not a bare page.
+function expectFrame(html: string): void {
+  expect(html).toMatch(/^<!DOCTYPE html>/);
+  expect(html).toContain("WORLD MONITOR");
+  expect(html).toContain("android-chrome-192x192.png");
+  expect(html).toContain(">Ops alert</span>");
+  expect(html).not.toContain("font-family: monospace; padding: 20px;");
+}
+
 describe("submit", () => {
   test("inserts a received row and returns its id", async () => {
     const t = convexTest(schema, modules);
@@ -218,6 +227,7 @@ describe("security reports", () => {
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(bodies).toHaveLength(1);
     expect(bodies[0]).toContain(reportId);
+    expectFrame(JSON.parse(bodies[0]).html);
     for (const text of ["SECRET-SUMMARY-TEXT", "SURFACE-LABEL", "SECRET-EXPECTED"]) {
       expect(bodies[0]).not.toContain(text);
     }
@@ -268,6 +278,7 @@ describe("security reports", () => {
     expect(bodies[0]).not.toContain(ids.bug);
     expect(bodies[0]).not.toContain(ids.closed);
     expect(bodies[0]).not.toContain("DIGEST-SECRET");
+    expectFrame(JSON.parse(bodies[0]).html);
 
     // Marked rows are not listed again, and an empty digest sends nothing.
     expect(await t.action(internal.agentFeedback.sendSecurityDigest, {})).toEqual({ listed: 0 });
@@ -343,6 +354,7 @@ describe("feedback digest", () => {
     expect(bodies).toHaveLength(1);
     expect(subject(bodies[0])).toBe("[WM] Agent feedback: 4 new report(s)");
     const body = html(bodies[0]);
+    expectFrame(body);
     expect(body).toContain("<td>bug</td><td>2</td>");
     expect(body).toContain("<td>data_quality</td><td>1</td>");
     expect(body).toContain("<td>missing_capability</td><td>1</td>");
@@ -409,8 +421,8 @@ describe("feedback digest", () => {
     });
     expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: FEEDBACK_DIGEST_TEXT_ROWS });
     const body = html(bodies[0]);
-    // Report blocks fit the budget; the fixed header and footer add a few KB.
-    expect(new TextEncoder().encode(body).length).toBeLessThan(FEEDBACK_DIGEST_TEXT_BYTES + 4_000);
+    // Report blocks fit the budget; the fixed email frame, tables and notes add about 5 KB.
+    expect(new TextEncoder().encode(body).length).toBeLessThan(FEEDBACK_DIGEST_TEXT_BYTES + 6_000);
     const shown = (body.match(/<b>Summary:<\/b>/g) ?? []).length;
     expect(shown).toBeGreaterThan(0);
     expect(shown).toBeLessThan(FEEDBACK_DIGEST_TEXT_ROWS);

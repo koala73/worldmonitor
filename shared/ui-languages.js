@@ -49,3 +49,23 @@ export function resolveBriefLanguage(input) {
   if (isUiLanguage(input?.uiLanguage)) return /** @type {string} */ (input.uiLanguage);
   return 'en';
 }
+
+/** Refused even when allowlisted until right-to-left layout ships (l10n PR 6). */
+export const BRIEF_L10N_GATED_LANGS = Object.freeze(['ar', 'fa']);
+
+/**
+ * Languages the daily brief is delivered in now. The Convex deployment's
+ * BRIEF_L10N_ENABLED ('1' = on) and BRIEF_L10N_LANGS (comma-separated
+ * allowlist) are the only switch: the Settings page and the digest cron
+ * both read this list, so the page never promises a language the cron skips.
+ * English, unknown codes and gated languages are dropped; order follows
+ * UI_LANGUAGES.
+ *
+ * @param {{ BRIEF_L10N_ENABLED?: string; BRIEF_L10N_LANGS?: string } | undefined} env
+ * @returns {string[]}
+ */
+export function briefL10nDeliverableLanguages(env) {
+  if (env?.BRIEF_L10N_ENABLED !== '1') return [];
+  const listed = new Set(String(env.BRIEF_L10N_LANGS ?? '').split(',').map((s) => s.trim()));
+  return UI_LANGUAGES.filter((lang) => lang !== 'en' && listed.has(lang) && !BRIEF_L10N_GATED_LANGS.includes(lang));
+}

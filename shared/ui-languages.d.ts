@@ -7,3 +7,7 @@ export const UI_LANGUAGE_NAMES: Readonly<Record<UiLanguage, string>>;
 export function isUiLanguage(value: unknown): value is UiLanguage;
 /** override ?? explicit UI choice ?? 'en'. Unknown values are ignored. */
 export function resolveBriefLanguage(input: { uiLanguage?: string | null; briefLanguage?: string | null }): UiLanguage;
+/** Brief languages refused until right-to-left layout ships. */
+export const BRIEF_L10N_GATED_LANGS: readonly string[];
+/** Languages the brief is delivered in now, from the Convex BRIEF_L10N_ENABLED / BRIEF_L10N_LANGS env. */
+export function briefL10nDeliverableLanguages(env: { BRIEF_L10N_ENABLED?: string; BRIEF_L10N_LANGS?: string } | undefined): UiLanguage[];

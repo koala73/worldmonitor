@@ -95,3 +95,15 @@ export const SUPPORTED_ENVELOPE_VERSIONS = new Set([1, 2, 3, 4, 5]);
 export function briefLocalizedKey(userId, issueSlot) {
   return `brief:l10n:${userId}:${issueSlot}`;
 }
+
+/**
+ * Redis key of the per-user index of issue slots (ZSET, member = slot,
+ * score = write time in ms). Account deletion reads it to delete every
+ * slot's canonical and localized envelope, not only the latest one.
+ *
+ * @param {string} userId
+ * @returns {string}
+ */
+export function briefSlotsKey(userId) {
+  return `brief:slots:${userId}`;
+}

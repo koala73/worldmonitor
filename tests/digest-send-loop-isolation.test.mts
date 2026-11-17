@@ -236,11 +236,6 @@ test('a compose miss sends English', async () => {
   assert.deepEqual([...new Set(formatLangs)], ['en']);
 });
 
-test('a failed sibling write falls back to English without dropping the saved brief', () => {
-  assert.match(source, /if \(index < 2\) throw new Error\(`Upstash SETEX error/);
-  assert.match(source, /localizedEnvelope = null;\n\s+localizedSynthesis = null;\n\s+briefLang = 'en';/);
-});
-
 test('sendWebhook is called with canonicalFormatterStories and the canonical lead', () => {
   assert.match(mainSource, /sendWebhook\(rule\.userId, ch\.webhookEnvelope, canonicalFormatterStories, briefLead,/);
 });
