@@ -115,6 +115,11 @@ describe('publisher-families map data', () => {
     // Cross-host families are legitimate but must be deliberate, so each one is
     // named with the reason it spans hosts.
     const CROSS_HOST_FAMILIES = {
+      matichon: 'Khaosod and Matichon share Matichon Group: https://www.khaosod.co.th/about-us',
+      "n1-danas": "Common publisher group across its news brands: https://n1info.rs/english/news/united-media-takes-over-belgarde-danas-daily/",
+      "alpha-media-zimbabwe": "Common publisher group across its news brands: https://www.newsday.co.zw/theindependent/terms-and-conditions",
+      "rjr-gleaner": "Common publisher group across its news brands: https://rjrgleanergroup.com/about/",
+      "guardian-media-tt": "Common publisher group across its news brands: https://guardianmedia.co.tt/about-us/",
       bbc: 'feeds.bbci.co.uk for the English editions, bbc.com for Afrique/Mundo',
       dw: 'rss.dw.com feed subdomain alongside dw.com — one Deutsche Welle newsroom',
       bloomberg: 'bloomberg.com plus tier-only "Bloomberg" and a Google News keyword feed',
@@ -129,6 +134,8 @@ describe('publisher-families map data', () => {
       ndtv: 'both labels arrive via feedburner, which identifies no publisher',
       pivot: 'one show across a tier-only label and a megaphone.fm feed',
       'sightline-media': 'defensenews.com and militarytimes.com — two Sightline Media Group titles, one owner',
+      aljazeera: 'Arabic and English services of the Al Jazeera Media Network',
+      rferl: 'Language services of Radio Free Europe/Radio Liberty',
       'grupo-globo': 'g1.globo.com and oglobo.globo.com are Grupo Globo titles under one owner',
     };
 
@@ -252,10 +259,11 @@ describe('publisher-families map data', () => {
       }
       // These single-source families unify RSS labels with URL-only country
       // evidence. Without the mapping, the same publisher could corroborate itself.
-      if (familyId === 'deutschlandradio' || familyId === 'zdf') {
+      if (entry.labels.length === 1 && PUBLISHER_FAMILY_DOMAIN_TABLE[familyId]?.length) {
         assert.equal(entry.labels.length, 1);
-        const domain = familyId === 'deutschlandradio' ? 'deutschlandfunk.de' : 'zdfheute.de';
-        assert.equal(publisherFamilyForDomain(domain), publisherFamilyFor(entry.labels[0]));
+        for (const domain of PUBLISHER_FAMILY_DOMAIN_TABLE[familyId]) {
+          assert.equal(publisherFamilyForDomain(domain), publisherFamilyFor(entry.labels[0]));
+        }
         continue;
       }
       assert.ok(
@@ -387,4 +395,9 @@ describe('publisher-families resolution', () => {
     assert.equal(countPublisherFamilies('Reuters World'), 0);
     assert.deepEqual([...publisherFamiliesFor(undefined)], []);
   });
+});
+
+it('counts Matichon and Khaosod English as one publisher', () => {
+  assert.equal(publisherFamilyFor('Matichon'), publisherFamilyFor('Khaosod English'));
+  assert.equal(countPublisherFamilies(['Matichon', 'Khaosod English']), 1);
 });

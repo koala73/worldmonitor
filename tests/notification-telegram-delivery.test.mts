@@ -62,7 +62,8 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
       sends.push(JSON.parse(String(init?.body)));
       return Response.json({ ok: true });
     };
-    await relay.processEvent({ eventType: 'market_alert', severity: 'critical', payload: { title: 'Synthetic alert' } });
+    // A market-wide move is a global event (#10873), so it reaches this unscoped rule.
+    await relay.processEvent({ eventType: 'market_alert', severity: 'critical', payload: { title: 'Synthetic alert', assetClass: 'commodity', symbol: 'CL=F' } });
     assert.equal(reads, 1);
     assert.equal(sends.length, proof === 'verified' ? 1 : 0);
     if (sends.length) assert.equal(sends[0].chat_id, '12345');

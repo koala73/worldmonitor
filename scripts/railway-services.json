@@ -256,6 +256,8 @@
       "scripts/lib/llm-model-policy.cjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/notification-delivery.cjs",
+      "scripts/lib/notification-delivery-tiers.cjs",
+      "scripts/lib/notification-publish-policy.cjs",
       "scripts/lib/notification-teams.cjs",
       "scripts/lib/notification-webhook-signing.cjs",
       "scripts/lib/notification-webhook-ssrf.cjs",

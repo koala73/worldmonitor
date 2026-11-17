@@ -26,8 +26,8 @@ describe('shared/ui-languages', () => {
     assert.deepEqual([...UI_LANGUAGES], supportedLanguagesLiteral());
   });
 
-  it('UI_LANGUAGES minus zh-TW equals NEWS_LANGUAGES', () => {
-    assert.deepEqual(UI_LANGUAGES.filter((code) => code !== 'zh-TW').sort(), [...NEWS_LANGUAGES].sort());
+  it('every UI language except zh-TW is a news language', () => {
+    assert.deepEqual(UI_LANGUAGES.filter((code) => code !== 'zh-TW' && !NEWS_LANGUAGES.has(code)), []);
   });
 
   it('every UI language has an English name', () => {

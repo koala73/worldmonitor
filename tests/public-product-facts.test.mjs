@@ -451,8 +451,8 @@ describe('public product facts generation contract', () => {
     const providers = `${stats.providerCount} attributed providers`;
     const hosts = `${stats.activeHosts} observed source hosts`;
     const surfaces = [
-      ['index.html', [`${stats.feedHosts} news and OSINT feeds from ${providers} across ${hosts}`]],
-      ['docs/about.mdx', [`${stats.feedHosts} news and OSINT feeds from ${providers}`, `all ${providers}`]],
+      ['index.html', [`${stats.feedHosts} news and OSINT feed hosts from ${providers} across ${hosts}`]],
+      ['docs/about.mdx', [`${stats.feedHosts} news and OSINT feed hosts from ${providers}`, `all ${providers}`]],
       ['ARCHITECTURE.md', [hosts]],
       ['public/llms-full.txt', [`${providers} across ${hosts}`]],
       ['blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', [`${providers} across ${hosts}`]],

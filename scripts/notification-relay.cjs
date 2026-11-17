@@ -40,6 +40,7 @@ const {
 const { COMPARE_AND_DELETE_SCRIPT } = require('./shared/compare-and-delete-script.cjs');
 const { ORBITAL_SITE_EVENT_TYPES } = require('./lib/orbital-site-alerts.cjs');
 const { RESERVOIR_ALERT_EVENT_TYPE, reservoirAlertDecision } = require('./lib/reservoir-level-alerts.cjs');
+const { TIER_GLOBAL, TIER_OPT_IN, resolveDeliveryTier } = require('./lib/notification-delivery-tiers.cjs');
 const {
   parseSuppressionEntries,
   isLinkSuppressed,
@@ -632,7 +633,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
   for (const ev of parsedEvents) {
     const pastLadder = !freeTierAllowsEvent(drainTier, ev.severity ?? 'high')
       || !freeTierAllowsEventType(drainTier, ev.eventType)
-      || (drainTier < 1 && (!drainScope.ok || !eventMatchesCountryScope(ev, { countries: drainScope.countries })));
+      || (drainTier < 1 && (!drainScope.ok || !eventMatchesDeliveryScope(ev, { countries: drainScope.countries })));
     if (pastLadder) { clampHeld.add(items[itemIndex.get(ev)]); continue; }
     if ((await suppressedLinksFor(ev, 1, 'stage=quiet-hours-drain')).length === 0) events.push(ev);
   }
@@ -1431,6 +1432,36 @@ function eventMatchesCountryScope(event, rule) {
   return rule.countries.includes(normalized);
 }
 
+/**
+ * Whether a rule's scope admits the event under its delivery tier (#10873,
+ * scripts/lib/notification-delivery-tiers.cjs):
+ *
+ *  - global: every rule, scoped or not, so a scoped rule now also receives a
+ *    market-wide crash or global shipping stress it used to drop as
+ *    unattributed.
+ *  - opt_in: country scope does not apply; the type's own scope gates
+ *    (tickers, chokepoints, watched sites, reservoirs) decide.
+ *  - local: only a rule that lists the event's country (or a member country
+ *    of its region). A rule with no countries no longer receives every local
+ *    event in the world, and an unattributed local event goes nowhere.
+ *
+ * Browser-submitted events (event.userId) are delivered only to their own
+ * submitter's rules and keep the legacy country semantics.
+ */
+function eventMatchesDeliveryScope(event, rule) {
+  if (event?.userId) return eventMatchesCountryScope(event, rule);
+  const { tier, country } = resolveDeliveryTier(event);
+  if (tier === TIER_GLOBAL || tier === TIER_OPT_IN) return true;
+  if (!Array.isArray(rule.countries) || rule.countries.length === 0) return false;
+  if (typeof event?.eventType === 'string' && event.eventType.startsWith('regional_')) {
+    return regionalEventMatchesCountryScope(event, rule);
+  }
+  const raw = country ?? event?.payload?.countryCode ?? event?.payload?.country ?? event?.country ?? null;
+  if (typeof raw !== 'string' || raw.trim().length === 0) return false;
+  const normalized = normalizeEventCountryCode(raw);
+  return normalized !== null && rule.countries.includes(normalized);
+}
+
 // ── Watchlist story alerts (#4922 item e / U3) ───────────────────────────────
 
 const WATCHLIST_STORY_EVENT_TYPE = 'watchlist_story_alert';
@@ -1462,7 +1493,13 @@ const OPT_IN_EVENT_TYPES = new Set([
   RESERVOIR_ALERT_EVENT_TYPE,
 ]);
 
+// Chokepoint corridor risk (#10873) rides the chokepoint_disruption opt-in and
+// its chokepoint list: it is about the same chokepoints, and the settings UI has
+// no separate row for it.
+const CORRIDOR_RISK_EVENT_TYPE = 'corridor_risk';
+
 function ruleMatchesEventType(rule, event) {
+  if (event?.eventType === CORRIDOR_RISK_EVENT_TYPE) return rule.eventTypes.includes(CHOKEPOINT_DISRUPTION_EVENT_TYPE);
   if (OPT_IN_EVENT_TYPES.has(event?.eventType)) return rule.eventTypes.includes(event.eventType);
   const broadcastTypes = rule.eventTypes.filter((t) => !OPT_IN_EVENT_TYPES.has(t));
   return broadcastTypes.length === 0 || broadcastTypes.includes(event.eventType);
@@ -1501,6 +1538,12 @@ function eventMatchesTickerScope(event, rule) {
  * choice. Every other event type passes through untouched.
  */
 function eventMatchesChokepointScope(event, rule) {
+  if (event?.eventType === CORRIDOR_RISK_EVENT_TYPE) {
+    // An event from before corridor_risk carried its chokepoint matches no rule.
+    const id = event?.payload?.chokepointId;
+    if (typeof id !== 'string' || !id) return false;
+    return !Array.isArray(rule.chokepoints) || rule.chokepoints.length === 0 || rule.chokepoints.includes(id);
+  }
   if (event?.eventType !== CHOKEPOINT_DISRUPTION_EVENT_TYPE) return true;
   if (!Array.isArray(rule.chokepoints) || rule.chokepoints.length === 0) return true;
   const chokepointId = event?.payload?.chokepointId;
@@ -2106,7 +2149,7 @@ async function processEventDelivery(event) {
     (!r.digestMode || r.digestMode === 'realtime') &&
     ruleMatchesEventType(r, event) &&
     shouldNotify(r, event) &&
-    eventMatchesCountryScope(event, r) &&
+    eventMatchesDeliveryScope(event, r) &&
     eventMatchesTickerScope(event, r) &&
     eventMatchesChokepointScope(event, r) &&
     eventMatchesOrbitalSiteScope(event, r) &&
@@ -2123,7 +2166,7 @@ async function processEventDelivery(event) {
     (!r.digestMode || r.digestMode === 'realtime') &&
     ruleMatchesEventType(r, event) &&
     shouldNotify(r, event) &&
-    !eventMatchesCountryScope(event, r) &&
+    !eventMatchesDeliveryScope(event, r) &&
     eventMatchesTickerScope(event, r) &&
     eventMatchesChokepointScope(event, r) &&
     eventMatchesOrbitalSiteScope(event, r) &&
@@ -2188,7 +2231,7 @@ async function processEventDelivery(event) {
     // its first entries — mirroring the write-path ladder. Runs before the
     // quiet-hours hold so held batches are scope-clamped at hold time too.
     const scope = freeTierCountryScope(userTier, rule.countries);
-    if (!scope.ok || (userTier < 1 && !eventMatchesCountryScope(event, { ...rule, countries: scope.countries }))) {
+    if (!scope.ok || (userTier < 1 && !eventMatchesDeliveryScope(event, { ...rule, countries: scope.countries }))) {
       freeScopeDrops += 1;
       continue;
     }
@@ -2417,6 +2460,7 @@ module.exports = {
   checkDedup,
   upstashDedupSetNx,
   eventMatchesCountryScope,
+  eventMatchesDeliveryScope,
   // Exported for tests: the link-suppression suite drives the real helpers
   // (not mirrors) so matcher drift fails the suite instead of the incident.
   eventLinks,
