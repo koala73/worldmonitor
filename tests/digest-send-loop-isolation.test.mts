@@ -43,6 +43,7 @@ function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = 
   const warnings: string[] = [];
   const lifecycle: string[] = [];
   const idempotencyKeys: string[] = [];
+  const formatLangs: string[] = [];
   const stories = [{
     severity: 'critical', phase: 'developing', title: 'Synthetic alert', description: 'Synthetic details.',
     link: 'https://example.com/1', sources: ['Synthetic wire'],
@@ -89,7 +90,7 @@ function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = 
     AI_DIGEST_ENABLED: false,
     selectDigestChannelContent,
     buildDigestDeliveryPlan: ({ rawStories }: any) => ({ formatterStories: rawStories, canonicalFormatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
-    formatDigest: () => 'Synthetic digest',
+    formatDigest: (_stories: unknown, _nowMs: number, _target: string, lang = 'en') => { formatLangs.push(lang); return 'Synthetic digest'; },
     renderDigestEmailHtml,
     briefIntlLocale, briefPlural, briefT, formatBriefDate, truncateForDisplay,
     buildChannelBodies: (lists: { plain: string }) => ({ text: lists.plain }),
@@ -103,7 +104,7 @@ function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = 
     },
     writeDigestLastRunMeta: async (meta: unknown) => { metadata.push(meta); lifecycle.push('metadata'); },
   });
-  return { run, delivered, metadata, exits, warnings, lifecycle, composedRules, idempotencyKeys };
+  return { run, delivered, metadata, exits, warnings, lifecycle, composedRules, idempotencyKeys, formatLangs };
 }
 
 // A paid user with no digest rule got no brief, and the dashboard said
@@ -229,9 +230,16 @@ test('the Resend key separates scheduled occurrences but not retries within an h
 // l10n PR 3 (#10884): a compose miss has no brief entry, so no localized
 // copy exists and the raw English stories ship.
 test('a compose miss sends English', async () => {
-  const { run, delivered } = runDigest({ failingUsers: new Set() , briefOnlyUserIds: [] });
+  const { run, delivered, formatLangs } = runDigest({ failingUsers: new Set() , briefOnlyUserIds: [] });
   await run();
   assert.ok(delivered.length > 0);
+  assert.ok(formatLangs.length > 0);
+  assert.deepEqual([...new Set(formatLangs)], ['en']);
+});
+
+test('a failed sibling write falls back to English without dropping the saved brief', () => {
+  assert.match(source, /if \(index < 2\) throw new Error\(`Upstash SETEX error/);
+  assert.match(source, /localizedEnvelope = null;\n\s+localizedSynthesis = null;\n\s+briefLang = 'en';/);
 });
 
 test('sendWebhook is called with canonicalFormatterStories and the canonical lead', () => {
@@ -253,7 +261,7 @@ test('the delivered-log loop iterates cooldownIterableStories', () => {
 
 test('the l10n call site sits after deriveThreadsFromOrderedStories and before the envelope SETEX', () => {
   const threadsIdx = source.indexOf('deriveThreadsFromOrderedStories(finalEnvelope.data.stories)');
-  const l10nIdx = source.indexOf('outcome = await localizeBrief(');
+  const l10nIdx = source.indexOf('await localizeBrief(');
   const setexIdx = source.indexOf("['SETEX', key, String(BRIEF_TTL_SECONDS), JSON.stringify(finalEnvelope)]");
   assert.ok(threadsIdx > 0 && l10nIdx > threadsIdx && setexIdx > l10nIdx);
 });

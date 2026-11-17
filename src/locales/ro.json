@@ -5899,7 +5899,9 @@
     "briefLanguage": {
       "label": "Limba rezumatului",
       "hint": "Rezumatul zilnic va fi scris în {{language}}.",
-      "sameAsApp": "La fel ca limba aplicației"
+      "sameAsApp": "La fel ca limba aplicației",
+      "loadFailed": "Încărcarea a eșuat",
+      "saveFailed": "Nu am putut salva. Încearcă din nou."
     }
   }
 }

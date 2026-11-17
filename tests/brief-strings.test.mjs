@@ -96,6 +96,9 @@ describe('briefT / briefPlural', () => {
     assert.equal(briefPlural('ru', 'teams.stories', 5), '5 новостей');
     assert.equal(briefPlural('ja', 'teams.stories', 1), '1 件のニュース');
     assert.equal(briefPlural('xx', 'teams.stories', 3), '3 stories');
+    // A non-plural key keeps its localized string.
+    assert.equal(briefPlural('fr', 'email.execSummary', 2), briefT('fr', 'email.execSummary'));
+    assert.notEqual(briefPlural('fr', 'email.execSummary', 2), briefT('en', 'email.execSummary'));
   });
 
   it('maps composer greetings to buckets', () => {

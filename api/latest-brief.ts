@@ -117,7 +117,7 @@ async function readBriefPreview(
   // brief:{userId}:{slot} and brief:latest:{userId} bare — read them raw in
   // every environment so preview resolves the real envelopes.
   // The localized sibling is optional: any failure falls back to canonical.
-  const siblingPromise = readRawJsonFromUpstash(briefLocalizedKey(userId, issueSlot), timeoutMs, true)
+  const siblingPromise = readRawJsonFromUpstash(briefLocalizedKey(userId, issueSlot), Math.min(timeoutMs, 3_000), true)
     .catch(() => null);
   const raw = await readRawJsonFromUpstash(`brief:${userId}:${issueSlot}`, timeoutMs, true);
   if (raw == null) return null;

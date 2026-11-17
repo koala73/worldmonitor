@@ -184,7 +184,7 @@ When an alert fires, registered webhook URLs receive:
   ```
   Each story's `corroboration` is the verdict the dashboard showed for it: `state` is `single-publisher`, `corroborated` or `tier4-only` (every publisher is a declared tier-4 aggregator or blog). It is omitted when unknown. Chat and email digests show it on each item as `Coverage: …`.
 
-  `lang` is the language of this payload. It is always `"en"`: webhooks carry the canonical English stories and summary even when the reader's email, chat and magazine brief are in another language.
+  `lang` is the language of this payload's brief text. It is always `"en"`: webhooks are never translated, so the summary and story text stay canonical even when the reader's email, chat and magazine brief are in another language. Story titles are the publishers' own headlines; a rule that follows non-English feeds (its `lang`) can carry headlines in that language.
 
 ### Signing secret
 

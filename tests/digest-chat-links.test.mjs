@@ -32,6 +32,9 @@ import { briefIntlLocale, briefPlural, briefT, formatBriefDate } from '../shared
 import { isRtlLanguage } from '../shared/ui-languages.js';
 import { truncateForDisplay } from '../shared/brief-text.js';
 
+// English dates are formatted in the host time zone; pin it so fixed-date assertions hold.
+process.env.TZ = 'UTC';
+
 const source = readFileSync(new URL('../scripts/seed-digest-notifications.mjs', import.meta.url), 'utf8');
 const parsed = ts.createSourceFile('digest.mjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
 function productionFunction(name) {

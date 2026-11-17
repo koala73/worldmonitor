@@ -813,6 +813,12 @@ describe('renderBriefMagazine — v4 clusterId field (Sprint 1 canonical contrac
     }
   });
 
+  it('localizes the threads page label for a private v5 envelope', () => {
+    const v5 = /** @type {any} */ ({ ...v4Envelope(), version: 5, lang: 'fr' });
+    assert.ok(renderBriefMagazine(v5).includes('<div class="label mono">Les fils du jour</div>'));
+    assert.ok(renderBriefMagazine(v4Envelope()).includes('<div class="label mono">Today\u2019s Threads</div>'));
+  });
+
   it('public mode renders English chrome even for a v5 envelope', () => {
     const v5 = /** @type {any} */ ({ ...v4Envelope(), version: 5, lang: 'fr' });
     const html = renderBriefMagazine(v5, { publicMode: true });

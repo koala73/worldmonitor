@@ -161,3 +161,12 @@ describe('briefFontPlatform', () => {
     it(`${expected} for ${ua || '(no user agent)'}`, () => assert.equal(briefFontPlatform(ua), expected));
   }
 });
+
+describe('brief font run collection', () => {
+  const runner = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../scripts/brief-fonts/run.mjs'), 'utf8');
+  it('reproduces CSS uppercase with the content language', () => {
+    assert.match(runner, /text\.toLocaleUpperCase\(locale\)/);
+    assert.equal('İstihbarat ılımlı'.toLocaleUpperCase('tr'), 'İSTİHBARAT ILIMLI');
+    assert.notEqual('İstihbarat ılımlı'.toUpperCase(), 'İSTİHBARAT ILIMLI');
+  });
+});

@@ -24,6 +24,8 @@ const USER_TTL_SEC = 8 * 60 * 60;
 /** Cache writes are best-effort; never let a slow Redis hold up the send loop. */
 const CACHE_WRITE_BUDGET_MS = 2_000;
 const MIN_CHECKED_LENGTH = 20;
+/** Upper bound for a translated short label (category, tag, short headline). */
+const SHORT_SOURCE_MAX_LEN = 32;
 const MIN_RATIO = 0.2;
 const MAX_RATIO = 4;
 const MIN_SCRIPT_SHARE = 0.3;
@@ -122,10 +124,16 @@ function validTranslation(source, out, lang) {
   const text = out.trim();
   if (text.length === 0) return false;
   if (/[<>]/.test(text) || CONTROL_RE.test(text) || hasPromptMarker(text)) return false;
-  for (const url of source.match(URL_RE) ?? []) {
+  const sourceUrls = source.match(URL_RE) ?? [];
+  for (const url of sourceUrls) {
     if (!text.includes(url)) return false;
   }
-  if (source.length >= MIN_CHECKED_LENGTH) {
+  for (const url of text.match(URL_RE) ?? []) {
+    if (!sourceUrls.includes(url)) return false;
+  }
+  if (source.length < MIN_CHECKED_LENGTH) {
+    if (text.length > Math.max(SHORT_SOURCE_MAX_LEN, source.length * MAX_RATIO)) return false;
+  } else {
     const ratio = text.length / source.length;
     if (ratio < MIN_RATIO || ratio > MAX_RATIO) return false;
     if (!scriptShareOk(text, lang)) return false;
@@ -183,7 +191,8 @@ async function translateTexts(texts, { lang, deps, keyFor, callOpts }) {
     texts.map((text) => Promise.resolve().then(() => deps.cacheGet(keyFor(text))).catch(() => null)),
   );
   texts.forEach((text, i) => {
-    if (nonEmpty(hits[i])) result.set(text, hits[i]);
+    // Cached rows are model output shared across users; re-check them.
+    if (nonEmpty(hits[i]) && validTranslation(text, hits[i], lang)) result.set(text, hits[i]);
     else misses.push(text);
   });
   const stats = { hits: result.size, misses: misses.length, ms: 0 };
