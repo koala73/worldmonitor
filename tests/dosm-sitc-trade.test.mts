@@ -182,6 +182,19 @@ describe('GetMonthlySitcTrade OpenAPI contract', () => {
     assert.deepEqual(['0', '9', 'overall', '10', 'food'].filter((value) => pattern.test(value)), ['0', '9', 'overall']);
   });
 
+  it('publishes a complete, self-consistent 200 example for the documented request', () => {
+    const operation = spec.paths['/api/trade/v1/get-monthly-sitc-trade'].get;
+    const example = operation.responses['200'].content['application/json'].example;
+    const params = Object.fromEntries(operation.parameters.map((parameter: { name: string; example: unknown }) => [parameter.name, parameter.example]));
+    assert.equal(example.country, params.country);
+    assert.deepEqual(example.series.map((series: { section: string }) => series.section), params.sections);
+    assert.equal(example.series[0].months.length, params.months);
+    assert.equal(example.series[0].months.at(-1).month, example.latestMonth);
+    assert.equal(example.upstreamUnavailable, false);
+    // The fetch must postdate the newest month it reports.
+    assert.ok(example.fetchedAt > Date.parse(`${example.latestMonth}-01T00:00:00Z`));
+  });
+
   it('carries the same bounds in the YAML spec', () => {
     const operation = yaml.slice(yaml.indexOf('operationId: GetMonthlySitcTrade'), yaml.indexOf('- name: jmespath', yaml.indexOf('operationId: GetMonthlySitcTrade')));
     assert.match(operation, /pattern: '\^\(\[0-9\]\|overall\)\$'\n\s+maxItems: 11/);

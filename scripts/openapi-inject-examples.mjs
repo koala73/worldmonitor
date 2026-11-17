@@ -248,10 +248,6 @@ function overrideStringExample(key, context = {}) {
   if (where.includes('getmonthlysitctrade') || where.includes('get-monthly-sitc-trade')) {
     if (key === 'country') return 'MY';
     if (key === 'sections') return '0';
-    // Response: DOSM publishes ringgit values and 2010-based indices.
-    if (key === 'currency') return 'MYR';
-    if (key === 'indexbase') return '2010=100';
-    if (key === 'latestmonth' || key === 'latestindexmonth' || key === 'month') return '2026-09';
   }
   // ListMediaPerspective validates codes, audiences and region slugs; the
   // heuristic's "example" values are rejected with HTTP 400.
@@ -1197,6 +1193,31 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
         sparklineIntervalSeconds: 300, sparklineStartAt: 1794290700000,
         priceBasis: 'futures', priceSource: 'Yahoo Finance', priceAt: 1794291360000,
       }],
+    };
+  }
+  // GetMonthlySitcTrade: the generic builder keeps only the alphabetically
+  // first optional fields, which leaves out `series` and the availability
+  // flags. Show the response to the documented request (MY, section 0, one
+  // month) with DOSM fixture values; indices lag trade, so September has none.
+  if (depth === 0 && context.operationId === 'GetMonthlySitcTrade'
+    && context.exampleSurface === 'response') {
+    return {
+      country: 'MY',
+      currency: 'MYR',
+      source: 'DOSM Monthly Trade by SITC Section',
+      sourceUrl: 'https://open.dosm.gov.my/data-catalogue/trade_sitc_1d',
+      indexBase: '2010=100',
+      latestMonth: '2026-09',
+      latestIndexMonth: '2026-08',
+      fetchedAt: 1794902400000,
+      series: [{
+        section: '0',
+        label: 'Food',
+        months: [{ month: '2026-09', exports: 4834780427, imports: 7086989476 }],
+      }],
+      // A served response leaves unavailableReason at its zero value, which
+      // examples never show (see GetTradeFlows above).
+      upstreamUnavailable: false,
     };
   }
   if (depth === 0 && context.operationId === 'GetWebcamImage'

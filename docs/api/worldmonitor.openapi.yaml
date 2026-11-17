@@ -37283,9 +37283,20 @@ paths:
                             example:
                                 "country": "MY"
                                 "currency": "MYR"
-                                "fetchedAt": 1717200000000
+                                "fetchedAt": 1794902400000
                                 "indexBase": "2010=100"
-                                "latestIndexMonth": "2026-09"
+                                "latestIndexMonth": "2026-08"
+                                "latestMonth": "2026-09"
+                                "series":
+                                    - "label": "Food"
+                                      "months":
+                                          - "exports": 4834780427
+                                            "imports": 7086989476
+                                            "month": "2026-09"
+                                      "section": "0"
+                                "source": "DOSM Monthly Trade by SITC Section"
+                                "sourceUrl": "https://open.dosm.gov.my/data-catalogue/trade_sitc_1d"
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_trade_v1_GetMonthlySitcTradeResponse'
                 "400":
