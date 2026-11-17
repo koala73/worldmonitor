@@ -103,12 +103,15 @@ export class PizzIntIndicator {
       return;
     }
 
-    const color = DEFCON_COLORS[this.status.defconLevel] || '#888';
+    // The relay keeps its last reading for up to 24h, marked stale. Without the
+    // level colour it cannot read as current; the footer gives its age.
+    const color = this.status.dataFreshness === 'fresh' ? DEFCON_COLORS[this.status.defconLevel] || '#888' : '';
     defconEl.textContent = t('components.pizzint.defcon', { level: String(this.status.defconLevel) });
     defconEl.style.background = color;
+    defconEl.style.color = '';
     // Black on every DEFCON hue clears WCAG AA 4.5:1 (green #2d8a6e→4.97:1,
     // blue #00aaff→8.2:1); white failed on levels 4–5 (4.22:1 / 2.56:1).
-    defconEl.style.color = '#000';
+    if (color) defconEl.style.color = '#000';
 
     labelEl.textContent = this.getDefconLabel(this.status.defconLevel);
     labelEl.style.color = color;

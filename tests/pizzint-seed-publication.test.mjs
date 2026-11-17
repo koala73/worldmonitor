@@ -21,9 +21,9 @@ const validResponse = { success: true, data: [{
   percentage_of_usual: 150, data_freshness: 'fresh', recorded_at: '2026-09-25T11:39:00Z',
 }] };
 
-function harness() {
+function harness(now = 1_790_335_140_000) {
   const state = {
-    source: validResponse, writes: [], warnings: [], logs: [], cache: new Map(), now: 1_790_335_140_000, failPayload: false,
+    source: validResponse, writes: [], warnings: [], logs: [], cache: new Map(), now, failPayload: false,
     urls: [], gdelt: { ok: true, status: 200, json: async () => ({}) },
     env: {}, besttime: new Map(), besttimeCalls: [], historyCalls: [], failHistory: false, historyError: null,
     timeouts: [], besttimeGate: null,
@@ -135,13 +135,19 @@ const liveReading = (live, forecast, extra = {}) => ({
 
 const payloadKey = 'intelligence:pizzint:seed:v1';
 const metaKey = 'seed-meta:intelligence:pizzint';
+// The stored envelope after a poll with nothing new: the same reading, marked stale.
+const keptStale = (entry) => {
+  const kept = structuredClone(entry.data);
+  kept.data.pizzint.dataFreshness = 'DATA_FRESHNESS_STALE';
+  return kept;
+};
 
 for (const [reason, response] of [
   ['unsuccessful_response', { success: false, data: [] }],
   ['non_array_data', { success: true, data: { token: 'synthetic-secret' } }],
   ['empty_array', { success: true, data: [] }],
 ]) {
-  test(`classifies ${reason} without logging response content or changing publication`, async () => {
+  test(`classifies ${reason} without logging response content or publishing a new reading`, async () => {
     const { state, seed } = harness();
     await seed();
     const previous = structuredClone(state.cache);
@@ -154,14 +160,15 @@ for (const [reason, response] of [
     };
     await seed();
     assert.deepEqual(state.warnings, [[
-      `[PizzINT] No data in API response (${reason}); preserving last good observation`,
+      `[PizzINT] No data in API response (${reason})`,
     ]], 'only the fixed category is logged; no payload fields or extra arguments');
-    assert.deepEqual(state.cache, previous);
-    assert.equal(state.writes.length, 2);
+    assert.deepEqual(state.cache.get(payloadKey).data, keptStale(previous.get(payloadKey)));
+    assert.deepEqual(state.cache.get(metaKey), previous.get(metaKey));
+    assert.doesNotMatch(JSON.stringify(state.logs), /synthetic-secret|forged/);
   });
 }
 
-test('empty upstream response preserves the last observation and its original expiry', async () => {
+test('empty upstream response keeps the last observation, marked stale', async () => {
   const { state, seed } = harness();
   await seed();
   assert.equal(state.cache.get(payloadKey).data.data.pizzint.defconLevel, 5);
@@ -169,8 +176,9 @@ test('empty upstream response preserves the last observation and its original ex
   state.now += 600_000;
   state.source = emptyResponse;
   await seed();
-  assert.deepEqual(state.cache, previous);
-  assert.equal(state.writes.length, 2);
+  assert.deepEqual(state.cache.get(payloadKey).data, keptStale(previous.get(payloadKey)));
+  assert.equal(state.cache.get(payloadKey).expiresAt, state.now + 2700 * 1000);
+  assert.deepEqual(state.cache.get(metaKey), previous.get(metaKey), 'no provider answered, so no heartbeat');
 });
 
 test('first-run emptiness publishes no normal activity and a later valid response recovers', async () => {
@@ -195,7 +203,7 @@ test('failed payload publication does not advance success metadata', async () =>
   assert.equal(state.writes.length, 2);
 });
 
-test('a sustained empty source still expires the payload and fails the real health classifier', async () => {
+test('a sustained empty source fails the real health classifier while the kept reading is stale', async () => {
   const { state, seed } = harness();
   await seed();
   const classify = () => health.classifyKey('pizzint', payloadKey, { allowOnDemand: false }, {
@@ -211,8 +219,9 @@ test('a sustained empty source still expires the payload and fails the real heal
   assert.equal(classify().status, 'OK', 'two missed 15-minute polls stay within the 3x budget');
   state.now += 15 * 60_000;
   await seed();
+  assert.equal(state.cache.get(payloadKey).data.data.pizzint.dataFreshness, 'DATA_FRESHNESS_STALE');
   const expired = classify();
-  assert.notEqual(expired.status, 'OK');
+  assert.notEqual(expired.status, 'OK', 'a kept payload never hides a source that stopped answering');
   assert.equal(expired.seedAgeMin, 46);
   assert.ok(['warn', 'crit'].includes(health.STATUS_COUNTS[expired.status]));
 });
@@ -282,7 +291,7 @@ test('falls back to BestTime live busyness when PizzINT is empty', async () => {
   assert.ok(ids.length >= 4, 'every registered venue is polled');
   assert.ok(state.besttimeCalls.every(({ method, url }) => method === 'POST' && new URL(url).pathname === '/api/v1/forecasts/live'));
   assert.equal(state.cache.has(payloadKey), false, 'no live reading, nothing published');
-  assert.deepEqual(state.warnings.at(-1), [`[PizzINT] BestTime fallback: no live readings (0/${ids.length} venues); accepted=0 unavailable=${ids.length} invalid=0 http=0 timeout=0 transport=0 json=0; preserving last good observation`]);
+  assert.deepEqual(state.warnings.at(-1), [`[PizzINT] BestTime fallback: no live readings (0/${ids.length} venues); accepted=0 unavailable=${ids.length} invalid=0 http=0 timeout=0 transport=0 json=0`]);
 
   state.besttime.set(ids[0], liveReading(90, 40));
   state.besttime.set(ids[1], liveReading(30, 35));
@@ -386,7 +395,7 @@ test('reports a rejected BestTime request instead of calling it no live readings
   state.warnings.length = 0;
   await seed();
   assert.deepEqual(state.warnings.at(-1), [
-    `[PizzINT] BestTime fallback: no live readings (0/${ids.length} venues); accepted=0 unavailable=0 invalid=0 http=${ids.length}(400x${ids.length}) timeout=0 transport=0 json=0; preserving last good observation`,
+    `[PizzINT] BestTime fallback: no live readings (0/${ids.length} venues); accepted=0 unavailable=0 invalid=0 http=${ids.length}(400x${ids.length}) timeout=0 transport=0 json=0`,
   ]);
   assert.doesNotMatch(JSON.stringify(state.warnings), /pri_test_secret_value/);
 });
@@ -406,13 +415,13 @@ test('breaks rejected BestTime requests down by HTTP status so a bad key is dist
   await seed();
   const others = ids.length - 2;
   assert.deepEqual(state.warnings.at(-1), [
-    `[PizzINT] BestTime fallback: no live readings (0/${ids.length} venues); accepted=0 unavailable=0 invalid=0 http=${ids.length}(401x${others},429x1,503x1) timeout=0 transport=0 json=0; preserving last good observation`,
+    `[PizzINT] BestTime fallback: no live readings (0/${ids.length} venues); accepted=0 unavailable=0 invalid=0 http=${ids.length}(401x${others},429x1,503x1) timeout=0 transport=0 json=0`,
   ]);
   assert.doesNotMatch(JSON.stringify([state.warnings, state.logs]), /pri_test_secret_value/);
 });
 
-async function besttimeHarness(readings) {
-  const run = harness();
+async function besttimeHarness(readings, now) {
+  const run = harness(now);
   run.state.source = emptyResponse;
   run.state.env.BESTTIME_API_KEY_PRIVATE = BESTTIME_KEY;
   await run.seed();
@@ -496,15 +505,18 @@ test('a valid primary reading beside a null reading does not poll BestTime', asy
   assert.equal(locations[1].noLiveSignal, true);
 });
 
-test('fresh primary readings retain priority beside stale rows, including closed zero readings', async () => {
-  for (const reading of [validResponse.data[0], { ...validResponse.data[0], current_popularity: 0, is_closed_now: true }]) {
+test('fresh primary readings retain priority beside stale rows; closed zeros still ask BestTime', async () => {
+  for (const [reading, besttimeCalls] of [
+    [validResponse.data[0], 0],
+    [{ ...validResponse.data[0], current_popularity: 0, is_closed_now: true, recorded_at: '2026-09-25T11:10:00Z' }, 6],
+  ]) {
     const run = harness();
     run.state.env.BESTTIME_API_KEY_PRIVATE = BESTTIME_KEY;
     run.state.source = { success: true, data: [reading, { ...validResponse.data[0],
       place_id: 'stale', data_freshness: 'stale' }] };
     await run.seed();
-    assert.equal(run.state.besttimeCalls.length, 0);
-    assert.equal(run.state.cache.get(payloadKey).data._seed.sourceVersion, 'pizzint');
+    assert.equal(run.state.besttimeCalls.length, besttimeCalls);
+    assert.equal(run.state.cache.get(payloadKey).data._seed.sourceVersion, 'pizzint', 'without a BestTime live reading, PizzINT is published');
   }
 });
 
@@ -648,13 +660,13 @@ test('repeated provider timestamps cannot establish persistence', async () => {
   assert.equal(run.state.cache.get(payloadKey).data.data.pizzint.activeSpikes, 0);
 });
 
-test('all missing live signals preserve the previous payload and expiry', async () => {
+test('all missing live signals keep the previous reading, marked stale', async () => {
   const run = await besttimeHarness([[40, 40]]);
   await run.seed();
   const previous = structuredClone(run.state.cache.get(payloadKey));
   run.state.besttime.set(run.ids[0], liveReading(0, 40));
   await advance(run);
-  assert.deepEqual(run.state.cache.get(payloadKey), previous, 'a suspected dead sensor publishes nothing');
+  assert.deepEqual(run.state.cache.get(payloadKey).data, keptStale(previous), 'a suspected dead sensor publishes nothing new');
   assert.equal(run.state.cache.get(metaKey).data.fetchedAt, run.state.now, 'BestTime answered, so the heartbeat advances');
 });
 
@@ -666,7 +678,7 @@ for (const currentPopularity of [0, undefined]) {
     const missing = { ...validResponse.data[0], current_popularity: currentPopularity, percentage_of_usual: 0 };
     run.state.source = { success: true, data: [missing] };
     await advance(run);
-    assert.deepEqual(run.state.cache.get(payloadKey), previous.get(payloadKey), 'all missing signals must preserve expiry');
+    assert.deepEqual(run.state.cache.get(payloadKey).data, keptStale(previous.get(payloadKey)), 'all missing signals publish nothing new');
     assert.equal(run.state.cache.get(metaKey).data.lastLiveAt, previous.get(metaKey).data.lastLiveAt, 'no data never renews lastLiveAt');
     run.state.source.data.push({ ...validResponse.data[0], place_id: 'normal', current_popularity: 100, percentage_of_usual: 100 });
     await advance(run);
@@ -789,9 +801,8 @@ for (const category of ['accepted', 'unavailable', 'invalid', 'http', 'timeout',
     const prefix = category === 'accepted'
       ? `${ids.length}/${ids.length} venues live`
       : `no live readings (0/${ids.length} venues)`;
-    const suffix = category === 'accepted' ? '' : '; preserving last good observation';
     const summaries = [...state.logs, ...state.warnings].filter(args => String(args[0]).includes('BestTime fallback:'));
-    assert.deepEqual(summaries, [[`[PizzINT] BestTime fallback: ${prefix}; ${counts}${suffix}`]]);
+    assert.deepEqual(summaries, [[`[PizzINT] BestTime fallback: ${prefix}; ${counts}`]]);
     assert.doesNotMatch(JSON.stringify([...state.logs, ...state.warnings]), /pri_test_secret_value|second-secret|example\.invalid|forged message/);
     if (category !== 'accepted') assert.deepEqual(state.cache, previous);
   });
@@ -819,9 +830,9 @@ test('BestTime mixed poll counts reset without changing partial publication or h
   const previous = structuredClone(state.cache.get(payloadKey));
   await seed();
   assert.deepEqual(state.warnings.at(-1), [
-    '[PizzINT] BestTime fallback: no live readings (0/6 venues); accepted=0 unavailable=6 invalid=0 http=0 timeout=0 transport=0 json=0; preserving last good observation',
+    '[PizzINT] BestTime fallback: no live readings (0/6 venues); accepted=0 unavailable=6 invalid=0 http=0 timeout=0 transport=0 json=0',
   ]);
-  assert.deepEqual(state.cache.get(payloadKey), previous);
+  assert.deepEqual(state.cache.get(payloadKey).data, keptStale(previous));
 });
 
 for (const cancelFails of [false, true]) {
@@ -843,7 +854,7 @@ for (const cancelFails of [false, true]) {
     await seed();
     assert.equal(cancellations, ids.length);
     assert.deepEqual(state.warnings.at(-1), [
-      `[PizzINT] BestTime fallback: no live readings (0/${ids.length} venues); accepted=0 unavailable=0 invalid=0 http=${ids.length}(503x${ids.length}) timeout=0 transport=0 json=0; preserving last good observation`,
+      `[PizzINT] BestTime fallback: no live readings (0/${ids.length} venues); accepted=0 unavailable=0 invalid=0 http=${ids.length}(503x${ids.length}) timeout=0 transport=0 json=0`,
     ]);
     assert.deepEqual(state.cache, previous);
     assert.doesNotMatch(JSON.stringify(state.warnings), /secret\.invalid|pri_test_secret_value/);
@@ -871,7 +882,7 @@ for (const kind of ['abort', 'read', 'malformed']) {
     const previous = structuredClone(state.cache);
     await seed();
     assert.deepEqual(state.warnings.at(-1), [
-      `[PizzINT] BestTime fallback: no live readings (0/${ids.length} venues); accepted=0 unavailable=0 invalid=0 http=0 timeout=0 transport=${kind === 'malformed' ? 0 : ids.length} json=${kind === 'malformed' ? ids.length : 0}; preserving last good observation`,
+      `[PizzINT] BestTime fallback: no live readings (0/${ids.length} venues); accepted=0 unavailable=0 invalid=0 http=0 timeout=0 transport=${kind === 'malformed' ? 0 : ids.length} json=${kind === 'malformed' ? ids.length : 0}`,
     ]);
     assert.deepEqual(state.cache, previous);
     assert.doesNotMatch(JSON.stringify(state.warnings), /secret\.invalid|pri_test_secret_value/);
@@ -891,8 +902,8 @@ function classifyPizzint(state) {
   });
 }
 
-async function quietAfterLive() {
-  const run = await besttimeHarness([[40, 40]]);
+async function quietAfterLive(now) {
+  const run = await besttimeHarness([[40, 40]], now);
   await run.seed();
   assert.equal(run.state.cache.get(metaKey).data.lastLiveAt, run.state.now, 'a live publish records lastLiveAt');
   run.state.besttime.clear();
@@ -1208,12 +1219,17 @@ test('a closed-zero publication with a failing venue publishes but withholds the
 // The relay published nothing, so /get-pizzint-status returned no pizzint object.
 const quietMorning = JSON.parse(readFileSync(new URL('./fixtures/pizzint-dashboard-2026-11-17-quiet.json', import.meta.url), 'utf8'));
 
+// Production on that morning: the last live reading at 07:45:56, the poll at 14:46.
+const lastLiveOnQuietMorning = Date.parse('2026-11-17T07:45:56Z');
+const quietMorningPoll = Date.parse('2026-11-17T14:46:30Z');
+
 test('a fresh all-closed PizzINT poll publishes the closed state when BestTime has no live reading', async () => {
-  const run = await quietAfterLive();
+  const run = await quietAfterLive(lastLiveOnQuietMorning);
   const lastLiveAt = run.state.now;
   const calls = run.state.besttimeCalls.length;
   run.state.source = quietMorning;
-  await advance(run, 7 * 60);
+  run.state.now = quietMorningPoll;
+  await run.seed();
   assert.equal(run.state.besttimeCalls.length - calls, run.ids.length, 'closed rows carry no busyness, so BestTime is still asked');
   const stored = run.state.cache.get(payloadKey);
   assert.ok(stored && run.state.now < stored.expiresAt, 'the closed state is published');
@@ -1230,6 +1246,27 @@ test('a fresh all-closed PizzINT poll publishes the closed state when BestTime h
   assert.equal(meta.lastLiveAt, lastLiveAt, 'a closed venue is not a live reading');
   assert.equal(classifyPizzint(run.state).status, 'OK');
   assert.equal(pizzIntViewModel(stored.data.data, run.state.now).available, false, 'the page still needs an open live venue for a current level');
+});
+
+test('a closed response stamped a moment ahead of the relay clock still counts as fresh', async () => {
+  const run = await quietAfterLive(lastLiveOnQuietMorning);
+  run.state.source = quietMorning;
+  run.state.now = Date.parse(quietMorning.timestamp) - 150;
+  await run.seed();
+  assert.equal(run.status().updatedAt, run.state.now, 'PizzINT runs about 0.1 s ahead of the relay');
+  assert.equal(run.status().locationsOpen, 0);
+});
+
+// 15:21 the same day, PizzINT's CDN served the 14:19:53 response (cf-cache-status
+// HIT, age 3722) still labelled fresh. Its closed flags were an hour old.
+test('an hour-old cached all-closed PizzINT response is not published as the current state', async () => {
+  const run = await quietAfterLive(Date.parse('2026-11-17T15:06:38Z'));
+  const reading = run.status();
+  const recordedAt = '2026-11-17T14:19:53.233Z';
+  run.state.source = { ...quietMorning, timestamp: recordedAt, data: quietMorning.data.map(d => ({ ...d, recorded_at: recordedAt })) };
+  await advance(run);
+  assert.deepEqual(run.status(), { ...reading, dataFreshness: 'DATA_FRESHNESS_STALE' }, 'the last reading is kept, marked stale');
+  assert.equal(run.state.cache.get(metaKey).data.fetchedAt, run.state.now, 'every provider answered cleanly, so the heartbeat advances');
 });
 
 for (const closedPopularity of [null, 0]) {
