@@ -220,12 +220,13 @@ describe("alert scope notice", () => {
     await migrate(t, false);
     await seedCustomer(t, "u1", "a@example.com");
     process.env.RESEND_API_KEY = "test-key";
-    vi.spyOn(console, "warn").mockImplementation(() => {});
     globalThis.fetch = vi.fn(async () => new Response("down", { status: 503 })) as any;
 
-    for (let i = 0; i < 2; i++) await t.action(fns.sendAlertScopeNotices, { live: true });
+    for (let i = 0; i < 2; i++) {
+      await expect(t.action(fns.sendAlertScopeNotices, { live: true })).rejects.toThrow(/notice send failure/);
+    }
     expect((await notices(t))[0]).toMatchObject({ emailStatus: "pending", emailAttempts: 2 });
-    await t.action(fns.sendAlertScopeNotices, { live: true });
+    await expect(t.action(fns.sendAlertScopeNotices, { live: true })).rejects.toThrow(/Resend 503/);
     expect((await notices(t))[0]).toMatchObject({ emailStatus: "failed", emailAttempts: 3 });
   });
 

@@ -282,6 +282,7 @@ export const sendAlertScopeNotices = internalAction({
     if (!apiKey) throw new Error("[alertScopeMigration] RESEND_API_KEY not configured; no notice sent");
 
     const now = Date.now();
+    const failures: string[] = [];
     for (const [userId, rows] of byUser) {
       const noticeIds = rows.map((r) => r._id);
       const recipient = (await ctx.runQuery(internal.apiPlanLimitEmails.getNoticeRecipient, {
@@ -321,11 +322,15 @@ export const sendAlertScopeNotices = internalAction({
           emailStatus: "pending",
         });
         summary.failed += 1;
-        const status = err instanceof ResendSendError ? err.status : "error";
-        console.warn(`[alertScopeMigration] notice send failed (${status})`);
+        failures.push(err instanceof ResendSendError ? `Resend ${err.status}` : "send error");
       }
     }
     console.log(`[alertScopeMigration] notices ${JSON.stringify(summary)}`);
+    // Every row is marked before this throw, so a re-run retries only the
+    // failed users; throwing hands the failure to Convex's Sentry capture.
+    if (failures.length > 0) {
+      throw new Error(`[alertScopeMigration] ${failures.length} notice send failure(s): ${failures.slice(0, 3).join(" | ")}`);
+    }
     return summary;
   },
 });
