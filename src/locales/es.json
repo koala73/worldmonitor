@@ -5899,7 +5899,9 @@
     "briefLanguage": {
       "label": "Idioma del informe",
       "hint": "Tu informe diario se redactará en {{language}}.",
-      "sameAsApp": "Igual que el idioma de la aplicación"
+      "sameAsApp": "Igual que el idioma de la aplicación",
+      "loadFailed": "Error al cargar",
+      "saveFailed": "No se pudo guardar. Inténtalo de nuevo."
     }
   }
 }

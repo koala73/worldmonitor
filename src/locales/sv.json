@@ -5863,7 +5863,9 @@
     "briefLanguage": {
       "label": "Språk för sammanfattningen",
       "hint": "Din dagliga sammanfattning skrivs på {{language}}.",
-      "sameAsApp": "Samma som appens språk"
+      "sameAsApp": "Samma som appens språk",
+      "loadFailed": "Det gick inte att läsa in",
+      "saveFailed": "Kunde inte spara det. Försök igen."
     }
   }
 }

@@ -330,7 +330,7 @@ export const setBriefLanguage = mutation({
     if (!existing) return { ok: false as const, reason: "no-user-record" as const };
     const next = args.lang ?? undefined;
     if (existing.briefLanguage === next) return { ok: true as const };
-    await ctx.db.patch(existing._id, { briefLanguage: next });
+    await ctx.db.patch(existing._id, { briefLanguage: next, lastSeenAt: Date.now() });
     return { ok: true as const };
   },
 });

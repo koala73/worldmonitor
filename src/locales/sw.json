@@ -5863,7 +5863,9 @@
     "briefLanguage": {
       "label": "Lugha ya muhtasari",
       "hint": "Muhtasari wako wa kila siku utaandikwa kwa {{language}}.",
-      "sameAsApp": "Sawa na lugha ya programu"
+      "sameAsApp": "Sawa na lugha ya programu",
+      "loadFailed": "Imeshindwa kupakia",
+      "saveFailed": "Haiwezi kufanya hivyo. Jaribu tena."
     }
   }
 }

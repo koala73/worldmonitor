@@ -1012,6 +1012,24 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // until the stored override is known so a save never races the read.
       let briefLanguageSaved = '';
       let briefUiLanguage: string | null = null;
+      // A reload during a save reads only after the save settles, so it never
+      // shows the value from before the commit.
+      let briefLanguageSaveInFlight: Promise<unknown> | null = null;
+
+      function showBriefLanguageLoadError(): void {
+        const row = container.querySelector<HTMLElement>('#usBriefLanguageRow');
+        if (!row) return;
+        appendNotificationError(row, t('settings.briefLanguage.loadFailed'));
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'unified-settings-btn';
+        retry.textContent = t('common.retry');
+        retry.addEventListener('click', () => {
+          row.querySelector('.us-notif-error')?.remove();
+          mountBriefLanguage();
+        }, { once: true, signal });
+        row.querySelector('.us-notif-error')?.append(' ', retry);
+      }
 
       function renderBriefLanguageHint(effective: string): void {
         const hint = container.querySelector<HTMLElement>('#usBriefLanguageHint');
@@ -1026,8 +1044,12 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const userId = renderedUserId;
         if (!select || !userId) return;
         const generation = notifReloadGeneration;
-        void loadBriefLanguage(userId).then((state) => {
-          if (!state || signal.aborted || generation !== notifReloadGeneration) return;
+        void (briefLanguageSaveInFlight ?? Promise.resolve()).then(() => loadBriefLanguage(userId)).then((state) => {
+          if (signal.aborted || generation !== notifReloadGeneration) return;
+          if (!state) {
+            showBriefLanguageLoadError();
+            return;
+          }
           briefLanguageSaved = state.briefLanguage ?? '';
           briefUiLanguage = state.uiLanguage;
           select.value = briefLanguageSaved;
@@ -1044,15 +1066,18 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const next = select.value;
         row.querySelector('.us-notif-error')?.remove();
         select.disabled = true;
-        void saveBriefLanguage(userId, next || null).then((result) => {
+        const save = saveBriefLanguage(userId, next || null);
+        briefLanguageSaveInFlight = save;
+        void save.then((result) => {
+          if (briefLanguageSaveInFlight === save) briefLanguageSaveInFlight = null;
+          if (result.ok) briefLanguageSaved = next;
           if (signal.aborted || !select.isConnected) return;
           select.disabled = false;
           if (result.ok) {
-            briefLanguageSaved = next;
             renderBriefLanguageHint(next || briefUiLanguage || 'en');
           } else {
             select.value = previous;
-            appendNotificationError(row, 'Could not save the brief language. Please try again.');
+            appendNotificationError(row, t('settings.briefLanguage.saveFailed'));
           }
         });
       }

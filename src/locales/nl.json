@@ -5863,7 +5863,9 @@
     "briefLanguage": {
       "label": "Taal van de briefing",
       "hint": "Je dagelijkse briefing wordt geschreven in het {{language}}.",
-      "sameAsApp": "Zelfde als de app-taal"
+      "sameAsApp": "Zelfde als de app-taal",
+      "loadFailed": "Laden mislukt",
+      "saveFailed": "Dit kon niet worden opgeslagen. Probeer het opnieuw."
     }
   }
 }
