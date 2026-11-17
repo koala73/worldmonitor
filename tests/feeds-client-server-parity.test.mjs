@@ -167,12 +167,24 @@ describe('feed parity: client vs server (PR #3715 follow-up)', () => {
     'DW News',
   ]);
 
+  // These alert feeds have an intentional browser fallback. Pin both sides
+  // so an unexpected reroute cannot disappear into the historical drift set.
+  const digestOnlyDirect = new Map([
+    ['CNN World', 'https://www.cnn.com/sitemap/news.xml'],
+    ['Ukrinform', 'https://www.ukrinform.net/rss/block-lastnews'],
+  ]);
+
   it('every NEW shared feed name uses consistent routing (grandfathered drift snapshot)', () => {
     const newDrift = [];
     const resolvedKnown = [];
     for (const [name, c] of client) {
       const s = server.get(name);
       if (!s) continue;
+      if (digestOnlyDirect.has(name)) {
+        assert.ok(c.isGoogleNews, `${name}: revisit fallback when the browser moves to the publisher`);
+        assert.equal(s.snippet, digestOnlyDirect.get(name));
+        continue;
+      }
       if (c.isGoogleNews === s.isGoogleNews) {
         if (KNOWN_DRIFTS.has(name)) resolvedKnown.push(name);
         continue;
@@ -239,6 +251,7 @@ describe('feed parity: client vs server (PR #3715 follow-up)', () => {
   });
 
   const INTENTIONAL_URL_DIVERGENCES = new Map([
+    ['politics:CNN World', 'The digest parses CNN’s news sitemap. The browser fallback parses RSS and Atom.'],
     ['politics:AP News', 'The server digest adds a one-day Google News window.'],
     ['politics:Reuters World', 'The server digest adds a one-day Google News window.'],
     ['us:Reuters US', 'The server digest adds a one-day Google News window.'],
