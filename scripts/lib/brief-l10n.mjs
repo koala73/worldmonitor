@@ -303,13 +303,17 @@ const MONTH_NUMBER = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, a
 // it ("mil millones", "mil milhões", "mila miliardi"; see scaleAt). French
 // "milles" (miles) is not "mille".
 const LOCAL_SCALES = [
-  [/^(?:milliard|milliárd|miljard|miliard|miliar|milyar|mld|mrd|bilh[aã]o|bilh[oõ]es|миллиард|млрд|мільярд|милиард|δισ|مليار|میلیارد|tỷ)/iu, 1e9],
-  [/^(?:million|millió|millón|millones|milione|milioni|milh[aã]o|milh[oõ]es|miljoen|miljon|milion|milyon|mln|mio|миллион|млн|мільйон|милион|εκατ|ล้าน|مليون|ملايين|میلیون|triệu|juta)/iu, 1e6],
+  [/^(?:milliard|milliárd|miljard|milijard|miliard|miliar|milyar|mld|mrd|bilh[aã]o|bilh[oõ]es|миллиард|млрд|мільярд|милиард|δισεκατομμ|δισ\.|مليار|میلیارد|tỷ)/iu, 1e9],
+  [/^(?:million|millió|millón|millones|milione|milioni|milh[aã]o|milh[oõ]es|miljoen|miljon|milijun|milion|milyon|mln|mio|миллион|млн|мільйон|милион|εκατομμ|εκατ\.|ล้าน|مليون|ملايين|میلیون|triệu|juta)/iu, 1e6],
+  [/^แสน/u, 1e5],
+  [/^หมื่น/u, 1e4],
   [/^(?:tausend|tsd\.|mille(?!\p{L})|mila(?!\p{L})|mil(?!\p{L})|duizend|tusen|tusind|tys\.|tysi[aą]c|tysi[eę]cy|tis\.|tisíc|tisuć|ezer|mii(?!\p{L})|bin(?!\p{L})|тысяч|тыс\.|тисяч|хиляд|χιλιάδ|ألف|آلاف|هزار|हज़ार|हजार|nghìn|ngàn|ribu|พัน)/iu, 1e3],
 ];
-// Any other large-number word (bilioni, трлн...). It says "scaled" with an
-// unknown value, so only the coefficient can be compared.
-const SCALE_WORD_RE = /^(?:mil|mlj|mln|mld|mrd|mio|bn|tn|bil|tril|милл|мил|млн|млрд|мільй|мільяр|трлн|εκατ|δισ|ล้าน|مليون|مليار|ملي|میلیون|میلیارد|triệu|tỷ|juta|miliar)/iu;
+// A large-number word whose value differs by language (Spanish billón and
+// Polish bilion are 1e12, Swahili bilioni is 1e9) or that the table above does
+// not list (trillions). It says "scaled" with an unknown value, so only the
+// coefficient can be compared, and only with another scaled number.
+const SCALE_WORD_RE = /^(?:bilion|billón|billones|bili[aã]o|bili[oõ]es|bilj|bilyon|biliun|tril|трлн|трил|τρισ)/iu;
 
 /**
  * The scale word at the start of `after`, or null: its value and length. A
@@ -326,8 +330,10 @@ function scaleAt(after, compound = true) {
   for (const [re, factor] of found ? [] : LOCAL_SCALES) {
     const m = after.match(re);
     if (!m) continue;
-    // The whole word, inflection included (miliard|i).
-    found = { factor, length: m[0].length + after.slice(m[0].length).match(/^[\p{L}\p{M}]*/u)[0].length };
+    // The whole word, inflection included (miliard|i). Thai writes no spaces,
+    // so its scales attach to each other (พันล้าน) and to the next word.
+    const rest = /^\p{Script=Thai}/u.test(m[0]) ? '' : after.slice(m[0].length).match(/^[\p{L}\p{M}]*/u)[0];
+    found = { factor, length: m[0].length + rest.length };
     break;
   }
   if (!found || !compound) return found;
@@ -360,7 +366,8 @@ function parseNumber(token, english) {
   const parts = t.split(/[,.]/);
   // Indian grouping: 1,50,000 is 150000.
   if (/^\d{1,2}(?:,\d{2})+,\d{3}$/.test(t)) return [[Number(parts.join(''))]];
-  const grouped = parts.slice(1).every((p) => p.length === 3);
+  // 0.125 is a fraction; a thousands group never follows a leading zero.
+  const grouped = !parts[0].startsWith('0') && parts.slice(1).every((p) => p.length === 3);
   if (new Set(seps).size === 2) {
     // Both kinds: the last one is the decimal point.
     const at = Math.max(t.lastIndexOf(','), t.lastIndexOf('.'));
@@ -383,19 +390,22 @@ function parseNumber(token, english) {
  */
 function numbersIn(text, english = false) {
   // URLs are blanked to the same length, so match offsets index this string.
-  // Arabic decimal and thousands separators (١٫٥, ١٠٬٠٠٠) read as . and ,.
+  // Arabic decimal and thousands separators: ١٫٥ reads as 1.5, ١٠٬٠٠٠ as
+  // 10'000 (a thousands group only, never a decimal).
   const t = asciiDigits(text.replace(URL_RE, (url) => ' '.repeat(url.length)))
     .replace(/(?<=\d)\u066B(?=\d)/g, '.')
-    .replace(/(?<=\d)\u066C(?=\d)/g, ',');
+    .replace(/(?<=\d)\u066C(?=\d)/g, "'");
   const out = [];
   for (const m of t.matchAll(NUMBER_RE)) {
     const after = t.slice(m.index + m[0].length).replace(/^[\u00A0\u202F ]/, '');
     const factor = scaleAt(after)?.factor;
     const known = factor != null;
     const scaled = known || SCALE_WORD_RE.test(after);
-    // A minus sign right before the number, not a range dash after a word or
-    // number (10-20, COVID-19), makes it negative.
-    const sign = /[-\u2212]/.test(t.charAt(m.index - 1)) && !/[\p{L}\p{N}]/u.test(t.charAt(m.index - 2)) ? -1 : 1;
+    // A minus sign right before the number or its currency symbol (-10,
+    // -$10), after a space, bracket or the start, makes it negative. A dash
+    // after a word or number (10-20, COVID-19) or before a space (10 - 20)
+    // is not a sign.
+    const sign = /(?:^|[\s([])[-\u2212][$\u20AC\u00A3\u00A5\u20B9]?$/u.test(t.slice(Math.max(0, m.index - 3), m.index).padStart(m.index >= 3 ? 4 : 0, ' ')) ? -1 : 1;
     for (const parsed of parseNumber(m[0], english)) {
       const mantissas = parsed.map((v) => sign * v);
       out.push({ values: known ? mantissas.map((v) => v * factor) : mantissas, mantissas, scaled, known });
@@ -405,6 +415,8 @@ function numbersIn(text, english = false) {
 }
 
 const sameValue = (a, b) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+
+const unknownScale = (n) => n.scaled && !n.known;
 
 const overlaps = (a, b) => a.some((x) => b.some((y) => sameValue(x, y)));
 
@@ -423,7 +435,8 @@ function numbersKept(source, text) {
   const months = [...source.matchAll(MONTH_RE)].map((m) => MONTH_NUMBER[m[1].slice(0, 3).toLowerCase()]);
   if (got.length < want.length || got.length > want.length + months.length) return false;
   const left = [
-    ...want.map((w) => (o) => overlaps(w.values, o.values) || (w.scaled && o.scaled && !(w.known && o.known) && overlaps(w.mantissas, o.mantissas))),
+    ...want.map((w) => (o) => (!unknownScale(w) && !unknownScale(o) && overlaps(w.values, o.values))
+      || (w.scaled && o.scaled && !(w.known && o.known) && overlaps(w.mantissas, o.mantissas))),
     ...months.map((month) => (o) => !o.scaled && o.values.some((v) => sameValue(v, month))),
   ];
   // Bipartite matching (Kuhn): source numbers first, so they all stay matched.
@@ -535,10 +548,11 @@ function unchangedIsUntranslated(source, lang) {
   if (NON_ASCII_LETTER_RE.test(prose)) return false;
   if (readsAsLanguage(prose, lang)) return false;
   // ASCII prose with lower-case words and no sign of the target language:
-  // English unless proven otherwise.
-  // In title case only a longer lower-case word counts: "aux", "van" and "de"
-  // are particles in names and foreign headlines ("Paris Face aux Sanctions").
-  return (titleCase ? /(?:^|[^\p{L}])\p{Ll}{4,}/u : /(?:^|[^\p{L}])\p{Ll}{3,}/u).test(prose);
+  // English unless proven otherwise. In title case the lower-case words are
+  // the only prose; name particles and the target's own function words
+  // ("van", "aux") are not English ("Paris Face aux Sanctions").
+  if (titleCase) return wordsOf(prose).length > 0 && lowerWordsOf(prose).some((w) => w.length >= 3 && !NAME_PARTICLES.has(w) && !TARGET_MARKERS[lang]?.includes(w));
+  return /(?:^|[^\p{L}])\p{Ll}{3,}/u.test(prose);
 }
 
 /**
@@ -552,10 +566,18 @@ function unchangedIsUntranslated(source, lang) {
  */
 function shortUnchangedIsUntranslated(source, lang) {
   if (englishMarkerCount(source) > 0) return true;
+  return Boolean(SCRIPT_RE[lang]) && isShortLatinPhrase(source);
+}
+
+/** Lower-case parts of names ("van Gogh", "Mohammed bin Salman"). */
+const NAME_PARTICLES = new Set(['van', 'von', 'der', 'den', 'ter', 'ten', 'bin', 'ibn', 'bint', 'abu', 'al', 'el', 'de', 'del', 'della', 'di', 'da', 'du', 'dos', 'das', 'le', 'la']);
+
+/** An ASCII phrase of two or more words with a lower-case word that is not a name particle ("War ends"). */
+function isShortLatinPhrase(source) {
   const prose = source.replace(URL_RE, '');
   if (NON_ASCII_LETTER_RE.test(prose)) return false;
-  const words = prose.split(/[^\p{L}]+/u).filter(Boolean);
-  return Boolean(SCRIPT_RE[lang]) && words.length >= 2 && words.some((w) => /^\p{Ll}{3,}$/u.test(w));
+  const words = wordsOf(prose);
+  return words.length >= 2 && lowerWordsOf(prose).some((w) => w.length >= 3 && !NAME_PARTICLES.has(w));
 }
 
 // Soft hyphen and zero-width (non-)joiners are legitimate in Indic, Persian
@@ -594,7 +616,13 @@ function validTranslation(source, out, lang) {
   if (!numbersKept(source, text)) return false;
   if (source.length < MIN_CHECKED_LENGTH) {
     if (text.length > Math.max(SHORT_SOURCE_MAX_LEN, source.length * MAX_RATIO)) return false;
-    if (normalizeForCompare(text) === normalizeForCompare(source) && shortUnchangedIsUntranslated(source, lang)) return false;
+    if (normalizeForCompare(text) === normalizeForCompare(source)) {
+      if (shortUnchangedIsUntranslated(source, lang)) return false;
+    } else if (isShortLatinPhrase(source) && !scriptShareOk(text, lang)) {
+      // A translated phrase is in the target's script ("War ends" in Arabic is
+      // not "La guerre finit"). A name or label may keep its Latin spelling.
+      return false;
+    }
   } else {
     // English returned unchanged, or as English prose, is untranslated: in a
     // Latin-script target no other check would catch it, and the brief would

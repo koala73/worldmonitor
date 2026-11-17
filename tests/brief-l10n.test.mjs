@@ -258,6 +258,27 @@ describe('translate prompt and parser', () => {
     assert.ok(one('Officials seized 10,000 tonnes of grain at the port.', '\u0636\u0628\u0637 \u0627\u0644\u0645\u0633\u0624\u0648\u0644\u0648\u0646 \u0661\u0660\u066C\u0660\u0660\u0660 \u0637\u0646 \u0645\u0646 \u0627\u0644\u062D\u0628\u0648\u0628 \u0641\u064A \u0627\u0644\u0645\u064A\u0646\u0627\u0621.', 'ar'));
   });
 
+  it('reads leading-zero decimals, currency signs, Arabic grouping, unknown and compound scales', () => {
+    // 0.125 is never a thousands group.
+    assert.equal(one('The yield rose by 0.125 percentage points on Monday.', 'Le rendement a augmenté de 125 points de pourcentage lundi.'), null);
+    assert.ok(one('The yield rose by 0.125 percentage points on Monday.', 'Le rendement a augmenté de 0,125 point de pourcentage lundi.'));
+    // A minus before a currency symbol is the amount's sign.
+    assert.ok(one('The fund posted -$10 million in net flows this week.', 'Le fonds a enregistré -10 millions de dollars de flux nets cette semaine.'));
+    assert.equal(one('The fund posted -$10 million in net flows this week.', 'Le fonds a enregistré 10 millions de dollars de flux nets cette semaine.'), null);
+    assert.equal(one('Oil prices changed by -5% after the report.', 'Les prix du pétrole ont varié de +5 % après le rapport.'), null);
+    assert.ok(one('Temperatures will range from 10 - 20 degrees across the region.', 'Les températures varieront de 10 - 20 degrés dans la région.'));
+    // Arabic U+066C only groups thousands.
+    assert.equal(one('Output rose to 1.5 million barrels after the deal.', '\u0627\u0631\u062A\u0641\u0639 \u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0625\u0644\u0649 \u0661\u066C\u0665\u0660\u0660 \u0645\u0644\u064A\u0648\u0646 \u0628\u0631\u0645\u064A\u0644 \u0628\u0639\u062F \u0627\u0644\u0627\u062A\u0641\u0627\u0642.', 'ar'), null);
+    // An unknown scale word is a scale: it never matches an unscaled number.
+    assert.equal(one('Officials said 3 people were hurt in the attack.', 'Maafisa walisema watu 3 bilioni walijeruhiwa katika shambulio.', 'sw'), null);
+    // A word that starts like a scale is not one (centimetres, soldiers).
+    assert.ok(one('Officials said the ground moved 3 centimeters after the quake.', 'Οι αρχές δήλωσαν ότι το έδαφος μετακινήθηκε 3 εκατοστά μετά τον σεισμό.', 'el'));
+    assert.ok(one('Greece will borrow 3 million euros from the fund this year.', 'Η Ελλάδα θα δανειστεί 3 εκατομμύρια ευρώ από το ταμείο φέτος.', 'el'));
+    // Thai scales attach to each other: พันล้าน is a billion.
+    assert.equal(one('The fund lost 3 thousand dollars during the crisis.', '\u0e01\u0e2d\u0e07\u0e17\u0e38\u0e19\u0e2a\u0e39\u0e0d\u0e40\u0e2a\u0e35\u0e22\u0e40\u0e07\u0e34\u0e19 3 \u0e1e\u0e31\u0e19\u0e25\u0e49\u0e32\u0e19\u0e14\u0e2d\u0e25\u0e25\u0e32\u0e23\u0e4c\u0e43\u0e19\u0e0a\u0e48\u0e27\u0e07\u0e27\u0e34\u0e01\u0e24\u0e15', 'th'), null);
+    assert.ok(one('The fund lost 3 billion dollars during the crisis.', '\u0e01\u0e2d\u0e07\u0e17\u0e38\u0e19\u0e2a\u0e39\u0e0d\u0e40\u0e2a\u0e35\u0e22\u0e40\u0e07\u0e34\u0e19 3 \u0e1e\u0e31\u0e19\u0e25\u0e49\u0e32\u0e19\u0e14\u0e2d\u0e25\u0e25\u0e32\u0e23\u0e4c\u0e43\u0e19\u0e0a\u0e48\u0e27\u0e07\u0e27\u0e34\u0e01\u0e24\u0e15', 'th'));
+  });
+
   it('reads numbers after a URL at the right place', () => {
     const src = 'See https://example.com/r/2026-report for details: exports hit 3 million barrels.';
     assert.ok(one(src, '详情见 https://example.com/r/2026-report ：出口达到300万桶。', 'zh'));
@@ -286,7 +307,9 @@ describe('translate prompt and parser', () => {
     assert.equal(one('Oil prices rise', 'Oil prices rise', 'ja'), null);
     assert.equal(one('Talks with the EU', 'Talks with the EU', 'fr'), null);
     assert.equal(one('War ends', 'War ends', 'ja'), null);
-    for (const name of ['Bank of America', 'Rio de Janeiro', 'Strait of Hormuz']) assert.equal(one(name, name, 'ja'), name);
+    for (const name of ['Bank of America', 'Rio de Janeiro', 'Strait of Hormuz', 'van Gogh', 'Vincent van Gogh', 'Mohammed bin Salman']) assert.equal(one(name, name, 'ja'), name);
+    // Changed short text must be in the target's script.
+    assert.equal(one('War ends', 'La guerre finit', 'ar'), null);
     for (const label of ['Cyber', 'Energy', 'NATO', 'Nvidia, Microsoft', 'macOS']) {
       assert.equal(one(label, label, 'ja'), label);
       assert.equal(one(label, label, 'fr'), label);
@@ -316,6 +339,9 @@ describe('translate prompt and parser', () => {
     assert.equal(one(frTitle, frTitle), frTitle);
     const composers = 'Ludwig van Beethoven, Johann Sebastian Bach';
     assert.equal(one(composers, composers), composers);
+    // A short English connector is still English.
+    const forTitle = 'Oil Prices Rise for Global Markets';
+    assert.equal(one(forTitle, forTitle), null);
   });
 
   it('rejects a reply that is mostly English words, in any script', () => {
