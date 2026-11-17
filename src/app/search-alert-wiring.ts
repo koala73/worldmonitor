@@ -1,7 +1,9 @@
 import type { SearchModal } from '@/components/SearchModal';
-import { SentAlertSearchSource } from '@/app/search-alert-source';
+import { SentAlertSearchSource, isOpenableAlertLink } from '@/app/search-alert-source';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { isDesktopRuntime } from '@/services/desktop-runtime';
 import { onEntitlementChange } from '@/services/entitlements';
+import { isOpenableExternalUrl, openExternalUrl } from '@/services/external-navigation';
 import { getLocale, t } from '@/services/i18n';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { fetchSentAlerts, type SentAlert } from '@/services/sent-alerts';
@@ -21,6 +23,28 @@ function describeSentAlert(alert: SentAlert): string {
   }
   const sent = t('modals.search.sentAlertTime', { time });
   return alert.source ? `${alert.source} · ${sent}` : sent;
+}
+
+/**
+ * Whether this runtime can open an alert's article. Desktop opens through the
+ * native opener, which takes https (and http for localhost only), so a
+ * plain-http article is listed there without a link instead of as a row that
+ * does nothing when selected.
+ */
+export function canOpenSentAlertLink(link: string): boolean {
+  if (!isOpenableAlertLink(link)) return false;
+  return !isDesktopRuntime() || isOpenableExternalUrl(link);
+}
+
+/**
+ * Open a delivered alert's article outside the dashboard. A search row is not
+ * an anchor, so the desktop link interceptor (app/event-handlers.ts) never
+ * sees it: desktop hands the URL to the OS browser here, and `window.open`
+ * would open it inside the app's WebView. Web opens a new tab.
+ */
+export function openSentAlertLink(url: string): void {
+  if (isDesktopRuntime()) void openExternalUrl(url);
+  else window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 /**
@@ -50,6 +74,7 @@ export function attachSentAlertSearch(modal: SearchModal): () => void {
       if (!opening && modal.getSearchIndexRevision() !== revision) modal.refreshSearch();
     },
     describe: describeSentAlert,
+    canOpenLink: canOpenSentAlertLink,
   });
   modal.setOnOpen(() => {
     opening = true;

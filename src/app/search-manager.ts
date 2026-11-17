@@ -56,7 +56,7 @@ import {
   suppressNextAgentPanelView,
 } from '@/services/agent-analytics-privacy';
 import { SearchSelectionDispatcher } from '@/app/search-selection-dispatcher';
-import { attachSentAlertSearch } from '@/app/search-alert-wiring';
+import { attachSentAlertSearch, openSentAlertLink } from '@/app/search-alert-wiring';
 import { WebMcpSearchController } from '@/app/webmcp-search-controller';
 import type {
   DashboardSearchOpenResult,
@@ -219,7 +219,7 @@ export class SearchManager implements AppModule {
       resolveExecutableNewsPanel: (link) => this.resolveExecutableNewsPanel(link),
       saveToStorage,
       setTheme,
-      openExternalLink: (url) => { window.open(url, '_blank', 'noopener,noreferrer'); },
+      openExternalLink: (url) => openSentAlertLink(url),
       // Must stay wrapped, not passed bare: the dispatcher invokes these as
       // `this.bindings.setTimeout(...)` / `this.bindings.clearTimeout(...)`,
       // a method call. The native functions require the receiver to be the

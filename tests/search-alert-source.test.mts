@@ -83,6 +83,18 @@ describe('sentAlertSearchItems', () => {
     assert.equal(isOpenableAlertLink(''), false);
   });
 
+  it('lists an alert without its link when the caller cannot open that link', () => {
+    // The desktop passes a predicate that refuses plain http (the native opener's rule).
+    const httpsOnly = (link: string) => link.startsWith('https://');
+    const [plain, secure] = sentAlertSearchItems([
+      alert('Plain http story', { sentAt: 2, link: 'http://example.org/story' }),
+      alert('Secure story', { sentAt: 1, link: 'https://example.org/story' }),
+    ], describeAlert, httpsOnly);
+    assert.equal((plain!.data as { link: string }).link, '');
+    assert.equal(plain!.subtitle, 'Reuters · sent 2', 'no host is shown for a link that cannot be opened');
+    assert.equal((secure!.data as { link: string }).link, 'https://example.org/story');
+  });
+
   it('is found by a headline the loaded news does not contain', () => {
     const items = sentAlertSearchItems([alert('Iran closes Hormuz strait to tankers')], describeAlert);
     const result = querySearchIndex({

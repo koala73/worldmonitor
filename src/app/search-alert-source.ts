@@ -38,17 +38,19 @@ function linkHost(link: string): string {
 /**
  * Search rows for delivered alerts, in the order given (the server lists them
  * newest first). `describe` supplies the publisher and sent-time text, so this
- * stays free of locale and clock state. A headline delivered twice with the
- * same link keeps its newest row.
+ * stays free of locale and clock state. `canOpenLink` says which links the
+ * caller can open; an alert whose link it cannot open is listed without one.
+ * A headline delivered twice with the same link keeps its newest row.
  */
 export function sentAlertSearchItems(
   alerts: readonly SentAlert[],
   describe: (alert: SentAlert) => string,
+  canOpenLink: (link: string) => boolean = isOpenableAlertLink,
 ): SearchableSource['items'] {
   const seen = new Set<string>();
   const items: SearchableSource['items'] = [];
   for (const alert of alerts) {
-    const link = isOpenableAlertLink(alert.link) ? alert.link : '';
+    const link = canOpenLink(alert.link) ? alert.link : '';
     const identity = `${alert.title}\u0000${link}`;
     if (seen.has(identity)) continue;
     seen.add(identity);
@@ -71,6 +73,8 @@ interface SentAlertSearchSourceDeps {
   fetchAlerts(): Promise<readonly SentAlert[] | null>;
   publish(items: SearchableSource['items']): void;
   describe(alert: SentAlert): string;
+  /** Which article links this runtime can open. Defaults to any http(s) link. */
+  canOpenLink?(link: string): boolean;
   now?(): number;
 }
 
@@ -106,7 +110,7 @@ export class SentAlertSearchSource {
       this.requestedAt = Number.NEGATIVE_INFINITY;
       return;
     }
-    this.deps.publish(sentAlertSearchItems(alerts, this.deps.describe));
+    this.deps.publish(sentAlertSearchItems(alerts, this.deps.describe, this.deps.canOpenLink));
   }
 
   /** Drop the indexed alerts, for example when Pro access ends. */
