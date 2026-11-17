@@ -58,10 +58,10 @@ const SCRIPT_RE = {
   fa: /\p{Script=Arabic}/u,
 };
 
-// Whole URLs, Unicode paths included (https://example.com/économie). CJK
-// punctuation and fullwidth forms end one: Chinese and Japanese put no space
-// before the next sentence ("…/report。更多分析").
-const URL_RE = /https?:\/\/[^\s"'<>)\]\u3000-\u303F\uFF00-\uFFEF]+/g;
+// Whole URLs, Unicode paths included (https://example.com/économie). CJK and
+// fullwidth punctuation end one: Chinese and Japanese put no space before the
+// next sentence ("…/report。更多分析"). Fullwidth letters stay in the path.
+const URL_RE = /https?:\/\/[^\s"'<>)\]\u3000-\u303F\uFF01-\uFF0F\uFF1A-\uFF20\uFF3B-\uFF40\uFF5B-\uFF65]+/g;
 // Sentence punctuation a translation may move. "!" and "?" can end a real
 // URL (wiki/Yahoo!), so dropping them is an altered URL.
 const URL_TRAILING_PUNCT_RE = /[.,;:\u3001\u3002\uFF0C\uFF1A\uFF1B]+$/;
@@ -180,7 +180,7 @@ export async function writeBriefSlotIndex(commands, pipeline) {
  * Run after the envelope write. Account deletion sets briefErasedKey before it
  * reads the slot index, so on one Redis either this read sees the marker, or
  * the deletion's index read sees this compose's slot. When the marker is set,
- * deletes what this compose wrote and returns true. Throws when the marker
+ * deletes this compose's slot and returns true. Throws when the marker
  * cannot be read or the cleanup fails, so no brief is sent for the user.
  * @param {(commands: any[]) => Promise<any[] | null>} pipeline
  */
@@ -191,8 +191,10 @@ export async function undoBriefWriteIfErased(userId, issueSlot, pipeline) {
   const cleanup = await pipelineWithRetry([
     ['DEL', `brief:${userId}:${issueSlot}`],
     ['DEL', briefLocalizedKey(userId, issueSlot)],
+    // Only this slot leaves the index: the erase may not have read it yet, and
+    // it finds every other slot there. The pointer holds this compose's slot.
+    ['ZREM', briefSlotsKey(userId), issueSlot],
     ['DEL', `brief:latest:${userId}`],
-    ['DEL', briefSlotsKey(userId)],
   ], pipeline);
   if (!cleanup) throw new Error('brief cleanup after account erase failed');
   return true;
@@ -286,7 +288,12 @@ const SCALES = [
   ['천만', 1e7], ['백만', 1e6], ['십억', 1e9], ['천', 1e3], ['만', 1e4], ['억', 1e8], ['조', 1e12],
   ['करोड़', 1e7], ['करोड', 1e7], ['लाख', 1e5], ['अरब', 1e9],
 ];
-const MONTH_RE = /\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sept?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\b/g;
+const MONTH_RE = /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sept?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\b/g;
+const MONTH_NUMBER = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+// The start of a large-number word in a translation the SCALES table does not
+// list (millions, Milliarden, milioni, миллиона, млрд, مليون, ล้าน...). It only
+// says "scaled"; the value is unknown, so only the coefficient can be compared.
+const SCALE_WORD_RE = /^(?:mil|mlj|mln|mld|mrd|mio|bn|tn|bil|tril|милл|мил|млн|млрд|мільй|мільяр|εκατ|δισ|ล้าน|مليون|مليار|ملي|میلیون|میلیارد|triệu|tỷ|juta|miliar)/iu;
 
 /** Any decimal digit (Arabic-Indic ١٠, Persian ۱۰, Devanagari, fullwidth...) as ASCII. */
 function asciiDigits(text) {
@@ -321,7 +328,12 @@ function parseNumber(token) {
   return grouped ? [[Number(parts.join(''))]] : parts.map((p) => [Number(p)]);
 }
 
-/** Every number in the text as its candidate values, a scale after it included. */
+/**
+ * Every number in the text: its possible values, its coefficients, and whether
+ * a scale follows it. "3 million" is value 3000000, coefficient 3, scaled;
+ * "3 millions" (a scale word SCALES does not list) is value 3, coefficient 3,
+ * scaled.
+ */
 function numbersIn(text) {
   // URLs are blanked to the same length, so match offsets index this string.
   const t = asciiDigits(text.replace(URL_RE, (url) => ' '.repeat(url.length)));
@@ -332,8 +344,9 @@ function numbersIn(text) {
     const scale = SCALES.find(([word]) => (/[a-z]/.test(word)
       ? after.toLowerCase().startsWith(word) && !/^\p{L}/u.test(after.slice(word.length))
       : after.startsWith(word)));
-    for (const values of parseNumber(m[0])) {
-      out.push(scale ? [...values, ...values.map((v) => v * scale[1])] : values);
+    const scaled = Boolean(scale) || SCALE_WORD_RE.test(after);
+    for (const mantissas of parseNumber(m[0])) {
+      out.push({ values: scale ? mantissas.map((v) => v * scale[1]) : mantissas, mantissas, scaled });
     }
   }
   return out;
@@ -341,19 +354,25 @@ function numbersIn(text) {
 
 const sameValue = (a, b) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
 
+const overlaps = (a, b) => a.some((x) => b.some((y) => sameValue(x, y)));
+
 /**
  * The translation carries exactly the source's numbers, compared by value: a
  * scale, a decimal comma or native digits do not change a number. Each source
- * number pairs with one output number; the only extras allowed are month
- * numbers for month names the source spells out (April 18 -> 4月18日).
+ * number pairs with one output number. Two scaled numbers also pair on their
+ * coefficient ("3 million" / "3 Millionen"), never a scaled with an unscaled
+ * one ("3 million" / "3"). The only extra output numbers allowed are the
+ * month numbers of month names the source spells out (April 18 -> 4月18日).
  */
 function numbersKept(source, text) {
   const want = numbersIn(source);
   const got = numbersIn(text);
-  const months = (source.match(MONTH_RE) ?? []).length;
-  if (got.length < want.length || got.length > want.length + months) return false;
-  const isMonth = (values) => values.some((v) => Number.isInteger(v) && v >= 1 && v <= 12);
-  const left = [...want.map((values) => (o) => o.some((v) => values.some((w) => sameValue(v, w)))), ...Array.from({ length: months }, () => isMonth)];
+  const months = [...source.matchAll(MONTH_RE)].map((m) => MONTH_NUMBER[m[1].slice(0, 3).toLowerCase()]);
+  if (got.length < want.length || got.length > want.length + months.length) return false;
+  const left = [
+    ...want.map((w) => (o) => overlaps(w.values, o.values) || (w.scaled && o.scaled && overlaps(w.mantissas, o.mantissas))),
+    ...months.map((month) => (o) => !o.scaled && o.values.some((v) => sameValue(v, month))),
+  ];
   // Bipartite matching (Kuhn): source numbers first, so they all stay matched.
   const owner = new Array(got.length).fill(-1);
   const tryMatch = (i, seen) => {
@@ -501,6 +520,9 @@ function validTranslation(source, out, lang) {
   if (!numbersKept(source, text)) return false;
   if (source.length < MIN_CHECKED_LENGTH) {
     if (text.length > Math.max(SHORT_SOURCE_MAX_LEN, source.length * MAX_RATIO)) return false;
+    // A short label or name may stay as it is ("Cyber", "NATO"); short English
+    // prose ("Oil prices rise") may not.
+    if (normalizeForCompare(text) === normalizeForCompare(source) && unchangedIsUntranslated(source, lang)) return false;
   } else {
     // English returned unchanged, or as English prose, is untranslated: in a
     // Latin-script target no other check would catch it, and the brief would
