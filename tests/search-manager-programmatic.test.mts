@@ -32,6 +32,8 @@ import {
   WEBMCP_UNSUPPORTED_CANCELLATION_MESSAGE,
 } from '../src/services/webmcp.ts';
 import { withTimeout } from '../src/utils/with-timeout.ts';
+import { HeadlineHistorySearch } from '../src/app/headline-history-search.ts';
+import { headlineTitleKey } from '../src/shared/headline-title-key.ts';
 
 type Variant = 'full' | 'tech' | 'finance' | 'happy' | 'commodity' | 'energy';
 
@@ -104,6 +106,7 @@ interface Runtime {
   deferTimers: boolean;
   nextTimerId: number;
   pendingTimers: Map<number, () => void>;
+  openedArticles: string[];
 }
 
 interface ModalDouble {
@@ -124,6 +127,7 @@ interface ModalDouble {
   resolveMatchByIdentity(identity: string): SearchMatch | undefined;
   registerSource(type: string, items: unknown[]): void;
   refreshSearch(): void;
+  setResultsPending(pending: boolean): void;
   open(): void;
   closeForProgrammaticSelection(): void;
   cancelPendingWork(): void;
@@ -213,6 +217,15 @@ function createHarness(variant: Variant, runtime: Runtime): new (ctx: any, callb
     'isSearchResultEffectHostExecutable',
     'searchResultEffectRequiresCancellation',
     'WEBMCP_UNSUPPORTED_CANCELLATION_MESSAGE',
+    // Headline history (Cmd+K server search).
+    'HeadlineHistorySearch',
+    'searchHeadlineHistory',
+    'resetHeadlineHistoryAccess',
+    'isOpenableExternalUrl',
+    'openExternalUrl',
+    'headlineTitleKey',
+    'getCurrentLanguage',
+    'formatTime',
   ];
   // Regular `function`s, not arrow functions: the receiver check below only
   // reflects how the caller invoked us (arrow functions ignore call-site
@@ -334,6 +347,17 @@ function createHarness(variant: Variant, runtime: Runtime): new (ctx: any, callb
     isSearchResultEffectHostExecutable,
     searchResultEffectRequiresCancellation,
     WEBMCP_UNSUPPORTED_CANCELLATION_MESSAGE,
+    HeadlineHistorySearch,
+    async () => [],
+    () => {},
+    (url: string) => /^https?:\/\//i.test(url),
+    (url: string) => {
+      runtime.openedArticles.push(url);
+      return Promise.resolve('popup');
+    },
+    headlineTitleKey,
+    () => 'en',
+    () => '1h ago',
   ];
 
   // eslint-disable-next-line no-new-func
@@ -396,6 +420,7 @@ function makeScenario(
     deferTimers: false,
     nextTimerId: 1,
     pendingTimers: new Map(),
+    openedArticles: [],
   };
   const calls: Scenario['calls'] = {
     views: [],
@@ -447,6 +472,7 @@ function makeScenario(
       }
     },
     refreshSearch: () => {},
+    setResultsPending: () => {},
     open: () => {
       modal.openCalls += 1;
       modal.isOpen = true;
@@ -1992,6 +2018,28 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     assert.deepEqual(scenario.calls.timeRanges, []);
   });
 
+  it('never issues a history headline to an agent as something it can run', async () => {
+    const headline = resultMatch('headline', 'https://www.reuters.com/hormuz', 'Needle tanker seized', {
+      link: 'https://www.reuters.com/hormuz', source: 'Reuters World', publishedAt: 1,
+    });
+    const scenario = makeScenario([headline]);
+    assert.equal(scenario.manager.isSearchResultExecutable(headline.result), false);
+    const { opened } = await searchThenOpen(scenario);
+    assert.equal(opened.ok, false);
+    assert.deepEqual(scenario.runtime.openedArticles, []);
+  });
+
+  it('opens the article when a person selects a history headline, and refuses a non-web link', () => {
+    const scenario = makeScenario([]);
+    const select = (link: string) => scenario.manager.searchSelection.handleSearchResult({
+      type: 'headline', id: link, title: 'Needle tanker seized', data: { link, source: 'Reuters World', publishedAt: 1 },
+    });
+    assert.equal(select('https://www.reuters.com/hormuz'), true);
+    assert.equal(select('javascript:alert(1)'), false);
+    assert.deepEqual(scenario.runtime.openedArticles, ['https://www.reuters.com/hormuz']);
+    assert.deepEqual(scenario.runtime.selectedResultTypes, ['headline', 'headline']);
+  });
+
   it('denies news retained only by a disabled hidden panel', () => {
     const news = resultMatch('news', 'story', 'Needle story', { link: 'https://example.test/story' });
     const scenario = makeScenario([news]);
@@ -2345,6 +2393,27 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
 
     assert.ok(scenario.modal.clearedSources.includes('flight'));
     assert.equal(scenario.manager.flightSourceExpiresAt, 0);
+  });
+
+  it('tells the headline history when the loaded news changes, after the loaded index is replaced', () => {
+    const scenario = makeScenario([]);
+    scenario.manager.updateSearchIndex = undefined;
+    scenario.manager.syncPanelSearchIndex = () => {};
+    scenario.manager.buildCountrySearchItems = () => [];
+    scenario.ctx.latestPredictions = [];
+    scenario.ctx.latestMarkets = [];
+    const loadedAtNotification: boolean[] = [];
+    scenario.manager.headlineHistory.onLoadedNewsChange = () => {
+      loadedAtNotification.push(scenario.manager.loadedNewsSearchText.has('iran talks resume in vienna'));
+    };
+    const productionUpdate = Object.getPrototypeOf(scenario.manager).updateSearchIndex;
+
+    scenario.ctx.allNews = [{ link: 'https://www.reuters.com/vienna', title: 'Iran talks resume in Vienna', source: 'Reuters World' }];
+    productionUpdate.call(scenario.manager, { updateVisibleMetrics: false });
+    scenario.ctx.allNews = [];
+    productionUpdate.call(scenario.manager, { updateVisibleMetrics: false });
+
+    assert.deepEqual(loadedAtNotification, [true, false], 'the history re-lists against the news just indexed');
   });
 
   it('populates flight search for every premium access path, including runtime API keys', () => {

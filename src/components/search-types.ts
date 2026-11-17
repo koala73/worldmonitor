@@ -3,6 +3,8 @@ import type { Command } from '@/config/commands';
 export type SearchResultType =
   | 'country'
   | 'news'
+  // A headline the dashboard served earlier and no longer holds (server history).
+  | 'headline'
   | 'hotspot'
   | 'market'
   | 'prediction'

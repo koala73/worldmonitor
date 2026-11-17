@@ -10672,6 +10672,20 @@
       "status": "excluded"
     },
     {
+      "host": "open.dosm.gov.my",
+      "provider": "open.dosm.gov.my",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit open.dosm.gov.my and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_dosm-sitc-trade.mjs"
+        }
+      ]
+    },
+    {
       "host": "open.iub.gov.lv",
       "provider": "open.iub.gov.lv",
       "kind": "structured",
@@ -13465,6 +13479,20 @@
       "references": [
         {
           "path": "scripts/lib/food-prices-adapters/pricecatcher.mjs"
+        }
+      ]
+    },
+    {
+      "host": "storage.dosm.gov.my",
+      "provider": "storage.dosm.gov.my",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit storage.dosm.gov.my and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_dosm-sitc-trade.mjs"
         }
       ]
     },

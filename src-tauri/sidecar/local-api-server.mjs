@@ -1520,6 +1520,7 @@ const cloudPreferredExact = new Set([
   '/api/supply-chain/v1/list-storage-facilities',
   '/api/supply-chain/v1/list-vulnerability-rankings',
   '/api/trade/v1/get-customs-revenue',
+  '/api/trade/v1/get-monthly-sitc-trade',
   '/api/trade/v1/get-tariff-trends',
   '/api/trade/v1/get-trade-barriers',
   '/api/trade/v1/get-trade-flows',
