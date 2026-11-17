@@ -6,7 +6,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { carouselPageText, loadCarouselFonts, renderCarouselImageResponse, type CarouselPage } from '../../../server/_shared/brief-carousel-render.ts';
+import { carouselGlyphText, loadCarouselFonts, renderCarouselImageResponse, type CarouselPage } from '../../../server/_shared/brief-carousel-render.ts';
 import { CAROUSEL_FIXTURES } from './envelopes.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
@@ -26,7 +26,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
 }) as typeof fetch;
 
 for (const [lang, envelope] of Object.entries(CAROUSEL_FIXTURES)) {
-  for (const page of PAGES) await loadCarouselFonts(carouselPageText(envelope as never, page), lang);
+  for (const page of PAGES) await loadCarouselFonts(carouselGlyphText(envelope as never, page), lang);
 }
 globalThis.fetch = realFetch;
 

@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   CarouselFontError,
   buildCarouselTree,
+  carouselGlyphText,
   carouselPageText,
   loadCarouselFonts,
   renderCarouselImageResponse,
@@ -98,6 +99,31 @@ describe('loadCarouselFonts', () => {
     // Characters the subset has load normally.
     const fonts = await loadCarouselFonts(allText(CAROUSEL_FIXTURES.ja), 'ja');
     assert.ok(fonts.some((f) => f.name === 'NotoSansJP'));
+  });
+});
+
+describe('carousel glyph text', () => {
+  const withHeadline = (env, headline) => ({ ...env, data: { ...env.data, stories: [{ ...env.data.stories[0], headline }] } });
+
+  it('uppercases only the rows the layout uppercases', async () => {
+    // "µ" is in the base file; its uppercase "Μ" (Greek) is not. The headline is not uppercased.
+    const env = withHeadline(CAROUSEL_FIXTURES.en, 'Particles under 5 µm found in drinking water samples');
+    const log = installFontStub();
+    for (const page of PAGES) assert.deepEqual(await loadCarouselFonts(carouselGlyphText(env, page), 'en'), [], page);
+    assert.deepEqual(log.loader, []);
+    // An uppercased row is drawn in capitals, so its capitals are what the font needs.
+    assert.ok(carouselGlyphText(CAROUSEL_FIXTURES.en, 'cover').includes('GOOD EVENING'));
+  });
+
+  it('drops emoji the base font cannot draw, so one in a headline does not fail the render', async () => {
+    const env = withHeadline(CAROUSEL_FIXTURES.en, 'Iran 🇮🇷 talks resume 👩\u200D🔬 in Geneva ✈️ today™');
+    const text = carouselPageText(env, 'story').join(' ');
+    assert.ok(!/\p{Regional_Indicator}|\u{1F469}|\u2708/u.test(text), text);
+    assert.ok(text.includes('Iran talks resume in Geneva today™'), text);
+    const log = installFontStub();
+    const res = await renderCarouselImageResponse(env, 'story');
+    assert.equal(res.status, 200);
+    assert.deepEqual(log.loader, []);
   });
 });
 

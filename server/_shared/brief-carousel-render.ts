@@ -241,9 +241,9 @@ export type CarouselFont = { name: string; data: ArrayBuffer; weight: 400; style
 /** Fetches text-subset fonts for everything in `text` that the base font cannot draw. Throws CarouselFontError. */
 export async function loadCarouselFonts(text: string[], lang: string): Promise<CarouselFont[]> {
   const byFamily = new Map<ExtraFamily, Set<string>>();
+  // `text` is as drawn (carouselGlyphText): uppercased rows arrive uppercased.
   for (const s of text) {
-    // Layouts uppercase some rows, so the subset needs both cases.
-    for (const ch of s + s.toUpperCase()) {
+    for (const ch of s) {
       const fam = familyForChar(ch, lang);
       if (!fam) continue;
       if (!byFamily.has(fam)) byFamily.set(fam, new Set());
@@ -581,8 +581,21 @@ export function buildCarouselTree(envelope: Envelope, page: CarouselPage): any {
   // Tracking, forced uppercase and italic suit Latin, Cyrillic and Greek only.
   const lang = carouselLang(envelope);
   if (!SPACED_SCRIPTS.has(scriptClassFor(lang))) stripLatinTypography(tree);
+  mapText(tree, dropUndrawableEmoji);
   if (scriptClassFor(lang) === 'thai') mapText(tree, (t) => markWordBreaks(t, lang));
   return tree;
+}
+
+// An emoji sequence: a pictograph or flag letter with its modifiers, keycaps,
+// tags and ZWJ-joined followers.
+const EMOJI_RE = /(?:\p{Extended_Pictographic}|\p{Regional_Indicator})(?:[\uFE0F\u20E3\u{1F3FB}-\u{1F3FF}\u{E0020}-\u{E007F}]|\u200D(?:\p{Extended_Pictographic}|\p{Regional_Indicator}))*/gu;
+
+// No loaded face draws emoji, and a missing glyph fails the whole image, so
+// the carousel leaves them out. Pictographs the base file has (© ® ™) stay.
+function dropUndrawableEmoji(text: string): string {
+  if (!EMOJI_RE.test(text)) return text;
+  EMOJI_RE.lastIndex = 0;
+  return text.replace(EMOJI_RE, (seq) => (baseCovers(seq) && seq.length === 1 ? seq : '')).replace(/ {2,}/g, ' ').trim();
 }
 
 // Satori breaks lines only at spaces and CJK characters; Thai has neither
@@ -614,16 +627,24 @@ function stripLatinTypography(node: any): void {
   else stripLatinTypography(children);
 }
 
-function collectText(node: any, out: string[]): string[] {
-  if (typeof node === 'string') out.push(node);
-  else if (Array.isArray(node)) node.forEach((n) => collectText(n, out));
-  else if (node && typeof node === 'object') collectText(node.props?.children, out);
+function collectText(node: any, out: string[], asDrawn = false, upper = false): string[] {
+  if (typeof node === 'string') out.push(upper ? node.toUpperCase() : node);
+  else if (Array.isArray(node)) node.forEach((n) => collectText(n, out, asDrawn, upper));
+  else if (node && typeof node === 'object') {
+    const transform = node.props?.style?.textTransform;
+    collectText(node.props?.children, out, asDrawn, asDrawn && (transform === undefined ? upper : transform === 'uppercase'));
+  }
   return out;
 }
 
 /** Strings the given page will draw, in draw order. Exported for tests. */
 export function carouselPageText(envelope: Envelope, page: CarouselPage): string[] {
   return collectText(buildCarouselTree(envelope, page), []);
+}
+
+/** The same strings as drawn: uppercased where the layout uppercases them. These are the glyphs the fonts must have. */
+export function carouselGlyphText(envelope: Envelope, page: CarouselPage): string[] {
+  return collectText(buildCarouselTree(envelope, page), [], true);
 }
 
 export async function renderCarouselImageResponse(
@@ -636,7 +657,7 @@ export async function renderCarouselImageResponse(
   const tree = buildCarouselTree(envelope, page);
   const [fontData, extraFonts] = await Promise.all([
     loadFont(),
-    loadCarouselFonts(collectText(tree, []), carouselLang(envelope)),
+    loadCarouselFonts(collectText(tree, [], true), carouselLang(envelope)),
   ]);
   tree.props.style.fontFamily = ['NotoSerif', ...extraFonts.map((f) => f.name)].join(', ');
 
