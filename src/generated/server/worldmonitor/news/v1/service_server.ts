@@ -356,6 +356,28 @@ export interface ClaimHeadline {
   publishedAt: number;
 }
 
+export interface SearchHeadlinesRequest {
+  query: string;
+  variant: string;
+  lang: string;
+}
+
+export interface SearchHeadlinesResponse {
+  headlines: HeadlineMatch[];
+  searchedHeadlines: number;
+  windowHours: number;
+  state: string;
+  newestServedAt: number;
+}
+
+export interface HeadlineMatch {
+  source: string;
+  title: string;
+  link: string;
+  publishedAt: number;
+  lastServedAt: number;
+}
+
 export interface ListSentAlertsRequest {
 }
 
@@ -435,6 +457,8 @@ export interface NewsServiceHandler {
   reviewErrorReport(ctx: ServerContext, req: ReviewErrorReportRequest): Promise<ReviewErrorReportResponse>;
   searchFactChecks(ctx: ServerContext, req: SearchFactChecksRequest): Promise<SearchFactChecksResponse>;
   searchClaimHeadlines(ctx: ServerContext, req: SearchClaimHeadlinesRequest): Promise<SearchClaimHeadlinesResponse>;
+  searchHeadlines(ctx: ServerContext, req: SearchHeadlinesRequest): Promise<SearchHeadlinesResponse>;
+  searchHeadlineArchive(ctx: ServerContext, req: SearchHeadlinesRequest): Promise<SearchHeadlinesResponse>;
   listSentAlerts(ctx: ServerContext, req: ListSentAlertsRequest): Promise<ListSentAlertsResponse>;
 }
 
@@ -1032,6 +1056,104 @@ export function createNewsServiceRoutes(
 
           const result = await handler.searchClaimHeadlines(ctx, body);
           return new Response(JSON.stringify(result as SearchClaimHeadlinesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/search-headlines",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: SearchHeadlinesRequest = {
+            query: params.get("query") ?? "",
+            variant: params.get("variant") ?? "",
+            lang: params.get("lang") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("searchHeadlines", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.searchHeadlines(ctx, body);
+          return new Response(JSON.stringify(result as SearchHeadlinesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/search-headline-archive",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: SearchHeadlinesRequest = {
+            query: params.get("query") ?? "",
+            variant: params.get("variant") ?? "",
+            lang: params.get("lang") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("searchHeadlineArchive", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.searchHeadlineArchive(ctx, body);
+          return new Response(JSON.stringify(result as SearchHeadlinesResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

@@ -1,0 +1,849 @@
+// Cmd+K headline search: the digest build records every served headline, and
+// two routes search that history over a 24-hour (free) or 7-day (Pro) window.
+import assert from 'node:assert/strict';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
+import { newsHandler } from '../server/worldmonitor/news/v1/handler';
+import { __testing__ as digest } from '../server/worldmonitor/news/v1/list-feed-digest';
+import {
+  __testing__ as history,
+  buildHeadlineHistoryWrite,
+  headlineHistoryBucketKey,
+  writeHeadlineHistory,
+} from '../server/worldmonitor/news/v1/_headline-history';
+import { REVOKED_URLS_KEY } from '../server/_shared/digest-revocations';
+import { drainResponseHeaders } from '../server/_shared/response-headers';
+import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
+import { createNewsServiceRoutes, type SearchHeadlinesResponse } from '../src/generated/server/worldmonitor/news/v1/service_server';
+import { validateGeneratedRequest } from '../server/request-validator';
+import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
+import { PUBLIC_NO_AUTH_RPC_PATHS } from '../server/gateway';
+import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache';
+
+const routes = createNewsServiceRoutes(newsHandler, { validateRequest: validateGeneratedRequest });
+const freeRoute = routes.find(entry => entry.path.endsWith('/search-headlines'))!;
+const archiveRoute = routes.find(entry => entry.path.endsWith('/search-headline-archive'))!;
+
+const envKeys = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'VERCEL_ENV', 'VERCEL_GIT_COMMIT_SHA', 'LOCAL_API_MODE'] as const;
+const oldEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]));
+const originalFetch = globalThis.fetch;
+
+const HOUR = 3600_000;
+// Mid-afternoon UTC, so "hours ago" stays inside the day unless a test says otherwise.
+const NOW = Date.UTC(2026, 10, 17, 15, 0, 0);
+
+let hashes: Map<string, Map<string, string>>;
+let expiries: Map<string, number>;
+let commands: string[][];
+let revoked: string[];
+let failRevocations: boolean;
+let failReads: boolean;
+let failWrites: boolean;
+/** Every index read the search charged to a caller, in order. */
+let charges: Array<{ scope: string; limit: number; window: string; caller: string }>;
+/** Makes the fake limiter answer as the shared one does when Redis could not decide. */
+let limiterDegraded: boolean;
+
+const item = (title: string, link: string, source = 'Reuters World', publishedAt = NOW - HOUR) =>
+  ({ title, link, source, publishedAt });
+
+/** What a digest build at `at` would have written for these served items. */
+async function served(at: number, items: ReturnType<typeof item>[], variant = 'full', lang = 'en') {
+  assert.equal(await writeHeadlineHistory(items, variant, lang, at), true);
+}
+
+async function search(route: typeof freeRoute, query: string, extra = '', headers: Record<string, string> = {}) {
+  const path = route === freeRoute ? 'search-headlines' : 'search-headline-archive';
+  const req = new Request(`https://example.test/api/news/v1/${path}?query=${encodeURIComponent(query)}${extra}`, { headers });
+  const res = await route.handler(req);
+  return { req, status: res.status, payload: await res.json() as SearchHeadlinesResponse };
+}
+
+const titles = (payload: SearchHeadlinesResponse) => payload.headlines.map(headline => headline.title);
+
+/** The titles an HSET from buildHeadlineHistoryWrite carries, in order. */
+const writtenTitles = (write: ReturnType<typeof buildHeadlineHistoryWrite>) =>
+  write[0]!.slice(2).filter((_, index) => index % 2 === 1).map(value => JSON.parse(String(value)).t as string);
+
+beforeEach(() => {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture-token';
+  process.env.VERCEL_ENV = 'production';
+  delete process.env.VERCEL_GIT_COMMIT_SHA;
+  delete process.env.LOCAL_API_MODE;
+  __resetKeyPrefixCacheForTests();
+  history.resetPools();
+  mock.timers.enable({ apis: ['Date'], now: NOW });
+  hashes = new Map();
+  expiries = new Map();
+  commands = [];
+  revoked = [];
+  failRevocations = false;
+  failReads = false;
+  failWrites = false;
+  charges = [];
+  limiterDegraded = false;
+  // The shared limiter, minus Redis: each caller may spend `limit` charges, and
+  // the window never slides. The limit and window are the search's own.
+  history.setIndexReadLimiter(async (scope, limit, window, caller) => {
+    charges.push({ scope, limit, window, caller });
+    if (limiterDegraded) return { allowed: true, limit, reset: 0, degraded: true };
+    const spent = charges.filter(charge => charge.caller === caller).length;
+    return { allowed: spent <= limit, limit, reset: 0, degraded: false };
+  });
+  globalThis.fetch = async (url, init) => {
+    assert.equal(String(url), 'https://redis.example.test/pipeline', 'never fetch a publisher');
+    const batch = JSON.parse(String(init?.body)) as string[][];
+    commands.push(...batch);
+    return Response.json(batch.map(([verb, key, ...rest]) => {
+      if (verb === 'SMEMBERS') {
+        assert.ok(key!.endsWith(REVOKED_URLS_KEY));
+        return failRevocations ? { error: 'fixture read failure' } : { result: revoked };
+      }
+      if (verb === 'HSET' && failWrites) return { error: 'fixture write failure' };
+      if (verb === 'HSET') {
+        const hash = hashes.get(key!) ?? new Map<string, string>();
+        for (let i = 0; i + 1 < rest.length; i += 2) hash.set(rest[i]!, rest[i + 1]!);
+        hashes.set(key!, hash);
+        return { result: rest.length / 2 };
+      }
+      if (verb === 'EXPIREAT') {
+        expiries.set(key!, Number(rest[0]));
+        return { result: 1 };
+      }
+      assert.equal(verb, 'HVALS', 'the search reads hashes only');
+      if (failReads) return { error: 'fixture read failure' };
+      // A key past its EXPIREAT is gone, as in Redis.
+      const expiresAt = expiries.get(key!);
+      if (expiresAt !== undefined && expiresAt * 1000 <= Date.now()) return { result: [] };
+      return { result: [...(hashes.get(key!)?.values() ?? [])] };
+    }));
+  };
+});
+
+afterEach(() => {
+  history.setIndexReadLimiter(null);
+  mock.timers.reset();
+  globalThis.fetch = originalFetch;
+  for (const key of envKeys) {
+    if (oldEnv[key] === undefined) delete process.env[key];
+    else process.env[key] = oldEnv[key];
+  }
+  __resetKeyPrefixCacheForTests();
+});
+
+describe('headline history write', () => {
+  it('records a build in one HSET on the served day, kept for the English window plus the partial day', () => {
+    const write = buildHeadlineHistoryWrite([
+      item('Rates held at 4.5%', 'https://www.reuters.com/a'),
+      item('Port strike ends', 'https://www.bbc.com/b', 'BBC World'),
+    ], 'full', 'en', NOW);
+    assert.equal(write.length, 2);
+    const [hset, expire] = write;
+    assert.deepEqual(hset!.slice(0, 2), ['HSET', 'news:headline-history:v1:full:en:2026-11-17']);
+    assert.equal(hset!.length, 2 + 2 * 2, 'two fields, one command');
+    assert.match(String(hset![2]), /^https:\/\/www\.reuters\.com\/a\n[0-9a-z]+$/, 'the field is the article URL and a hash of its title');
+    assert.deepEqual(JSON.parse(String(hset![3])), {
+      t: 'Rates held at 4.5%', s: 'Reuters World', l: 'https://www.reuters.com/a', p: NOW - HOUR, a: NOW,
+    });
+    assert.deepEqual(expire, ['EXPIREAT', 'news:headline-history:v1:full:en:2026-11-17', Date.UTC(2026, 10, 25) / 1000]);
+  });
+
+  it('keeps a bucket for its language\'s retention plus one day, and an unknown language for one day', () => {
+    const expiryDay = (lang: string, at = NOW) => {
+      const write = buildHeadlineHistoryWrite([item('Rates held at 4.5%', 'https://www.reuters.com/a')], 'full', lang, at);
+      assert.equal(write[1]![0], 'EXPIREAT');
+      return new Date(Number(write[1]![2]) * 1000).toISOString();
+    };
+    // Served 2026-11-17: the bucket must last until its last entry leaves the window.
+    assert.equal(expiryDay('en'), '2026-11-25T00:00:00.000Z', 'English: 7 days');
+    for (const lang of ['fr', 'de', 'zh', 'es', 'it', 'tr', 'pt', 'ar', 'ja', 'ru', 'pl', 'ko', 'nl', 'vi', 'cs', 'sv', 'th']) {
+      assert.equal(expiryDay(lang), '2026-11-21T00:00:00.000Z', `${lang}: 3 days`);
+    }
+    assert.equal(expiryDay('zh-TW'), '2026-11-21T00:00:00.000Z', 'zh-TW follows zh');
+    for (const lang of ['uk', 'hu', 'el', 'ro', 'fa', 'hr', 'bg', 'hi', 'sw']) {
+      assert.equal(expiryDay(lang), '2026-11-19T00:00:00.000Z', `${lang}: 1 day`);
+    }
+    for (const lang of ['az', 'tet', 'xx', 'qq-ZZ', '']) {
+      assert.equal(expiryDay(lang), '2026-11-19T00:00:00.000Z', `unknown "${lang}" gets the shortest tier`);
+    }
+    // The expiry counts from the start of the served day, not the build time.
+    assert.equal(expiryDay('fr', Date.UTC(2026, 10, 17, 23, 59, 59)), '2026-11-21T00:00:00.000Z');
+  });
+
+  it('skips an item nobody could open or read', () => {
+    const write = buildHeadlineHistoryWrite([
+      item('Gate blanked this link', ''),
+      item('Not a web link', 'javascript:alert(1)'),
+      item('   ', 'https://www.reuters.com/blank-title'),
+      item('No source', 'https://www.reuters.com/no-source', ''),
+      item('Kept', 'https://www.reuters.com/kept'),
+      item('KEPT!', 'https://www.reuters.com/kept'),
+    ], 'full', 'en', NOW);
+    assert.deepEqual(writtenTitles(write), ['Kept'], 'the same title under the same URL is written once');
+    assert.deepEqual(buildHeadlineHistoryWrite([item('Gate blanked', '')], 'full', 'en', NOW), [], 'nothing to write');
+  });
+
+  it('keeps each wording a URL was served under, and overwrites only the same wording', async () => {
+    const url = 'https://www.reuters.com/minister';
+    const key = headlineHistoryBucketKey('full', 'en', NOW);
+    await served(NOW - 3 * HOUR, [item('Minister resigns after budget row', url)]);
+    await served(NOW - 2 * HOUR, [item('Minister quits: what happens next', url)]);
+    assert.equal(hashes.get(key)!.size, 2, 'the retitle did not overwrite the first wording');
+    await served(NOW - HOUR, [item('Minister quits - what happens next?', url)]);
+    const stored = [...hashes.get(key)!.values()].map(value => JSON.parse(value) as { t: string; a: number });
+    assert.deepEqual(stored.map(entry => [entry.t, entry.a]), [
+      ['Minister resigns after budget row', NOW - 3 * HOUR],
+      ['Minister quits - what happens next?', NOW - HOUR],
+    ], 'a rebuild of the same wording (case and punctuation aside) refreshes its field');
+  });
+
+  it('writes at most twelve wordings of one URL in a build', () => {
+    const write = buildHeadlineHistoryWrite(
+      Array.from({ length: 14 }, (_, index) => item(`Live: update ${index}`, 'https://www.reuters.com/live')),
+      'full', 'en', NOW,
+    );
+    assert.deepEqual(writtenTitles(write), Array.from({ length: 12 }, (_, index) => `Live: update ${index}`));
+  });
+
+  it('the digest build records every served item with a publisher-gated link', async () => {
+    const ok = await digest.recordServedHeadlines([
+      { source: 'Reuters World', title: 'Rates held at 4.5%', link: 'https://www.reuters.com/world/rates', publishedAt: NOW - HOUR,
+        originPublisher: '', originPublisherTrusted: false },
+      { source: 'Reuters World', title: 'Hostile link', link: 'https://phish.example/login', publishedAt: NOW - HOUR,
+        originPublisher: '', originPublisherTrusted: false },
+    ] as never, 'full', 'en');
+    assert.equal(ok, true);
+    const bucket = hashes.get(headlineHistoryBucketKey('full', 'en', NOW))!;
+    assert.deepEqual([...bucket.values()].map(value => JSON.parse(value).l), ['https://www.reuters.com/world/rates'], 'the off-publisher link is not indexed');
+    const { payload } = await search(freeRoute, 'rates held');
+    assert.deepEqual(titles(payload), ['Rates held at 4.5%']);
+  });
+
+  it('does not start a write the digest deadline has no room for', async () => {
+    const ok = await digest.recordServedHeadlines([
+      { source: 'Reuters World', title: 'Rates held', link: 'https://www.reuters.com/world/rates', publishedAt: NOW,
+        originPublisher: '', originPublisherTrusted: false },
+    ] as never, 'full', 'en', NOW - 1);
+    assert.equal(ok, false);
+    assert.equal(commands.length, 0);
+  });
+
+  it('gives up on a write Redis never answers at the digest deadline, not at the Redis timeout', async () => {
+    // The digest build joins this write before it assembles the response, so
+    // the join must end by the deadline the build's other writes run under.
+    globalThis.fetch = ((_url: unknown, init?: RequestInit) => new Promise((_resolve, reject) => {
+      init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason));
+    })) as typeof fetch;
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    const started = performance.now();
+    try {
+      const ok = await digest.recordServedHeadlines([
+        { source: 'Reuters World', title: 'Rates held', link: 'https://www.reuters.com/world/rates', publishedAt: NOW,
+          originPublisher: '', originPublisherTrusted: false },
+      ] as never, 'full', 'en', NOW + 50);
+      assert.equal(ok, false);
+    } finally {
+      console.warn = originalWarn;
+    }
+    const waited = performance.now() - started;
+    assert.ok(waited >= 40 && waited < 1500, `waited ${Math.round(waited)} ms for a 50 ms deadline (the Redis timeout is 5,000 ms)`);
+  });
+
+  it('says so when Redis does not confirm the write, and when the deadline left no time for it', async () => {
+    const served = [{ source: 'Reuters World', title: 'Rates held', link: 'https://www.reuters.com/world/rates', publishedAt: NOW,
+      originPublisher: '', originPublisherTrusted: false }] as never;
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...parts: unknown[]) => { warnings.push(parts.map(String).join(' ')); };
+    try {
+      failWrites = true;
+      assert.equal(await digest.recordServedHeadlines(served, 'full', 'en'), false);
+      assert.equal(warnings.filter(line => line.includes('headline history')).length, 1, warnings.join('\n'));
+      assert.match(warnings.find(line => line.includes('headline history'))!, /full:en/);
+
+      failWrites = false;
+      warnings.length = 0;
+      assert.equal(await digest.recordServedHeadlines(served, 'full', 'en', NOW - 1), false);
+      assert.equal(warnings.filter(line => line.includes('headline history')).length, 1, 'a skipped write is reported too');
+
+      warnings.length = 0;
+      assert.equal(await digest.recordServedHeadlines(served, 'full', 'en'), true);
+      assert.deepEqual(warnings.filter(line => line.includes('headline history')), [], 'a confirmed write is quiet');
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('never lets a defect in the history write fail the digest build', async () => {
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      // A malformed item makes the mapping throw; the build must carry on.
+      assert.equal(await digest.recordServedHeadlines([null] as never, 'full', 'en'), false);
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('is quiet where there is no Redis to write to', async () => {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...parts: unknown[]) => { warnings.push(parts.map(String).join(' ')); };
+    try {
+      await digest.recordServedHeadlines([{ source: 'Reuters World', title: 'Rates held', link: 'https://www.reuters.com/world/rates',
+        publishedAt: NOW, originPublisher: '', originPublisherTrusted: false }] as never, 'full', 'en');
+      assert.deepEqual(warnings.filter(line => line.includes('headline history')), []);
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('keeps a preview deployment out of the production index, on write and on read', async () => {
+    process.env.VERCEL_ENV = 'preview';
+    process.env.VERCEL_GIT_COMMIT_SHA = 'deadbeefcafebabe';
+    __resetKeyPrefixCacheForTests();
+    await served(NOW, [item('Preview only', 'https://www.reuters.com/p')]);
+    assert.deepEqual([...hashes.keys()], ['preview:deadbeef:news:headline-history:v1:full:en:2026-11-17']);
+    const { payload } = await search(freeRoute, 'preview only');
+    assert.deepEqual(titles(payload), ['Preview only']);
+    assert.ok(commands.filter(command => command[0] === 'HVALS').every(command => command[1]!.startsWith('preview:deadbeef:')));
+  });
+});
+
+describe('headline search', () => {
+  it('finds a headline served earlier today that the dashboard no longer holds', async () => {
+    await served(NOW - 5 * HOUR, [item('Strait of Hormuz tanker seized by patrol boats', 'https://www.reuters.com/hormuz', 'Reuters World', NOW - 6 * HOUR)]);
+    await served(NOW, [item('Rates held at 4.5%', 'https://www.reuters.com/rates')]);
+    const { payload } = await search(freeRoute, 'hormuz tanker');
+    assert.deepEqual(payload.headlines, [{
+      source: 'Reuters World',
+      title: 'Strait of Hormuz tanker seized by patrol boats',
+      link: 'https://www.reuters.com/hormuz',
+      publishedAt: NOW - 6 * HOUR,
+      lastServedAt: NOW - 5 * HOUR,
+    }]);
+    assert.equal(payload.searchedHeadlines, 2);
+    assert.equal(payload.windowHours, 24);
+    assert.equal(payload.state, 'complete');
+    assert.equal(payload.newestServedAt, NOW);
+  });
+
+  it('gives the free route 24 hours and the Pro route 7 days', async () => {
+    await served(NOW - 30 * HOUR, [item('Cabinet reshuffle announced', 'https://www.reuters.com/reshuffle')]);
+    await served(NOW - 6 * 24 * HOUR, [item('Cabinet talks collapse', 'https://www.reuters.com/collapse')]);
+    await served(NOW - 8 * 24 * HOUR, [item('Cabinet formed', 'https://www.reuters.com/formed')]);
+
+    const free = await search(freeRoute, 'cabinet');
+    assert.deepEqual(titles(free.payload), [], 'nothing older than 24 hours on the free route');
+    assert.equal(free.payload.windowHours, 24);
+
+    const pro = await search(archiveRoute, 'cabinet');
+    assert.deepEqual(titles(pro.payload).sort(), ['Cabinet reshuffle announced', 'Cabinet talks collapse']);
+    assert.equal(pro.payload.windowHours, 168);
+  });
+
+  it('clamps the Pro window to the language\'s retention and reads no bucket outside it', async () => {
+    const cases = [
+      { lang: 'en', hours: 168, buckets: 8 },
+      { lang: 'fr', hours: 72, buckets: 4 },
+      { lang: 'uk', hours: 24, buckets: 2 },
+      { lang: 'az', hours: 24, buckets: 2 },
+    ];
+    for (const { lang, hours, buckets } of cases) {
+      history.resetPools();
+      await served(NOW - 2 * 24 * HOUR, [item(`Budget vote two days ago ${lang}`, `https://www.reuters.com/two-${lang}`)], 'full', lang);
+      await served(NOW - 6 * 24 * HOUR, [item(`Budget vote six days ago ${lang}`, `https://www.reuters.com/six-${lang}`)], 'full', lang);
+      await served(NOW, [item(`Budget vote today ${lang}`, `https://www.reuters.com/today-${lang}`)], 'full', lang);
+      commands = [];
+      const { payload } = await search(archiveRoute, 'budget vote', `&lang=${lang}`);
+      assert.equal(payload.windowHours, hours, `${lang}: the response names the window it searched`);
+      const reads = commands.filter(command => command[0] === 'HVALS').map(command => command[1]!);
+      assert.equal(reads.length, buckets, `${lang}: ${buckets} day buckets read`);
+      assert.ok(reads.every(key => key.includes(`:full:${lang}:`)));
+      const expected = [`Budget vote today ${lang}`];
+      if (hours >= 72) expected.push(`Budget vote two days ago ${lang}`);
+      if (hours >= 168) expected.push(`Budget vote six days ago ${lang}`);
+      assert.deepEqual(titles(payload), expected, `${lang}: only what the retention keeps`);
+
+      const free = await search(freeRoute, 'budget vote', `&lang=${lang}`);
+      assert.equal(free.payload.windowHours, 24, `${lang}: the free route stays 24 hours`);
+    }
+  });
+
+  it('names the clamped window when the search did not run', async () => {
+    failReads = true;
+    const { payload } = await search(archiveRoute, 'budget vote', '&lang=fr');
+    assert.equal(payload.state, 'unavailable');
+    assert.equal(payload.windowHours, 72);
+  });
+
+  it('keeps each bucket exactly as long as the reader asks for it', async () => {
+    // The last moment of a served day is the entry a bucket must keep longest.
+    const lastMoment = Date.UTC(2026, 10, 10, 23, 59, 59, 999);
+    for (const lang of ['en', 'fr', 'uk', 'az']) {
+      history.resetPools();
+      mock.timers.setTime(lastMoment);
+      await served(lastMoment, [item(`Ceasefire holds ${lang}`, `https://www.reuters.com/ceasefire-${lang}`)], 'full', lang);
+      const key = headlineHistoryBucketKey('full', lang, lastMoment);
+      const expiresAtMs = expiries.get(key)! * 1000;
+
+      mock.timers.setTime(expiresAtMs - 1);
+      const before = await search(archiveRoute, 'ceasefire holds', `&lang=${lang}`);
+      assert.deepEqual(titles(before.payload), [`Ceasefire holds ${lang}`], `${lang}: still inside the window a millisecond before expiry`);
+
+      history.resetPools();
+      commands = [];
+      mock.timers.setTime(expiresAtMs);
+      await search(archiveRoute, 'ceasefire holds', `&lang=${lang}`);
+      assert.ok(
+        !commands.some(command => command[0] === 'HVALS' && command[1] === key),
+        `${lang}: the reader no longer asks for the bucket once it has expired`,
+      );
+    }
+  });
+
+  it('measures the window from when a headline was last served, not when it was published', async () => {
+    await served(NOW - 2 * HOUR, [item('Old article, alerted today', 'https://www.reuters.com/old', 'Reuters World', NOW - 30 * HOUR)]);
+    const { payload } = await search(freeRoute, 'alerted today');
+    assert.deepEqual(titles(payload), ['Old article, alerted today']);
+  });
+
+  it('reads across midnight UTC', async () => {
+    const justAfterMidnight = Date.UTC(2026, 10, 18, 0, 30, 0);
+    await served(Date.UTC(2026, 10, 17, 23, 50, 0), [item('Late evening strike', 'https://www.reuters.com/late')]);
+    await served(Date.UTC(2026, 10, 17, 0, 10, 0), [item('Yesterday at dawn strike', 'https://www.reuters.com/dawn')]);
+    mock.timers.setTime(justAfterMidnight);
+    const { payload } = await search(freeRoute, 'strike');
+    assert.deepEqual(titles(payload), ['Late evening strike'], 'yesterday 23:50 is inside 24 hours; 00:10 is not');
+    assert.deepEqual(
+      commands.filter(command => command[0] === 'HVALS').map(command => command[1]),
+      ['news:headline-history:v1:full:en:2026-11-17', 'news:headline-history:v1:full:en:2026-11-18'],
+    );
+  });
+
+  it('matches every word in any order, ignoring case and punctuation, and puts whole phrases first', async () => {
+    await served(NOW, [
+      item('Sanctions on Iran widen after talks', 'https://www.reuters.com/1', 'Reuters World', NOW - HOUR),
+      item('Iran sanctions: EU ministers split', 'https://www.reuters.com/2', 'Reuters World', NOW - 3 * HOUR),
+      item('Iran talks resume in Vienna', 'https://www.reuters.com/3'),
+      item('Sanctions relief for Syria', 'https://www.reuters.com/4'),
+    ]);
+    const { payload } = await search(freeRoute, '  IRAN   sanctions ');
+    assert.deepEqual(titles(payload), [
+      'Iran sanctions: EU ministers split',
+      'Sanctions on Iran widen after talks',
+    ], 'the phrase match leads although it is older');
+    const quoted = await search(freeRoute, 'iran sanctions eu');
+    assert.deepEqual(titles(quoted.payload), ['Iran sanctions: EU ministers split'], 'punctuation in the title does not block a pasted title');
+  });
+
+  it('lists a headline once: newest copy across days, one row per title', async () => {
+    await served(NOW - 20 * HOUR, [item('Port strike ends', 'https://www.reuters.com/port')]);
+    await served(NOW - HOUR, [
+      item('Port strike ends', 'https://www.reuters.com/port'),
+      item('Port strike ends', 'https://news.google.com/rss/articles/port', 'AP News'),
+    ]);
+    const { payload } = await search(freeRoute, 'port strike');
+    assert.equal(payload.headlines.length, 1);
+    assert.equal(payload.headlines[0]!.lastServedAt, NOW - HOUR);
+    assert.equal(payload.searchedHeadlines, 1);
+  });
+
+  it('finds a retitled article by the wording it was served under earlier', async () => {
+    const url = 'https://www.reuters.com/minister';
+    await served(NOW - 5 * HOUR, [item('Minister resigns after budget row', url, 'Reuters World', NOW - 6 * HOUR)]);
+    await served(NOW, [item('Minister quits: what happens next', url, 'Reuters World', NOW - 6 * HOUR)]);
+
+    const alerted = await search(freeRoute, 'minister resigns after budget row');
+    assert.deepEqual(alerted.payload.headlines, [{
+      source: 'Reuters World',
+      title: 'Minister resigns after budget row',
+      link: url,
+      publishedAt: NOW - 6 * HOUR,
+      lastServedAt: NOW - 5 * HOUR,
+    }], 'the words of an alert sent before the retitle still find the article');
+    assert.deepEqual(titles((await search(freeRoute, 'quits')).payload), ['Minister quits: what happens next']);
+
+    const both = await search(freeRoute, 'minister');
+    assert.deepEqual(titles(both.payload), ['Minister quits: what happens next'], 'one row per article: the wording served last');
+    assert.equal(both.payload.searchedHeadlines, 2, 'each wording is a headline searched');
+  });
+
+  it('keeps an earlier wording that is only in an earlier day bucket', async () => {
+    const url = 'https://www.reuters.com/minister';
+    await served(NOW - 20 * HOUR, [item('Minister resigns after budget row', url)]);
+    await served(NOW, [item('Minister quits: what happens next', url)]);
+    assert.equal(hashes.size, 2, 'two day buckets');
+    assert.deepEqual(titles((await search(freeRoute, 'resigns budget')).payload), ['Minister resigns after budget row']);
+    assert.deepEqual(titles((await search(freeRoute, 'minister')).payload), ['Minister quits: what happens next']);
+  });
+
+  it('searches the twelve wordings of a URL served last, however many separate builds wrote', async () => {
+    const url = 'https://www.reuters.com/live';
+    const wordings = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel', 'india', 'juliet', 'kilo', 'lima', 'mike', 'november'];
+    for (const [index, wording] of wordings.entries()) {
+      await served(NOW - (wordings.length - index) * 60_000, [item(`Live blog: ${wording}`, url)]);
+    }
+    assert.equal(hashes.get(headlineHistoryBucketKey('full', 'en', NOW))!.size, 14, 'a build cannot see what earlier builds wrote');
+    const { payload } = await search(freeRoute, 'live blog');
+    assert.equal(payload.searchedHeadlines, 12);
+    assert.deepEqual(titles(payload), ['Live blog: november']);
+    assert.deepEqual(titles((await search(freeRoute, 'charlie')).payload), ['Live blog: charlie']);
+    assert.deepEqual(titles((await search(freeRoute, 'bravo')).payload), [], 'the thirteenth wording back is not searched');
+  });
+
+  it('matches every word of a long pasted headline, including the last', async () => {
+    const stem = 'EU and US agree to cut tariffs on steel and cars in a deal';
+    await served(NOW, [
+      item(`${stem} signed Tuesday`, 'https://www.reuters.com/signed'),
+      item(`${stem} delayed again`, 'https://www.reuters.com/delayed'),
+    ]);
+    const pasted = `${stem} signed Tuesday`;
+    assert.ok(pasted.split(' ').length > 12 && pasted.length <= 120);
+    assert.deepEqual(titles((await search(freeRoute, pasted)).payload), [pasted]);
+    // The fourteenth word decides it even when the words are out of order.
+    assert.deepEqual(
+      titles((await search(freeRoute, 'deal a in cars and steel on tariffs cut to agree US and EU delayed')).payload),
+      [`${stem} delayed again`],
+    );
+    // 120 characters is the longest query the route accepts: sixty words here.
+    const sixty = Array.from({ length: 60 }, (_, index) => 'abcdefghijklmnopqrstuvwxyz'[index % 26]).join(' ');
+    assert.equal(sixty.length, 119);
+    assert.equal((await search(freeRoute, sixty)).status, 200);
+    assert.equal((await search(freeRoute, `${sixty} ab`)).status, 400, 'a longer query is refused, not cut short');
+    assert.deepEqual(titles((await search(freeRoute, `${'e u a o '.repeat(13)}tariffs zebra`)).payload), [], 'a word no title holds, last of 54 in the query');
+  });
+
+  it('returns at most 20 headlines, newest first', async () => {
+    await served(NOW, Array.from({ length: 30 }, (_, index) =>
+      item(`Quake update ${index}`, `https://www.reuters.com/q${index}`, 'Reuters World', NOW - index * 60_000)));
+    const { payload } = await search(freeRoute, 'quake update');
+    assert.equal(payload.headlines.length, 20);
+    assert.equal(payload.headlines[0]!.title, 'Quake update 0');
+    assert.equal(payload.searchedHeadlines, 30);
+  });
+
+  it('searches only the edition and language asked for', async () => {
+    await served(NOW, [item('Chip export rules tighten', 'https://www.reuters.com/chips')], 'tech', 'en');
+    await served(NOW, [item('Règles sur les puces renforcées', 'https://www.lemonde.fr/puces', 'Le Monde')], 'full', 'fr');
+    assert.deepEqual(titles((await search(freeRoute, 'chip export')).payload), []);
+    assert.deepEqual(titles((await search(freeRoute, 'chip export', '&variant=tech')).payload), ['Chip export rules tighten']);
+    assert.deepEqual(titles((await search(freeRoute, 'puces', '&lang=fr')).payload), ['Règles sur les puces renforcées']);
+  });
+
+  it('applies the window on every request, also to an index it already holds', async () => {
+    await served(NOW - 24 * HOUR + 10_000, [item('Dock strike begins', 'https://www.reuters.com/begins')]);
+    await served(NOW, [item('Dock strike spreads', 'https://www.reuters.com/spreads')]);
+    assert.equal((await search(freeRoute, 'dock strike')).payload.headlines.length, 2, '23:59:50 old is inside the window');
+
+    commands = [];
+    mock.timers.setTime(NOW + 30_000);
+    const { payload } = await search(freeRoute, 'dock strike');
+    assert.deepEqual(titles(payload), ['Dock strike spreads'], '24:00:20 old is outside it');
+    assert.equal(payload.searchedHeadlines, 1);
+    assert.equal(commands.filter(command => command[0] === 'HVALS').length, 0, 'answered from the index already read');
+  });
+
+  it('reads the index once a minute per window, not once per keystroke', async () => {
+    await served(NOW, [item('Rates held at 4.5%', 'https://www.reuters.com/rates')]);
+    commands = [];
+    await search(freeRoute, 'ra');
+    await search(freeRoute, 'rat');
+    await search(freeRoute, 'rates');
+    assert.equal(commands.filter(command => command[0] === 'HVALS').length, 2, 'one read of two day buckets');
+    mock.timers.setTime(NOW + 61_000);
+    await search(freeRoute, 'rates');
+    assert.equal(commands.filter(command => command[0] === 'HVALS').length, 4);
+  });
+});
+
+describe('headline search failure and revocation', () => {
+  it('drops a revoked article', async () => {
+    await served(NOW, [
+      item('Retracted claim about the minister', 'https://www.reuters.com/retracted'),
+      item('Minister denies the claim', 'https://www.reuters.com/denial'),
+    ]);
+    revoked = ['https://www.reuters.com/retracted'];
+    const { payload } = await search(freeRoute, 'minister');
+    assert.deepEqual(titles(payload), ['Minister denies the claim']);
+  });
+
+  it('drops an article revoked after the index was read, without reading the index again', async () => {
+    await served(NOW, [
+      item('Retracted claim about the minister', 'https://www.reuters.com/retracted'),
+      item('Minister denies the claim', 'https://www.reuters.com/denial'),
+    ]);
+    const before = await search(freeRoute, 'minister');
+    assert.deepEqual(titles(before.payload).sort(), ['Minister denies the claim', 'Retracted claim about the minister']);
+
+    commands = [];
+    revoked = ['https://www.reuters.com/retracted'];
+    const after = await search(freeRoute, 'minister');
+    assert.deepEqual(titles(after.payload), ['Minister denies the claim'], 'revoked seconds ago, gone on the next request');
+    assert.equal(after.payload.searchedHeadlines, 1, 'a revoked headline is not counted as searched');
+    assert.deepEqual(commands.map(command => command[0]), ['SMEMBERS'], 'revocations are read again; the index is not');
+
+    revoked = [];
+    const lifted = await search(freeRoute, 'minister');
+    assert.equal(lifted.payload.headlines.length, 2, 'lifting the revocation lists it again');
+  });
+
+  it('drops every wording of a revoked article', async () => {
+    const url = 'https://www.reuters.com/retracted';
+    await served(NOW - 2 * HOUR, [item('Minister took bribes, sources say', url)]);
+    await served(NOW, [item('Correction: minister bribe claim withdrawn', url)]);
+    assert.equal((await search(freeRoute, 'minister')).payload.searchedHeadlines, 2);
+    revoked = [url];
+    for (const query of ['minister', 'bribes sources', 'correction']) {
+      const { payload } = await search(freeRoute, query);
+      assert.deepEqual(payload.headlines, [], query);
+      assert.equal(payload.searchedHeadlines, 0);
+    }
+  });
+
+  it('fails closed on an index it already holds when revocations cannot be read, then recovers', async () => {
+    await served(NOW, [item('Rates held at 4.5%', 'https://www.reuters.com/rates')]);
+    assert.deepEqual(titles((await search(freeRoute, 'rates')).payload), ['Rates held at 4.5%']);
+
+    failRevocations = true;
+    const failed = await search(freeRoute, 'rates held');
+    assert.equal(failed.payload.state, 'unavailable');
+    assert.deepEqual(failed.payload.headlines, []);
+    assert.equal(failed.payload.searchedHeadlines, 0);
+    assert.equal(drainResponseHeaders(failed.req)?.['X-No-Cache'], '1');
+
+    failRevocations = false;
+    commands = [];
+    const recovered = await search(freeRoute, 'rates held');
+    assert.deepEqual(titles(recovered.payload), ['Rates held at 4.5%']);
+    assert.equal(drainResponseHeaders(recovered.req), undefined, 'a completed search may be cached');
+    assert.deepEqual(commands.map(command => command[0]), ['SMEMBERS'], 'the failed check did not discard the index');
+  });
+
+  it('lists the other copy of a syndicated story when the copy it was listed under is revoked', async () => {
+    await served(NOW - HOUR, [item('Port strike ends', 'https://www.reuters.com/port')]);
+    await served(NOW, [item('Port strike ends', 'https://www.apnews.com/port', 'AP News')]);
+    assert.equal((await search(freeRoute, 'port strike')).payload.headlines[0]!.link, 'https://www.apnews.com/port');
+    revoked = ['https://www.apnews.com/port'];
+    const { payload } = await search(freeRoute, 'port strike');
+    assert.deepEqual(payload.headlines.map(headline => headline.link), ['https://www.reuters.com/port']);
+    assert.equal(payload.searchedHeadlines, 1);
+    assert.equal(payload.newestServedAt, NOW - HOUR, 'the newest serve time ignores the revoked copy');
+  });
+
+  it('fails closed and uncached when revocations cannot be read', async () => {
+    await served(NOW, [item('Rates held at 4.5%', 'https://www.reuters.com/rates')]);
+    failRevocations = true;
+    const { req, payload } = await search(freeRoute, 'rates');
+    assert.equal(payload.state, 'unavailable');
+    assert.deepEqual(payload.headlines, []);
+    assert.equal(drainResponseHeaders(req)?.['X-No-Cache'], '1');
+  });
+
+  it('reports an unreadable index as unavailable, not as no matches, and retries on the next query', async () => {
+    await served(NOW, [item('Rates held at 4.5%', 'https://www.reuters.com/rates')]);
+    failReads = true;
+    const failed = await search(freeRoute, 'rates');
+    assert.equal(failed.payload.state, 'unavailable');
+    assert.equal(drainResponseHeaders(failed.req)?.['X-No-Cache'], '1');
+    failReads = false;
+    const recovered = await search(freeRoute, 'rates');
+    assert.equal(recovered.payload.state, 'complete');
+    assert.deepEqual(titles(recovered.payload), ['Rates held at 4.5%']);
+    assert.equal(drainResponseHeaders(recovered.req), undefined, 'a completed search may be cached');
+  });
+
+  it('reports unavailable when Redis is not configured', async () => {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    const { payload } = await search(freeRoute, 'rates');
+    assert.equal(payload.state, 'unavailable');
+    assert.equal(charges.length, 0, 'with no index to read, nobody is charged for one');
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+    process.env.LOCAL_API_MODE = 'tauri-sidecar';
+    assert.equal((await search(freeRoute, 'rates')).payload.state, 'unavailable');
+    assert.equal(charges.length, 0, 'nor on the desktop sidecar, which keeps no index');
+  });
+
+  it('rejects a query with nothing to search for, an unknown edition and an unknown language', async () => {
+    for (const [query, extra] of [['a', ''], ['?!', ''], ['rates', '&variant=sports'], ['rates', '&lang=xx']] as const) {
+      const { status } = await search(freeRoute, query, extra);
+      assert.equal(status, 400, `${query}${extra}`);
+    }
+    for (const route of [freeRoute, archiveRoute]) {
+      const res = await route.handler(new Request(`https://example.test${route.path}?variant=full`));
+      assert.equal(res.status, 400, `${route.path} without a query`);
+    }
+    assert.equal(commands.length, 0, 'a rejected request reads nothing');
+  });
+});
+
+describe('headline search index-read budget', () => {
+  // Eight (edition, language) cells: two more than the isolate memoizes.
+  const CELLS = ['full', 'tech', 'finance', 'commodity'].flatMap(variant => ['en', 'fr'].map(lang => ({ variant, lang })));
+  const from = (ip: string) => ({ 'x-real-ip': ip });
+  const reads = () => commands.filter(command => command[0] === 'HVALS').length / 2;
+  const searchCell = (cell: typeof CELLS[number], ip: string) =>
+    search(freeRoute, 'rates', `&variant=${cell.variant}&lang=${cell.lang}`, from(ip));
+
+  async function serveEveryCell() {
+    for (const { variant, lang } of CELLS) {
+      await served(NOW, [item(`Rates held in ${variant} ${lang}`, `https://www.reuters.com/${variant}-${lang}`)], variant, lang);
+    }
+    commands = [];
+  }
+
+  /** Rotate the cells until this caller's budget is spent; returns the budget. */
+  async function exhaust(ip: string): Promise<number> {
+    for (let round = 0; round < 6; round += 1) {
+      for (const cell of CELLS) await searchCell(cell, ip);
+    }
+    const mine = charges.filter(charge => charge.caller === `ip:${ip}`);
+    const budget = mine[0]!.limit;
+    assert.ok(mine.length > budget, 'the rotation spent the budget');
+    return budget;
+  }
+
+  it('stops reading the index for a caller who rotates editions and languages past the budget', async () => {
+    await serveEveryCell();
+    const states: string[] = [];
+    const uncached: boolean[] = [];
+    for (let round = 0; round < 6; round += 1) {
+      for (const cell of CELLS) {
+        const { req, payload } = await searchCell(cell, '203.0.113.7');
+        states.push(payload.state);
+        uncached.push(drainResponseHeaders(req)?.['X-No-Cache'] === '1');
+      }
+    }
+    const budget = charges[0]?.limit ?? 0;
+    assert.ok(budget > 0 && budget < CELLS.length * 6, 'the rotation outruns the budget');
+    assert.equal(reads(), budget, 'every index read was inside the budget: 48 requests, no read per request');
+    assert.equal(charges[0]!.scope, 'headline-history-index-read:caller');
+    assert.ok(charges.every(charge => charge.caller === 'ip:203.0.113.7'), 'charged to the caller');
+    assert.ok(states.includes('unavailable'), 'a refused read with no copy held says it did not search');
+    states.forEach((state, index) => assert.equal(uncached[index], state === 'unavailable', 'only a search that did not run is uncacheable'));
+
+    // The refused caller keeps being refused: more requests, no more reads.
+    for (const cell of CELLS) await searchCell(cell, '203.0.113.7');
+    assert.equal(reads(), budget);
+  });
+
+  it('charges nothing while the index is memoized', async () => {
+    await serveEveryCell();
+    for (const query of ['rat', 'rate', 'rates', 'rates held']) {
+      assert.equal((await search(freeRoute, query, '', from('203.0.113.7'))).payload.state, 'complete');
+    }
+    assert.equal(charges.length, 1, 'one miss, one charge');
+    assert.equal(reads(), 1);
+  });
+
+  it('leaves another caller searching after one caller has spent its budget', async () => {
+    await serveEveryCell();
+    const budget = await exhaust('203.0.113.7');
+    assert.equal(reads(), budget);
+    // Past the memo's minute, so every cell is a miss again for everybody.
+    mock.timers.setTime(NOW + 61_000);
+    for (const cell of CELLS.slice(0, 3)) {
+      const { payload } = await searchCell(cell, '198.51.100.9');
+      assert.equal(payload.state, 'complete', `${cell.variant}:${cell.lang}`);
+      assert.equal(payload.headlines.length, 1);
+    }
+    assert.equal(reads(), budget + 3, 'the second caller read on its own budget');
+  });
+
+  it('answers a refused caller from the copy the isolate still holds, for ten minutes', async () => {
+    await serveEveryCell();
+    await exhaust('203.0.113.7');
+    // The last cell of the rotation was read last, so the isolate still has it.
+    const held = CELLS.find(cell => cell.variant === 'commodity' && cell.lang === 'fr')!;
+    assert.equal((await searchCell(held, '203.0.113.7')).payload.state, 'complete', 'memoized');
+    const before = reads();
+
+    mock.timers.setTime(NOW + 5 * 60_000);
+    const stale = await searchCell(held, '203.0.113.7');
+    assert.equal(stale.payload.state, 'complete', 'the expired copy still answers a caller with no budget');
+    assert.equal(stale.payload.headlines.length, 1);
+    assert.equal(reads(), before, 'without a read');
+
+    // A refusal replaces nothing: the next caller with budget reads, and the
+    // refused caller is then answered from that fresh copy.
+    assert.equal((await searchCell(held, '198.51.100.9')).payload.state, 'complete');
+    assert.equal(reads(), before + 1);
+
+    mock.timers.setTime(NOW + 5 * 60_000 + 11 * 60_000);
+    const tooOld = await searchCell(held, '203.0.113.7');
+    assert.equal(tooOld.payload.state, 'unavailable', 'a copy older than ten minutes is not an answer');
+    assert.equal(drainResponseHeaders(tooOld.req)?.['X-No-Cache'], '1');
+    assert.equal(reads(), before + 1);
+  });
+
+  it('does not memoize a refusal', async () => {
+    await serveEveryCell();
+    await exhaust('203.0.113.7');
+    mock.timers.setTime(NOW + 11 * 60_000);
+    const cell = CELLS[0]!;
+    assert.equal((await searchCell(cell, '203.0.113.7')).payload.state, 'unavailable');
+    assert.equal((await searchCell(cell, '198.51.100.9')).payload.state, 'complete', 'the refusal was the first caller\'s alone');
+    assert.equal((await searchCell(cell, '203.0.113.7')).payload.state, 'complete', 'and the copy the second caller read now answers both');
+  });
+
+  it('reads once for two callers who miss together', async () => {
+    await serveEveryCell();
+    const [first, second] = await Promise.all([
+      searchCell(CELLS[0]!, '203.0.113.7'),
+      searchCell(CELLS[0]!, '198.51.100.9'),
+    ]);
+    assert.equal(first.payload.state, 'complete');
+    assert.equal(second.payload.state, 'complete');
+    assert.equal(reads(), 1);
+  });
+
+  it('charges a caller once for requests that miss one cell together', async () => {
+    await serveEveryCell();
+    const together = await Promise.all(['rat', 'rate', 'rates', 'rates held', 'held'].map(query =>
+      search(freeRoute, query, '', from('203.0.113.7'))));
+    assert.ok(together.every(({ payload }) => payload.state === 'complete'));
+    assert.equal(reads(), 1);
+    assert.equal(charges.length, 1, 'one read, one charge');
+    // Another cell, or another caller on the same cell, is its own charge.
+    await Promise.all([searchCell(CELLS[1]!, '203.0.113.7'), searchCell(CELLS[2]!, '203.0.113.7'), searchCell(CELLS[2]!, '198.51.100.9')]);
+    assert.equal(charges.length, 4);
+    assert.equal(reads(), 3);
+  });
+
+  it('keeps searching when the limiter cannot decide', async () => {
+    // A self-hosted Redis 6 behind the REST proxy is degraded on every scoped
+    // call. Refusing there would leave the history unavailable for good.
+    await serveEveryCell();
+    limiterDegraded = true;
+    for (const cell of CELLS) {
+      const { req, payload } = await searchCell(cell, '203.0.113.7');
+      assert.equal(payload.state, 'complete', `${cell.variant}:${cell.lang}`);
+      assert.equal(payload.headlines.length, 1);
+      assert.equal(drainResponseHeaders(req), undefined);
+    }
+    assert.equal(reads(), CELLS.length);
+    assert.equal(charges.length, CELLS.length, 'the limiter was still asked');
+  });
+
+  it('charges the account the gateway stamped before the address, on both routes', async () => {
+    await serveEveryCell();
+    await search(archiveRoute, 'rates', '', { 'x-real-ip': '203.0.113.7', 'x-wm-rl-principal': 'session:user_1' });
+    await search(freeRoute, 'rates', '', { 'x-real-ip': '203.0.113.7', 'x-wm-rl-principal': 'api_key:user_2' });
+    await search(freeRoute, 'rates', '&lang=fr', from('203.0.113.7'));
+    assert.deepEqual(charges.map(charge => charge.caller), ['principal:session:user_1', 'principal:api_key:user_2', 'ip:203.0.113.7']);
+    assert.equal(new Set(charges.map(charge => `${charge.scope}|${charge.limit}|${charge.window}`)).size, 1, 'one budget for both routes');
+  });
+});
+
+describe('headline search access', () => {
+  it('gates the 7-day route as premium and leaves the 24-hour route to any dashboard session', () => {
+    assert.ok(PREMIUM_RPC_PATHS.has('/api/news/v1/search-headline-archive'));
+    assert.ok(!PREMIUM_RPC_PATHS.has('/api/news/v1/search-headlines'));
+    for (const path of ['/api/news/v1/search-headlines', '/api/news/v1/search-headline-archive']) {
+      assert.ok(!PUBLIC_NO_AUTH_RPC_PATHS.has(path), `${path} needs a session or key`);
+      assert.ok(!isPublicSharedRpcRequest(`https://www.worldmonitor.app${path}?query=iran&public=1`), `${path} is not an anonymous shared-cache route`);
+    }
+  });
+});

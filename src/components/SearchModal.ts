@@ -86,6 +86,12 @@ function resolveCategoryLabel(cmd: Command): string {
   return key ? t(key, { defaultValue: cmd.category }) : cmd.category;
 }
 
+// A headline from the server history reads as news to the user: same label,
+// no second word for the same thing. Its subtitle carries publisher and age.
+const RESULT_TYPE_LABEL_KEYS: Partial<Record<SearchResultType, string>> = {
+  headline: 'news',
+};
+
 const RECENT_SEARCHES_KEY = 'worldmonitor_recent_searches';
 const MAX_RECENT = 8;
 
@@ -153,6 +159,8 @@ export class SearchModal {
   private onHumanInteraction?: () => void;
   private onQueryChange?: (rawInput: string) => void;
   private onFlightSearch?: (callsign: string) => void;
+  /** A source is still fetching results for the visible query. */
+  private resultsPending = false;
   private onOpen?: () => void;
   private currentFlightCallsign: string | null = null;
   private flightSearchFired = false;
@@ -297,6 +305,31 @@ export class SearchModal {
     this.onFlightSearch = callback;
   }
 
+  /**
+   * Called with the lowercased input each time the visible query is searched,
+   * and with '' when the query is cleared or the modal closes. A source that
+   * fetches results for the query (headline history) listens here.
+   */
+  public setOnQueryChange(callback: (rawInput: string) => void): void {
+    this.onQueryChange = callback;
+  }
+
+  /**
+   * A source is fetching results for the visible query (true) or has finished
+   * (false). While it is fetching, an empty list reads "Loading..." instead of
+   * "No results": the answer is not known yet.
+   */
+  public setResultsPending(pending: boolean): void {
+    if (this.resultsPending === pending) return;
+    this.resultsPending = pending;
+    // Turning it on happens inside the search that is about to render. Turning
+    // it off must repaint an empty list, or it would say "Loading..." forever.
+    if (pending || !this.overlay || this.totalResultCount > 0) return;
+    const query = (this.input?.value.toLowerCase() ?? '').trim();
+    if (!query || query !== this.lastSearchedQuery || this.currentFlightCallsign) return;
+    this.renderResults();
+  }
+
   /** Runs each time the palette opens, so a source can refresh without a per-keystroke fetch. */
   public setOnOpen(callback: () => void): void {
     this.onOpen = callback;
@@ -304,6 +337,27 @@ export class SearchModal {
 
   public refreshSearch(): void {
     if (this.overlay) this.handleSearch();
+  }
+
+  /**
+   * Re-render the current query after a source filled in on its own (a fetch
+   * finishing while the list is on screen). Unlike refreshSearch, the row the
+   * user has highlighted stays highlighted, the search is not counted again,
+   * and the query-change listener is not called again.
+   */
+  public refreshResultsInBackground(): void {
+    if (!this.overlay) return;
+    const rawInput = this.input?.value.toLowerCase() || '';
+    const query = rawInput.trim();
+    // A newer keystroke is still pending: its own search will read the source.
+    // A "flight <callsign>" lookup owns the list while it runs.
+    if (!query || query !== this.lastSearchedQuery || this.currentFlightCallsign) return;
+    const selectedIdentity = this.selectedRowIdentity();
+    const matches = this.search(rawInput, this.activeScope);
+    this.commandResults = matches.commandMatches;
+    this.results = matches.entityMatches.map((match) => match.result);
+    this.selectedIndex = selectedIdentity ? this.rowIndexOf(selectedIdentity) : 0;
+    this.renderResults();
   }
 
   public setActivePanels(panelIds: string[], options?: { updateVisibleMetrics?: boolean }): void {
@@ -413,6 +467,8 @@ export class SearchModal {
   private closeInternal(origin: OverlayCloseOrigin): void {
     // Drop any pending debounced search so it can't fire against a torn-down modal.
     this.debouncedSearch.cancel();
+    // The query is over: a source fetching for it stops and drops its results.
+    this.onQueryChange?.('');
     this.focusTrap?.deactivate();
     this.focusTrap = null;
     this.mobileInitialPopulationGeneration += 1;
@@ -691,6 +747,7 @@ export class SearchModal {
     this.lastSearchedQuery = query;
 
     if (!query) {
+      this.onQueryChange?.('');
       this.showingAllCommands = false;
       this.commandResults = [];
       // Drop flight trigger state so Enter on the idle deck cannot re-fire a
@@ -716,6 +773,21 @@ export class SearchModal {
     this.quickLaunchExamples = [];
     this.renderResults();
     if (this.isMobile) this.renderChips(query);
+  }
+
+  /** What the highlighted row points at, so a background refresh can keep it highlighted. */
+  private selectedRowIdentity(): string | null {
+    const command = this.commandResults[this.selectedIndex]?.command;
+    if (command) return `command:${command.id}`;
+    const result = this.results[this.selectedIndex - this.commandResults.length];
+    return result ? `${result.type}:${result.id}` : null;
+  }
+
+  private rowIndexOf(identity: string): number {
+    const commandIndex = this.commandResults.findIndex(({ command }) => `command:${command.id}` === identity);
+    if (commandIndex >= 0) return commandIndex;
+    const resultIndex = this.results.findIndex((result) => `${result.type}:${result.id}` === identity);
+    return resultIndex >= 0 ? this.commandResults.length + resultIndex : 0;
   }
 
   private showRecentOrEmpty(): void {
@@ -984,6 +1056,16 @@ export class SearchModal {
         }
         return;
       }
+      if (this.resultsPending) {
+        // Not announced: there is no count to announce until the answer lands.
+        setTrustedHtml(this.resultsList, trustedHtml(`
+          <div class="search-empty" data-search-pending>
+            <div class="search-empty-icon">\u2026</div>
+            <div>${escapeHtml(t('common.loading'))}</div>
+          </div>
+        `, "legacy direct innerHTML migration"));
+        return;
+      }
       setTrustedHtml(this.resultsList, trustedHtml(`
         <div class="search-empty">
           <div class="search-empty-icon">\u2205</div>
@@ -997,6 +1079,7 @@ export class SearchModal {
     const icons: Record<SearchResultType, string> = {
       country: '\u{1F3F3}\uFE0F',
       news: '\u{1F4F0}',
+      headline: '\u{1F4F0}',
       hotspot: '\u{1F4CD}',
       market: '\u{1F4C8}',
       prediction: '\u{1F3AF}',
@@ -1060,13 +1143,13 @@ export class SearchModal {
         section = resultSection;
       }
       html += `
-        <div class="search-result-item ${resultSection === 'alerts' ? 'search-result-alert ' : ''}${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}">
+        <div class="search-result-item ${result.type === 'headline' ? 'search-result-headline ' : ''}${resultSection === 'alerts' ? 'search-result-alert ' : ''}${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}">
           <span class="search-result-icon">${icons[result.type]}</span>
           <div class="search-result-content">
             <div class="search-result-title">${this.highlightMatch(result.title)}</div>
             ${result.subtitle ? `<div class="search-result-subtitle">${escapeHtml(result.subtitle)}</div>` : ''}
           </div>
-          <span class="search-result-type">${escapeHtml(t(`modals.search.types.${result.type}`) || result.type)}</span>
+          <span class="search-result-type">${escapeHtml(t(`modals.search.types.${RESULT_TYPE_LABEL_KEYS[result.type] ?? result.type}`) || result.type)}</span>
         </div>`;
       globalIndex++;
     }
