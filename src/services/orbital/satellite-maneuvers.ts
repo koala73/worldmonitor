@@ -52,7 +52,9 @@ export function loadRecentManeuvers(nowMs = Date.now()): Promise<Map<string, Man
   if (cached && nowMs < cached.expiresAt) return cached.promise;
   const entry = {
     expiresAt: nowMs + LIST_TTL_MS,
-    promise: getOrbitalClient().listSatelliteManeuvers({ noradId: 0 })
+    // Called inside the chain, so a client that throws before returning a promise still lands in catch.
+    promise: Promise.resolve()
+      .then(() => getOrbitalClient().listSatelliteManeuvers({ noradId: 0 }))
       .then((response) => {
         const recent = recentManeuvers(response, Date.now());
         entry.expiresAt = Math.min(entry.expiresAt, firstExpiryMs(recent));

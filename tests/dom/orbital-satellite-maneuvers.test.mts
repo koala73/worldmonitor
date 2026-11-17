@@ -93,6 +93,13 @@ describe('loadRecentManeuvers', () => {
     vi.useRealTimers();
   });
 
+  it('resolves to no marker when the client throws before it returns a promise', async () => {
+    mocks.listSatelliteManeuvers.mockImplementation(() => { throw new TypeError('client unavailable'); });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(loadRecentManeuvers(NOW)).resolves.toEqual(new Map());
+    warn.mockRestore();
+  });
+
   it('reads again once a shared candidate ages out of the marker window', async () => {
     const expiresAt = NOW + 5 * 60_000;
     mocks.listSatelliteManeuvers.mockResolvedValue(response([candidate({ toEpoch: expiresAt - MANEUVER_MARKER_DAYS * DAY_MS })]));
