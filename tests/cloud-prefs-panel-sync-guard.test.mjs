@@ -170,7 +170,7 @@ describe('cloud prefs panel sync guardrails', () => {
 
     assert.match(
       capBlock,
-      /persistJsonStorageValue\(STORAGE_KEYS\.disabledFeeds, \[\.\.\.nextDisabled\]\)[\s\S]*?if \(disabledChanged\) \{[\s\S]*?this\.state\.disabledSources = new Set\(nextDisabled\);/,
+      /persistJsonStorageValue\(STORAGE_KEYS\.disabledFeeds, \[\.\.\.nextDisabled\]\)[\s\S]*?if \(!stringSetsEqual\(this\.state\.disabledSources, nextDisabled\)\) \{[\s\S]*?this\.state\.disabledSources = new Set\(nextDisabled\);/,
       'a cap reached from delayed auth or entitlement settlement must update the running app state',
     );
     assert.match(

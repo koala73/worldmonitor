@@ -49,6 +49,7 @@ export const PERSONAL_DELETE_TABLES = [
   // insert earlier in the list would make them skip a table.
   "enterpriseMembers",
   "proBusinessUpgradeAdmissions",
+  "alertScopeNotices",
   "users",
 ] as const;
 
@@ -98,6 +99,11 @@ async function takePersonalRows(
     case "alertRules":
       return ctx.db
         .query("alertRules")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(limit);
+    case "alertScopeNotices":
+      return ctx.db
+        .query("alertScopeNotices")
         .withIndex("by_user", (q) => q.eq("userId", userId))
         .take(limit);
     case "agentFeedback":

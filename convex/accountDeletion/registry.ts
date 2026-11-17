@@ -101,6 +101,7 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
   { target: "enterpriseAccountLocks", action: "skip", notes: "Per-account OCC locks; no userId" },
   { target: "apiUsageRollups", action: "delete", notes: "Usage windows" },
   { target: "apiPlanLimitNotices", action: "delete", notes: "Plan-limit notices" },
+  { target: "alertScopeNotices", action: "delete", notes: "Alert scope migration markers and notice outbox (#10873)" },
   { target: "checkoutAdmissions", action: "delete", notes: "Checkout admission counters" },
   { target: "proBusinessUpgradeAdmissions", action: "delete", notes: "Pro Business upgrade admission counters" },
   { target: "checkoutSessionEvents", action: "delete", notes: "Checkout funnel session log" },
