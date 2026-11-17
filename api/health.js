@@ -2346,7 +2346,7 @@ const SEED_META = {
     cutover: {
       mode: 'activation-marker',
       fromKey: null,
-      issue: 0,
+      issue: 10930,
       activationKey: 'seed-activated:trade:monthly-sitc-my',
     },
   },
