@@ -30,6 +30,11 @@
  * 135 MB retained. A 24-hour search reads two buckets (about 1 MB); a 7-day
  * search reads eight (about 4 MB), which is why the read is memoized per
  * isolate and why the window stops at seven days.
+ *
+ * Revocations: an article an operator revoked (_shared/digest-revocations.ts)
+ * is left out of every answer. Only the headlines are memoized. The revoked
+ * set is read on every request, and a request whose check fails answers
+ * `unavailable`, which the handler marks uncacheable.
  */
 import { headlineTitleKey } from '../../../../src/shared/headline-title-key';
 import { readRevokedUrlSet } from '../../../_shared/digest-revocations';
@@ -49,8 +54,8 @@ const MAX_TITLE_CHARS = 500;
 const MAX_SOURCE_CHARS = 200;
 const MAX_LINK_CHARS = 2048;
 const MAX_QUERY_WORDS = 12;
-const POOL_TTL_MS = 60_000;
-const MAX_POOLS = 6;
+const INDEX_TTL_MS = 60_000;
+const MAX_INDEXES = 6;
 
 type RedisCommand = Array<string | number>;
 
@@ -140,10 +145,14 @@ interface PoolEntry extends HeadlineHistoryEntry {
   key: string;
 }
 
-interface HeadlinePool {
+/**
+ * What the window's buckets hold, before operator revocations are applied.
+ * This is the part that is memoized; revocations are read on every request.
+ */
+interface HeadlineIndex {
   readable: boolean;
+  /** One entry per article URL, last served first. */
   entries: PoolEntry[];
-  newestServedAt: number;
 }
 
 function parseEntry(raw: unknown): PoolEntry | null {
@@ -171,63 +180,56 @@ function parseEntry(raw: unknown): PoolEntry | null {
   };
 }
 
-const UNREADABLE: HeadlinePool = { readable: false, entries: [], newestServedAt: 0 };
+const UNREADABLE: HeadlineIndex = { readable: false, entries: [] };
 
-async function readPool(variant: string, lang: string, windowHours: number, nowMs: number): Promise<HeadlinePool> {
+async function readIndex(variant: string, lang: string, windowHours: number, nowMs: number): Promise<HeadlineIndex> {
   const cutoff = nowMs - windowHours * 60 * 60 * 1000;
   const keys: string[] = [];
   for (let day = Math.floor(cutoff / DAY_MS); day <= Math.floor(nowMs / DAY_MS); day += 1) {
     keys.push(headlineHistoryBucketKey(variant, lang, day * DAY_MS));
   }
-  const [results, revoked] = await Promise.all([
-    runRedisPipeline(keys.map((key) => ['HVALS', key]), false),
-    readRevokedUrlSet(),
-  ]);
-  // Fail closed: nothing goes out unchecked against operator revocations, and
-  // a short or errored read is not an empty index.
-  if (!revoked.readable || results.length !== keys.length) return UNREADABLE;
+  const results = await runRedisPipeline(keys.map((key) => ['HVALS', key]), false);
+  // A short or errored read is not an empty index.
+  if (results.length !== keys.length) return UNREADABLE;
   if (results.some((result) => result?.error || !Array.isArray(result?.result))) return UNREADABLE;
 
   // A headline served on several days is in several buckets: keep the copy
-  // served last. Then one row per title, so a wire story syndicated under two
-  // URLs is listed once.
+  // served last.
   const byLink = new Map<string, PoolEntry>();
   for (const result of results) {
     for (const raw of result.result as unknown[]) {
       const entry = parseEntry(raw);
-      if (!entry || entry.lastServedAt < cutoff || revoked.urls.has(entry.link)) continue;
+      if (!entry || entry.lastServedAt < cutoff) continue;
       const seen = byLink.get(entry.link);
       if (!seen || entry.lastServedAt > seen.lastServedAt) byLink.set(entry.link, entry);
     }
   }
-  const byTitle = new Map<string, PoolEntry>();
-  let newestServedAt = 0;
-  for (const entry of byLink.values()) {
-    if (entry.lastServedAt > newestServedAt) newestServedAt = entry.lastServedAt;
-    const seen = byTitle.get(entry.key);
-    if (
-      !seen
-      || entry.lastServedAt > seen.lastServedAt
-      || (entry.lastServedAt === seen.lastServedAt && entry.publishedAt > seen.publishedAt)
-    ) byTitle.set(entry.key, entry);
-  }
-  return { readable: true, entries: [...byTitle.values()], newestServedAt };
+  // Last served first, so a search that walks the entries in order meets the
+  // copy to list for a title before its older copies.
+  const entries = [...byLink.values()].sort(
+    (a, b) => b.lastServedAt - a.lastServedAt || b.publishedAt - a.publishedAt,
+  );
+  return { readable: true, entries };
 }
 
-/** One read per (edition, language, window) serves every query this isolate gets for a minute. */
-const pools = new Map<string, { at: number; promise: Promise<HeadlinePool> }>();
+/**
+ * One read per (edition, language, window) serves every query this isolate
+ * gets for a minute. Only the headlines are held: which of them an operator
+ * has revoked is asked again on every request (searchHeadlineHistory).
+ */
+const indexes = new Map<string, { at: number; promise: Promise<HeadlineIndex> }>();
 
-function loadPool(variant: string, lang: string, windowHours: number, nowMs: number): Promise<HeadlinePool> {
+function loadIndex(variant: string, lang: string, windowHours: number, nowMs: number): Promise<HeadlineIndex> {
   const id = `${variant}:${lang}:${windowHours}`;
-  const cached = pools.get(id);
-  if (cached && nowMs - cached.at >= 0 && nowMs - cached.at < POOL_TTL_MS) return cached.promise;
-  const promise = readPool(variant, lang, windowHours, nowMs).catch(() => UNREADABLE);
-  pools.delete(id);
-  pools.set(id, { at: nowMs, promise });
-  while (pools.size > MAX_POOLS) pools.delete(pools.keys().next().value as string);
+  const cached = indexes.get(id);
+  if (cached && nowMs - cached.at >= 0 && nowMs - cached.at < INDEX_TTL_MS) return cached.promise;
+  const promise = readIndex(variant, lang, windowHours, nowMs).catch(() => UNREADABLE);
+  indexes.delete(id);
+  indexes.set(id, { at: nowMs, promise });
+  while (indexes.size > MAX_INDEXES) indexes.delete(indexes.keys().next().value as string);
   // A failed read is not reused: the next query reads again.
-  void promise.then((pool) => {
-    if (!pool.readable && pools.get(id)?.promise === promise) pools.delete(id);
+  void promise.then((index) => {
+    if (!index.readable && indexes.get(id)?.promise === promise) indexes.delete(id);
   });
   return promise;
 }
@@ -260,13 +262,27 @@ export async function searchHeadlineHistory(
   windowHours: number,
   nowMs = Date.now(),
 ): Promise<HeadlineHistorySearch> {
-  const pool = await loadPool(variant, lang, windowHours, nowMs);
-  if (!pool.readable) {
+  // Revocations are read for every request and never memoized: an article an
+  // operator pulled a second ago must not be answered from a minute-old view,
+  // and a check that failed must fail this request closed.
+  const [index, revoked] = await Promise.all([
+    loadIndex(variant, lang, windowHours, nowMs),
+    readRevokedUrlSet(),
+  ]);
+  if (!index.readable || !revoked.readable) {
     return { headlines: [], searchedHeadlines: 0, windowHours, state: 'unavailable', newestServedAt: 0 };
   }
   const phrase = words.join(' ');
   const matches: Array<{ entry: PoolEntry; phrase: boolean }> = [];
-  for (const entry of pool.entries) {
+  // One row per title, so a wire story syndicated under two URLs is listed
+  // once. Decided after the revoked URLs are out, so revoking one copy leaves
+  // the other listed.
+  const titles = new Set<string>();
+  let newestServedAt = 0;
+  for (const entry of index.entries) {
+    if (revoked.urls.has(entry.link) || titles.has(entry.key)) continue;
+    titles.add(entry.key);
+    if (entry.lastServedAt > newestServedAt) newestServedAt = entry.lastServedAt;
     if (!words.every((word) => entry.key.includes(word))) continue;
     matches.push({ entry, phrase: entry.key.includes(phrase) });
   }
@@ -281,13 +297,13 @@ export async function searchHeadlineHistory(
       publishedAt: entry.publishedAt,
       lastServedAt: entry.lastServedAt,
     })),
-    searchedHeadlines: pool.entries.length,
+    searchedHeadlines: titles.size,
     windowHours,
     state: 'complete',
-    newestServedAt: pool.newestServedAt,
+    newestServedAt,
   };
 }
 
 export const __testing__ = {
-  resetPools(): void { pools.clear(); },
+  resetPools(): void { indexes.clear(); },
 };

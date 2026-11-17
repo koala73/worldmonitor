@@ -343,6 +343,56 @@ describe('headline search failure and revocation', () => {
     assert.deepEqual(titles(payload), ['Minister denies the claim']);
   });
 
+  it('drops an article revoked after the index was read, without reading the index again', async () => {
+    await served(NOW, [
+      item('Retracted claim about the minister', 'https://www.reuters.com/retracted'),
+      item('Minister denies the claim', 'https://www.reuters.com/denial'),
+    ]);
+    const before = await search(freeRoute, 'minister');
+    assert.deepEqual(titles(before.payload).sort(), ['Minister denies the claim', 'Retracted claim about the minister']);
+
+    commands = [];
+    revoked = ['https://www.reuters.com/retracted'];
+    const after = await search(freeRoute, 'minister');
+    assert.deepEqual(titles(after.payload), ['Minister denies the claim'], 'revoked seconds ago, gone on the next request');
+    assert.equal(after.payload.searchedHeadlines, 1, 'a revoked headline is not counted as searched');
+    assert.deepEqual(commands.map(command => command[0]), ['SMEMBERS'], 'revocations are read again; the index is not');
+
+    revoked = [];
+    const lifted = await search(freeRoute, 'minister');
+    assert.equal(lifted.payload.headlines.length, 2, 'lifting the revocation lists it again');
+  });
+
+  it('fails closed on an index it already holds when revocations cannot be read, then recovers', async () => {
+    await served(NOW, [item('Rates held at 4.5%', 'https://www.reuters.com/rates')]);
+    assert.deepEqual(titles((await search(freeRoute, 'rates')).payload), ['Rates held at 4.5%']);
+
+    failRevocations = true;
+    const failed = await search(freeRoute, 'rates held');
+    assert.equal(failed.payload.state, 'unavailable');
+    assert.deepEqual(failed.payload.headlines, []);
+    assert.equal(failed.payload.searchedHeadlines, 0);
+    assert.equal(drainResponseHeaders(failed.req)?.['X-No-Cache'], '1');
+
+    failRevocations = false;
+    commands = [];
+    const recovered = await search(freeRoute, 'rates held');
+    assert.deepEqual(titles(recovered.payload), ['Rates held at 4.5%']);
+    assert.equal(drainResponseHeaders(recovered.req), undefined, 'a completed search may be cached');
+    assert.deepEqual(commands.map(command => command[0]), ['SMEMBERS'], 'the failed check did not discard the index');
+  });
+
+  it('lists the other copy of a syndicated story when the copy it was listed under is revoked', async () => {
+    await served(NOW - HOUR, [item('Port strike ends', 'https://www.reuters.com/port')]);
+    await served(NOW, [item('Port strike ends', 'https://www.apnews.com/port', 'AP News')]);
+    assert.equal((await search(freeRoute, 'port strike')).payload.headlines[0]!.link, 'https://www.apnews.com/port');
+    revoked = ['https://www.apnews.com/port'];
+    const { payload } = await search(freeRoute, 'port strike');
+    assert.deepEqual(payload.headlines.map(headline => headline.link), ['https://www.reuters.com/port']);
+    assert.equal(payload.searchedHeadlines, 1);
+    assert.equal(payload.newestServedAt, NOW - HOUR, 'the newest serve time ignores the revoked copy');
+  });
+
   it('fails closed and uncached when revocations cannot be read', async () => {
     await served(NOW, [item('Rates held at 4.5%', 'https://www.reuters.com/rates')]);
     failRevocations = true;

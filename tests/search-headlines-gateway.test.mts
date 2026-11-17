@@ -115,6 +115,12 @@ describe('headline search gateway access', () => {
     reached = [];
     const free = await call(FREE_PATH, { 'X-WorldMonitor-Key': sessionToken });
     assert.equal(free.status, 200);
+    // An operator revocation is applied on every request the handler sees, so
+    // no shared cache may answer in its place.
+    const cacheControl = free.headers.get('Cache-Control') ?? '';
+    assert.match(cacheControl, /\bprivate\b/, `a 24-hour answer is the caller's alone: ${cacheControl}`);
+    assert.ok(!/\bpublic\b|s-maxage/.test(cacheControl), `a 24-hour answer must not be shared-cacheable: ${cacheControl}`);
+    assert.equal(free.headers.get('CDN-Cache-Control'), null);
 
     const archive = await call(ARCHIVE_PATH, { 'X-WorldMonitor-Key': sessionToken });
     assert.equal(archive.status, 401);
