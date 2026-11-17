@@ -47,6 +47,10 @@
 *Could not find public function for 'alertRules:setDigestSettingsForUser'*
 *Could not find public function for 'alertRules:setNotificationConfigForUser'*
 *Could not find public function for 'alertRules:setQuietHoursForUser'*
+*Could not find public function for 'alertScopeMigration:listPendingNotices'*
+*Could not find public function for 'alertScopeMigration:markNoticeStatus'*
+*Could not find public function for 'alertScopeMigration:migrateUnscopedRealtimeRules'*
+*Could not find public function for 'alertScopeMigration:sendAlertScopeNotices'*
 *Could not find public function for 'apiKeys:createApiKeyForUser'*
 *Could not find public function for 'apiKeys:getKeyOwner'*
 *Could not find public function for 'apiKeys:touchKeyLastUsed'*
@@ -205,6 +209,7 @@
 *Could not find public function for 'mcpProTokens:issueProMcpToken'*
 *Could not find public function for 'mcpProTokens:touchProMcpTokenLastUsed'*
 *Could not find public function for 'mcpProTokens:validateProMcpToken'*
+*Could not find public function for 'notificationChannels:beginChannelDeliveries'*
 *Could not find public function for 'notificationChannels:claimPairingToken'*
 *Could not find public function for 'notificationChannels:createPairingToken'*
 *Could not find public function for 'notificationChannels:createPairingTokenForUser'*

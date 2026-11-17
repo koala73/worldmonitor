@@ -191,6 +191,12 @@ describe('LeadsService.submitContact', () => {
       await submitContact(makeCtx(), validReq({ phone: '  +1 555 123 4567 ' }));
       assert.equal(convexBody.phone, '+1 555 123 4567');
       assert.ok(resendBody.html.includes('>Phone<'));
+      // The ops email uses the WorldMonitor frame (shared/email-frame.ts).
+      assert.match(resendBody.html, /^<!DOCTYPE html>/);
+      assert.ok(resendBody.html.includes('WORLD MONITOR'));
+      assert.ok(resendBody.html.includes('android-chrome-192x192.png'));
+      assert.ok(resendBody.html.includes('>Enterprise lead</span>'));
+      assert.ok(resendBody.html.includes('+1 555 123 4567'));
     });
 
     it('rejects invalid phone format', async () => {

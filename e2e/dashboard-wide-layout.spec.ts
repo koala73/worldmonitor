@@ -26,6 +26,10 @@ async function setupDashboard(page: Page, viewport: { width: number; height: num
 
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => document.documentElement.dataset.wmEventHandlersReady === 'true');
+  // These tests assert the drop zone's layout state. Its 0.2s height transition
+  // runs on the animation clock, which a CPU-starved CI browser can stall, so
+  // the height lagged the class change past the 2s poll (shard 6, twice).
+  await page.addStyleTag({ content: '.map-bottom-grid, .map-bottom-grid::after { transition: none !important; }' });
 }
 
 async function readWideLayoutMetrics(page: Page): Promise<WideLayoutMetrics> {

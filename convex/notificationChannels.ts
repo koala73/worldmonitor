@@ -5,6 +5,7 @@ import {
   internalMutation,
   internalQuery,
   type MutationCtx,
+  type QueryCtx,
   query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -12,6 +13,7 @@ import { channelTypeValidator } from "./constants";
 import { requireVerifiedAccountEmail, lookupVerifiedAccountEmail } from "./lib/notificationEmail";
 import { deliveryResultValidator, isDeliveryError } from "./lib/notificationDelivery";
 import { sendResendEmail } from "./lib/resendEmail";
+import { EMAIL_RED, emailButton, emailCard, emailFactRow, emailFacts, emailFrame, emailHeading, emailParagraph, escapeEmailHtml } from "../shared/email-frame";
 import { assertAlertCapabilities, loadAlertCapabilities } from "./lib/alertCapabilities";
 
 type ChannelType = Infer<typeof channelTypeValidator>;
@@ -185,14 +187,36 @@ export const queueChannelWelcome = internalAction({
 
 export const getChannelsByUserId = internalQuery({
   args: { userId: v.string() },
-  handler: async (ctx, args) => {
-    const channels = await ctx.db
-      .query("notificationChannels")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect();
-    return channels.map(channel => (channel.channelType === "email" && channel.emailOwnership !== "verified_account")
+  handler: (ctx, args) => readChannelsForDelivery(ctx, args.userId),
+});
+
+async function readChannelsForDelivery(ctx: Pick<QueryCtx, "db">, userId: string) {
+  const channels = await ctx.db
+    .query("notificationChannels")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  return channels.map(channel => (channel.channelType === "email" && channel.emailOwnership !== "verified_account")
       || (channel.channelType === "telegram" && channel.telegramOwnership !== "verified_callback")
       ? { ...channel, verified: false } : channel);
+}
+
+export const beginChannelDeliveries = internalMutation({
+  args: { userId: v.string(), channelTypes: v.array(channelTypeValidator) },
+  handler: async (ctx, { userId, channelTypes }) => {
+    const channels = await readChannelsForDelivery(ctx, userId);
+    const selected = new Set(channelTypes);
+    for (const channel of channels) {
+      if (!channel.verified || !selected.has(channel.channelType)
+        || !["webhook", "slack", "discord", "teams", "web_push"].includes(channel.channelType)) continue;
+      // An unfinished attempt may have succeeded. It cannot extend a known failure streak.
+      const deliveryFailure = !channel.deliveryAttempt || channel.deliveryAttempt.pending
+        ? undefined : channel.deliveryFailure;
+      const deliveryAttempt = { sequence: (channel.deliveryAttempt?.sequence ?? 0) + 1, pending: true };
+      await ctx.db.patch(channel._id, { deliveryAttempt, deliveryFailure });
+      channel.deliveryAttempt = deliveryAttempt;
+      channel.deliveryFailure = deliveryFailure;
+    }
+    return channels;
   },
 });
 
@@ -618,8 +642,11 @@ async function applyDeliveryResult(ctx: MutationCtx, { userId, channelType, deli
   const channel = await ctx.db.query("notificationChannels")
     .withIndex("by_user_channel", q => q.eq("userId", userId).eq("channelType", channelType)).unique();
   if (!channel?.verified || String(channel._id) !== delivery.channelId || channel.linkedAt !== delivery.linkedAt) return;
+  const attempt = channel.deliveryAttempt;
+  if (!attempt?.pending || delivery.sequence !== attempt.sequence) return;
+  const deliveryAttempt = { ...attempt, pending: false };
   if (delivery.error === null) {
-    if (channel.deliveryFailure) await ctx.db.patch(channel._id, { deliveryFailure: undefined });
+    await ctx.db.patch(channel._id, { deliveryAttempt, deliveryFailure: undefined });
     return;
   }
   const now = Date.now();
@@ -631,6 +658,7 @@ async function applyDeliveryResult(ctx: MutationCtx, { userId, channelType, deli
   const terminal = /^HTTP (401|403|404|410)$/.test(delivery.error);
   const disable = terminal || (failure.count >= 10 && now - failure.firstFailedAt >= 24 * 60 * 60 * 1000);
   await ctx.db.patch(channel._id, {
+    deliveryAttempt,
     deliveryFailure: { ...failure, ...(disable ? { disabledAt: now } : {}) },
     ...(disable ? { verified: false } : {}),
   });
@@ -641,6 +669,26 @@ async function applyDeliveryResult(ctx: MutationCtx, { userId, channelType, deli
     });
     console.log(JSON.stringify({ metric: "notification_channel_disabled", count: 1, channelType, errorClass: failure.lastError }));
   }
+}
+
+const NOTIFICATION_SETTINGS_URL = "https://www.worldmonitor.app/dashboard?settings=notifications";
+
+/** The channel-disabled notice, plain text and HTML. Exported for tests. */
+export function disabledChannelNotice(args: { channelType: string; error: string; firstFailedAt: number }): { text: string; html: string } {
+  const started = new Date(args.firstFailedAt).toISOString();
+  const headline = `Your ${args.channelType} notification channel was disabled after delivery failures.`;
+  const text = `${headline}\n\nError: ${args.error}\nFailures started: ${started}\n\nUpdate and save your channel to resume notifications:\n${NOTIFICATION_SETTINGS_URL}`;
+  const html = emailFrame({
+    preheader: headline,
+    kicker: "Alert settings",
+    accent: EMAIL_RED,
+    bodyHtml: `${emailHeading("Notification channel disabled", escapeEmailHtml(headline))}
+      ${emailCard(emailFacts(emailFactRow("Channel", escapeEmailHtml(args.channelType)) + emailFactRow("Error", escapeEmailHtml(args.error)) + emailFactRow("Failing since", escapeEmailHtml(started))), { label: "Delivery failures", color: EMAIL_RED })}
+      ${emailParagraph("Update and save your channel to resume notifications.")}
+      ${emailButton(NOTIFICATION_SETTINGS_URL, "Fix your channel")}`,
+    footerNote: "You're receiving this because notifications are on for your account.",
+  });
+  return { text, html };
 }
 
 export const sendDisabledChannelNotice = internalAction({
@@ -656,11 +704,11 @@ export const sendDisabledChannelNotice = internalAction({
       if (!email) return;
       const apiKey = process.env.RESEND_API_KEY;
       if (!apiKey) throw new Error("EMAIL_UNAVAILABLE");
-      const text = `Your ${args.channelType} notification channel was disabled after delivery failures.\n\nError: ${args.error}\nFailures started: ${new Date(args.firstFailedAt).toISOString()}\n\nUpdate and save your channel to resume notifications:\nhttps://www.worldmonitor.app/dashboard?settings=notifications`;
+      const { text, html } = disabledChannelNotice(args);
       await sendResendEmail(ctx, {
         apiKey, from: process.env.RESEND_FROM ?? "WorldMonitor <notifications@worldmonitor.app>",
         to: email, subject: "WorldMonitor notification channel disabled",
-        text, html: `<p>${text.replace(/\n/g, "<br>")}</p>`, purpose: "transactional",
+        text, html, purpose: "transactional",
         idempotencyKey: `channel-disabled-${args.noticeId}`,
       });
     } catch {
