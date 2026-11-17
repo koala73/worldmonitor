@@ -174,7 +174,16 @@ test('Malaysia reports the latest completed local day carrying every selected st
   assert.equal(report.observations.length, PRICECATCHER_ITEM_CODES.length);
   assert.equal([...dates.values()].filter(date => date === '2026-11-04').length, PRICECATCHER_DAILY_CODES.length);
   assert.equal([...dates.values()].filter(date => date === '2026-11-02').length, PRICECATCHER_BASKET_CODES.length);
-  assert.deepEqual(report.refreshedReports, report.observations.map(row => ({ date: row.date, item: row.item })), 'history refreshes per item and date');
+  // History refreshes per item and date, for every item and date checked, including the empty 28 October baseline.
+  const markers = new Set(report.refreshedReports.map(marker => `${marker.date}|${marker.item}`));
+  assert.ok(report.refreshedReports.every(marker => marker.item), 'no date-wide refresh');
+  assert.ok(report.observations.every(row => markers.has(`${row.date}|${row.item}`)));
+  assert.equal(report.refreshedReports.filter(marker => marker.date === '2026-10-28').length, PRICECATCHER_DAILY_CODES.length);
+  assert.equal(report.refreshedReports.filter(marker => marker.date === '2026-11-02').length, PRICECATCHER_BASKET_CODES.length);
+  // A withdrawn baseline quote is dropped: the stored 28 October price has no replacement, so the merge removes it.
+  const stored = { ...report.observations.find(row => row.date === '2026-11-04'), date: '2026-10-28', price: 1 };
+  const merged = mergeFoodSnapshot({ observations: [stored] }, { ...report, contexts: [] }, { surveyItems: PRICECATCHER_BASKET_NAMES });
+  assert.ok(!merged.observations.some(row => row.date === '2026-10-28'));
   assert.match(warnings.join(), /prior-month prices unavailable/);
 });
 

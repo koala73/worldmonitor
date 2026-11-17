@@ -189,12 +189,19 @@ export async function collect(ctx) {
   const dates = [...new Set(daily.map(row => row.date))].sort().reverse();
   const latest = dates.find(date => daily.filter(row => row.date === date).length === PRICECATCHER_DAILY_CODES.length);
   const prior = latest ? ctx.dated(new Date(`${latest}T00:00:00Z`), -7) : '';
-  const basket = basketObservations(all, basketSurveyDates(acc));
+  const surveys = basketSurveyDates(acc);
+  const basket = basketObservations(all, surveys);
   const observations = [...daily.filter(row => row.date === latest || row.date === prior), ...basket];
   const report = priceReport(observations, 'https://data.gov.my/data-catalogue/pricecatcher', ctx.now);
-  // Daily and basket items report different dates, so refresh history per item and date: a basket survey on a
-  // daily item's baseline day must not erase that day's daily rows, and vice versa.
-  return { ...report, refreshedReports: observations.map(row => ({ date: row.date, item: row.item })) };
+  // Daily and basket items report different dates, so history is refreshed per item and date: a basket survey on a
+  // daily item's baseline day must not erase that day's daily rows, and vice versa. Markers cover every item and
+  // date this run checked, not only the prices that passed, so a quote the publisher withdrew (or that fell below
+  // ten premises) is dropped from history instead of surviving as a stale baseline.
+  const checked = [
+    ...[latest, prior].filter(Boolean).flatMap(date => [...DAILY_NAMES].map(item => ({ date, item }))),
+    ...[...surveys].sort().flatMap(date => PRICECATCHER_BASKET_NAMES.map(item => ({ date, item }))),
+  ];
+  return { ...report, refreshedReports: checked };
 }
 
 const DAILY_NAMES = new Set(PRICECATCHER_DAILY_CODES.map(code => ITEMS[code][0]));
