@@ -23,10 +23,7 @@ function alert(title: string, extra: Partial<SentAlert> = {}): SentAlert {
     title,
     source: 'Reuters',
     link: 'https://www.reuters.com/world/story',
-    eventType: 'rss_alert',
-    severity: 'critical',
     sentAt: 1_763_370_000_000,
-    channels: ['email'],
     ...extra,
   };
 }

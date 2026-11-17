@@ -38,7 +38,7 @@ export async function listSentAlerts(
   const read = await readCachedJsonList(sentAlertsKey(userId), SENT_ALERTS_MAX, true);
   if (read.status === 'error') {
     console.warn('[list-sent-alerts] history read failed:', read.error instanceof Error ? read.error.message : String(read.error));
-    return { alerts: [], state: 'unavailable', retentionDays: SENT_ALERTS_RETENTION_DAYS };
+    return { alerts: [], state: 'unavailable' };
   }
 
   const rows = read.status === 'hit' && Array.isArray(read.value) ? read.value : [];
@@ -48,5 +48,5 @@ export async function listSentAlerts(
   const alerts = rows
     .map(parseSentAlert)
     .filter((alert): alert is SentAlertRecord => alert !== null && alert.sentAt >= cutoff);
-  return { alerts, state: 'ok', retentionDays: SENT_ALERTS_RETENTION_DAYS };
+  return { alerts, state: 'ok' };
 }

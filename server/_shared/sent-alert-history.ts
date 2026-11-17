@@ -7,14 +7,12 @@ export const SENT_ALERTS_KEY_PREFIX = 'wm:notif:sent:v1:';
 export const SENT_ALERTS_MAX = 200;
 export const SENT_ALERTS_RETENTION_DAYS = 7;
 
+/** The fields ListSentAlerts returns. The stored row also carries the alert type, severity and channels. */
 export interface SentAlertRecord {
   title: string;
   source: string;
   link: string;
-  eventType: string;
-  severity: string;
   sentAt: number;
-  channels: string[];
 }
 
 export function sentAlertsKey(userId: string): string {
@@ -48,9 +46,6 @@ export function parseSentAlert(value: unknown): SentAlertRecord | null {
     source: text(row.source),
     // The browser opens this in one click, so the scheme is checked again here.
     link: httpLink(row.link),
-    eventType: text(row.eventType),
-    severity: text(row.severity),
     sentAt,
-    channels: Array.isArray(row.channels) ? row.channels.filter((item): item is string => typeof item === 'string' && item !== '') : [],
   };
 }

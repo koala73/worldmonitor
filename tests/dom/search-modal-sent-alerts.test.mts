@@ -55,10 +55,7 @@ function alertItems() {
       title: ALERT_TITLE,
       source: 'Reuters',
       link: 'https://www.reuters.com/world/hormuz',
-      eventType: 'rss_alert',
-      severity: 'critical',
       sentAt: 1_763_370_000_000,
-      channels: ['email'],
     },
   ], (alert) => `${alert.source} · Sent 17 Nov, 09:00`);
 }

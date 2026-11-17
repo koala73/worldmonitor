@@ -7,11 +7,8 @@ export interface SentAlert {
   title: string;
   source: string;
   link: string;
-  eventType: string;
-  severity: string;
   /** Unix epoch milliseconds. */
   sentAt: number;
-  channels: string[];
 }
 
 const SENT_ALERTS_TIMEOUT_MS = 8_000;

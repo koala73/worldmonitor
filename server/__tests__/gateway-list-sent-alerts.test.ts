@@ -71,7 +71,7 @@ const ctx = { waitUntil: () => {} };
 const gateway = createDomainGateway(createNewsServiceRoutes(newsHandler, serverOptions));
 
 function alertRow(title: string) {
-  return { title, source: 'Reuters', link: 'https://www.reuters.com/world/story', eventType: 'rss_alert', severity: 'critical', sentAt: Date.now() - 60_000, channels: ['email'] };
+  return { title, source: 'Reuters', link: 'https://www.reuters.com/world/story', sentAt: Date.now() - 60_000 };
 }
 
 const lists: Record<string, unknown[]> = {

@@ -115,10 +115,9 @@ describe('ListSentAlerts', () => {
     const { status, body } = await call({ [TRUSTED_USER_ID_HEADER]: 'user-a' });
     assert.equal(status, 200);
     assert.equal(body.state, 'ok');
-    assert.equal(body.retentionDays, SENT_ALERTS_RETENTION_DAYS);
     assert.deepEqual(body.alerts, [
-      { title: 'Newer headline', source: 'Reuters', link: 'https://www.reuters.com/world/story', eventType: 'rss_alert', severity: 'critical', sentAt: newer.sentAt, channels: ['email', 'web_push'] },
-      { title: 'Older headline', source: 'Reuters', link: 'https://www.reuters.com/world/story', eventType: 'rss_alert', severity: 'critical', sentAt: older.sentAt, channels: ['email'] },
+      { title: 'Newer headline', source: 'Reuters', link: 'https://www.reuters.com/world/story', sentAt: newer.sentAt },
+      { title: 'Older headline', source: 'Reuters', link: 'https://www.reuters.com/world/story', sentAt: older.sentAt },
     ]);
   });
 

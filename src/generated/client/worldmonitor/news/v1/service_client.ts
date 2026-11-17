@@ -361,17 +361,13 @@ export interface ListSentAlertsRequest {
 export interface ListSentAlertsResponse {
   alerts: SentAlert[];
   state: string;
-  retentionDays: number;
 }
 
 export interface SentAlert {
   title: string;
   source: string;
   link: string;
-  eventType: string;
-  severity: string;
   sentAt: number;
-  channels: string[];
 }
 
 export type StoryPhase = "STORY_PHASE_UNSPECIFIED" | "STORY_PHASE_BREAKING" | "STORY_PHASE_DEVELOPING" | "STORY_PHASE_SUSTAINED" | "STORY_PHASE_FADING";

@@ -87,7 +87,7 @@ service NewsService {
     option (sebuf.http.config) = {path: "/search-claim-headlines", method: HTTP_METHOD_GET};
   }
 
-  // ListSentAlerts returns the realtime alerts delivered to the signed-in account in the last seven days, newest first, so a headline from an alert email or push can be found again. Requires a Pro session or a user API key; each caller reads only their own alerts.
+  // ListSentAlerts returns the realtime alerts delivered to the calling account in the last seven days. Each caller reads only their own.
   rpc ListSentAlerts(ListSentAlertsRequest) returns (ListSentAlertsResponse) {
     option (sebuf.http.config) = {path: "/list-sent-alerts", method: HTTP_METHOD_GET};
   }

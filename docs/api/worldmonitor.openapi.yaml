@@ -28238,7 +28238,7 @@ paths:
             tags:
                 - NewsService
             summary: ListSentAlerts
-            description: ListSentAlerts returns the realtime alerts delivered to the signed-in account in the last seven days, newest first, so a headline from an alert email or push can be found again. Requires a Pro session or a user API key; each caller reads only their own alerts. PRO-gated. Requires entitlement tier >= 1.
+            description: ListSentAlerts returns the realtime alerts delivered to the calling account in the last seven days. Each caller reads only their own. PRO-gated. Requires entitlement tier >= 1.
             operationId: ListSentAlerts
             security:
                 - WorldMonitorKey: []
@@ -28260,13 +28260,10 @@ paths:
                         application/json:
                             example:
                                 "alerts":
-                                    - "channels":
-                                        - "example"
-                                      "eventType": "all"
-                                      "link": "https://example.com/worldmonitor"
+                                    - "link": "https://example.com/worldmonitor"
                                       "sentAt": 1717200000000
-                                      "severity": "watch"
-                                "retentionDays": 7
+                                      "source": "example"
+                                      "title": "example"
                                 "state": "example"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_news_v1_ListSentAlertsResponse'
@@ -58957,7 +58954,6 @@ components:
             description: ClaimHeadline is one fresh headline from a configured feed.
         worldmonitor_news_v1_ListSentAlertsRequest:
             type: object
-            description: 'ListSentAlertsRequest takes no parameters: the account is the signed-in caller.'
         worldmonitor_news_v1_ListSentAlertsResponse:
             type: object
             properties:
@@ -58967,12 +58963,7 @@ components:
                         $ref: '#/components/schemas/worldmonitor_news_v1_SentAlert'
                 state:
                     type: string
-                    description: ok | unavailable. Unavailable means the record could not be read, not that no alert was sent.
-                retentionDays:
-                    type: integer
-                    format: int32
-                    description: Retention window in days.
-            description: ListSentAlertsResponse lists the alerts delivered to the caller in the retention window, newest first.
+                    description: ok | unavailable (the record could not be read; not the same as no alerts).
         worldmonitor_news_v1_SentAlert:
             type: object
             properties:
@@ -58981,26 +58972,15 @@ components:
                     description: Headline as the alert showed it.
                 source:
                     type: string
-                    description: Publisher or feed name as the alert showed it. Empty when the alert named none.
+                    description: Publisher as the alert showed it; may be empty.
                 link:
                     type: string
-                    description: Article URL (http or https). Empty when the alert linked to no article.
-                eventType:
-                    type: string
-                    description: Alert type, for example rss_alert.
-                severity:
-                    type: string
-                    description: 'Alert severity: critical | high | medium | low | info.'
+                    description: Article URL; empty when the alert linked to none.
                 sentAt:
                     type: integer
                     format: int64
-                    description: 'Time the alert was delivered, Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
-                channels:
-                    type: array
-                    items:
-                        type: string
-                        description: Channels the alert was delivered on, for example email or web_push.
-            description: SentAlert is one realtime alert that reached the caller on at least one channel.
+                    description: 'Delivery time, Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: One realtime alert delivered to the caller.
         worldmonitor_orbital_v1_ListImagingSatellitesRequest:
             type: object
             description: 'ListImagingSatellitesRequest takes no filters: the catalog is one small shared document.'

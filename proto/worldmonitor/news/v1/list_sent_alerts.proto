@@ -4,33 +4,29 @@ package worldmonitor.news.v1;
 
 import "sebuf/http/annotations.proto";
 
-// ListSentAlertsRequest takes no parameters: the account is the signed-in caller.
+// The account is the signed-in caller; the request carries no user field.
+
 message ListSentAlertsRequest {}
 
-// SentAlert is one realtime alert that reached the caller on at least one channel.
+// The relay record also holds the alert type, severity and channels. They are
+// left out of the API until a reader needs them: public/openapi.json has a
+// byte budget (tests/openapi-json-dedup.test.mjs).
+
+// One realtime alert delivered to the caller.
 message SentAlert {
   // Headline as the alert showed it.
   string title = 1;
-  // Publisher or feed name as the alert showed it. Empty when the alert named none.
+  // Publisher as the alert showed it; may be empty.
   string source = 2;
-  // Article URL (http or https). Empty when the alert linked to no article.
+  // Article URL; empty when the alert linked to none.
   string link = 3;
-  // Alert type, for example rss_alert.
-  string event_type = 4;
-  // Alert severity: critical | high | medium | low | info.
-  string severity = 5;
-  // Time the alert was delivered, Unix epoch milliseconds.
-  int64 sent_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
-  // Channels the alert was delivered on, for example email or web_push.
-  repeated string channels = 7;
+  // Delivery time, Unix epoch milliseconds.
+  int64 sent_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 }
 
-// ListSentAlertsResponse lists the alerts delivered to the caller in the retention window, newest first.
 message ListSentAlertsResponse {
-  // Delivered alerts, newest first; at most 200.
+  // Newest first, last seven days, at most 200.
   repeated SentAlert alerts = 1;
-  // ok | unavailable. Unavailable means the record could not be read, not that no alert was sent.
+  // ok | unavailable (the record could not be read; not the same as no alerts).
   string state = 2;
-  // Retention window in days.
-  int32 retention_days = 3;
 }
