@@ -21,7 +21,38 @@ vi.mock('@/services/tauri-bridge', async (importOriginal) => ({
 }));
 vi.mock('@/bootstrap/sentry-defer', () => ({ enqueueSentryCall: vi.fn() }));
 
-import { canOpenSentAlertLink, openSentAlertLink } from '@/app/search-alert-wiring';
+// Account state the wiring reads, and the listeners it registers per signal.
+const account = vi.hoisted(() => ({
+  userId: 'user_a' as string | null,
+  premium: true,
+  listeners: {
+    auth: new Set<() => void>(),
+    entitlement: new Set<() => void>(),
+    widgetAccess: new Set<() => void>(),
+    runtimeConfig: new Set<() => void>(),
+  },
+}));
+function subscribeTo(listeners: Set<() => void>) {
+  return (listener: () => void) => {
+    listeners.add(listener);
+    return () => { listeners.delete(listener); };
+  };
+}
+vi.mock('@/services/auth-state', () => ({
+  getAuthState: () => ({ user: account.userId ? { id: account.userId } : null }),
+  subscribeAuthState: subscribeTo(account.listeners.auth),
+}));
+vi.mock('@/services/entitlements', () => ({ onEntitlementChange: subscribeTo(account.listeners.entitlement) }));
+vi.mock('@/services/widget-store', () => ({ subscribeWidgetAccess: subscribeTo(account.listeners.widgetAccess) }));
+vi.mock('@/services/runtime-config', () => ({ subscribeRuntimeConfig: subscribeTo(account.listeners.runtimeConfig) }));
+// Tester-key and desktop-API-key grants count as premium here, as in the real panel-gating.
+vi.mock('@/services/panel-gating', () => ({ hasPremiumAccess: () => account.premium }));
+vi.mock('@/services/i18n', () => ({ getLocale: () => 'en', t: (key: string) => key }));
+const fetchSentAlerts = vi.hoisted(() => vi.fn());
+vi.mock('@/services/sent-alerts', () => ({ fetchSentAlerts: (...args: unknown[]) => fetchSentAlerts(...args) }));
+
+import { attachSentAlertSearch, canOpenSentAlertLink, openSentAlertLink } from '@/app/search-alert-wiring';
+import type { SearchModal } from '@/components/SearchModal';
 
 const HTTPS_LINK = 'https://www.reuters.com/world/hormuz';
 const HTTP_LINK = 'http://example.org/story';
@@ -71,5 +102,64 @@ describe('opening a selected alert', () => {
         expect(canOpenSentAlertLink(link), `${desktop ? 'desktop' : 'web'}: ${link}`).toBe(false);
       }
     }
+  });
+});
+
+describe('dropping the indexed alerts', () => {
+  /** A palette that records what the alert source registers. */
+  function palette() {
+    const registered: number[] = [];
+    let open: () => void = () => {};
+    const modal = {
+      setOnOpen: (callback: () => void) => { open = callback; },
+      registerSource: (_type: string, items: unknown[]) => { registered.push(items.length); },
+      getSearchIndexRevision: () => registered.length,
+      refreshSearch: () => {},
+    } as unknown as SearchModal;
+    return { modal, registered, open: () => open() };
+  }
+
+  beforeEach(() => {
+    account.userId = 'user_a';
+    account.premium = true;
+    for (const listeners of Object.values(account.listeners)) listeners.clear();
+    fetchSentAlerts.mockReset().mockResolvedValue([
+      { title: 'Iran closes Hormuz strait to tankers', source: 'Reuters', link: HTTPS_LINK, sentAt: 1_763_370_000_000 },
+    ]);
+  });
+
+  // Removing a tester key or the desktop API key ends premium access and
+  // notifies only its own listeners: the signed-in user and the entitlement
+  // are unchanged.
+  for (const [grant, signal] of [['a tester key', 'widgetAccess'], ['the desktop API key', 'runtimeConfig']] as const) {
+    it(`drops them when ${grant} is removed while the palette stays open`, async () => {
+      const ui = palette();
+      const detach = attachSentAlertSearch(ui.modal);
+      ui.open();
+      await vi.waitFor(() => expect(ui.registered).toEqual([1]));
+
+      account.premium = false;
+      for (const listener of account.listeners[signal]) listener();
+
+      expect(ui.registered).toEqual([1, 0]);
+      detach();
+    });
+  }
+
+  it('keeps them when a signal fires and the account is unchanged', async () => {
+    const ui = palette();
+    const detach = attachSentAlertSearch(ui.modal);
+    ui.open();
+    await vi.waitFor(() => expect(ui.registered).toEqual([1]));
+    for (const listeners of Object.values(account.listeners)) for (const listener of listeners) listener();
+    expect(ui.registered).toEqual([1]);
+    detach();
+  });
+
+  it('stops listening for every account signal on teardown', () => {
+    const detach = attachSentAlertSearch(palette().modal);
+    expect(Object.values(account.listeners).map((listeners) => listeners.size)).toEqual([1, 1, 1, 1]);
+    detach();
+    expect(Object.values(account.listeners).map((listeners) => listeners.size)).toEqual([0, 0, 0, 0]);
   });
 });

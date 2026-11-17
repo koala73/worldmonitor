@@ -6,7 +6,9 @@ import { onEntitlementChange } from '@/services/entitlements';
 import { isOpenableExternalUrl, openExternalUrl } from '@/services/external-navigation';
 import { getLocale, t } from '@/services/i18n';
 import { hasPremiumAccess } from '@/services/panel-gating';
+import { subscribeRuntimeConfig } from '@/services/runtime-config';
 import { fetchSentAlerts, type SentAlert } from '@/services/sent-alerts';
+import { subscribeWidgetAccess } from '@/services/widget-store';
 
 /** "Reuters · Sent 17 Nov, 09:42" in the viewer's language and time zone. */
 function describeSentAlert(alert: SentAlert): string {
@@ -94,10 +96,16 @@ export function attachSentAlertSearch(modal: SearchModal): () => void {
   };
   const unsubscribeAuth = subscribeAuthState(dropOnAccountChange);
   const unsubscribeEntitlement = onEntitlementChange(dropOnAccountChange);
+  // hasPremiumAccess also counts a tester key and the desktop API key.
+  // Removing either notifies only its own listeners.
+  const unsubscribeWidgetAccess = subscribeWidgetAccess(dropOnAccountChange);
+  const unsubscribeRuntimeConfig = subscribeRuntimeConfig(dropOnAccountChange);
 
   return () => {
     unsubscribeAuth();
     unsubscribeEntitlement();
+    unsubscribeWidgetAccess();
+    unsubscribeRuntimeConfig();
     source.clear();
     modal.setOnOpen(() => {});
   };
