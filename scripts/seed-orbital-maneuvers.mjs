@@ -59,8 +59,12 @@ export function buildManeuverPayload(history, nowMs) {
 
 /** Why this payload must not be published, or null: a stalled history or nothing judged yet. */
 export function publishBlockReason(payload, history, nowMs) {
-  const updatedAt = Number(history?.updatedAt);
-  if (history && Number.isFinite(updatedAt) && nowMs - updatedAt > MAX_HISTORY_AGE_MS) {
+  const updatedAt = history?.updatedAt;
+  // Without a readable update time the history cannot be shown to be current: block, never assume it is.
+  if (history && (typeof updatedAt !== 'number' || !Number.isFinite(updatedAt))) {
+    return 'orbit-element history has no readable update time, so it cannot be shown to be current';
+  }
+  if (history && nowMs - updatedAt > MAX_HISTORY_AGE_MS) {
     return `orbit-element history last updated ${Math.round((nowMs - updatedAt) / 3_600_000)} h ago; the catalog seeder's R2 writes have stopped`;
   }
   if (payload.evaluatedSatellites === 0) {
@@ -107,6 +111,16 @@ export function buildSeedOptions() {
 
 /** Runs only while Orbital Watch is on (ORBITAL_WATCH_ENABLED, #10710); the catalog seeder builds the history regardless. */
 export const maneuversEnabled = (env = process.env) => (env.ORBITAL_WATCH_ENABLED ?? '').trim().toLowerCase() === 'true';
+
+/** The R2 credentials the history read needs: account, bucket, and keys or an API token. */
+export const MANEUVER_R2_ENV = Object.freeze(['CLOUDFLARE_R2_ACCOUNT_ID', ['CLOUDFLARE_R2_TRACE_BUCKET', 'CLOUDFLARE_R2_BUCKET'], ['CLOUDFLARE_R2_ACCESS_KEY_ID', 'CLOUDFLARE_R2_TOKEN', 'CLOUDFLARE_API_TOKEN']]);
+
+/**
+ * The climate bundle's requiredEnv for this member. The runner checks it before spawning the child,
+ * so while Orbital Watch is off the credentials are not required: the child skips itself, and a
+ * missing credential must not turn every climate tick into a CONFIG_ERROR failure.
+ */
+export const maneuverBundleRequiredEnv = (env = process.env) => (maneuversEnabled(env) ? [...MANEUVER_R2_ENV] : undefined);
 
 if (isMainModule(import.meta.url, process.argv[1]) && !maneuversEnabled()) {
   console.log('  SKIPPED: Orbital Watch ships dark (#10710); set ORBITAL_WATCH_ENABLED=true to publish candidate manoeuvres');
