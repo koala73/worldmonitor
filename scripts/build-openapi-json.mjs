@@ -318,6 +318,8 @@ export const SCANNER_BUNDLE_EXCLUDED_OPERATIONS = Object.freeze({
   '/api/news/v1/review-error-report': 'Operator review decision, secret-gated (#9093).',
   '/api/news/v1/search-fact-checks': 'Fact-check lookup for the /verify page and verify_claim (#9094); documented in the NewsService spec.',
   '/api/news/v1/search-claim-headlines': 'Claim headline search for the /verify page and verify_claim; documented in the NewsService spec.',
+  '/api/news/v1/search-headlines': 'Cmd+K headline search over the last 24 hours of served headlines, built for the dashboard; documented in the NewsService spec.',
+  '/api/news/v1/search-headline-archive': 'Cmd+K headline search over 7 days (Pro), built for the dashboard; documented in the NewsService spec.',
   '/api/news/v1/list-source-items': 'Cached rows for a dashboard panel\'s enabled sources below the digest category cap (#9796); documented in the NewsService spec.',
   '/api/economic/v1/get-capital-flows': 'Budget: the operation costs more than the bundle\'s remaining headroom (~2 KB on main at the time) and its full field documentation is kept rather than trimmed. Served, documented in the EconomicService spec and the YAML bundle, and exposed to agents by MCP get_capital_flows, whose tool description and schema do not depend on this artifact.',
   '/api/feedback/v1/submit-report': 'The dashboard\'s own feedback form. Budget: the country risk response\'s satellite imagery context costs about 650 bytes when about 25 were free. Served and documented in the FeedbackService spec and the YAML bundle.',

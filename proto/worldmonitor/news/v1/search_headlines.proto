@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package worldmonitor.news.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// SearchHeadlinesRequest names the words to find in headlines an edition served.
+message SearchHeadlinesRequest {
+  // Words to find in headline titles, 2 to 120 characters. Every word must appear; order does not matter.
+  string query = 1 [
+    (sebuf.http.query) = { name: "query" },
+    (buf.validate.field).string.max_len = 120
+  ];
+  // Digest edition: full, tech, finance, happy, commodity or energy. Empty means full.
+  string variant = 2 [
+    (sebuf.http.query) = { name: "variant" },
+    (buf.validate.field).string.max_len = 16
+  ];
+  // Digest language, a lowercase two-letter code. Empty means en.
+  string lang = 3 [
+    (sebuf.http.query) = { name: "lang" },
+    (buf.validate.field).string.max_len = 8
+  ];
+}
+
+// HeadlineMatch is one headline the edition served inside the search window.
+message HeadlineMatch {
+  // Registered feed name.
+  string source = 1;
+  string title = 2;
+  // Article URL.
+  string link = 3;
+  // Publication time in Unix epoch milliseconds.
+  int64 published_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Last time the edition served this headline, in Unix epoch milliseconds.
+  int64 last_served_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// SearchHeadlinesResponse holds the matching headlines and how much was searched.
+message SearchHeadlinesResponse {
+  // Up to 20 headlines, whole-phrase matches first, then newest first.
+  repeated HeadlineMatch headlines = 1;
+  // Headlines searched inside the window.
+  int32 searched_headlines = 2;
+  // Window searched, in hours, counted from when a headline was last served.
+  int32 window_hours = 3;
+  // complete | unavailable. Unavailable searched nothing.
+  string state = 4;
+  // Newest serve time in the window, in Unix epoch milliseconds; 0 when the window is empty.
+  int64 newest_served_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

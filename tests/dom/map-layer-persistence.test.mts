@@ -125,6 +125,7 @@ describe('open_search_result persists an executable layer result', () => {
       runWithAgentAnalyticsSuppressed: (callback) => callback(),
       suppressNextAgentPanelView: vi.fn(),
       resolveExecutableNewsPanel: vi.fn(() => null),
+      openArticle: vi.fn(() => true),
       saveToStorage,
       setTheme: vi.fn(),
       setTimeout: (callback, delay) => setTimeout(callback, delay),

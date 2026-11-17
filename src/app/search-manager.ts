@@ -40,8 +40,8 @@ import { STARTUP_ECOSYSTEMS } from '@/config/startup-ecosystems';
 import { TECH_HQS, ACCELERATORS } from '@/config/tech-geo';
 import { STOCK_EXCHANGES, FINANCIAL_CENTERS, CENTRAL_BANKS, COMMODITY_HUBS } from '@/config/finance-geo';
 import { trackSearchResultSelected, trackCountrySelected } from '@/services/analytics';
-import { t } from '@/services/i18n';
-import { saveToStorage, setTheme } from '@/utils';
+import { getCurrentLanguage, t } from '@/services/i18n';
+import { formatTime, saveToStorage, setTheme } from '@/utils';
 import { withTimeout } from '@/utils/with-timeout';
 import { CountryIntelManager } from '@/app/country-intel';
 import type { PositionSample } from '@/services/aviation';
@@ -56,6 +56,10 @@ import {
   suppressNextAgentPanelView,
 } from '@/services/agent-analytics-privacy';
 import { SearchSelectionDispatcher } from '@/app/search-selection-dispatcher';
+import { HeadlineHistorySearch } from '@/app/headline-history-search';
+import { searchHeadlineHistory } from '@/services/headline-history';
+import { isOpenableExternalUrl, openExternalUrl } from '@/services/external-navigation';
+import { headlineTitleKey } from '@/shared/headline-title-key';
 import { WebMcpSearchController } from '@/app/webmcp-search-controller';
 import type {
   DashboardSearchOpenResult,
@@ -190,6 +194,12 @@ export class SearchManager implements AppModule {
   private callbacks: SearchManagerCallbacks;
   private readonly searchSelection: SearchSelectionDispatcher;
   private readonly webMcpSearch: WebMcpSearchController;
+  private readonly headlineHistory: HeadlineHistorySearch;
+  /**
+   * The loaded-news source by title (headlineTitleKey form): the lowercased
+   * text the modal matches a query against, title and publisher.
+   */
+  private loadedNewsSearchText = new Map<string, string[]>();
   private destroyed = false;
   private flightSourceExpiresAt = 0;
   private flightSearchItems: FlightSearchItem[] = [];
@@ -215,6 +225,12 @@ export class SearchManager implements AppModule {
       runWithAgentAnalyticsSuppressed,
       suppressNextAgentPanelView,
       resolveExecutableNewsPanel: (link) => this.resolveExecutableNewsPanel(link),
+      openArticle: (url) => {
+        if (!isOpenableExternalUrl(url)) return false;
+        // Never trade the dashboard for the article if the new tab is blocked.
+        void openExternalUrl(url, null, { sameTabFallback: false });
+        return true;
+      },
       saveToStorage,
       setTheme,
       // Must stay wrapped, not passed bare: the dispatcher invokes these as
@@ -225,6 +241,28 @@ export class SearchManager implements AppModule {
       // keeps the invocation unqualified, matching every other binding here.
       setTimeout: (callback, delay) => setTimeout(callback, delay),
       clearTimeout: (timer) => clearTimeout(timer),
+    });
+    this.headlineHistory = new HeadlineHistorySearch({
+      // Plan, edition and language are read per request, so a sign-in or a
+      // language switch mid-session asks the right route the next time.
+      fetchHeadlines: (query, signal) => searchHeadlineHistory(query, {
+        variant: SITE_VARIANT || 'full',
+        lang: getCurrentLanguage(),
+        premium: hasPremiumAccess(getAuthState()),
+        signal,
+      }),
+      publish: (items, refresh) => {
+        if (this.destroyed) return;
+        this.ctx.searchModal?.registerSource('headline', items, { updateVisibleMetrics: false });
+        if (refresh) this.ctx.searchModal?.refreshResultsInBackground();
+      },
+      isLoadedMatch: (titleKey, query) => (
+        this.loadedNewsSearchText.get(titleKey)?.some((text) => text.includes(query)) ?? false
+      ),
+      formatAge: formatTime,
+      setTimeout: (callback, delay) => setTimeout(callback, delay),
+      clearTimeout: (timer) => clearTimeout(timer),
+      now: () => Date.now(),
     });
     this.webMcpSearch = new WebMcpSearchController({
       waitForIndexReady: () => this.waitForSearchIndexReady(),
@@ -260,6 +298,9 @@ export class SearchManager implements AppModule {
       subscribeRuntimeConfig,
       subscribeWidgetAccess,
       onPremiumAccessChanged: (premium, premiumRestored) => {
+        // The headline window is 24 hours or 7 days by plan: drop answers
+        // fetched under the other one.
+        this.headlineHistory.reset();
         if (!premium) {
           this.flightSearchItems = [];
           this.flightSourceExpiresAt = 0;
@@ -299,6 +340,7 @@ export class SearchManager implements AppModule {
     this.ctx.searchModal?.cancelPendingWork();
     this.webMcpSearch.destroy();
     this.searchSelection.destroy();
+    this.headlineHistory.reset();
     this.flightSearchItems = [];
     this.flightSourceExpiresAt = 0;
     this.liveFlightOverlay = [];
@@ -494,6 +536,9 @@ export class SearchManager implements AppModule {
     // so mid-session sign-ins get the feature without a page reload.
     this.ctx.searchModal.setOnFlightSearch((callsign) => {
       this.handleLiveFlightSearch(callsign);
+    });
+    this.ctx.searchModal.setOnQueryChange((rawInput) => {
+      this.headlineHistory.onQueryChange(rawInput);
     });
 
   }
@@ -814,6 +859,10 @@ export class SearchManager implements AppModule {
           && this.hasLivePanelTarget('polymarket');
       case 'flight':
         return hasPremiumAccess(getAuthState());
+      case 'headline':
+        // Fetched for the query a person typed, and opens a publisher page:
+        // never issued to an agent as something it can run.
+        return false;
       default:
         return true;
     }
@@ -929,6 +978,17 @@ export class SearchManager implements AppModule {
     }));
     console.log(`[Search] Indexing ${newsItems.length} news items (allNews total: ${this.ctx.allNews.length})`);
     this.ctx.searchModal.registerSource('news', newsItems, sourceOptions);
+    // Only rows this source can return: a headline that is loaded but not
+    // indexed here must still come back from the server history.
+    const loadedNewsSearchText = new Map<string, string[]>();
+    for (const item of newsItems) {
+      const titleKey = headlineTitleKey(item.title);
+      const texts = loadedNewsSearchText.get(titleKey) ?? [];
+      // Title and publisher on separate lines: a query never spans both.
+      texts.push(`${item.title}\n${item.subtitle ?? ''}`.toLowerCase());
+      loadedNewsSearchText.set(titleKey, texts);
+    }
+    this.loadedNewsSearchText = loadedNewsSearchText;
 
     this.ctx.searchModal.registerSource('prediction', this.ctx.latestPredictions.map(p => ({
       id: p.title,

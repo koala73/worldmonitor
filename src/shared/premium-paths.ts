@@ -83,6 +83,10 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   // Outlet-perspective grouping is a Pro MCP tool; the REST route matches it.
   '/api/news/v1/list-media-perspective',
   '/api/news/v1/list-news-pool',
+  // Cmd+K headline search over 7 days. The 24-hour sibling
+  // /api/news/v1/search-headlines stays off this list: free and signed-out
+  // dashboards search that window.
+  '/api/news/v1/search-headline-archive',
   '/api/trade/v1/list-comtrade-flows',
   '/api/trade/v1/get-tariff-trends',
   '/api/trade/v1/get-bilateral-tariff',

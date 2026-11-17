@@ -14,6 +14,7 @@ import "worldmonitor/news/v1/list_label_changes.proto";
 import "worldmonitor/news/v1/error_reports.proto";
 import "worldmonitor/news/v1/search_fact_checks.proto";
 import "worldmonitor/news/v1/search_claim_headlines.proto";
+import "worldmonitor/news/v1/search_headlines.proto";
 
 // NewsService provides AI-powered article summarization and feed aggregation.
 service NewsService {
@@ -84,5 +85,15 @@ service NewsService {
   // SearchClaimHeadlines returns the fresh headlines from every configured feed that share a claim's words, so the /verify page and verify_claim can build its coverage card.
   rpc SearchClaimHeadlines(SearchClaimHeadlinesRequest) returns (SearchClaimHeadlinesResponse) {
     option (sebuf.http.config) = {path: "/search-claim-headlines", method: HTTP_METHOD_GET};
+  }
+
+  // SearchHeadlines finds headlines an edition served in the last 24 hours, including ones that have since left the dashboard. Reads the headline history the digest build writes; never fetches a feed.
+  rpc SearchHeadlines(SearchHeadlinesRequest) returns (SearchHeadlinesResponse) {
+    option (sebuf.http.config) = {path: "/search-headlines", method: HTTP_METHOD_GET};
+  }
+
+  // SearchHeadlineArchive finds headlines an edition served in the last 7 days: the same search as SearchHeadlines over a longer window, for finding a story days after it left the dashboard. Requires a Pro plan.
+  rpc SearchHeadlineArchive(SearchHeadlinesRequest) returns (SearchHeadlinesResponse) {
+    option (sebuf.http.config) = {path: "/search-headline-archive", method: HTTP_METHOD_GET};
   }
 }

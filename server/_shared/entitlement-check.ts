@@ -267,6 +267,8 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/supply-chain/v1/list-vulnerability-rankings': 1,
   '/api/news/v1/list-media-perspective': 1,
   '/api/news/v1/list-news-pool': 1,
+  // Cmd+K headline search over 7 days; the 24-hour sibling stays free.
+  '/api/news/v1/search-headline-archive': 1,
 };
 
 const CONVEX_INTERNAL_ENTITLEMENTS_PATH = '/api/internal-entitlements';

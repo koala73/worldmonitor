@@ -213,6 +213,8 @@ export const DOCS_PAGE_DATES: Record<string, { datePublished: string; dateModifi
   "api-reference/newsservice/reviewerrorreport": {"datePublished":"2026-02-20","dateModified":"2026-11-07"},
   "api-reference/newsservice/searchclaimheadlines": {"datePublished":"2026-02-20","dateModified":"2026-11-07"},
   "api-reference/newsservice/searchfactchecks": {"datePublished":"2026-02-20","dateModified":"2026-11-07"},
+  "api-reference/newsservice/searchheadlinearchive": {"datePublished":"2026-02-20","dateModified":"2026-11-07"},
+  "api-reference/newsservice/searchheadlines": {"datePublished":"2026-02-20","dateModified":"2026-11-07"},
   "api-reference/newsservice/submiterrorreport": {"datePublished":"2026-02-20","dateModified":"2026-11-07"},
   "api-reference/newsservice/summarizearticle": {"datePublished":"2026-02-20","dateModified":"2026-11-07"},
   "api-reference/orbitalservice/getcountryimageryevidence": {"datePublished":"2026-04-23","dateModified":"2026-11-16"},

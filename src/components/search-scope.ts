@@ -32,6 +32,7 @@ export function resolveIdleSelectionTerm(
 
 const SIGNAL_RESULT_TYPES = new Set([
   'news',
+  'headline',
   'hotspot',
   'market',
   'prediction',

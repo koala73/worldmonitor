@@ -21,7 +21,10 @@ const MOBILE_MAX_RESULTS = 5;
 
 const RESULT_TYPE_PRIORITY: readonly SearchResultType[] = [
   'flight',
-  'news', 'prediction', 'market', 'earthquake', 'outage',
+  'news',
+  // Directly after loaded news: mobile shows five results, filled in this order.
+  'headline',
+  'prediction', 'market', 'earthquake', 'outage',
   'conflict', 'hotspot', 'country',
   'base', 'pipeline', 'cable', 'datacenter', 'nuclear', 'irradiator',
   'techcompany', 'ailab', 'startup', 'techevent', 'techhq', 'accelerator',
@@ -112,6 +115,7 @@ function matchCommands(
 function resultPerTypeLimit(type: SearchResultType, isMobile: boolean): number {
   if (isMobile) return 2;
   if (type === 'news') return 6;
+  if (type === 'headline') return 8;
   if (type === 'country') return 4;
   return 3;
 }

@@ -130,6 +130,7 @@ import {
   DIGEST_ACCUMULATOR_TTL,
 } from '../../../_shared/cache-keys';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
+import { writeHeadlineHistory } from './_headline-history';
 import diplomacyKeywordsData from '../../../../shared/diplomacy-keywords.json';
 import { normalizeFeedDateZone } from '../../../../shared/feed-date-zone.js';
 import { NEWS_LANGUAGES } from '../../../../src/shared/public-rpc-cache';
@@ -2795,14 +2796,23 @@ for (const categories of Object.values(VARIANT_FEEDS)) {
  * publisher still fail closed. Item-supplied feed URLs cannot extend the
  * expected host set.
  */
-function storyTrackLinkForPersist(
+function publisherGatedLink(
   item: Pick<ParsedItem, 'link' | 'source' | 'originPublisher' | 'originPublisherTrusted'>,
 ): string {
   const link = typeof item.link === 'string' ? item.link : '';
   if (!link) return '';
   const hosts = new Set(expectedPublisherHostsForItem(item, { url: '' }));
   for (const host of registeredFeedHostsBySource.get(item.source) ?? []) hosts.add(host);
-  if (isPublisherLink(link, hosts)) return link;
+  return isPublisherLink(link, hosts) ? link : '';
+}
+
+function storyTrackLinkForPersist(
+  item: Pick<ParsedItem, 'link' | 'source' | 'originPublisher' | 'originPublisherTrusted'>,
+): string {
+  const link = typeof item.link === 'string' ? item.link : '';
+  if (!link) return '';
+  const gated = publisherGatedLink(item);
+  if (gated) return gated;
   console.warn(
     `[digest] publisher-link-gate persist-blank source="${item?.source ?? ''}" ` +
       `host="${linkHostnameForLog(link)}"`,
@@ -2955,6 +2965,44 @@ function storyCorroborationByHash(
     byHash.set(hash, encodeStoryCorroboration(storyLabel(clusterByHash.get(hash) ?? members)));
   }
   return byHash;
+}
+
+/**
+ * Record the items this build served in the headline history that Cmd+K
+ * searches (see _headline-history.ts). Every served item is recorded, not one
+ * representative per story: the alert relay titles an alert from the served
+ * item, so each wording has to be findable. Links pass the same persist-time
+ * publisher gate as story:track; an item whose link the gate blanks is not
+ * indexed, because a result nobody can open is not a result.
+ *
+ * Returns whether Redis confirmed the write. Never throws: a failed history
+ * write must not fail the digest build.
+ */
+async function recordServedHeadlines(
+  items: readonly ParsedItem[],
+  variant: string,
+  lang: string,
+  deadlineAt = Number.POSITIVE_INFINITY,
+): Promise<boolean> {
+  const timeoutMs = redisTimeoutForDeadline(deadlineAt);
+  if (items.length === 0 || timeoutMs === undefined) return false;
+  try {
+    return await writeHeadlineHistory(
+      items.map((item) => ({
+        title: item.title,
+        source: item.source,
+        link: publisherGatedLink(item),
+        publishedAt: item.publishedAt,
+      })),
+      variant,
+      lang,
+      Date.now(),
+      timeoutMs,
+    );
+  } catch (err) {
+    console.warn('[digest] headline history write failed:', err);
+    return false;
+  }
 }
 
 async function writeStoryTracking(
@@ -3771,6 +3819,11 @@ async function buildDigest(
     // #9213: every variant persists the verdict it served, for digest text.
     const corroborationByHash = storyCorroborationByHash(allSliced, servableItems);
 
+    // Headline history for Cmd+K. Runs alongside the tracking writes below
+    // (disjoint keys) under the same deadline, and is settled before the
+    // response is assembled so the isolate cannot be frozen mid-write.
+    const headlineHistoryWrite = recordServedHeadlines(allSliced, variant, lang, storyTrackingDeadlineAt);
+
     // Record changes before persisting the new labels: a story whose entry
     // was not written keeps its previous label, so the change is detected
     // again next cycle instead of being lost.
@@ -3827,6 +3880,8 @@ async function buildDigest(
         }),
       };
     }
+
+    await headlineHistoryWrite;
 
     // #4920: publish the coverage ledger — every gate's drop count plus
     // what survived — as a side key. Best-effort: ledger failures never
@@ -3978,6 +4033,7 @@ export const __testing__ = {
   redisPipelineConfirmed,
   shouldPruneAccumulator,
   writeStoryTracking,
+  recordServedHeadlines,
   storyLabelChanges,
   MAX_REDIS_PIPELINE_COMMANDS,
   MAX_DESCRIPTION_LEN,
