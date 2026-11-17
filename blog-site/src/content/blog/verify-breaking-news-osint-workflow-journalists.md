@@ -1,7 +1,7 @@
 ---
 title: "Investigate Breaking News with OSINT"
 description: "Compare breaking-news reports with flight, vessel and outage observations. Record source provenance, timestamps, coverage gaps and unresolved claims."
-metaTitle: "Investigate Breaking News with OSINT"
+metaTitle: "Investigate Breaking News with OSINT | World Monitor"
 keywords: "OSINT verification techniques, verify breaking news, OSINT for journalists, open source verification tools, fact-checking breaking news, news verification workflow"
 audience: "Journalists, fact-checkers, newsroom researchers, OSINT analysts, media literacy educators"
 heroImage: "/blog/images/blog/verify-breaking-news-osint-workflow-journalists.jpg"
@@ -34,7 +34,7 @@ Write down whether the source directly observed the event, reports someone else'
 | Internet outages | Reported connectivity changes at the source's geographic scale, not an explanation of cause. |
 | Reporting | Attributed accounts and statements that still need provenance and time checks. |
 
-Not every incident affects every layer. A country-level connectivity change cannot precisely locate a port incident. A missing vessel observation may reflect reception or provider limits. See [AIS accuracy](/blog/posts/ais-vessel-tracking-accuracy/) and the [military-flight guide](/blog/posts/military-flight-tracking-osint/) for their specific limitations.
+Not every incident affects every layer. A country-level connectivity change cannot precisely locate a port incident. A missing vessel observation may reflect reception or provider limits. See [AIS accuracy](/blog/posts/ais-vessel-tracking-accuracy/) and the [military-flight guide](/blog/posts/military-flight-tracking-osint/) for their specific limitations. For an event class with authoritative telemetry, check the original publisher: the [USGS earthquake catalog](https://earthquake.usgs.gov/earthquakes/search/) for seismic events and [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) for active-fire observations. Those feeds corroborate a specific claim; they do not authenticate an unrelated image or an eyewitness account.
 
 ## Align geography and time
 

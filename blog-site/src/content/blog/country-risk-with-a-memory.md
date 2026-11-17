@@ -1,7 +1,7 @@
 ---
 title: "What Changed Since Your Last Country Briefing?"
 description: "Compare daily country snapshots, check score versions and source times, and write a briefing update that keeps missing dates and uncertainty visible."
-metaTitle: "What Changed Since Your Last Country Briefing?"
+metaTitle: "Daily country history and risk trends | World Monitor"
 keywords: "country risk history, CII timeline, resilience history, daily country snapshots"
 audience: "Country-risk analysts and monitoring teams"
 heroImage: "/blog/images/blog/country-risk-monitoring-workflow-for-analysts.jpg"
@@ -21,7 +21,7 @@ If the baseline date is missing, say the comparison is unavailable or explicitly
 
 ## Check that the observations are comparable
 
-Use the same country, metric and formula identity. Inspect source observation time and capture time separately. A newly captured snapshot can retain an older underlying observation. Do not describe that as newly measured change.
+Use the same country, metric and formula identity. Inspect source observation time and capture time separately. The archive groups dates in UTC and keeps each score's source time; [RFC 3339](https://www.rfc-editor.org/rfc/rfc3339) explains why a timestamp needs an explicit relationship to UTC before two observations can be compared. A newly captured snapshot can retain an older underlying observation. Do not describe that as newly measured change.
 
 Each score series breaks across missing dates, missing scores or formula changes. Compare within a continuous series using the same formula identity. Missing values remain missing; a recorded numeric zero remains zero.
 

@@ -1,7 +1,7 @@
 ---
 title: "Geopolitical Risk Monitoring for Traders and Analysts"
 description: "Connect geopolitical reporting to market exposure. Build a research watchlist, compare source dates and separate observed prices from hypothetical scenarios."
-metaTitle: "Geopolitical Risk Monitoring for Traders and Analysts"
+metaTitle: "Geopolitics-to-Markets Pipeline | World Monitor"
 keywords: "geopolitics to markets, macro trading workflow, geopolitical market risk, market implications, macro radar, commodity risk"
 audience: "Macro traders, portfolio managers, market strategists, risk analysts"
 heroImage: "/blog/images/blog/geopolitics-to-markets-pipeline-macro-traders-worldmonitor.jpg"

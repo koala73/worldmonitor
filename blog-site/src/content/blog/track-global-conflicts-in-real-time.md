@@ -1,7 +1,7 @@
 ---
 title: "Track Global Conflicts: Sources, Maps and AI Summaries"
 description: "Use World Monitor to follow conflict reporting and map context. Check event dates, source coverage and AI summaries before drawing conclusions."
-metaTitle: "Track Global Conflicts: Sources, Maps and AI Summaries"
+metaTitle: "Track Global Conflicts in Real Time | World Monitor"
 keywords: "real-time conflict map, geopolitical intelligence map, military tracking dashboard, conflict monitoring tool, global conflict tracker"
 audience: "Geopolitical analysts, defense researchers, policy makers, journalists covering conflict"
 heroImage: "/blog/images/blog/track-global-conflicts-in-real-time.jpg"
@@ -32,7 +32,7 @@ This process can also reveal that there is not enough information to update a co
 
 ## Check whether sources are independent
 
-Three outlets can carry one agency report. Two datasets can ingest the same original account. Count source chains, not logos, when assessing corroboration.
+Three outlets can carry one agency report. Two datasets can ingest the same original account. The conflict layer draws on [UCDP](https://ucdp.uu.se/) coded events and [GDELT](https://www.gdeltproject.org/) event reporting, so a record in each can still rest on one underlying report. Count source chains, not logos, when assessing corroboration.
 
 For a reported border incident, record who first reported it, whether another source independently observed it, and whether the location and timing are supported. This hypothetical example does not assume a particular event occurred. Conflicting reports should remain visibly conflicting until you have evidence to resolve them.
 
@@ -48,7 +48,7 @@ Hosted AI actions have separate access requirements from the public map. Consult
 
 ## What does real time mean here?
 
-Different sources update on different schedules. A current browser view can contain delayed reporting, older aircraft observations or cached analysis. Check source times and any unavailable/stale state rather than treating the page-load time as the time of the event.
+Different sources update on different schedules. A current browser view can contain delayed reporting, older aircraft observations or cached analysis. Aircraft positions come from [OpenSky Network](https://opensky-network.org/) coverage enriched by [Wingbits](https://wingbits.com/), each with its own reception and update behavior. Check source times and any unavailable/stale state rather than treating the page-load time as the time of the event.
 
 The dashboard is useful for following changes in available evidence. It is not a guarantee of immediate detection, a complete event census or an archive of every layer. The [freshness guide](/blog/posts/real-time-intelligence-data-freshness/) explains those distinctions.
 

@@ -1,7 +1,7 @@
 ---
 title: "Geopolitical Alerts in Slack and Telegram"
 description: "Connect Slack or Telegram to World Monitor, choose supported alerts or digests, and configure scope and quiet hours. Understand access and delivery limits."
-metaTitle: "Geopolitical Alerts in Slack and Telegram"
+metaTitle: "Geopolitical Alerts in Slack and Telegram | World Monitor"
 keywords: "geopolitical alerts app, telegram news alerts, discord intelligence alerts, microsoft teams alerts, web push breaking news, alert fatigue quiet hours, intelligence notifications"
 audience: "Analysts, ops and security teams, traders, journalists, anyone who can't watch a dashboard all day"
 heroImage: "/blog/images/blog/alerts-notification-channels-worldmonitor.jpg"
@@ -15,7 +15,7 @@ World Monitor can deliver geopolitical alerts through Slack and Telegram using i
 
 ## Connect the destination
 
-Open the dashboard's notification settings while signed in. For Slack, choose **Add to Slack**, complete the authorization flow and select the permitted destination. Workspace permissions can affect which destination you can connect. Return to World Monitor and check the connection state.
+Open the dashboard's notification settings while signed in. For Slack, choose **Add to Slack**, complete the authorization flow and select the permitted destination. Workspace permissions can affect which destination you can connect. The authorization provisions an incoming webhook for the destination you pick, so Slack's [incoming-webhook guide](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks) describes the delivery contract behind it. Return to World Monitor and check the connection state.
 
 For Telegram, choose **Connect** and follow the generated pairing link or command. Complete the bot's confirmation step; opening the bot alone does not finish pairing. Return to the dashboard and wait for the connected state.
 
@@ -46,7 +46,7 @@ For a daily review, choose a digest cadence where available and retain source li
 
 ## Other delivery channels
 
-Across its seven channels, the settings also support email, browser push, Discord, Microsoft Teams and webhooks, subject to access and channel configuration. Browser push needs browser permission. Teams setup uses its supported Workflows connection. A webhook requires a receiving system and is a developer integration, not a prerequisite for native Slack or Telegram setup.
+Across its seven channels, the settings also support email, browser push, Discord, Microsoft Teams and webhooks, subject to access and channel configuration. Browser push needs browser permission. Teams setup uses its supported Workflows connection, which Microsoft's [webhooks and Workflows guidance](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/what-are-webhooks-and-connectors) documents. A webhook requires a receiving system and is a developer integration, not a prerequisite for native Slack or Telegram setup.
 
 Use the [notification documentation](/docs/api-notifications) for channel-specific requirements and [current plans](/docs/pricing) for access. Do not assume every channel has the same test control; the documented send-test action is Teams-specific.
 
@@ -54,7 +54,7 @@ Use the [notification documentation](/docs/api-notifications) for channel-specif
 
 Check the connection state, whether the rule is enabled, the event type, its scope, the sensitivity/mode combination, and the timezone/quiet hours. Then distinguish “no matching event” from a failed connection or delivery.
 
-Do not reconnect repeatedly or purchase another plan solely because an entitlement check is temporarily unavailable. Record the error and follow its retry guidance. A configured rule is not proof that a qualifying event occurred, and a delivered story is not proof its claim is true.
+Do not reconnect repeatedly or purchase another plan solely because an entitlement check is temporarily unavailable. Record the error and follow its retry guidance. A Teams destination can also fail at the platform level if its workflow is left without a valid owner; Microsoft's [guidance on sharing a cloud flow](https://learn.microsoft.com/en-us/power-automate/create-team-flows) covers adding a second one. A configured rule is not proof that a qualifying event occurred, and a delivered story is not proof its claim is true.
 
 For each important delivered item, open the original source and inspect the timestamp. Coverage labels describe available source coverage, not a verdict of truth. The [AI reliability guide](/blog/posts/ai-intelligence-summary-reliability/) applies to generated digests too.
 

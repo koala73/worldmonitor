@@ -49,7 +49,7 @@ Use the same region and a short watchlist. Review new reporting, inspect the lay
 
 A useful note might say: “Two articles repeat the port authority's statement. The available vessel observation predates that statement. We have not established whether operations changed.” That is more useful than calling a blank map proof of normal activity.
 
-Read [what real-time data means](/blog/posts/real-time-intelligence-data-freshness/) before comparing timestamps across different sources. Specialist archives and primary reporting remain necessary when the dashboard does not cover your question.
+Read [what real-time data means](/blog/posts/real-time-intelligence-data-freshness/) before comparing timestamps across different sources. Specialist archives and primary reporting remain necessary when the dashboard does not cover your question. For an event class with its own authoritative catalogue, go to the publisher: the [USGS earthquake catalog](https://earthquake.usgs.gov/earthquakes/search/) for seismic events, [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) for active-fire detections, [gpsjam.org](https://gpsjam.org/) for reported GPS interference and [ACLED](https://acleddata.com/) for coded conflict events. Those catalogues can corroborate a specific claim; they do not authenticate an image or an eyewitness account.
 
 The public [summarization implementation](https://github.com/koala73/worldmonitor/blob/5c50df116c/src/services/summarization.ts) documents the behavior behind this guide.
 

@@ -1244,7 +1244,7 @@ To monitor a shipping chokepoint, compare its dated traffic observations with ne
 | Disruption score | Methodology and contributing signals; not a closure probability. |
 | Freight benchmark | Index definition and observation period; not a live carrier quote. |
 
-A response retrieved today can contain an older publisher observation. Missing counts must stay unavailable, not become zero traffic. The [chokepoint methodology](/docs/methodology/chokepoints) explains the product's measures.
+A response retrieved today can contain an older publisher observation. Name the publisher before you compare: container indices come from the [Shanghai Shipping Exchange](https://en.sse.net.cn/), the Baltic Dry Index from the Baltic Exchange as [republished by HandyBulk](https://www.handybulk.com/baltic-dry-index/), macro series from [FRED](https://fred.stlouisfed.org/), trade-policy measures from [WTO statistics](https://stats.wto.org), and conflict context from [UCDP](https://ucdp.uu.se/) coded events and [GDELT](https://www.gdeltproject.org/) reporting. Missing counts must stay unavailable, not become zero traffic. The [chokepoint methodology](/docs/methodology/chokepoints) explains the product's measures.
 
 <a id="corpus-follow-one-corridor-through-the-dashboard"></a>
 ## Follow one corridor through the dashboard

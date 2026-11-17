@@ -1,7 +1,7 @@
 ---
 title: "Stress-Test a Supply Chain Against a Chokepoint Disruption"
 description: "Choose a disruption scenario, set country and closure severity, inspect coverage and save the assumptions without treating modeled scores as financial losses."
-metaTitle: "Stress-Test a Supply Chain Against a Chokepoint Disruption"
+metaTitle: "Supply Chain Scenario Engine Stress Test | World Monitor"
 keywords: "supply chain scenario engine, geopolitical stress test, chokepoint scenario, supply chain risk simulation, trade exposure analysis"
 audience: "Supply chain teams, commodity desks, risk managers, policy analysts"
 heroImage: "/blog/images/blog/stress-test-supply-chain-scenario-engine-worldmonitor.jpg"
