@@ -391,10 +391,10 @@
   "soonBadge": "Soon",
   "welcome": {
     "meta": {
-      "title": "World Monitor: Free Geopolitical Intelligence Dashboard",
-      "description": "World Monitor: real-time geopolitical intelligence dashboard. A free live map of conflicts, shipping, flights, markets and cyber, with an API and MCP server.",
-      "ogTitle": "World Monitor: Free Geopolitical Intelligence Dashboard",
-      "ogDescription": "World Monitor: real-time geopolitical intelligence dashboard. A free live map of conflicts, shipping, flights, markets and cyber, with an API and MCP server."
+      "title": "World Monitor: Live War Monitor & Geopolitical Dashboard",
+      "description": "Monitor the situation live: World Monitor is a free real-time map of wars and conflicts, shipping, flights, markets and cyber, with an API and MCP server.",
+      "ogTitle": "World Monitor: Live War Monitor & Geopolitical Dashboard",
+      "ogDescription": "Monitor the situation live: World Monitor is a free real-time map of wars and conflicts, shipping, flights, markets and cyber, with an API and MCP server."
     },
     "nav": {
       "useCases": "Use cases",
