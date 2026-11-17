@@ -73,18 +73,21 @@ for (const channelType of Object.keys(targets)) {
           networkError = error;
         }
       }
-      const channel = { _id: 'channel-1', linkedAt: 1, verified: true, channelType,
+      const channel = { _id: 'channel-1', linkedAt: 1, deliveryAttempt: { sequence: 1, pending: true }, verified: true, channelType,
         webhookEnvelope: encrypt(targets[channelType]), endpoint: targets[channelType], p256dh: 'test', auth: 'test' };
       const results = [];
       globalThis.fetch = async (url, init) => {
-        if (String(url).endsWith('/relay/channels')) return Response.json([channel]);
+        if (String(url).endsWith('/relay/channels')) {
+          assert.deepEqual(JSON.parse(init.body).deliveryChannels, [channelType]);
+          return Response.json([channel]);
+        }
         assert.ok(String(url).endsWith('/relay/delivery-result'));
         results.push(...JSON.parse(init.body).results);
         return Response.json({ ok: true });
       };
       await relay.processWelcome({ userId: 'user-test', channelType, welcomeId: 'channel-1' });
       assert.deepEqual(results, [{ userId: 'user-test', channelType,
-        delivery: { channelId: 'channel-1', linkedAt: 1, error: outcome } }]);
+        delivery: { channelId: 'channel-1', linkedAt: 1, sequence: 1, error: outcome } }]);
       channel.verified = false;
       const before = sends;
       await relay.processWelcome({ userId: 'user-test', channelType, welcomeId: 'channel-1' });
@@ -112,7 +115,7 @@ test('a slow result report cannot hold up later recipients of the same event', a
     if (path.endsWith('/relay/entitlement')) return Response.json({ tier: 1 });
     if (path.endsWith('/relay/channels')) {
       const { userId } = JSON.parse(init.body);
-      return Response.json([{ _id: userId, linkedAt: 1, channelType: 'slack', verified: true,
+      return Response.json([{ _id: userId, linkedAt: 1, deliveryAttempt: { sequence: 1, pending: true }, channelType: 'slack', verified: true,
         webhookEnvelope: encrypt(targets.slack) }]);
     }
     if (path.endsWith('/relay/delivery-result')) {

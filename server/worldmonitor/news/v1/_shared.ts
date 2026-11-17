@@ -17,7 +17,6 @@ export {
   selectUniqueHeadlinePairs,
 } from '../../../../src/utils/summary-cache-key';
 import { MAX_BODY_LEN } from '../../../../src/utils/summary-cache-key';
-import { UI_LANGUAGE_NAMES } from '../../../../shared/ui-languages.js';
 
 // ========================================================================
 // Output languages: the dashboard UI languages (src/services/i18n.ts
@@ -75,7 +74,14 @@ export const TRANSLATE_TEXT_CLOSE = '<<<END TEXT>>>';
 // Flash answered in Chinese (2026-10-28 eval). Keys match
 // TRANSLATE_TARGET_LANGUAGES in summarize-article.ts; any other value is used
 // as given.
-export const TRANSLATE_LANGUAGE_NAMES: Readonly<Record<string, string>> = UI_LANGUAGE_NAMES;
+export const TRANSLATE_LANGUAGE_NAMES: Readonly<Record<string, string>> = {
+  en: 'English', bg: 'Bulgarian', cs: 'Czech', fr: 'French', de: 'German', el: 'Greek',
+  es: 'Spanish', hr: 'Croatian', hu: 'Hungarian', it: 'Italian', pl: 'Polish',
+  pt: 'Portuguese', nl: 'Dutch', sv: 'Swedish', sw: 'Swahili', ru: 'Russian',
+  uk: 'Ukrainian', ar: 'Arabic', fa: 'Persian', zh: 'Simplified Chinese',
+  'zh-TW': 'Traditional Chinese', ja: 'Japanese', ko: 'Korean', ro: 'Romanian',
+  tr: 'Turkish', th: 'Thai', vi: 'Vietnamese', hi: 'Hindi',
+};
 
 export function translateLanguageName(targetLang: string): string {
   return TRANSLATE_LANGUAGE_NAMES[targetLang] ?? targetLang;

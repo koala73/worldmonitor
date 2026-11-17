@@ -1,6 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { deliveryFailureValidator } from "./lib/notificationDelivery";
+import { deliveryAttemptValidator, deliveryFailureValidator } from "./lib/notificationDelivery";
 import {
   agentFeedbackKindValidator,
   agentFeedbackStatusValidator,
@@ -148,6 +148,7 @@ export default defineSchema({
         chatId: v.string(),
         verified: v.boolean(),
         deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         telegramOwnership: v.optional(v.literal("verified_callback")),
         linkedAt: v.number(),
       }),
@@ -157,6 +158,7 @@ export default defineSchema({
         webhookEnvelope: v.string(),
         verified: v.boolean(),
         deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         linkedAt: v.number(),
         slackChannelName: v.optional(v.string()),
         slackTeamName: v.optional(v.string()),
@@ -169,6 +171,7 @@ export default defineSchema({
         emailOwnership: v.optional(v.literal("verified_account")),
         verified: v.boolean(),
         deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         linkedAt: v.number(),
       }),
       v.object({
@@ -177,6 +180,7 @@ export default defineSchema({
         webhookEnvelope: v.string(),
         verified: v.boolean(),
         deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         linkedAt: v.number(),
         discordGuildId: v.optional(v.string()),
         discordChannelId: v.optional(v.string()),
@@ -190,6 +194,7 @@ export default defineSchema({
         webhookEnvelope: v.string(),
         verified: v.boolean(),
         deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         linkedAt: v.number(),
       }),
       v.object({
@@ -198,6 +203,7 @@ export default defineSchema({
         webhookEnvelope: v.string(),
         verified: v.boolean(),
         deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         linkedAt: v.number(),
         webhookLabel: v.optional(v.string()),
         webhookSecret: v.optional(v.string()),
@@ -217,6 +223,7 @@ export default defineSchema({
         auth: v.string(),
         verified: v.boolean(),
         deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         linkedAt: v.number(),
         userAgent: v.optional(v.string()),
       }),
