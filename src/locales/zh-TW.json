@@ -5827,7 +5827,9 @@
     "briefLanguage": {
       "label": "簡報語言",
       "hint": "您的每日簡報將使用{{language}}撰寫。",
-      "sameAsApp": "與應用語言相同"
+      "sameAsApp": "與應用語言相同",
+      "loadFailed": "載入失敗",
+      "saveFailed": "儲存失敗。請重試。"
     }
   }
 }

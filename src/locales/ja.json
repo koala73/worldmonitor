@@ -5827,7 +5827,9 @@
     "briefLanguage": {
       "label": "ブリーフィングの言語",
       "hint": "毎日のブリーフィングは{{language}}で作成されます。",
-      "sameAsApp": "アプリの言語と同じ"
+      "sameAsApp": "アプリの言語と同じ",
+      "loadFailed": "読み込みに失敗しました",
+      "saveFailed": "保存できませんでした。もう一度試してください。"
     }
   }
 }
