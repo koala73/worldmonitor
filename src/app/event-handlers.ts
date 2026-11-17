@@ -164,7 +164,7 @@ import {
 } from '@/app/responsive-zone-listener';
 import { stageVariantSelection } from '@/services/variant-panel-ownership';
 import { isMapUrlCentreClaimed, publishedMapCentre } from '@/app/orbital-map-focus';
-import { transferSourceGateOwnershipToUser as releaseSourceGateOwnership } from '@/services/source-cap';
+import { transferSourceGateOwnershipToUser as releaseSourceGateOwnership, stringSetsEqual } from '@/services/source-cap';
 
 /** Bound on each wait before the About-you card abstains for this load. */
 const ABOUT_YOU_WAIT_MS = 8_000;
@@ -2391,9 +2391,7 @@ export class EventHandlerManager implements AppModule {
         } else {
           this.ctx.disabledSources.add(name);
         }
-        if (this.transferSourceGateOwnershipToUser([name])) {
-          saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
-        }
+        this.persistSourcePreferences([name]);
       },
       setSourcesEnabled: (names: string[], enabled: boolean) => {
         if (enabled && !isProUser()) {
@@ -2409,9 +2407,7 @@ export class EventHandlerManager implements AppModule {
           if (enabled) this.ctx.disabledSources.delete(name);
           else this.ctx.disabledSources.add(name);
         }
-        if (this.transferSourceGateOwnershipToUser(names)) {
-          saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
-        }
+        this.persistSourcePreferences(names);
       },
       getAllSourceNames: () => this.getAllSourceNames(),
       // Sources are applied to ctx.disabledSources on click, but DataLoader
@@ -3154,19 +3150,23 @@ export class EventHandlerManager implements AppModule {
     return getPanelDisplayName(panelKey, fallback);
   }
 
-  private transferSourceGateOwnershipToUser(names: Iterable<string>): boolean {
-    const gateOwned = new Set(
+  private persistSourcePreferences(names: Iterable<string>): void {
+    const persistedGateOwned = new Set(
       loadFromStorage<string[]>(STORAGE_KEYS.sourceGateOwnership, []),
     );
+    const pending = this.ctx.pendingSourcePreferences;
+    const gateOwned = pending?.gateOwned ?? persistedGateOwned;
     const nextGateOwned = releaseSourceGateOwnership(gateOwned, names);
-    if (nextGateOwned.size === gateOwned.size) return true;
-    // A deliberate source preference can only outlive the gate safely after
-    // ownership transfers. If this sidecar write fails, keep the live toggle
-    // for the session but do not persist a preference Pro could later undo.
-    return writeStorageValue(
-      STORAGE_KEYS.sourceGateOwnership,
-      JSON.stringify([...nextGateOwned]),
-    );
+    this.ctx.pendingSourcePreferences = {
+      gateOwned: nextGateOwned,
+      countryCoverageMigration: pending?.countryCoverageMigration ?? false,
+    };
+    if (!stringSetsEqual(persistedGateOwned, nextGateOwned)
+      && !writeStorageValue(STORAGE_KEYS.sourceGateOwnership, JSON.stringify([...nextGateOwned]))) return;
+    if (!saveToStorage(STORAGE_KEYS.disabledFeeds, [...this.ctx.disabledSources])) return;
+    if (pending?.countryCoverageMigration
+      && !writeStorageValue('worldmonitor-country-coverage-optin-v1', 'done')) return;
+    this.ctx.pendingSourcePreferences = undefined;
   }
 
   getAllSourceNames(): string[] {

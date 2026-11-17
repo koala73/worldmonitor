@@ -326,7 +326,6 @@ export type { CountryBriefSignals } from '@/app/app-context';
 
 export class App {
   private state: AppContext;
-  private sourcePreferencesPendingPersistence = false;
   private resumeBillingPortal(capturedThisLoad = false): Promise<boolean> {
     return resumePendingBillingPortal({
       getUserId: () => getAuthState().user?.id,
@@ -608,7 +607,7 @@ export class App {
       if (!tierReconciliationDeferred && !freeTierLimitsInvoked) {
         this.enforceFreeTierLimits(cloudSyncVersion);
       }
-      if (!this.sourcePreferencesPendingPersistence) {
+      if (!this.state.pendingSourcePreferences) {
         this.state.disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
       }
     }
@@ -1614,7 +1613,6 @@ export class App {
     }
 
     const disabledSources = new Set(sessionDisabledSources ?? loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
-    this.sourcePreferencesPendingPersistence = sessionDisabledSources !== undefined;
 
     // Build shared state object
     this.state = {
@@ -1636,6 +1634,10 @@ export class App {
       intelligenceCache: {},
       cyberThreatsCache: null,
       disabledSources,
+      pendingSourcePreferences: sessionDisabledSources === undefined ? undefined : {
+        gateOwned: null,
+        countryCoverageMigration: true,
+      },
       currentTimeRange: '7d',
       inFlight: new Set(),
       seenGeoAlerts: new Set(),
@@ -3519,19 +3521,20 @@ export class App {
     const persistedDisabled = new Set(
       loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []),
     );
-    const baselineDisabled = this.sourcePreferencesPendingPersistence
+    const pending = this.state.pendingSourcePreferences;
+    const baselineDisabled = pending
       ? this.state.disabledSources
       : persistedDisabled;
     const persistedGateOwned = new Set(
       loadFromStorage<string[]>(STORAGE_KEYS.sourceGateOwnership, []),
     );
-    let gateOwned = new Set(persistedGateOwned);
+    let gateOwned = new Set(pending?.gateOwned ?? persistedGateOwned);
     const userLang = this.currentSourceCapLanguage();
     const protectedNames = this.sourceCapProtectedNames(userLang);
 
     // Heal untouched profiles capped before ownership metadata existed. Exact
     // matching preserves every customized denylist.
-    if (!ownershipMetadataExists) {
+    if (!ownershipMetadataExists && !pending?.gateOwned) {
       const defaultUserDisabled = new Set(computeDefaultDisabledSources(userLang));
       const expectedGateOwned = selectSourcesUnderCap(
         FEEDS,
@@ -3584,8 +3587,13 @@ export class App {
     );
     const disabledPersisted = disabledChanged && persistence.preferencePersisted;
     const ownershipPersisted = ownershipChanged && persistence.ownershipPersisted;
-    this.sourcePreferencesPendingPersistence &&= !persistence.preferencePersisted;
-    if (disabledChanged) {
+    const migrationPending = pending?.countryCoverageMigration === true
+      && !(persistence.preferencePersisted
+        && safeStorageSetChecked('worldmonitor-country-coverage-optin-v1', 'done'));
+    this.state.pendingSourcePreferences = persistence.complete && !migrationPending
+      ? undefined
+      : { gateOwned: nextGateOwned, countryCoverageMigration: migrationPending };
+    if (!stringSetsEqual(this.state.disabledSources, nextDisabled)) {
       // The live entitlement boundary must not depend on localStorage health.
       // Durable writes remain ordered/retryable above, but free users stay
       // capped and Pro users unlock immediately even when quota is exhausted.

@@ -11,7 +11,7 @@ import { NEWS_LANGUAGES } from '../src/shared/public-rpc-cache';
 import { migrateCountryCoverageOptInsV12, migrateBrazilOptInsV11, buildMigrations, applyMigrationChain } from '../src/utils/cloud-prefs-migrations';
 import { SOURCE_PROPAGANDA_RISK } from '../shared/source-provenance';
 import { resolveHostOrigin } from '../scripts/source-origin.mjs';
-import { restoreGateOwnedSources, reconcileSourceGateOwnership, stringSetsEqual } from '../src/services/source-cap';
+import { restoreGateOwnedSources, reconcileSourceGateOwnership, stringSetsEqual, inferExactSourceGateOwnership, transferSourceGateOwnershipToUser } from '../src/services/source-cap';
 import { persistGateOwnershipTransition } from '../src/services/variant-panel-ownership';
 import type { Feed } from '../src/types';
 
@@ -38,22 +38,35 @@ describe('optional country news coverage', () => {
       cloud() { const keySet = new Set(['disabled']); const tierReconciliationDeferred = true;
         const freeTierLimitsInvoked = false; ${app.slice(cloudStart, cloudEnd)} }
     }; Harness;`, {}).outputText;
-    for (const pro of [true, false]) {
+    for (const [pro, sidecar] of [[true, true], [false, true], [true, false], [false, false]]) {
       const stored = new Map<string, string[]>([['disabled', ['existing', 'gate-owned']], ['owned', ['gate-owned']]]);
+      if (!sidecar) stored.delete('owned');
+      const markers = new Map<string, string>();
+      let markerWritable = false;
       const Harness = runInNewContext(code, {
+        safeStorageSetChecked: (name: string, value: string) => { if (!markerWritable) return false; markers.set(name, value); return true; },
         STORAGE_KEYS: { disabledFeeds: 'disabled', sourceGateOwnership: 'owned' },
-        localStorage: { getItem: () => 'present' },
+        localStorage: { getItem: () => sidecar ? 'present' : null },
+        computeDefaultDisabledSources: () => ['existing', 'country-opt-in'],
+        inferExactSourceGateOwnership,
         loadFromStorage: (name: string, fallback: unknown) => stored.get(name) ?? fallback,
         restoreGateOwnedSources, reconcileSourceGateOwnership, stringSetsEqual, persistGateOwnershipTransition,
         selectSourcesUnderCap: () => ({ autoDisabled: new Set(['cap-fixture']) }),
         FEEDS: {}, INTEL_SOURCES: [], FREE_MAX_SOURCES: 1, console: { log() {} },
       });
       const instance = new Harness();
-      instance.state = { disabledSources: new Set(['existing', 'country-opt-in', 'gate-owned']) };
-      instance.sourcePreferencesPendingPersistence = true;
+      instance.state = { disabledSources: new Set(['existing', 'country-opt-in', sidecar ? 'gate-owned' : 'cap-fixture']) };
+      instance.state.pendingSourcePreferences = { gateOwned: null, countryCoverageMigration: true };
       instance.currentSourceCapLanguage = () => 'en';
       instance.sourceCapProtectedNames = () => new Set();
       instance.persistJsonStorageValue = () => false;
+      if (!sidecar) {
+        instance.reconcileSourceLimitForTier(true);
+        assert.ok(!instance.state.disabledSources.has('cap-fixture'), 'missing sidecar infers legacy cap ownership');
+      }
+      instance.reconcileSourceLimitForTier(false);
+      instance.reconcileSourceLimitForTier(true);
+      assert.ok(!instance.state.disabledSources.has('cap-fixture'), 'Pro restores the session cap after a failed ownership write');
       instance.reconcileSourceLimitForTier(pro);
       assert.ok(instance.state.disabledSources.has('country-opt-in'), `${pro}: tier reconciliation`);
       instance.cloud();
@@ -63,11 +76,51 @@ describe('optional country news coverage', () => {
       assert.ok(!instance.state.disabledSources.has('country-opt-in'), 'later explicit choice remains authoritative');
       instance.persistJsonStorageValue = (name: string, value: string[]) => { stored.set(name, value); return true; };
       instance.reconcileSourceLimitForTier(pro);
-      assert.equal(instance.sourcePreferencesPendingPersistence, false);
+      assert.equal(instance.state.pendingSourcePreferences?.countryCoverageMigration, true, 'failed marker remains retryable');
+      markerWritable = true;
+      instance.reconcileSourceLimitForTier(pro);
+      assert.equal(instance.state.pendingSourcePreferences, undefined);
+      assert.equal(markers.get('worldmonitor-country-coverage-optin-v1'), 'done', 'recovery acknowledges the migration before later choices');
       stored.set('disabled', ['cloud-choice']);
       instance.cloud();
       assert.deepEqual([...instance.state.disabledSources], ['cloud-choice'], 'cloud changes resume after durable save');
     }
+  });
+  it('preserves explicit ownership transfers and acknowledges migration on a recovered settings save', () => {
+    const source = readFileSync('src/app/event-handlers.ts', 'utf8');
+    const start = source.indexOf('  private persistSourcePreferences(');
+    const end = source.indexOf('  getAllSourceNames()', start);
+    const code = transpileModule(`class Harness { ${source.slice(start, end)} }; Harness;`, {}).outputText;
+    const stored = new Map<string, unknown>([['owned', ['old-cap']], ['disabled', ['existing']]]);
+    let writable = false;
+    const Harness = runInNewContext(code, {
+      STORAGE_KEYS: { disabledFeeds: 'disabled', sourceGateOwnership: 'owned' },
+      loadFromStorage: (name: string, fallback: unknown) => stored.get(name) ?? fallback,
+      releaseSourceGateOwnership: transferSourceGateOwnershipToUser, stringSetsEqual,
+      writeStorageValue: (name: string, value: string) => {
+        if (!writable) return false;
+        stored.set(name, name === 'owned' ? JSON.parse(value) : value);
+        return true;
+      },
+      saveToStorage: (name: string, value: unknown) => {
+        if (!writable) return false;
+        stored.set(name, value);
+        return true;
+      },
+    });
+    const instance = new Harness();
+    instance.ctx = {
+      disabledSources: new Set(['existing', 'new-cap']),
+      pendingSourcePreferences: { gateOwned: new Set(['new-cap']), countryCoverageMigration: true },
+    };
+    instance.persistSourcePreferences(['new-cap']);
+    assert.equal(instance.ctx.pendingSourcePreferences.gateOwned.size, 0, 'explicit opt-out transfers the session ownership even when storage fails');
+    assert.equal(stored.get('worldmonitor-country-coverage-optin-v1'), undefined);
+    writable = true;
+    instance.persistSourcePreferences([]);
+    assert.equal(instance.ctx.pendingSourcePreferences, undefined);
+    assert.deepEqual([...stored.get('disabled') as string[]], ['existing', 'new-cap']);
+    assert.equal(stored.get('worldmonitor-country-coverage-optin-v1'), 'done');
   });
   it('offers four distinct feeds for all 197 reviewed countries', () => {
     assert.equal(Object.keys(audit.countries).length, 197);
