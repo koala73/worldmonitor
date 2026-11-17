@@ -51,6 +51,7 @@ const {
 const xNewsAccounts = require('./lib/x-news-accounts.cjs');
 const { SAUDI_CIVIL_DEFENSE, MAX_POST_CHARS, publishSaudiCivilDefenseAlerts } = require('./lib/saudi-civil-defense-alerts.cjs');
 const { publishChokepointDisruptionAlerts } = require('./lib/chokepoint-disruption-alerts.cjs');
+const notifyPolicy = require('./lib/notification-publish-policy.cjs');
 // Loaded defensively: the gazetteer validates its data files at require time,
 // and a bad regenerated data file must disable only this feed, not the relay.
 let middleEastStrikes = null;
@@ -950,9 +951,10 @@ function normalizeNotificationCountryCode(raw) {
   return countryNameToIso2(raw) ?? undefined;
 }
 
-function marketAlertCoalesceKey(assetClass, identifier, direction, severity) {
+function marketAlertCoalesceKey(assetClass, identifier, direction, severity, session) {
   const stableIdentifier = String(identifier || 'unknown').trim().toLowerCase();
-  return `market:${assetClass}:${stableIdentifier}:${direction}:${severity}`;
+  const sessionSuffix = session ? `:${session}` : '';
+  return `market:${assetClass}:${stableIdentifier}:${direction}:${severity}${sessionSuffix}`;
 }
 
 function nwsVtec(p) {
@@ -3766,7 +3768,7 @@ function fetchFinnhubQuoteDirect(symbol, apiKey) {
         try {
           const data = JSON.parse(body);
           if (data.c === 0 && data.h === 0 && data.l === 0) return resolve(null);
-          resolve({ price: data.c, changePercent: data.dp });
+          resolve({ price: data.c, changePercent: data.dp, lastTradeAt: data.t });
         } catch { resolve(null); }
       });
     });
@@ -3821,6 +3823,8 @@ async function writeChinaCountryStockIndex() {
 async function seedMarketQuotes() {
   const previousPayloadPromise = envelopeRead('market:stocks-bootstrap:v1');
   const freshQuotes = [];
+  // Last trade (unix seconds) per fresh quote: a move's session key (#10873).
+  const lastTradeAtBySymbol = new Map();
   const finnhubSymbols = MARKET_SYMBOLS.filter((s) => !YAHOO_ONLY.has(s));
   const yahooSymbols = MARKET_SYMBOLS.filter((s) => YAHOO_ONLY.has(s));
 
@@ -3830,7 +3834,10 @@ async function seedMarketQuotes() {
       const r = results[i];
       const symbol = finnhubSymbols[i];
       const meta = MARKET_META.get(symbol);
-      if (r) freshQuotes.push({ symbol, name: meta?.name || symbol, display: meta?.display || symbol, price: r.price, change: r.changePercent, sparkline: [] });
+      if (r) {
+        freshQuotes.push({ symbol, name: meta?.name || symbol, display: meta?.display || symbol, price: r.price, change: r.changePercent, sparkline: [] });
+        lastTradeAtBySymbol.set(symbol, r.lastTradeAt);
+      }
     }
   }
 
@@ -3853,7 +3860,10 @@ async function seedMarketQuotes() {
     if (freshQuotes.some((q) => q.symbol === s)) continue;
     const yahoo = await fetchYahooChartDirect(s);
     const meta = MARKET_META.get(s);
-    if (yahoo) freshQuotes.push({ symbol: s, name: meta?.name || s, display: meta?.display || s, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
+    if (yahoo) {
+      freshQuotes.push({ symbol: s, name: meta?.name || s, display: meta?.display || s, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
+      lastTradeAtBySymbol.set(s, yahoo.lastTradeAt);
+    }
     await sleep(150);
   }
 
@@ -3894,22 +3904,26 @@ async function seedMarketQuotes() {
   }
   _lastEquityQuoteCount = quotes.length;
   console.log(`[Market] Seeded ${quotes.length}/${MARKET_SYMBOLS.length} quotes (${freshQuotes.length} fresh, ${retainedCount} retained; Yahoo ${yahooSuccessCount}/${allYahoo.length}, cadence ${MARKET_YAHOO_REFRESH_INTERVAL_MS / 60000}min; redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
-  const movingStocks = quotes.filter(q => Math.abs(q.change ?? 0) >= 5).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
+  // Fresh quotes only (#10873): a retained quote is a move already published
+  // when it was fresh, and without a trade time its session key would roll daily.
+  const movingStocks = quotes.filter(q => lastTradeAtBySymbol.has(q.symbol) && Math.abs(q.change ?? 0) >= 5).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
   for (const q of movingStocks.slice(0, 3)) {
     const pct = Math.round(q.change);
     const dir = q.change < 0 ? 'decline' : 'surge';
-    const severity = Math.abs(q.change) >= 10 ? 'critical' : 'high';
+    // A single stock is at most high; only an index move is critical (#10873).
+    const severity = notifyPolicy.marketMoveSeverity({ assetClass: 'equity', symbol: q.symbol, changePct: q.change });
+    if (!severity) continue;
     publishNotificationEvent({
       eventType: 'market_alert',
       payload: {
         title: `${q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`,
         source: 'Equity Market',
-        coalesceKey: marketAlertCoalesceKey('equity', q.symbol, dir, severity),
+        coalesceKey: marketAlertCoalesceKey('equity', q.symbol, dir, severity, notifyPolicy.marketMoveSessionKey('equity', lastTradeAtBySymbol.get(q.symbol))),
         ...marketMoveFields('equity', q),
       },
       severity,
       variant: undefined,
-      dedupTtl: 3600,
+      dedupTtl: notifyPolicy.marketMoveDedupTtlSeconds('equity'),
     }).catch(e => console.warn('[Notify] Market stock publish error:', e?.message));
   }
   return quotes.length;
@@ -3918,7 +3932,9 @@ async function seedMarketQuotes() {
 async function seedCommodityQuotes() {
   const quotes = [];
   const missing = [];
-  const toQuote = async (symbol, meta, yahoo) => ({
+  // Last trade (unix seconds) per quote: a move's session key (#10873).
+  const lastTradeAtBySymbol = new Map();
+  const toQuote = async (symbol, meta, yahoo) => (lastTradeAtBySymbol.set(symbol, yahoo.lastTradeAt), {
     symbol, name: meta.name, display: meta.display, price: yahoo.price, change: yahoo.change,
     ...(await _commoditySparkline(symbol, yahoo)),
     ...crudeOilQuoteProvenance(symbol, 'Yahoo Finance', 'futures', yahoo.lastTradeAt * 1000),
@@ -3967,18 +3983,20 @@ async function seedCommodityQuotes() {
   for (const q of movingCommodities.slice(0, 3)) {
     const pct = Math.round(q.change);
     const dir = q.change < 0 ? 'decline' : 'surge';
-    const severity = Math.abs(q.change) >= 10 ? 'critical' : 'high';
+    // VIX swings 10%+ routinely, so it is never critical (#10873).
+    const severity = notifyPolicy.marketMoveSeverity({ assetClass: 'commodity', symbol: q.symbol, changePct: q.change });
+    if (!severity) continue;
     publishNotificationEvent({
       eventType: 'market_alert',
       payload: {
         title: `${q.name || q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`,
         source: 'Commodity Market',
-        coalesceKey: marketAlertCoalesceKey('commodity', q.symbol || q.name, dir, severity),
+        coalesceKey: marketAlertCoalesceKey('commodity', q.symbol || q.name, dir, severity, notifyPolicy.marketMoveSessionKey('commodity', lastTradeAtBySymbol.get(q.symbol))),
         ...marketMoveFields('commodity', q),
       },
       severity,
       variant: undefined,
-      dedupTtl: 3600,
+      dedupTtl: notifyPolicy.marketMoveDedupTtlSeconds('commodity'),
     }).catch(e => console.warn('[Notify] Commodity publish error:', e?.message));
   }
   return quotes.length;
@@ -4310,7 +4328,8 @@ async function seedCryptoQuotes() {
   for (const q of movingCrypto.slice(0, 3)) {
     const pct = Math.round(q.change);
     const dir = q.change < 0 ? 'decline' : 'surge';
-    const severity = Math.abs(q.change) >= 20 ? 'critical' : 'high';
+    const severity = notifyPolicy.marketMoveSeverity({ assetClass: 'crypto', symbol: q.symbol, changePct: q.change });
+    if (!severity) continue;
     publishNotificationEvent({
       eventType: 'market_alert',
       payload: {
@@ -4321,7 +4340,7 @@ async function seedCryptoQuotes() {
       },
       severity,
       variant: undefined,
-      dedupTtl: 3600,
+      dedupTtl: notifyPolicy.marketMoveDedupTtlSeconds('crypto'),
     }).catch(e => console.warn('[Notify] Crypto publish error:', e?.message));
   }
   return quotes.length;
@@ -4924,7 +4943,9 @@ async function seedCyberThreats() {
       publishNotificationEvent({
         eventType: 'cyber_threat',
         payload: { title: `${typeLabel}: ${t.indicator?.slice(0, 50)}${familyTag}`, source: t.source || 'Cyber Intel', ...(countryCode ? { countryCode } : {}) },
-        severity: t.severity === 'critical' ? 'critical' : 'high',
+        // One indicator (an IP, a URL) is never a realtime-critical event; the
+        // feed's own 'critical' becomes high (#10873, #3936).
+        severity: 'high',
         variant: undefined,
         dedupTtl: 43200,
       }).catch(err => console.warn('[Notify] Cyber publish error:', err?.message));
@@ -5276,6 +5297,12 @@ function countriesNamedInText(lower) {
 function threatSummaryCountries(text) {
   const affected = matchCountryNamesInText(text);
   if (affected.length > 0) return affected;
+  return countriesNamedInHeadline(text);
+}
+
+// Every country a raw headline names, after US/UK expansion, diacritic folding
+// and dropping a trailing outlet credit.
+function countriesNamedInHeadline(text) {
   // Uppercase US/UK are the countries; lowercase "us" stays the pronoun.
   let lower = text.replace(/\bU\.S\.(?:A\.)?/g, 'United States ').replace(/\bU\.K\./g, 'United Kingdom ')
     .replace(/\bUS\b/g, 'United States').replace(/\bUK\b/g, 'United Kingdom')
@@ -5628,6 +5655,10 @@ async function seedClassifyForVariant(variant, seenTitles) {
             entityCorroborationCount: 0,
           },
         );
+        const titleCountryCodes = matchCountryNamesInText(chunk[idx]);
+        // The one country the title names anywhere, not the affected target
+        // countryCodes keeps ("Russia attacks Ukraine" names two).
+        const primaryCountryCode = notifyPolicy.primaryNewsCountryCode(countriesNamedInHeadline(chunk[idx]));
         publishNotificationEvent({
           eventType: 'rss_alert',
           payload: {
@@ -5642,7 +5673,10 @@ async function seedClassifyForVariant(variant, seenTitles) {
             // rss_alert permissive-unattributed, so a singular field here would
             // start silencing country-scoped Slack rules.
             category,
-            countryCodes: matchCountryNamesInText(chunk[idx]),
+            countryCodes: titleCountryCodes,
+            // The one country the headline names, read by the relay's tier
+            // gate (#10873). Deliberately not the singular field the relay scopes on (see above).
+            ...(primaryCountryCode ? { primaryCountryCode } : {}),
           },
           severity: level,
           variant,
@@ -7553,18 +7587,22 @@ async function seedWeatherAlerts() {
     // are unit-testable without booting the relay.
     const distinctFamilyAlerts = selectWeatherNotificationAlerts(alerts);
     for (const a of distinctFamilyAlerts) {
-      // The SAME family key the selector partitioned by. Publishing a narrower
+      // The SAME family key the selector partitioned by, plus the severity
+      // band so an upgrade to Extreme is not swallowed by the earlier Severe
+      // alert's lifetime-long dedup (#10873). Publishing a narrower
       // key (VTEC only) let publishNotificationEvent fall back to its global
       // `weather_alert:<title>` dedup hash for every VTEC-less SWIC/ECCC
       // alert, so two countries sharing a generic WMO title ("Heavy rain",
       // "Forestfire") collided on SET NX and only the first survived —
       // recreating the #7243 starvation one layer below the selector.
-      const coalesceKey = weatherAlertFamilyKey(a);
+      const coalesceKey = notifyPolicy.weatherAlertCoalesceKey(weatherAlertFamilyKey(a), a.severity);
       const countryCode = weatherAlertNotifyCountryCode(a);
       publishNotificationEvent({
         eventType: 'weather_alert',
         payload: {
-          title: a.headline || a.event || 'Weather alert',
+          // What · where · until (#10873): a bare WMO "Wind" or "CAP Alert"
+          // named neither the place nor the country.
+          title: notifyPolicy.weatherAlertNotifyTitle(a),
           source: weatherAlertNotifySource(a),
           ...(countryCode ? { countryCode } : {}),
           ...(coalesceKey ? { coalesceKey } : {}),
@@ -7572,6 +7610,9 @@ async function seedWeatherAlerts() {
         },
         severity: a.severity === 'Extreme' ? 'critical' : 'high',
         variant: undefined,
+        // Until the alert expires: the 30-minute default re-sent an active
+        // alert on every seed tick.
+        dedupTtl: notifyPolicy.weatherAlertDedupTtlSeconds(a),
       }).catch(e => console.warn('[Notify] Weather publish error:', e?.message));
     }
   } catch (e) {
@@ -8283,16 +8324,13 @@ async function seedCorridorRisk() {
     await upstashSet('seed-meta:supply_chain:corridorrisk', { fetchedAt: Date.now(), recordCount: Object.keys(result).length }, 604800);
     console.log(`[CorridorRisk] Seeded ${Object.keys(result).length} corridors (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     seedTransitSummaries().catch(e => console.warn('[TransitSummary] Post-CorridorRisk seed error:', e?.message || e));
+    // Keyed on corridor + band for a day (#10873): an unchanged score used to
+    // re-notify hourly because the dedup hash covered the title's live score.
     for (const [corridorId, c] of Object.entries(result)) {
-      if (c.riskScore < 50) continue;
-      const label = corridorId.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
-      publishNotificationEvent({
-        eventType: 'corridor_risk',
-        payload: { title: `${label}: risk score ${c.riskScore}`, source: 'Corridor Risk' },
-        severity: c.riskScore >= 70 ? 'critical' : 'high',
-        variant: undefined,
-        dedupTtl: 3600,
-      }).catch(err => console.warn('[Notify] CorridorRisk publish error:', err?.message));
+      const notification = notifyPolicy.corridorRiskNotification(corridorId, c.riskScore);
+      if (!notification) continue;
+      publishNotificationEvent({ ...notification, variant: undefined })
+        .catch(err => console.warn('[Notify] CorridorRisk publish error:', err?.message));
     }
   } catch (e) {
     console.warn('[CorridorRisk] Seed error:', e?.message || e);
@@ -8445,14 +8483,11 @@ async function seedShippingStress() {
     const ok = await envelopeWrite(SHIPPING_STRESS_REDIS_KEY, payload, SHIPPING_STRESS_TTL, { recordCount: results.length, sourceVersion: 'shipping-stress' });
     await upstashSet('seed-meta:supply_chain:shipping_stress', { fetchedAt: Date.now(), recordCount: results.length }, 604800);
     console.log(`[ShippingStress] Seeded ${results.length} carriers score=${stressScore}/${stressLevel} (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-    if (stressScore >= 75) {
-      publishNotificationEvent({
-        eventType: 'shipping_stress',
-        payload: { title: `Global shipping stress: score ${stressScore}/100 (${stressLevel})`, source: 'Shipping Index' },
-        severity: stressScore >= 90 ? 'critical' : 'high',
-        variant: undefined,
-        dedupTtl: 7200,
-      }).catch(err => console.warn('[Notify] ShippingStress publish error:', err?.message));
+    // Keyed on the band for a day (#10873), not on the title's live score.
+    const stressNotification = notifyPolicy.shippingStressNotification(stressScore, stressLevel);
+    if (stressNotification) {
+      publishNotificationEvent({ ...stressNotification, variant: undefined })
+        .catch(err => console.warn('[Notify] ShippingStress publish error:', err?.message));
     }
   } catch (e) {
     console.warn('[ShippingStress] Seed error:', e?.message || e, '— extending TTL, retrying in 20min');

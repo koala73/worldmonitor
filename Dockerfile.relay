@@ -75,6 +75,7 @@ COPY scripts/lib/classify-digest-request.cjs ./scripts/lib/classify-digest-reque
 COPY scripts/lib/news-digest-warm.cjs ./scripts/lib/news-digest-warm.cjs
 COPY scripts/lib/saudi-civil-defense-alerts.cjs ./scripts/lib/saudi-civil-defense-alerts.cjs
 COPY scripts/lib/chokepoint-disruption-alerts.cjs ./scripts/lib/chokepoint-disruption-alerts.cjs
+COPY scripts/lib/notification-publish-policy.cjs ./scripts/lib/notification-publish-policy.cjs
 # Middle East strike feed (conflict:iran-events:v1), required at relay startup;
 # the gazetteer reads outbreak-places.json at require time. The GDELT backstop
 # lazily imports _conflict-gdelt-bulk.mjs and its two helpers below.
