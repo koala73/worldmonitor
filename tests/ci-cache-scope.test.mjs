@@ -134,13 +134,21 @@ describe('pull-request-only workflows save only caches main also writes', () => 
 
 describe('pro-bundle-freshness restores what test.yml saves on main', () => {
   const find = (file) => workflows.find((w) => w.file === file);
-  const restoreKey = (w) =>
-    w.jobs.flatMap((j) => j.steps ?? []).find((s) => s.id === 'built-output-deps')?.with?.key;
+  const restoreStep = (w) => w.jobs.flatMap((j) => j.steps ?? []).find((s) => s.id === 'built-output-deps');
+  const restoreKey = (w) => restoreStep(w)?.with?.key;
 
   it('uses the exact built-output-deps key of unit-built-output', () => {
     const freshness = restoreKey(find('pro-bundle-freshness.yml'));
     assert.ok(freshness, 'pro-bundle-freshness.yml has no built-output-deps restore step');
     assert.equal(freshness, restoreKey(find('test.yml')));
+  });
+
+  // actions/cache versions an entry by its paths as well as its key, so a
+  // different path list misses main's entry even under the same key.
+  it('restores the same paths unit-built-output saves', () => {
+    const paths = (w) => String(restoreStep(w)?.with?.path ?? '').trim();
+    assert.ok(paths(find('test.yml')), 'test.yml has no built-output-deps paths');
+    assert.equal(paths(find('pro-bundle-freshness.yml')), paths(find('test.yml')));
   });
 
   it('restores that key without saving it', () => {
