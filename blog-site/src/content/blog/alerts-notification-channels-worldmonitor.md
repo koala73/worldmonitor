@@ -25,14 +25,16 @@ Keep pairing links, QR codes and webhook addresses out of screenshots and shared
 
 | Mode | Supported use |
 | --- | --- |
-| Realtime | Critical events; high/all sensitivity is not a realtime combination. |
+| Realtime | Uses critical sensitivity; high/all settings are not supported. Event-specific exceptions are described below. |
 | Scheduled digest | Broader supported sensitivity and a chosen cadence, where enabled. |
+
+Paid users can also receive enabled watched-site and reservoir alerts in realtime at their actual, non-critical severity. Aviation traffic-collapse recovery notices also bypass the critical-only delivery check. These exceptions do not enable high/all realtime sensitivity settings, and quiet hours still apply according to the event's actual severity.
 
 Choose a narrower rule first. A digest helps review a collection of material; it is not a guaranteed replay of every individual event. Deployment configuration can affect whether a digest option is enabled. Use the controls actually available in your account.
 
 ## Scope the event, not just the country
 
-Country selection helps narrow events that carry country metadata. It does not automatically filter every event type. Chokepoint-disruption alerts use selected chokepoint identifiers and require their own explicit event selection; a country filter is not a substitute.
+Country selection narrows attributed events and excludes unattributed global market and shipping-stress events. Some unattributed news-origin events remain eligible so relevant reporting is not lost. Chokepoint-disruption alerts require explicit event selection and use chokepoint scope rather than a country filter: an empty chokepoint selection matches every chokepoint. Select identifiers to narrow it.
 
 Start with the place or corridor you genuinely monitor and the supported event type that answers your question. Do not assume that arbitrary market thresholds, private portfolio rules or every observed map change can trigger a notification.
 
@@ -66,11 +68,11 @@ The native connection flows do not require writing a webhook receiver. You do ne
 
 **Can I receive every event in realtime?**
 
-Realtime uses critical sensitivity. Broader supported sensitivity belongs in a digest cadence where enabled.
+Realtime uses the critical sensitivity setting. Enabled watched-site and reservoir alerts, and aviation traffic-collapse recovery notices, have event-specific delivery exceptions. Broader high/all sensitivity settings belong in a digest cadence where enabled.
 
 **Does Country Scope filter chokepoint alerts?**
 
-Chokepoint alerts use their own explicit event selection and chokepoint scope. Country metadata does not apply uniformly to all events.
+Chokepoint alerts use their own explicit event selection and chokepoint scope. An empty chokepoint selection matches all chokepoints; select identifiers to narrow it. Country metadata does not apply uniformly to all events.
 
 **Does a connected channel guarantee delivery?**
 
