@@ -230,10 +230,15 @@ describe('translate prompt and parser', () => {
     assert.equal(one('The fund lost 1 million dollars during the crisis.', 'The fund lost 1.0 billion dollars during the crisis', 'fr'), null);
     assert.ok(one('The fund lost 1.5 billion dollars during the crisis.', 'Le fonds a perdu 1,5 milliard de dollars pendant la crise.'));
     assert.ok(one('Spain will spend 3 billion euros on defence this year.', 'España gastará 3 mil millones de euros en defensa este año.', 'es'));
+    assert.ok(one('Spain will spend 3 billion euros on defence this year.', 'Espanha gastará 3 mil milhões de euros em defesa este ano.', 'pt'));
+    // A mile is not a thousand.
+    assert.ok(one('The vessel passed within 3 nautical miles of the coast.', 'Le navire est passé à 3 milles nautiques de la côte.'));
     // An English source writes thousands with a comma: 1,000 is never 1.
     assert.equal(one('At least 1,000 people were injured in the blast on Monday.', 'Au moins 1 personne a été blessée dans l\u2019explosion lundi.'), null);
     assert.equal(one('At least 1,500 people were injured in the blast on Monday.', 'Au moins 1,5 personne a été blessée dans l\u2019explosion lundi.'), null);
     assert.ok(one('At least 1,500 people were injured in the blast on Monday.', 'Mindestens 1.500 Menschen wurden am Montag bei der Explosion verletzt.', 'de'));
+    // A feed headline in German writes thousands with a point.
+    assert.ok(one('Die Regierung kündigt 1.500 neue Stellen in Berlin an', 'Le gouvernement annonce 1 500 nouveaux postes à Berlin'));
     // A word that merely starts like a scale word is not one.
     assert.ok(one('Officials said 3 soldiers were hurt in the attack.', 'Selon les responsables, 3 militaires ont été blessés dans l\u2019attaque.'));
   });
@@ -265,6 +270,8 @@ describe('translate prompt and parser', () => {
   it('rejects short English prose returned unchanged, but keeps short labels and names', () => {
     assert.equal(one('Oil prices rise', 'Oil prices rise', 'ja'), null);
     assert.equal(one('Talks with the EU', 'Talks with the EU', 'fr'), null);
+    assert.equal(one('War ends', 'War ends', 'ja'), null);
+    for (const name of ['Bank of America', 'Rio de Janeiro', 'Strait of Hormuz']) assert.equal(one(name, name, 'ja'), name);
     for (const label of ['Cyber', 'Energy', 'NATO', 'Nvidia, Microsoft', 'macOS']) {
       assert.equal(one(label, label, 'ja'), label);
       assert.equal(one(label, label, 'fr'), label);
