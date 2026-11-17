@@ -634,7 +634,8 @@
         "techevent": "Tech událost",
         "techhq": "Tech centrála",
         "accelerator": "Akcelerátor",
-        "flight": "Let"
+        "flight": "Let",
+        "alert": "Výstraha"
       },
       "commands": "Příkazy",
       "results": "Výsledky",
@@ -646,7 +647,9 @@
       "flightMilitaryOnGround": "Vojenský · {{type}} · na zemi",
       "flightSearchHint": "Stiskněte Enter nebo klikněte pro vyhledání živé polohy",
       "flightNotFound": "Pro {{callsign}} nebyla nalezena žádná živá poloha",
-      "addPanel": "Přidat"
+      "addPanel": "Přidat",
+      "sentAlerts": "Výstrahy odeslané vám",
+      "sentAlertTime": "Odesláno {{time}}"
     },
     "signal": {
       "title": "ZPRAVODAJSKÉ ZJIŠTĚNÍ",
