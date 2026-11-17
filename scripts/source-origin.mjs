@@ -120,6 +120,8 @@ const HOST_ORIGINS = Object.freeze({
   'bihus.info': 'UA',
   'binance.com': null,
   'bloomberg.com': 'US',
+  'brazilreports.com': 'BR',
+  'g1.globo.com': 'BR',
   'carnegieendowment.org': 'US',
   'chathamhouse.org': 'GB',
   'citinewsroom.com': 'GH',

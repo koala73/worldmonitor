@@ -114,6 +114,8 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'DR Nyheder': 'mainstream', 'Arctic Today': 'mainstream',
   // Brazilian Addition
   'Brasil Paralelo': 'mainstream',
+  'Guardian Brazil': 'mainstream', 'Brazil Reports': 'mainstream', 'G1 Política': 'mainstream',
+  'Agência Brasil': 'wire',
 
   // Market/Finance
   'CNBC': 'market', 'MarketWatch': 'market', 'Yahoo Finance': 'market',
@@ -482,6 +484,10 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'Guardian World': { risk: 'low', note: 'Scott Trust ownership, no shareholders' },
   'Guardian Africa': { risk: 'low', note: 'Scott Trust ownership, no shareholders' },
   'Guardian Caribbean': { risk: 'low', note: 'Scott Trust ownership, no shareholders' },
+  'Guardian Brazil': { risk: 'low', note: 'The Guardian Brazil desk, Scott Trust ownership' },
+  'Brazil Reports': { risk: 'low', note: 'English-language Brazil newsroom owned by ESPACIO' },
+  'G1 Política': { risk: 'low', note: 'Grupo Globo politics desk, commercial Brazilian publisher' },
+  'Agência Brasil': { risk: 'medium', stateAffiliated: 'Brazil', note: 'Public news agency operated by Empresa Brasil de Comunicação (EBC)' },
   'Guardian Pacific': { risk: 'low', note: 'Scott Trust ownership, no shareholders' },
   'Mexico News Daily': { risk: 'low', note: 'English-language Mexican news publication' },
   'Financial Times': { risk: 'low', note: 'Business focus, Nikkei-owned' },
