@@ -1857,7 +1857,7 @@ paths:
             tags:
                 - NewsService
             summary: SearchHeadlineArchive
-            description: SearchHeadlineArchive is SearchHeadlines over 7 days in English, 3 days in 17 common languages and 1 day in the rest; window_hours says which. Requires a Pro plan. PRO-gated. Requires entitlement tier >= 1.
+            description: SearchHeadlineArchive finds headlines an edition served in the last 7 days in English, 3 days in 17 common languages and 1 day in the rest; window_hours says which. Requires a Pro plan. PRO-gated. Requires entitlement tier >= 1.
             operationId: SearchHeadlineArchive
             security:
                 - WorldMonitorKey: []

@@ -93,7 +93,7 @@ service NewsService {
     option (sebuf.http.config) = {path: "/search-headlines", method: HTTP_METHOD_GET};
   }
 
-  // SearchHeadlineArchive is SearchHeadlines over 7 days in English, 3 days in 17 common languages and 1 day in the rest; window_hours says which. Requires a Pro plan.
+  // SearchHeadlineArchive finds headlines an edition served in the last 7 days in English, 3 days in 17 common languages and 1 day in the rest; window_hours says which. Requires a Pro plan.
   rpc SearchHeadlineArchive(SearchHeadlinesRequest) returns (SearchHeadlinesResponse) {
     option (sebuf.http.config) = {path: "/search-headline-archive", method: HTTP_METHOD_GET};
   }
