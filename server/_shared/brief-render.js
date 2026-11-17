@@ -426,16 +426,19 @@ export function selectBriefEnvelope(canonical, localized) {
   } catch {
     return canonical;
   }
-  const loc = /** @type {Record<string, any>} */ (localized);
-  const can = /** @type {Record<string, any>} */ (canonical);
+  const loc = /** @type {BriefEnvelope} */ (localized);
+  const can = /** @type {{ issuedAt?: unknown; data?: unknown }} */ (canonical);
   if (loc.version !== BRIEF_LOCALIZED_ENVELOPE_VERSION) return canonical;
   if (loc.issuedAt !== can.issuedAt) return canonical;
-  const canStories = can.data?.stories;
-  const locStories = loc.data?.stories;
-  if (!Array.isArray(canStories) || !Array.isArray(locStories)) return canonical;
+  const canStories = isObject(can.data) ? /** @type {{ stories?: unknown }} */ (can.data).stories : undefined;
+  if (!Array.isArray(canStories)) return canonical;
+  const locStories = loc.data.stories;
   if (canStories.length !== locStories.length) return canonical;
   for (let i = 0; i < canStories.length; i++) {
-    if (canStories[i]?.clusterId !== locStories[i]?.clusterId) return canonical;
+    /** @type {unknown} */
+    const story = canStories[i];
+    const clusterId = isObject(story) ? /** @type {{ clusterId?: unknown }} */ (story).clusterId : undefined;
+    if (clusterId !== locStories[i].clusterId) return canonical;
   }
   return localized;
 }
