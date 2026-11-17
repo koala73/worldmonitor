@@ -24,7 +24,10 @@ const RESULT_TYPE_PRIORITY: readonly SearchResultType[] = [
   // Ahead of news: a user who types a headline from an alert is looking for
   // that alert, and on a phone only the first types fit.
   'alert',
-  'news', 'prediction', 'market', 'earthquake', 'outage',
+  'news',
+  // Directly after loaded news: mobile shows five results, filled in this order.
+  'headline',
+  'prediction', 'market', 'earthquake', 'outage',
   'conflict', 'hotspot', 'country',
   'base', 'pipeline', 'cable', 'datacenter', 'nuclear', 'irradiator',
   'techcompany', 'ailab', 'startup', 'techevent', 'techhq', 'accelerator',
@@ -125,6 +128,7 @@ function withoutAlertWording(query: string): string {
 function resultPerTypeLimit(type: SearchResultType, isMobile: boolean): number {
   if (isMobile) return 2;
   if (type === 'news') return 6;
+  if (type === 'headline') return 8;
   if (type === 'alert') return 5;
   if (type === 'country') return 4;
   return 3;

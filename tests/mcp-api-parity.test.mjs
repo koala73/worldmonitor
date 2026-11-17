@@ -86,6 +86,7 @@ const HTTP_METHODS = new Set([
 const EXCLUDED_FROM_MCP_PARITY = new Map([
   ['GET /api/economic/v1/get-food-prices', 'deferred-to-future-tool: source-specific food prices and dated food-security context are served to the dashboard (#9841)'],
   ['GET /api/safety/v1/get-toronto-safety', 'deferred-to-future-tool: city-level Toronto Police data serves the Toronto Safety panel; the MCP tools were removed in 1.54.0 and a country-level safety tool replaces them once more countries are covered'],
+  ['GET /api/trade/v1/get-monthly-sitc-trade', 'deferred-to-future-tool: pure read of the seeded DOSM Malaysia monthly SITC trade history; a national-trade MCP tool receives it once more reporters are seeded'],
   ['GET /api/maritime/v1/list-ukmto-incidents', 'deferred-to-future-tool: UKMTO publisher reports await activation and source-aware MCP composition (#9831)'],
 
   // === mutating (21) ===
@@ -247,6 +248,10 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "deferred-to-future-tool: operator review queue (#9093) is secret-gated and holds private reader contacts; no MCP surface by design"],
   ["GET /api/news/v1/list-source-items",
     "deferred-to-future-tool: cached rows for a dashboard panel's enabled sources below the digest category cap (#9796); agents read whole categories through list-news-pool"],
+  ["GET /api/news/v1/search-headlines",
+    "deferred-to-future-tool: Cmd+K search over the last 24 hours of headlines the dashboard served; agents search current news through get_news_intelligence and verify_claim"],
+  ["GET /api/news/v1/search-headline-archive",
+    "deferred-to-future-tool: the 7-day Pro window of the same Cmd+K headline search; a future headline-history tool can expose it"],
   ["GET /api/news/v1/list-sent-alerts",
     "deferred-to-future-tool: account-private history of the alerts delivered to the caller, read by the dashboard search; no MCP surface until per-user notification data has an explicit MCP authorization design"],
   ["GET /api/news/v1/list-label-changes",
