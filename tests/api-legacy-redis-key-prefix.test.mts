@@ -540,7 +540,7 @@ describe('brief envelopes stay raw under preview (#7674)', () => {
     ));
     // Miss → the route's documented 404; the assertion is about the KEY.
     assert.equal(res.status, 404);
-    assert.deepEqual(getPaths, [`brief:${userId}:${issueDate}`],
-      'the seeder-composed envelope must be read raw — a prefixed read would 404 every preview brief');
+    assert.deepEqual([...getPaths].sort(), [`brief:l10n:${userId}:${issueDate}`, `brief:${userId}:${issueDate}`].sort(),
+      'the seeder-composed envelope and its localized sibling must be read raw — a prefixed read would 404 every preview brief');
   });
 });

@@ -106,4 +106,48 @@ describe('api/brief/carousel cache policy', () => {
     assert.equal(bytes[0], 0x89);
     assert.equal(bytes[1], 0x50);
   });
+
+  it('carousel route prefers a valid sibling', { timeout: 60_000 }, async () => {
+    process.env.BRIEF_URL_SIGNING_SECRET = SECRET;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'tok';
+    const fontUrl = 'https://cdn.jsdelivr.net/npm/@fontsource/noto-serif/files/noto-serif-latin-400-normal.woff';
+    const font = await readFile(resolve(dirname(fileURLToPath(import.meta.url)), '../blog-site/scripts/fonts/inter-regular.ttf'));
+    const canonical = {
+      version: 4,
+      issuedAt: 1_700_000_000_000,
+      data: {
+        user: { name: 'Test User', tz: 'UTC' }, issue: '001', date: '2026-04-18', dateLong: '18 April 2026',
+        digest: { greeting: 'Good morning', lead: 'A sample lead.', numbers: { clusters: 1, multiSource: 1, surfaced: 1 }, threads: [{ tag: 'TEST', teaser: 'A thread teaser' }], signals: [] },
+        stories: [{
+          category: 'World', country: 'FR', threatLevel: 'low', headline: 'A headline', description: 'A description',
+          source: 'Wire', sourceUrl: 'https://example.com/1', clusterId: 'cluster-1', whyMatters: 'Why it matters.',
+        }],
+      },
+    };
+    const sibling = {
+      ...canonical, version: 5, lang: 'fr',
+      data: { ...canonical.data, dateLong: '18 avril 2026', digest: { ...canonical.data.digest, greeting: 'Bonjour à tous' } },
+    };
+    const render = async (siblingValue: unknown): Promise<Uint8Array> => {
+      globalThis.fetch = async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+        if (url === fontUrl) return new Response(font, { status: 200, headers: { 'Content-Type': 'font/ttf' } });
+        const key = decodeURIComponent(url.split('/get/')[1] ?? '');
+        const value = key.startsWith('brief:l10n:') ? siblingValue : canonical;
+        return new Response(JSON.stringify({ result: value == null ? null : JSON.stringify(value) }), { status: 200 });
+      };
+      const { signBriefToken } = await import('../server/_shared/brief-url.ts');
+      const token = await signBriefToken('user_test', '2026-04-18-0800', SECRET);
+      const { default: handler } = await import('../api/brief/carousel/[userId]/[issueDate]/[page].ts');
+      const res = await handler(new Request(`${PATH}?t=${token}`));
+      assert.equal(res.status, 200);
+      return new Uint8Array(await res.arrayBuffer());
+    };
+    const english = await render(null);
+    const localized = await render(sibling);
+    const stale = await render({ ...sibling, issuedAt: canonical.issuedAt + 1 });
+    assert.notDeepEqual(localized, english, 'a valid sibling must change the rendered image');
+    assert.deepEqual(stale, english, 'a stale sibling must render the canonical image');
+  });
 });

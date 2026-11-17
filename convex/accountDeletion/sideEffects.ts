@@ -275,7 +275,11 @@ async function deleteAccountRedisKeys(args: {
       : typeof latest === "string"
         ? latest
         : null;
-  if (slot) keys.push(`brief:${args.userId}:${slot}`);
+  if (slot) {
+    keys.push(`brief:${args.userId}:${slot}`);
+    // Localized sibling; source of truth is briefLocalizedKey in shared/brief-envelope.js.
+    keys.push(`brief:l10n:${args.userId}:${slot}`);
+  }
 
   // Deletes and the MCP negative-cache sentinels go in one pipeline. The
   // sentinels used to be a per-token await, each its own fetch with its own

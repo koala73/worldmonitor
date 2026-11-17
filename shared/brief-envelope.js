@@ -52,9 +52,26 @@
  * digest:accumulator:v1:* (shorter). U3 wires the value through
  * compose; U1 only adds the field + assertion plumbing.
  *
+ * v5 (2026-11, brief l10n epic #10877): localized sibling only. The
+ * canonical brief:{userId}:{slot} envelope stays v4 and English; a
+ * translated copy lives at brief:l10n:{userId}:{slot} with version 5
+ * and a required `lang` (UI language code, never "en"). Readers pick
+ * it via selectBriefEnvelope (server/_shared/brief-render.js), which
+ * falls back to canonical unless issuedAt and the clusterId order
+ * match. BRIEF_ENVELOPE_VERSION deliberately stays 4 so the canonical
+ * writer never stamps 5.
+ *
  * @type {4}
  */
 export const BRIEF_ENVELOPE_VERSION = 4;
+
+/**
+ * Version stamped only on the localized sibling envelope stored at
+ * briefLocalizedKey(userId, issueSlot). See the v5 entry above.
+ *
+ * @type {5}
+ */
+export const BRIEF_LOCALIZED_ENVELOPE_VERSION = 5;
 
 /**
  * Versions the renderer still accepts from Redis on READ. Must always
@@ -65,4 +82,16 @@ export const BRIEF_ENVELOPE_VERSION = 4;
  *
  * @type {ReadonlySet<number>}
  */
-export const SUPPORTED_ENVELOPE_VERSIONS = new Set([1, 2, 3, 4]);
+export const SUPPORTED_ENVELOPE_VERSIONS = new Set([1, 2, 3, 4, 5]);
+
+/**
+ * Redis key of the localized sibling envelope for one issue slot. The
+ * language lives inside the value, so there is one sibling per slot.
+ *
+ * @param {string} userId
+ * @param {string} issueSlot
+ * @returns {string}
+ */
+export function briefLocalizedKey(userId, issueSlot) {
+  return `brief:l10n:${userId}:${issueSlot}`;
+}

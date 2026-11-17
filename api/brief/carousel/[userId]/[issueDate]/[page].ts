@@ -36,6 +36,8 @@ export const config = { runtime: 'edge' };
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders, isDisallowedOrigin } from '../../../../_cors.js';
 import { readRawJsonFromUpstash } from '../../../../_upstash-json.js';
+import { briefLocalizedKey } from '../../../../../shared/brief-envelope.js';
+import { selectBriefEnvelope } from '../../../../../server/_shared/brief-render.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../_sentry-edge.js';
 import { verifyBriefToken, BriefUrlError } from '../../../../../server/_shared/brief-url';
@@ -127,6 +129,9 @@ export default async function handler(
     throw err;
   }
 
+  // Optional localized sibling; a failed read falls back to canonical.
+  const siblingPromise = readRawJsonFromUpstash(briefLocalizedKey(userId, issueDate), 3_000, true)
+    .catch(() => null);
   let envelope;
   try {
     // Seeder-owned envelope (#7674): the Railway digest composer writes the
@@ -138,6 +143,7 @@ export default async function handler(
     return jsonError('service_unavailable', 503, cors);
   }
   if (!envelope) return jsonError('not_found', 404, cors);
+  envelope = selectBriefEnvelope(envelope, await siblingPromise);
 
   // @vercel/og sets Cache-Control to
   // `public, immutable, no-transform, max-age=31536000` and extraHeaders

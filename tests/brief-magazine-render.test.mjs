@@ -615,7 +615,7 @@ describe('renderBriefMagazine — v4 clusterId field (Sprint 1 canonical contrac
     /** @type {any} */ (env.data.stories[0]).clusterId = undefined;
     assert.throws(
       () => renderBriefMagazine(env),
-      /envelope\.data\.stories\[0\]\.clusterId must be a non-empty string on v4 envelopes/,
+      /envelope\.data\.stories\[0\]\.clusterId must be a non-empty string on v4\+ envelopes/,
     );
   });
 
@@ -624,7 +624,7 @@ describe('renderBriefMagazine — v4 clusterId field (Sprint 1 canonical contrac
     /** @type {any} */ (env.data.stories[1]).clusterId = '';
     assert.throws(
       () => renderBriefMagazine(env),
-      /envelope\.data\.stories\[1\]\.clusterId must be a non-empty string on v4 envelopes/,
+      /envelope\.data\.stories\[1\]\.clusterId must be a non-empty string on v4\+ envelopes/,
     );
   });
 
@@ -633,7 +633,7 @@ describe('renderBriefMagazine — v4 clusterId field (Sprint 1 canonical contrac
     /** @type {any} */ (env.data.stories[0]).clusterId = null;
     assert.throws(
       () => renderBriefMagazine(env),
-      /envelope\.data\.stories\[0\]\.clusterId must be a non-empty string on v4 envelopes/,
+      /envelope\.data\.stories\[0\]\.clusterId must be a non-empty string on v4\+ envelopes/,
     );
   });
 
@@ -642,7 +642,7 @@ describe('renderBriefMagazine — v4 clusterId field (Sprint 1 canonical contrac
     /** @type {any} */ (env.data.stories[0]).clusterId = 12345;
     assert.throws(
       () => renderBriefMagazine(env),
-      /envelope\.data\.stories\[0\]\.clusterId must be a non-empty string on v4 envelopes/,
+      /envelope\.data\.stories\[0\]\.clusterId must be a non-empty string on v4\+ envelopes/,
     );
   });
 
@@ -715,17 +715,47 @@ describe('renderBriefMagazine — v4 clusterId field (Sprint 1 canonical contrac
     assert.ok(typeof html === 'string' && html.length > 0);
   });
 
-  it('rejects a v5 envelope (forward-incompatible — not in SUPPORTED_ENVELOPE_VERSIONS)', () => {
-    // The v3 → v4 bump expanded the supported set to {1, 2, 3, 4}.
-    // A v5 envelope is composer drift (or a future bump that hasn't
-    // shipped a matching renderer) and must be rejected at the version
-    // gate before any per-story validation runs.
-    const env = /** @type {any} */ (v4Envelope());
-    env.version = 5;
-    assert.throws(
-      () => renderBriefMagazine(env),
-      /is not in supported set/,
-    );
+  it('accepts a v5 envelope that carries a valid lang', () => {
+    for (const lang of ['fr', 'zh-TW', 'fil']) {
+      const env = /** @type {any} */ ({ ...v4Envelope(), version: 5, lang });
+      const html = renderBriefMagazine(env);
+      assert.ok(typeof html === 'string' && html.length > 0, lang);
+    }
+  });
+
+  it('rejects a v5 envelope without lang', () => {
+    const env = /** @type {any} */ ({ ...v4Envelope(), version: 5 });
+    assert.throws(() => renderBriefMagazine(env), /envelope\.lang must be/);
+  });
+
+  it('rejects a v5 envelope whose lang is "en" or malformed', () => {
+    for (const lang of ['en', 'FR', 'fr-tw', 'french', '', 7, 'fr"><script>']) {
+      const env = /** @type {any} */ ({ ...v4Envelope(), version: 5, lang });
+      assert.throws(() => renderBriefMagazine(env), /envelope\.lang must be/, String(lang));
+    }
+  });
+
+  it('rejects lang on a v4 envelope as an unexpected key', () => {
+    const env = /** @type {any} */ ({ ...v4Envelope(), lang: 'fr' });
+    assert.throws(() => renderBriefMagazine(env), /envelope has unexpected key "lang"/);
+  });
+
+  it('rejects a v6 envelope', () => {
+    const env = /** @type {any} */ ({ ...v4Envelope(), version: 6 });
+    assert.throws(() => renderBriefMagazine(env), /is not in supported set/);
+  });
+
+  it('requires clusterId on v5 stories', () => {
+    const base = v4Envelope();
+    const stories = base.data.stories.map((s, i) => (i === 0 ? { ...s, clusterId: undefined } : s));
+    const env = /** @type {any} */ ({ ...base, version: 5, lang: 'fr', data: { ...base.data, stories } });
+    assert.throws(() => renderBriefMagazine(env), /stories\[0\]\.clusterId must be a non-empty string on v4\+ envelopes/);
+  });
+
+  it('renders a v5 envelope byte-identically to its v4 twin', () => {
+    const v4 = v4Envelope();
+    const v5 = /** @type {any} */ ({ ...v4, version: 5, lang: 'fr' });
+    assert.equal(renderBriefMagazine(v5), renderBriefMagazine(v4));
   });
 });
 

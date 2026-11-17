@@ -24,7 +24,8 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../_sentry-edge.js';
-import { renderBriefMagazine } from '../../../server/_shared/brief-render.js';
+import { renderBriefMagazine, selectBriefEnvelope } from '../../../server/_shared/brief-render.js';
+import { briefLocalizedKey } from '../../../shared/brief-envelope.js';
 import { briefFontPlatform } from '../../../server/_shared/brief-font-platform.js';
 import { readRawJsonFromUpstash, redisPipeline } from '../../_upstash-json.js';
 import { verifyBriefToken, BriefUrlError } from '../../../server/_shared/brief-url';
@@ -221,6 +222,10 @@ export default async function handler(
   // distinguish those two — a reader with a valid brief deserves a
   // "service unavailable" state during outages, not a misleading
   // "expired" page.
+  // The localized sibling is optional: a failed or empty read falls back
+  // to the canonical English envelope and never fails the request.
+  const siblingPromise = readRawJsonFromUpstash(briefLocalizedKey(userId, issueDate), 3_000, true)
+    .catch(() => null);
   let envelope: unknown;
   try {
     // Seeder-owned envelope (#7674): the Railway digest composer writes the
@@ -283,6 +288,7 @@ export default async function handler(
   // empty watchlist yields an empty list, so all stories stamp
   // `followed=false`. Visible content and story order are unchanged.
   const followedCountries = await followedCountriesPromise;
+  const selectedEnvelope = selectBriefEnvelope(envelope, await siblingPromise);
 
   // Cast to BriefEnvelope; renderBriefMagazine runs its own
   // assertBriefEnvelope at the top and will throw on any shape
@@ -290,7 +296,7 @@ export default async function handler(
   let html: string;
   try {
     html = renderBriefMagazine(
-      envelope as Parameters<typeof renderBriefMagazine>[0],
+      selectedEnvelope as Parameters<typeof renderBriefMagazine>[0],
       { shareUrl, followedCountries, fontPlatform: briefFontPlatform(req.headers.get('user-agent') ?? '') },
     );
   } catch (err) {
