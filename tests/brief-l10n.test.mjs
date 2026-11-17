@@ -169,6 +169,10 @@ describe('translate prompt and parser', () => {
     assert.equal(parseTranslateOutput(JSON.stringify([{ id: 'u', text: 'Lire sur https://example.com/a et https://evil.example/x' }]), withUrl, 'fr'), null);
     const plain = [{ id: 'p', text: 'Energy' }];
     assert.equal(parseTranslateOutput(JSON.stringify([{ id: 'p', text: 'https://evil.example' }]), plain, 'fr'), null);
+    // Sentence punctuation after an unchanged URL is not a new URL.
+    assert.ok(parseTranslateOutput(JSON.stringify([{ id: 'u', text: 'Lire la suite maintenant sur https://example.com/a.' }]), withUrl, 'fr'));
+    const endsWithUrl = [{ id: 'e', text: 'Read more at https://example.com/a.' }];
+    assert.ok(parseTranslateOutput(JSON.stringify([{ id: 'e', text: 'Lire la suite sur https://example.com/a, maintenant' }]), endsWithUrl, 'fr'));
   });
 
   it('parseTranslateOutput bounds the length of a short label', () => {
