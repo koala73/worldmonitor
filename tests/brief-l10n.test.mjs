@@ -10,6 +10,8 @@ import {
   briefL10nTarget,
   briefL10nEnvOverrideWarning,
   briefPipelineErrors,
+  briefSlotIndexCommands,
+  writeBriefSlotIndex,
   buildTranslatePrompt,
   fetchBriefL10nConfig,
   localizeBrief,
@@ -210,6 +212,41 @@ describe('translate prompt and parser', () => {
     assert.equal(one('See the report at https://example.com/report for details.', '详情见https://example.com/report。', 'zh'), '详情见https://example.com/report。');
     assert.equal(one('Full statement published at https://example.com/a.', 'Déclaration complète publiée sur https://example.com/a'), 'Déclaration complète publiée sur https://example.com/a');
     assert.equal(one('Full statement published at https://example.com/a.', 'Déclaration publiée sur https://evil.example/a'), null);
+  });
+
+  it('compares whole URLs, including non-ASCII paths', () => {
+    const fr = 'Read the analysis at https://example.com/économie today';
+    assert.equal(one(fr, 'Lire l\u2019analyse sur https://example.com/élection aujourd\u2019hui'), null);
+    assert.equal(one(fr, 'Lire l\u2019analyse sur https://example.com/économie aujourd\u2019hui'), 'Lire l\u2019analyse sur https://example.com/économie aujourd\u2019hui');
+    const ja = 'Details for residents at https://example.com/東京 this week';
+    assert.equal(one(ja, '住民向けの詳細は今週 https://example.com/大阪 で', 'ja'), null);
+    assert.equal(one(ja, '住民向けの詳細は今週 https://example.com/東京 で', 'ja'), '住民向けの詳細は今週 https://example.com/東京 で');
+  });
+
+  it('rejects a translation that changes a number, in any local number format', () => {
+    assert.equal(one('Oil prices rose 10 percent after the announcement.', 'Le prix du pétrole a augmenté de 90 pour cent.'), null);
+    assert.equal(one('Oil prices rose 10 percent after the announcement.', 'Les prix du pétrole ont augmenté de 10 % après l\u2019annonce.'), 'Les prix du pétrole ont augmenté de 10 % après l\u2019annonce.');
+    assert.equal(one('Oil prices rose 10 percent after the announcement.', 'Les prix du pétrole ont augmenté après l\u2019annonce.'), null);
+    assert.equal(one('Some 1,234.5 barrels were spilled near the coast', 'Rund 1.234,5 Barrel liefen nahe der Küste aus', 'de'), 'Rund 1.234,5 Barrel liefen nahe der Küste aus');
+    assert.equal(one('Talks resume on April 18, 2026 in Geneva', 'Les pourparlers reprennent le 18 avril 2026 à Genève'), 'Les pourparlers reprennent le 18 avril 2026 à Genève');
+    // Chinese counts in 万 (ten thousand): 3 million is 300万.
+    assert.equal(one('Exports rose to 3 million tonnes last year', '去年出口增至300万吨', 'zh'), '去年出口增至300万吨');
+    assert.equal(one('Exports rose to 3 million tonnes in 2025', '2024年出口增至300万吨', 'zh'), null);
+  });
+
+  it('does not take proper names, shared short words or typographic punctuation as proof an unchanged text is translated', () => {
+    for (const [text, lang] of [
+      ['Von der Leyen urges EU leaders to boost defence spending', 'de'],
+      ['Oil prices do not reflect risks; analysts do not expect relief', 'pl'],
+      ['Oil prices do not reflect risks; analysts do not expect relief', 'pt'],
+      ['European leaders\u2019 emergency summit raises defence spending', 'fr'],
+      ['European Central Bank raises interest rates \u2014 again', 'fr'],
+    ]) assert.equal(one(text, text, lang), null, `${lang}: ${text}`);
+  });
+
+  it('keeps a translation that names English-titled sources', () => {
+    const out = 'Selon The New York Times et The Guardian, les négociations ont échoué';
+    assert.equal(one('Reports from The New York Times and The Guardian say talks failed', out), out);
   });
 
   it('accepts Cyrillic text that keeps Latin brand names', () => {
@@ -691,11 +728,35 @@ describe('cron wiring', () => {
     assert.match(cron, /if \(!BRIEF_COMPOSE_ENABLED\) return \{ briefByUser, composeSuccess: 0, composeFailed: 0 \};\n\s+await loadBriefL10nConfigOnce\(\);/);
   });
 
-  it('every brief write indexes its slot so account deletion can find it', () => {
-    assert.match(cron, /\['ZADD', slotsKey, String\(nowMs\), issueSlot\]/);
-    assert.match(cron, /\['ZREMRANGEBYSCORE', slotsKey, '-inf', String\(nowMs - BRIEF_TTL_SECONDS \* 1000\)\]/);
-    assert.match(cron, /\['EXPIRE', slotsKey, String\(BRIEF_TTL_SECONDS\)\]/);
-    assert.match(cron, /const slotsKey = briefSlotsKey\(userId\);\n\s+const briefCommands = \[/);
+  it('every brief write indexes its slot first, at write time, so account deletion can find it', () => {
+    // Indexed before any envelope is written: a failed index aborts the compose.
+    const indexAt = cron.indexOf('await writeBriefSlotIndex(');
+    assert.ok(indexAt > 0 && indexAt < cron.indexOf('const pipelineResult = await redisPipeline(briefCommands'));
+    assert.match(cron, /briefSlotIndexCommands\(briefSlotsKey\(userId\), issueSlot, Date\.now\(\), BRIEF_TTL_SECONDS\)/);
+    assert.doesNotMatch(cron, /'ZADD', slotsKey/);
+  });
+
+  it('a slot index entry outlives the keys it points at', () => {
+    const now = 1_800_000_000_000;
+    const ttl = 7 * 24 * 3600;
+    const [zadd, trim, expire] = briefSlotIndexCommands('brief:slots:u1', '2026-11-17-0800', now, ttl);
+    assert.deepEqual(zadd, ['ZADD', 'brief:slots:u1', String(now), '2026-11-17-0800']);
+    // An envelope written a moment after `now` lives until just after now + ttl;
+    // its entry must not be trimmed, nor the index expire, before then.
+    assert.equal(trim[0], 'ZREMRANGEBYSCORE');
+    assert.ok(Number(trim[3]) <= now - ttl * 1000 - 60_000);
+    assert.equal(expire[0], 'EXPIRE');
+    assert.ok(Number(expire[2]) >= ttl + 60);
+  });
+
+  it('a failed slot-index write is retried once, then fails the compose', async () => {
+    const cmds = briefSlotIndexCommands('brief:slots:u1', 's', 1, 60);
+    let calls = 0;
+    await writeBriefSlotIndex(cmds, async () => (++calls === 1 ? null : [{ result: 1 }, { result: 0 }, { result: 1 }]));
+    assert.equal(calls, 2);
+    calls = 0;
+    await assert.rejects(writeBriefSlotIndex(cmds, async () => { calls += 1; return [{ error: 'OOM' }, { result: 0 }, { result: 1 }]; }), /OOM/);
+    assert.equal(calls, 2);
   });
 
   it('the translation budget never exceeds what is left of the pass budget', () => {

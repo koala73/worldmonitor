@@ -58,11 +58,12 @@ const SCRIPT_RE = {
   fa: /\p{Script=Arabic}/u,
 };
 
-// ASCII only, so a URL followed directly by CJK text ends at the URL.
-const URL_RE = /https?:\/\/[^\s"'<>)\]\u0080-\uFFFF]+/g;
+// Whole URLs, Unicode paths included (https://example.com/économie).
+const URL_RE = /https?:\/\/[^\s"'<>)\]]+/g;
 // Sentence punctuation a translation may move. "!" and "?" can end a real
 // URL (wiki/Yahoo!), so dropping them is an altered URL.
-const URL_TRAILING_PUNCT_RE = /[.,;:]+$/;
+const URL_TRAILING_PUNCT_RE = /[.,;:\u3001\u3002\uFF0C\uFF1A\uFF1B]+$/;
+const NON_ASCII_LETTER_RE = /(?![\x00-\x7F])\p{L}/u;
 const TAG_RE = /<\s*[a-zA-Z/!?]/;
 // Newline and tab are legitimate in prose; everything else is rejected.
 // eslint-disable-next-line no-control-regex
@@ -140,10 +141,43 @@ export function briefL10nEnvOverrideWarning(env) {
   return `${set.join(' and ')} set on the digest service are ignored; the switch is the Convex env (npx convex env set ...)`;
 }
 
+// Kept past the envelope TTL so an index entry never expires before the
+// envelope written just after it.
+const SLOT_INDEX_MARGIN_SEC = 3_600;
+
+/**
+ * Commands that index a brief slot for account deletion, scored at write
+ * time. Trimming and expiry run a margin past the envelope TTL.
+ */
+export function briefSlotIndexCommands(slotsKey, slot, nowMs, ttlSec) {
+  return [
+    ['ZADD', slotsKey, String(nowMs), slot],
+    ['ZREMRANGEBYSCORE', slotsKey, '-inf', String(nowMs - (ttlSec + SLOT_INDEX_MARGIN_SEC) * 1000)],
+    ['EXPIRE', slotsKey, String(ttlSec + SLOT_INDEX_MARGIN_SEC)],
+  ];
+}
+
+/**
+ * Writes the slot index, retrying once. Throws when it cannot be written, so
+ * the caller writes no envelope that account deletion could not find.
+ * @param {(commands: any[]) => Promise<any[] | null>} pipeline
+ */
+export async function writeBriefSlotIndex(commands, pipeline) {
+  let lastError = 'null pipeline response';
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const cells = await pipeline(commands).catch((err) => { lastError = String(err?.message ?? err); return null; });
+    if (!Array.isArray(cells) || cells.length < commands.length) continue;
+    const error = cells.find((cell) => cell && typeof cell === 'object' && 'error' in cell);
+    if (!error) return;
+    lastError = String(error.error);
+  }
+  throw new Error(`brief slot index write failed: ${lastError}`);
+}
+
 /**
  * Error cells of a brief write pipeline. The first `requiredCount` commands
- * (canonical envelope, latest pointer) are fatal; the slot index and the
- * localized sibling are best effort, because the English brief is already
+ * (canonical envelope, latest pointer) are fatal; the localized sibling is
+ * best effort, because the English brief is already
  * stored and readable. `siblingFailed` means the localized sibling at
  * `siblingIndex` was not stored, so nothing may be sent localized.
  */
@@ -193,6 +227,42 @@ function urlsIn(text) {
   return (text.match(URL_RE) ?? []).map((url) => url.replace(URL_TRAILING_PUNCT_RE, ''));
 }
 
+/**
+ * The source URL an output URL stands for, or null. Equal, or the source URL
+ * with prose glued on with no space ("…/report详情"): allowed only when the
+ * source URL ends in ASCII, so a changed Unicode path never matches.
+ */
+function sourceUrlFor(outUrl, sourceUrls) {
+  if (sourceUrls.includes(outUrl)) return outUrl;
+  return sourceUrls.find((src) => outUrl.startsWith(src)
+    && /[\x21-\x7E]$/.test(src)
+    && NON_ASCII_LETTER_RE.test(outUrl.charAt(src.length))) ?? null;
+}
+
+// Grouped thousands (1,234 / 1.234 / 1 234) or a plain number with an
+// optional decimal part. Its value is its digits, so local formats compare equal.
+const NUMBER_RE = /\d{1,3}(?:[,.\u00A0\u202F ]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?/g;
+// Counts a compact-script translation may rescale (3 million -> 300万).
+const SCALED_SOURCE_RE = /^\s*(?:thousand|million|billion|trillion)\b/i;
+const SCALED_OUTPUT_RE = /^\s*[万萬亿億兆千만억천]/u;
+
+function numbersIn(text, scaledRe) {
+  const out = [];
+  for (const m of text.replace(URL_RE, ' ').matchAll(NUMBER_RE)) {
+    if (scaledRe && scaledRe.test(text.slice(m.index + m[0].length))) continue;
+    out.push(m[0].replace(/\D/g, ''));
+  }
+  return out.sort();
+}
+
+/** The translation carries exactly the source's numbers. */
+function numbersKept(source, text, lang) {
+  const compact = COMPACT_LANGS.has(lang);
+  const want = numbersIn(source, compact ? SCALED_SOURCE_RE : null);
+  const got = numbersIn(text, compact ? SCALED_OUTPUT_RE : null);
+  return want.length === got.length && want.every((n, i) => n === got[i]);
+}
+
 function countOf(text, ch) {
   return text.split(ch).length - 1;
 }
@@ -212,9 +282,12 @@ const ENGLISH_MARKERS = new Set([
   'were', 'been', 'have', 'into', 'amid', 'against', 'about', 'would', 'could', 'should', 'while',
 ]);
 
+/** Lower-case words only: capitalised ones are names ("The Guardian", "Von der Leyen"). */
+const lowerWordsOf = (text) => text.split(/[^\p{L}]+/u).filter((w) => w && w === w.toLowerCase());
+
 /** True when the text reads as English prose rather than names or another language. */
 function looksEnglish(text) {
-  const markers = wordsOf(text).filter((w) => ENGLISH_MARKERS.has(w)).length;
+  const markers = lowerWordsOf(text).filter((w) => ENGLISH_MARKERS.has(w)).length;
   return markers >= 2;
 }
 
@@ -228,10 +301,10 @@ const TARGET_MARKERS = {
   es: ['el', 'los', 'las', 'del', 'una', 'por', 'para', 'con', 'que', 'en', 'y', 'sus', 'nuevo', 'nueva'],
   de: ['der', 'die', 'das', 'und', 'mit', 'von', 'den', 'dem', 'ein', 'eine', 'ist', 'nicht', 'auf', 'zu', 'neues', 'neue'],
   it: ['il', 'lo', 'gli', 'della', 'delle', 'del', 'una', 'per', 'con', 'che', 'di', 'nuovo', 'nuova', 'un'],
-  pt: ['os', 'do', 'da', 'dos', 'das', 'uma', 'para', 'com', 'que', 'em', 'novo', 'nova', 'um'],
+  pt: ['os', 'da', 'dos', 'das', 'uma', 'para', 'com', 'que', 'em', 'novo', 'nova', 'um'],
   nl: ['de', 'het', 'een', 'van', 'en', 'met', 'voor', 'niet', 'op', 'nieuw', 'nieuwe'],
   sv: ['och', 'att', 'det', 'som', 'en', 'med', 'av', 'ny', 'nya'],
-  pl: ['w', 'z', 'na', 'nie', 'do', 'oraz', 'dla', 'nowy', 'nowa'],
+  pl: ['w', 'z', 'na', 'nie', 'oraz', 'dla', 'nowy', 'nowa'],
   ro: ['cu', 'la', 'de', 'pentru', 'din', 'care', 'nou'],
   tr: ['ve', 'bir', 'ile', 'bu', 'da', 'de', 'yeni'],
   cs: ['v', 'na', 'se', 'je', 's', 'z', 'pro', 've'],
@@ -240,10 +313,17 @@ const TARGET_MARKERS = {
   sw: ['na', 'wa', 'ya', 'za', 'kwa', 'katika', 'ni', 'mpya'],
 };
 
+/**
+ * Two lower-case function words of the language, making up a quarter of the
+ * lower-case words. A name ("Von der Leyen") or one shared short word does
+ * not qualify.
+ */
 function readsAsLanguage(text, lang) {
   const markers = TARGET_MARKERS[lang];
   if (!markers) return false;
-  return wordsOf(text).filter((w) => markers.includes(w)).length >= 2;
+  const words = lowerWordsOf(text);
+  const hits = words.filter((w) => markers.includes(w)).length;
+  return hits >= 2 && hits / words.length >= 0.25;
 }
 
 /**
@@ -254,7 +334,8 @@ function readsAsLanguage(text, lang) {
 function unchangedIsUntranslated(source, lang) {
   if (looksEnglish(source)) return true;
   const prose = source.replace(URL_RE, '');
-  if (/[^\x00-\x7F]/.test(prose)) return false;
+  // Accented or non-Latin letters, not typographic punctuation (’ —).
+  if (NON_ASCII_LETTER_RE.test(prose)) return false;
   if (readsAsLanguage(prose, lang)) return false;
   // ASCII prose with lower-case words and no sign of the target language:
   // English unless proven otherwise.
@@ -291,9 +372,10 @@ function validTranslation(source, out, lang) {
   // Every source URL survives byte for byte (sentence punctuation aside), and
   // the translation adds none.
   const sourceUrls = urlsIn(source);
-  const outUrls = urlsIn(text);
-  if (sourceUrls.some((url) => !outUrls.includes(url))) return false;
-  if (outUrls.some((url) => !sourceUrls.includes(url))) return false;
+  const mapped = urlsIn(text).map((url) => sourceUrlFor(url, sourceUrls));
+  if (mapped.includes(null)) return false;
+  if (sourceUrls.some((url) => !mapped.includes(url))) return false;
+  if (!numbersKept(source, text, lang)) return false;
   if (source.length < MIN_CHECKED_LENGTH) {
     if (text.length > Math.max(SHORT_SOURCE_MAX_LEN, source.length * MAX_RATIO)) return false;
   } else {

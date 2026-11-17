@@ -370,8 +370,16 @@ test('llm-chain: a provider request is aborted at deadlineAt, not at its own lon
   global.fetch = (_url, init = {}) => new Promise((_resolve, reject) => {
     init.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'TimeoutError' })));
   });
+  // AbortSignal.timeout() is unref'd and the fetch above settles only on
+  // abort, so hold the event loop open until it fires.
+  const keepAlive = setTimeout(() => {}, 5_000);
   const started = Date.now();
-  const text = await callLLM('system', 'user prompt', { timeoutMs: 20_000, deadlineAt: Date.now() + 100 });
+  let text;
+  try {
+    text = await callLLM('system', 'user prompt', { timeoutMs: 20_000, deadlineAt: Date.now() + 100 });
+  } finally {
+    clearTimeout(keepAlive);
+  }
   const elapsed = Date.now() - started;
   assert.equal(text, null);
   assert.ok(elapsed < 1_000, `ran ${elapsed}ms past a 100ms deadline`);
