@@ -15,6 +15,7 @@ import { clearAgentRef, loadAgentRef } from '../../shared/agent-client-source';
 import { agentRefStorage } from '@/services/agent-ref';
 import { UI_LANGUAGE_SET } from '../../shared/ui-languages';
 import { readExplicitLanguage } from '@/utils/i18n-url';
+import { safeStorageGet } from '@/utils/safe-storage';
 
 // Use typeof to get the exact generated API type without importing statically
 type ConvexApi = typeof import('../../convex/_generated/api').api;
@@ -305,7 +306,7 @@ function isUnknownArgError(err: unknown, field: string): boolean {
 /** The explicit Settings language only; `?lang=` and navigator never count. */
 function readExplicitUiLanguage(): string | null {
   try {
-    return readExplicitLanguage(globalThis.localStorage, UI_LANGUAGE_SET);
+    return readExplicitLanguage({ getItem: safeStorageGet }, UI_LANGUAGE_SET);
   } catch {
     return null;
   }

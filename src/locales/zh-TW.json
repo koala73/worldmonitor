@@ -5827,7 +5827,7 @@
     "briefLanguage": {
       "label": "簡報語言",
       "hint": "您的每日簡報將使用{{language}}撰寫。",
-      "sameAsApp": "與應用程式語言相同"
+      "sameAsApp": "與應用語言相同"
     }
   }
 }
