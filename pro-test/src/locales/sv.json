@@ -447,7 +447,8 @@
       "trendRising": "stigande",
       "trendFalling": "fallande",
       "trendStable": "stabil",
-      "situationLink": "Övervaka situationen: kriser, nyheter, flaskhalsar och driftstörningar på en instrumentpanel"
+      "situationLink": "Övervaka situationen: kriser, nyheter, flaskhalsar och driftstörningar på en instrumentpanel",
+      "pizzaIndexLink": "Pentagons pizzaindex: hur fullt det är på pizzeriorna nära Pentagon"
     },
     "moments": {
       "eyebrow": "Korrelationsmotor",

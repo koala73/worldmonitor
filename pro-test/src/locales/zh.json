@@ -447,7 +447,8 @@
       "trendRising": "上升",
       "trendFalling": "下降",
       "trendStable": "稳定",
-      "situationLink": "监控局势：在一个看板上汇总危机、头条、卡点和中断事件"
+      "situationLink": "监控局势：在一个看板上汇总危机、头条、卡点和中断事件",
+      "pizzaIndexLink": "五角大楼披萨指数：五角大楼附近披萨店的忙碌程度"
     },
     "moments": {
       "eyebrow": "关联引擎",

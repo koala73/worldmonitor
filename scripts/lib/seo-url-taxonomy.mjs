@@ -131,7 +131,8 @@ const KIND_RULES = Object.freeze([
  * match. `docs` is handled separately because it splits on the locale.
  *
  * `/country-instability-index/` is the hub for the country score surface,
- * `/accuracy/` is a published methodology record and `/monitor-the-situation/`
+ * `/accuracy/` and `/trust/` are published methodology and data-handling
+ * records, `/monitor-the-situation/`
  * is a live board over the crisis trackers, so they join the families that
  * already own those surfaces rather than each becoming a family of one.
  */
@@ -159,6 +160,7 @@ const SEGMENT_FAMILIES = Object.freeze({
   compare: 'compare',
   research: 'research',
   accuracy: 'research',
+  trust: 'research',
   'use-cases': 'use_cases',
   story: 'story_shares',
   dashboard: 'dashboard',

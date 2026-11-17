@@ -447,7 +447,8 @@
       "trendRising": "in rialzo",
       "trendFalling": "in calo",
       "trendStable": "stabile",
-      "situationLink": "Monitora la situazione: crisi, notizie principali, punti critici e interruzioni in un unico pannello"
+      "situationLink": "Monitora la situazione: crisi, notizie principali, punti critici e interruzioni in un unico pannello",
+      "pizzaIndexLink": "Indice pizza del Pentagono: quanto sono affollate le pizzerie vicino al Pentagono"
     },
     "moments": {
       "eyebrow": "Motore di correlazione",
