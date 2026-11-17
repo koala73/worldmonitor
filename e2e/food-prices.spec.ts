@@ -37,8 +37,10 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       await expect(panel.locator('.food-prices-table').first()).toContainText(currency!);
     }
     const malaysia = panel.locator('.food-prices-table').first();
-    await expect(malaysia.locator('tbody tr')).toHaveCount(39);
+    await expect(malaysia.locator('tbody tr')).toHaveCount(58);
     await expect(malaysia.locator('tbody tr').filter({ hasText: 'vs 2026-11-09' })).toHaveCount(39);
+    // Basket-survey items share the 16 November report date and compare with the 5 November survey.
+    await expect(malaysia.locator('tbody tr').filter({ hasText: 'vs 2026-11-05' })).toHaveCount(19);
     await panel.locator('.food-prices-card h3').scrollIntoViewIfNeeded();
     await evidenceScreenshot(page, { path: testInfo.outputPath(`food-prices-${viewport.width}-daily.png`) });
     await malaysia.locator('tbody tr').last().scrollIntoViewIfNeeded();
