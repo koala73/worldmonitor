@@ -95,34 +95,6 @@ describe('market move severity', () => {
   });
 });
 
-describe('corridor risk', () => {
-  it('dedups on corridor and band, so an unchanged score is sent once a day', () => {
-    const a = policy.corridorRiskNotification('hormuz_strait', 85);
-    const b = policy.corridorRiskNotification('hormuz_strait', 86);
-    assert.equal(a.payload.coalesceKey, 'corridor:hormuz_strait:critical');
-    assert.equal(b.payload.coalesceKey, a.payload.coalesceKey);
-    assert.equal(a.dedupTtl, 86_400);
-    assert.equal(a.severity, 'critical');
-    assert.equal(a.payload.title, 'Hormuz Strait: risk score 85');
-  });
-
-  it('sends again when the corridor crosses into a higher band', () => {
-    const high = policy.corridorRiskNotification('suez', 65);
-    const critical = policy.corridorRiskNotification('suez', 72);
-    assert.equal(high.severity, 'high');
-    assert.notEqual(high.payload.coalesceKey, critical.payload.coalesceKey);
-  });
-
-  it('carries the chokepoint id the relay scopes on', () => {
-    assert.equal(policy.corridorRiskNotification('bab_el_mandeb', 90).payload.chokepointId, 'bab_el_mandeb');
-  });
-
-  it('publishes nothing below 50', () => {
-    assert.equal(policy.corridorRiskNotification('bosphorus', 49), null);
-    assert.equal(policy.corridorRiskNotification('', 90), null);
-  });
-});
-
 describe('shipping stress', () => {
   it('dedups on the band for a day', () => {
     const a = policy.shippingStressNotification(91, 'critical');
@@ -226,9 +198,16 @@ describe('ais-relay wiring', () => {
     assert.doesNotMatch(src, /Math\.abs\(q\.change\) >= (10|20) \? 'critical'/);
   });
 
-  it('publishes corridor risk and shipping stress through the band-keyed builders', () => {
-    assert.match(src, /notifyPolicy\.corridorRiskNotification\(corridorId, c\.riskScore\)/);
+  it('publishes shipping stress through the band-keyed builder', () => {
     assert.match(src, /notifyPolicy\.shippingStressNotification\(stressScore, stressLevel\)/);
+  });
+
+  // The CorridorRisk score sits at its 85 ceiling with 100% disruption on
+  // every corridor (captured 2026-09-10 and 2026-11-17), so a band alert on it
+  // said nothing; chokepoint_disruption (#9217) alerts on measured transits.
+  it('never publishes the third-party corridor score as an alert', () => {
+    assert.doesNotMatch(src, /eventType: 'corridor_risk'|corridorRiskNotification/);
+    assert.equal(policy.corridorRiskNotification, undefined);
   });
 
   it('never publishes a cyber indicator as critical', () => {

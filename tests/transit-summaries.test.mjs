@@ -542,7 +542,7 @@ describe('seedTransitSummaries (relay)', () => {
       }
       assert.equal(summary.todayTotal, null);
       assert.equal(summary.dataAvailable, true);
-      assert.equal(notifications.length, 1);
+      assert.equal(notifications.length, 0);
       assert.doesNotMatch(JSON.stringify([...writes.values(), notifications]), /REROUTE|50-80K|Salalah/);
     }
   });
