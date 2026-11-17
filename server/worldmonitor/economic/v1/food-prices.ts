@@ -9,6 +9,8 @@ type Observation = Pick<FoodMarketPrice, 'item' | 'market' | 'marketType' | 'ori
 type Context = Omit<FoodSecurityContext, 'fetchedAt' | 'status'> & { fetchedAt?: string; fetchFailed?: boolean };
 interface Snapshot { fetchedAt?: string; reportUrl?: string; observations?: Observation[]; contexts?: Context[] }
 const DAY = 86400000;
+// Survey-item baselines are taken from the 7 to 28 days before a row's date; older ones are not comparable.
+const SURVEY_BASELINE_MAX_DAYS = 28;
 const seriesKey = (row: Observation): string => JSON.stringify([row.market, row.marketType, row.item, row.unit, row.currency, row.origin ?? '']);
 
 function validDate(value: unknown, now: number): value is string {
@@ -59,7 +61,8 @@ export function buildFoodPriceSource(source: SourceDefinition, value: unknown, n
   const prices: FoodMarketPrice[] = [...latest.values()].map(row => {
     const date = new Date(Date.parse(row.date) - 7 * DAY).toISOString().slice(0, 10);
     const previous = source.contextOnly ? undefined : surveyItems.has(row.item)
-      ? bySeries.get(seriesKey(row))!.find(candidate => candidate.date <= date)
+      ? bySeries.get(seriesKey(row))!.find(candidate => candidate.date <= date
+        && candidate.date >= new Date(Date.parse(row.date) - SURVEY_BASELINE_MAX_DAYS * DAY).toISOString().slice(0, 10))
       : history.get(`${seriesKey(row)}|${date}`);
     return {
       ...row, origin: row.origin ?? '', wowAvailable: Boolean(previous),

@@ -13,8 +13,8 @@ message FoodMarketPrice {
   double price = 8;
   // True only when the same series has a price exactly seven days before `date`, or,
   // for items the source surveys on irregular days (PriceCatcher's basket survey),
-  // its most recent price at least seven days before `date`; previous_date states
-  // which. When false, there is no comparison: wow_pct, previous_date and
+  // its most recent price from 7 to 28 days before `date`; previous_date states
+  // which. With no qualifying price, including a gap of more than 28 days, it is false. When false, there is no comparison: wow_pct, previous_date and
   // previous_price are placeholders (0 or empty), not a 0% change.
   bool wow_available = 9;
   // Week-over-week change in percent. Meaningful only when wow_available is true.

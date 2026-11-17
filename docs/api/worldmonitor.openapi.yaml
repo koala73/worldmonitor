@@ -10658,7 +10658,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetFoodPrices
-            description: GetFoodPrices returns local-currency market prices with exact prior-week comparisons, plus dated GIEWS and Tunisia context. Missing comparisons are explicitly unavailable. Market, market type, product, origin, unit and currency must match; levels are not comparable across countries.
+            description: GetFoodPrices returns local-currency market prices with prior-week comparisons (exactly seven days earlier, or for items surveyed on irregular days the most recent survey 7 to 28 days earlier), plus dated GIEWS and Tunisia context. Missing comparisons are explicitly unavailable. Market, market type, product, origin, unit and currency must match; levels are not comparable across countries.
             operationId: GetFoodPrices
             parameters:
                 - name: jmespath
@@ -47101,8 +47101,8 @@ components:
                     description: |-
                         True only when the same series has a price exactly seven days before `date`, or,
                          for items the source surveys on irregular days (PriceCatcher's basket survey),
-                         its most recent price at least seven days before `date`; previous_date states
-                         which. When false, there is no comparison: wow_pct, previous_date and
+                         its most recent price from 7 to 28 days before `date`; previous_date states
+                         which. With no qualifying price, including a gap of more than 28 days, it is false. When false, there is no comparison: wow_pct, previous_date and
                          previous_price are placeholders (0 or empty), not a 0% change.
                 wowPct:
                     type: number

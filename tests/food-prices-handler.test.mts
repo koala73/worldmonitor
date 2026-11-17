@@ -52,6 +52,11 @@ test('PriceCatcher survey items show their own date and latest baseline a week o
   const oilPrice = byItem.get('Cooking oil, pure palm (Seri Murni)')!;
   assert.deepEqual([oilPrice.date, oilPrice.previousDate, oilPrice.previousPrice], ['2026-10-26', '2026-10-15', 30]);
   assert.equal(data.prices.length, 3);
+  // A survey baseline more than 28 days back is not comparable.
+  const gap = buildFoodPriceSource(my, snapshot([daily, { ...oil, date: '2026-10-26' }, { ...oil, date: '2026-09-27', price: 30 }]), now);
+  assert.equal(gap.prices.find(price => price.item === oil.item)!.wowAvailable, false);
+  const edge = buildFoodPriceSource(my, snapshot([daily, { ...oil, date: '2026-10-26' }, { ...oil, date: '2026-09-28', price: 30 }]), now);
+  assert.equal(edge.prices.find(price => price.item === oil.item)!.previousDate, '2026-09-28');
   // A survey dated after the newest daily day does not hide the daily rows.
   const later = buildFoodPriceSource(my, snapshot([daily, { ...daily, date: '2026-10-22', price: 5 }, { ...oil, date: '2026-10-29' }, { ...oil, date: '2026-10-20', price: 30 }]),
     Date.parse('2026-10-30T12:00:00Z'));

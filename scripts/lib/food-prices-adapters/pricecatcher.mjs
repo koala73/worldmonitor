@@ -173,7 +173,8 @@ export async function collect(ctx) {
   const [year, month] = current.split('-').map(Number);
   const previous = new Date(Date.UTC(year, month - 2, 15)).toISOString().slice(0, 7);
   const acc = priceAccumulator({ before, since, basketSince });
-  try { await readPricecatcher(await ctx.get(`${BASE}pricecatcher_${current}.parquet`, { binary: true }), acc); }
+  const loaded = new Set();
+  try { await readPricecatcher(await ctx.get(`${BASE}pricecatcher_${current}.parquet`, { binary: true }), acc); loaded.add(current); }
   catch (error) { if (!/HTTP 404\b/.test(error.message)) throw error; ctx.warn('current-month file not yet published'); }
   if (basketSince.slice(0, 7) !== current) {
     // A prior-month failure must not leave a partly folded file behind, so read it into its own accumulator,
@@ -182,6 +183,7 @@ export async function collect(ctx) {
     try {
       await readPricecatcher(await ctx.get(`${BASE}pricecatcher_${previous}.parquet`, { binary: true }), prior);
       for (const [key, shops] of prior.groups) acc.groups.set(key, shops);
+      loaded.add(previous);
     } catch (error) { ctx.warn(`prior-month prices unavailable: ${error.message}`); }
   }
   const all = summarizePrices(acc, lookup);
@@ -196,9 +198,11 @@ export async function collect(ctx) {
   // Daily and basket items report different dates, so history is refreshed per item and date: a basket survey on a
   // daily item's baseline day must not erase that day's daily rows, and vice versa. Markers cover every item and
   // date this run checked, not only the prices that passed, so a quote the publisher withdrew (or that fell below
-  // ten premises) is dropped from history instead of surviving as a stale baseline.
+  // ten premises) is dropped from history instead of surviving as a stale baseline. A daily date is only marked when
+  // it lies in the daily window and its monthly file loaded, so a failed read cannot erase a stored baseline.
   const checked = [
-    ...[latest, prior].filter(Boolean).flatMap(date => [...DAILY_NAMES].map(item => ({ date, item }))),
+    ...[latest, prior].filter(date => date && date >= since && loaded.has(date.slice(0, 7)))
+      .flatMap(date => [...DAILY_NAMES].map(item => ({ date, item }))),
     ...[...surveys].sort().flatMap(date => PRICECATCHER_BASKET_NAMES.map(item => ({ date, item }))),
   ];
   return { ...report, refreshedReports: checked };

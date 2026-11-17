@@ -174,17 +174,26 @@ test('Malaysia reports the latest completed local day carrying every selected st
   assert.equal(report.observations.length, PRICECATCHER_ITEM_CODES.length);
   assert.equal([...dates.values()].filter(date => date === '2026-11-04').length, PRICECATCHER_DAILY_CODES.length);
   assert.equal([...dates.values()].filter(date => date === '2026-11-02').length, PRICECATCHER_BASKET_CODES.length);
-  // History refreshes per item and date, for every item and date checked, including the empty 28 October baseline.
+  // History refreshes per item and date, for every item and date checked.
   const markers = new Set(report.refreshedReports.map(marker => `${marker.date}|${marker.item}`));
   assert.ok(report.refreshedReports.every(marker => marker.item), 'no date-wide refresh');
   assert.ok(report.observations.every(row => markers.has(`${row.date}|${row.item}`)));
-  assert.equal(report.refreshedReports.filter(marker => marker.date === '2026-10-28').length, PRICECATCHER_DAILY_CODES.length);
   assert.equal(report.refreshedReports.filter(marker => marker.date === '2026-11-02').length, PRICECATCHER_BASKET_CODES.length);
-  // A withdrawn baseline quote is dropped: the stored 28 October price has no replacement, so the merge removes it.
+  // The October file did not load, so 28 October was not checked: no marker, and a stored baseline survives.
+  assert.equal(report.refreshedReports.filter(marker => marker.date === '2026-10-28').length, 0);
   const stored = { ...report.observations.find(row => row.date === '2026-11-04'), date: '2026-10-28', price: 1 };
-  const merged = mergeFoodSnapshot({ observations: [stored] }, { ...report, contexts: [] }, { surveyItems: PRICECATCHER_BASKET_NAMES });
-  assert.ok(!merged.observations.some(row => row.date === '2026-10-28'));
+  const kept = mergeFoodSnapshot({ observations: [stored] }, { ...report, contexts: [] }, { surveyItems: PRICECATCHER_BASKET_NAMES });
+  assert.ok(kept.observations.some(row => row.date === '2026-10-28'));
   assert.match(warnings.join(), /prior-month prices unavailable/);
+
+  // When the October file loads but holds no 28 October quotes, that baseline was withdrawn and is dropped.
+  const loaded = await collectPricecatcher(pricecatcherCtx('2026-11-04T20:00:00Z', async url => {
+    if (url.endsWith('.csv')) return file('pricecatcher-items.csv').toString();
+    return file('pricecatcher.parquet');
+  }));
+  assert.equal(loaded.refreshedReports.filter(marker => marker.date === '2026-10-28').length, PRICECATCHER_DAILY_CODES.length);
+  const dropped = mergeFoodSnapshot({ observations: [stored] }, { ...loaded, contexts: [] }, { surveyItems: PRICECATCHER_BASKET_NAMES });
+  assert.ok(!dropped.observations.some(row => row.date === '2026-10-28'));
 });
 
 test('Malaysia detects basket-survey days from total basket quotes and pairs each item with a survey at least a week earlier', () => {
