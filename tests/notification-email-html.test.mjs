@@ -209,6 +209,7 @@ describe('notification relay email delivery', () => {
   // 2026-11-17: a critical alert for an Egypt Independent story arrived with
   // no article link. The link now reaches the email, tagged for the publisher.
   it('links the article in both parts, tagged as a WorldMonitor email alert', async () => {
+    sent.length = 0;
     await relay.processEvent({
       eventType: 'rss_alert',
       severity: 'critical',
@@ -219,8 +220,8 @@ describe('notification relay email delivery', () => {
         link: 'https://www.egyptindependent.com/synthetic-story/?ref=feed#top',
       },
     });
-    assert.equal(sent.length, 2);
-    const email = sent[1];
+    assert.equal(sent.length, 1);
+    const [email] = sent;
     const tagged = 'https://www.egyptindependent.com/synthetic-story/?ref=feed&utm_source=worldmonitor&utm_medium=alert&utm_campaign=email#top';
     assert.ok(email.text.includes(`${tagged} (source: www.egyptindependent.com)`), email.text);
     assert.ok(
