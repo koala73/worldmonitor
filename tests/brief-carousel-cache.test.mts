@@ -255,6 +255,8 @@ describe('api/brief/carousel render failures', () => {
     assert.equal(head.status, get.status);
     for (const h of ['Cache-Control', 'CDN-Cache-Control', 'Vercel-CDN-Cache-Control', 'Content-Type']) assert.equal(head.headers.get(h), get.headers.get(h), h);
     assert.equal(head.body, null);
-    assertNoStore503(await call(CAROUSEL_FIXTURES.ko, { fail: 'Noto+Sans+KR' }, { method: 'HEAD' }), 'HEAD on font failure');
+    const headFailure = await call(CAROUSEL_FIXTURES.ko, { fail: 'Noto+Sans+KR' }, { method: 'HEAD' });
+    assertNoStore503(headFailure, 'HEAD on font failure');
+    assert.equal(headFailure.body, null, 'HEAD on font failure has no body');
   });
 });

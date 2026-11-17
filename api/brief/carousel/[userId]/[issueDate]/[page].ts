@@ -87,6 +87,16 @@ export default async function handler(
   req: Request,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<Response> {
+  const res = await respond(req, ctx);
+  // HEAD gets the GET status and headers, never a body, error responses included.
+  if (req.method !== 'HEAD' || res.body === null) return res;
+  return new Response(null, { status: res.status, statusText: res.statusText, headers: res.headers });
+}
+
+async function respond(
+  req: Request,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response> {
   if (isDisallowedOrigin(req)) {
     return new Response('Origin not allowed', {
       status: 403,
