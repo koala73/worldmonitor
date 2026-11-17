@@ -88,7 +88,7 @@ import {
   isPublisherLink,
   linkHostname,
 } from '../../../../shared/publisher-link-gate.js';
-import { stripAttributionSuffix } from '../../../../shared/story-identity.js';
+import { newsPublisherCoverageKey, stripAttributionSuffix } from '../../../../shared/story-identity.js';
 // @ts-expect-error — JS module, no declaration file
 import { STORY_ALIAS_PUBLISH_SCRIPT } from '../../../../shared/story-alias-publish-script.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
@@ -2677,6 +2677,37 @@ export async function listFeedDigest(
   }
 }
 
+// Each exact headline owns one sorted set. GT keeps a slower build from
+// moving a family's last observation backwards; retries replace the same member.
+async function recordPublisherCoverage(
+  items: readonly ParsedItem[], variant: string, observedAt: number, deadlineAt: number,
+): Promise<void> {
+  const groups = new Map<string, Set<string>>();
+  for (const item of items) {
+    const family = publisherFamilyForItem(item);
+    const key = newsPublisherCoverageKey(variant, item.title);
+    if (!key || !family) continue;
+    let families = groups.get(key);
+    if (!families) groups.set(key, families = new Set());
+    families.add(family);
+  }
+  const entries = [...groups];
+  for (let start = 0; start < entries.length; start += STORY_BATCH_SIZE) {
+    const timeout = redisTimeoutForDeadline(deadlineAt);
+    if (!timeout) return;
+    const commands = entries.slice(start, start + STORY_BATCH_SIZE).flatMap(([key, families]) => [
+      ['ZADD', key, 'GT', ...[...families].flatMap(family => [observedAt, family])],
+      ['ZREMRANGEBYSCORE', key, '-inf', observedAt - 86_400_000],
+      ['EXPIRE', key, 86_400],
+    ]);
+    const rows = await runRedisTransaction(commands, false, timeout);
+    if (!redisPipelineConfirmed(rows, commands.length)) {
+      console.warn('[digest] publisher coverage write unavailable');
+      return;
+    }
+  }
+}
+
 function redisPipelineConfirmed(
   results: Array<{ result?: unknown; error?: string }>,
   expectedCommands: number,
@@ -3822,6 +3853,10 @@ async function buildDigest(
     const storyTrackingDeadlineAt = digestStartedAt + ADOPTION_DEADLINE_MS;
 
     const now = Date.now();
+    // Include accepted sightings below the category display cap. Run alongside
+    // story tracking within the same deadline, including when no alert queues.
+    const publisherCoverageWrite = recordPublisherCoverage(servableItems, variant, buildStart, storyTrackingDeadlineAt)
+      .catch((err: unknown) => console.warn('[digest] publisher coverage unavailable:', err));
 
     // Read existing story tracking BEFORE writing so we know the previous cycle's
     // mentionCount. We merge read state + this cycle's increment in memory to
@@ -3905,7 +3940,7 @@ async function buildDigest(
       };
     }
 
-    await headlineHistoryWrite;
+    await Promise.all([headlineHistoryWrite, publisherCoverageWrite]);
 
     // #4920: publish the coverage ledger — every gate's drop count plus
     // what survived — as a side key. Best-effort: ledger failures never
@@ -3988,6 +4023,7 @@ async function publishAcceptedLabelCounts(response: ListFeedDigestResponse, dead
 
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
+  recordPublisherCoverage,
   storyCorroborationByHash,
   // #7084 serving path. Exported so the wiring can be EXECUTED in tests rather
   // than asserted against this file's own source text — a grep for

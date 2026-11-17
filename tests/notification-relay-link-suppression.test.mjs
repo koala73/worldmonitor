@@ -82,7 +82,7 @@ function makeEvent(link = EVIL) {
 
 let harnessSeq = 0;
 
-function installHarness({ smembers = [], smembersOk = true, pipelineOk = true, pipelineCommandError = false, held = null, rule = {} } = {}) {
+function installHarness({ smembers = [], smembersOk = true, pipelineOk = true, pipelineCommandError = false, held = null, publisherFamilies = [], rule = {} } = {}) {
   const calls = { telegram: 0, telegramBodies: [], pipeline: [], smembers: 0, del: [], lrem: [] };
   // Mutable so a test can flip Redis from healthy to down mid-scenario.
   const state = { smembersOk };
@@ -129,6 +129,9 @@ function installHarness({ smembers = [], smembersOk = true, pipelineOk = true, p
     if (u.endsWith('/pipeline')) {
       let body = [];
       try { body = JSON.parse(opts.body); } catch { /* keep empty */ }
+      if (body.length && body.every(cmd => cmd[0] === 'ZRANGEBYSCORE')) {
+        return { ok: true, json: async () => body.map(() => ({ result: publisherFamilies })) };
+      }
       if (body.length > 0 && body.every((cmd) => cmd[0] === 'LREM')) {
         calls.lrem.push(...body.map((cmd) => cmd[3]));
         return { ok: true, json: async () => body.map(() => ({ result: 1 })) };
@@ -233,6 +236,19 @@ describe('notification-relay link suppression (#8401)', () => {
     }
   });
 
+  it('renders observed publisher families on a realtime alert while retaining its original score', async () => {
+    const h = installHarness({ publisherFamilies: ['a', 'b'] });
+    try {
+      const event = { ...makeEvent(), variant: 'full' };
+      event.payload.importanceScore = 83;
+      event.payload.corroborationCount = 1;
+      await relay.processEvent(event);
+      assert.match(h.calls.telegramBodies.join(' '), /Coverage: 2 independent publishers/);
+      assert.equal(event.payload.importanceScore, 83);
+      assert.equal(event.payload.corroborationCount, 1);
+    } finally { h.restore(); }
+  });
+
   it('delivers when the link is not blocked', async () => {
     const h = installHarness({ smembers: ['https://other.example/unrelated'] });
     try {
@@ -326,13 +342,14 @@ describe('notification-relay link suppression (#8401)', () => {
 
   it('re-checks held quiet-hours events on drain and drops newly blocked ones', async () => {
     const blocked = JSON.stringify({ eventType: 'rss_alert', severity: 'high', payload: { title: 'Held phishing lure', link: EVIL } });
-    const clean = JSON.stringify({ eventType: 'rss_alert', severity: 'high', payload: { title: 'Held clean story', link: 'https://reuters.com/x' } });
-    const h = installHarness({ smembers: [EVIL], held: [blocked, clean] });
+    const clean = JSON.stringify({ eventType: 'rss_alert', severity: 'high', variant: 'full', observedPublisherCount: 1, payload: { title: 'Held clean story', link: 'https://reuters.com/x' } });
+    const h = installHarness({ smembers: [EVIL], held: [blocked, clean], publisherFamilies: ['a', 'b', 'c'] });
     try {
       await relay.processEvent({ eventType: 'flush_quiet_held', userId: 'user-1', variant: 'full' });
       assert.equal(h.calls.telegram, 1, 'the clean held event is still delivered');
       const sent = h.calls.telegramBodies.join('\n');
       assert.ok(sent.includes('Held clean story'));
+      assert.match(sent, /Coverage: 3 independent publishers/);
       assert.ok(!sent.includes('Held phishing lure'), 'a link blocked after hold must not ride the batch');
       assert.ok(sent.includes('1 held alert'), 'the batch count excludes the suppressed event');
       assert.ok(h.logs.some((l) => l.includes('[relay][link-suppressed]')), 'drain-time suppression is logged');
