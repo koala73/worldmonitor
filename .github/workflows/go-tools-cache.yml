@@ -65,6 +65,14 @@ jobs:
           GOBIN_DIR="$(go env GOPATH)/bin"
           export PATH="$GOBIN_DIR:$PATH"
           make install-buf install-plugins
+          # install-buf exits 0 when its `go install` fails (the recipe ends in
+          # an echo), and skips when another buf is on PATH. A saved entry
+          # without these binaries would be a permanent hit, so check the
+          # directory being cached before the save step runs.
+          "$GOBIN_DIR/buf" --version
+          for p in protoc-gen-ts-client protoc-gen-ts-server protoc-gen-openapiv3; do
+            [ -x "$GOBIN_DIR/$p" ] || { echo "::error::$p missing from $GOBIN_DIR"; exit 1; }
+          done
 
       - name: Save the Go binaries cache
         if: steps.lookup.outputs.cache-hit != 'true'
