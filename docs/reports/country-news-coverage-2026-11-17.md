@@ -220,7 +220,7 @@ Existing is the number of these selected sources already in the catalog. Country
 | Ukraine (UA) | 4 | 4 | 0 | Kyiv Independent; Ukrainska Pravda; Suspilne; ZN.UA |
 | United Arab Emirates (AE) | 1 | 3 | 1 | The National; Khaleej Times; Gulf News; Reuters — United Arab Emirates |
 | United Kingdom (GB) | 4 | 4 | 0 | BBC UK; Guardian World; Financial Times; Sky News |
-| United States (US) | 4 | 4 | 0 | AP News; New York Times World; NPR News; PBS NewsHour |
+| United States (US) | 4 | 4 | 0 | AP News; Reuters US; NPR News; PBS NewsHour |
 | Uruguay (UY) | 0 | 4 | 0 | El País Uruguay; La Diaria; Brecha; MercoPress |
 | Uzbekistan (UZ) | 0 | 4 | 0 | Gazeta.uz; Kun.uz; Podrobno.uz; The Tashkent Times |
 | Vanuatu (VU) | 0 | 2 | 2 | Vanuatu Daily Post; VBTC Vanuatu; AP — Vanuatu †; BBC — Vanuatu † |
