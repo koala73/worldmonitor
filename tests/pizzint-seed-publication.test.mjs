@@ -1352,14 +1352,41 @@ test('a closed-state publication beside a BestTime that rejects every venue with
   assert.equal(run.state.cache.get(metaKey).data.fetchedAt, heartbeat, 'BestTime did not answer cleanly');
 });
 
-test('an hour-old cached all-closed response with BestTime down publishes its rows as stale', async () => {
+test('an hour-old cached all-closed response with BestTime down keeps the last reading and its time', async () => {
   const run = await quietAfterLive(Date.parse('2026-11-17T15:06:38Z'));
+  const reading = run.status();
+  const envelope = structuredClone(run.state.cache.get(payloadKey).data._seed);
+  const heartbeat = run.state.cache.get(metaKey).data.fetchedAt;
   for (const id of run.ids) run.state.besttime.set(id, { ok: false, status: 503 });
   const recordedAt = '2026-11-17T14:19:53.233Z';
   run.state.source = { ...quietMorning, timestamp: recordedAt, data: quietMorning.data.map(d => ({ ...d, recorded_at: recordedAt })) };
   await advance(run);
   const status = run.status();
+  assert.deepEqual(status, staleReading(reading));
+  assert.deepEqual(run.state.cache.get(payloadKey).data._seed, envelope);
+  assert.equal(run.state.cache.get(metaKey).data.fetchedAt, heartbeat);
+  assert.deepEqual(run.state.logs.at(-1), [`[PizzINT] No live reading; kept the ${new Date(reading.updatedAt).toISOString()} reading, marked stale`]);
   assert.equal(status.dataFreshness, 'DATA_FRESHNESS_STALE', 'an hour-old closed flag is not current');
   assert.ok(status.locations.every(l => l.dataFreshness === 'DATA_FRESHNESS_STALE'));
   assert.equal(pizzIntViewModel({ pizzint: status }, run.state.now).available, false);
+});
+
+test('a fresh closed row does not promote a stale open row to live activity', async () => {
+  const run = await quietAfterLive(lastLiveOnQuietMorning);
+  run.state.source = {
+    ...quietMorning,
+    data: quietMorning.data.map((d, index) => index === 0 ? {
+      ...d, is_closed_now: false, current_popularity: 75, percentage_of_usual: 150,
+      data_freshness: 'stale', recorded_at: '2026-11-17T13:00:00Z',
+    } : d),
+  };
+  run.state.now = quietMorningPoll;
+  await run.seed();
+  const status = run.status();
+  assert.equal(status.dataFreshness, 'DATA_FRESHNESS_FRESH');
+  assert.equal(status.locationsOpen, 0);
+  assert.equal(status.aggregateActivity, 0);
+  assert.equal(status.locations[0].noLiveSignal, true);
+  assert.equal(status.locations[0].dataFreshness, 'DATA_FRESHNESS_STALE');
+  assert.equal(run.state.cache.get(metaKey).data.lastLiveAt, lastLiveOnQuietMorning);
 });
