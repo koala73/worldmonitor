@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import middleware from '../middleware';
 import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache.ts';
-import { renderPizzaIndexSection } from '../scripts/live-pages/pentagon-pizza-index.mjs';
+import { MAX_PUBLISHED_PIZZA_INDEX_AGE_MS, renderPizzaIndexSection } from '../scripts/live-pages/pentagon-pizza-index.mjs';
 
 const PAGE_URL = 'https://www.worldmonitor.app/blog/glossary/pentagon-pizza-index/';
 const BUILT_URL = `${PAGE_URL}?wm-built=1`;
@@ -11,12 +11,13 @@ const STATUS_BASE = 'https://www.worldmonitor.app/api/intelligence/v1/get-pizzin
 const START = '<!--wm-live:pentagon-pizza-index-->';
 const END = '<!--/wm-live:pentagon-pizza-index-->';
 
-// The blog build ships the loading state: the browser fetches the level.
-function builtPage(): string {
+// The blog build ships the loading state when no reading is published, and
+// the dated published reading when one is.
+function builtPage(liveSection: string = renderPizzaIndexSection(null)): string {
   return `<!doctype html><html><body><main>
 <h1>Pentagon Pizza Index</h1>
 <p>The definition.</p>
-${renderPizzaIndexSection(null)}
+${liveSection}
 <section class="faq">FAQ</section>
 </main></body></html>`;
 }
@@ -65,11 +66,11 @@ function stubFetch(route: Route) {
   return calls;
 }
 
-function route(status: () => Response): Route {
+function route(status: () => Response, built: string = builtPage()): Route {
   return (url) => {
     if (url.startsWith(STATUS_BASE)) return status();
     if (url === BUILT_URL) {
-      return new Response(builtPage(), {
+      return new Response(built, {
         status: 200,
         headers: { 'content-type': 'text/html; charset=utf-8', 'content-length': '999', etag: 'W/"built"' },
       });
@@ -93,8 +94,8 @@ function section(html: string): string {
   return html.slice(from, to + END.length);
 }
 
-async function serve(status: () => Response) {
-  const calls = stubFetch(route(status));
+async function serve(status: () => Response, built?: string) {
+  const calls = stubFetch(route(status, built));
   const response = await middleware(pageRequest());
   assert.ok(response instanceof Response);
   return { response, html: await response.text(), calls };
@@ -138,6 +139,31 @@ describe('live Pentagon Pizza Index page HTML', () => {
       const { response, html } = await serve(status);
       assert.equal(html, builtPage());
       assert.equal(response.headers.get('x-wm-live-page'), null);
+    });
+  }
+
+  const published = (ageMs: number) => renderPizzaIndexSection({
+    updatedAt: new Date(Date.now() - ageMs).toISOString(),
+    level: '4',
+    label: 'Above Normal',
+    venues: [{ name: 'Venue A', status: 'Busier than usual' }],
+  }, { live: false });
+
+  for (const [label, status] of [
+    ['the feed has no current level', () => Response.json({ tensionPairs: [] })],
+    ['the API fails', () => new Response('nope', { status: 503 })],
+  ] as const) {
+    it(`keeps a published reading within the age limit when ${label}`, async () => {
+      const built = builtPage(published(2 * 86_400_000));
+      const { html } = await serve(status, built);
+      assert.equal(html, built);
+    });
+
+    it(`drops a published reading past the age limit when ${label}`, async () => {
+      const { html } = await serve(status, builtPage(published(MAX_PUBLISHED_PIZZA_INDEX_AGE_MS + 60_000)));
+      assert.equal(section(html), renderPizzaIndexSection(null));
+      assert.doesNotMatch(html, /data-published-reading|Above Normal/);
+      assert.match(html, /<section class="faq">FAQ<\/section>/, 'the rest of the page is untouched');
     });
   }
 
