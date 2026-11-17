@@ -1053,7 +1053,7 @@ export class SearchModal {
         section = resultSection;
       }
       html += `
-        <div class="search-result-item ${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}">
+        <div class="search-result-item ${resultSection === 'alerts' ? 'search-result-alert ' : ''}${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}">
           <span class="search-result-icon">${icons[result.type]}</span>
           <div class="search-result-content">
             <div class="search-result-title">${this.highlightMatch(result.title)}</div>

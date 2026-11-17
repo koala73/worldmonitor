@@ -92,6 +92,8 @@ describe('SearchModal: alerts sent to you', () => {
     const row = document.querySelector<HTMLElement>('.search-result-item')!;
     expect(row.querySelector('.search-result-subtitle')?.textContent).toBe('Reuters · Sent 17 Nov, 09:00 · reuters.com');
     expect(row.querySelector('.search-result-type')?.textContent).toBe('Alert');
+    // The phone stylesheet keeps the second line only for rows with this class.
+    expect(row.classList.contains('search-result-alert')).toBe(true);
   });
 
   it('keeps commands, alerts and other results in separate sections with continuous option indexes', async () => {
