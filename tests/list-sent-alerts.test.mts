@@ -14,6 +14,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
 import { newsHandler } from '../server/worldmonitor/news/v1/handler';
+import { sentAlertSearchItems, type SentAlertSearchData } from '../src/app/search-alert-source';
 import { mapErrorToResponse } from '../server/error-mapper';
 import { validateGeneratedRequest } from '../server/request-validator';
 import { TRUSTED_USER_ID_HEADER } from '../server/_shared/mcp-internal-hmac';
@@ -139,6 +140,32 @@ describe('ListSentAlerts', () => {
     ]);
   });
 
+  // A quiet-hours batch and a realtime delivery run side by side and each
+  // stores its records when it ends, so the stored order is the order the
+  // passes finished in, not the order the alerts were delivered in.
+  it('lists by delivery time when a slower pass stored an older delivery in front', async () => {
+    const olderDelivery = record('Repeated headline', { sentAt: Date.now() - 3_600_000 });
+    const between = record('Another headline', { sentAt: Date.now() - 60_000, link: 'https://www.reuters.com/world/another' });
+    const newerDelivery = record('Repeated headline', { sentAt: Date.now() - 1_000 });
+    seed('user-a', [olderDelivery, between, newerDelivery]);
+
+    const { body } = await call({ [TRUSTED_USER_ID_HEADER]: 'user-a' });
+    assert.deepEqual(body.alerts.map(alert => alert.sentAt), [newerDelivery.sentAt, between.sentAt, olderDelivery.sentAt]);
+
+    // The search keeps the first of two rows with one title and link, so the
+    // row it shows must be the newer delivery.
+    const repeated = sentAlertSearchItems(body.alerts, () => '').filter(item => item.title === 'Repeated headline');
+    assert.equal(repeated.length, 1);
+    assert.equal((repeated[0]!.data as SentAlertSearchData).sentAt, newerDelivery.sentAt);
+  });
+
+  it('keeps the stored order for alerts delivered in the same millisecond', async () => {
+    const sentAt = Date.now() - 5_000;
+    seed('user-a', [record('Stored first', { sentAt }), record('Stored second', { sentAt })]);
+    const { body } = await call({ [TRUSTED_USER_ID_HEADER]: 'user-a' });
+    assert.deepEqual(body.alerts.map(alert => alert.title), ['Stored first', 'Stored second']);
+  });
+
   it('reads only the key of the authenticated user', async () => {
     seed('user-a', [record('Headline sent to A')]);
     seed('user-b', [record('Headline sent to B')]);
@@ -190,13 +217,15 @@ describe('ListSentAlerts', () => {
 
   it('drops unreadable rows, rows past the retention window and unsafe links', async () => {
     const eightDays = 8 * 24 * 60 * 60 * 1000;
+    // One delivery time for the two kept rows, so their order is the stored one.
+    const sentAt = Date.now() - 60_000;
     seed('user-a', [
       'not json',
       { title: '', sentAt: Date.now() },
       { title: 'No timestamp' },
       record('Expired headline', { sentAt: Date.now() - eightDays }),
-      { ...record('Unsafe link headline'), link: 'javascript:alert(1)' },
-      record('Kept headline'),
+      { ...record('Unsafe link headline', { sentAt }), link: 'javascript:alert(1)' },
+      record('Kept headline', { sentAt }),
     ]);
     const { body } = await call({ [TRUSTED_USER_ID_HEADER]: 'user-a' });
     assert.deepEqual(body.alerts.map(alert => [alert.title, alert.link]), [

@@ -61,6 +61,12 @@ export async function listSentAlerts(
     .map(parseSentAlert)
     .filter((alert): alert is SentAlertRecord => (
       alert !== null && alert.sentAt >= cutoff && !isLinkSuppressed(alert.link, suppressed)
-    ));
+    ))
+    // The relay stores a pass's records when the pass ends, and a quiet-hours
+    // batch runs alongside realtime delivery, so the stored order is not the
+    // delivery order. The search keeps the first of two rows for one headline
+    // and link, which has to be the newest. The sort is stable: alerts sent in
+    // the same millisecond keep their stored order.
+    .sort((a, b) => b.sentAt - a.sentAt);
   return { alerts, state: 'ok' };
 }
