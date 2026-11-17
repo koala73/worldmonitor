@@ -640,10 +640,12 @@ it('stored extended headings follow the core rows without making the core catalo
 });
 
 it('an extended heading is accepted, served from cache with its threshold detail, and never recovered upstream', async () => {
+  // One stamp for both keys: the reader merges detail only from the same run.
+  const fetchedAt = fresh();
   redis.store.set(CANONICAL('JP'), canonicalHelium('JP'));
-  redis.store.set(EXT('JP'), extRubber('JP'));
+  redis.store.set(EXT('JP'), extRubber('JP', fetchedAt));
   redis.store.set(EXT_PARTNERS('JP'), {
-    iso2: 'JP', fetchedAt: fresh(), requestedHs4s: ['4001'],
+    iso2: 'JP', fetchedAt, requestedHs4s: ['4001'],
     products: [{ hs4: '4001', year: 2024, denominatorBasis: 'reported_world', totalValue: 1000,
       partners: [{ partnerCode: 458, partnerIso2: '', value: 600, share: 0.6, netWeightKg: 300_000, netWeightEstimated: false, quantity: null, quantityUnitCode: null }],
       omittedCount: 0, omittedShare: 0 }],
