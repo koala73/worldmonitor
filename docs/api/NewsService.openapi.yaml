@@ -1857,7 +1857,7 @@ paths:
             tags:
                 - NewsService
             summary: SearchHeadlineArchive
-            description: 'SearchHeadlineArchive finds headlines an edition served in the last 7 days: the same search as SearchHeadlines over a longer window, for finding a story days after it left the dashboard. Requires a Pro plan. PRO-gated. Requires entitlement tier >= 1.'
+            description: 'SearchHeadlineArchive finds headlines an edition served in the last 7 days in English, 3 days in most other languages and 1 day in the rest: the same search as SearchHeadlines over a longer window, for finding a story days after it left the dashboard. window_hours says which. Requires a Pro plan. PRO-gated. Requires entitlement tier >= 1.'
             operationId: SearchHeadlineArchive
             security:
                 - WorldMonitorKey: []
@@ -3261,7 +3261,7 @@ components:
                 windowHours:
                     type: integer
                     format: int32
-                    description: Window searched, in hours, counted from when a headline was last served.
+                    description: 'Window searched, in hours, counted from when a headline was last served. The route''s window cut to what the language keeps: at most 168 for en, 72 for the 3-day languages, 24 for the rest.'
                 state:
                     type: string
                     description: complete | unavailable. Unavailable searched nothing.

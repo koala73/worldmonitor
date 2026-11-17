@@ -10,7 +10,7 @@ The command palette is the dashboard's one search surface: countries, panels, ho
 - `search-match` returns ranked entity and command matches for a typed query.
 - `search-close` closes the palette on Escape without trapping focus.
 - `search-mobile` opens the bottom sheet from `#mobileSearchBtn`.
-- `search-headline-history` lists headlines the dashboard served earlier and no longer holds, fetched from the server for the typed query (24 hours signed out or free, 7 days on Pro).
+- `search-headline-history` lists headlines the dashboard served earlier and no longer holds, fetched from the server for the typed query (24 hours signed out or free; on Pro up to 7 days, by language).
 
 ## How to get to it (user POV)
 

@@ -44,7 +44,7 @@ message SearchHeadlinesResponse {
   repeated HeadlineMatch headlines = 1;
   // Headlines searched inside the window.
   int32 searched_headlines = 2;
-  // Window searched, in hours, counted from when a headline was last served.
+  // Window searched, in hours, counted from when a headline was last served. The route's window cut to what the language keeps: at most 168 for en, 72 for the 3-day languages, 24 for the rest.
   int32 window_hours = 3;
   // complete | unavailable. Unavailable searched nothing.
   string state = 4;

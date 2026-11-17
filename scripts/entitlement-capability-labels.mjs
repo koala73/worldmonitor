@@ -38,7 +38,7 @@ export const LABELS = {
   'military.aircraft':['Military aircraft detail','Per-airframe detail lookup'],
   'monitoring.company':['Company monitoring','Monitored company accounts — requires an active paid plan'],
   'news.classification':['AI event classification','LLM classification of incoming events'],
-  'news.headline_archive':['7-day headline search','Search finds headlines from the last 7 days; free accounts search 24 hours'],
+  'news.headline_archive':['Longer headline search','Search finds headlines from the last 7 days in English and 3 days in most other languages; free accounts search 24 hours'],
   'news.summarization':['AI article summarization','Free accounts get translation only'],
   'notifications.channels':['Notifications','Slack, Discord, Telegram, email, webhook, web push'],
   'procurement.tenders':['Global procurement','Tender and procurement intelligence'],

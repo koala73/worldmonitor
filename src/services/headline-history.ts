@@ -4,8 +4,10 @@ import { premiumFetch } from '@/services/premium-fetch';
 
 /**
  * Headline history search: headlines the dashboard's edition served and no
- * longer holds. The server keeps 24 hours for everyone and 7 days for Pro,
- * on two routes; the 7-day route is premium, enforced by the gateway.
+ * longer holds. The server searches 24 hours for everyone and up to 7 days
+ * for Pro, on two routes; the 7-day route is premium, enforced by the
+ * gateway. Both are cut to what the language keeps (English 7 days, most
+ * others 3, the rest 1), and each response's windowHours says which.
  */
 export interface HistoryHeadline {
   title: string;

@@ -1,6 +1,7 @@
 /**
- * Headline history: every headline an edition's digest served, kept for a
- * week so Cmd+K can find one after it has left the dashboard.
+ * Headline history: every headline an edition's digest served, kept for up
+ * to a week (by language, see Retention) so Cmd+K can find one after it has
+ * left the dashboard.
  *
  * The dashboard holds only the current digest (20 items per category), and
  * the alert relay titles a news alert with the served digest item's title,
@@ -34,21 +35,37 @@
  * alert sent two hours ago can be for an article published thirty hours ago,
  * and the window must still cover it.
  *
- * Size, measured on production 2026-11-17 from the digest accumulators: an
- * edition serves about 1,600 distinct headlines per day in one language
- * (tech/en 1,900). Each is stored in about 480 bytes: a 300-byte value (78
- * title, 166 link, 12 source, plus JSON) and a 180-byte field. One cell is
- * about 0.8 MB per day, 7 MB for the nine days a bucket lives. A cell exists
- * for every (edition, language) a digest was built for: 167 that day, 46 of
- * them under a day old, together serving about 120,000 per day. That is about
- * 520 MB retained, about 400 MB for the 121 older cells. Retitles are
- * inside those counts: per day, 2% (tech/en) to 6% (finance/en) more rows
- * than distinct URLs, and no URL under more than 8 wordings in 48 hours.
- * That is a floor, because the accumulators merge near-identical wordings.
+ * Retention is per language (headlineHistoryRetentionDays): English 7 days,
+ * the 17 languages in HEADLINE_HISTORY_THREE_DAY_LANGUAGES 3 days, every
+ * other code 1 day. A route's window is clamped to it, so the 7-day route
+ * searches 3 days of French and 1 day of Ukrainian, and says so in
+ * `windowHours`. A bucket expires when the last of its entries leaves that
+ * window (buildHeadlineHistoryWrite), so no bucket outlives what a search
+ * can read.
+ *
+ * Size, estimated from a read-only scan of the production digest
+ * accumulators on 2026-11-17 (members served in the last 24 hours per
+ * cell): an edition serves about 1,600 distinct headlines per day in one
+ * language (tech/en 1,900). Each is stored in about 480 bytes: a 300-byte
+ * value (78 title, 166 link, 12 source, plus JSON) and a 180-byte field, so
+ * one large cell is about 0.8 MB per day. A cell exists for every (edition,
+ * language) a digest was built for: 167 that day, serving about 123,000 per
+ * day. A cell holds at most its retention plus one day of buckets:
+ *   en        6 cells,  5,900 a day, 8 days   about  23 MB
+ *   3-day    98 cells, 73,500 a day, 4 days   about 141 MB
+ *   1-day    63 cells, 43,200 a day, 2 days   about  42 MB
+ * About 205 MB at the peak, where one 9-day expiry for every cell held about
+ * 530 MB. The 63 one-day cells cover 44 languages, most of which the
+ * dashboard has no interface for (the digest builds a cell for any feed
+ * language asked for). Retitles are inside those counts: per day, 2%
+ * (tech/en) to 6% (finance/en) more rows than distinct URLs, and no URL under
+ * more than 8 wordings in 48 hours. That is a floor, because the
+ * accumulators merge near-identical wordings.
  * A search reads values only: a 24-hour search reads two buckets (about
- * 1 MB), a 7-day search eight (about 4 MB), which is why the read is
- * memoized per isolate, why a read the memo cannot answer is charged to the
- * caller (INDEX_READS_PER_CALLER), and why the window stops at seven days.
+ * 1 MB), a 3-day search four (about 3 MB), a 7-day English search eight
+ * (about 4 MB), which is why the read is memoized per isolate, why a read
+ * the memo cannot answer is charged to the caller (INDEX_READS_PER_CALLER),
+ * and why the window stops at seven days.
  *
  * Revocations: an article an operator revoked (_shared/digest-revocations.ts)
  * is left out of every answer. Only the headlines are memoized. The revoked
@@ -67,8 +84,52 @@ export const HEADLINE_SEARCH_MAX_RESULTS = 20;
 export const HEADLINE_SEARCH_MIN_QUERY_CHARS = 2;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** A bucket outlives the 7-day window by one day for the partial first day, and one more of slack. */
-const BUCKET_RETENTION_DAYS = 9;
+const HOUR_MS = 60 * 60 * 1000;
+
+/**
+ * Days of headline history kept per digest language, decided by the owner on
+ * 2026-11-17 from how many real sessions read each feed language.
+ *
+ * Measured in Umami, real browser sessions 2026-10-18 to 2026-11-16, browser
+ * language mapped to the feed language (unsupported languages count as en):
+ * en 66.6%; fr 6.5, de 4.1, zh 3.7, es 3.5, it 3.0, tr 2.1, pt 1.8, ar 1.8,
+ * ja 1.65, ru 1.2, pl 0.9, ko 0.7, nl 0.6, vi 0.37, cs 0.33, sv 0.31,
+ * th 0.31 (each at least about 1,000 session-days in the 30 days); then uk
+ * 0.13, hu 0.12, el 0.12, ro 0.12, fa 0.07, hr 0.04, bg 0.04, hi 0.01, sw
+ * 0.00 (each under about 15 session-days a day). Revisit with a fresh
+ * measurement before moving a language between tiers.
+ */
+const HEADLINE_HISTORY_ENGLISH_DAYS = 7;
+const HEADLINE_HISTORY_STANDARD_DAYS = 3;
+const HEADLINE_HISTORY_RARE_DAYS = 1;
+export const HEADLINE_HISTORY_THREE_DAY_LANGUAGES: ReadonlySet<string> = new Set([
+  'fr', 'de', 'zh', 'es', 'it', 'tr', 'pt', 'ar', 'ja', 'ru', 'pl', 'ko', 'nl', 'vi', 'cs', 'sv', 'th',
+]);
+/**
+ * The interface languages that keep one day: uk, hu, el, ro, fa, hr, bg, hi,
+ * sw. Listed for the record only. Any code in neither list keeps one day too,
+ * including feed languages with no interface and codes added later, so a new
+ * cell name cannot grow storage until someone puts it in a list.
+ */
+export const HEADLINE_HISTORY_ONE_DAY_LANGUAGES: ReadonlySet<string> = new Set([
+  'uk', 'hu', 'el', 'ro', 'fa', 'hr', 'bg', 'hi', 'sw',
+]);
+
+/**
+ * Days of history kept for a digest language. The base code decides, so
+ * zh-TW follows zh. Editions do not change it.
+ */
+export function headlineHistoryRetentionDays(lang: string): number {
+  const base = (typeof lang === 'string' ? lang : '').toLowerCase().split(/[-_]/)[0] ?? '';
+  if (base === 'en') return HEADLINE_HISTORY_ENGLISH_DAYS;
+  if (HEADLINE_HISTORY_THREE_DAY_LANGUAGES.has(base)) return HEADLINE_HISTORY_STANDARD_DAYS;
+  return HEADLINE_HISTORY_RARE_DAYS;
+}
+
+/** The window a route asks for, cut to what the language keeps. */
+export function headlineHistoryWindowHours(requestedHours: number, lang: string): number {
+  return Math.min(requestedHours, headlineHistoryRetentionDays(lang) * 24);
+}
 /** A digest serves at most 20 items in each of about 20 categories. */
 const MAX_ITEMS_PER_WRITE = 1000;
 /**
@@ -102,8 +163,10 @@ const MAX_INDEXES = 6;
  *
  * What it caps. One caller reads at most 72 indexes an hour. A 24-hour read
  * of a large cell is about 0.6 to 1 MB, so about 70 MB an hour, where the
- * route limit alone (60 requests a minute) allowed about 3.6 GB. A 7-day read
- * is about 4 MB, so about 290 MB an hour, and that route needs a Pro account.
+ * route limit alone (60 requests a minute) allowed about 3.6 GB. The Pro
+ * route reads at most about 4 MB (English, 7 days; a 3-day language about
+ * 3 MB, a 1-day language the same as the 24-hour route), so at most about
+ * 290 MB an hour, and that route needs a Pro account.
  * Cell sizes, estimated on production 2026-11-17 from the digest accumulators
  * at 300 bytes a value: 37 cells read 0.5 MB or more for 24 hours, and 34 of
  * them are not English (full/pt, tech/zh and full/zh are as large as full/en),
@@ -163,7 +226,16 @@ function headlineHistoryField(link: string, titleKey: string): string {
 
 /**
  * The Redis commands that record one digest build's served items: one HSET of
- * every indexable item into today's bucket, then the bucket's fixed expiry.
+ * every indexable item into today's bucket, then the bucket's expiry.
+ *
+ * The expiry is the start of the served day plus the language's retention
+ * plus one day. The bucket for day D holds entries served from D 00:00 up to
+ * D+1 00:00, and a search over R days needs an entry until R days after it
+ * was served, so the last entry (served just before D+1) is needed until
+ * D+1+R. At that instant the search's cutoff is D+1 and readIndex no longer
+ * lists bucket D, so no read finds it missing: the extra day is the partial
+ * served day and nothing more. English buckets live 8 days from the day's
+ * start, 3-day languages 4, the rest 2.
  */
 export function buildHeadlineHistoryWrite(
   items: readonly ServedHeadline[],
@@ -201,7 +273,7 @@ export function buildHeadlineHistoryWrite(
   const dayStartMs = Math.floor(nowMs / DAY_MS) * DAY_MS;
   return [
     ['HSET', key, ...[...fields].flat()],
-    ['EXPIREAT', key, Math.floor((dayStartMs + BUCKET_RETENTION_DAYS * DAY_MS) / 1000)],
+    ['EXPIREAT', key, Math.floor((dayStartMs + (headlineHistoryRetentionDays(lang) + 1) * DAY_MS) / 1000)],
   ];
 }
 
@@ -268,7 +340,7 @@ function parseEntry(raw: unknown): PoolEntry | null {
 const UNREADABLE: HeadlineIndex = { readable: false, entries: [] };
 
 async function readIndex(variant: string, lang: string, windowHours: number, nowMs: number): Promise<HeadlineIndex> {
-  const cutoff = nowMs - windowHours * 60 * 60 * 1000;
+  const cutoff = nowMs - windowHours * HOUR_MS;
   const keys: string[] = [];
   for (let day = Math.floor(cutoff / DAY_MS); day <= Math.floor(nowMs / DAY_MS); day += 1) {
     keys.push(headlineHistoryBucketKey(variant, lang, day * DAY_MS));
@@ -404,16 +476,22 @@ export interface HeadlineHistorySearch {
  * Headlines the (edition, language) digest served in the window whose title
  * holds every query word. A title holding the words as one phrase ranks
  * first; within a rank, newest publication first.
+ *
+ * The window is the route's, cut to the language's retention, and the answer
+ * names the window it used: the 7-day route searches 72 hours of French. The
+ * cut comes before the index is loaded, so only the buckets inside it are
+ * read, and every route that ends up with the same window shares one index.
  */
 export async function searchHeadlineHistory(
   words: readonly string[],
   variant: string,
   lang: string,
-  windowHours: number,
+  requestedHours: number,
   /** Who is charged when the index has to be read: an account or an address. */
   caller: string,
   nowMs = Date.now(),
 ): Promise<HeadlineHistorySearch> {
+  const windowHours = headlineHistoryWindowHours(requestedHours, lang);
   // Revocations are read for every request and never memoized: an article an
   // operator pulled a second ago must not be answered from a minute-old view,
   // and a check that failed must fail this request closed.
@@ -436,7 +514,7 @@ export async function searchHeadlineHistory(
   // The memoized index is up to a minute old and the window keeps moving, so
   // the cutoff is applied here too. Entries are last served first: the first
   // one outside the window ends the walk.
-  const cutoff = nowMs - windowHours * 60 * 60 * 1000;
+  const cutoff = nowMs - windowHours * HOUR_MS;
   for (const entry of index.entries) {
     if (entry.lastServedAt < cutoff) break;
     if (revoked.urls.has(entry.link) || titles.has(entry.key)) continue;

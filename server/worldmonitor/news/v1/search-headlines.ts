@@ -35,6 +35,9 @@ function headlineSearchCaller(request: Request): string {
  * decides the depth by which URL a caller may reach, never by a parameter:
  *   /search-headlines          24 hours, any dashboard session
  *   /search-headline-archive   7 days, in PREMIUM_RPC_PATHS (gateway-enforced)
+ * Either window is cut to what the language keeps (English 7 days, most
+ * others 3, the rest 1: headlineHistoryRetentionDays), and the response's
+ * windowHours names the window searched.
  * Both routes are no-store in the gateway (RPC_CACHE_TIER): the history drops
  * revoked articles on every request, so no cache may answer in its place.
  */

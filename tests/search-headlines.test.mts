@@ -111,7 +111,11 @@ beforeEach(() => {
         return { result: 1 };
       }
       assert.equal(verb, 'HVALS', 'the search reads hashes only');
-      return failReads ? { error: 'fixture read failure' } : { result: [...(hashes.get(key!)?.values() ?? [])] };
+      if (failReads) return { error: 'fixture read failure' };
+      // A key past its EXPIREAT is gone, as in Redis.
+      const expiresAt = expiries.get(key!);
+      if (expiresAt !== undefined && expiresAt * 1000 <= Date.now()) return { result: [] };
+      return { result: [...(hashes.get(key!)?.values() ?? [])] };
     }));
   };
 });
@@ -128,7 +132,7 @@ afterEach(() => {
 });
 
 describe('headline history write', () => {
-  it('records a build in one HSET on the served day and a fixed nine-day expiry', () => {
+  it('records a build in one HSET on the served day, kept for the English window plus the partial day', () => {
     const write = buildHeadlineHistoryWrite([
       item('Rates held at 4.5%', 'https://www.reuters.com/a'),
       item('Port strike ends', 'https://www.bbc.com/b', 'BBC World'),
@@ -141,7 +145,29 @@ describe('headline history write', () => {
     assert.deepEqual(JSON.parse(String(hset![3])), {
       t: 'Rates held at 4.5%', s: 'Reuters World', l: 'https://www.reuters.com/a', p: NOW - HOUR, a: NOW,
     });
-    assert.deepEqual(expire, ['EXPIREAT', 'news:headline-history:v1:full:en:2026-11-17', Date.UTC(2026, 10, 26) / 1000]);
+    assert.deepEqual(expire, ['EXPIREAT', 'news:headline-history:v1:full:en:2026-11-17', Date.UTC(2026, 10, 25) / 1000]);
+  });
+
+  it('keeps a bucket for its language\'s retention plus one day, and an unknown language for one day', () => {
+    const expiryDay = (lang: string, at = NOW) => {
+      const write = buildHeadlineHistoryWrite([item('Rates held at 4.5%', 'https://www.reuters.com/a')], 'full', lang, at);
+      assert.equal(write[1]![0], 'EXPIREAT');
+      return new Date(Number(write[1]![2]) * 1000).toISOString();
+    };
+    // Served 2026-11-17: the bucket must last until its last entry leaves the window.
+    assert.equal(expiryDay('en'), '2026-11-25T00:00:00.000Z', 'English: 7 days');
+    for (const lang of ['fr', 'de', 'zh', 'es', 'it', 'tr', 'pt', 'ar', 'ja', 'ru', 'pl', 'ko', 'nl', 'vi', 'cs', 'sv', 'th']) {
+      assert.equal(expiryDay(lang), '2026-11-21T00:00:00.000Z', `${lang}: 3 days`);
+    }
+    assert.equal(expiryDay('zh-TW'), '2026-11-21T00:00:00.000Z', 'zh-TW follows zh');
+    for (const lang of ['uk', 'hu', 'el', 'ro', 'fa', 'hr', 'bg', 'hi', 'sw']) {
+      assert.equal(expiryDay(lang), '2026-11-19T00:00:00.000Z', `${lang}: 1 day`);
+    }
+    for (const lang of ['az', 'tet', 'xx', 'qq-ZZ', '']) {
+      assert.equal(expiryDay(lang), '2026-11-19T00:00:00.000Z', `unknown "${lang}" gets the shortest tier`);
+    }
+    // The expiry counts from the start of the served day, not the build time.
+    assert.equal(expiryDay('fr', Date.UTC(2026, 10, 17, 23, 59, 59)), '2026-11-21T00:00:00.000Z');
   });
 
   it('skips an item nobody could open or read', () => {
@@ -316,6 +342,66 @@ describe('headline search', () => {
     const pro = await search(archiveRoute, 'cabinet');
     assert.deepEqual(titles(pro.payload).sort(), ['Cabinet reshuffle announced', 'Cabinet talks collapse']);
     assert.equal(pro.payload.windowHours, 168);
+  });
+
+  it('clamps the Pro window to the language\'s retention and reads no bucket outside it', async () => {
+    const cases = [
+      { lang: 'en', hours: 168, buckets: 8 },
+      { lang: 'fr', hours: 72, buckets: 4 },
+      { lang: 'uk', hours: 24, buckets: 2 },
+      { lang: 'az', hours: 24, buckets: 2 },
+    ];
+    for (const { lang, hours, buckets } of cases) {
+      history.resetPools();
+      await served(NOW - 2 * 24 * HOUR, [item(`Budget vote two days ago ${lang}`, `https://www.reuters.com/two-${lang}`)], 'full', lang);
+      await served(NOW - 6 * 24 * HOUR, [item(`Budget vote six days ago ${lang}`, `https://www.reuters.com/six-${lang}`)], 'full', lang);
+      await served(NOW, [item(`Budget vote today ${lang}`, `https://www.reuters.com/today-${lang}`)], 'full', lang);
+      commands = [];
+      const { payload } = await search(archiveRoute, 'budget vote', `&lang=${lang}`);
+      assert.equal(payload.windowHours, hours, `${lang}: the response names the window it searched`);
+      const reads = commands.filter(command => command[0] === 'HVALS').map(command => command[1]!);
+      assert.equal(reads.length, buckets, `${lang}: ${buckets} day buckets read`);
+      assert.ok(reads.every(key => key.includes(`:full:${lang}:`)));
+      const expected = [`Budget vote today ${lang}`];
+      if (hours >= 72) expected.push(`Budget vote two days ago ${lang}`);
+      if (hours >= 168) expected.push(`Budget vote six days ago ${lang}`);
+      assert.deepEqual(titles(payload), expected, `${lang}: only what the retention keeps`);
+
+      const free = await search(freeRoute, 'budget vote', `&lang=${lang}`);
+      assert.equal(free.payload.windowHours, 24, `${lang}: the free route stays 24 hours`);
+    }
+  });
+
+  it('names the clamped window when the search did not run', async () => {
+    failReads = true;
+    const { payload } = await search(archiveRoute, 'budget vote', '&lang=fr');
+    assert.equal(payload.state, 'unavailable');
+    assert.equal(payload.windowHours, 72);
+  });
+
+  it('keeps each bucket exactly as long as the reader asks for it', async () => {
+    // The last moment of a served day is the entry a bucket must keep longest.
+    const lastMoment = Date.UTC(2026, 10, 10, 23, 59, 59, 999);
+    for (const lang of ['en', 'fr', 'uk', 'az']) {
+      history.resetPools();
+      mock.timers.setTime(lastMoment);
+      await served(lastMoment, [item(`Ceasefire holds ${lang}`, `https://www.reuters.com/ceasefire-${lang}`)], 'full', lang);
+      const key = headlineHistoryBucketKey('full', lang, lastMoment);
+      const expiresAtMs = expiries.get(key)! * 1000;
+
+      mock.timers.setTime(expiresAtMs - 1);
+      const before = await search(archiveRoute, 'ceasefire holds', `&lang=${lang}`);
+      assert.deepEqual(titles(before.payload), [`Ceasefire holds ${lang}`], `${lang}: still inside the window a millisecond before expiry`);
+
+      history.resetPools();
+      commands = [];
+      mock.timers.setTime(expiresAtMs);
+      await search(archiveRoute, 'ceasefire holds', `&lang=${lang}`);
+      assert.ok(
+        !commands.some(command => command[0] === 'HVALS' && command[1] === key),
+        `${lang}: the reader no longer asks for the bucket once it has expired`,
+      );
+    }
   });
 
   it('measures the window from when a headline was last served, not when it was published', async () => {
