@@ -188,7 +188,10 @@ describe('root dependency cache (#8710)', () => {
         assert.ok(install, `${jobId} must use the shared root dependency action`);
         assert.equal(setup.with['node-version'], '24');
         assert.equal(setup.with.cache, setupCache);
-        assert.equal(install.with?.['npm-cache'], setupCache === undefined ? undefined : 'false');
+        const expectedNpmCache = setupCache === undefined ? undefined
+          // Exactly one of setup-node and the action restores ~/.npm in each part.
+          : setupCache === 'npm' ? 'false' : "${{ startsWith(matrix.part, 'plugin-') && 'true' || 'false' }}";
+        assert.equal(install.with?.['npm-cache'], expectedNpmCache);
         assert.ok(steps.indexOf(setup) < steps.indexOf(install));
         assert.equal(steps.some((step) => step.run === 'npm ci'), false);
       });

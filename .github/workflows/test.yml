@@ -1240,8 +1240,10 @@ jobs:
           cache-dependency-path: pro-test/package-lock.json
       - uses: ./.github/actions/install-root-deps
         with:
-          # setup-node restores the npm cache for this job's other install.
-          npm-cache: 'false'
+          # The /pro parts restore ~/.npm through setup-node. The plugin parts
+          # restore nothing there, so a node_modules miss uses the action's
+          # root download cache instead.
+          npm-cache: ${{ startsWith(matrix.part, 'plugin-') && 'true' || 'false' }}
       - name: Resolve Playwright version
         id: playwright-version
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
