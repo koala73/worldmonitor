@@ -130,7 +130,8 @@ function validTranslation(source, out, lang) {
     if (!text.includes(url)) return false;
   }
   for (const url of text.match(URL_RE) ?? []) {
-    if (!sourceUrls.includes(url) && !sourceUrls.includes(url.replace(/[.,;:!?]+$/, ''))) return false;
+    const ok = sourceUrls.some((src) => url.startsWith(src) && /^[.,;:!?]*$/.test(url.slice(src.length)));
+    if (!ok) return false;
   }
   if (source.length < MIN_CHECKED_LENGTH) {
     if (text.length > Math.max(SHORT_SOURCE_MAX_LEN, source.length * MAX_RATIO)) return false;
