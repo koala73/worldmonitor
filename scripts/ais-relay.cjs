@@ -9751,6 +9751,7 @@ async function seedPizzint() {
   let archive;
   try {
     let raw = null;
+    let primaryAnswered = false;
     try {
       const resp = await fetch(PIZZINT_API, {
         headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
@@ -9760,6 +9761,7 @@ async function seedPizzint() {
         console.warn(`[PizzINT] Seed failed: HTTP ${resp.status}`);
       } else {
         raw = await resp.json();
+        primaryAnswered = raw.success === true && Array.isArray(raw.data);
         if (!raw.success || !Array.isArray(raw.data) || raw.data.length === 0) {
           const reason = !raw.success ? 'unsuccessful_response'
             : !Array.isArray(raw.data) ? 'non_array_data' : 'empty_array';
@@ -9795,7 +9797,7 @@ async function seedPizzint() {
     const fallback = besttimeLive || !hasFreshClosed ? besttime : null;
     // The heartbeat needs every polled provider to have answered cleanly; a BestTime
     // that answered no venue at all returns null.
-    const answered = !besttimeKey || besttime?.answered === true;
+    const answered = primaryAnswered && (!besttimeKey || besttime?.answered === true);
 
     const locations = fallback?.locations || raw.data.map((d) => ({
       placeId: d.place_id || '',
