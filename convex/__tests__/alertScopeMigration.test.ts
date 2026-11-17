@@ -285,6 +285,21 @@ describe("alert scope notice", () => {
     expect(body.text).not.toContain("off until");
   });
 
+  // freeTierCountryScope delivers a free rule only within its first 3
+  // countries, so a lapsed account's notice names only those.
+  test("names only the countries the free ladder delivers after a plan lapses", async () => {
+    const t = convexTest(schema, modules);
+    const ruleId = await seedRule(t, "lapsed1");
+    await migrate(t, false);
+    await t.run(async (ctx) => ctx.db.patch(ruleId as any, { countries: ["UA", "IL", "FR", "DE", "JP"] }));
+    await seedCustomer(t, "lapsed1", "lapsed@example.com");
+
+    const [body] = await sendAll(t);
+    expect(body.text).toContain("Ukraine, Israel, France.");
+    expect(body.text).not.toContain("Germany");
+    expect(body.text).not.toContain("Japan");
+  });
+
   test("escapes a country name that is not a known region code", () => {
     const { html } = alertScopeNoticeContent(["<b>"]);
     expect(html).not.toContain("<b>");

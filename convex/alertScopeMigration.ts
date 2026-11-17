@@ -153,7 +153,12 @@ export const listPendingNotices = internalQuery({
         .query("alertRules")
         .withIndex("by_user", (q) => q.eq("userId", userId))
         .collect();
-      for (const rule of rules) currentCountries.set(rule._id, rule.countries ?? []);
+      for (const rule of rules) {
+        const countries = rule.countries ?? [];
+        // The free ladder delivers each rule only within its first maxCountries
+        // (freeTierCountryScope), so a lapsed plan's extra countries go unnamed.
+        currentCountries.set(rule._id, caps.requireCountryScope ? countries.slice(0, caps.maxCountries) : countries);
+      }
       const hasScopedRealtimeRule = rules.some(
         (rule) => rule.enabled && (rule.digestMode ?? "realtime") === "realtime" && (rule.countries?.length ?? 0) > 0,
       );
