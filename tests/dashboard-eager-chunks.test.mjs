@@ -375,6 +375,46 @@ describe('country-qualified observations stay outside the dashboard App graph', 
   });
 });
 
+// The map popup ships with every dashboard visit (MapContainer → Map/deck-stack),
+// but the satellite-pass engine behind its reservoir and imagery rows runs only
+// when someone opens one of those popups. A static import from the popup graph
+// put the engine (~57 KB gz) and satellite.js (~12 KB gz) on every landing.
+// The markers are string literals that survive minification: one from the pass
+// client, one from the object-imagery loader.
+const LANDING_GRAPH_ENTRIES = ['App', 'MapContainer', 'Map', 'deck-stack'];
+const ORBITAL_ENGINE_MARKERS = [
+  'Orbital pass worker did not become ready',
+  'radar water-extent summary unavailable',
+];
+
+describe('orbital pass engine stays out of the landing map graph', { skip: shouldSkipDashboard() }, () => {
+  guardDashboardBuild();
+  const { assets } = loadDashboardBuild();
+  const assetsDir = resolve(distDir, 'assets');
+  const entryFiles = LANDING_GRAPH_ENTRIES
+    .map(name => assets.find(file => new RegExp(`^${escapeRegExp(name)}-[A-Za-z0-9_-]+\\.js$`).test(file)))
+    .filter(Boolean);
+  const landingGraph = [...new Set(entryFiles.flatMap(file => collectStaticChunkGraph(file)))];
+
+  it('finds the landing map entry chunks', () => {
+    for (const name of ['App', 'MapContainer', 'Map']) {
+      assert.ok(entryFiles.some(file => file.startsWith(`${name}-`)), `${name}-*.js chunk should exist in dist/assets`);
+    }
+  });
+
+  it('keeps satellite.js out of the static graph', () => {
+    const reachable = landingGraph.filter(file => file.startsWith('satellite.es-'));
+    assert.deepEqual(reachable, [], 'satellite.es must load only when a pass is computed');
+  });
+
+  it('keeps the pass client and imagery loader out of the static graph', () => {
+    for (const marker of ORBITAL_ENGINE_MARKERS) {
+      const holders = landingGraph.filter(file => readFileSync(resolve(assetsDir, file), 'utf-8').includes(marker));
+      assert.deepEqual(holders, [], `"${marker}" must sit in a chunk the map popup imports on demand`);
+    }
+  });
+});
+
 describe('correlation-engine lazy boot failure handling', () => {
   it('keeps the dynamic import locally handled', () => {
     const src = readFileSync(resolve(repoRoot, 'src/App.ts'), 'utf-8');
