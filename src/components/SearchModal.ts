@@ -148,6 +148,7 @@ export class SearchModal {
   private onHumanInteraction?: () => void;
   private onQueryChange?: (rawInput: string) => void;
   private onFlightSearch?: (callsign: string) => void;
+  private onOpen?: () => void;
   private currentFlightCallsign: string | null = null;
   private flightSearchFired = false;
   private placeholder: string;
@@ -289,6 +290,11 @@ export class SearchModal {
     this.onFlightSearch = callback;
   }
 
+  /** Runs each time the palette opens, so a source can refresh without a per-keystroke fetch. */
+  public setOnOpen(callback: () => void): void {
+    this.onOpen = callback;
+  }
+
   public refreshSearch(): void {
     if (this.overlay) this.handleSearch();
   }
@@ -389,6 +395,7 @@ export class SearchModal {
     } else {
       this.showRecentOrEmpty();
     }
+    this.onOpen?.();
   }
 
   public close(origin: OverlayCloseOrigin = 'control'): void {
@@ -1006,6 +1013,7 @@ export class SearchModal {
       centralbank: '\u{1F3E6}',
       commodityhub: '\u{1F4E6}',
       flight: '✈',
+      alert: '\u{1F514}',
     };
 
     let html = '';
@@ -1028,12 +1036,22 @@ export class SearchModal {
           </div>`;
         globalIndex++;
       }
-      if (this.results.length > 0) {
-        html += `<div class="search-section-header">${t('modals.search.results')}</div>`;
-      }
     }
 
+    // Alerts sent to the user get their own section; every other result keeps
+    // the "Results" heading, shown when something precedes it. Headers carry
+    // no data-index, so option indexes are unchanged.
+    let section: 'none' | 'commands' | 'alerts' | 'results' = this.commandResults.length > 0 ? 'commands' : 'none';
     for (const result of this.results) {
+      const resultSection = result.type === 'alert' ? 'alerts' : 'results';
+      if (resultSection !== section) {
+        if (resultSection === 'alerts') {
+          html += `<div class="search-section-header" data-search-section="alerts">${escapeHtml(t('modals.search.sentAlerts'))}</div>`;
+        } else if (section !== 'none') {
+          html += `<div class="search-section-header">${t('modals.search.results')}</div>`;
+        }
+        section = resultSection;
+      }
       html += `
         <div class="search-result-item ${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}">
           <span class="search-result-icon">${icons[result.type]}</span>

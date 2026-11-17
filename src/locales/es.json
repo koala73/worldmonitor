@@ -629,7 +629,8 @@
         "techevent": "Evento tecnológico",
         "techhq": "Sede tecnológica",
         "accelerator": "Aceleradora",
-        "flight": "Vuelo"
+        "flight": "Vuelo",
+        "alert": "Alerta"
       },
       "placeholderTech": "Buscar o escribir un comando...",
       "placeholderFinance": "Buscar o escribir un comando...",
@@ -643,7 +644,9 @@
       "flightMilitaryOnGround": "Militar · {{type}} · en tierra",
       "flightSearchHint": "Presiona Enter o haz clic para buscar la posición en vivo",
       "flightNotFound": "No se encontró posición en vivo para {{callsign}}",
-      "addPanel": "Añadir"
+      "addPanel": "Añadir",
+      "sentAlerts": "Alertas enviadas",
+      "sentAlertTime": "Enviada {{time}}"
     },
     "signal": {
       "title": "ENCUENTRO DE INTELIGENCIA",

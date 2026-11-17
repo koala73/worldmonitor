@@ -702,14 +702,17 @@
         "techevent": "टेक इवेंट",
         "techhq": "टेक मुख्यालय",
         "accelerator": "एक्सेलेरेटर",
-        "flight": "उड़ान"
+        "flight": "उड़ान",
+        "alert": "अलर्ट"
       },
       "flightOnGround": "जमीं पर",
       "flightAirborne": "FL{{fl}} · {{kts}} नॉट",
       "flightMilitary": "सैन्य · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "सैन्य · {{type}} · जमीन पर",
       "flightSearchHint": "लाइव स्थिति देखने के लिए Enter दबाएं या क्लिक करें",
-      "flightNotFound": "{{callsign}} के लिए कोई लाइव स्थिति नहीं मिली"
+      "flightNotFound": "{{callsign}} के लिए कोई लाइव स्थिति नहीं मिली",
+      "sentAlerts": "आपको भेजे गए अलर्ट",
+      "sentAlertTime": "{{time}} को भेजा गया"
     },
     "signal": {
       "title": "इंटेलिजेंस खोज",

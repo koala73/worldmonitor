@@ -150,7 +150,11 @@ export class WebMcpSearchController {
       }
     }
 
-    const matches = searchResult.orderedMatches;
+    // Alerts sent to the user are account-private history. The palette shows
+    // them to the signed-in human; an in-page agent is not given their titles.
+    const matches = searchResult.orderedMatches.filter(
+      (match) => !(match.kind === 'result' && match.result.type === 'alert'),
+    );
     const targetCancellationSupported = Boolean(signal);
     const candidates = matches.slice(0, limit).map((match) => ({
       match,

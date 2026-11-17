@@ -629,7 +629,8 @@
         "techevent": "テックイベント",
         "techhq": "テック本社",
         "accelerator": "アクセラレーター",
-        "flight": "フライト"
+        "flight": "フライト",
+        "alert": "アラート"
       },
       "flightOnGround": "地上",
       "flightAirborne": "FL{{fl}} · {{kts}} ノット",
@@ -637,7 +638,9 @@
       "flightMilitaryOnGround": "軍用機 · {{type}} · 地上",
       "flightSearchHint": "Enterキーを押すか、クリックしてライブ位置を検索",
       "flightNotFound": "{{callsign}} のライブ位置が見つかりません",
-      "addPanel": "追加"
+      "addPanel": "追加",
+      "sentAlerts": "あなたに送信されたアラート",
+      "sentAlertTime": "{{time}}に送信"
     },
     "signal": {
       "title": "インテリジェンス所見",

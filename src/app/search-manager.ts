@@ -56,6 +56,7 @@ import {
   suppressNextAgentPanelView,
 } from '@/services/agent-analytics-privacy';
 import { SearchSelectionDispatcher } from '@/app/search-selection-dispatcher';
+import { attachSentAlertSearch } from '@/app/search-alert-wiring';
 import { WebMcpSearchController } from '@/app/webmcp-search-controller';
 import type {
   DashboardSearchOpenResult,
@@ -200,6 +201,7 @@ export class SearchManager implements AppModule {
   private liveFlightLookupGeneration = 0;
   private acceptLateBaseHydration = true;
   private searchIndexReady: Promise<void> = Promise.resolve();
+  private detachSentAlertSearch: (() => void) | null = null;
 
   constructor(ctx: AppContext, callbacks: SearchManagerCallbacks) {
     this.ctx = ctx;
@@ -217,6 +219,7 @@ export class SearchManager implements AppModule {
       resolveExecutableNewsPanel: (link) => this.resolveExecutableNewsPanel(link),
       saveToStorage,
       setTheme,
+      openExternalLink: (url) => { window.open(url, '_blank', 'noopener,noreferrer'); },
       // Must stay wrapped, not passed bare: the dispatcher invokes these as
       // `this.bindings.setTimeout(...)` / `this.bindings.clearTimeout(...)`,
       // a method call. The native functions require the receiver to be the
@@ -297,6 +300,8 @@ export class SearchManager implements AppModule {
     this.liveFlightLookupGeneration += 1;
     this.acceptLateBaseHydration = false;
     this.ctx.searchModal?.cancelPendingWork();
+    this.detachSentAlertSearch?.();
+    this.detachSentAlertSearch = null;
     this.webMcpSearch.destroy();
     this.searchSelection.destroy();
     this.flightSearchItems = [];
@@ -495,6 +500,10 @@ export class SearchManager implements AppModule {
     this.ctx.searchModal.setOnFlightSearch((callsign) => {
       this.handleLiveFlightSearch(callsign);
     });
+    // "Alerts sent to you": fetched when the palette opens, not here, so
+    // building the index never waits on an account-private request.
+    this.detachSentAlertSearch?.();
+    this.detachSentAlertSearch = attachSentAlertSearch(this.ctx.searchModal);
 
   }
 
@@ -814,6 +823,10 @@ export class SearchManager implements AppModule {
           && this.hasLivePanelTarget('polymarket');
       case 'flight':
         return hasPremiumAccess(getAuthState());
+      case 'alert':
+        // Human-only: WebMcpSearchController leaves alerts out of agent
+        // search, and this keeps a forged or stale key from opening one.
+        return false;
       default:
         return true;
     }

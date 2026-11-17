@@ -21,6 +21,9 @@ const MOBILE_MAX_RESULTS = 5;
 
 const RESULT_TYPE_PRIORITY: readonly SearchResultType[] = [
   'flight',
+  // Ahead of news: a user who types a headline from an alert is looking for
+  // that alert, and on a phone only the first types fit.
+  'alert',
   'news', 'prediction', 'market', 'earthquake', 'outage',
   'conflict', 'hotspot', 'country',
   'base', 'pipeline', 'cable', 'datacenter', 'nuclear', 'irradiator',
@@ -112,6 +115,7 @@ function matchCommands(
 function resultPerTypeLimit(type: SearchResultType, isMobile: boolean): number {
   if (isMobile) return 2;
   if (type === 'news') return 6;
+  if (type === 'alert') return 5;
   if (type === 'country') return 4;
   return 3;
 }
@@ -188,7 +192,9 @@ export function querySearchIndex(options: SearchIndexQueryOptions): SearchIndexQ
         title: item.title,
         subtitle: item.subtitle,
         data: item.data,
-        _score: (
+        // A title that is the whole query outranks a prefix match, so a
+        // pasted headline lists the item it names first.
+        _score: titleLower.trim() === query ? 3 : (
           titleLower.startsWith(query)
           || subtitleLower.startsWith(query)
           || searchTextLower.startsWith(query)

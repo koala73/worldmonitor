@@ -2027,6 +2027,37 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     assert.deepEqual(itemScrolls, ['enabled']);
   });
 
+  it('keeps alerts sent to the user out of agent search, and opens the article for a human', async () => {
+    const link = 'https://www.reuters.com/world/needle-story';
+    const alert = resultMatch('alert', '1763370000000:needle', 'Needle alert headline', {
+      title: 'Needle alert headline', source: 'Reuters', link, sentAt: 1_763_370_000_000,
+    });
+    const scenario = makeScenario([alert]);
+
+    // An in-page agent is never issued the user's alert history.
+    assert.equal(scenario.manager.isSearchResultExecutable(alert.result), false);
+    const response = await scenario.manager.searchDashboard('needle', 'all', 10);
+    assert.deepEqual(response.results, []);
+
+    // A human selection opens the article in a new tab, whether or not a news panel holds it.
+    const opened: string[] = [];
+    scenario.manager.searchSelection.bindings.openExternalLink = (url: string) => { opened.push(url); };
+    assert.equal(scenario.manager.searchSelection.handleSearchResult(alert.result), true);
+    assert.deepEqual(opened, [link]);
+    assert.deepEqual(scenario.calls.scrolledPanels, []);
+  });
+
+  it('does not open an alert whose link is missing or not http', () => {
+    const scenario = makeScenario([]);
+    const opened: string[] = [];
+    scenario.manager.searchSelection.bindings.openExternalLink = (url: string) => { opened.push(url); };
+    for (const link of ['', 'javascript:alert(1)', 'data:text/html,x', undefined]) {
+      const alert = resultMatch('alert', 'a', 'Needle alert headline', { link });
+      assert.equal(scenario.manager.searchSelection.handleSearchResult(alert.result), false);
+    }
+    assert.deepEqual(opened, []);
+  });
+
   it('does not report a country opened when the lazy brief surface fails', async () => {
     const scenario = makeScenario([
       resultMatch('country', 'US', 'United States', { code: 'US', name: 'United States' }),
