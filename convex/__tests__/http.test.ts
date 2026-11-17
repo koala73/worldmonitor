@@ -219,6 +219,26 @@ describe("preference HTTP variant boundaries", () => {
     expect(await read.json()).toEqual({ data: { theme: "full" }, briefLanguage: "de" });
   });
 
+  test("/relay/brief-l10n-config requires the delivery secret", async () => {
+    vi.stubEnv("CONVEX_NOTIFICATION_RELAY_SECRET", "prefs-test-delivery-secret");
+    const t = convexTest(schema, modules);
+    const res = await t.fetch("/relay/brief-l10n-config", { method: "GET", headers: { Authorization: "Bearer wrong" } });
+    expect(res.status).toBe(401);
+  });
+
+  test("/relay/brief-l10n-config returns the deliverable languages from the Convex env", async () => {
+    vi.stubEnv("CONVEX_NOTIFICATION_RELAY_SECRET", "prefs-test-delivery-secret");
+    const t = convexTest(schema, modules);
+    const auth = { method: "GET", headers: { Authorization: "Bearer prefs-test-delivery-secret" } };
+    const off = await t.fetch("/relay/brief-l10n-config", auth);
+    expect(off.status).toBe(200);
+    expect(await off.json()).toEqual({ enabled: false, langs: [] });
+    vi.stubEnv("BRIEF_L10N_ENABLED", "1");
+    vi.stubEnv("BRIEF_L10N_LANGS", "es,ar,fr");
+    const on = await t.fetch("/relay/brief-l10n-config", auth);
+    expect(await on.json()).toEqual({ enabled: true, langs: ["fr", "es", "ar"] });
+  });
+
   test("briefLanguage is \"en\" for a user with no users row", async () => {
     const t = convexTest(schema, modules);
     const read = await t.fetch("/relay/user-preferences", relayPostWithFlag("user-without-row", "full", true));

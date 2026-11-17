@@ -27,7 +27,7 @@ import { ImageResponse } from '@vercel/og';
 import { BRIEF_LOCALIZED_ENVELOPE_VERSION } from '../../shared/brief-envelope.js';
 import { briefPlural, briefT, type BriefStringKey } from '../../shared/brief-strings.js';
 import { truncateForDisplay } from '../../shared/brief-text.js';
-import { RTL_UI_LANGUAGES, scriptClassFor } from '../../shared/ui-languages.js';
+import { RTL_UI_LANGUAGES, isUiLanguage, scriptClassFor } from '../../shared/ui-languages.js';
 
 // RUNTIME DEPENDENCY on Google Fonts CDN via jsdelivr.
 //
@@ -230,7 +230,18 @@ type Envelope = {
   };
 };
 
-/** Chrome language: only a v5 sibling carries `lang`; RTL languages stay English until RTL renders are proven. */
+/**
+ * True when `sibling` is a localized brief the carousel does not draw: a
+ * right-to-left language, until right-to-left renders are proven. The route
+ * then renders the canonical English envelope. That image is the intended
+ * output, so it is cached like any other.
+ */
+export function carouselKeepsEnglish(sibling: unknown): boolean {
+  const lang = (sibling as { lang?: unknown } | null)?.lang;
+  return isUiLanguage(lang) && RTL_UI_LANGUAGES.includes(lang as never);
+}
+
+/** Chrome language: only a v5 sibling carries `lang`; right-to-left languages stay English. */
 function carouselLang(env: Envelope): string {
   if (env.version !== BRIEF_LOCALIZED_ENVELOPE_VERSION || typeof env.lang !== 'string') return 'en';
   return RTL_UI_LANGUAGES.includes(env.lang as never) ? 'en' : env.lang;

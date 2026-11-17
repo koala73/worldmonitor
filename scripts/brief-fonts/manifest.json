@@ -48,9 +48,9 @@
       ".wm-public-strip | text-transform: uppercase",
       ".wm-share | font-family: 'IBM Plex Mono', monospace",
       ".wm-share | text-transform: uppercase",
-      "html, body | font-family: 'Source Serif 4', Georgia, serif",
-      "label, :lang(ko) .digest .stat-label, :lang(hi) .digest .stat-label, :lang(th) .digest .stat-label, :lang(ar) .digest .stat-label, :lang(fa) .digest .stat-label | font-style: normal",
-      "mber, :lang(th) .page-number, :lang(ar) .page-number, :lang(fa) .page-number, :lang(hi) .wm-share, :lang(th) .wm-share, :lang(ar) .wm-share, :lang(fa) .wm-share | text-transform: none"
+      ":lang(hi) .mono, :lang(th) .mono, :lang(ar) .mono, :lang(fa) .mono, :lang(hi) .cover .hero .kicker, :lang(th) .cover .hero .kicker, :lang(ar) .cover .hero .kicker, :lang(fa) .cover .hero .kicker, :lang(hi) .digest .running-head, :lang(th) .digest .running-head, :lang(ar) .digest .running-head, :lang(fa) .digest .running-head, :lang(hi) .digest .thread .tag, :lang(th) .digest .thread .tag, :lang(ar) .digest .thread .tag, :lang(fa) .digest .thread .tag, :lang(hi) .story .tag, :lang(th) .story .tag, :lang(ar) .story .tag, :lang(fa) .story .tag, :lang(hi) .story .source, :lang(th) .story .source, :lang(ar) .story .source, :lang(fa) .story .source, :lang(hi) .story .callout .label, :lang(th) .story .callout .label, :lang(ar) .story .callout .label, :lang(fa) .story .callout .label, :lang(hi) .hint, :lang(th) .hint, :lang(ar) .hint, :lang(fa) .hint, :lang(hi) .page-number, :lang(th) .page-number, :lang(ar) .page-number, :lang(fa) .page-number, :lang(hi) .wm-share, :lang(th) .wm-share, :lang(ar) .wm-share, :lang(fa) .wm-share | text-transform: none",
+      ":lang(zh) .cover .hero .blurb, :lang(ja) .cover .hero .blurb, :lang(ko) .cover .hero .blurb, :lang(hi) .cover .hero .blurb, :lang(th) .cover .hero .blurb, :lang(ar) .cover .hero .blurb, :lang(fa) .cover .hero .blurb, :lang(zh) .digest blockquote, :lang(ja) .digest blockquote, :lang(ko) .digest blockquote, :lang(hi) .digest blockquote, :lang(th) .digest blockquote, :lang(ar) .digest blockquote, :lang(fa) .digest blockquote, :lang(zh) .digest .stat-label, :lang(ja) .digest .stat-label, :lang(ko) .digest .stat-label, :lang(hi) .digest .stat-label, :lang(th) .digest .stat-label, :lang(ar) .digest .stat-label, :lang(fa) .digest .stat-label | font-style: normal",
+      "html, body | font-family: 'Source Serif 4', Georgia, serif"
     ],
     "langs": [
       "bg",

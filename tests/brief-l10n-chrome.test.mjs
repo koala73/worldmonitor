@@ -7,6 +7,7 @@ import { injectEmailSummary } from '../scripts/lib/email-summary-html.mjs';
 import { subjectForBrief } from '../scripts/lib/digest-orchestration-helpers.mjs';
 import { buildDigestWebhookPayload } from '../scripts/lib/digest-corroboration.mjs';
 import { briefPlural, briefT } from '../shared/brief-strings.js';
+import { BRIEF_STRINGS } from '../shared/brief-strings.data.js';
 
 // English dates are formatted in the host time zone; pin it so fixed-date assertions hold.
 process.env.TZ = 'UTC';
@@ -45,9 +46,33 @@ describe('localized email chrome', () => {
     assert.ok(en.includes('Coverage: 3 independent publishers'));
   });
 
-  it('escapes translated strings in HTML', () => {
-    const html = injectBriefCta('<div data-brief-cta-slot></div>', 'https://worldmonitor.app/b', 'fr');
-    assert.ok(!/>[^<]*'[^<]*</.test(html), 'apostrophes in translated chrome are entity-escaped');
+  // Every French string gets the four HTML delimiters appended, so a call
+  // site that stops escaping a translation shows them raw.
+  it('escapes HTML delimiters in translated strings', () => {
+    const MARK = 'A & B <b> "c"';
+    const ENCODED = 'A &amp; B &lt;b&gt; &quot;c&quot;';
+    const original = BRIEF_STRINGS.fr;
+    const tainted = (value) => (typeof value === 'string'
+      ? `${value} ${MARK}`
+      : Object.fromEntries(Object.entries(value).map(([form, text]) => [form, `${text} ${MARK}`])));
+    BRIEF_STRINGS.fr = Object.fromEntries(Object.entries(original).map(([key, value]) => [key, tainted(value)]));
+    try {
+      const tagged = [{ ...stories[0], phase: 'sustained', corroboration: { state: 'corroborated', publishers: 3 } }, stories[1]];
+      const many = Array.from({ length: 40 }, (_, i) => ({ ...stories[1], title: `Story ${i} ${'x'.repeat(400)}` }));
+      const outputs = {
+        email: renderDigestEmailHtml({ stories: tagged, nowMs: NOW, synthesis, magazineUrl: 'https://worldmonitor.app/brief/x', lang: 'fr' }).html,
+        shortened: renderDigestEmailHtml({ stories: many, nowMs: NOW, magazineUrl: 'https://worldmonitor.app/b', maxBytes: 12_000, lang: 'fr' }).html,
+        cta: injectBriefCta('<div data-brief-cta-slot></div>', 'https://worldmonitor.app/b', 'fr'),
+        summary: injectEmailSummary('<div data-ai-summary-slot></div>', synthesis, 'fr'),
+      };
+      for (const [name, html] of Object.entries(outputs)) {
+        assert.ok(html.includes(ENCODED), `${name}: the translated text is present, encoded`);
+        assert.ok(!html.includes(MARK) && !html.includes('<b> "c"'), `${name}: a translation reached the HTML unescaped`);
+      }
+    } finally {
+      BRIEF_STRINGS.fr = original;
+    }
+    assert.equal(briefT('fr', 'email.execSummary'), original['email.execSummary']);
     assert.ok(injectEmailSummary('<div data-ai-summary-slot></div>', 'x', 'en').includes('Executive Summary'));
   });
 

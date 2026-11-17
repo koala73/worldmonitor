@@ -974,6 +974,13 @@ export const completeEmailKeyedErasure = internalMutation({
 
     const writes = grants.writes + keyed.writes;
     const done = grants.done && keyed.done;
+    // markExternalComplete clears verifiedEmail, but on this repair path it
+    // already ran. Drop the proof once the sweep finishes so a completed
+    // erasure does not keep the subject's address. A row still in progress
+    // keeps it; markExternalComplete clears it when that row completes.
+    if (done && withProof.status === "complete") {
+      await ctx.db.patch(row._id, { verifiedEmail: undefined });
+    }
     if (!done) {
       await ctx.scheduler.runAfter(
         0,

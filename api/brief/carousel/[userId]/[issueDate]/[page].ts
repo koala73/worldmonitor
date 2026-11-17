@@ -42,11 +42,10 @@ import { getCorsHeaders, isDisallowedOrigin } from '../../../../_cors.js';
 import { readRawJsonFromUpstash } from '../../../../_upstash-json.js';
 import { briefLocalizedKey } from '../../../../../shared/brief-envelope.js';
 import { selectBriefEnvelope } from '../../../../../server/_shared/brief-render.js';
-import { isRtlLanguage } from '../../../../../shared/ui-languages.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../_sentry-edge.js';
 import { verifyBriefToken, BriefUrlError } from '../../../../../server/_shared/brief-url';
-import { CarouselFontError, renderCarouselImageResponse, pageFromIndex } from '../../../../../server/_shared/brief-carousel-render';
+import { CarouselFontError, carouselKeepsEnglish, renderCarouselImageResponse, pageFromIndex } from '../../../../../server/_shared/brief-carousel-render';
 
 // Matches the signer's slot format (YYYY-MM-DD-HHMM).
 const ISSUE_DATE_RE = /^\d{4}-\d{2}-\d{2}-\d{4}$/;
@@ -135,8 +134,9 @@ export default async function handler(
     throw err;
   }
 
-  // Optional localized sibling; a failed read falls back to canonical but is
-  // not cached, so the localized image is served once the read recovers.
+  // Optional localized sibling. A failed read, or a sibling that was read but
+  // rejected (stale mid-regeneration, or invalid), falls back to canonical
+  // without caching it, so the localized image is served once it is valid.
   let siblingReadFailed = false;
   const siblingPromise = readRawJsonFromUpstash(briefLocalizedKey(userId, issueDate), 3_000, true)
     .catch(() => {
@@ -154,10 +154,13 @@ export default async function handler(
     return jsonError('service_unavailable', 503, cors);
   }
   if (!envelope) return jsonError('not_found', 404, cors);
-  const selected = selectBriefEnvelope(envelope, await siblingPromise);
-  // RTL siblings render English until the image renderer proves RTL output (PR 7 lifts this).
-  const selectedLang = (selected as { lang?: unknown } | null)?.lang;
-  envelope = typeof selectedLang === 'string' && isRtlLanguage(selectedLang) ? envelope : selected;
+  // A sibling in a language the image renderer cannot draw yet counts as
+  // absent: the English image is then the intended output and is cached.
+  const stored = await siblingPromise;
+  const sibling = carouselKeepsEnglish(stored) ? null : stored;
+  const canonicalEnvelope = envelope;
+  envelope = selectBriefEnvelope(canonicalEnvelope, sibling);
+  const cacheable = !siblingReadFailed && (sibling == null || envelope !== canonicalEnvelope);
 
   // @vercel/og sets Cache-Control to
   // `public, immutable, no-transform, max-age=31536000` and extraHeaders
@@ -176,7 +179,7 @@ export default async function handler(
     // the catch below as a 503 instead of a truncated, cached 200.
     const png = await response.arrayBuffer();
     // ImageResponse has no HEAD mode: echo status and headers, no body.
-    return withCacheControl(response, req.method === 'HEAD' ? null : png, !siblingReadFailed);
+    return withCacheControl(response, req.method === 'HEAD' ? null : png, cacheable);
   } catch (err) {
     // AbortSignal.timeout / AbortController.abort firing somewhere inside
     // `renderCarouselImageResponse` (remote image fetch, font load, OG

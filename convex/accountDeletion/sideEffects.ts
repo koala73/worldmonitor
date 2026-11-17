@@ -252,6 +252,17 @@ async function redisGetJson(key: string): Promise<unknown> {
   }
 }
 
+/** Bounds one account's slot index read; the writer trims it to the 7-day envelope TTL. */
+const MAX_BRIEF_SLOTS = 1_000;
+
+async function redisZrangeAll(key: string): Promise<string[]> {
+  const response = await redisCommand(`/zrange/${encodeURIComponent(key)}/0/${MAX_BRIEF_SLOTS - 1}`);
+  const body = (await redisResult(response, "ZRANGE")) as { result?: unknown };
+  return Array.isArray(body.result)
+    ? body.result.filter((slot): slot is string => typeof slot === "string" && slot.length > 0)
+    : [];
+}
+
 async function deleteAccountRedisKeys(args: {
   userId: string;
   keyHashes: string[];
@@ -274,13 +285,15 @@ async function deleteAccountRedisKeys(args: {
       : typeof latest === "string"
         ? latest
         : null;
-  if (slot) {
-    keys.push(`brief:${args.userId}:${slot}`);
+  // Every slot in the per-user index (briefSlotsKey in shared/brief-envelope.js),
+  // plus the pointer's slot for briefs written before the index existed.
+  const slotsKey = `brief:slots:${args.userId}`;
+  const slots = mergeUniqueStrings(await redisZrangeAll(slotsKey), slot ? [slot] : []);
+  for (const s of slots) {
+    keys.push(`brief:${args.userId}:${s}`);
     // Localized sibling; source of truth is briefLocalizedKey in shared/brief-envelope.js.
-    keys.push(`brief:l10n:${args.userId}:${slot}`);
+    keys.push(`brief:l10n:${args.userId}:${s}`);
   }
-  // Pointer last: a partial pipeline keeps it, so a retry still finds the slot.
-  keys.push(`brief:latest:${args.userId}`);
 
   // Deletes and the MCP negative-cache sentinels go in one pipeline. The
   // sentinels used to be a per-token await, each its own fetch with its own
@@ -294,6 +307,11 @@ async function deleteAccountRedisKeys(args: {
       ttlSeconds: MCP_NEG_CACHE_TTL_SECONDS,
     })),
   );
+  // The index and pointer are how a retry finds the slots. Upstash runs every
+  // command in a pipeline even after one fails, so they are deleted in a
+  // separate request, only once every slot delete above has succeeded
+  // (redisRevoke throws on any failed command).
+  await redisRevoke([slotsKey, `brief:latest:${args.userId}`], []);
 }
 
 async function deleteClerkUser(userId: string): Promise<"deleted" | "missing"> {

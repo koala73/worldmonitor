@@ -40,8 +40,9 @@ export function renderEmailInline(text) {
 
 // Block-level markdown → HTML. Splits the summary into paragraph and list
 // blocks first, then applies inline formatting within each block, so we
-// never nest <ul> inside <p> or split a list across paragraphs.
-export function markdownToEmailHtml(md) {
+// never nest <ul> inside <p> or split a list across paragraphs. `rtl` puts the
+// list indent on the right, where the bullets of a right-to-left email sit.
+export function markdownToEmailHtml(md, { rtl = false } = {}) {
   const escaped = escapeHtml(md);
   const lines = escaped.split('\n');
 
@@ -70,7 +71,7 @@ export function markdownToEmailHtml(md) {
       const items = block.items
         .map((item) => `<li style="margin-bottom:6px;">${renderEmailInline(item)}</li>`)
         .join('');
-      return `<ul style="margin:12px 0;padding-left:20px;list-style:disc;">${items}</ul>`;
+      return `<ul style="margin:12px 0;padding-${rtl ? 'right' : 'left'}:20px;list-style:disc;">${items}</ul>`;
     }
     const joined = block.items.map(renderEmailInline).join('<br/>');
     return `<p style="margin:0 0 12px;">${joined}</p>`;
