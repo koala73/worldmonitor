@@ -38,6 +38,10 @@ let revoked: string[];
 let failRevocations: boolean;
 let failReads: boolean;
 let failWrites: boolean;
+/** Every index read the search charged to a caller, in order. */
+let charges: Array<{ scope: string; limit: number; window: string; caller: string }>;
+/** Makes the fake limiter answer as the shared one does when Redis could not decide. */
+let limiterDegraded: boolean;
 
 const item = (title: string, link: string, source = 'Reuters World', publishedAt = NOW - HOUR) =>
   ({ title, link, source, publishedAt });
@@ -47,9 +51,9 @@ async function served(at: number, items: ReturnType<typeof item>[], variant = 'f
   assert.equal(await writeHeadlineHistory(items, variant, lang, at), true);
 }
 
-async function search(route: typeof freeRoute, query: string, extra = '') {
+async function search(route: typeof freeRoute, query: string, extra = '', headers: Record<string, string> = {}) {
   const path = route === freeRoute ? 'search-headlines' : 'search-headline-archive';
-  const req = new Request(`https://example.test/api/news/v1/${path}?query=${encodeURIComponent(query)}${extra}`);
+  const req = new Request(`https://example.test/api/news/v1/${path}?query=${encodeURIComponent(query)}${extra}`, { headers });
   const res = await route.handler(req);
   return { req, status: res.status, payload: await res.json() as SearchHeadlinesResponse };
 }
@@ -76,6 +80,16 @@ beforeEach(() => {
   failRevocations = false;
   failReads = false;
   failWrites = false;
+  charges = [];
+  limiterDegraded = false;
+  // The shared limiter, minus Redis: each caller may spend `limit` charges, and
+  // the window never slides. The limit and window are the search's own.
+  history.setIndexReadLimiter(async (scope, limit, window, caller) => {
+    charges.push({ scope, limit, window, caller });
+    if (limiterDegraded) return { allowed: true, limit, reset: 0, degraded: true };
+    const spent = charges.filter(charge => charge.caller === caller).length;
+    return { allowed: spent <= limit, limit, reset: 0, degraded: false };
+  });
   globalThis.fetch = async (url, init) => {
     assert.equal(String(url), 'https://redis.example.test/pipeline', 'never fetch a publisher');
     const batch = JSON.parse(String(init?.body)) as string[][];
@@ -103,6 +117,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  history.setIndexReadLimiter(null);
   mock.timers.reset();
   globalThis.fetch = originalFetch;
   for (const key of envKeys) {
@@ -558,6 +573,11 @@ describe('headline search failure and revocation', () => {
     delete process.env.UPSTASH_REDIS_REST_URL;
     const { payload } = await search(freeRoute, 'rates');
     assert.equal(payload.state, 'unavailable');
+    assert.equal(charges.length, 0, 'with no index to read, nobody is charged for one');
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+    process.env.LOCAL_API_MODE = 'tauri-sidecar';
+    assert.equal((await search(freeRoute, 'rates')).payload.state, 'unavailable');
+    assert.equal(charges.length, 0, 'nor on the desktop sidecar, which keeps no index');
   });
 
   it('rejects a query with nothing to search for, an unknown edition and an unknown language', async () => {
@@ -570,6 +590,151 @@ describe('headline search failure and revocation', () => {
       assert.equal(res.status, 400, `${route.path} without a query`);
     }
     assert.equal(commands.length, 0, 'a rejected request reads nothing');
+  });
+});
+
+describe('headline search index-read budget', () => {
+  // Eight (edition, language) cells: two more than the isolate memoizes.
+  const CELLS = ['full', 'tech', 'finance', 'commodity'].flatMap(variant => ['en', 'fr'].map(lang => ({ variant, lang })));
+  const from = (ip: string) => ({ 'x-real-ip': ip });
+  const reads = () => commands.filter(command => command[0] === 'HVALS').length / 2;
+  const searchCell = (cell: typeof CELLS[number], ip: string) =>
+    search(freeRoute, 'rates', `&variant=${cell.variant}&lang=${cell.lang}`, from(ip));
+
+  async function serveEveryCell() {
+    for (const { variant, lang } of CELLS) {
+      await served(NOW, [item(`Rates held in ${variant} ${lang}`, `https://www.reuters.com/${variant}-${lang}`)], variant, lang);
+    }
+    commands = [];
+  }
+
+  /** Rotate the cells until this caller's budget is spent; returns the budget. */
+  async function exhaust(ip: string): Promise<number> {
+    for (let round = 0; round < 6; round += 1) {
+      for (const cell of CELLS) await searchCell(cell, ip);
+    }
+    const mine = charges.filter(charge => charge.caller === `ip:${ip}`);
+    const budget = mine[0]!.limit;
+    assert.ok(mine.length > budget, 'the rotation spent the budget');
+    return budget;
+  }
+
+  it('stops reading the index for a caller who rotates editions and languages past the budget', async () => {
+    await serveEveryCell();
+    const states: string[] = [];
+    const uncached: boolean[] = [];
+    for (let round = 0; round < 6; round += 1) {
+      for (const cell of CELLS) {
+        const { req, payload } = await searchCell(cell, '203.0.113.7');
+        states.push(payload.state);
+        uncached.push(drainResponseHeaders(req)?.['X-No-Cache'] === '1');
+      }
+    }
+    const budget = charges[0]?.limit ?? 0;
+    assert.ok(budget > 0 && budget < CELLS.length * 6, 'the rotation outruns the budget');
+    assert.equal(reads(), budget, 'every index read was inside the budget: 48 requests, no read per request');
+    assert.equal(charges[0]!.scope, 'headline-history-index-read:caller');
+    assert.ok(charges.every(charge => charge.caller === 'ip:203.0.113.7'), 'charged to the caller');
+    assert.ok(states.includes('unavailable'), 'a refused read with no copy held says it did not search');
+    states.forEach((state, index) => assert.equal(uncached[index], state === 'unavailable', 'only a search that did not run is uncacheable'));
+
+    // The refused caller keeps being refused: more requests, no more reads.
+    for (const cell of CELLS) await searchCell(cell, '203.0.113.7');
+    assert.equal(reads(), budget);
+  });
+
+  it('charges nothing while the index is memoized', async () => {
+    await serveEveryCell();
+    for (const query of ['rat', 'rate', 'rates', 'rates held']) {
+      assert.equal((await search(freeRoute, query, '', from('203.0.113.7'))).payload.state, 'complete');
+    }
+    assert.equal(charges.length, 1, 'one miss, one charge');
+    assert.equal(reads(), 1);
+  });
+
+  it('leaves another caller searching after one caller has spent its budget', async () => {
+    await serveEveryCell();
+    const budget = await exhaust('203.0.113.7');
+    assert.equal(reads(), budget);
+    // Past the memo's minute, so every cell is a miss again for everybody.
+    mock.timers.setTime(NOW + 61_000);
+    for (const cell of CELLS.slice(0, 3)) {
+      const { payload } = await searchCell(cell, '198.51.100.9');
+      assert.equal(payload.state, 'complete', `${cell.variant}:${cell.lang}`);
+      assert.equal(payload.headlines.length, 1);
+    }
+    assert.equal(reads(), budget + 3, 'the second caller read on its own budget');
+  });
+
+  it('answers a refused caller from the copy the isolate still holds, for ten minutes', async () => {
+    await serveEveryCell();
+    await exhaust('203.0.113.7');
+    // The last cell of the rotation was read last, so the isolate still has it.
+    const held = CELLS.find(cell => cell.variant === 'commodity' && cell.lang === 'fr')!;
+    assert.equal((await searchCell(held, '203.0.113.7')).payload.state, 'complete', 'memoized');
+    const before = reads();
+
+    mock.timers.setTime(NOW + 5 * 60_000);
+    const stale = await searchCell(held, '203.0.113.7');
+    assert.equal(stale.payload.state, 'complete', 'the expired copy still answers a caller with no budget');
+    assert.equal(stale.payload.headlines.length, 1);
+    assert.equal(reads(), before, 'without a read');
+
+    // A refusal replaces nothing: the next caller with budget reads, and the
+    // refused caller is then answered from that fresh copy.
+    assert.equal((await searchCell(held, '198.51.100.9')).payload.state, 'complete');
+    assert.equal(reads(), before + 1);
+
+    mock.timers.setTime(NOW + 5 * 60_000 + 11 * 60_000);
+    const tooOld = await searchCell(held, '203.0.113.7');
+    assert.equal(tooOld.payload.state, 'unavailable', 'a copy older than ten minutes is not an answer');
+    assert.equal(drainResponseHeaders(tooOld.req)?.['X-No-Cache'], '1');
+    assert.equal(reads(), before + 1);
+  });
+
+  it('does not memoize a refusal', async () => {
+    await serveEveryCell();
+    await exhaust('203.0.113.7');
+    mock.timers.setTime(NOW + 11 * 60_000);
+    const cell = CELLS[0]!;
+    assert.equal((await searchCell(cell, '203.0.113.7')).payload.state, 'unavailable');
+    assert.equal((await searchCell(cell, '198.51.100.9')).payload.state, 'complete', 'the refusal was the first caller\'s alone');
+    assert.equal((await searchCell(cell, '203.0.113.7')).payload.state, 'complete', 'and the copy the second caller read now answers both');
+  });
+
+  it('reads once for two callers who miss together', async () => {
+    await serveEveryCell();
+    const [first, second] = await Promise.all([
+      searchCell(CELLS[0]!, '203.0.113.7'),
+      searchCell(CELLS[0]!, '198.51.100.9'),
+    ]);
+    assert.equal(first.payload.state, 'complete');
+    assert.equal(second.payload.state, 'complete');
+    assert.equal(reads(), 1);
+  });
+
+  it('keeps searching when the limiter cannot decide', async () => {
+    // A self-hosted Redis 6 behind the REST proxy is degraded on every scoped
+    // call. Refusing there would leave the history unavailable for good.
+    await serveEveryCell();
+    limiterDegraded = true;
+    for (const cell of CELLS) {
+      const { req, payload } = await searchCell(cell, '203.0.113.7');
+      assert.equal(payload.state, 'complete', `${cell.variant}:${cell.lang}`);
+      assert.equal(payload.headlines.length, 1);
+      assert.equal(drainResponseHeaders(req), undefined);
+    }
+    assert.equal(reads(), CELLS.length);
+    assert.equal(charges.length, CELLS.length, 'the limiter was still asked');
+  });
+
+  it('charges the signed-in account before the address, on both routes', async () => {
+    await serveEveryCell();
+    await search(archiveRoute, 'rates', '', { 'x-real-ip': '203.0.113.7', 'x-wm-rl-principal': 'session:user_1' });
+    await search(freeRoute, 'rates', '', { 'x-real-ip': '203.0.113.7', 'x-wm-rl-principal': 'api_key:user_2' });
+    await search(freeRoute, 'rates', '&lang=fr', from('203.0.113.7'));
+    assert.deepEqual(charges.map(charge => charge.caller), ['principal:session:user_1', 'principal:api_key:user_2', 'ip:203.0.113.7']);
+    assert.equal(new Set(charges.map(charge => `${charge.scope}|${charge.limit}|${charge.window}`)).size, 1, 'one budget for both routes');
   });
 });
 

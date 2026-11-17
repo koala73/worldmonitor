@@ -5,6 +5,8 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
 import { NEWS_LANGUAGES } from '../../../../src/shared/public-rpc-cache';
+import { getClientRateLimitKey } from '../../../_shared/client-ip';
+import { readTrustedRateLimitPrincipal } from '../../../_shared/rate-limit';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { SERVER_EDITIONS } from './_feeds';
 import {
@@ -14,6 +16,17 @@ import {
   headlineQueryWords,
   searchHeadlineHistory,
 } from './_headline-history';
+
+/**
+ * Who is charged for an index read the memo cannot answer. A batched or MCP
+ * sub-request re-derives its address from the platform egress, so the
+ * gateway-stamped account (client copies are stripped) comes first.
+ */
+function headlineSearchCaller(request: Request): string {
+  const principal = readTrustedRateLimitPrincipal(request.headers);
+  if (principal.principalUserId) return `principal:${principal.principalScope ?? 'session'}:${principal.principalUserId}`;
+  return `ip:${getClientRateLimitKey(request)}`;
+}
 
 /**
  * Cmd+K headline search over the headline history (see _headline-history.ts).
@@ -45,8 +58,9 @@ async function search(
   if (!NEWS_LANGUAGES.has(lang)) {
     throw new ValidationError([{ field: 'lang', description: 'must be a lowercase two-letter language code' }]);
   }
-  const result = await searchHeadlineHistory(words, variant, lang, windowHours);
-  // A search that did not run must not be cached as "no matches". The gateway
+  const result = await searchHeadlineHistory(words, variant, lang, windowHours, headlineSearchCaller(ctx.request));
+  // A search that did not run (an unreadable index, or a caller with no index
+  // reads left) must not be cached as "no matches". The gateway
   // stores neither route; this keeps that true for any other caller of the
   // handler.
   if (result.state === 'unavailable') markNoCacheResponse(ctx.request);

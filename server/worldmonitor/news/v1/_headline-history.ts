@@ -38,14 +38,17 @@
  * edition serves about 1,600 distinct headlines per day in one language
  * (tech/en 1,900). Each is stored in about 480 bytes: a 300-byte value (78
  * title, 166 link, 12 source, plus JSON) and a 180-byte field. One cell is
- * about 0.8 MB per day, 7 MB for the nine days a bucket lives. All 60 cells
- * together serve about 50,000 per day: about 215 MB retained. Retitles are
+ * about 0.8 MB per day, 7 MB for the nine days a bucket lives. A cell exists
+ * for every (edition, language) a digest was built for: 167 that day, 46 of
+ * them under a day old, together serving about 120,000 per day. That is about
+ * 520 MB retained, about 400 MB for the 121 older cells. Retitles are
  * inside those counts: per day, 2% (tech/en) to 6% (finance/en) more rows
  * than distinct URLs, and no URL under more than 8 wordings in 48 hours.
  * That is a floor, because the accumulators merge near-identical wordings.
  * A search reads values only: a 24-hour search reads two buckets (about
  * 1 MB), a 7-day search eight (about 4 MB), which is why the read is
- * memoized per isolate and why the window stops at seven days.
+ * memoized per isolate, why a read the memo cannot answer is charged to the
+ * caller (INDEX_READS_PER_CALLER), and why the window stops at seven days.
  *
  * Revocations: an article an operator revoked (_shared/digest-revocations.ts)
  * is left out of every answer. Only the headlines are memoized. The revoked
@@ -55,6 +58,7 @@
 import { headlineTitleKey } from '../../../../src/shared/headline-title-key';
 import { readRevokedUrlSet } from '../../../_shared/digest-revocations';
 import { hashString } from '../../../_shared/hash';
+import { checkScopedRateLimit } from '../../../_shared/rate-limit';
 import { isRedisConfigured, runRedisPipeline } from '../../../_shared/redis';
 
 export const HEADLINE_HISTORY_FREE_HOURS = 24;
@@ -78,6 +82,42 @@ const MAX_SOURCE_CHARS = 200;
 const MAX_LINK_CHARS = 2048;
 const INDEX_TTL_MS = 60_000;
 const MAX_INDEXES = 6;
+/**
+ * Index reads one caller may cause in ten minutes. The memo bounds reads only
+ * while callers ask for the cells it holds, and the cell is the caller's
+ * choice: rotating seven (edition, language) pairs missed the memo on every
+ * request, so each request read a whole index. A miss is therefore charged to
+ * the caller before Redis is read, and a caller with nothing left is answered
+ * from the copy the isolate still holds, or told the search did not run.
+ *
+ * The budget is per caller, not per isolate: an isolate-wide budget would let
+ * one caller spend it and leave search unavailable for everyone else there.
+ *
+ * Why 12. The dashboard asks once per typing pause and keeps an answer for two
+ * minutes, so a query is one to four requests, and a user stays on one edition
+ * and language. Such a caller misses once a minute on a warm isolate (the memo
+ * expiring): 10 in ten minutes. If instead every request lands on an isolate
+ * with no copy, 12 is three four-request queries in ten minutes, and after
+ * that the loaded headlines are still searched; only the history rows wait.
+ *
+ * What it caps. One caller reads at most 72 indexes an hour. A 24-hour read
+ * of a large cell is about 0.6 to 1 MB, so about 70 MB an hour, where the
+ * route limit alone (60 requests a minute) allowed about 3.6 GB. A 7-day read
+ * is about 4 MB, so about 290 MB an hour, and that route needs a Pro account.
+ * Cell sizes, estimated on production 2026-11-17 from the digest accumulators
+ * at 300 bytes a value: 37 cells read 0.5 MB or more for 24 hours, and 34 of
+ * them are not English (full/pt, tech/zh and full/zh are as large as full/en),
+ * so the language is no discount.
+ */
+const INDEX_READ_SCOPE = 'headline-history-index-read:caller';
+const INDEX_READS_PER_CALLER = 12;
+const INDEX_READ_WINDOW = '10 m';
+/**
+ * How old a held copy may be and still answer a caller with no budget left.
+ * The search applies the window and the revocations on every request, so an
+ * older copy is short only of the headlines served since it was read.
+ */
+const STALE_INDEX_MAX_MS = 10 * 60_000;
 
 type RedisCommand = Array<string | number>;
 
@@ -273,10 +313,43 @@ async function readIndex(variant: string, lang: string, windowHours: number, now
  */
 const indexes = new Map<string, { at: number; promise: Promise<HeadlineIndex> }>();
 
-function loadIndex(variant: string, lang: string, windowHours: number, nowMs: number): Promise<HeadlineIndex> {
+type IndexReadLimiter = typeof checkScopedRateLimit;
+let indexReadLimiter: IndexReadLimiter | null = null;
+
+/** The held copy of an index, if it is no older than maxAgeMs. */
+function heldIndex(id: string, nowMs: number, maxAgeMs: number): Promise<HeadlineIndex> | null {
+  const held = indexes.get(id);
+  return held && nowMs - held.at >= 0 && nowMs - held.at < maxAgeMs ? held.promise : null;
+}
+
+async function loadIndex(
+  variant: string,
+  lang: string,
+  windowHours: number,
+  caller: string,
+  nowMs: number,
+): Promise<HeadlineIndex> {
   const id = `${variant}:${lang}:${windowHours}`;
-  const cached = indexes.get(id);
-  if (cached && nowMs - cached.at >= 0 && nowMs - cached.at < INDEX_TTL_MS) return cached.promise;
+  const memoized = heldIndex(id, nowMs, INDEX_TTL_MS);
+  if (memoized) return memoized;
+  // No Redis (local dev, the desktop sidecar): no index to read or to charge for.
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar' || !isRedisConfigured()) return UNREADABLE;
+  // A miss: the read is charged to this caller before Redis is asked.
+  const budget = indexReadLimiter
+    ? await indexReadLimiter(INDEX_READ_SCOPE, INDEX_READS_PER_CALLER, INDEX_READ_WINDOW, caller)
+    : await checkScopedRateLimit(INDEX_READ_SCOPE, INDEX_READS_PER_CALLER, INDEX_READ_WINDOW, caller);
+  // Another caller may have started the read meanwhile: join it, not read again.
+  const started = heldIndex(id, nowMs, INDEX_TTL_MS);
+  if (started) return started;
+  // The refusal is this caller's alone. It is not memoized and replaces
+  // nothing, so the next caller with budget reads for everyone.
+  //
+  // A limiter that could not decide does not refuse.
+  // Redis-degraded scoped limits intentionally stay availability-first here:
+  // a self-hosted Redis 6 behind the REST proxy is degraded on every call (no
+  // Lua, no EXPIRE NX), so refusing would switch the history off there for
+  // good. The route limit still caps requests, as it did before this budget.
+  if (!budget.allowed && !budget.degraded) return heldIndex(id, nowMs, STALE_INDEX_MAX_MS) ?? UNREADABLE;
   const promise = readIndex(variant, lang, windowHours, nowMs).catch(() => UNREADABLE);
   indexes.delete(id);
   indexes.set(id, { at: nowMs, promise });
@@ -319,13 +392,15 @@ export async function searchHeadlineHistory(
   variant: string,
   lang: string,
   windowHours: number,
+  /** Who is charged when the index has to be read: an account or an address. */
+  caller: string,
   nowMs = Date.now(),
 ): Promise<HeadlineHistorySearch> {
   // Revocations are read for every request and never memoized: an article an
   // operator pulled a second ago must not be answered from a minute-old view,
   // and a check that failed must fail this request closed.
   const [index, revoked] = await Promise.all([
-    loadIndex(variant, lang, windowHours, nowMs),
+    loadIndex(variant, lang, windowHours, caller, nowMs),
     readRevokedUrlSet(),
   ]);
   if (!index.readable || !revoked.readable) {
@@ -384,4 +459,6 @@ export async function searchHeadlineHistory(
 
 export const __testing__ = {
   resetPools(): void { indexes.clear(); },
+  /** Replace the limiter that charges index reads; null restores the shared one. */
+  setIndexReadLimiter(limiter: IndexReadLimiter | null): void { indexReadLimiter = limiter; },
 };
