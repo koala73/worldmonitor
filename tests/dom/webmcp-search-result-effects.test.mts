@@ -202,6 +202,7 @@ function createHarness(matches: SearchMatch[], enabledPanels: Record<string, boo
     runWithAgentAnalyticsSuppressed: (callback) => callback(),
     suppressNextAgentPanelView: vi.fn(),
     resolveExecutableNewsPanel: vi.fn(() => null),
+    openArticle: vi.fn(() => true),
     saveToStorage,
     setTheme: vi.fn(),
     openExternalLink: vi.fn(),

@@ -5699,7 +5699,6 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // pass has finished. A stale replay or an unavailable digest is not a build:
   // the next real one must still trigger the watch.
   const digestBuildAt = staleReplay ? Number.NaN : Date.parse(digest.generatedAt ?? '');
-  const xTitles = new Set(xCandidates.map((candidate) => candidate.title));
   if (allTitles.size === 0) return { total: 0, classified: 0, skipped: 0, staleReplay, digestBuildAt };
 
   const titleArr = [...allTitles.keys()];
@@ -5821,7 +5820,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
         // publisher carrying an alerted headline is the same story.
         const storyKey = newsStoryKey(chunk[idx], { severity: level, importanceScore });
         // An X post has no digest build behind it.
-        const alertBuildAt = xTitles.has(chunk[idx]) ? undefined : digestBuildAt;
+        const alertBuildAt = meta.fromX ? undefined : digestBuildAt;
         publishNotificationEvent({
           onQueued: (queuedAt) => recordAlertLatency(
             alertLatency({ publishedAt: meta.publishedAt, firstSeen: meta.firstSeen, buildAt: alertBuildAt, queuedAt }),

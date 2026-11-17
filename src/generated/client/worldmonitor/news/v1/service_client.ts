@@ -356,6 +356,28 @@ export interface ClaimHeadline {
   publishedAt: number;
 }
 
+export interface SearchHeadlinesRequest {
+  query: string;
+  variant: string;
+  lang: string;
+}
+
+export interface SearchHeadlinesResponse {
+  headlines: HeadlineMatch[];
+  searchedHeadlines: number;
+  windowHours: number;
+  state: string;
+  newestServedAt: number;
+}
+
+export interface HeadlineMatch {
+  source: string;
+  title: string;
+  link: string;
+  publishedAt: number;
+  lastServedAt: number;
+}
+
 export interface ListSentAlertsRequest {
 }
 
@@ -756,6 +778,60 @@ export class NewsServiceClient {
     }
 
     return await resp.json() as SearchClaimHeadlinesResponse;
+  }
+
+  async searchHeadlines(req: SearchHeadlinesRequest, options?: NewsServiceCallOptions): Promise<SearchHeadlinesResponse> {
+    let path = "/api/news/v1/search-headlines";
+    const params = new URLSearchParams();
+    if (req.query != null && req.query !== "") params.set("query", String(req.query));
+    if (req.variant != null && req.variant !== "") params.set("variant", String(req.variant));
+    if (req.lang != null && req.lang !== "") params.set("lang", String(req.lang));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as SearchHeadlinesResponse;
+  }
+
+  async searchHeadlineArchive(req: SearchHeadlinesRequest, options?: NewsServiceCallOptions): Promise<SearchHeadlinesResponse> {
+    let path = "/api/news/v1/search-headline-archive";
+    const params = new URLSearchParams();
+    if (req.query != null && req.query !== "") params.set("query", String(req.query));
+    if (req.variant != null && req.variant !== "") params.set("variant", String(req.variant));
+    if (req.lang != null && req.lang !== "") params.set("lang", String(req.lang));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as SearchHeadlinesResponse;
   }
 
   async listSentAlerts(_req: ListSentAlertsRequest, options?: NewsServiceCallOptions): Promise<ListSentAlertsResponse> {
