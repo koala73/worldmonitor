@@ -14,9 +14,18 @@
 // or a subdomain of one. The feed URL host (the strongest signal — the
 // publisher domain as registered) is composed by the digest-side caller
 // (server/worldmonitor/news/v1/list-feed-digest.ts, which knows the feed);
-// the relay only ever sees item-scoped fields, so it gates on the curated
-// family table alone and fails closed (blank link) when the family names no
-// domains.
+// the relay only ever sees item-scoped fields, so this table gates on the
+// curated family domains alone and fails closed (blank link) when the family
+// names no domains.
+//
+// Who still gates on this table:
+//   - rss_alert candidates whose digest item carries no `linkVerified` stamp
+//     (digest-stale-gate.cjs candidateLinkFor). A stamped item is trusted as
+//     the digest verified it; the table is the fallback for a digest or
+//     cached feed row built before the stamp shipped, and for a relay
+//     deployed ahead of the API.
+//   - watchlist story alerts (watchlist-story-events.mjs,
+//     watchlist-story-scan.mjs), which read story:track rows, not the digest.
 //
 // Self-contained on purpose: ais-relay.cjs boots on require, so anything it
 // needs must be a dependency-free CJS module importable without side

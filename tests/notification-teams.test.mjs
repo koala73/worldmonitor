@@ -338,7 +338,9 @@ describe('realtime relay Teams dispatch', () => {
     assert.match(renderedText(card), /Synthetic escalation/);
     assert.match(renderedText(card), /Iran \(IR\)/);
     assert.match(renderedText(card), /Coverage: {2}\| 3 independent publishers/);
-    assert.equal(card.actions[0].url, 'https://www.reuters.com/x');
+    // A relay-originated article link carries the alert referrer tag.
+    assert.equal(card.actions[0].url, 'https://www.reuters.com/x?utm_source=worldmonitor&utm_medium=alert&utm_campaign=teams');
+    assert.equal(card.actions[0].title, 'Open original report (www.reuters.com)');
   });
 
   it('applies the rule country scope to Teams like every other channel', async () => {
