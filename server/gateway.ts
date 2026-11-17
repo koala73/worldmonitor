@@ -388,6 +388,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/trade/v1/get-trade-restrictions': 'daily',
   '/api/trade/v1/get-customs-revenue': 'daily',
   '/api/trade/v1/list-comtrade-flows': 'daily',
+  '/api/trade/v1/get-monthly-sitc-trade': 'daily',
   '/api/economic/v1/list-world-bank-indicators': 'daily',
   '/api/economic/v1/get-energy-capacity': 'daily',
   '/api/economic/v1/list-grocery-basket-prices': 'daily',
