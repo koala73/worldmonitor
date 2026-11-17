@@ -137,6 +137,7 @@ describe('publisher-families map data', () => {
       aljazeera: 'Arabic and English services of the Al Jazeera Media Network',
       rferl: 'Language services of Radio Free Europe/Radio Liberty',
       'grupo-globo': 'g1.globo.com and oglobo.globo.com are Grupo Globo titles under one owner',
+      'groupe-le-monde': 'Le Monde Libre controls Le Monde, Courrier international and Le Nouvel Obs: https://en.wikipedia.org/wiki/Groupe_Le_Monde',
     };
 
     const offenders = [];
@@ -232,7 +233,6 @@ describe('publisher-families map data', () => {
     const DOMAIN_ONLY_FAMILIES = new Set([
       'wsj',
       'miit',
-      'folha',
       'abc-news',
       'ars-technica',
       'axios',
@@ -247,7 +247,6 @@ describe('publisher-families map data', () => {
       'nbc-news',
       'news24',
       'nos',
-      'npr',
       'the-hacker-news',
     ]);
     for (const [familyId, entry] of Object.entries(PUBLISHER_FAMILIES)) {

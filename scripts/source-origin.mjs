@@ -346,6 +346,11 @@ const HOST_ORIGINS = Object.freeze({
   "znsbahamas.com": "BS",
 
   // RIPE NCC's publishing organization is based in Amsterdam.
+  'channel4.com': 'GB',
+  'courrierinternational.com': 'FR',
+  'information.tv5monde.com': 'FR',
+  'nouvelobs.com': 'FR',
+  'propublica.org': 'US',
   'stat.ripe.net': 'NL',
   'fdw.fews.net': 'US',
   'lindas.cz-aws.net': 'CH',
@@ -353,6 +358,7 @@ const HOST_ORIGINS = Object.freeze({
   'iss.moex.com': 'RU',
   'simaniger.net': 'NE',
   'data.1212.mn': 'MN',
+  'theatlantic.com': 'US',
   'www.ocpv-ci.com': 'CI',
   'api.cammesa.com': 'AR',
   'admin.gse.com.ge': 'GE',

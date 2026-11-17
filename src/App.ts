@@ -137,6 +137,7 @@ import {
   GERMAN_RSS_SOURCES,
   BRAZIL_OPT_IN_SOURCES,
   COUNTRY_COVERAGE_OPT_IN_SOURCES,
+  PUBLISHER_DIRECT_OPT_IN_SOURCES,
   computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
   FEEDS,
@@ -247,6 +248,7 @@ import {
   migrateGermanRssSourcesV10,
   migrateBrazilOptInsV11,
   migrateCountryCoverageOptInsV12,
+  migratePublisherDirectOptInsV13,
 } from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
@@ -1585,6 +1587,21 @@ export class App {
           JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[],
         );
         if (persisted && !safeStorageSetChecked(brazilOptInKey, 'done')) {
+          if (current === null) safeStorageRemoveChecked(STORAGE_KEYS.disabledFeeds);
+          else saveToStorage(STORAGE_KEYS.disabledFeeds, current);
+        }
+      }
+      const publisherDirectOptInKey = 'worldmonitor-publisher-direct-optin-v1';
+      if (!safeStorageGet(publisherDirectOptInKey)) {
+        const current = sessionDisabledSources ?? loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+        const blob = { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current ?? computeDefaultDisabledSources(userLang)) };
+        const migrated = migratePublisherDirectOptInsV13(blob, PUBLISHER_DIRECT_OPT_IN_SOURCES);
+        if (sessionDisabledSources) sessionDisabledSources = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
+        const persisted = (current !== null && migrated === blob) || saveToStorage(
+          STORAGE_KEYS.disabledFeeds,
+          JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[],
+        );
+        if (persisted && !safeStorageSetChecked(publisherDirectOptInKey, 'done')) {
           if (current === null) safeStorageRemoveChecked(STORAGE_KEYS.disabledFeeds);
           else saveToStorage(STORAGE_KEYS.disabledFeeds, current);
         }

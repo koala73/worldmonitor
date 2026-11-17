@@ -8,7 +8,7 @@ import { transpileModule } from 'typescript';
 import { bundleFeedsModule } from './_lib/bundle-feeds-module.mts';
 import { NEWS_CATALOG, buildDigestWarmCells } from '../shared/news-catalog';
 import { NEWS_LANGUAGES } from '../src/shared/public-rpc-cache';
-import { migrateCountryCoverageOptInsV12, migrateBrazilOptInsV11, buildMigrations, applyMigrationChain } from '../src/utils/cloud-prefs-migrations';
+import { migrateCountryCoverageOptInsV12, migrateBrazilOptInsV11, migratePublisherDirectOptInsV13, buildMigrations, applyMigrationChain } from '../src/utils/cloud-prefs-migrations';
 import { SOURCE_PROPAGANDA_RISK } from '../shared/source-provenance';
 import { resolveHostOrigin } from '../scripts/source-origin.mjs';
 import { restoreGateOwnedSources, reconcileSourceGateOwnership, stringSetsEqual, inferExactSourceGateOwnership, transferSourceGateOwnershipToUser } from '../src/services/source-cap';
@@ -190,9 +190,9 @@ describe('optional country news coverage', () => {
       const store = new Map([[key, '["existing-choice"]']]);
       const disabled = runInNewContext(code, {
         STORAGE_KEYS: { disabledFeeds: key }, COUNTRY_COVERAGE_OPT_IN_SOURCES: optIns,
-        BRAZIL_OPT_IN_SOURCES: ['Brazil fixture'], userLang: 'en',
+        BRAZIL_OPT_IN_SOURCES: ['Brazil fixture'], PUBLISHER_DIRECT_OPT_IN_SOURCES: ['Publisher fixture'], userLang: 'en',
         computeDefaultDisabledSources: client.computeDefaultDisabledSources,
-        migrateCountryCoverageOptInsV12, migrateBrazilOptInsV11,
+        migrateCountryCoverageOptInsV12, migrateBrazilOptInsV11, migratePublisherDirectOptInsV13,
         safeStorageGet: (name: string) => store.get(name) ?? null,
         loadFromStorage: (name: string, fallback: unknown) => store.has(name) ? JSON.parse(store.get(name)!) : fallback,
         saveToStorage: (name: string, value: unknown) => {

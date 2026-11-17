@@ -300,7 +300,7 @@ Unique layers: stock exchanges, financial centers, and central-bank and supranat
 <a id="corpus-data-sources"></a>
 ## Data Sources
 
-The live inventory currently covers 1349 attributed providers across 1368 observed source hosts. The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) maps coverage by domain, and the [source attribution page](https://www.worldmonitor.app/docs/source-attribution) lists hosts and observed surfaces. The [committed attribution manifest](https://github.com/koala73/worldmonitor/blob/main/shared/source-attribution-manifest.json) records license posture, required attribution, and review status, including terms-review entries.
+The live inventory currently covers 1359 attributed providers across 1378 observed source hosts. The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) maps coverage by domain, and the [source attribution page](https://www.worldmonitor.app/docs/source-attribution) lists hosts and observed surfaces. The [committed attribution manifest](https://github.com/koala73/worldmonitor/blob/main/shared/source-attribution-manifest.json) records license posture, required attribution, and review status, including terms-review entries.
 
 - ACLED (Armed Conflict Location & Event Data), self-hosted deployments with ACLED credentials only: Protests, riots, conflicts — 30-day window, tokenized API
 - GDELT (Global Database of Events, Language, and Tone): Geo-events, protest keywords, topic feeds
@@ -431,7 +431,7 @@ The sections below are produced by `npm run build:llms-full` from the source cat
 <a id="corpus-source-provider-directory"></a>
 ## Source provider directory
 
-World Monitor publishes 1349 named providers across 26 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
+World Monitor publishes 1359 named providers across 27 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
 
 - [Geopolitics & Conflict](https://www.worldmonitor.app/sources/geopolitics/): 46 providers.
 - [Military & Strategic](https://www.worldmonitor.app/sources/military/): 22 providers.
@@ -451,6 +451,7 @@ World Monitor publishes 1349 named providers across 26 source catalog pages. Eac
 - [News & OSINT — page 14](https://www.worldmonitor.app/sources/news/page/14/): 60 providers.
 - [News & OSINT — page 15](https://www.worldmonitor.app/sources/news/page/15/): 60 providers.
 - [News & OSINT — page 16](https://www.worldmonitor.app/sources/news/page/16/): 60 providers.
+- [News & OSINT — page 17](https://www.worldmonitor.app/sources/news/page/17/): 10 providers.
 - [Finance & Economics](https://www.worldmonitor.app/sources/finance/): 60 providers.
 - [Finance & Economics — page 2](https://www.worldmonitor.app/sources/finance/page/2/): 41 providers.
 - [Energy & Commodities](https://www.worldmonitor.app/sources/energy/): 52 providers.
