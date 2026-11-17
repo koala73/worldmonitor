@@ -21,6 +21,7 @@ import {
 } from "../shared/alert-rule-shape";
 import { mergeEntitlementFeatures } from "./lib/entitlements";
 import { assertAlertCapabilities, freeAccountCountryUnionCount, loadAlertCapabilities } from "./lib/alertCapabilities";
+import { seedCountriesForRule } from "./lib/alertScopeSeed";
 
 type DigestMode = "realtime" | "daily" | "twice_daily" | "weekly";
 type Sensitivity = "all" | "high" | "critical";
@@ -683,6 +684,10 @@ export const setNotificationConfigForUser = internalMutation({
     chokepoints: v.optional(v.array(v.string())),
     orbitalSites: v.optional(v.array(v.string())),
     reservoirAlert: v.optional(reservoirAlertValidator),
+    // #10873: when the rule has no stored countries and `countries` is not
+    // sent, scope it to the user's followed countries in this transaction
+    // (the activation flow's first alert rule).
+    seedCountriesFromFollowed: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     await assertAccountWritable(ctx, args.userId);
@@ -732,8 +737,17 @@ export const setNotificationConfigForUser = internalMutation({
     });
     assertCompatibleDeliveryMode(pair);
 
-    const normalizedCountries = args.countries !== undefined
-      ? normalizeCountries(args.countries)
+    // Read with the write, so a scope saved from another tab since the
+    // client's last read is never overwritten, and a client whose followed
+    // list has not loaded yet cannot seed an empty scope.
+    const seeded = args.seedCountriesFromFollowed === true
+      && args.countries === undefined
+      && (existing?.countries ?? []).length === 0
+      ? await seedCountriesForRule(ctx, userId, variant)
+      : [];
+    const incomingCountries = args.countries ?? (seeded.length > 0 ? seeded : undefined);
+    const normalizedCountries = incomingCountries !== undefined
+      ? normalizeCountries(incomingCountries)
       : undefined;
     const normalizedTickers = args.tickers !== undefined
       ? normalizeTickers(args.tickers)

@@ -867,6 +867,7 @@ describe('buildCriticalAlertsPayload — alerts step write delta (U5)', () => {
       enabled: true,
       channels: ['web_push'],
       sensitivity: 'critical',
+      seedCountriesFromFollowed: true,
     });
   });
 
@@ -889,7 +890,14 @@ describe('buildCriticalAlertsPayload — alerts step write delta (U5)', () => {
       enabled: true,
       channels: ['web_push'],
       sensitivity: 'critical',
+      seedCountriesFromFollowed: true,
     });
+  });
+  // #10873: a realtime rule with no countries gets global critical events only,
+  // so the seed path asks the server to scope it to the followed countries.
+  it('asks the server to seed countries on the seed path only', () => {
+    assert.equal(buildCriticalAlertsPayload([], false).seedCountriesFromFollowed, true);
+    assert.equal(buildCriticalAlertsPayload(['email'], true).seedCountriesFromFollowed, undefined);
   });
 });
 

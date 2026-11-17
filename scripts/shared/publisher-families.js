@@ -49,33 +49,40 @@
  * A literal is the one form that works everywhere.
  */
 const PUBLISHER_FAMILY_DATA = {
+  'matichon': { publisher: 'Matichon Group', labels: ['Matichon', 'Khaosod English'] },
+  "n1-danas": { publisher: "N1 and Danas", labels: ["N1 Croatia", "N1 Bosna i Hercegovina", "N1 Info", "N1 Slovenia", "Danas"] },
+  "alpha-media-zimbabwe": { publisher: "Alpha Media Holdings", labels: ["NewsDay Zimbabwe", "The Zimbabwe Independent"] },
+  "rjr-gleaner": { publisher: "RJRGLEANER", labels: ["The Gleaner", "Radio Jamaica News"] },
+  "guardian-media-tt": { publisher: "Guardian Media Trinidad and Tobago", labels: ["Trinidad Guardian", "CNC3"] },
+  'times-of-malta': { publisher: "Times of Malta", labels: ["Times of Malta"] },
+  'straits-times': { publisher: "The Straits Times", labels: ["Straits Times"] },
+  'gma': { publisher: "GMA News", labels: ["GMA News"] },
+  'reporter-taiwan': { publisher: "The Reporter", labels: ["The Reporter"] },
+  'jyllands-posten': { publisher: "Jyllands-Posten", labels: ["Jyllands-Posten"] },
+  'rtvslo': { publisher: "RTV Slovenija", labels: ["RTV Slovenija"] },
+  'kyodo': { publisher: "Kyodo News", labels: ["Japan Wire by Kyodo News"] },
+  'orf': { publisher: "ORF", labels: ["ORF.at"] },
+  'der-standard': { publisher: "Der Standard", labels: ["Der Standard"] },
+  'rtbf': { publisher: "RTBF", labels: ["RTBF Info"] },
+  'expresso': { publisher: "Expresso", labels: ["Expresso"] },
+  'prachatai': { publisher: "Prachatai", labels: ["Prachatai"] },
+  'scroll': { publisher: "Scroll.in", labels: ["Scroll.in"] },
+  'sofia-globe': { publisher: "The Sofia Globe", labels: ["The Sofia Globe"] },
+  'biobio': { publisher: "BioBioChile", labels: ["BioBioChile"] },
+  'rferl': { publisher: "Radio Free Europe/Radio Liberty", labels: ["RFE/RL Central Asia", "Azadliq Radiosu (RFE/RL - Azerbaijan)", "Radio Azattyk", "Radio Azattyq", "Radio Ozodi", "Radio Azatlyk"] },
+  'aljazeera': { publisher: "Al Jazeera", labels: ["Al Jazeera", "Al Jazeera — Micronesia"] },
   'miit': { publisher: "MIIT (China)", labels: [] },
   'a16z': { publisher: "Andreessen Horowitz", labels: ["a16z Blog", "a16z Insights", "a16z Podcast"] },
   'abc-news': { publisher: "ABC News", labels: [] },
   'acquired': { publisher: "Acquired", labels: ["Acquired Episodes", "Acquired Podcast"] },
-  'ap-news': { publisher: "Associated Press", labels: ["AP Mexico", "AP News"] },
+  'ap-news': { publisher: "Associated Press", labels: ["AP Mexico", "AP News", "AP — Bahrain", "AP — Comoros", "AP — Denmark", "AP — Dominica", "AP — El Salvador", "AP — Equatorial Guinea", "AP — Eritrea", "AP — Eswatini", "AP — Guinea-Bissau", "AP — Kiribati", "AP — Liechtenstein", "AP — Marshall Islands", "AP — Micronesia", "AP — Montenegro", "AP — Myanmar (Burma)", "AP — Nauru", "AP — North Macedonia", "AP — Palau", "AP — Panama", "AP — Paraguay", "AP — Seychelles", "AP — St. Kitts & Nevis", "AP — St. Vincent & Grenadines", "AP — Suriname", "AP — Tonga", "AP — Trinidad & Tobago", "AP — Tuvalu", "AP — Vanuatu", "AP — Vatican City", "AP — Zambia"] },
   'ars-technica': { publisher: "Ars Technica", labels: [] },
   'arxiv': { publisher: "arXiv", labels: ["ArXiv AI", "ArXiv ML"] },
   'asharq': { publisher: "Asharq News", labels: ["Asharq Business", "Asharq News"] },
   'axios': { publisher: "Axios", labels: [] },
   'bbc': {
     publisher: "BBC",
-    labels: [
-      "BBC Africa",
-      "BBC Afrique",
-      "BBC Asia",
-      "BBC Hindi",
-      "BBC Latin America",
-      "BBC Middle East",
-      "BBC Mundo",
-      "BBC Persian",
-      "BBC Russian",
-      "BBC Northern Ireland",
-      "BBC Science",
-      "BBC Turkce",
-      "BBC UK",
-      "BBC World",
-    ],
+    labels: ["BBC Africa", "BBC Afrique", "BBC Asia", "BBC Hindi", "BBC Latin America", "BBC Middle East", "BBC Mundo", "BBC Persian", "BBC Russian", "BBC Northern Ireland", "BBC Science", "BBC Turkce", "BBC UK", "BBC World", "BBC — Angola", "BBC — Barbados", "BBC — Central African Republic", "BBC — Comoros", "BBC — Côte d’Ivoire", "BBC — El Salvador", "BBC — Equatorial Guinea", "BBC — Eswatini", "BBC — Kiribati", "BBC — Laos", "BBC — Liechtenstein", "BBC — Micronesia", "BBC — Nauru", "BBC — Tonga", "BBC — Tuvalu", "BBC — Vanuatu", "BBC — Vatican City", "BBC Korean"],
   },
   'bloomberg': {
     publisher: "Bloomberg",
@@ -120,17 +127,7 @@ const PUBLISHER_FAMILY_DATA = {
   },
   'guardian': {
     publisher: "The Guardian",
-    labels: [
-      "Guardian Africa",
-      "Guardian Americas",
-      "Guardian Australia",
-      "Guardian Brazil",
-      "Guardian Caribbean",
-      "Guardian ME",
-      "Guardian Pacific",
-      "Guardian Science",
-      "Guardian World",
-    ],
+    labels: ["Guardian Africa", "Guardian Americas", "Guardian Australia", "Guardian Brazil", "Guardian Caribbean", "Guardian ME", "Guardian Pacific", "Guardian Science", "Guardian World", "Guardian — Angola", "Guardian — Paraguay", "Guardian — Barbados", "Guardian — Bolivia", "Guardian — Kiribati", "Guardian — Laos", "Guardian — Liechtenstein", "Guardian — Marshall Islands", "Guardian — Micronesia", "Guardian — Nauru", "Guardian — Palau", "Guardian — Tuvalu"],
   },
   'hacker-news': { publisher: "Hacker News", labels: ["Hacker News", "Show HN", "YC News"] },
   'hromadske': { publisher: "Hromadske", labels: ["Hromadske", "Hromadske EN"] },
@@ -157,21 +154,7 @@ const PUBLISHER_FAMILY_DATA = {
   'politico': { publisher: "Politico", labels: ["Politico", "Politico Tech"] },
   'reuters': {
     publisher: "Reuters",
-    labels: [
-      "Reuters",
-      "Reuters Asia",
-      "Reuters Business",
-      "Reuters Commodities",
-      "Reuters Crypto",
-      "Reuters Energy",
-      "Reuters India",
-      "Reuters LatAm",
-      "Reuters Markets",
-      "Reuters Nasdaq Futures",
-      "Reuters Science",
-      "Reuters US",
-      "Reuters World",
-    ],
+    labels: ["Reuters", "Reuters Asia", "Reuters Business", "Reuters Commodities", "Reuters Crypto", "Reuters Energy", "Reuters India", "Reuters LatAm", "Reuters Markets", "Reuters Nasdaq Futures", "Reuters Science", "Reuters US", "Reuters World", "Reuters — Algeria", "Reuters — Andorra", "Reuters — Mali", "Reuters — Benin", "Reuters — Bhutan", "Reuters — Angola", "Reuters — Bahrain", "Reuters — Bolivia", "Reuters — Botswana", "Reuters — Brunei", "Reuters — Bulgaria", "Reuters — Burkina Faso", "Reuters — Burundi", "Reuters — Cameroon", "Reuters — Central African Republic", "Reuters — Chad", "Reuters — Comoros", "Reuters — Congo - Brazzaville", "Reuters — Congo - Kinshasa", "Reuters — Costa Rica", "Reuters — Cuba", "Reuters — Denmark", "Reuters — Djibouti", "Reuters — Dominica", "Reuters — Dominican Republic", "Reuters — Equatorial Guinea", "Reuters — Eritrea", "Reuters — Estonia", "Reuters — Grenada", "Reuters — Guatemala", "Reuters — Guinea", "Reuters — Guinea-Bissau", "Reuters — Guyana", "Reuters — Honduras", "Reuters — Iceland", "Reuters — Jordan", "Reuters — Kiribati", "Reuters — Kuwait", "Reuters — Laos", "Reuters — Lesotho", "Reuters — Liberia", "Reuters — Libya", "Reuters — Maldives", "Reuters — Marshall Islands", "Reuters — Mauritania", "Reuters — Mauritius", "Reuters — Mexico", "Reuters — Monaco", "Reuters — Montenegro", "Reuters — Myanmar (Burma)", "Reuters — Namibia", "Reuters — Nauru", "Reuters — North Korea", "Reuters — Palau", "Reuters — Palestinian Territories", "Reuters — Panama", "Reuters — Papua New Guinea", "Reuters — Paraguay", "Reuters — Portugal", "Reuters — Rwanda", "Reuters — Samoa", "Reuters — Saudi Arabia", "Reuters — Seychelles", "Reuters — Sierra Leone", "Reuters — St. Kitts & Nevis", "Reuters — Sudan", "Reuters — Timor-Leste", "Reuters — Togo", "Reuters — Tonga", "Reuters — Tuvalu", "Reuters — United Arab Emirates", "Reuters — Vatican City", "Reuters — Yemen", "Reuters — Zambia", "Reuters — Zimbabwe"],
   },
   'rt': { publisher: "RT", labels: ["RT", "RT Russia"] },
   'seeking-alpha': {
@@ -244,6 +227,45 @@ export const PUBLISHER_FAMILIES = Object.freeze(PUBLISHER_FAMILY_DATA);
  * that several publishers share cannot name one.
  */
 const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
+  'matichon': ['matichon.co.th', 'khaosodenglish.com', 'khaosod.co.th'],
+  'n1-danas': ['n1info.hr', 'n1info.ba', 'n1info.rs', 'n1info.si', 'danas.rs'],
+  'alpha-media-zimbabwe': ['newsday.co.zw', 'theindependent.co.zw'],
+  'rjr-gleaner': ['jamaica-gleaner.com', 'radiojamaicanewsonline.com'],
+  'guardian-media-tt': ['guardian.co.tt', 'cnc3.co.tt'],
+  'times-of-malta': ['timesofmalta.com'],
+
+  'straits-times': ['straitstimes.com'],
+
+  'gma': ['gmanetwork.com', 'gmanews.tv'],
+
+  'reporter-taiwan': ['twreporter.org'],
+
+  'jyllands-posten': ['jyllands-posten.dk'],
+
+  'rtvslo': ['rtvslo.si'],
+
+  'kyodo': ['kyodonews.net'],
+
+  'orf': ['orf.at'],
+
+  'der-standard': ['derstandard.at'],
+
+  'rtbf': ['rtbf.be'],
+
+  'expresso': ['expresso.pt'],
+
+  'prachatai': ['prachatai.com'],
+
+  'scroll': ['scroll.in'],
+
+  'sofia-globe': ['sofiaglobe.com'],
+
+  'biobio': ['biobiochile.cl'],
+
+  'rferl': ['rferl.org', 'azadliq.org', 'azattyk.org', 'azattyq.org', 'ozodi.org', 'azathabar.com'],
+
+  'aljazeera': ['aljazeera.com'],
+
   'miit': ['miit.gov.cn'],
   'a16z': ['a16z.com'],
   'abc-news': ['abcnews.com'],

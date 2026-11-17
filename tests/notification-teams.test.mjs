@@ -306,7 +306,8 @@ describe('realtime relay Teams dispatch', () => {
     globalThis.fetch = async (input, init) => {
       const url = String(input);
       if (url.includes('/relay/enabled-rules')) return Response.json([{
-        userId: 'owner', variant: 'full', sensitivity: 'all', eventTypes: ['conflict_escalation'], channels: ['teams'], ...rule,
+        // conflict_escalation is a local event (#10873): it reaches rules that list its country.
+        userId: 'owner', variant: 'full', sensitivity: 'all', eventTypes: ['conflict_escalation'], countries: ['IR'], channels: ['teams'], ...rule,
       }]);
       if (url.endsWith('/relay/channels')) return Response.json([channel]);
       if (url.endsWith('/relay/delivery-result')) { deactivations.push(...JSON.parse(String(init?.body)).results); return Response.json({ ok: true }); }
@@ -349,7 +350,7 @@ describe('realtime relay Teams dispatch', () => {
 
   it('reports the terminal status and channel version when the workflow is gone', async () => {
     const { relay, deactivations } = setup({ status: 404 });
-    await relay.processEvent({ eventType: 'conflict_escalation', severity: 'critical', payload: { title: 'Gone' } });
+    await relay.processEvent({ eventType: 'conflict_escalation', severity: 'critical', payload: { title: 'Gone', countryCode: 'IR' } });
     assert.deepEqual(deactivations, [{ userId: 'owner', channelType: 'teams',
       delivery: { channelId: 'teams-channel', linkedAt: 1, error: 'HTTP 404' } }]);
   });
