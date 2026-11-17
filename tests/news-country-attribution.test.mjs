@@ -32,8 +32,8 @@ function relaySlice(fromMarker, toFunction) {
 
 const relay = Function(
   'require',
-  `${relaySlice('const THREAT_COUNTRY_NAME_TO_ISO2 = {', 'threatSummaryCountries')}
-  return { matchCountryNamesInText, threatSummaryCountries };`,
+  `${relaySlice('const THREAT_COUNTRY_NAME_TO_ISO2 = {', 'countriesNamedInHeadline')}
+  return { matchCountryNamesInText, threatSummaryCountries, countriesNamedInHeadline };`,
 )(createRequire(new URL('../scripts/ais-relay.cjs', import.meta.url)));
 
 const SAUDI_HEADLINES = [
@@ -201,5 +201,20 @@ describe('relay threat summary attribution', () => {
     const accumulations = [...RELAY_SOURCE.matchAll(/for \(const code of (\w+)\(([^)]*)\)\) \{\s*if \(!byCountry\[code\]\)/g)];
     assert.equal(accumulations.length, 2, 'cached-hit and fresh-classification loops');
     for (const [, fn] of accumulations) assert.equal(fn, 'threatSummaryCountries');
+  });
+});
+
+describe('primary news country for alert tiers (#10873)', () => {
+  const policy = createRequire(import.meta.url)('../scripts/lib/notification-publish-policy.cjs');
+  const primary = (title) => policy.primaryNewsCountryCode(relay.countriesNamedInHeadline(title));
+
+  it('names one country only when the whole headline names exactly one', () => {
+    assert.equal(primary('Russia attacks Ukraine'), undefined);
+    assert.equal(primary('Ukraine declares an emergency'), 'UA');
+    assert.equal(primary('Under siege, Ukraine uses F-16s to shoot down drones - The New York Times'), 'UA');
+  });
+
+  it('reads the primary from the full scan in the rss publisher', () => {
+    assert.match(RELAY_SOURCE, /primaryNewsCountryCode\(countriesNamedInHeadline\(chunk\[idx\]\)\)/);
   });
 });
