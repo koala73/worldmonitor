@@ -183,12 +183,12 @@ describe('notification-relay sendWebhook', () => {
         reports.push(...JSON.parse(init.body).results);
         return Response.json({ ok: true });
       };
-      const channel = { _id: 'channel-1', linkedAt: 123 };
+      const channel = { _id: 'channel-1', linkedAt: 123, deliveryAttempt: { sequence: 1, pending: true } };
       const ok = await relay.sendWebhook('user-1', scenario.corrupt ? 'invalid' : crypto.encrypt('https://hooks.example.com/in'),
         { eventType: 'rss_alert' }, undefined, channel);
       assert.equal(ok, scenario.expected === null);
       assert.deepEqual(reports, [{ userId: 'user-1', channelType: 'webhook', delivery: {
-        channelId: 'channel-1', linkedAt: 123, error: scenario.expected,
+        channelId: 'channel-1', linkedAt: 123, sequence: 1, error: scenario.expected,
       } }]);
     });
   }

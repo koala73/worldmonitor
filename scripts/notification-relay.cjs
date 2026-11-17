@@ -656,7 +656,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
     const chRes = await fetch(`${CONVEX_SITE_URL}/relay/channels`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RELAY_SECRET}`, 'User-Agent': 'worldmonitor-relay/1.0' },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({ userId, deliveryChannels: allowedChannelTypes ?? ['webhook', 'slack', 'discord', 'teams', 'web_push'] }),
       signal: AbortSignal.timeout(10000),
     });
     if (chRes.ok) channels = await chRes.json();
@@ -1866,7 +1866,7 @@ async function processWelcomeDelivery(event) {
     const chRes = await fetch(`${CONVEX_SITE_URL}/relay/channels`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RELAY_SECRET}`, 'User-Agent': 'worldmonitor-relay/1.0' },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({ userId, deliveryChannels: [channelType] }),
       signal: AbortSignal.timeout(10000),
     });
     if (chRes.ok) channels = (await chRes.json()) ?? [];
@@ -2325,7 +2325,7 @@ async function processEventDelivery(event) {
           'Authorization': `Bearer ${RELAY_SECRET}`,
           'User-Agent': 'worldmonitor-relay/1.0',
         },
-        body: JSON.stringify({ userId: rule.userId }),
+        body: JSON.stringify({ userId: rule.userId, deliveryChannels: rule.channels ?? [] }),
         signal: AbortSignal.timeout(10000),
       });
       if (!chRes.ok) throw new Error(`HTTP ${chRes.status}`);
