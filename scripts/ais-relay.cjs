@@ -99,6 +99,13 @@ const {
   shouldWriteClassifySeedMeta,
   CLASSIFY_DIGEST_RETRY_DELAYS_MS,
   classifyDigestRetryDecision,
+  DIGEST_BUILD_WATCH_INTERVAL_MS,
+  digestBuildStampKey,
+  digestBuildStampMs,
+  editionsWithUnclassifiedBuild,
+  buildPassEditions,
+  alertLatency,
+  formatAlertLatency,
 } = require('./lib/classify-digest-request.cjs');
 const {
   DIGEST_WARM_ACTIVATION_KEY,
@@ -5069,6 +5076,9 @@ async function startCyberThreatsSeedLoop() {
 // AI Classification Seed — batch-classify digest titles via LLM → Redis
 // Clients get pre-classified items from digest, zero classify-event RPCs
 // ─────────────────────────────────────────────────────────────
+// The whole-pass cadence: threat summary and seed-meta. An alert does not wait
+// for it; the build watch (checkDigestBuilds) classifies an edition as soon as
+// its digest is rebuilt.
 const CLASSIFY_SEED_INTERVAL_MS = 15 * 60 * 1000;
 const CLASSIFY_CACHE_TTL = 86400;
 const CLASSIFY_SKIP_TTL = 1800;
@@ -5563,6 +5573,42 @@ const observeJevShadow = jevShadow.createShadowObserver({
 
 let classifyInFlight = false;
 
+// One edition is classified at a time, whether the 15-minute cycle or the
+// build watch asks. Two passes reading the same headline before either has
+// cached its label would both pay the LLM for it.
+let classifyQueue = Promise.resolve();
+function runClassifyExclusive(task) {
+  const run = classifyQueue.then(task);
+  classifyQueue = run.catch(() => {});
+  return run;
+}
+
+// Edition -> build time (ms) of the newest digest body the relay classified.
+// In memory only: a restarted relay reads every edition once.
+const classifiedDigestBuildAt = new Map();
+function noteClassifiedDigestBuild(variant, builtAt) {
+  if (Number.isFinite(builtAt) && builtAt > (classifiedDigestBuildAt.get(variant) ?? 0)) {
+    classifiedDigestBuildAt.set(variant, builtAt);
+  }
+}
+
+// One sample per alert the classify pass sends to the queue, so the delay can
+// be measured per stage after the fact (scripts/report-alert-latency.mjs).
+const ALERT_LATENCY_KEY = 'relay:alert-latency:v1';
+const ALERT_LATENCY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+function recordAlertLatency(latency, { severity, importanceScore, variant, source }) {
+  const line = formatAlertLatency(latency, { severity, importanceScore, variant, source });
+  if (latency.overBudget) console.warn(line);
+  else console.log(line);
+  const ts = Date.now();
+  const member = JSON.stringify({ ts, severity, importanceScore, variant, source, ...latency });
+  upstashPipeline([
+    ['ZADD', ALERT_LATENCY_KEY, String(ts), member],
+    ['ZREMRANGEBYSCORE', ALERT_LATENCY_KEY, '-inf', String(ts - ALERT_LATENCY_RETENTION_MS)],
+    ['EXPIRE', ALERT_LATENCY_KEY, String(Math.round((2 * ALERT_LATENCY_RETENTION_MS) / 1000))],
+  ]).catch(() => {});
+}
+
 async function seedClassifyForVariant(variant, seenTitles) {
   const digestUrl = buildClassifyDigestUrl(variant);
   const transport = classifyDigestTransport(digestUrl) === 'http' ? http : https;
@@ -5636,6 +5682,11 @@ async function seedClassifyForVariant(variant, seenTitles) {
     RECENCY_GATE_MS,
   );
   const allTitles = buildClassifyCandidateMap(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS);
+  // The build the relay has now read. A stale replay or an unavailable digest
+  // is not a build: the next real one must still trigger the watch.
+  const digestBuildAt = staleReplay ? Number.NaN : Date.parse(digest.generatedAt ?? '');
+  noteClassifiedDigestBuild(variant, digestBuildAt);
+  const xTitles = new Set(xCandidates.map((candidate) => candidate.title));
   if (allTitles.size === 0) return { total: 0, classified: 0, skipped: 0, staleReplay };
 
   const titleArr = [...allTitles.keys()];
@@ -5756,6 +5807,16 @@ async function seedClassifyForVariant(variant, seenTitles) {
         // One alert per story per day, not per title string: a second
         // publisher carrying an alerted headline is the same story.
         const storyKey = newsStoryKey(chunk[idx], { severity: level, importanceScore });
+        recordAlertLatency(
+          alertLatency({
+            publishedAt: meta.publishedAt,
+            firstSeen: meta.firstSeen,
+            // An X post has no digest build behind it.
+            buildAt: xTitles.has(chunk[idx]) ? undefined : digestBuildAt,
+            queuedAt: Date.now(),
+          }),
+          { severity: level, importanceScore, variant, source: meta.source },
+        );
         publishNotificationEvent({
           eventType: 'rss_alert',
           payload: {
@@ -5847,7 +5908,7 @@ async function seedClassify() {
     for (let v = 0; v < CLASSIFY_VARIANTS.length; v++) {
       if (v > 0) await new Promise((r) => setTimeout(r, CLASSIFY_VARIANT_STAGGER_MS));
       try {
-        const stats = await seedClassifyForVariant(CLASSIFY_VARIANTS[v], seenTitles);
+        const stats = await runClassifyExclusive(() => seedClassifyForVariant(CLASSIFY_VARIANTS[v], seenTitles));
         if (stats.fetchFailed) fetchFailed += 1;
         else fetchOk += 1;
         if (stats.staleReplay) staleReplays += 1;
@@ -5902,6 +5963,50 @@ async function seedClassify() {
   }
 }
 
+// ── Build watch ──────────────────────────────────────────────────────────────
+// Classifies an edition as soon as the digest handler records a new build for
+// it, instead of leaving the headline for the next 15-minute cycle. The cycle
+// above still runs: it owns the threat summary and seed-meta, and it is the
+// fallback if the stamps stop arriving. A build pass publishes neither.
+let digestBuildWatchInFlight = false;
+
+async function checkDigestBuilds() {
+  if (digestBuildWatchInFlight) return [];
+  digestBuildWatchInFlight = true;
+  try {
+    if (!CLASSIFY_LLM_PROVIDERS.some((p) => !!process.env[p.envKey])) return [];
+    const rows = await upstashPipeline([['MGET', ...CLASSIFY_VARIANTS.map(digestBuildStampKey)]]);
+    const values = Array.isArray(rows?.[0]?.result) ? rows[0].result : [];
+    const stamps = new Map(CLASSIFY_VARIANTS.map((variant, i) => [variant, digestBuildStampMs(values[i])]));
+    const rebuilt = editionsWithUnclassifiedBuild({
+      editions: CLASSIFY_VARIANTS,
+      stamps,
+      classifiedAt: classifiedDigestBuildAt,
+      now: Date.now(),
+    });
+    const editions = buildPassEditions(CLASSIFY_VARIANTS, rebuilt);
+    const summary = [];
+    for (const variant of editions) {
+      try {
+        const stats = await runClassifyExclusive(() => seedClassifyForVariant(variant, new Set()));
+        summary.push(`${variant} ${stats.classified}/${stats.total}${stats.fetchFailed ? ' fetch failed' : ''}`);
+      } catch (e) {
+        summary.push(`${variant} error`);
+        console.warn(`[Classify] build pass ${variant} error:`, e?.message || e);
+      }
+    }
+    // Recorded even when the digest read failed or served a replay, so one
+    // build is acted on once; the cycle picks up whatever a failed read missed.
+    for (const variant of rebuilt) noteClassifiedDigestBuild(variant, stamps.get(variant));
+    if (editions.length > 0) {
+      console.log(`[Classify] build pass (rebuilt: ${rebuilt.join(',')}) classified/titles: ${summary.join(', ')}`);
+    }
+    return editions;
+  } finally {
+    digestBuildWatchInFlight = false;
+  }
+}
+
 async function startClassifySeedLoop() {
   if (!UPSTASH_ENABLED) {
     console.log('[Classify] Disabled (no Upstash Redis)');
@@ -5910,6 +6015,17 @@ async function startClassifySeedLoop() {
   const activeProviders = CLASSIFY_LLM_PROVIDERS.filter((p) => !!process.env[p.envKey]).map((p) => p.name);
   console.log(`[Classify] Seed loop starting (interval ${CLASSIFY_SEED_INTERVAL_MS / 1000 / 60}min, providers:${activeProviders.length ? activeProviders.join(',') : 'none'})`);
   startBootSeedLoop('Classify', 'seed-meta:classify', CLASSIFY_SEED_INTERVAL_MS, seedClassify, (e) => console.warn('[Classify] Initial seed error:', e?.message || e), (e) => console.warn('[Classify] Seed error:', e?.message || e));
+}
+
+// Not a boot-seed loop: a check costs one Redis MGET, and a pass reads digests
+// the API already holds and sends the LLM only headlines it has not labelled,
+// so a restart has nothing to re-buy and no seed-meta to gate on.
+function startDigestBuildWatch() {
+  if (!UPSTASH_ENABLED) return;
+  console.log(`[Classify] Build watch starting (every ${DIGEST_BUILD_WATCH_INTERVAL_MS / 1000}s)`);
+  setInterval(() => {
+    checkDigestBuilds().catch((e) => console.warn('[Classify] Build watch error:', e?.message || e));
+  }, DIGEST_BUILD_WATCH_INTERVAL_MS).unref?.();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -13708,6 +13824,13 @@ async function handleRelayRequest(req, res) {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
     }, JSON.stringify({ ok: true }));
+  } else if (pathname === '/__test/classify-build-watch' && RELAY_TEST_MODE) {
+    // Test-only seam: one build-watch check on request.
+    const editions = await checkDigestBuilds();
+    return sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+    }, JSON.stringify({ ok: true, editions }));
   } else if (pathname === '/__test/seed-theater-posture' && RELAY_TEST_MODE) {
     // Test-only seam: background seed loops are disabled in RELAY_TEST_MODE,
     // so tests trigger a single theater-posture cycle explicitly.
@@ -16427,6 +16550,7 @@ server.listen(PORT, RELAY_BIND_HOST, () => {
   startChokepointWarmPingLoop();
   startCableHealthWarmPingLoop();
   startClassifySeedLoop();
+  startDigestBuildWatch();
   startDigestWarmLoop();
   startMiddleEastStrikesLoop();
   startMiddleEastStrikesV2Loop();

@@ -14,6 +14,25 @@ const {
 } = require('../scripts/lib/digest-stale-gate.cjs');
 
 describe('relay digest stale gate (#7084)', () => {
+  it('carries story tracking first-seen time so the relay can log how long an alert waited', () => {
+    const now = Date.parse('2026-11-16T23:45:00Z');
+    const digest = {
+      categories: {
+        politics: {
+          items: [
+            { title: 'tracked headline', source: 'CNN World', publishedAt: now - 60_000, storyMeta: { firstSeen: now - 30_000 } },
+            { title: 'untracked headline', source: 'CNN World', publishedAt: now - 60_000 },
+            { title: 'unset first seen', source: 'CNN World', publishedAt: now - 60_000, storyMeta: { firstSeen: 0 } },
+          ],
+        },
+      },
+    };
+    const candidates = buildClassifyCandidateMap(digest, [], 'full', now, 6 * 60 * 60 * 1000);
+    assert.equal(candidates.get('tracked headline').firstSeen, now - 30_000);
+    assert.equal('firstSeen' in candidates.get('untracked headline'), false);
+    assert.equal('firstSeen' in candidates.get('unset first seen'), false);
+  });
+
   it('skips a server-marked stale replay', () => {
     assert.equal(isStaleDigestReplay({ coverage: { servedStale: true, staleReason: 'build-error' } }), true);
     assert.equal(isStaleDigestReplay({ coverage: { servedStale: true, staleReason: 'gate-held' } }), true);

@@ -73,6 +73,9 @@ function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs,
             // outside the item's registered publisher set. An unverified
             // link is blanked; the title still classifies and alerts.
             link: candidateLinkFor(item, resolveFamily),
+            // When digest story tracking first saw the headline, in any
+            // edition or language. Only for the latency log.
+            ...(item.storyMeta?.firstSeen > 0 ? { firstSeen: Number(item.storyMeta.firstSeen) } : {}),
           });
         }
       }
