@@ -33,7 +33,7 @@ A job can be queued, processing, completed or failed. Do not treat failure as ze
 
 “Complete within seeded scope” does not mean complete global trade coverage. Missing, malformed, incomplete-route and unseeded records must remain distinct from evaluated zero impact. A partial score is a lower bound over the evidence available for that run, not proof of low exposure.
 
-The data basis matters too. Flow-weighted scores use recorded trade shares with modeled routes; geographic fallback routes are a different basis. Neither is a record of your actual shipment booking. Cache production dates are not necessarily trade observation dates.
+The data basis matters too. Flow-weighted scores use recorded trade shares with modeled routes; geographic fallback routes are a different basis. Those recorded shares come from [UN Comtrade](https://comtradeplus.un.org/) bilateral trade data. Neither is a record of your actual shipment booking. Cache production dates are not necessarily trade observation dates.
 
 ## Read the score in its own units
 

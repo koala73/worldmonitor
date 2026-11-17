@@ -48,7 +48,7 @@ Do not infer cross-device synchronization, team sharing or scheduled regeneratio
 
 After saving a first version, change one thing at a time. For example: “Keep the same sources, but show the observation date beside each value.” Compare the new preview with the previous version before accepting it.
 
-Avoid putting credentials or sensitive material into a prompt simply to make a view work. This tutorial does not require private-data uploads, custom connectors or external message delivery. If your task needs a programmatic integration, use the relevant API or MCP documentation instead of assuming the widget can access any service.
+Avoid putting credentials or sensitive material into a prompt simply to make a view work. A generated widget renders inside an iframe sandboxed to script execution alone, with no same-origin access to your dashboard's storage or to any other site; MDN documents what [that sandbox attribute](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/iframe#sandbox) permits. This tutorial does not require private-data uploads, custom connectors or external message delivery. If your task needs a programmatic integration, use the relevant API or MCP documentation instead of assuming the widget can access any service.
 
 ## Access and limits
 
