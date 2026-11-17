@@ -29,10 +29,16 @@ process.env.UPSTASH_REDIS_REST_TOKEN ??= 'stub-token';
 process.env.CONVEX_URL ??= 'https://stub.convex.cloud';
 process.env.CONVEX_NOTIFICATION_RELAY_SECRET ??= 'stub-secret';
 process.env.TELEGRAM_BOT_TOKEN ??= 'stub-bot-token';
+// The relay builds its email client only when a key is set.
+process.env.RESEND_API_KEY ??= 'stub-resend-key';
 
+// Whether the next email send succeeds; a harness sets it.
+let emailOk = () => true;
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request, parent, ...rest) {
-  if (request === 'resend') return { Resend: class {} };
+  if (request === 'resend') {
+    return { Resend: class { emails = { send: async () => (emailOk() ? { data: { id: 'email-1' } } : { error: { message: 'stub rejection' } }) }; } };
+  }
   if (request === 'convex/browser') return { ConvexHttpClient: class { async query() {} } };
   return originalLoad.call(this, request, parent, ...rest);
 };
@@ -101,10 +107,14 @@ function runLua(script, keys, argv, call) {
 }
 
 /**
- * `telegramOk(chatId)` decides whether a send succeeds. Each user's Telegram
- * chat id is their user id, so a test can fail one recipient only.
+ * `telegramOk(chatId, sendNumber)` decides whether a send succeeds. Each user's
+ * Telegram chat id is their user id, so a test can fail one recipient only;
+ * `sendNumber` counts from 1, so a test can fail a later part of a batch.
+ * `email: true` gives every user a verified email channel next to Telegram,
+ * and `emailSucceeds` decides whether its sends succeed.
  */
-function harness({ rules, telegramOk = () => true, pipelineStatus = 200, held = {}, lists: seededLists = {} } = {}) {
+function harness({ rules, telegramOk = () => true, pipelineStatus = 200, held = {}, lists: seededLists = {}, email = false, emailSucceeds = true } = {}) {
+  emailOk = () => emailSucceeds;
   const lists = new Map([
     ...Object.entries(held).map(([key, events]) => [key, events.map((event) => JSON.stringify(event))]),
     ...Object.entries(seededLists).map(([key, rows]) => [key, [...rows]]),
@@ -176,13 +186,16 @@ function harness({ rules, telegramOk = () => true, pipelineStatus = 200, held = 
       return {
         ok: true,
         status: 200,
-        json: async () => [{ channelType: 'telegram', verified: true, telegramOwnership: 'verified_callback', chatId: userId }],
+        json: async () => [
+          { channelType: 'telegram', verified: true, telegramOwnership: 'verified_callback', chatId: userId },
+          ...(email ? [{ channelType: 'email', verified: true, emailOwnership: 'verified_account', email: `${userId}@example.com` }] : []),
+        ],
       };
     }
     if (parsed.hostname === 'api.telegram.org') {
       const { chat_id: chatId, text } = JSON.parse(init.body);
       telegramSends.push({ chatId, text });
-      const ok = telegramOk(chatId);
+      const ok = telegramOk(chatId, telegramSends.length);
       return { ok, status: ok ? 200 : 500, json: async () => ({}), body: { cancel() {} } };
     }
     return { ok: true, status: 200, json: async () => ({}) };
@@ -318,6 +331,60 @@ describe('relay sent-alert history', () => {
     const titles = h.sentAlerts('user-a').map((record) => record.title);
     assert.deepEqual(titles, [second.payload.title, first.payload.title], 'newest first');
     assert.deepEqual(h.sentAlerts('user-a')[0].channels, ['telegram']);
+  });
+
+  // A held batch too long for one Telegram message: it goes out in parts, and
+  // a failed later part leaves Telegram with only the first alerts delivered.
+  const longBatch = () => Array.from({ length: 60 }, (_, n) => rssEvent({
+    title: `Held alert ${String(n).padStart(2, '0')} about a development that takes a long headline to describe in full`,
+  }));
+  const failSecondTelegramPart = (_chatId, sendNumber) => sendNumber !== 2;
+  /** How many of `events` the first Telegram message carried. */
+  const inFirstTelegramPart = (h, events) => events.filter((event) => h.telegramSends[0].text.includes(event.payload.title)).length;
+
+  it('records, for each held alert, only the channels that alert arrived on', async () => {
+    const events = longBatch();
+    const h = harness({
+      rules: [rule('user-a', { channels: ['telegram', 'email'] })],
+      email: true,
+      telegramOk: failSecondTelegramPart,
+      held: { 'digest:quiet-held:user-a:full': events },
+    });
+    await relay.processEvent({ eventType: 'flush_quiet_held', userId: 'user-a', variant: 'full' });
+
+    const viaTelegram = inFirstTelegramPart(h, events);
+    assert.ok(viaTelegram > 0 && viaTelegram < events.length, `Telegram delivered part of the batch (${viaTelegram})`);
+    // Email took the whole batch, so every alert arrived; Telegram carried only the first part.
+    const channelsOf = new Map(h.sentAlerts('user-a').map((record) => [record.title, record.channels]));
+    assert.equal(channelsOf.size, events.length);
+    events.forEach((event, index) => {
+      assert.deepEqual(
+        channelsOf.get(event.payload.title),
+        index < viaTelegram ? ['telegram', 'email'] : ['email'],
+        `alert ${index}`,
+      );
+    });
+  });
+
+  it('records only the alerts that arrived, on the channel that carried them, when no channel takes the whole batch', async () => {
+    const events = longBatch();
+    const h = harness({
+      rules: [rule('user-a', { channels: ['telegram', 'email'] })],
+      email: true,
+      emailSucceeds: false,
+      telegramOk: failSecondTelegramPart,
+      held: { 'digest:quiet-held:user-a:full': events },
+    });
+    await relay.processEvent({ eventType: 'flush_quiet_held', userId: 'user-a', variant: 'full' });
+
+    const viaTelegram = inFirstTelegramPart(h, events);
+    assert.ok(viaTelegram > 0 && viaTelegram < events.length);
+    const records = h.sentAlerts('user-a');
+    assert.deepEqual(
+      records.map((record) => record.title).sort(),
+      events.slice(0, viaTelegram).map((event) => event.payload.title).sort(),
+    );
+    for (const record of records) assert.deepEqual(record.channels, ['telegram']);
   });
 
   it('records no held alert when the batch delivery failed', async () => {

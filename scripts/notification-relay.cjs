@@ -695,8 +695,8 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
   };
   let anyDelivered = false;
   let mostDelivered = 0;
-  const fullyDeliveredChannels = [];
-  const partlyDeliveredChannels = [];
+  // Per channel, how many of the batch's alerts it delivered, counted from the first.
+  const deliveredByChannel = [];
   for (const ch of verifiedChannels) {
     // Declared outside the try: a request that rejects after earlier parts went out must still count them.
     let ok = false;
@@ -764,11 +764,9 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
     } catch (err) {
       console.warn(`[relay] drainHeldForUser: delivery error for ${userId}/${ch.channelType}:`, err.message);
     }
-    if (ok) { anyDelivered = true; fullyDeliveredChannels.push(ch.channelType); }
-    else {
-      mostDelivered = Math.max(mostDelivered, delivered);
-      if (delivered > 0) partlyDeliveredChannels.push(ch.channelType);
-    }
+    if (ok) anyDelivered = true;
+    else mostDelivered = Math.max(mostDelivered, delivered);
+    deliveredByChannel.push([ch.channelType, ok ? events.length : delivered]);
   }
   if (anyDelivered) {
     const cleared = await removeHeldItems(key, removable);
@@ -785,9 +783,11 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
     console.log(`[relay] drainHeldForUser: delivered ${mostDelivered} of ${events.length} held events to ${userId} (${variant}); ${remaining} stay held${cleared.failed > 0 ? `, ${cleared.failed} delivered but not removed` : ''}`);
   }
   // Recorded after the held queue is updated: the alerts removed above are the ones that arrived.
+  // Each alert lists only the channels whose delivered parts reached it.
   const arrived = anyDelivered ? events : events.slice(0, mostDelivered);
-  for (const ev of arrived) {
-    await noteSentAlertForEvent(userId, ev, anyDelivered ? fullyDeliveredChannels : partlyDeliveredChannels);
+  for (const [index, ev] of arrived.entries()) {
+    const channels = deliveredByChannel.filter(([, count]) => count > index).map(([channelType]) => channelType);
+    await noteSentAlertForEvent(userId, ev, channels);
   }
 }
 
