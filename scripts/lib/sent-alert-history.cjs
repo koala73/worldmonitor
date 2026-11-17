@@ -65,8 +65,11 @@ function boundedText(value, max) {
 }
 
 function httpLink(value) {
-  const link = boundedText(value, SENT_ALERT_LINK_MAX);
+  const link = typeof value === 'string' ? value.trim() : '';
   if (!link) return '';
+  // Never store a shortened copy: list-sent-alerts matches this value against
+  // the operator block set, and a prefix never equals an exact-URL entry.
+  if (link.length > SENT_ALERT_LINK_MAX) return '';
   try {
     const { protocol } = new URL(link);
     return protocol === 'https:' || protocol === 'http:' ? link : '';
@@ -160,6 +163,7 @@ module.exports = {
   SENT_ALERTS_KEY_PREFIX,
   SENT_ALERTS_MAX,
   SENT_ALERTS_TTL_SECONDS,
+  SENT_ALERT_LINK_MAX,
   SENT_ALERT_TITLE_MAX,
   SENT_ALERT_WRITE_SCRIPT,
   buildSentAlertRecord,
