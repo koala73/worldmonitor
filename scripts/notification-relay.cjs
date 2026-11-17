@@ -1523,13 +1523,7 @@ const OPT_IN_EVENT_TYPES = new Set([
   RESERVOIR_ALERT_EVENT_TYPE,
 ]);
 
-// Chokepoint corridor risk (#10873) rides the chokepoint_disruption opt-in and
-// its chokepoint list: it is about the same chokepoints, and the settings UI has
-// no separate row for it.
-const CORRIDOR_RISK_EVENT_TYPE = 'corridor_risk';
-
 function ruleMatchesEventType(rule, event) {
-  if (event?.eventType === CORRIDOR_RISK_EVENT_TYPE) return rule.eventTypes.includes(CHOKEPOINT_DISRUPTION_EVENT_TYPE);
   if (OPT_IN_EVENT_TYPES.has(event?.eventType)) return rule.eventTypes.includes(event.eventType);
   const broadcastTypes = rule.eventTypes.filter((t) => !OPT_IN_EVENT_TYPES.has(t));
   return broadcastTypes.length === 0 || broadcastTypes.includes(event.eventType);
@@ -1568,12 +1562,6 @@ function eventMatchesTickerScope(event, rule) {
  * choice. Every other event type passes through untouched.
  */
 function eventMatchesChokepointScope(event, rule) {
-  if (event?.eventType === CORRIDOR_RISK_EVENT_TYPE) {
-    // An event from before corridor_risk carried its chokepoint matches no rule.
-    const id = event?.payload?.chokepointId;
-    if (typeof id !== 'string' || !id) return false;
-    return !Array.isArray(rule.chokepoints) || rule.chokepoints.length === 0 || rule.chokepoints.includes(id);
-  }
   if (event?.eventType !== CHOKEPOINT_DISRUPTION_EVENT_TYPE) return true;
   if (!Array.isArray(rule.chokepoints) || rule.chokepoints.length === 0) return true;
   const chokepointId = event?.payload?.chokepointId;
