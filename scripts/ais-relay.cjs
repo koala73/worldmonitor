@@ -86,7 +86,7 @@ const {
   xPostBudgetServiceStatus,
 } = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
-const { newsStoryKey, newsStoryKeyLoadError, publishInStoryOrder, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
+const { newsStoryKey, newsStoryKeyLoadError, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
 if (newsStoryKeyLoadError()) {
   // Alerts still publish, on the exact-title identity; a repeated headline can alert twice.
   console.warn('[Notify] News story key unavailable, falling back to exact-title dedup:', newsStoryKeyLoadError().message);
@@ -1029,6 +1029,23 @@ function rememberUnreleasedDedupClaim(key, ttlSeconds) {
   unreleasedDedupClaims.set(key, Date.now() + ttlSeconds * 1000);
 }
 
+// Publishes in flight per dedup key (key -> settled promise of the last one).
+// Callers publish without awaiting, so two same-key publishes race: the second
+// sees the first's claim and stops, and if the first's queue write then fails
+// and rolls the claim back, neither is queued. A claim kept in
+// unreleasedDedupClaims races the other way: both calls take it again and both
+// queue. Run in order, each sees the outcome of the one before it.
+const dedupKeyPublishes = new Map();
+
+function inDedupKeyOrder(key, publish) {
+  const prior = dedupKeyPublishes.get(key) ?? Promise.resolve();
+  const run = prior.then(() => publish());
+  const settled = run.then(() => {}, () => {});
+  dedupKeyPublishes.set(key, settled);
+  settled.then(() => { if (dedupKeyPublishes.get(key) === settled) dedupKeyPublishes.delete(key); });
+  return run;
+}
+
 async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800, storyKey }) {
   try {
     // Include variant in dedup key so each variant can independently publish the same title
@@ -1049,64 +1066,66 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
       ? `story-${crypto.createHash('sha256').update(storyKey).digest('hex').slice(0, 32)}`
       : notifySimpleHash(dedupMaterial);
     const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${dedupHash}`;
-    let dedupResult = await upstashSetNx(dedupKey, '1', dedupTtl);
-    // The existing claim is ours and was never queued: take it again.
-    if (dedupResult === 'duplicate' && holdsUnreleasedDedupClaim(dedupKey)) dedupResult = 'new';
-    const dedupDecision = recordDedupOutcome(dedupResult, {
-      surface: 'ais-relay',
-      eventType,
-      severity,
-      fallbackKey: dedupKey,
-      fallbackTtlSeconds: dedupTtl,
-      emitTelemetry: recordNotificationDedupSetNxError,
-    });
-    // Returns true once the event is queued or was already queued; callers
-    // that keep their own edge state retry on false.
-    const publishedAt = Date.now();
-    const fanout = API_FANOUT_EVENT_TYPES.has(eventType);
-    // Stable per-story / per-move id for API subscribers (occurrence-events.cjs).
-    // The relay ignores it; it rides along in the queue message unchanged.
-    if (fanout && payload && typeof payload === 'object' && !payload.eventId) {
-      const eventId = occurrenceEventIdFor(eventType, payload, publishedAt);
-      if (eventId) payload = { ...payload, eventId };
-    }
-    const msg = JSON.stringify({ eventType, payload, severity: dedupDecision.severity, ...(variant ? { variant } : {}), publishedAt });
-    if (!dedupDecision.shouldPublish) {
-      if (!dedupDecision.isDuplicate) return false;
-      console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
-      // A repeat of an alerted story still goes to API webhook subscribers,
-      // on the title identity they had before the story key. Each one filters
-      // by its own importance floor, severity and keywords, so the sighting
-      // that claimed the story may be one a subscriber rejected, and this one
-      // the first it accepts.
-      if (storyKey && fanout) {
-        const titleKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(dedupMaterial)}`;
-        const titleClaim = await upstashSetNx(titleKey, '1', 1800);
-        if (titleClaim !== 'duplicate' && titleClaim !== 'disabled') teeApiFanout(eventType, msg);
+    return await inDedupKeyOrder(dedupKey, async () => {
+      let dedupResult = await upstashSetNx(dedupKey, '1', dedupTtl);
+      // The existing claim is ours and was never queued: take it again.
+      if (dedupResult === 'duplicate' && holdsUnreleasedDedupClaim(dedupKey)) dedupResult = 'new';
+      const dedupDecision = recordDedupOutcome(dedupResult, {
+        surface: 'ais-relay',
+        eventType,
+        severity,
+        fallbackKey: dedupKey,
+        fallbackTtlSeconds: dedupTtl,
+        emitTelemetry: recordNotificationDedupSetNxError,
+      });
+      // Returns true once the event is queued or was already queued; callers
+      // that keep their own edge state retry on false.
+      const publishedAt = Date.now();
+      const fanout = API_FANOUT_EVENT_TYPES.has(eventType);
+      // Stable per-story / per-move id for API subscribers (occurrence-events.cjs).
+      // The relay ignores it; it rides along in the queue message unchanged.
+      if (fanout && payload && typeof payload === 'object' && !payload.eventId) {
+        const eventId = occurrenceEventIdFor(eventType, payload, publishedAt);
+        if (eventId) payload = { ...payload, eventId };
       }
-      return true;
-    }
-    const ok = await upstashLpush('wm:events:queue', msg);
-    if (ok) {
-      unreleasedDedupClaims.delete(dedupKey);
-      if (fanout) teeApiFanout(eventType, msg);
-      console.log(`[Notify] Queued ${dedupDecision.severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
-      return true;
-    } else {
-      // Rollback the dedup key so the next poll cycle can retry — avoids silent
-      // suppression for the full dedupTtl when a transient LPUSH fails.
-      console.warn(`[Notify] LPUSH failed for ${eventType} — rolling back dedup key`);
-      // Awaited so a story publish queued behind this one (publishInStoryOrder)
-      // claims after the rollback, not before it.
-      const released = await upstashDel(dedupKey).catch(() => false);
-      // false also covers an absent key, which costs at most one re-claim.
-      if (released) unreleasedDedupClaims.delete(dedupKey);
-      else rememberUnreleasedDedupClaim(dedupKey, dedupTtl);
-      // During a SET NX outage the claim is an in-process reservation; drop
-      // it too, or it suppresses the story for the rest of its TTL.
-      if (dedupDecision.action === 'fail_open') releaseFailOpenFallback(dedupKey);
-      return false;
-    }
+      const msg = JSON.stringify({ eventType, payload, severity: dedupDecision.severity, ...(variant ? { variant } : {}), publishedAt });
+      if (!dedupDecision.shouldPublish) {
+        if (!dedupDecision.isDuplicate) return false;
+        console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
+        // A repeat of an alerted story still goes to API webhook subscribers,
+        // on the title identity they had before the story key. Each one filters
+        // by its own importance floor, severity and keywords, so the sighting
+        // that claimed the story may be one a subscriber rejected, and this one
+        // the first it accepts.
+        if (storyKey && fanout) {
+          const titleKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(dedupMaterial)}`;
+          const titleClaim = await upstashSetNx(titleKey, '1', 1800);
+          if (titleClaim !== 'duplicate' && titleClaim !== 'disabled') teeApiFanout(eventType, msg);
+        }
+        return true;
+      }
+      const ok = await upstashLpush('wm:events:queue', msg);
+      if (ok) {
+        unreleasedDedupClaims.delete(dedupKey);
+        if (fanout) teeApiFanout(eventType, msg);
+        console.log(`[Notify] Queued ${dedupDecision.severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
+        return true;
+      } else {
+        // Rollback the dedup key so the next poll cycle can retry — avoids silent
+        // suppression for the full dedupTtl when a transient LPUSH fails.
+        console.warn(`[Notify] LPUSH failed for ${eventType} — rolling back dedup key`);
+        // Awaited so a publish queued behind this one (inDedupKeyOrder)
+        // claims after the rollback, not before it.
+        const released = await upstashDel(dedupKey).catch(() => false);
+        // false also covers an absent key, which costs at most one re-claim.
+        if (released) unreleasedDedupClaims.delete(dedupKey);
+        else rememberUnreleasedDedupClaim(dedupKey, dedupTtl);
+        // During a SET NX outage the claim is an in-process reservation; drop
+        // it too, or it suppresses the story for the rest of its TTL.
+        if (dedupDecision.action === 'fail_open') releaseFailOpenFallback(dedupKey);
+        return false;
+      }
+    });
   } catch (e) {
     console.warn(`[Notify] publishNotificationEvent error (${eventType}):`, e?.message || e);
     return false;
@@ -5731,7 +5750,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
         // One alert per story per day, not per title string: a second
         // publisher carrying an alerted headline is the same story.
         const storyKey = newsStoryKey(chunk[idx], { severity: level, importanceScore });
-        publishInStoryOrder(storyKey ? `rss_alert:${variant}:${storyKey}` : '', () => publishNotificationEvent({
+        publishNotificationEvent({
           eventType: 'rss_alert',
           payload: {
             title: chunk[idx],
@@ -5753,7 +5772,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
           severity: level,
           variant,
           ...(storyKey ? { storyKey, dedupTtl: NEWS_STORY_DEDUP_TTL_SECONDS } : {}),
-        })).catch(e => console.warn('[Notify] Classify publish error:', e?.message));
+        }).catch(e => console.warn('[Notify] Classify publish error:', e?.message));
       }
     }
 

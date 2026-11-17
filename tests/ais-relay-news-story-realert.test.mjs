@@ -363,8 +363,10 @@ test('a failed queue write whose rollback also fails does not hold the story for
   await waitForAlerts(upstash, 1);
   assert.deepEqual(titles(upstash.alerts()), [EGYPT_INDEPENDENT_TITLE], output());
 
-  // Once a copy is queued, the claim holds again.
-  await cycle([{ title: CNN_TITLE, source: 'CNN World' }]);
+  // Once a copy is queued, the claim holds again. The copy carries a title
+  // not yet classified: a cached title never reaches publishing, so it would
+  // pass this check even if the claim were still treated as unreleased.
+  await cycle([{ title: `${EGYPT_INDEPENDENT_TITLE} - Reuters`, source: 'Reuters' }]);
   await new Promise((resolve) => setTimeout(resolve, 200));
   assert.deepEqual(titles(upstash.alerts()), [EGYPT_INDEPENDENT_TITLE], output());
 });

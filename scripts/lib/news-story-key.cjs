@@ -88,32 +88,8 @@ function newsStoryKey(title, { severity, importanceScore } = {}) {
   return `news-story:${reachesRealtimeRules(severity, importanceScore) ? 'realtime' : 'standard'}:${normalized}`;
 }
 
-const storyPublishes = new Map();
-
-/**
- * Run `publish` after any earlier publish for the same story slot settles.
- * A classify cycle publishes without awaiting, so two copies of one story in
- * a build race: the second sees the first's claim and stops, and if the
- * first's queue write then fails and rolls the claim back, neither is queued.
- * Run in order, the second claims the story once the rollback is done.
- *
- * @param {string} slot event type, edition and story key; '' runs at once
- * @param {() => Promise<boolean>} publish
- * @returns {Promise<boolean>}
- */
-function publishInStoryOrder(slot, publish) {
-  if (!slot) return publish();
-  const prior = storyPublishes.get(slot) ?? Promise.resolve();
-  const run = prior.then(() => publish());
-  const settled = run.then(() => {}, () => {});
-  storyPublishes.set(slot, settled);
-  settled.then(() => { if (storyPublishes.get(slot) === settled) storyPublishes.delete(slot); });
-  return run;
-}
-
 module.exports = {
   NEWS_STORY_DEDUP_TTL_SECONDS,
-  publishInStoryOrder,
   MIN_STORY_WORDS,
   REALTIME_CRITICAL_IMPORTANCE_SCORE,
   normalizeNewsStoryTitle,
