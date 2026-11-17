@@ -248,6 +248,10 @@ function overrideStringExample(key, context = {}) {
   if (where.includes('getmonthlysitctrade') || where.includes('get-monthly-sitc-trade')) {
     if (key === 'country') return 'MY';
     if (key === 'sections') return '0';
+    // Response: DOSM publishes ringgit values and 2010-based indices.
+    if (key === 'currency') return 'MYR';
+    if (key === 'indexbase') return '2010=100';
+    if (key === 'latestmonth' || key === 'latestindexmonth' || key === 'month') return '2026-09';
   }
   // ListMediaPerspective validates codes, audiences and region slugs; the
   // heuristic's "example" values are rejected with HTTP 400.

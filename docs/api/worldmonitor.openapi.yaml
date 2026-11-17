@@ -37278,10 +37278,10 @@ paths:
                         application/json:
                             example:
                                 "country": "MY"
-                                "currency": "USD"
-                                "fetchedAt": "2026-01-15T12:00:00Z"
-                                "indexBase": "example"
-                                "latestIndexMonth": "example"
+                                "currency": "MYR"
+                                "fetchedAt": 1717200000000
+                                "indexBase": "2010=100"
+                                "latestIndexMonth": "2026-09"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_trade_v1_GetMonthlySitcTradeResponse'
                 "400":
@@ -65674,8 +65674,11 @@ components:
                     type: string
                     description: Newest month with unit value and volume indices, YYYY-MM.
                 fetchedAt:
-                    type: string
-                    description: ISO 8601 timestamp when the seed fetched the publisher files.
+                    type: integer
+                    format: int64
+                    description: |-
+                        When the seed fetched the publisher files, as Unix epoch milliseconds.
+                         0 when no seed was served.. Warning: Values > 2^53 may lose precision in JavaScript
                 series:
                     type: array
                     items:

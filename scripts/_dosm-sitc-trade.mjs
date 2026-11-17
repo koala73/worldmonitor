@@ -72,7 +72,7 @@ function amount(value, label, { allowZero = true } = {}) {
  * are required for every month and section; indices are attached where the
  * index file has the same month and section.
  */
-export function buildSitcTradePayload(tradeCsv, indexCsv, fetchedAt = new Date().toISOString()) {
+export function buildSitcTradePayload(tradeCsv, indexCsv, fetchedAt = Date.now()) {
   const series = new Map(SITC_SECTIONS.map((section) => [section, new Map()]));
   for (const row of rows(tradeCsv, ['date', 'section', 'exports', 'imports'], 'trade')) {
     const month = monthOf(row.date, 'trade');

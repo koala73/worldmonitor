@@ -20,7 +20,7 @@ import {
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/dosm-trade/${name}`, import.meta.url), 'utf8');
 const TRADE = fixture('trade_sitc_1d.csv');
 const INDEX = fixture('tradeidx.csv');
-const FETCHED_AT = '2026-11-17T08:00:00.000Z';
+const FETCHED_AT = Date.parse('2026-11-17T08:00:00.000Z');
 
 describe('DOSM SITC trade producer', () => {
   it('keeps every section in SITC order with whole-ringgit values and attaches indices by month', () => {
@@ -149,9 +149,17 @@ describe('GetMonthlySitcTrade handler', () => {
       assert.equal(res.unavailableReason, 'TRADE_FLOW_UNAVAILABLE_REASON_INVALID_REQUEST');
     }
     const corrupt = structuredClone(seeded);
-    corrupt.sections[0]!.months.push({ month: '2026-13', exports: 1, imports: 1 }, { month: '2026-10', exports: -1, imports: 1 } as never);
+    corrupt.sections[0]!.months.push({ month: '2026-13', exports: 1, imports: 1 }, { month: '2026-10', exports: -1, imports: 1 } as never,
+      // Missing or non-numeric amounts must be dropped, not coerced to zero.
+      { month: '2026-11', exports: null, imports: 1 } as never, { month: '2026-12', exports: '', imports: 1 } as never,
+      { month: '2027-01', exports: 1, imports: false } as never);
     serve(() => envelope(corrupt));
     const res = await getMonthlySitcTrade({} as never, { country: 'MY', sections: ['0'], months: 2 });
     assert.deepEqual(res.series[0]!.months.map((month) => month.month), ['2026-08', '2026-09']);
+    const zero = structuredClone(seeded);
+    zero.sections[0]!.months.push({ month: '2026-10', exports: 0, imports: 0, exportsVolumeIndex: true } as never);
+    serve(() => envelope(zero));
+    const kept = await getMonthlySitcTrade({} as never, { country: 'MY', sections: ['0'], months: 1 });
+    assert.deepEqual(kept.series[0]!.months, [{ month: '2026-10', exports: 0, imports: 0 }]);
   });
 });

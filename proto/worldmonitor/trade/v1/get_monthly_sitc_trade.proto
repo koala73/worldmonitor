@@ -84,8 +84,9 @@ message GetMonthlySitcTradeResponse {
   string latest_month = 6;
   // Newest month with unit value and volume indices, YYYY-MM.
   string latest_index_month = 7;
-  // ISO 8601 timestamp when the seed fetched the publisher files.
-  string fetched_at = 8;
+  // When the seed fetched the publisher files, as Unix epoch milliseconds.
+  // 0 when no seed was served.
+  int64 fetched_at = 8 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Requested sections in SITC order ("overall" last).
   repeated SitcTradeSeries series = 9;
   // True when series could not be served because of a fault: a covered

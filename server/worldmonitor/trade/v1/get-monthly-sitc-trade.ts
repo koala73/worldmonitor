@@ -37,7 +37,7 @@ interface SeededSitcTrade {
   indexBase?: string;
   latestMonth?: string;
   latestIndexMonth?: string;
-  fetchedAt?: string;
+  fetchedAt?: number;
   sections?: { section?: string; label?: string; months?: unknown[] }[];
 }
 
@@ -65,13 +65,15 @@ export function normalizeSitcRequest(req: GetMonthlySitcTradeRequest): Normalize
 function cleanMonth(value: unknown): SitcTradeMonth | null {
   const row = value as Record<string, unknown> | null;
   if (!row || typeof row.month !== 'string' || !MONTH.test(row.month)) return null;
-  const exports = Number(row.exports);
-  const imports = Number(row.imports);
+  const exports = row.exports;
+  const imports = row.imports;
+  // Require real numbers: Number(null), Number('') and Number(false) would all read as 0.
+  if (typeof exports !== 'number' || typeof imports !== 'number') return null;
   if (!Number.isFinite(exports) || exports < 0 || !Number.isFinite(imports) || imports < 0) return null;
   const month: SitcTradeMonth = { month: row.month, exports, imports };
   for (const field of INDEX_FIELDS) {
-    const index = Number(row[field]);
-    if (row[field] != null && Number.isFinite(index) && index > 0) month[field] = index;
+    const index = row[field];
+    if (typeof index === 'number' && Number.isFinite(index) && index > 0) month[field] = index;
   }
   return month;
 }
@@ -92,7 +94,7 @@ export function buildSitcSeries(seeded: SeededSitcTrade, sections: readonly stri
 function unavailable(country: string, reason: TradeFlowUnavailableReason, upstreamUnavailable: boolean): GetMonthlySitcTradeResponse {
   return {
     country, currency: '', source: '', sourceUrl: '', indexBase: '', latestMonth: '', latestIndexMonth: '',
-    fetchedAt: '', series: [], upstreamUnavailable, unavailableReason: reason,
+    fetchedAt: 0, series: [], upstreamUnavailable, unavailableReason: reason,
   };
 }
 
@@ -126,7 +128,7 @@ export async function getMonthlySitcTrade(
     indexBase: typeof seeded.indexBase === 'string' ? seeded.indexBase : '',
     latestMonth: typeof seeded.latestMonth === 'string' ? seeded.latestMonth : '',
     latestIndexMonth: typeof seeded.latestIndexMonth === 'string' ? seeded.latestIndexMonth : '',
-    fetchedAt: typeof seeded.fetchedAt === 'string' ? seeded.fetchedAt : '',
+    fetchedAt: typeof seeded.fetchedAt === 'number' && Number.isFinite(seeded.fetchedAt) && seeded.fetchedAt > 0 ? seeded.fetchedAt : 0,
     series,
     upstreamUnavailable: false,
     unavailableReason: REASON.served,

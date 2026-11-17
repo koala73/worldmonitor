@@ -228,7 +228,7 @@ export interface GetMonthlySitcTradeResponse {
   indexBase: string;
   latestMonth: string;
   latestIndexMonth: string;
-  fetchedAt: string;
+  fetchedAt: number;
   series: SitcTradeSeries[];
   upstreamUnavailable: boolean;
   unavailableReason: TradeFlowUnavailableReason;
