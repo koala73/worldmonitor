@@ -77,7 +77,9 @@ function hasExplicitTier(eventType) {
 }
 
 function newsTier(event) {
-  const primary = event?.payload?.primaryCountryCode;
+  // primaryCountryCode from the headline classifier, or the countryCode a
+  // single-country feed already attributes (saudi-civil-defense-alerts.cjs).
+  const primary = event?.payload?.primaryCountryCode ?? event?.payload?.countryCode;
   const country = typeof primary === 'string' && /^[A-Za-z]{2}$/.test(primary.trim()) ? primary.trim().toUpperCase() : null;
   // No single country named (or an event from before the field existed): the
   // story is not about one place, so it stays global as it always was.

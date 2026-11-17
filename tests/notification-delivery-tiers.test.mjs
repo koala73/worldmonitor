@@ -158,6 +158,13 @@ describe('news', () => {
     assert.equal(relay.eventMatchesDeliveryScope(event, UNSCOPED), false);
   });
 
+  it('is local when a single-country feed attributes it with countryCode', () => {
+    const event = ev('rss_alert', { countryCode: 'SA', title: 'Civil defense warning' });
+    assert.equal(relay.eventMatchesDeliveryScope(event, { ...UNSCOPED, countries: ['SA'] }), true);
+    assert.equal(relay.eventMatchesDeliveryScope(event, US_RULE), false);
+    assert.equal(relay.eventMatchesDeliveryScope(event, UNSCOPED), false);
+  });
+
   it('reaches everyone when a single-country story clears the critical bar', () => {
     const event = ev('rss_alert', { primaryCountryCode: 'KZ', importanceScore: tiers.NEWS_GLOBAL_IMPORTANCE_SCORE });
     assert.equal(relay.eventMatchesDeliveryScope(event, US_RULE), true);

@@ -88,7 +88,7 @@ describe('notifications-settings.ts — country picker integration', () => {
 
   // #10873: an empty scope means global critical events only, not every country.
   it('copy says an empty scope gets global critical events only', () => {
-    assert.match(settingsSrc, /No countries picked: you get global critical events only/);
+    assert.match(settingsSrc, /No countries picked: real-time alerts cover global critical events only/);
     assert.doesNotMatch(settingsSrc, /Leave empty to receive alerts from all countries/);
   });
 

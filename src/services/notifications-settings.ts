@@ -962,11 +962,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           <div class="ai-flow-section-label" style="margin-top:8px">Country scope</div>
           <div class="ai-flow-toggle-desc" style="margin-bottom:6px">${scopeRequired
             ? `Pick 1–${caps.maxCountries} countries (ISO-3166 alpha-2) to follow for alerts — the free plan needs an explicit country scope. Worldwide alerts are available on Pro.`
-            : 'Local alerts (severe weather, airport disruption, sirens, conflict) reach you only for the countries you pick. Global critical events (a market crash, a shipping shock, a national airspace shutdown) reach you either way.'}</div>
+            : 'Real-time alerts: local events (severe weather, airport disruption, sirens, conflict) reach you only for the countries you pick. Global critical events (a market crash, a shipping shock, a national airspace shutdown) reach you either way.'}</div>
           <div id="usNotifCountryPicker"></div>
           ${scopeRequired
             ? '<div id="usCountryScopeWarn" class="us-notif-ch-sub-warn us-notif-scope-warn" role="status" hidden>Alerts are paused until you pick at least one country.</div>'
-            : '<div id="usCountryScopeHint" class="ai-flow-toggle-desc" role="status" hidden>No countries picked: you get global critical events only. Add countries to get local alerts for them.</div>'}
+            : '<div id="usCountryScopeHint" class="ai-flow-toggle-desc" role="status" hidden>No countries picked: real-time alerts cover global critical events only. Add countries to get local alerts for them.</div>'}
           <div class="ai-flow-section-label" style="margin-top:8px">Timezone</div>
           <select class="unified-settings-select" id="usSharedTimezone" aria-label="Timezone" style="width:100%">${makeTzOptions(sharedTz)}</select>`;
         return html;
