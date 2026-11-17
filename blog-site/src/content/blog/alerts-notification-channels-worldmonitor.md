@@ -34,7 +34,7 @@ Choose a narrower rule first. A digest helps review a collection of material; it
 
 ## Scope the event, not just the country
 
-Each supported event type belongs to one of three delivery tiers. A global type reaches every rule, scoped or not: a market-wide move, global shipping stress, a national air-traffic collapse, and news that names no single country or clears the critical importance bar. A local type reaches only a rule that lists the event's country, or for a regional event a member country of its region, so a rule with no countries receives none of them and a local event with no resolvable country reaches nobody. An opt-in type uses its own scope instead of a country filter: chokepoint-disruption alerts require explicit event selection, and an empty chokepoint selection matches every chokepoint, so select identifiers to narrow it.
+Each supported event type belongs to one of three delivery tiers. A global type reaches every rule, scoped or not: a market-wide move, global shipping stress, a national air-traffic collapse, and news that names no single country or clears the critical importance bar. A local type reaches only a rule that lists the event's country, or for a regional event a member country of its region, so a rule with no countries receives none of them and a local event with no resolvable country reaches nobody. An opt-in type uses its own scope instead of a country filter: chokepoint-disruption alerts require explicit event selection, and an empty chokepoint selection matches every chokepoint, so select identifiers to narrow it. These tiers govern realtime delivery. A scheduled digest builds its pool from the variant, language and sensitivity of the rule rather than its country list, so country scope does not narrow digest content.
 
 Start with the place or corridor you genuinely monitor and the supported event type that answers your question. Do not assume that arbitrary market thresholds, private portfolio rules or every observed map change can trigger a notification.
 
@@ -58,7 +58,7 @@ Do not reconnect repeatedly or purchase another plan solely because an entitleme
 
 For each important delivered item, open the original source and inspect the timestamp. Coverage labels describe available source coverage, not a verdict of truth. The [AI reliability guide](/blog/posts/ai-intelligence-summary-reliability/) applies to generated digests too.
 
-The public [notification settings implementation](https://github.com/koala73/worldmonitor/blob/5c50df116c/src/services/notifications-settings.ts) documents the behavior behind this guide.
+The public [notification settings implementation](https://github.com/koala73/worldmonitor/blob/760126f7dc/src/services/notifications-settings.ts) documents the behavior behind this guide.
 
 ## Frequently Asked Questions
 
