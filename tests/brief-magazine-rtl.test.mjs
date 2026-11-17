@@ -124,6 +124,14 @@ describe('digest email — right-to-left', () => {
     assert.match(html, /<td style="text-align: left; vertical-align: middle;">/);
     assert.doesNotMatch(html, /border-left|padding-left/);
   });
+  it('a bulleted lead indents on the right in an RTL email and on the left otherwise', () => {
+    const lead = 'Lead.\n\n* First point\n* Second point';
+    const ar = injectEmailSummary(formatDigestHtml(stories, Date.UTC(2026, 4, 27), { lang: 'ar' }), { lead, threads: [], signals: [] }, 'ar');
+    assert.match(ar, /<ul style="margin:12px 0;padding-right:20px;list-style:disc;">/);
+    assert.doesNotMatch(ar, /padding-left:20px/);
+    const en = injectEmailSummary(formatDigestHtml(stories, Date.UTC(2026, 4, 27), { lang: 'en' }), { lead, threads: [], signals: [] }, 'en');
+    assert.match(en, /<ul style="margin:12px 0;padding-left:20px;list-style:disc;">/);
+  });
   it('email HTML for lang=en keeps left-side accents and no dir', () => {
     const html = formatDigestHtml(stories, Date.UTC(2026, 4, 27), { lang: 'en' });
     assert.doesNotMatch(html, /dir="rtl"|border-right|padding-right/);

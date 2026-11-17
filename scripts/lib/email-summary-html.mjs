@@ -64,7 +64,7 @@ export function injectEmailSummary(html, summary, lang = 'en') {
     .replace(/"/g, '&quot;');
 
   const chrome = (key) => (lang === 'en' ? briefT('en', key) : htmlEscape(briefT(lang, key)));
-  const leadHtml = markdownToEmailHtml(payload.lead);
+  const leadHtml = markdownToEmailHtml(payload.lead, { rtl: isRtlLanguage(lang) });
 
   // Threads: each rendered as "<b>Tag</b> — teaser" on its own line.
   // Mirrors the old "3-5 bullet points" section visually without
