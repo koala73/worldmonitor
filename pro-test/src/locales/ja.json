@@ -447,7 +447,8 @@
       "trendRising": "上昇中",
       "trendFalling": "下落中",
       "trendStable": "安定",
-      "situationLink": "状況を監視：危機、ヘッドライン、チョークポイント、障害を1つのボードで"
+      "situationLink": "状況を監視：危機、ヘッドライン、チョークポイント、障害を1つのボードで",
+      "pizzaIndexLink": "ペンタゴン・ピザ指数：ペンタゴン周辺のピザ店の混雑度"
     },
     "moments": {
       "eyebrow": "相関エンジン",

@@ -601,10 +601,10 @@ function liveTopicPage(url: URL, topic: LiveTopicPage): Promise<Response> {
 }
 
 /**
- * The glossary page's "Current level" section. The blog build ships it in its
- * browser-loading state; this swaps in the current level so the HTML a crawler
- * reads states it. No current level (expired seed, closed-only poll) keeps the
- * built section, which the page's script still fills for visitors.
+ * The glossary page's level section. The blog build ships the last published
+ * reading, dated; this swaps in the current level. No current level (expired
+ * seed, closed-only poll) keeps the built section, and the page's script keeps
+ * the published reading until the feed has a current one.
  */
 function livePizzaIndexPage(url: URL): Promise<Response> {
   return liveHtmlPage(url, PIZZA_INDEX_SLUG, async (html) => {

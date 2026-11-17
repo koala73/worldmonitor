@@ -2792,4 +2792,51 @@ describe('Pentagon Pizza Index live reading', () => {
     await withFetch(async () => { throw new Error('offline'); }, () => loadPizzInt(failing));
     assert.equal(failing.querySelector('[data-live-answer]').hidden, true);
   });
+
+  const PUBLISHED = Object.freeze({
+    updatedAt: '2026-11-04T21:30:00.000Z',
+    level: '4',
+    label: 'Above Normal',
+    venues: [{ name: 'Venue A', status: 'Busier than usual' }],
+  });
+
+  it('keeps the dated published level when the feed has no current one or fails', async () => {
+    for (const respond of [
+      async (url) => (String(url).includes('get-pizzint-status')
+        ? { ok: true, status: 200, json: async () => ({ tensionPairs: [] }) }
+        : anonymousSessionResponse()),
+      async () => { throw new Error('offline'); },
+    ]) {
+      const tool = renderedPizzaTool(renderPizzaIndexSection(PUBLISHED, { live: false }));
+      await withFetch(respond, () => loadPizzInt(tool));
+      assert.equal(tool.dataset.state, 'ready');
+      assert.equal(tool.querySelector('[data-live-status]').textContent, 'Last published reading');
+      assert.equal(tool.querySelector('[data-pizzint-level]').textContent, '4');
+      assert.equal(tool.querySelector('[data-live-grid]').hidden, false);
+      assert.equal(tool.querySelector('[data-live-fallback]').hidden, true);
+      const answer = tool.querySelector('[data-live-answer]');
+      assert.equal(answer.hidden, false);
+      assert.match(answer.textContent, /^As of Nov 4, 2026, 9:30 PM UTC, the last published reading/);
+      assert.equal(tool.querySelector('[data-live-updated]').getAttribute('datetime'), PUBLISHED.updatedAt);
+      cancelPizzIntRefresh(tool);
+    }
+  });
+
+  it('replaces the published level with a current one, which then behaves as live', async () => {
+    const tool = renderedPizzaTool(renderPizzaIndexSection(PUBLISHED, { live: false }));
+    const current = payload({ defconLevel: 2, updatedAt: Date.now() - 60_000 });
+    await withFetch(async (url) => (String(url).includes('get-pizzint-status')
+      ? { ok: true, status: 200, json: async () => current }
+      : anonymousSessionResponse()), () => loadPizzInt(tool));
+    assert.equal(tool.dataset.state, 'ready');
+    assert.equal(tool.querySelector('[data-pizzint-level]').textContent, '2');
+    assert.match(tool.querySelector('[data-live-answer]').textContent, /is at level 2, High Activity\.$/);
+    assert.equal(tool.hasAttribute('data-published-reading'), false);
+
+    await withFetch(async (url) => (String(url).includes('get-pizzint-status')
+      ? { ok: true, status: 200, json: async () => ({ tensionPairs: [] }) }
+      : anonymousSessionResponse()), () => loadPizzInt(tool));
+    assert.equal(tool.dataset.state, 'empty', 'a lapsed live level is not kept as a published one');
+    cancelPizzIntRefresh(tool);
+  });
 });

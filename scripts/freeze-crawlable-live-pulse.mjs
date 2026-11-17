@@ -32,6 +32,13 @@ import {
 } from './crawlable-live-tools.mjs';
 import { chokepointPulseRecord } from './crawlable-chokepoint-live.mjs';
 import { LIVE_TOPIC_PAGES, liveTopicReading, liveTopicRpcPath } from './live-pages/index.mjs';
+import {
+  PIZZA_INDEX_SLUG,
+  PIZZA_INDEX_STATUS_PATH,
+  pizzaIndexReading,
+  pizzaIndexRecord,
+  publishedPizzaIndex,
+} from './live-pages/pentagon-pizza-index.mjs';
 import { activeWarsReading, palestineLocator } from './active-wars.mjs';
 import { loadEnvFile } from './_seed-utils.mjs';
 import {
@@ -819,6 +826,24 @@ async function retainedActiveWars(rootDir) {
   ));
 }
 
+// The glossary page builds from this reading and the middleware swaps in the
+// current one. Without a current level (most nights) the newest earlier
+// edition's reading carries forward with its own timestamp, and
+// publishedPizzaIndex drops it once it ages out.
+export async function capturePizzaIndex({ token, base, authOpts, rootDir, now }) {
+  let error = null;
+  try {
+    const payload = await authedGet(PIZZA_INDEX_STATUS_PATH.split('?')[0], token, base, authOpts);
+    const view = pizzaIndexReading(payload, now);
+    if (view) return { pizzaIndex: { ...pizzaIndexRecord(view), retained: false }, error };
+    error = { id: PIZZA_INDEX_SLUG, message: 'no current level' };
+  } catch (caught) {
+    error = { id: PIZZA_INDEX_SLUG, message: caught instanceof Error ? caught.message : String(caught) };
+  }
+  const retained = await findInPreviousSnapshots(rootDir, (snapshot) => publishedPizzaIndex(snapshot, now));
+  return { pizzaIndex: retained ? { ...retained, retained: true } : null, error };
+}
+
 /** Failure codes are a fixed vocabulary because /accuracy/ publishes them. */
 function scorecardFailureCode(error) {
   if (error?.code) return error.code;
@@ -987,6 +1012,9 @@ export async function freezeCrawlableLivePulse({
     }
     await sleep(requestGapMs);
   }
+
+  const { pizzaIndex, error: pizzaIndexError } = await capturePizzaIndex({ token, base, authOpts, rootDir, now: freezeStartedAt });
+  await sleep(requestGapMs);
 
   const crisisSnapshots = {};
   const crisisErrors = [];
@@ -1393,6 +1421,7 @@ export async function freezeCrawlableLivePulse({
     countries,
     chokepoints,
     liveTopics,
+    ...(pizzaIndex ? { pizzaIndex } : {}),
     crises: crisisSnapshots,
     activeWars,
     headlines,
@@ -1494,6 +1523,8 @@ export async function freezeCrawlableLivePulse({
       // Not a freeze gate: a missing topic builds as "no current reading" and
       // the middleware still serves the live one.
       liveTopics: liveTopicErrors,
+      // Not a gate either: no current level is the normal overnight answer.
+      pizzaIndex: pizzaIndexError ? [pizzaIndexError] : [],
       crises: crisisErrors,
       activeWars: activeWarErrors,
       headlines: headlineErrors,

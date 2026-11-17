@@ -447,7 +447,8 @@
       "trendRising": "rostoucí",
       "trendFalling": "klesající",
       "trendStable": "stabilní",
-      "situationLink": "Sledujte situaci: krize, titulky, kritická místa a výpadky na jednom panelu"
+      "situationLink": "Sledujte situaci: krize, titulky, kritická místa a výpadky na jednom panelu",
+      "pizzaIndexLink": "Pentagonský pizza index: jak plné jsou pizzerie u Pentagonu"
     },
     "moments": {
       "eyebrow": "Korelační engine",
