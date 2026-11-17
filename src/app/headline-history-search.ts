@@ -32,6 +32,11 @@ export interface HeadlineHistorySearchDeps {
    * headline the browser does not match must still be listed from the server.
    */
   isLoadedMatch(titleKey: string, query: string): boolean;
+  /**
+   * Whether selecting a row with this link can open it (the dashboard's
+   * article-opening policy). A row that cannot be opened is not listed.
+   */
+  isOpenable(link: string): boolean;
   /** "3 hours ago" for a publication time. */
   formatAge(date: Date): string;
   /**
@@ -99,6 +104,20 @@ export class HeadlineHistorySearch {
     }, HEADLINE_HISTORY_DEBOUNCE_MS);
   }
 
+  /**
+   * The loaded news changed (a dashboard refresh). Which server rows are
+   * listed depends on it: a title the loaded items cover is left out, so when
+   * that item leaves the dashboard its history row has to be listed instead.
+   * Lists the answer for the query on screen again; no request and no
+   * re-render, the modal reads the source the next time it renders the query.
+   */
+  public onLoadedNewsChange(): void {
+    // Only while the source holds the answer for this query, not mid-fetch.
+    if (this.timer !== null || this.inFlight !== null) return;
+    const remembered = this.answers.get(this.activeQuery);
+    if (remembered) this.publishHeadlines(this.activeQuery, remembered.headlines, false);
+  }
+
   /** Forget everything fetched: the caller's window changed (plan, edition or language). */
   public reset(): void {
     this.stopPending();
@@ -156,7 +175,9 @@ export class HeadlineHistorySearch {
     const items: SearchableSource['items'] = [];
     const seen = new Set<string>();
     for (const headline of headlines) {
-      if (!/^https?:\/\//i.test(headline.link)) continue;
+      // The server keeps http links too, which API callers can use; the
+      // dashboard opens https only, and a row that does nothing is not listed.
+      if (!this.deps.isOpenable(headline.link)) continue;
       const titleKey = headlineTitleKey(headline.title);
       // One row per title: where the loaded item is listed too it wins,
       // because selecting it scrolls to the story in its panel.

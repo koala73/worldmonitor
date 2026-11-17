@@ -39,6 +39,7 @@ let requests: string[];
 let failNextRequest: boolean;
 let selected: SearchResult[];
 let loadedNews: string[];
+let loadedText: Map<string, string>;
 
 beforeAll(async () => {
   if (!i18next.isInitialized) {
@@ -80,13 +81,7 @@ function openModal(viewport: 'desktop' | 'mobile' = 'desktop'): void {
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: viewport === 'mobile' ? 600 : 1200 });
   modal = new SearchModal(document.body, { placeholder: 'Search' });
   const current = modal;
-  current.registerSource('news', loadedNews.map((title, index) => ({
-    id: `https://loaded.example/${index}`,
-    title,
-    subtitle: 'Loaded Source',
-    data: { link: `https://loaded.example/${index}` },
-  })));
-  const loadedText = new Map(loadedNews.map((title) => [headlineTitleKey(title), `${title}\nLoaded Source`.toLowerCase()]));
+  registerLoadedNews();
   provider = new HeadlineHistorySearch({
     fetchHeadlines: async (query) => {
       requests.push(query);
@@ -101,6 +96,8 @@ function openModal(viewport: 'desktop' | 'mobile' = 'desktop'): void {
       if (refresh) current.refreshResultsInBackground();
     },
     isLoadedMatch: (titleKey, query) => loadedText.get(titleKey)?.includes(query) ?? false,
+    // The article-opening policy (isOpenableExternalUrl): https only.
+    isOpenable: (link) => link.startsWith('https://'),
     formatAge: (date) => `${Math.round((NOW - date.getTime()) / HOUR)}h ago`,
     setPending: (pending) => current.setResultsPending(pending),
     setTimeout: (callback, delay) => setTimeout(callback, delay),
@@ -110,6 +107,23 @@ function openModal(viewport: 'desktop' | 'mobile' = 'desktop'): void {
   current.setOnQueryChange((rawInput) => provider.onQueryChange(rawInput));
   current.setOnSelect((result) => { selected.push(result); });
   current.open();
+}
+
+function registerLoadedNews(): void {
+  modal!.registerSource('news', loadedNews.map((title, index) => ({
+    id: `https://loaded.example/${index}`,
+    title,
+    subtitle: 'Loaded Source',
+    data: { link: `https://loaded.example/${index}` },
+  })));
+  loadedText = new Map(loadedNews.map((title) => [headlineTitleKey(title), `${title}\nLoaded Source`.toLowerCase()]));
+}
+
+/** A dashboard refresh replaced the loaded news, as SearchManager.updateSearchIndex does. */
+function replaceLoadedNews(titles: string[]): void {
+  loadedNews = titles;
+  registerLoadedNews();
+  provider.onLoadedNewsChange();
 }
 
 function type(query: string): void {
@@ -160,6 +174,37 @@ describe('Cmd+K headline history', () => {
       type: 'News',
     }]);
     expect(document.querySelector('.search-results-status')?.textContent).toBe('1 result for hormuz');
+  });
+
+  it('leaves out a headline whose link the dashboard would refuse to open', async () => {
+    serverAnswers.set('hormuz', [
+      headline('Hormuz tanker seized, state media says', 'http://www.irna.ir/news/1'),
+      headline('Strait of Hormuz tanker seized by patrol boats', 'https://www.reuters.com/hormuz'),
+    ]);
+    openModal();
+    await search('hormuz');
+    expect(rows().map((row) => row.title)).toEqual(['Strait of Hormuz tanker seized by patrol boats']);
+  });
+
+  it('lists a headline from the history once a refresh takes it off the dashboard', async () => {
+    loadedNews = ['Iran talks resume in Vienna'];
+    serverAnswers.set('iran', [headline('Iran talks resume in Vienna', 'https://www.reuters.com/vienna')]);
+    openModal();
+    await search('iran');
+    expect(rows().map((row) => `${row.title} | ${row.subtitle}`)).toEqual(['Iran talks resume in Vienna | Loaded Source']);
+
+    // The dashboard refreshes while the query is still on screen, and the
+    // headline is no longer among the loaded items.
+    replaceLoadedNews(['Rates held at 4.5%']);
+    modal!.refreshResultsInBackground();
+    expect(rows().map((row) => `${row.title} | ${row.subtitle}`)).toEqual(['Iran talks resume in Vienna | Reuters World · 5h ago']);
+    expect(requests).toEqual(['iran']);
+
+    // And back: loaded again, the loaded row is the one listed.
+    replaceLoadedNews(['Iran talks resume in Vienna']);
+    modal!.refreshResultsInBackground();
+    expect(rows().map((row) => `${row.title} | ${row.subtitle}`)).toEqual(['Iran talks resume in Vienna | Loaded Source']);
+    expect(requests).toEqual(['iran'], 'no second request');
   });
 
   it('lists loaded news first and never repeats a title the loaded items already cover', async () => {
@@ -278,6 +323,7 @@ describe('Cmd+K headline history', () => {
         if (refresh) modal!.refreshResultsInBackground();
       },
       isLoadedMatch: () => false,
+      isOpenable: () => true,
       formatAge: () => '5h ago',
       setPending: (pending) => modal!.setResultsPending(pending),
       setTimeout: (callback, delay) => setTimeout(callback, delay),

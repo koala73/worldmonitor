@@ -259,6 +259,7 @@ export class SearchManager implements AppModule {
       isLoadedMatch: (titleKey, query) => (
         this.loadedNewsSearchText.get(titleKey)?.some((text) => text.includes(query)) ?? false
       ),
+      isOpenable: isOpenableExternalUrl,
       formatAge: formatTime,
       setPending: (pending) => {
         if (!this.destroyed) this.ctx.searchModal?.setResultsPending(pending);
@@ -993,6 +994,8 @@ export class SearchManager implements AppModule {
       loadedNewsSearchText.set(titleKey, texts);
     }
     this.loadedNewsSearchText = loadedNewsSearchText;
+    // A headline that just left the loaded news is listed from the history.
+    this.headlineHistory.onLoadedNewsChange();
 
     this.ctx.searchModal.registerSource('prediction', this.ctx.latestPredictions.map(p => ({
       id: p.title,

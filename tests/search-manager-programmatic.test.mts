@@ -2361,6 +2361,27 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     assert.equal(scenario.manager.flightSourceExpiresAt, 0);
   });
 
+  it('tells the headline history when the loaded news changes, after the loaded index is replaced', () => {
+    const scenario = makeScenario([]);
+    scenario.manager.updateSearchIndex = undefined;
+    scenario.manager.syncPanelSearchIndex = () => {};
+    scenario.manager.buildCountrySearchItems = () => [];
+    scenario.ctx.latestPredictions = [];
+    scenario.ctx.latestMarkets = [];
+    const loadedAtNotification: boolean[] = [];
+    scenario.manager.headlineHistory.onLoadedNewsChange = () => {
+      loadedAtNotification.push(scenario.manager.loadedNewsSearchText.has('iran talks resume in vienna'));
+    };
+    const productionUpdate = Object.getPrototypeOf(scenario.manager).updateSearchIndex;
+
+    scenario.ctx.allNews = [{ link: 'https://www.reuters.com/vienna', title: 'Iran talks resume in Vienna', source: 'Reuters World' }];
+    productionUpdate.call(scenario.manager, { updateVisibleMetrics: false });
+    scenario.ctx.allNews = [];
+    productionUpdate.call(scenario.manager, { updateVisibleMetrics: false });
+
+    assert.deepEqual(loadedAtNotification, [true, false], 'the history re-lists against the news just indexed');
+  });
+
   it('populates flight search for every premium access path, including runtime API keys', () => {
     const scenario = makeScenario([]);
     scenario.runtime.pro = false;
