@@ -1086,6 +1086,12 @@ describe("webhook deletions record and can repair the email-keyed gap", () => {
       { userId: USER_A.subject },
     );
     expect(row?.emailKeyedSkipped).toBeUndefined();
+    // The operator-supplied address is proof for the sweep, not data to keep:
+    // markExternalComplete already ran, so nothing else will clear it.
+    const stored = await t.run((ctx) => ctx.db.query("accountDeletions")
+      .withIndex("by_userId", (q) => q.eq("userId", USER_A.subject)).unique());
+    expect(stored?.status).toBe("complete");
+    expect(stored?.verifiedEmail).toBeUndefined();
   });
 
   test("the repair command refuses an empty email and reports an unknown subject", async () => {
