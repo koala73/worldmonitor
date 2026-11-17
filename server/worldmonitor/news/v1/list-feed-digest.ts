@@ -3980,8 +3980,10 @@ async function buildDigest(
     if (VARIANT_FEEDS[variant] && DIGEST_LANGUAGES.has(lang)) {
       // #4927 review P2: awaited — a fire-and-forget write can be killed
       // when the response finishes before the side write lands.
-      await setCachedJson(`news:coverage-ledger:v1:${variant}:${lang}`, ledger, 7200).catch((err: unknown) =>
-        console.warn('[digest] coverage-ledger write failed:', err),
+      await writeCoverageLedger(
+        `news:coverage-ledger:v1:${variant}:${lang}`,
+        ledger,
+        digestStartedAt + DIGEST_RESPONSE_TIMEOUT_MS - LEDGER_WRITE_GUARD_MS,
       );
     }
 
@@ -4028,6 +4030,22 @@ function rememberLabelCounts(response: ListFeedDigestResponse, counts: LabelCoun
  * Write the counts of a build the gate accepted. A rejected or unpublished
  * build leaves /trust describing the digest that is still served.
  */
+// The ledger write runs after the story-tracking, history and coverage writes
+// join, which may hold until the 11 s tracking deadline. Its own Redis timeout
+// is 5 s, so unbounded it could carry the build past the 14 s response timeout
+// and lose a finished digest. Stop waiting this long before that timeout.
+const LEDGER_WRITE_GUARD_MS = 1_000;
+
+/** Best-effort ledger write that never waits past `deadlineAt`. */
+async function writeCoverageLedger(key: string, ledger: unknown, deadlineAt: number): Promise<void> {
+  const write = setCachedJson(key, ledger, 7200).catch((err: unknown) => {
+    console.warn('[digest] coverage-ledger write failed:', err);
+    return false;
+  });
+  const settled = await settleBeforeDeadline(write.then(() => true), deadlineAt, false);
+  if (!settled) console.warn('[digest] coverage-ledger write abandoned at the response deadline');
+}
+
 async function publishAcceptedLabelCounts(response: ListFeedDigestResponse, deadlineAt: number): Promise<void> {
   const counts = pendingLabelCounts.get(response);
   if (!counts) return;
@@ -4041,6 +4059,7 @@ async function publishAcceptedLabelCounts(response: ListFeedDigestResponse, dead
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
   recordPublisherCoverage,
+  writeCoverageLedger,
   storyCorroborationByHash,
   // #7084 serving path. Exported so the wiring can be EXECUTED in tests rather
   // than asserted against this file's own source text — a grep for

@@ -210,3 +210,26 @@ test('coverage writes key only served headlines, two commands each, with familie
   assert.equal(gt, 'GT');
   assert.equal(scored.length / 2, 2, 'the below-cap repeat adds its publisher to the served headline');
 });
+
+test('the coverage ledger write stops waiting at its deadline when Redis stalls', async (t) => {
+  // The ledger runs after the coverage and history writes join, which may hold
+  // until the tracking deadline; a 5 s Redis wait past that loses the digest.
+  t.mock.method(globalThis, 'fetch', (_url, init) => new Promise((_, reject) => {
+    init.signal?.addEventListener('abort', () => reject(init.signal.reason));
+  }));
+  const warn = t.mock.method(console, 'warn', () => {});
+  const saved = { ...process.env };
+  t.after(() => {
+    for (const name of ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN']) {
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
+    }
+  });
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.invalid';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+  const started = Date.now();
+  await digest.writeCoverageLedger('news:coverage-ledger:v1:full:en', { v: 1 }, started + 50);
+  const waited = Date.now() - started;
+  assert.ok(waited < 1_000, `waited ${waited} ms`);
+  assert.ok(warn.mock.calls.some((call) => String(call.arguments[0]).includes('abandoned at the response deadline')));
+});

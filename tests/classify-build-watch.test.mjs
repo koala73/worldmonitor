@@ -46,9 +46,15 @@ describe('digest build stamp', () => {
     // The relay is CJS and cannot import the handler, so the key is pinned to
     // the handler's own literal. Renaming one side without the other would
     // silently return the relay to its 15-minute cycle.
-    assert.ok(
-      digestSrc.includes('setCachedJson(`news:coverage-ledger:v1:${variant}:${lang}`, ledger,'),
+    assert.match(
+      digestSrc,
+      /writeCoverageLedger\(\s*`news:coverage-ledger:v1:\$\{variant\}:\$\{lang\}`,\s*ledger,/,
       'list-feed-digest.ts must still write news:coverage-ledger:v1:<variant>:<lang>',
+    );
+    assert.match(
+      digestSrc,
+      /async function writeCoverageLedger\(key: string, ledger: unknown, deadlineAt: number\)[^]*?setCachedJson\(key, ledger, 7200\)/,
+      'writeCoverageLedger must still SET the ledger under the key it is given',
     );
     assert.match(digestSrc, /const ledger = \{\s*v: 1,\s*generatedAt: Date\.now\(\),/);
   });
