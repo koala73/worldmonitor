@@ -488,13 +488,14 @@ test('failed fallback beside stale primary data does not renew the live clock', 
   const run = await besttimeHarness([[40, 45]]);
   await run.seed();
   const lastLiveAt = run.state.cache.get(metaKey).data.lastLiveAt;
-  run.state.now += 60 * 60_000;
+  const reading = run.status();
+  run.state.now += 15 * 60_000;
   run.state.source = { success: true, data: [{ ...validResponse.data[0], data_freshness: 'stale' }] };
   for (const id of run.ids) run.state.besttime.set(id, { ok: false, status: 503 });
   await run.seed();
   assert.equal(run.state.besttimeCalls.length, 18);
   assert.equal(run.state.cache.get(metaKey).data.lastLiveAt, lastLiveAt);
-  assert.equal(run.status().locations[0].dataFreshness, 'DATA_FRESHNESS_STALE');
+  assert.deepEqual(run.status(), staleReading(reading));
 });
 
 test('a valid primary reading beside a null reading does not poll BestTime', async () => {
@@ -1007,22 +1008,22 @@ test('the quiet heartbeat stops at exactly 24 hours after the last live reading'
   assert.equal(run.state.cache.get(metaKey).data.fetchedAt, heartbeat);
 });
 
-test('a stale-only publication does not renew the quiet allowance', async () => {
+test('a stale-only response without BestTime does not renew the quiet allowance', async () => {
   const run = harness();
   const staleOnly = { success: true, data: [{ ...validResponse.data[0], data_freshness: 'stale' }] };
   const lastLiveAt = run.state.now - 60 * 60_000;
   run.state.cache.set(metaKey, { data: { fetchedAt: lastLiveAt, recordCount: 1, lastLiveAt }, expiresAt: run.state.now + 604_800_000 });
   run.state.source = staleOnly;
   await run.seed();
-  assert.equal(run.state.cache.get(metaKey).data.fetchedAt, run.state.now, 'the stale publication still refreshes the heartbeat');
+  assert.equal(run.state.cache.get(metaKey).data.fetchedAt, lastLiveAt, 'a stale response provides no current observation');
   assert.equal(run.state.cache.get(metaKey).data.lastLiveAt, lastLiveAt, 'lastLiveAt is carried, not renewed');
 });
 
-test('a stale-only publication with no live history writes no heartbeat', async () => {
+test('a stale-only response with no live history publishes nothing and writes no heartbeat', async () => {
   const run = harness();
   run.state.source = { success: true, data: [{ ...validResponse.data[0], data_freshness: 'stale' }] };
   await run.seed();
-  assert.ok(run.state.cache.has(payloadKey), 'the stale observation is still published');
+  assert.equal(run.state.cache.has(payloadKey), false, 'an old response is not a new reading');
   assert.equal(run.state.cache.has(metaKey), false, 'a source with no live reading ever has no heartbeat');
   run.state.source = emptyResponse;
   run.state.env.BESTTIME_API_KEY_PRIVATE = BESTTIME_KEY;

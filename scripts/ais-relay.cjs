@@ -9545,7 +9545,8 @@ let pizzintSeedInFlight = false;
 function pizzintNoLiveSignal(location) {
   const live = location.currentPopularity;
   const forecast = location.forecastPopularity;
-  return !Number.isFinite(live) || live < 0
+  return (!location.isClosedNow && location.dataFreshness !== 'DATA_FRESHNESS_FRESH')
+    || !Number.isFinite(live) || live < 0
     || (!location.isClosedNow && live === 0 && (forecast >= 20 || !(forecast > 0)));
 }
 
@@ -9778,16 +9779,17 @@ async function seedPizzint() {
       && Number.isFinite(d.current_popularity) && d.current_popularity > 0);
     const besttimeKey = hasPrimaryReading ? '' : (process.env.BESTTIME_API_KEY_PRIVATE || '');
     const besttime = besttimeKey ? await fetchPizzintBestTimeLocations(besttimeKey) : null;
-    if (!raw && !besttime) {
-      console.log(`[PizzINT] No live reading; ${await keepLastPizzintReading()}`);
-      return;
-    }
     // PizzINT's CDN can serve an hour-old response still labelled fresh, so a closed
     // row is fresh only if it was recorded within one polling interval of now (either
     // way: PizzINT's clock runs about 0.1 s ahead of ours).
     const freshRow = d => d.data_freshness === 'fresh'
       && (!d.is_closed_now || Math.abs(Date.now() - Date.parse(d.recorded_at)) <= PIZZINT_SEED_INTERVAL_MS);
     const hasFreshClosed = raw?.data.some(d => d.is_closed_now && freshRow(d));
+    if (!besttime && !hasPrimaryReading && !hasFreshClosed) {
+      if (!besttimeKey && raw?.data.some(freshRow)) await recordPizzintQuietPoll();
+      console.log(`[PizzINT] No live reading; ${await keepLastPizzintReading()}`);
+      return;
+    }
     // A BestTime row the scorer would call no live signal must not displace them.
     const besttimeLive = besttime?.locations.some(l => !pizzintNoLiveSignal(l));
     const fallback = besttimeLive || !hasFreshClosed ? besttime : null;
