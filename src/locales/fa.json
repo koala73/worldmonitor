@@ -702,14 +702,17 @@
         "techevent": "رویداد فناوری",
         "techhq": "دفتر مرکزی فناوری",
         "accelerator": "شتاب‌دهنده",
-        "flight": "پرواز"
+        "flight": "پرواز",
+        "alert": "هشدار"
       },
       "flightOnGround": "روی زمین",
       "flightAirborne": "FL{{fl}} · {{kts}} گره",
       "flightMilitary": "نظامی · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "نظامی · {{type}} · روی زمین",
       "flightSearchHint": "برای یافتن موقعیت زنده Enter را بزنید یا کلیک کنید",
-      "flightNotFound": "موقعیت زنده‌ای برای {{callsign}} یافت نشد"
+      "flightNotFound": "موقعیت زنده‌ای برای {{callsign}} یافت نشد",
+      "sentAlerts": "هشدارهایی که برای شما ارسال شده‌اند",
+      "sentAlertTime": "ارسال شده {{time}}"
     },
     "signal": {
       "title": "یافته اطلاعاتی",

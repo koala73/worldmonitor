@@ -447,7 +447,8 @@
       "trendRising": "hausse",
       "trendFalling": "baisse",
       "trendStable": "stable",
-      "situationLink": "Surveiller la situation : crises, titres d'actualité, points sensibles et pannes sur un seul tableau de bord"
+      "situationLink": "Surveiller la situation : crises, titres d'actualité, points sensibles et pannes sur un seul tableau de bord",
+      "pizzaIndexLink": "Indice pizza du Pentagone : l’affluence des pizzerias près du Pentagone"
     },
     "moments": {
       "eyebrow": "Moteur de corrélation",

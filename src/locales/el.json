@@ -632,7 +632,8 @@
         "techevent": "Tech Εκδήλωση",
         "techhq": "Tech Έδρα",
         "accelerator": "Επιταχυντής",
-        "flight": "Πτήση"
+        "flight": "Πτήση",
+        "alert": "Ειδοποίηση"
       },
       "flightOnGround": "Στο έδαφος",
       "flightAirborne": "FL{{fl}} · {{kts}} κόμβοι",
@@ -640,7 +641,9 @@
       "flightMilitaryOnGround": "Στρατιωτική · {{type}} · στο έδαφος",
       "flightSearchHint": "Πατήστε Enter ή κάντε κλικ για αναζήτηση ζωντανής θέσης",
       "flightNotFound": "Δεν βρέθηκε ζωντανή θέση για {{callsign}}",
-      "addPanel": "Προσθήκη"
+      "addPanel": "Προσθήκη",
+      "sentAlerts": "Ειδοποιήσεις που σας στάλθησαν",
+      "sentAlertTime": "Στάλθη {{time}}"
     },
     "signal": {
       "title": "ΕΥΡΗΜΑ ΠΛΗΡΟΦΟΡΙΩΝ",

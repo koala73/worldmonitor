@@ -127,6 +127,7 @@ describe('open_search_result persists an executable layer result', () => {
       resolveExecutableNewsPanel: vi.fn(() => null),
       saveToStorage,
       setTheme: vi.fn(),
+      openExternalLink: vi.fn(),
       setTimeout: (callback, delay) => setTimeout(callback, delay),
       clearTimeout: (timer) => clearTimeout(timer),
     });

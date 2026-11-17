@@ -1,6 +1,7 @@
 'use strict';
 
 const { createDeliveryReporter, deliveryErrorClass } = require('./lib/notification-delivery.cjs');
+const { createSentAlertLog } = require('./lib/sent-alert-history.cjs');
 const { createHash, randomUUID } = require('node:crypto');
 const { Resend } = require('resend');
 const { appendUnsubscribeText, injectUnsubscribeFooterHtml, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
@@ -357,6 +358,8 @@ async function deactivateChannel(userId, channelType) {
 // ── Delivery results ──────────────────────────────────────────────────────
 
 const { recordDelivery, withDeliveryReports } = createDeliveryReporter({ siteUrl: CONVEX_SITE_URL, secret: RELAY_SECRET, source: 'relay' });
+// Per-user record of delivered alerts, read by the dashboard search (ListSentAlerts).
+const { noteSentAlert, withSentAlertLog } = createSentAlertLog({ upstashUrl: UPSTASH_URL, upstashToken: UPSTASH_TOKEN });
 
 // ── Entitlement check (PRO gate for delivery) ───────────────────────────────
 
@@ -693,6 +696,8 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
   };
   let anyDelivered = false;
   let mostDelivered = 0;
+  // Per channel, how many of the batch's alerts it delivered, counted from the first.
+  const deliveredByChannel = [];
   for (const ch of verifiedChannels) {
     // Declared outside the try: a request that rejects after earlier parts went out must still count them.
     let ok = false;
@@ -762,6 +767,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
     }
     if (ok) anyDelivered = true;
     else mostDelivered = Math.max(mostDelivered, delivered);
+    deliveredByChannel.push([ch.channelType, ok ? events.length : delivered]);
   }
   if (anyDelivered) {
     const cleared = await removeHeldItems(key, removable);
@@ -777,13 +783,20 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
     const cleared = await removeHeldItems(key, events.slice(0, mostDelivered).map((ev) => items[itemIndex.get(ev)]));
     console.log(`[relay] drainHeldForUser: delivered ${mostDelivered} of ${events.length} held events to ${userId} (${variant}); ${remaining} stay held${cleared.failed > 0 ? `, ${cleared.failed} delivered but not removed` : ''}`);
   }
+  // Recorded after the held queue is updated: the alerts removed above are the ones that arrived.
+  // Each alert lists only the channels whose delivered parts reached it.
+  const arrived = anyDelivered ? events : events.slice(0, mostDelivered);
+  for (const [index, ev] of arrived.entries()) {
+    const channels = deliveredByChannel.filter(([, count]) => count > index).map(([channelType]) => channelType);
+    await noteSentAlertForEvent(userId, ev, channels);
+  }
 }
 
 // Called on a 5-minute timer in the poll loop; sends held batches to users
 // whose quiet hours have ended. Self-contained — fetches its own rules.
 // No-op when QUIET_HOURS_BATCH_ENABLED=0 — held events will expire via TTL.
 async function drainBatchOnWake() {
-  return withDeliveryReports(drainBatchOnWakeDelivery);
+  return withDeliveryReports(() => withSentAlertLog(drainBatchOnWakeDelivery));
 }
 
 async function drainBatchOnWakeDelivery() {
@@ -1866,6 +1879,25 @@ function formatSubject(event) {
   return event.userId ? title : `WorldMonitor Alert: ${title}`;
 }
 
+/**
+ * Record that `userId` received this alert on `channels`, with the title,
+ * publisher and link those channels showed. The link uses the web-push policy
+ * (a caller-submitted event keeps first-party links only), because the
+ * dashboard search opens it in one click; the dashboard fallback is not a
+ * story link, so it is stored as none.
+ */
+function noteSentAlertForEvent(userId, event, channels) {
+  const link = formatEventLinkForPush(event);
+  return noteSentAlert(userId, {
+    title: formatEventTitle(event),
+    source: formatEventSource(event),
+    link: link === NOTIFY_DASHBOARD_URL ? '' : link,
+    eventType: sanitizeNotificationTitle(event.eventType),
+    severity: sanitizeNotificationTitle(event.severity ?? 'high'),
+    channels,
+  });
+}
+
 async function processWelcome(event) {
   return withDeliveryReports(() => processWelcomeDelivery(event));
 }
@@ -2148,7 +2180,7 @@ async function releaseRealtimeClaim(dedupDecision, claim) {
 }
 
 async function processEvent(event) {
-  return withDeliveryReports(() => processEventDelivery(event));
+  return withDeliveryReports(() => withSentAlertLog(() => processEventDelivery(event)));
 }
 
 async function processEventDelivery(event) {
@@ -2379,20 +2411,22 @@ async function processEventDelivery(event) {
       return impactText ? `${text}\n\n— Impact —\n${impactText}` : text;
     };
 
+    const deliveredChannels = [];
     for (const ch of verifiedChannels) {
       try {
+        let sent = false;
         if (ch.channelType === 'telegram' && ch.chatId) {
-          await sendTelegram(rule.userId, ch.chatId, deliveryTextFor('telegram'));
+          sent = await sendTelegram(rule.userId, ch.chatId, deliveryTextFor('telegram'));
         } else if (ch.channelType === 'slack' && ch.webhookEnvelope) {
-          await sendSlack(rule.userId, ch.webhookEnvelope, deliveryTextFor('slack'), ch);
+          sent = await sendSlack(rule.userId, ch.webhookEnvelope, deliveryTextFor('slack'), ch);
         } else if (ch.channelType === 'discord' && ch.webhookEnvelope) {
-          await sendDiscord(rule.userId, ch.webhookEnvelope, deliveryTextFor('discord'), 0, ch);
+          sent = await sendDiscord(rule.userId, ch.webhookEnvelope, deliveryTextFor('discord'), 0, ch);
         } else if (ch.channelType === 'teams' && ch.webhookEnvelope) {
-          await sendTeams(rule.userId, ch.webhookEnvelope, buildTeamsAlertForEvent(event, impactText), ch);
+          sent = await sendTeams(rule.userId, ch.webhookEnvelope, buildTeamsAlertForEvent(event, impactText), ch);
         } else if (ch.channelType === 'email' && ch.email) {
-          await sendEmail(ch.email, subject, deliveryTextFor('email'), unsubscribeUrlFor(ch, 'alerts'), undefined, buildAlertEmailForEvent(event, impactText));
+          sent = await sendEmail(ch.email, subject, deliveryTextFor('email'), unsubscribeUrlFor(ch, 'alerts'), undefined, buildAlertEmailForEvent(event, impactText));
         } else if (ch.channelType === 'webhook' && ch.webhookEnvelope) {
-          await sendWebhook(rule.userId, ch.webhookEnvelope, shapeEventForWebhook(event), ch.webhookSecret, ch);
+          sent = await sendWebhook(rule.userId, ch.webhookEnvelope, shapeEventForWebhook(event), ch.webhookSecret, ch);
         } else if (ch.channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {
           // Web push carries short payloads (Chrome caps at ~4KB and
           // auto-truncates longer ones anyway). Use title + first line
@@ -2402,7 +2436,7 @@ async function processEventDelivery(event) {
           // (review finding: raw title/link bypassed the new sanitizers;
           // `payload.url` is a second, edge-unvalidated link field, so the
           // link wins and url is only a fallback before classification).
-          await sendWebPush(rule.userId, ch, {
+          sent = await sendWebPush(rule.userId, ch, {
             title: formatEventTitle(event, 'WorldMonitor'),
             body: formatPushBody(deliveryTextFor('web_push'), event),
             url: formatPushClickUrl(event),
@@ -2410,10 +2444,12 @@ async function processEventDelivery(event) {
             eventType: event.eventType,
           });
         }
+        if (sent) deliveredChannels.push(ch.channelType);
       } catch (err) {
         console.warn(`[relay] Delivery error for ${rule.userId}/${ch.channelType}:`, err instanceof Error ? err.message : String(err));
       }
     }
+    if (deliveredChannels.length > 0) await noteSentAlertForEvent(rule.userId, event, deliveredChannels);
   }
 
   if (freeSeverityDrops > 0) console.log(`[relay] Free-ladder severity clamp: dropped ${freeSeverityDrops} rule(s) for non-critical event (severity=${eventSeverity})`);

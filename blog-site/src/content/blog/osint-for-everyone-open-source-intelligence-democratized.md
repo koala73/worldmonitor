@@ -1,7 +1,7 @@
 ---
-title: "Free OSINT Dashboard: Conflict, Ships, Aircraft and AI"
-description: "Use World Monitor to research conflict, ship and aircraft activity. Follow a regional OSINT workflow and understand AI access, timestamps and coverage limits."
-metaTitle: "Free OSINT Dashboard: Conflict, Ships, Aircraft and AI"
+title: "Free OSINT Dashboard and Live Tracker Map"
+description: "Track conflict, ships and aircraft on World Monitor's free live OSINT map. Follow a regional workflow and understand AI access, timestamps and coverage limits."
+metaTitle: "Free OSINT Dashboard and Live Tracker Map | World Monitor"
 keywords: "OSINT tools free, open source intelligence software, OSINT dashboard, intelligence gathering tools, OSINT for beginners"
 audience: "OSINT researchers, security analysts, journalists, hobbyist investigators"
 heroImage: "/blog/images/blog/osint-for-everyone-open-source-intelligence-democratized.jpg"
@@ -10,6 +10,8 @@ modifiedDate: "2026-11-17"
 ---
 
 World Monitor combines attributed news, conflict context, available aircraft observations and maritime signals in a free public dashboard. It helps researchers compare sources and follow links back to evidence. Hosted analyst tools and some integrations have separate access requirements. A shared map does not make every observation complete, current or independently verified.
+
+**[Open the live OSINT map](https://www.worldmonitor.app/dashboard)** to track conflict reports, ships and aircraft as they update. The map is free and needs no account.
 
 *Cover: an archived dashboard image. Displayed readings and interface details are illustrative, not current observations.*
 

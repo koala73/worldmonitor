@@ -447,7 +447,8 @@
       "trendRising": "stijgend",
       "trendFalling": "dalend",
       "trendStable": "stabiel",
-      "situationLink": "Monitor de situatie: crises, nieuwsfeiten, knelpunten en storingen op één dashboard"
+      "situationLink": "Monitor de situatie: crises, nieuwsfeiten, knelpunten en storingen op één dashboard",
+      "pizzaIndexLink": "Pentagon-pizza-index: hoe druk het is bij pizzeria's rond het Pentagon"
     },
     "moments": {
       "eyebrow": "Correlatie-engine",

@@ -644,7 +644,8 @@
         "techevent": "فعالية تقنية",
         "techhq": "مقر شركة تقنية",
         "accelerator": "مسرّعة",
-        "flight": "رحلة جوية"
+        "flight": "رحلة جوية",
+        "alert": "تنبيه"
       },
       "flightOnGround": "على الأرض",
       "flightAirborne": "FL{{fl}} · {{kts}} عقدة",
@@ -652,7 +653,9 @@
       "flightMilitaryOnGround": "عسكرية · {{type}} · على الأرض",
       "flightSearchHint": "اضغط Enter أو انقر للبحث عن الموقع الحالي",
       "flightNotFound": "لم يتم العثور على موقع حالي لـ {{callsign}}",
-      "addPanel": "إضافة"
+      "addPanel": "إضافة",
+      "sentAlerts": "التنبيهات المرسلة إليك",
+      "sentAlertTime": "تم الإرسال {{time}}"
     },
     "signal": {
       "title": "نتيجة استخباراتية",

@@ -10,6 +10,7 @@ The command palette is the dashboard's one search surface: countries, panels, ho
 - `search-match` returns ranked entity and command matches for a typed query.
 - `search-close` closes the palette on Escape without trapping focus.
 - `search-mobile` opens the bottom sheet from `#mobileSearchBtn`.
+- `search-sent-alerts` lists realtime alerts delivered to the signed-in Pro account under "Alerts sent to you", whether or not the dashboard still has the story loaded.
 
 ## How to get to it (user POV)
 
@@ -31,6 +32,7 @@ Preconditions:
 - **Escape.** Press `Escape`. `.search-modal` reaches hidden state.
 - **Shortcut entry.** Press `Meta+k` (`Control+k` off macOS). The palette reopens with its input visible.
 - **Proof.** `01-search-results.png` (the ranked list for the query) and `02-search-palette-via-shortcut.png`.
+- **Alerts sent to you.** Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/search-sent-alerts.mjs --name search-sent-alerts`. The step answers `GET /api/news/v1/list-sent-alerts` itself and installs a signed-in Pro test account through `__setClerkInstanceForTests`, so it needs no Redis, relay or Clerk key. It proves: an anonymous visitor gets no result and sends no request; the signed-in account finds the headline under `[data-search-section="alerts"]` with publisher, sent time and link host; selecting it opens the article in a new tab with no `window.opener`; the phone sheet lists it too. It does not prove the relay write or the gateway's auth: `tests/notification-relay-sent-alerts.test.mjs` and `server/__tests__/gateway-list-sent-alerts.test.ts` do.
 
 ## Gotchas
 
@@ -40,3 +42,6 @@ Preconditions:
 - Command rows also carry `data-index` (plus `data-command`). If a drive must isolate entity matches, exclude `.command-item`.
 - Flight search rows are PRO-gated and will not resolve on an unauthenticated local run.
 - The mobile sheet is a different DOM (`.search-sheet`, `.search-sheet-cancel`), not the desktop `.search-modal`.
+- On the phone layout the visible search entry is the tab bar's `[data-mobile-tab="search"]`.
+- A headline's words often match panel commands too ("strait", "tankers"). Commands list first under their own heading, so do not assert that the alert is the first row; read the rows under `[data-search-section="alerts"]`.
+- The alert request starts when the palette opens and can answer mid-typing. Wait until `.search-results-status` ends with the whole query before reading rows.

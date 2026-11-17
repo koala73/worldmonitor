@@ -775,6 +775,91 @@ describe('freeze crawlable live pulse coverage gates', () => {
     assert.ok(snapshot.coverage.countryCount > 100, 'a news outage must not cost the corpus its refresh');
   });
 
+  it('publishes the current Pizza Index level in the snapshot', async () => {
+    stubFetch();
+    const outer = globalThis.fetch;
+    const updatedAt = Date.now() - 5 * 60_000;
+    globalThis.fetch = async (url) => {
+      if (!String(url).includes('get-pizzint-status')) return outer(url);
+      return jsonResponse({
+        pizzint: {
+          defconLevel: 4,
+          defconLabel: 'Above Normal',
+          locationsMonitored: 1,
+          locationsOpen: 1,
+          updatedAt,
+          dataFreshness: 'DATA_FRESHNESS_FRESH',
+          locations: [{
+            name: "Domino's Pizza",
+            currentPopularity: 70,
+            percentageOfUsual: 160,
+            forecastPopularity: 40,
+            dataFreshness: 'DATA_FRESHNESS_FRESH',
+            isClosedNow: false,
+          }],
+        },
+        tensionPairs: [],
+      });
+    };
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.pizzaIndex.level, '4');
+    assert.equal(snapshot.pizzaIndex.label, 'Above Normal');
+    assert.equal(snapshot.pizzaIndex.updatedAt, new Date(updatedAt).toISOString());
+    assert.equal(snapshot.pizzaIndex.retained, false);
+    assert.deepEqual(snapshot.errors.pizzaIndex, []);
+  });
+
+  it('judges the Pizza Index against the clock when it is read, not when the freeze began', async () => {
+    stubFetch();
+    const outer = globalThis.fetch;
+    const realNow = Date.now;
+    // The freeze reads hundreds of endpoints in sequence before this one, so a
+    // level updated during the run is newer than the run's start plus the
+    // future-skew allowance.
+    let offset = 0;
+    Date.now = () => realNow() + offset;
+    globalThis.fetch = async (url) => {
+      if (!String(url).includes('get-pizzint-status')) {
+        offset = 0;
+        return outer(url);
+      }
+      offset = 60 * 60_000;
+      return jsonResponse({
+        pizzint: {
+          defconLevel: 4,
+          defconLabel: 'Above Normal',
+          locationsMonitored: 1,
+          locationsOpen: 1,
+          updatedAt: Date.now() - 60_000,
+          dataFreshness: 'DATA_FRESHNESS_FRESH',
+          locations: [{
+            name: "Domino's Pizza",
+            currentPopularity: 70,
+            percentageOfUsual: 160,
+            forecastPopularity: 40,
+            dataFreshness: 'DATA_FRESHNESS_FRESH',
+            isClosedNow: false,
+          }],
+        },
+        tensionPairs: [],
+      });
+    };
+    try {
+      const { snapshot } = await runFreeze();
+      assert.equal(snapshot.pizzaIndex?.level, '4');
+      assert.deepEqual(snapshot.errors.pizzaIndex, []);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it('records a Pizza Index outage without discarding the freeze', async () => {
+    stubFetch();
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.pizzaIndex, undefined, 'no prior edition, so nothing to carry');
+    assert.equal(snapshot.errors.pizzaIndex.length, 1);
+  });
+
   it('carries the digest own stale verdict into the snapshot', async () => {
     stubFetch({ digestCoverage: { state: 'stale', servedStale: true } });
     const { snapshot } = await runFreeze();
