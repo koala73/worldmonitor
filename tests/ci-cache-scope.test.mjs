@@ -157,3 +157,32 @@ describe('pro-bundle-freshness restores what test.yml saves on main', () => {
     assert.equal(action(step), 'actions/cache/restore');
   });
 });
+
+// proto-check.yml runs on main, but the jobs that install buf and the protoc
+// plugins run only on pull requests, which the workflow-level check above
+// cannot see. go-tools-cache.yml is the one writer of their cache, on main.
+describe('proto-check restores the Go tools cache go-tools-cache.yml writes on main', () => {
+  const find = (file) => workflows.find((w) => w.file === file);
+  const steps = (w) => w.jobs.flatMap((j) => j.steps ?? []);
+  const goBin = (s) => String(s.with?.path ?? '').trim() === '~/go/bin';
+
+  it('only restores ~/go/bin in proto-check.yml', () => {
+    const goBinSteps = steps(find('proto-check.yml')).filter(goBin);
+    assert.ok(goBinSteps.length > 0, 'proto-check.yml no longer restores ~/go/bin; update this test');
+    for (const s of goBinSteps) assert.equal(action(s), 'actions/cache/restore', `${s.name} must not save`);
+  });
+
+  it('restores the exact key the main-only warmer saves', () => {
+    const warmer = find('go-tools-cache.yml');
+    const lookup = steps(warmer).find((s) => s.id === 'lookup');
+    assert.equal(action(lookup), 'actions/cache/restore');
+    assert.ok(writesOnMain(warmer.on), 'go-tools-cache.yml must run on main or a schedule');
+    assert.match(warmer.jobs[0].if ?? '', /github\.ref == 'refs\/heads\/main'/);
+    for (const s of steps(find('proto-check.yml')).filter(goBin)) {
+      assert.equal(s.with.key, lookup.with.key, `${s.name} key differs from go-tools-cache.yml`);
+    }
+    const save = steps(warmer).find((s) => action(s) === 'actions/cache/save');
+    assert.equal(save?.with?.key, '${{ steps.lookup.outputs.cache-primary-key }}');
+    assert.equal(String(save.with.path).trim(), '~/go/bin');
+  });
+});
