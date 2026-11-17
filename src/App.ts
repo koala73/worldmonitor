@@ -134,6 +134,7 @@ import {
   CRISIS_FLOOR_OPT_IN_SOURCES,
   CURATED_REGIONAL_OPT_IN_SOURCES,
   GERMAN_RSS_SOURCES,
+  BRAZIL_OPT_IN_SOURCES,
   computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
   FEEDS,
@@ -242,6 +243,7 @@ import {
   migrateCrisisDeskOptInsV8,
   migrateCuratedRegionalOptInsV9,
   migrateGermanRssSourcesV10,
+  migrateBrazilOptInsV11,
 } from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
@@ -1546,6 +1548,17 @@ export class App {
           JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[],
         );
         if (persisted) safeStorageSet(germanRssKey, 'done');
+      }
+      const brazilOptInKey = 'worldmonitor-brazil-optin-v1';
+      if (!safeStorageGet(brazilOptInKey)) {
+        const current = loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+        const blob = { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current ?? computeDefaultDisabledSources(userLang)) };
+        const migrated = migrateBrazilOptInsV11(blob, BRAZIL_OPT_IN_SOURCES);
+        const persisted = (current !== null && migrated === blob) || saveToStorage(
+          STORAGE_KEYS.disabledFeeds,
+          JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[],
+        );
+        if (persisted) safeStorageSet(brazilOptInKey, 'done');
       }
       // Locale boost: additively enable locale-matched sources (runs once per locale).
       // Reads the explicit-choice key (`wm-locale-explicit`, written by Settings →

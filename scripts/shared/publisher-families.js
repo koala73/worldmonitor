@@ -123,6 +123,7 @@ const PUBLISHER_FAMILY_DATA = {
       "Guardian Africa",
       "Guardian Americas",
       "Guardian Australia",
+      "Guardian Brazil",
       "Guardian Caribbean",
       "Guardian ME",
       "Guardian Pacific",

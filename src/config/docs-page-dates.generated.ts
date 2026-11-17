@@ -11,7 +11,7 @@ export const DOCS_PAGE_DATES: Record<string, { datePublished: string; dateModifi
   "api-commerce": {"datePublished":"2026-04-19","dateModified":"2026-11-06"},
   "api-key-deployment": {"datePublished":"2026-03-11","dateModified":"2026-10-26"},
   "api-keys": {"datePublished":"2026-07-10","dateModified":"2026-11-14"},
-  "api-notifications": {"datePublished":"2026-04-19","dateModified":"2026-11-16"},
+  "api-notifications": {"datePublished":"2026-04-19","dateModified":"2026-11-17"},
   "api-oauth": {"datePublished":"2026-04-19","dateModified":"2026-10-21"},
   "api-platform": {"datePublished":"2026-04-19","dateModified":"2026-11-15"},
   "api-proxies": {"datePublished":"2026-04-19","dateModified":"2026-11-01"},

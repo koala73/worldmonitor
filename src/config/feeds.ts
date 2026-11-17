@@ -405,6 +405,9 @@ export const BBC_UK_DEFAULT_SOURCES = ['BBC UK'] as const;
 /** German defaults, available as explicit opt-ins in every UI language. */
 export const GERMAN_RSS_SOURCES = ['Deutschlandfunk', 'ZDFheute'] as const;
 
+/** Brazil companions stay opt-in even when the UI language matches. */
+export const BRAZIL_OPT_IN_SOURCES = ['Guardian Brazil', 'Brazil Reports', 'G1 Política', 'Agência Brasil'] as const;
+
 /**
  * The Science panel's sources (2026-10-17 audit). The panel is opt-in, but its
  * sources are EN default-on so it has content when enabled. The free-tier cap
@@ -542,6 +545,16 @@ export const REGIONAL_FEED_ROLLOUT_STAGES = [
   },
   {
     introducedNames: [...GERMAN_RSS_SOURCES],
+    protectedNames: [
+      ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+      ...REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,
+      ...CANADA_EN_DEFAULT_SOURCES,
+      ...CRISIS_FLOOR_EN_DEFAULT_SOURCES,
+      ...CRISIS_FLOOR_STRATEGIC_DEFAULT_SOURCES,
+    ],
+  },
+  {
+    introducedNames: [...BRAZIL_OPT_IN_SOURCES],
     protectedNames: [
       ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
       ...REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,
@@ -696,7 +709,9 @@ export function getLanguageMatchedSources(locale: string): Set<string> {
 
 /** Sources boosted by locale (feeds tagged with matching `lang` or multi-URL key). */
 export function getLocaleBoostedSources(locale: string): Set<string> {
-  return getLanguageMatchedSources(locale);
+  const sources = getLanguageMatchedSources(locale);
+  for (const name of BRAZIL_OPT_IN_SOURCES) sources.delete(name);
+  return sources;
 }
 
 export function computeDefaultDisabledSources(locale?: string): string[] {
