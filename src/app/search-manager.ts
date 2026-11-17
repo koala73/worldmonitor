@@ -824,8 +824,8 @@ export class SearchManager implements AppModule {
       case 'flight':
         return hasPremiumAccess(getAuthState());
       case 'alert':
-        // Human-only: WebMcpSearchController leaves alerts out of agent
-        // search, and this keeps a forged or stale key from opening one.
+        // Human-only: WebMcpSearchController excludes the alert source from
+        // agent search, and this keeps a forged or stale key from opening one.
         return false;
       default:
         return true;

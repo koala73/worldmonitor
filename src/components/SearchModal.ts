@@ -207,7 +207,11 @@ export class SearchModal {
   }
 
   /** Search the current index without opening or mutating the modal. */
-  public search(rawInput: string, scope: SearchScope = this.activeScope): SearchIndexQueryResult {
+  public search(
+    rawInput: string,
+    scope: SearchScope = this.activeScope,
+    options?: { excludeTypes?: readonly SearchResultType[] },
+  ): SearchIndexQueryResult {
     // Viewport width can change while the lazy manager stays alive. Re-read
     // the responsive mode so programmatic and visible searches use identical
     // caps/order at the current viewport. Do not mutate the current open
@@ -216,7 +220,11 @@ export class SearchModal {
     return querySearchIndex({
       rawInput,
       scope,
-      sources: this.sources,
+      // An excluded source is left out before ranking, so it takes none of
+      // the capped result slots.
+      sources: options?.excludeTypes?.length
+        ? this.sources.filter((source) => !options.excludeTypes?.includes(source.type))
+        : this.sources,
       commands: getAllCommands(),
       isMobile: currentViewportIsMobile,
       flightPrefixEnabled: !!this.onFlightSearch,

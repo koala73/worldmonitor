@@ -241,6 +241,11 @@ describe('sent-alert history contract between the relay and the server', () => {
     assert.equal(SENT_ALERTS_RETENTION_DAYS * 24 * 60 * 60, relayHistory.SENT_ALERTS_TTL_SECONDS);
   });
 
+  it('account deletion removes the same key', () => {
+    const deletionSource = readFileSync(new URL('../convex/accountDeletion/sideEffects.ts', import.meta.url), 'utf8');
+    assert.ok(deletionSource.includes(`\`${SENT_ALERTS_KEY_PREFIX}\${args.userId}\``));
+  });
+
   it('reads the link block list the relay consults before delivery', () => {
     const relaySource = readFileSync(new URL('../scripts/notification-relay.cjs', import.meta.url), 'utf8');
     assert.ok(relaySource.includes(`const BLOCKED_LINKS_KEY = '${BLOCKED_NOTIFICATION_LINKS_KEY}';`));

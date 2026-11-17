@@ -67,6 +67,9 @@ interface ActiveOpenOperation {
 
 /** Owns WebMCP capability issuance, revocation, and use-time validation. */
 export class WebMcpSearchController {
+  // Alerts sent to the user are account-private history. The palette shows
+  // them to the signed-in human; agent search never ranks them.
+  private static readonly AGENT_SEARCH = { excludeTypes: ['alert'] } as const;
   private securityEpoch = 0;
   private openOperationEpoch = 0;
   private activeOpenOperation: ActiveOpenOperation | null = null;
@@ -128,7 +131,7 @@ export class WebMcpSearchController {
     const modal = this.bindings.getModal();
     if (!modal) throw new Error('Search index is not initialised');
 
-    let searchResult = modal.search(query, scope as SearchScope);
+    let searchResult = modal.search(query, scope as SearchScope, WebMcpSearchController.AGENT_SEARCH);
     if (
       searchResult.flightCallsign
       && searchResult.orderedMatches.length === 0
@@ -142,7 +145,7 @@ export class WebMcpSearchController {
         throwIfWebMcpAborted(signal);
         if (this.bindings.isDestroyed()) throw new Error('Search manager destroyed');
         this.bindings.refreshIndex();
-        searchResult = modal.search(query, scope as SearchScope);
+        searchResult = modal.search(query, scope as SearchScope, WebMcpSearchController.AGENT_SEARCH);
       } catch (error) {
         throwIfWebMcpAborted(signal);
         if (this.bindings.isDestroyed()) throw error;
@@ -150,11 +153,7 @@ export class WebMcpSearchController {
       }
     }
 
-    // Alerts sent to the user are account-private history. The palette shows
-    // them to the signed-in human; an in-page agent is not given their titles.
-    const matches = searchResult.orderedMatches.filter(
-      (match) => !(match.kind === 'result' && match.result.type === 'alert'),
-    );
+    const matches = searchResult.orderedMatches;
     const targetCancellationSupported = Boolean(signal);
     const candidates = matches.slice(0, limit).map((match) => ({
       match,
@@ -410,7 +409,7 @@ export class WebMcpSearchController {
     issued: IssuedSearchResult,
   ): SearchMatch | undefined {
     return modal.resolveMatchByIdentity(issued.identity)
-      ?? modal.search(issued.query, issued.scope as SearchScope).orderedMatches
+      ?? modal.search(issued.query, issued.scope as SearchScope, WebMcpSearchController.AGENT_SEARCH).orderedMatches
         .find((match) => searchMatchIdentity(match) === issued.identity);
   }
 

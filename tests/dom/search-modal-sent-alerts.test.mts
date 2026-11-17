@@ -144,6 +144,24 @@ describe('SearchModal: alerts sent to you', () => {
     expect((selected[0]!.data as { link: string }).link).toBe('https://www.reuters.com/world/hormuz');
   });
 
+  it('leaves the alert source out of an agent search before ranking, so it takes no result slot', () => {
+    // A phone shows five results, two per type: alerts would otherwise take two of them.
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+    modal = new SearchModal(document.body, { placeholder: 'Search' });
+    modal.registerSource('alert', sentAlertSearchItems([1, 2, 3].map((n) => ({
+      title: `Strait alert ${n}`, source: 'Reuters', link: `https://www.reuters.com/world/${n}`, sentAt: n,
+    })), () => 'Reuters'));
+    for (const type of ['news', 'prediction', 'market'] as const) {
+      modal.registerSource(type, [1, 2, 3].map((n) => ({ id: `${type}-${n}`, title: `Strait ${type} ${n}`, data: {} })));
+    }
+
+    const human = modal.search('strait', 'all').entityMatches.map((match) => match.result.type);
+    expect(human).toEqual(['alert', 'alert', 'news', 'news', 'prediction']);
+
+    const agent = modal.search('strait', 'all', { excludeTypes: ['alert'] }).entityMatches.map((match) => match.result.type);
+    expect(agent).toEqual(['news', 'news', 'prediction', 'prediction', 'market']);
+  });
+
   it('tells its sources each time it opens, and shows alerts that arrive while it is open', async () => {
     const onOpen = vi.fn();
     modal = new SearchModal(document.body, { placeholder: 'Search' });

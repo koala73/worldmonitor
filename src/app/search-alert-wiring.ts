@@ -35,16 +35,29 @@ export function attachSentAlertSearch(modal: SearchModal): () => void {
     const auth = getAuthState();
     return auth.user && hasPremiumAccess(auth) ? auth.user.id : null;
   };
+  // True while the palette is still opening. A fresh palette has no query, so
+  // a clear issued then needs no re-render; re-rendering there would also
+  // pre-empt the phone sheet's deferred first paint.
+  let opening = false;
   const source = new SentAlertSearchSource({
     getAccountKey: accountKey,
     fetchAlerts: fetchSentAlerts,
     publish: (items) => {
+      const revision = modal.getSearchIndexRevision();
       modal.registerSource('alert', items);
-      modal.refreshSearch();
+      // Re-render only when the alerts changed: a re-render resets the
+      // arrow-key selection.
+      if (!opening && modal.getSearchIndexRevision() !== revision) modal.refreshSearch();
     },
     describe: describeSentAlert,
   });
-  modal.setOnOpen(() => { void source.refresh(); });
+  modal.setOnOpen(() => {
+    opening = true;
+    // refresh() drops a previous account's alerts before its first await.
+    const pending = source.refresh();
+    opening = false;
+    void pending;
+  });
 
   let lastAccount = accountKey();
   const dropOnAccountChange = (): void => {

@@ -116,7 +116,7 @@ interface ModalDouble {
   clearedSources: string[];
   flightCallsign: string | null;
   humanInteractionCallback: (() => void) | null;
-  search(query: string, scope: string): {
+  search(query: string, scope: string, options?: { excludeTypes?: readonly string[] }): {
     orderedMatches: SearchMatch[];
     flightCallsign: string | null;
   };
@@ -424,8 +424,11 @@ function makeScenario(
     clearedSources: [],
     flightCallsign: null,
     humanInteractionCallback: null,
-    search: () => ({
-      orderedMatches: [...modal.matches],
+    // Like SearchModal.search: an excluded source is never ranked.
+    search: (_query, _scope, options) => ({
+      orderedMatches: modal.matches.filter((match) => !(
+        match.kind === 'result' && options?.excludeTypes?.includes(match.result.type)
+      )),
       flightCallsign: modal.flightCallsign,
     }),
     getSearchIndexRevision: () => modal.revision,

@@ -343,6 +343,26 @@ describe('querySearchIndex', () => {
       assert.deepEqual(result.entityMatches.map((match) => match.score), [3, 3, 2, 1]);
     });
 
+    it('finds the headline when the email subject or a message line is pasted whole', () => {
+      const news = source('news', [{ id: 'news-same', title: 'Iran closes Hormuz strait to tankers' }]);
+      for (const pasted of [
+        'WorldMonitor Alert: Iran closes Hormuz strait to tankers',
+        '[CRITICAL] Iran closes Hormuz strait to tankers',
+        '[high]   Iran closes Hormuz strait to tankers',
+      ]) {
+        const result = search({ rawInput: pasted, sources: [alerts, news] });
+        assert.deepEqual(entityIds(result).slice(0, 2), ['alert-exact', 'alert-exact-older'], pasted);
+        assert.equal(result.entityMatches[0]!.score, 3, 'the stripped query is an exact title match');
+        assert.ok(entityIds(result).includes('news-same'), 'the loaded story is found by the same paste');
+      }
+    });
+
+    it('does not let the alert wording alone match every alert', () => {
+      for (const word of ['critical', 'high', 'info', 'worldmonitor alert', '[critical]', 'worldmonitor alert:']) {
+        assert.deepEqual(entityIds(search({ rawInput: word, sources: [alerts] })), [], word);
+      }
+    });
+
     it('lists alerts ahead of loaded news that matches the same words', () => {
       const result = search({
         rawInput: 'hormuz',

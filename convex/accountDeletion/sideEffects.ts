@@ -261,6 +261,8 @@ async function deleteAccountRedisKeys(args: {
   const keys = [
     entitlementKey(args.userId),
     `brief:latest:${args.userId}`,
+    // Alerts delivered to the account (scripts/lib/sent-alert-history.cjs).
+    `wm:notif:sent:v1:${args.userId}`,
     ...args.keyHashes.flatMap((hash) => [
       `user-api-key:${hash}`,
       `bootstrap-user-api-key-invalid:${hash}`,
