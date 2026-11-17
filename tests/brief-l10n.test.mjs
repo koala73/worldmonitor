@@ -175,6 +175,7 @@ describe('translate prompt and parser', () => {
     const yahoo = [{ id: 'y', text: 'Background at https://en.wikipedia.org/wiki/Yahoo! today' }];
     assert.equal(parseTranslateOutput(JSON.stringify([{ id: 'y', text: 'Contexte sur https://en.wikipedia.org/wiki/Yahoo aujourd’hui' }]), yahoo, 'fr'), null);
     assert.ok(parseTranslateOutput(JSON.stringify([{ id: 'y', text: 'Contexte sur https://en.wikipedia.org/wiki/Yahoo! aujourd’hui' }]), yahoo, 'fr'));
+    assert.ok(parseTranslateOutput(JSON.stringify([{ id: 'y', text: 'Contexte aujourd’hui sur https://en.wikipedia.org/wiki/Yahoo!.' }]), yahoo, 'fr'));
   });
 
   it('parseTranslateOutput bounds the length of a short label', () => {
