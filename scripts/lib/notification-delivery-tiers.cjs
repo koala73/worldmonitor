@@ -55,8 +55,6 @@ const EVENT_TIERS = Object.freeze({
   regional_buffer_failure: TIER_LOCAL,
   watchlist_story_alert: TIER_OPT_IN,
   chokepoint_disruption: TIER_OPT_IN,
-  // Admitted by the chokepoint_disruption opt-in and scoped by its chokepoint.
-  corridor_risk: TIER_OPT_IN,
   orbital_imaging_window: TIER_OPT_IN,
   orbital_site_change: TIER_OPT_IN,
   reservoir_level_alert: TIER_OPT_IN,
