@@ -2546,6 +2546,7 @@ module.exports = {
   buildSlackMessagePayload,
   buildDiscordMessagePayload,
   buildTeamsAlertForEvent,
+  heldEmailItems,
   formatHeldAlertLines,
   buildHeldTextParts,
   removeHeldItems,

@@ -54,6 +54,7 @@ const {
   formatEventLinkForPush: relayFormatEventLinkForPush,
   formatPushClickUrl: relayFormatPushClickUrl,
   buildTeamsAlertForEvent: relayBuildTeamsAlertForEvent,
+  heldEmailItems: relayHeldEmailItems,
   formatMessage: relayFormatMessage,
   formatSubject: relayFormatSubject,
   sanitizeImpactText: relaySanitizeImpactText,
@@ -63,6 +64,7 @@ const {
 const formatMessage: (event: unknown, channel?: string) => string = relayFormatMessage;
 const formatPushClickUrl: (event: unknown) => string = relayFormatPushClickUrl;
 const buildTeamsAlertForEvent: (event: unknown, impact?: string) => unknown = relayBuildTeamsAlertForEvent;
+const heldEmailItems: (events: unknown[]) => Array<{ link?: unknown }> = relayHeldEmailItems;
 const formatSubject: (event: unknown) => string = relayFormatSubject;
 const formatEventTitle: (event: unknown, fallback?: string) => string = relayFormatEventTitle;
 // The web-push click target is the one sink that derives its own link, so it
@@ -581,6 +583,12 @@ describe('alert referrer tag on outbound article links', () => {
     assert.equal(formatPushClickUrl(relayEvent), tagged('web_push'));
     const card = JSON.stringify(buildTeamsAlertForEvent(relayEvent));
     assert.ok(card.includes(JSON.stringify(tagged('teams'))), card);
+  });
+
+  it('the quiet-hours email links each held alert with the email tag', () => {
+    const [held, heldFromCaller] = heldEmailItems([relayEvent, callerEvent]);
+    assert.equal(held!.link, tagged('email'));
+    assert.equal(heldFromCaller!.link, link);
   });
 
   it('the webhook payload keeps the link as data, untagged', () => {
