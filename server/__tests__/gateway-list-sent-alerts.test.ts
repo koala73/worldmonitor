@@ -222,6 +222,16 @@ describe('gateway: list-sent-alerts is account-private', () => {
     expect(await res.text()).not.toContain('Headline sent to');
     expect(historyReads).toEqual([]);
   });
+
+  test('an operator key does not lend Pro to a signed-in free account', async () => {
+    // The session is the account here, so its own entitlement decides.
+    validateApiKey.mockResolvedValue({ valid: true, required: true, kind: 'enterprise', credential: 'operator-key' });
+    session('user_free');
+    const res = await gateway(get({ 'X-WorldMonitor-Key': 'operator-key', Authorization: 'Bearer free' }), ctx);
+    expect(res.status).toBe(403);
+    expect(await res.text()).not.toContain('Headline sent to');
+    expect(historyReads).toEqual([]);
+  });
 });
 
 describe('gateway: a wm_ key never overrides the signed-in account on list-sent-alerts', () => {
