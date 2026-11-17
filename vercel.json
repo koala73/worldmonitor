@@ -32,6 +32,8 @@
     { "source": "/fr/:match(.*)", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/fr/:match", "permanent": true },
     { "source": "/de/:match(.*)", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/de/:match", "permanent": true },
     { "source": "/ar/:match(.*)", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/ar/:match", "permanent": true },
+    { "source": "/id/:match(.*)", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/id/:match", "permanent": true },
+    { "source": "/ja/:match(.*)", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/ja/:match", "permanent": true },
     { "source": "/zh/:match*", "destination": "https://www.worldmonitor.app/docs/zh/:match*", "permanent": true },
     { "source": "/api-reference/:match*", "destination": "https://www.worldmonitor.app/docs/api-reference/:match*", "permanent": true },
     { "source": "/api", "destination": "/docs/api-reference", "permanent": false },
@@ -49,6 +51,8 @@
     { "source": "/fr", "destination": "/fr/", "permanent": true },
     { "source": "/de", "destination": "/de/", "permanent": true },
     { "source": "/ar", "destination": "/ar/", "permanent": true },
+    { "source": "/id", "destination": "/id/", "permanent": true },
+    { "source": "/ja", "destination": "/ja/", "permanent": true },
     { "source": "/pricing", "destination": "/pro#pricing", "permanent": true },
     { "source": "/blog", "destination": "/blog/", "permanent": true },
     { "source": "/blog/posts", "destination": "/blog/", "permanent": true },
@@ -529,7 +533,7 @@
       "headers": [{ "key": "Origin-Trial", "value": "AkRPnYRaVj6aZeA6j4uewmGcRG4oYdE4BGh65uU4z99YSHi9/Vplg/MM+G3H8K5EqaXs2WDmFclXBYwwG/2vTAEAAABUeyJvcmlnaW4iOiJodHRwczovL3d3dy53b3JsZG1vbml0b3IuYXBwOjQ0MyIsImZlYXR1cmUiOiJXZWJNQ1AiLCJleHBpcnkiOjE4MDYzNjQ4MDB9" }]
     },
     {
-      "source": "/(es|pt|ru|fr|de|ar)/",
+      "source": "/(es|pt|ru|fr|de|ar|id|ja)/",
       "has": [{ "type": "host", "value": "^www\\.worldmonitor\\.app$" }],
       "missing": [{ "type": "query", "key": "mode", "value": "agent" }],
       "headers": [{ "key": "Origin-Trial", "value": "AkRPnYRaVj6aZeA6j4uewmGcRG4oYdE4BGh65uU4z99YSHi9/Vplg/MM+G3H8K5EqaXs2WDmFclXBYwwG/2vTAEAAABUeyJvcmlnaW4iOiJodHRwczovL3d3dy53b3JsZG1vbml0b3IuYXBwOjQ0MyIsImZlYXR1cmUiOiJXZWJNQ1AiLCJleHBpcnkiOjE4MDYzNjQ4MDB9" }]
@@ -895,7 +899,7 @@
       ]
     },
     {
-      "source": "/(es|pt|ru|fr|de|ar)",
+      "source": "/(es|pt|ru|fr|de|ar|id|ja)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
         { "key": "CDN-Cache-Control", "value": "public, s-maxage=600, stale-while-revalidate=60" },
@@ -904,7 +908,7 @@
       ]
     },
     {
-      "source": "/(es|pt|ru|fr|de|ar)/",
+      "source": "/(es|pt|ru|fr|de|ar|id|ja)/",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
         { "key": "CDN-Cache-Control", "value": "public, s-maxage=600, stale-while-revalidate=60" },

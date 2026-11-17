@@ -236,6 +236,8 @@ export const INDEXABLE_LANDING_ENTRY_PATHS = Object.freeze([
   '/fr', '/fr/',
   '/de', '/de/',
   '/ar', '/ar/',
+  '/id', '/id/',
+  '/ja', '/ja/',
 ]);
 
 /**

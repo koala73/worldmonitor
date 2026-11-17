@@ -73,6 +73,7 @@ const INTENTIONAL_ENGLISH = {
   ],
   hr: ['welcome.nav.blog', 'hero.signalWord'],
   hu: ['welcome.nav.blog'],
+  id: ['welcome.nav.blog', 'welcome.nav.menu'],
   it: ['welcome.nav.blog', 'welcome.nav.menu', 'welcome.live.liveBadge'],
   nl: ['welcome.nav.blog', 'welcome.nav.menu', 'welcome.live.liveBadge'],
   pl: ['welcome.nav.blog', 'welcome.nav.menu'],
