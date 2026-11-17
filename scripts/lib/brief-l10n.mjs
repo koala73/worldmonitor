@@ -298,16 +298,41 @@ const SCALES = [
 const MONTH_RE = /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sept?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\b/g;
 const MONTH_NUMBER = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 // Scale words of the brief languages, inflections included, by the start of
-// the word. Billions first: "mil millones" and "mil milhões" are a billion,
-// "mil" a thousand. French "milles" (miles) is not "mille".
+// the word. Billions first. A thousand followed by a larger scale multiplies
+// it ("mil millones", "mil milhões", "mila miliardi"; see scaleAt). French
+// "milles" (miles) is not "mille".
 const LOCAL_SCALES = [
-  [/^(?:mil millones|mil milh[oõ]es|mil milh[aã]o|milliard|milliárd|miljard|miliard|miliar|milyar|mld|mrd|bilh[aã]o|bilh[oõ]es|миллиард|млрд|мільярд|милиард|δισ|مليار|میلیارد|tỷ)/iu, 1e9],
+  [/^(?:milliard|milliárd|miljard|miliard|miliar|milyar|mld|mrd|bilh[aã]o|bilh[oõ]es|миллиард|млрд|мільярд|милиард|δισ|مليار|میلیارد|tỷ)/iu, 1e9],
   [/^(?:million|millió|millón|millones|milione|milioni|milh[aã]o|milh[oõ]es|miljoen|miljon|milion|milyon|mln|mio|миллион|млн|мільйон|милион|εκατ|ล้าน|مليون|ملايين|میلیون|triệu|juta)/iu, 1e6],
   [/^(?:tausend|tsd\.|mille(?!\p{L})|mila(?!\p{L})|mil(?!\p{L})|duizend|tusen|tusind|tys\.|tysi[aą]c|tysi[eę]cy|tis\.|tisíc|tisuć|ezer|mii(?!\p{L})|bin(?!\p{L})|тысяч|тыс\.|тисяч|хиляд|χιλιάδ|ألف|آلاف|هزار|हज़ार|हजार|nghìn|ngàn|ribu|พัน)/iu, 1e3],
 ];
 // Any other large-number word (bilioni, трлн...). It says "scaled" with an
 // unknown value, so only the coefficient can be compared.
 const SCALE_WORD_RE = /^(?:mil|mlj|mln|mld|mrd|mio|bn|tn|bil|tril|милл|мил|млн|млрд|мільй|мільяр|трлн|εκατ|δισ|ล้าน|مليون|مليار|ملي|میلیون|میلیارد|triệu|tỷ|juta|miliar)/iu;
+
+/**
+ * The scale word at the start of `after`, or null: its value and length. A
+ * thousand followed by a larger scale multiplies into it ("3 mila miliardi"
+ * is 3e12, "3万亿" is 3e12).
+ */
+function scaleAt(after, compound = true) {
+  let found = null;
+  // Latin scale words are whole words; CJK, Hangul and Devanagari ones attach.
+  const listed = SCALES.find(([word]) => (/[a-z]/.test(word)
+    ? after.toLowerCase().startsWith(word) && !/^\p{L}/u.test(after.slice(word.length))
+    : after.startsWith(word)));
+  if (listed) found = { factor: listed[1], length: listed[0].length };
+  for (const [re, factor] of found ? [] : LOCAL_SCALES) {
+    const m = after.match(re);
+    if (!m) continue;
+    // The whole word, inflection included (miliard|i).
+    found = { factor, length: m[0].length + after.slice(m[0].length).match(/^[\p{L}\p{M}]*/u)[0].length };
+    break;
+  }
+  if (!found || !compound) return found;
+  const next = scaleAt(after.slice(found.length).replace(/^[\u00A0\u202F ]/, ''), false);
+  return next && next.factor > found.factor ? { factor: found.factor * next.factor, length: found.length } : found;
+}
 
 /** Any decimal digit (Arabic-Indic ١٠, Persian ۱۰, Devanagari, fullwidth...) as ASCII. */
 function asciiDigits(text) {
@@ -332,6 +357,8 @@ function parseNumber(token, english) {
   const seps = t.match(/[,.]/g) ?? [];
   if (seps.length === 0) return [[Number(t)]];
   const parts = t.split(/[,.]/);
+  // Indian grouping: 1,50,000 is 150000.
+  if (/^\d{1,2}(?:,\d{2})+,\d{3}$/.test(t)) return [[Number(parts.join(''))]];
   const grouped = parts.slice(1).every((p) => p.length === 3);
   if (new Set(seps).size === 2) {
     // Both kinds: the last one is the decimal point.
@@ -355,18 +382,21 @@ function parseNumber(token, english) {
  */
 function numbersIn(text, english = false) {
   // URLs are blanked to the same length, so match offsets index this string.
-  const t = asciiDigits(text.replace(URL_RE, (url) => ' '.repeat(url.length)));
+  // Arabic decimal and thousands separators (١٫٥, ١٠٬٠٠٠) read as . and ,.
+  const t = asciiDigits(text.replace(URL_RE, (url) => ' '.repeat(url.length)))
+    .replace(/(?<=\d)\u066B(?=\d)/g, '.')
+    .replace(/(?<=\d)\u066C(?=\d)/g, ',');
   const out = [];
   for (const m of t.matchAll(NUMBER_RE)) {
     const after = t.slice(m.index + m[0].length).replace(/^[\u00A0\u202F ]/, '');
-    // Latin scale words are whole words; CJK, Hangul and Devanagari ones attach.
-    const scale = SCALES.find(([word]) => (/[a-z]/.test(word)
-      ? after.toLowerCase().startsWith(word) && !/^\p{L}/u.test(after.slice(word.length))
-      : after.startsWith(word)));
-    const factor = scale?.[1] ?? LOCAL_SCALES.find(([re]) => re.test(after))?.[1];
+    const factor = scaleAt(after)?.factor;
     const known = factor != null;
     const scaled = known || SCALE_WORD_RE.test(after);
-    for (const mantissas of parseNumber(m[0], english)) {
+    // A minus sign right before the number, not a range dash after a word or
+    // number (10-20, COVID-19), makes it negative.
+    const sign = /[-\u2212]/.test(t.charAt(m.index - 1)) && !/[\p{L}\p{N}]/u.test(t.charAt(m.index - 2)) ? -1 : 1;
+    for (const parsed of parseNumber(m[0], english)) {
+      const mantissas = parsed.map((v) => sign * v);
       out.push({ values: known ? mantissas.map((v) => v * factor) : mantissas, mantissas, scaled, known });
     }
   }
@@ -497,14 +527,17 @@ function unchangedIsUntranslated(source, lang) {
   if (looksEnglish(source)) return true;
   // A title-case headline: one English marker settles it. Without one it may
   // be a list of names, so the checks below decide.
-  if (isTitleCase(source) && englishMarkerCount(source) > 0) return true;
+  const titleCase = isTitleCase(source);
+  if (titleCase && englishMarkerCount(source) > 0) return true;
   const prose = source.replace(URL_RE, '');
   // Accented or non-Latin letters, not typographic punctuation (’ —).
   if (NON_ASCII_LETTER_RE.test(prose)) return false;
   if (readsAsLanguage(prose, lang)) return false;
   // ASCII prose with lower-case words and no sign of the target language:
   // English unless proven otherwise.
-  return /(?:^|[^\p{L}])\p{Ll}{3,}/u.test(prose);
+  // In title case only a longer lower-case word counts: "aux", "van" and "de"
+  // are particles in names and foreign headlines ("Paris Face aux Sanctions").
+  return (titleCase ? /(?:^|[^\p{L}])\p{Ll}{4,}/u : /(?:^|[^\p{L}])\p{Ll}{3,}/u).test(prose);
 }
 
 /**
