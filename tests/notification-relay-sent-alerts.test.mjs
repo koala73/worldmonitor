@@ -432,4 +432,11 @@ describe('sent-alert record shape', () => {
     assert.equal(history.buildSentAlertRecord({ title: 'A headline', link: 'javascript:alert(1)', sentAt: 1 }).link, '');
     assert.equal(history.buildSentAlertRecord({ title: 'A headline', link: 'https://example.com/a', sentAt: 1 }).link, 'https://example.com/a');
   });
+
+  it('drops an over-long link instead of storing a prefix an exact-URL block cannot match', () => {
+    const long = `https://example.com/a?pad=${'x'.repeat(history.SENT_ALERT_LINK_MAX)}`;
+    assert.equal(history.buildSentAlertRecord({ title: 'A headline', link: long, sentAt: 1 }).link, '');
+    const atLimit = `https://example.com/a?pad=${'x'.repeat(history.SENT_ALERT_LINK_MAX - 'https://example.com/a?pad='.length)}`;
+    assert.equal(history.buildSentAlertRecord({ title: 'A headline', link: atLimit, sentAt: 1 }).link, atLimit);
+  });
 });
