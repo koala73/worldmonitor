@@ -5,51 +5,81 @@ import { csvRows, positive, priceReport } from './monthly.mjs';
 const BASE = 'https://storage.data.gov.my/pricecatcher/';
 const KG = '1kg';
 const EGGS = '30 biji';
-// item_code: [display name, exact publisher lookup name, publisher unit]. Only items KPDN collects every day
-// at hundreds of premises are listed; packaged rice, oil, sugar, flour, meat and most fruit are surveyed on
-// irregular basket days and cannot share one latest date and exact-week baseline with the daily staples.
+const BAG10 = '10 kg';
+const BOTTLE5 = '5 kg';
+const EACH = '1 biji';
+const UNITS = { [KG]: 'kg', [EGGS]: '30 pieces', [BAG10]: '10 kg', [BOTTLE5]: '5 kg', [EACH]: 'piece' };
+// item_code: [display name, exact publisher lookup name, publisher unit, collection]. Daily items are quoted every
+// day at hundreds of premises and share one latest day and exact-week baseline. Basket items (packaged rice, oil,
+// sugar, flour, coconut, meat and fruit) are quoted only on irregular basket-survey days, so each reports its own
+// latest survey day against the most recent survey at least seven days earlier.
 const ITEMS = {
-  '1': ['Chicken (standard, cleaned)', 'AYAM BERSIH - STANDARD', KG],
-  '2': ['Chicken (super, cleaned)', 'AYAM BERSIH - SUPER', KG],
-  '1109': ['Eggs (grade A)', 'TELUR AYAM GRED A', EGGS],
-  '1110': ['Eggs (grade B)', 'TELUR AYAM GRED B', EGGS],
-  '1111': ['Eggs (grade C)', 'TELUR AYAM GRED C', EGGS],
-  '2045': ['Round scad / sardine (selayang, 8-12 per kg)', 'IKAN SELAYANG/SARDIN (ANTARA 8-12 EKOR SEKILOGRAM)', KG],
-  '2047': ['Little tuna (tongkol/aya, 1-2 per kg)', 'IKAN TONGKOL/AYA/KAYU HITAM/PUTIH (ANTARA 1 HINGGA 2 EKOR SEKILOGRAM)', KG],
-  '47': ['Torpedo scad (cencaru, 4-6 per kg)', 'IKAN CENCARU (ANTARA 4 HINGGA 6 EKOR SEKILOGRAM)', KG],
-  '1436': ['Threadfin bream (kerisi, 5-10 per kg)', 'IKAN KERISI (ANTARA 5 HINGGA 10 EKOR SEKILOGRAM)', KG],
-  '70': ['Scad (selar/pelata, up to 7 per kg)', 'IKAN SELAR/PELATA (≤ 7 EKOR SEKILOGRAM)', KG],
-  '1476': ['Indian mackerel (kembung, 8-12 per kg)', 'IKAN KEMBUNG (ANTARA 8 HINGGA 12 EKOR SEKILOGRAM)', KG],
-  '1477': ['Mabung fish (6-10 per kg)', 'IKAN MABUNG (ANTARA 6 HINGGA 10 EKOR SEKILOGRAM)', KG],
-  '1555': ['Whiteleg shrimp, farmed (41-60 per kg)', 'UDANG PUTIH/VANNAMEI (TERNAK) (ANTARA 41 HINGGA 60 EKOR SEKILOGRAM)', KG],
-  '845': ['Squid (11-17 per kg)', 'SOTONG (ANTARA 11 HINGGA17 EKOR SEKILOGRAM)', KG],
-  '88': ['Catfish (keli, 2-5 per kg)', 'IKAN KELI (ANTARA 2 HINGGA 5 EKOR SEKILOGRAM)', KG],
-  '1921': ['Red tilapia (2-5 per kg)', 'IKAN TILAPIA MERAH (ANTARA 2 HINGGA 5 EKOR SEKILOGRAM)', KG],
-  '114': ['Tomatoes', 'TOMATO', KG],
-  '113': ['Cucumber', 'TIMUN', KG],
-  '109': ['Carrots', 'LOBAK MERAH', KG],
-  '1481': ['Cauliflower', 'KUBIS BUNGA (CAULIFLOWER)', KG],
-  '1458': ['Cabbage, imported (Beijing)', 'KUBIS BULAT IMPORT (BEIJING)', KG],
-  '105': ['Cabbage, local', 'KUBIS BULAT (TEMPATAN)', KG],
-  '96': ['Okra', 'KACANG BENDI', KG],
-  '98': ['Long beans', 'KACANG PANJANG', KG],
-  '97': ['French beans', 'KACANG BUNCIS', KG],
-  '1558': ['Choy sum (sawi hijau)', 'SAWI HIJAU', KG],
-  '1559': ['Water spinach (kangkung)', 'KANGKUNG', KG],
-  '1556': ['Green amaranth (bayam hijau)', 'BAYAM HIJAU', KG],
-  '1560': ['Kai lan', 'KAILAN', KG],
-  '92': ['Green chilli', 'CILI HIJAU', KG],
-  '94': ['Red chilli (minyak)', 'CILI MERAH - MINYAK', KG],
-  '95': ['Ginger (mature)', 'HALIA BASAH (TUA)', KG],
-  '129': ['Yellow onion (Holland)', 'BAWANG BESAR KUNING/HOLLAND', KG],
-  '1440': ['Onion, imported (India)', 'BAWANG BESAR IMPORT (INDIA)', KG],
-  '131': ['Shallots, rose, imported (India)', 'BAWANG KECIL MERAH ROSE IMPORT (INDIA)', KG],
-  '1564': ['Garlic, imported (China)', 'BAWANG PUTIH IMPORT (CHINA)', KG],
-  '1131': ['Potatoes, imported (China)', 'UBI KENTANG IMPORT (CHINA)', KG],
-  '1132': ['Lime (limau nipis)', 'LIMAU NIPIS', KG],
-  '1928': ['Calamansi (limau kasturi)', 'LIMAU KASTURI', KG],
+  '1': ['Chicken (standard, cleaned)', 'AYAM BERSIH - STANDARD', KG, 'daily'],
+  '2': ['Chicken (super, cleaned)', 'AYAM BERSIH - SUPER', KG, 'daily'],
+  '1109': ['Eggs (grade A)', 'TELUR AYAM GRED A', EGGS, 'daily'],
+  '1110': ['Eggs (grade B)', 'TELUR AYAM GRED B', EGGS, 'daily'],
+  '1111': ['Eggs (grade C)', 'TELUR AYAM GRED C', EGGS, 'daily'],
+  '2045': ['Round scad / sardine (selayang, 8-12 per kg)', 'IKAN SELAYANG/SARDIN (ANTARA 8-12 EKOR SEKILOGRAM)', KG, 'daily'],
+  '2047': ['Little tuna (tongkol/aya, 1-2 per kg)', 'IKAN TONGKOL/AYA/KAYU HITAM/PUTIH (ANTARA 1 HINGGA 2 EKOR SEKILOGRAM)', KG, 'daily'],
+  '47': ['Torpedo scad (cencaru, 4-6 per kg)', 'IKAN CENCARU (ANTARA 4 HINGGA 6 EKOR SEKILOGRAM)', KG, 'daily'],
+  '1436': ['Threadfin bream (kerisi, 5-10 per kg)', 'IKAN KERISI (ANTARA 5 HINGGA 10 EKOR SEKILOGRAM)', KG, 'daily'],
+  '70': ['Scad (selar/pelata, up to 7 per kg)', 'IKAN SELAR/PELATA (≤ 7 EKOR SEKILOGRAM)', KG, 'daily'],
+  '1476': ['Indian mackerel (kembung, 8-12 per kg)', 'IKAN KEMBUNG (ANTARA 8 HINGGA 12 EKOR SEKILOGRAM)', KG, 'daily'],
+  '1477': ['Mabung fish (6-10 per kg)', 'IKAN MABUNG (ANTARA 6 HINGGA 10 EKOR SEKILOGRAM)', KG, 'daily'],
+  '1555': ['Whiteleg shrimp, farmed (41-60 per kg)', 'UDANG PUTIH/VANNAMEI (TERNAK) (ANTARA 41 HINGGA 60 EKOR SEKILOGRAM)', KG, 'daily'],
+  '845': ['Squid (11-17 per kg)', 'SOTONG (ANTARA 11 HINGGA17 EKOR SEKILOGRAM)', KG, 'daily'],
+  '88': ['Catfish (keli, 2-5 per kg)', 'IKAN KELI (ANTARA 2 HINGGA 5 EKOR SEKILOGRAM)', KG, 'daily'],
+  '1921': ['Red tilapia (2-5 per kg)', 'IKAN TILAPIA MERAH (ANTARA 2 HINGGA 5 EKOR SEKILOGRAM)', KG, 'daily'],
+  '114': ['Tomatoes', 'TOMATO', KG, 'daily'],
+  '113': ['Cucumber', 'TIMUN', KG, 'daily'],
+  '109': ['Carrots', 'LOBAK MERAH', KG, 'daily'],
+  '1481': ['Cauliflower', 'KUBIS BUNGA (CAULIFLOWER)', KG, 'daily'],
+  '1458': ['Cabbage, imported (Beijing)', 'KUBIS BULAT IMPORT (BEIJING)', KG, 'daily'],
+  '105': ['Cabbage, local', 'KUBIS BULAT (TEMPATAN)', KG, 'daily'],
+  '96': ['Okra', 'KACANG BENDI', KG, 'daily'],
+  '98': ['Long beans', 'KACANG PANJANG', KG, 'daily'],
+  '97': ['French beans', 'KACANG BUNCIS', KG, 'daily'],
+  '1558': ['Choy sum (sawi hijau)', 'SAWI HIJAU', KG, 'daily'],
+  '1559': ['Water spinach (kangkung)', 'KANGKUNG', KG, 'daily'],
+  '1556': ['Green amaranth (bayam hijau)', 'BAYAM HIJAU', KG, 'daily'],
+  '1560': ['Kai lan', 'KAILAN', KG, 'daily'],
+  '92': ['Green chilli', 'CILI HIJAU', KG, 'daily'],
+  '94': ['Red chilli (minyak)', 'CILI MERAH - MINYAK', KG, 'daily'],
+  '95': ['Ginger (mature)', 'HALIA BASAH (TUA)', KG, 'daily'],
+  '129': ['Yellow onion (Holland)', 'BAWANG BESAR KUNING/HOLLAND', KG, 'daily'],
+  '1440': ['Onion, imported (India)', 'BAWANG BESAR IMPORT (INDIA)', KG, 'daily'],
+  '131': ['Shallots, rose, imported (India)', 'BAWANG KECIL MERAH ROSE IMPORT (INDIA)', KG, 'daily'],
+  '1564': ['Garlic, imported (China)', 'BAWANG PUTIH IMPORT (CHINA)', KG, 'daily'],
+  '1131': ['Potatoes, imported (China)', 'UBI KENTANG IMPORT (CHINA)', KG, 'daily'],
+  '1132': ['Lime (limau nipis)', 'LIMAU NIPIS', KG, 'daily'],
+  '1928': ['Calamansi (limau kasturi)', 'LIMAU KASTURI', KG, 'daily'],
+  '2066': ['Rice, imported white (Faiza Emas)', 'BERAS PUTIH CAP FAIZA EMAS (IMPORT)', BAG10, 'basket'],
+  '2068': ['Rice, imported (Jasmine Super 5 Special)', 'BERAS CAP JASMINE SUPER 5 SPECIAL (IMPORT)', BAG10, 'basket'],
+  '904': ['Rice, imported super 5% (Rambutan)', 'BERAS SUPER CAP RAMBUTAN 5% (IMPORT)', BAG10, 'basket'],
+  '918': ['Cooking oil, subsidised packet', 'MINYAK MASAK PAKET (PELBAGAI JENAMA)', KG, 'basket'],
+  '266': ['Cooking oil, pure palm (Seri Murni)', 'MINYAK MASAK TULEN CAP SERI MURNI', BOTTLE5, 'basket'],
+  '1094': ['Cooking oil, pure palm (Buruh)', 'MINYAK MASAK TULEN CAP BURUH', KG, 'basket'],
+  '1589': ['White sugar, coarse', 'GULA PUTIH BERTAPIS KASAR (PELBAGAI JENAMA)', KG, 'basket'],
+  '1590': ['White sugar, fine', 'GULA PUTIH BERTAPIS HALUS (PELBAGAI JENAMA)', KG, 'basket'],
+  '917': ['Wheat flour (Sauh)', 'TEPUNG GANDUM NGP (BERBUNGKUS, CAP SAUH)', KG, 'basket'],
+  '1870': ['Wheat flour (Faiza)', 'TEPUNG GANDUM NGP (BERBUNGKUS, CAP  FAIZA)', KG, 'basket'],
+  '101': ['Coconut, whole', 'KELAPA BIJI', EACH, 'basket'],
+  '102': ['Coconut, grated', 'KELAPA PARUT (BIASA)', KG, 'basket'],
+  '14': ['Buffalo meat, imported India (topside)', 'DAGING KERBAU IMPORT (INDIA) * (TOP SIDE)', KG, 'basket'],
+  '1914': ['Buffalo meat, imported India (block)', 'DAGING KERBAU IMPORT (INDIA) (BLOCK)', KG, 'basket'],
+  '1431': ['Beef, local (thigh)', 'DAGING LEMBU TEMPATAN (BAHAGIAN 1 DAGING PAHA (KECUALI BATANG PINANG - TENDERLOIN)', KG, 'basket'],
+  '18': ['Banana (pisang berangan)', 'PISANG BERANGAN', KG, 'basket'],
+  '16': ['Papaya', 'BETIK BIASA', KG, 'basket'],
+  '25': ['Pineapple', 'NENAS BIASA (JOSAPINE/MORRIS/SARAWAK)', EACH, 'basket'],
+  '21': ['Watermelon, seedless', 'TEMBIKAI MERAH TANPA BIJI', KG, 'basket'],
 };
 export const PRICECATCHER_ITEM_CODES = Object.keys(ITEMS);
+export const PRICECATCHER_DAILY_CODES = PRICECATCHER_ITEM_CODES.filter(code => ITEMS[code][3] === 'daily');
+export const PRICECATCHER_BASKET_CODES = PRICECATCHER_ITEM_CODES.filter(code => ITEMS[code][3] === 'basket');
+// Off-survey days still carry a few stray basket quotes (at most ~50 premises per item in November 2026, against
+// hundreds to ~1,800 on survey days). A survey day needs at least this many basket quotes in total and half the
+// window's busiest basket day, so a window without a survey cannot promote stray quotes to a latest price.
+const BASKET_SURVEY_MIN_QUOTES = 1_000;
 // Cap on distinct in-window premise quotes per monthly file (the current and prior month each get their own).
 // Normal days hold about 30,000 selected quotes and the window spans at most 16 days (~462k measured), so
 // this bounds memory without rejecting real files or dropping the prior month's week baseline.
@@ -98,7 +128,7 @@ export function summarizePrices(acc, lookup) {
     const sorted = [...shops.values()].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
     return [{ item: name, market: 'Median of reporting premises (Malaysia)', marketType: 'retail',
-      unit: unit === EGGS ? '30 pieces' : 'kg', currency: 'MYR', date,
+      unit: UNITS[unit], currency: 'MYR', date,
       price: sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2, origin: '' }];
   });
 }
@@ -124,7 +154,10 @@ export async function readPricecatcher(bytes, acc) {
   return acc;
 }
 
-/** Select the latest completed Malaysian day with all staples and its exact-week baseline. */
+/**
+ * Select the latest completed Malaysian day with every daily staple and its exact-week baseline, plus each basket
+ * item's latest survey day and its most recent survey at least seven days earlier.
+ */
 export async function collect(ctx) {
   const lookup = new Map(csvRows(await ctx.get(`${BASE}lookup_item.csv`), ['item_code', 'item', 'unit']).map(row => [row.item_code, row]));
   // Today's collection can be partial. Report the latest completed local calendar day available.
@@ -146,8 +179,37 @@ export async function collect(ctx) {
     } catch (error) { ctx.warn(`prior-month prices unavailable: ${error.message}`); }
   }
   const all = summarizePrices(acc, lookup);
-  const dates = [...new Set(all.map(row => row.date))].sort().reverse();
-  const latest = dates.find(date => all.filter(row => row.date === date).length === PRICECATCHER_ITEM_CODES.length);
+  const daily = all.filter(row => DAILY_NAMES.has(row.item));
+  const dates = [...new Set(daily.map(row => row.date))].sort().reverse();
+  const latest = dates.find(date => daily.filter(row => row.date === date).length === PRICECATCHER_DAILY_CODES.length);
   const prior = latest ? ctx.dated(new Date(`${latest}T00:00:00Z`), -7) : '';
-  return priceReport(all.filter(row => row.date === latest || row.date === prior), 'https://data.gov.my/data-catalogue/pricecatcher', ctx.now);
+  const basket = basketObservations(all, basketSurveyDates(acc));
+  const observations = [...daily.filter(row => row.date === latest || row.date === prior), ...basket];
+  const report = priceReport(observations, 'https://data.gov.my/data-catalogue/pricecatcher', ctx.now);
+  // Daily and basket items report different dates, so refresh history per item and date: a basket survey on a
+  // daily item's baseline day must not erase that day's daily rows, and vice versa.
+  return { ...report, refreshedReports: observations.map(row => ({ date: row.date, item: row.item })) };
+}
+
+const DAILY_NAMES = new Set(PRICECATCHER_DAILY_CODES.map(code => ITEMS[code][0]));
+
+/** Each basket item's latest survey-day median and its most recent survey-day median at least seven days earlier. */
+export function basketObservations(rows, surveys) {
+  return PRICECATCHER_BASKET_CODES.flatMap(code => {
+    const series = rows.filter(row => row.item === ITEMS[code][0] && surveys.has(row.date)).sort((a, b) => b.date.localeCompare(a.date));
+    if (!series.length) return [];
+    const cutoff = new Date(Date.parse(`${series[0].date}T00:00:00Z`) - 7 * 86_400_000).toISOString().slice(0, 10);
+    return [series[0], ...series.filter(row => row.date <= cutoff).slice(0, 1)];
+  });
+}
+
+/** Dates in the accumulator that are basket-survey days, judged by total basket quotes rather than per item. */
+export function basketSurveyDates(acc) {
+  const totals = new Map();
+  for (const [key, shops] of acc.groups) {
+    const [date, code] = key.split('|');
+    if (ITEMS[code][3] === 'basket') totals.set(date, (totals.get(date) ?? 0) + shops.size);
+  }
+  const busiest = Math.max(0, ...totals.values());
+  return new Set([...totals].filter(([, total]) => total >= Math.max(BASKET_SURVEY_MIN_QUOTES, busiest / 2)).map(([date]) => date));
 }

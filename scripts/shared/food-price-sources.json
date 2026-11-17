@@ -344,10 +344,11 @@
     "url": "https://data.gov.my/data-catalogue/pricecatcher",
     "cadence": "daily",
     "contextOnly": false,
+    "latestPerSeries": true,
     "maxFetchAgeDays": 3,
     "maxContentAgeDays": 10,
     "fetchBudgetMs": 120000,
-    "attribution": "KPDN / data.gov.my, CC BY 4.0. Median across reporting premises for 39 daily-collected staples (chicken, eggs, fish and seafood, vegetables, onions, garlic, potatoes and limes); at least 10 premises each. Latest completed collection day on which every staple reported; premises and sample composition may vary, including on public holidays. Eggs are per 30 pieces, all other items per kg.",
+    "attribution": "KPDN / data.gov.my, CC BY 4.0. Median across reporting premises; at least 10 premises per item. 39 daily-collected staples (chicken, eggs, fish and seafood, vegetables, onions, garlic, potatoes and limes) use the latest completed day on which every one reported, against exactly seven days earlier. 19 basket items (packaged rice, cooking oil, sugar, flour, coconut, meat and fruit) are only surveyed on irregular basket days, so each shows its latest survey date against its most recent survey at least seven days earlier. Premises and sample composition may vary, including on public holidays. Units are per kg unless the row says otherwise.",
     "hosts": [
       "storage.data.gov.my"
     ]

@@ -41,10 +41,24 @@ export function buildFoodPriceSource(source: SourceDefinition, value: unknown, n
     && Number.isFinite(row.price) && row.price > 0 && validDate(row.date, now));
   const latestDate = rows.map(row => row.date).sort().slice(-1)[0] ?? '';
   const history = new Map(rows.map(row => [`${seriesKey(row)}|${row.date}`, row]));
-  const latest = new Map(rows.filter(row => row.date === latestDate).map(row => [seriesKey(row), row]));
+  // Sources whose items are collected on different days (PriceCatcher's basket survey) opt in to showing each
+  // series' own latest observation, compared with that series' most recent observation at least seven days
+  // earlier. Every other source keeps one shared latest date and an exact seven-day baseline.
+  const perSeries = 'latestPerSeries' in source && source.latestPerSeries === true;
+  const bySeries = new Map<string, Observation[]>();
+  for (const row of [...history.values()].sort((a, b) => b.date.localeCompare(a.date))) {
+    const key = seriesKey(row);
+    if (!bySeries.has(key)) bySeries.set(key, []);
+    bySeries.get(key)!.push(row);
+  }
+  const latest = perSeries
+    ? new Map([...bySeries].map(([key, series]) => [key, series[0]!]))
+    : new Map(rows.filter(row => row.date === latestDate).map(row => [seriesKey(row), row]));
   const prices: FoodMarketPrice[] = [...latest.values()].map(row => {
     const date = new Date(Date.parse(row.date) - 7 * DAY).toISOString().slice(0, 10);
-    const previous = source.contextOnly ? undefined : history.get(`${seriesKey(row)}|${date}`);
+    const previous = source.contextOnly ? undefined : perSeries
+      ? bySeries.get(seriesKey(row))!.find(candidate => candidate.date <= date)
+      : history.get(`${seriesKey(row)}|${date}`);
     return {
       ...row, origin: row.origin ?? '', wowAvailable: Boolean(previous),
       wowPct: previous ? Math.round((row.price / previous.price - 1) * 10000) / 100 : 0,

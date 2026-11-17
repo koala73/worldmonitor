@@ -22,6 +22,16 @@ describe('official food prices card', () => {
     expect(host.textContent).toContain('55 PHP');
     expect(host.textContent).toContain('2026-10-29');
   });
+  it('dates only the rows observed on a different day from the source report date', () => {
+    new FoodPricesCard(host).update([source({ prices: [
+      { ...row, item: 'Tomatoes' },
+      { ...row, item: 'Cooking oil', unit: '5 kg', date: '2026-10-26', wowAvailable: true, wowPct: 3.3, previousDate: '2026-10-15', previousPrice: 30 },
+    ] })]);
+    const rows = [...host.querySelectorAll('tbody tr')];
+    expect(rows[0]!.textContent).not.toContain('Report date');
+    expect(rows[1]!.textContent).toContain('Report date: 2026-10-26');
+    expect(rows[1]!.textContent).toContain('vs 2026-10-15');
+  });
   it('shows the publisher credit as text next to the source, and nothing when none is stated', () => {
     const credit = 'Source: <b>Stat</b> (CC BY 4.0)';
     new FoodPricesCard(host).update([source({ attribution: credit })]);
