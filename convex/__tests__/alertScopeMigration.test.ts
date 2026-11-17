@@ -244,6 +244,47 @@ describe("alert scope notice", () => {
     expect(byTo.get("pro@example.com").text).toContain("plus any opt-in alerts you turned on");
   });
 
+  async function sendAll(t: T) {
+    process.env.RESEND_API_KEY = "test-key";
+    const bodies: any[] = [];
+    globalThis.fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ id: "msg_1" }), { status: 200 });
+    }) as any;
+    await t.action(fns.sendAlertScopeNotices, { live: true });
+    return bodies;
+  }
+
+  // The free ladder gates each rule on its own countries, so a scoped rule on
+  // another variant still delivers: the notice must not say all alerts are off.
+  test("does not tell a free user all alerts are off while another rule still lists countries", async () => {
+    const t = convexTest(schema, modules);
+    await seedRule(t, "free1");
+    await seedRule(t, "free1", { variant: "tech", countries: ["UA"] });
+    await migrate(t, false);
+    await seedCustomer(t, "free1", "free@example.com");
+
+    const [body] = await sendAll(t);
+    expect(body.text).not.toContain("so yours are off");
+    expect(body.text).toContain("alerts that list no countries are off until you choose up to 3 countries");
+    expect(body.text).toContain("Alerts that already list countries keep working.");
+  });
+
+  // Countries chosen between the migration and the send win over the
+  // migration-time snapshot, so the email never describes a state that is gone.
+  test("describes the rule's current countries, not the migration-time snapshot", async () => {
+    const t = convexTest(schema, modules);
+    const ruleId = await seedRule(t, "free1");
+    await migrate(t, false);
+    await t.run(async (ctx) => ctx.db.patch(ruleId as any, { countries: ["IL"] }));
+    await seedCustomer(t, "free1", "free@example.com");
+
+    const [body] = await sendAll(t);
+    expect(body.subject).toBe("Your realtime alerts now follow your countries");
+    expect(body.text).toContain("Israel");
+    expect(body.text).not.toContain("off until");
+  });
+
   test("escapes a country name that is not a known region code", () => {
     const { html } = alertScopeNoticeContent(["<b>"]);
     expect(html).not.toContain("<b>");

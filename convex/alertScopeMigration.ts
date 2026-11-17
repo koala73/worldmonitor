@@ -123,8 +123,12 @@ type PendingNotice = {
   audience: NoticeAudience;
 };
 
-/** What the relay's ladder delivers for this account (free rules need countries). */
-export type NoticeAudience = { requireCountryScope: boolean; maxCountries: number };
+/**
+ * What the relay's ladder delivers for this account (free rules need countries).
+ * hasScopedRealtimeRule: another enabled realtime rule lists countries, so the
+ * free ladder still delivers on it.
+ */
+export type NoticeAudience = { requireCountryScope: boolean; maxCountries: number; hasScopedRealtimeRule?: boolean };
 // maxCountries only feeds the free copy; kept finite so it crosses the Convex boundary.
 const PAID_AUDIENCE: NoticeAudience = { requireCountryScope: false, maxCountries: 0 };
 
@@ -140,9 +144,24 @@ export const listPendingNotices = internalQuery({
     // Resend's 24h idempotency window has passed.
     const rows: Doc<"alertScopeNotices">[] = [];
     const audiences = new Map<string, NoticeAudience>();
+    // The rule's countries as of now: the user may have chosen (or cleared)
+    // countries since the migration, and the email describes current state.
+    const currentCountries = new Map<string, string[]>();
     for (const userId of new Set(head.map((r) => r.userId))) {
       const caps = await loadAlertCapabilities(ctx, userId);
-      audiences.set(userId, { requireCountryScope: caps.requireCountryScope, maxCountries: caps.maxCountries });
+      const rules = await ctx.db
+        .query("alertRules")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .collect();
+      for (const rule of rules) currentCountries.set(rule._id, rule.countries ?? []);
+      const hasScopedRealtimeRule = rules.some(
+        (rule) => rule.enabled && (rule.digestMode ?? "realtime") === "realtime" && (rule.countries?.length ?? 0) > 0,
+      );
+      audiences.set(userId, {
+        requireCountryScope: caps.requireCountryScope,
+        maxCountries: caps.maxCountries,
+        hasScopedRealtimeRule,
+      });
       const userRows = await ctx.db
         .query("alertScopeNotices")
         .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -153,7 +172,7 @@ export const listPendingNotices = internalQuery({
       _id: r._id,
       userId: r.userId,
       outcome: r.outcome,
-      countries: r.countries,
+      countries: currentCountries.get(r.ruleId) ?? r.countries,
       ...(r.emailAttempts !== undefined ? { emailAttempts: r.emailAttempts } : {}),
       audience: audiences.get(r.userId) ?? PAID_AUDIENCE,
     }));
@@ -235,9 +254,12 @@ export function alertScopeNoticeContent(
   if (countries.length === 0 && audience.requireCountryScope) {
     // The free ladder (scripts/lib/free-tier-delivery.cjs freeTierCountryScope)
     // delivers nothing on a free rule without countries: no global critical
-    // events and no opt-in alerts.
+    // events and no opt-in alerts. The gate is per rule, so a rule that does
+    // list countries keeps delivering.
     const subject = "Choose countries to turn realtime alerts back on";
-    const local = `Local events, such as severe weather, airport disruption, sirens and conflict, now reach you only for the countries you choose. Free accounts need at least one country for realtime alerts, so yours are off until you choose up to ${audience.maxCountries} countries.`;
+    const local = audience.hasScopedRealtimeRule
+      ? `Local events, such as severe weather, airport disruption, sirens and conflict, now reach you only for the countries you choose. Free accounts need at least one country for realtime alerts, so the alerts that list no countries are off until you choose up to ${audience.maxCountries} countries. Alerts that already list countries keep working.`
+      : `Local events, such as severe weather, airport disruption, sirens and conflict, now reach you only for the countries you choose. Free accounts need at least one country for realtime alerts, so yours are off until you choose up to ${audience.maxCountries} countries.`;
     const after =
       "Once you choose countries, global critical events, such as a market crash, a shipping shock or a national airspace shutdown, reach you as well, wherever they happen.";
     const cta = "Choose your countries";
