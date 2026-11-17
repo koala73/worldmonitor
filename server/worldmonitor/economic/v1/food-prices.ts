@@ -46,8 +46,7 @@ export function buildFoodPriceSource(source: SourceDefinition, value: unknown, n
   // Every other series keeps the source's shared latest date and an exact seven-day baseline.
   const surveyItems = new Set('surveyItems' in source && Array.isArray(source.surveyItems) ? source.surveyItems : []);
   const bySeries = new Map<string, Observation[]>();
-  for (const row of [...history.values()].sort((a, b) => b.date.localeCompare(a.date))) {
-    if (!surveyItems.has(row.item)) continue;
+  for (const row of [...history.values()].filter(row => surveyItems.has(row.item)).sort((a, b) => b.date.localeCompare(a.date))) {
     const key = seriesKey(row);
     if (!bySeries.has(key)) bySeries.set(key, []);
     bySeries.get(key)!.push(row);

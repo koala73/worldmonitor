@@ -6988,9 +6988,11 @@ components:
                 wowAvailable:
                     type: boolean
                     description: |-
-                        True only when the same series has a price exactly seven days before `date`.
-                         When false, there is no comparison: wow_pct, previous_date and previous_price
-                         are placeholders (0 or empty), not a 0% change.
+                        True only when the same series has a price exactly seven days before `date`, or,
+                         for items the source surveys on irregular days (PriceCatcher's basket survey),
+                         its most recent price at least seven days before `date`; previous_date states
+                         which. When false, there is no comparison: wow_pct, previous_date and
+                         previous_price are placeholders (0 or empty), not a 0% change.
                 wowPct:
                     type: number
                     format: double
