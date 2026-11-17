@@ -594,6 +594,28 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
 
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
 
+/**
+ * Routes that answer with one account's private data, read by the user id the
+ * gateway stamps on the request.
+ *
+ * On these routes a verified Clerk session is the account. A `wm_` key on the
+ * same request is not consulted, so it can never select whose data is read: a
+ * desktop that stores user A's key while user B is signed in forwards both
+ * credentials, and B must get B's data or a refusal, never A's. The session
+ * user then passes the route's tier gate on their own entitlement.
+ *
+ * A `wm_` key with no session still reads its owner's data. Every other route
+ * keeps the rule that a valid `wm_` key outranks the bearer.
+ *
+ * Each path here must be tier-gated (ENDPOINT_ENTITLEMENTS): only a tier gate
+ * resolves the session before the key is looked at.
+ * server/__tests__/gateway-list-sent-alerts.test.ts fails for one that is not.
+ * Give it `no-store` in RPC_CACHE_TIER as well.
+ */
+export const ACCOUNT_PRIVATE_RPC_PATHS = new Set<string>([
+  '/api/news/v1/list-sent-alerts',
+]);
+
 export const PUBLIC_NO_AUTH_RPC_PATHS = new Set<string>([
   '/api/scorecard/v1/get-five-factor-scorecard',
   '/api/scorecard/v1/get-bloc-scorecard',
@@ -1699,6 +1721,11 @@ export function createDomainGateway(
     // a valid bearer session and an X-Api-Key wm_ header; when that happens, the
     // wm_ key is still an explicit authenticating credential and its owner must
     // pass the #4611 apiAccess gate.
+    //
+    // Except on ACCOUNT_PRIVATE_RPC_PATHS: there the session resolved above is
+    // the account, and the key is skipped so its owner cannot replace it. The
+    // Clerk-session override below then admits the request as that session.
+    const sessionIsTheAccount = sessionUserId !== null && ACCOUNT_PRIVATE_RPC_PATHS.has(pathname);
     let isUserApiKey = false;
     // The validated wm_ principal with its kind (plan 2026-10-25-001). Set
     // together with isUserApiKey; the #4611 gate below reads the kind.
@@ -1709,7 +1736,7 @@ export function createDomainGateway(
       keyCheck.valid &&
       !keyCheck.required &&
       keyCheck.kind === 'session';
-    if (keyCheck.required && !keyCheck.valid && wmKey.startsWith('wm_')) {
+    if (keyCheck.required && !keyCheck.valid && wmKey.startsWith('wm_') && !sessionIsTheAccount) {
       // Unknown wm_ credentials require a Convex-backed hash lookup before we
       // know the account principal. Bound that unattributed work by IP first:
       // otherwise an attacker can rotate syntactically-valid keys and evade the

@@ -10,6 +10,9 @@
  *     trusted `x-user-id` header is stripped, so user A cannot read user B.
  *   - An anonymous caller, a signed-in free account and an operator key with no
  *     user never reach a read.
+ *   - A signed-in session is the account. A `wm_` key for another account on
+ *     the same request (a desktop holding user A's key while user B is signed
+ *     in) never selects whose alerts are read.
  *   - The response is `no-store`.
  */
 
@@ -44,8 +47,24 @@ vi.mock('../_shared/rate-limit', async (importActual) => {
     ...actual,
     checkRateLimit: vi.fn().mockResolvedValue(null),
     checkEndpointRateLimit: vi.fn().mockResolvedValue(null),
+    checkFailClosedScopedIpRateLimit: vi.fn().mockResolvedValue(null),
   };
 });
+
+// A `wm_` key resolves to whichever owner the test names.
+const validateUserApiKeyPrincipal = vi.fn();
+vi.mock('../_shared/user-api-key', async (importActual) => ({
+  ...(await importActual<typeof import('../_shared/user-api-key')>()),
+  validateUserApiKeyPrincipal: (...a: unknown[]) => validateUserApiKeyPrincipal(...a),
+}));
+
+// The desktop-key meter counts in Redis; admit every request.
+vi.mock('../_shared/desktop-key-meter', async (importActual) => ({
+  ...(await importActual<typeof import('../_shared/desktop-key-meter')>()),
+  chargeDesktopKeyBudget: vi.fn().mockResolvedValue({
+    ok: true, dailyCount: 1, minuteCount: 1, rollback: async () => {}, releaseDaily: async () => {},
+  }),
+}));
 
 const resolveClerkSession = vi.fn();
 vi.mock('../_shared/auth-session', () => ({
@@ -63,8 +82,8 @@ vi.mock('../_shared/usage', async (importActual) => {
   return { ...actual, deliverUsageEvents: vi.fn().mockResolvedValue(undefined) };
 });
 
-import { createDomainGateway, serverOptions } from '../gateway';
-import { __resetEntitlementNegativeCacheForTests } from '../_shared/entitlement-check';
+import { ACCOUNT_PRIVATE_RPC_PATHS, createDomainGateway, serverOptions } from '../gateway';
+import { __resetEntitlementNegativeCacheForTests, getRequiredTier } from '../_shared/entitlement-check';
 import { sentAlertsKey } from '../_shared/sent-alert-history';
 import { newsHandler } from '../worldmonitor/news/v1/handler';
 import { createNewsServiceRoutes } from '../../src/generated/server/worldmonitor/news/v1/service_server';
@@ -100,6 +119,7 @@ function entitlementRow(userId: string) {
       mcpAccess: pro,
       embedAccess: false,
       desktopKeyAccess: pro,
+      maxDesktopKeys: pro ? 2 : 0,
       planLimits: { dashboardAiCallsPerDay: pro ? 50 : 0 },
     },
     validUntil: pro ? Date.now() + 86_400_000 : 0,
@@ -125,6 +145,7 @@ beforeEach(() => {
     return value ? { status: 'hit', value } : { status: 'miss' };
   });
   resolveClerkSession.mockReset().mockResolvedValue(null);
+  validateUserApiKeyPrincipal.mockReset().mockResolvedValue(null);
   validateApiKey.mockReset().mockResolvedValue({ valid: false, required: true, error: 'API key required' });
   vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     if (String(url) === 'https://convex.test/api/internal-entitlements') {
@@ -196,5 +217,68 @@ describe('gateway: list-sent-alerts is account-private', () => {
     expect(res.status).toBe(401);
     expect(await res.text()).not.toContain('Headline sent to');
     expect(historyReads).toEqual([]);
+  });
+});
+
+describe('gateway: a wm_ key never overrides the signed-in account on list-sent-alerts', () => {
+  /** Send `wm_key_of_<owner>` as a desktop key that validates to `owner`. */
+  async function keyFor(owner: string): Promise<void> {
+    // The real validator, so a `wm_` key takes the path production takes.
+    const real = await vi.importActual<{ validateApiKey: (...a: unknown[]) => unknown }>('../../api/_api-key.js');
+    validateApiKey.mockImplementation(real.validateApiKey);
+    validateUserApiKeyPrincipal.mockResolvedValue({
+      userId: owner, keyId: 'k1', keyKind: 'desktop', keyHash: 'h'.repeat(64), activeKeyRank: 0,
+    });
+  }
+
+  test('control: a key with no session reads its owner\'s alerts', async () => {
+    await keyFor('user_a');
+    const res = await gateway(get({ 'X-WorldMonitor-Key': 'wm_key_of_user_a' }), ctx);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('Headline sent to A');
+    expect(historyReads).toEqual([sentAlertsKey('user_a')]);
+  });
+
+  for (const header of ['X-WorldMonitor-Key', 'X-Api-Key']) {
+    test(`a key for A (${header}) with B signed in returns B's alerts, never A's`, async () => {
+      await keyFor('user_a');
+      session('user_b');
+      const res = await gateway(get({ [header]: 'wm_key_of_user_a', Authorization: 'Bearer b' }), ctx);
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      expect(text).toContain('Headline sent to B');
+      expect(text).not.toContain('Headline sent to A');
+      expect(historyReads).toEqual([sentAlertsKey('user_b')]);
+    });
+  }
+
+  test('a key for Pro user A does not lend Pro to a signed-in free account', async () => {
+    await keyFor('user_a');
+    session('user_free');
+    const res = await gateway(get({ 'X-WorldMonitor-Key': 'wm_key_of_user_a', Authorization: 'Bearer free' }), ctx);
+    expect(res.status).toBe(403);
+    expect(await res.text()).not.toContain('Headline sent to');
+    expect(historyReads).toEqual([]);
+  });
+
+  test('the key lookup is skipped, so a key outage cannot fail the signed-in read', async () => {
+    await keyFor('user_a');
+    session('user_b');
+    await gateway(get({ 'X-WorldMonitor-Key': 'wm_key_of_user_a', Authorization: 'Bearer b' }), ctx);
+    expect(validateUserApiKeyPrincipal).not.toHaveBeenCalled();
+  });
+
+  test('every account-private path is tier-gated, which is what resolves the session first', () => {
+    expect([...ACCOUNT_PRIVATE_RPC_PATHS]).toContain(PATH);
+    for (const path of ACCOUNT_PRIVATE_RPC_PATHS) expect(getRequiredTier(path), path).not.toBeNull();
+  });
+
+  test('a key and a session for the same account read that account', async () => {
+    await keyFor('user_a');
+    session('user_a');
+    const res = await gateway(get({ 'X-WorldMonitor-Key': 'wm_key_of_user_a', Authorization: 'Bearer a' }), ctx);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('Headline sent to A');
+    expect(historyReads).toEqual([sentAlertsKey('user_a')]);
   });
 });
