@@ -50,8 +50,9 @@ const ITEMS = {
   '1928': ['Calamansi (limau kasturi)', 'LIMAU KASTURI', KG],
 };
 export const PRICECATCHER_ITEM_CODES = Object.keys(ITEMS);
-// One distinct premise quote per date and item inside the read window. Normal days hold about 30,000
-// selected quotes and the window spans at most 16 days, so this bounds memory without rejecting real files.
+// Cap on distinct in-window premise quotes per monthly file (the current and prior month each get their own).
+// Normal days hold about 30,000 selected quotes and the window spans at most 16 days (~462k measured), so
+// this bounds memory without rejecting real files or dropping the prior month's week baseline.
 const QUOTE_LIMIT = 1_000_000;
 
 /** Start a per-date, per-item accumulator of unique premise quotes inside [since, before). */
@@ -123,19 +124,6 @@ export async function readPricecatcher(bytes, acc) {
   return acc;
 }
 
-/**
- * Read the prior month into its own accumulator limited to the quote budget the current month left, and merge
- * only on success, so a failed or oversized read leaves no partial file behind and the window stays bounded.
- * Monthly files hold disjoint dates.
- */
-export async function foldPriorMonth(acc, read) {
-  const prior = priceAccumulator({ before: acc.before, since: acc.since, limit: acc.limit - acc.quotes });
-  await read(prior);
-  for (const [key, shops] of prior.groups) acc.groups.set(key, shops);
-  acc.quotes += prior.quotes;
-  return acc;
-}
-
 /** Select the latest completed Malaysian day with all staples and its exact-week baseline. */
 export async function collect(ctx) {
   const lookup = new Map(csvRows(await ctx.get(`${BASE}lookup_item.csv`), ['item_code', 'item', 'unit']).map(row => [row.item_code, row]));
@@ -149,8 +137,13 @@ export async function collect(ctx) {
   try { await readPricecatcher(await ctx.get(`${BASE}pricecatcher_${current}.parquet`, { binary: true }), acc); }
   catch (error) { if (!/HTTP 404\b/.test(error.message)) throw error; ctx.warn('current-month file not yet published'); }
   if (since.slice(0, 7) !== current) {
-    try { await foldPriorMonth(acc, async prior => readPricecatcher(await ctx.get(`${BASE}pricecatcher_${previous}.parquet`, { binary: true }), prior)); }
-    catch (error) { ctx.warn(`prior-month prices unavailable: ${error.message}`); }
+    // A prior-month failure must not leave a partly folded file behind, so read it into its own accumulator,
+    // capped per file like the current month, and merge only on success. Monthly files hold disjoint dates.
+    const prior = priceAccumulator({ before, since });
+    try {
+      await readPricecatcher(await ctx.get(`${BASE}pricecatcher_${previous}.parquet`, { binary: true }), prior);
+      for (const [key, shops] of prior.groups) acc.groups.set(key, shops);
+    } catch (error) { ctx.warn(`prior-month prices unavailable: ${error.message}`); }
   }
   const all = summarizePrices(acc, lookup);
   const dates = [...new Set(all.map(row => row.date))].sort().reverse();
