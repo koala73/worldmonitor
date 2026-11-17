@@ -1,4 +1,5 @@
 import {
+  COUNTRY_COVERAGE_OPT_IN_SOURCES,
   computePreRegionalFeedRolloutDefaultDisabledSources,
   computePreStrategicDefaultDisabledSources,
   FEEDS,
@@ -27,6 +28,7 @@ const REGIONAL_FEED_ROLLOUT_NAMES = new Set(
   REGIONAL_FEED_ROLLOUT_STAGES.flatMap((stage) => [...stage.introducedNames]),
 );
 const STRATEGIC_DEFAULT_SOURCES = getStrategicDefaultSources();
+const COUNTRY_COVERAGE_OPT_INS = new Set(COUNTRY_COVERAGE_OPT_IN_SOURCES);
 const PRE_STRATEGIC_FREE_CAP_PROTECTED_SOURCES = new Set(FREE_CAP_PROTECTED_SOURCES);
 
 // Frozen chronology immediately before the regional wave. These names cannot
@@ -76,6 +78,7 @@ function catalogLanguages(): string[] {
 
 function legacyLocaleProtectedNames(locale: string): Set<string> {
   const protectedNames = getLanguageMatchedSources(locale);
+  for (const name of COUNTRY_COVERAGE_OPT_INS) protectedNames.delete(name);
   // NewsMaker only became `lang: ru` in the repair release. Its broken feed
   // was unscoped during the historical rollout, so treating it as a legacy RU
   // locale boost would recognize a state the old application never produced.
@@ -147,7 +150,7 @@ export function buildRegionalFeedRolloutMigrationTargets(
     const localeProtected = legacyLocaleProtectedNames(language);
     const localeDefaults = new Set(
       [...getLanguageMatchedSources(language)]
-        .filter((name) => RECONCILED_ROLLOUT_NAMES.has(name)),
+        .filter((name) => RECONCILED_ROLLOUT_NAMES.has(name) && !COUNTRY_COVERAGE_OPT_INS.has(name)),
     );
     const defaultNames = new Set([
       ...FRONTLINE_EUROPE_PROTECTED_SOURCES,

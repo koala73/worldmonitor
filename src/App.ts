@@ -135,6 +135,7 @@ import {
   CURATED_REGIONAL_OPT_IN_SOURCES,
   GERMAN_RSS_SOURCES,
   BRAZIL_OPT_IN_SOURCES,
+  COUNTRY_COVERAGE_OPT_IN_SOURCES,
   computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
   FEEDS,
@@ -244,6 +245,7 @@ import {
   migrateCuratedRegionalOptInsV9,
   migrateGermanRssSourcesV10,
   migrateBrazilOptInsV11,
+  migrateCountryCoverageOptInsV12,
 } from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
@@ -1548,6 +1550,20 @@ export class App {
           JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[],
         );
         if (persisted) safeStorageSet(germanRssKey, 'done');
+      }
+      const countryCoverageOptInKey = 'worldmonitor-country-coverage-optin-v1';
+      if (!safeStorageGet(countryCoverageOptInKey)) {
+        const current = loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+        const blob = { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current ?? computeDefaultDisabledSources(userLang)) };
+        const migrated = migrateCountryCoverageOptInsV12(blob, COUNTRY_COVERAGE_OPT_IN_SOURCES);
+        const persisted = (current !== null && migrated === blob) || saveToStorage(
+          STORAGE_KEYS.disabledFeeds,
+          JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[],
+        );
+        if (persisted && !safeStorageSetChecked(countryCoverageOptInKey, 'done')) {
+          if (current === null) safeStorageRemoveChecked(STORAGE_KEYS.disabledFeeds);
+          else saveToStorage(STORAGE_KEYS.disabledFeeds, current);
+        }
       }
       const brazilOptInKey = 'worldmonitor-brazil-optin-v1';
       if (!safeStorageGet(brazilOptInKey)) {

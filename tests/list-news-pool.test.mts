@@ -128,10 +128,10 @@ describe('news pool layout', () => {
   });
 
   it('files a feed with no lang under its own cell by content language', () => {
-    // NRK publishes in Norwegian with no feed lang, so only the English cell is its own.
+    // NRK is unscoped; the added Norwegian-tagged publishers have a native cell too.
     assert.equal(sourceLanguage('NRK'), 'no');
     const owners = NEWS_POOL_LAYOUT.cells.filter(cell => cell.contentLanguages.includes('no'));
-    assert.deepEqual(owners.map(cell => `${cell.edition}:${cell.lang}`), ['full:en']);
+    assert.deepEqual(owners.map(cell => `${cell.edition}:${cell.lang}`), ['full:en', 'full:no']);
     // Bangkok Post is fetched for Thai readers but publishes in English.
     assert.ok(NEWS_POOL_LAYOUT.cells.find(cell => cell.edition === 'full' && cell.lang === 'th')!.contentLanguages.includes('en'));
   });

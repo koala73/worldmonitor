@@ -3131,10 +3131,11 @@
     "ownershipClass": "private"
   },
   "N1 Croatia": {
-    "country": "HR",
-    "audience": "domestic",
+    "country": "LU",
+    "audience": "international",
     "language": "hr",
-    "ownershipClass": "private"
+    "ownershipClass": "private",
+    "note": "United Media publisher group domiciled in Luxembourg; local newsroom country HR."
   },
   "Naftemporiki": {
     "country": "GR",
@@ -5300,5 +5301,3715 @@
     "audience": "domestic",
     "language": "pt",
     "ownershipClass": "state"
+  },
+  "15min.lt": {
+    "country": "LT",
+    "audience": "domestic",
+    "language": "lt",
+    "ownershipClass": "private"
+  },
+  "24.kg": {
+    "country": "KG",
+    "audience": "domestic",
+    "language": "ru",
+    "ownershipClass": "private"
+  },
+  "2424.mg": {
+    "country": "MG",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "24ur.com": {
+    "country": "SI",
+    "audience": "domestic",
+    "language": "sl",
+    "ownershipClass": "private"
+  },
+  "A Nação": {
+    "country": "CV",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "private"
+  },
+  "ABS TV Radio Antigua & Barbuda": {
+    "country": "AG",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "state"
+  },
+  "ABS-CBN News": {
+    "country": "PH",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "AHORAEG Guinea Ecuatorial": {
+    "country": "GQ",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "ANTARA News": {
+    "country": "ID",
+    "audience": "domestic",
+    "language": "id",
+    "ownershipClass": "state"
+  },
+  "AP — Bahrain": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Comoros": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Denmark": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Dominica": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — El Salvador": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Equatorial Guinea": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Eritrea": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Eswatini": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Guinea-Bissau": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Kiribati": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Liechtenstein": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Marshall Islands": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Micronesia": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Montenegro": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Myanmar (Burma)": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Nauru": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — North Macedonia": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Palau": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Panama": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Paraguay": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Seychelles": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — St. Kitts & Nevis": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — St. Vincent & Grenadines": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Suriname": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Tonga": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Trinidad & Tobago": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Tuvalu": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Vanuatu": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Vatican City": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AP — Zambia": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "ABC News Albania": {
+    "country": "AL",
+    "audience": "domestic",
+    "language": "sq",
+    "ownershipClass": "private"
+  },
+  "Addis Fortune": {
+    "country": "ET",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Addis Standard": {
+    "country": "ET",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Agence Ivoirienne de Presse (AIP)": {
+    "country": "CI",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "state"
+  },
+  "Agence de Presse Senegalaise (APS)": {
+    "country": "SN",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "state"
+  },
+  "Agência de Notícias da Guiné (ANG)": {
+    "country": "GW",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "state"
+  },
+  "Ahram Online": {
+    "country": "EG",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Akipress": {
+    "country": "KG",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Aktuality.sk": {
+    "country": "SK",
+    "audience": "domestic",
+    "language": "sk",
+    "ownershipClass": "private"
+  },
+  "Al Jazeera — Micronesia": {
+    "country": "QA",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "state"
+  },
+  "Al Mada Newspaper": {
+    "country": "IQ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Al Wasat": {
+    "country": "LY",
+    "audience": "domestic",
+    "language": "ar",
+    "ownershipClass": "private"
+  },
+  "Al-Ayam (الأيام)": {
+    "country": "YE",
+    "audience": "domestic",
+    "language": "ar",
+    "ownershipClass": "private"
+  },
+  "Al-Jumhuriya": {
+    "country": "SY",
+    "audience": "domestic",
+    "language": "ar",
+    "ownershipClass": "private"
+  },
+  "Al-Quds Newspaper": {
+    "country": "PS",
+    "audience": "domestic",
+    "language": "ar",
+    "ownershipClass": "private"
+  },
+  "Al-Roya": {
+    "country": "OM",
+    "audience": "domestic",
+    "language": "ar",
+    "ownershipClass": "private"
+  },
+  "Al-Sumaria": {
+    "country": "IQ",
+    "audience": "domestic",
+    "language": "ar",
+    "ownershipClass": "private"
+  },
+  "Alakhbar": {
+    "country": "MR",
+    "audience": "domestic",
+    "language": "ar",
+    "ownershipClass": "private"
+  },
+  "Algérie Presse Service": {
+    "country": "DZ",
+    "audience": "domestic",
+    "language": "ar",
+    "ownershipClass": "state"
+  },
+  "Amandala": {
+    "country": "BZ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Ammon News": {
+    "country": "JO",
+    "audience": "domestic",
+    "language": "ar",
+    "ownershipClass": "private"
+  },
+  "Antigua News Room": {
+    "country": "AG",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Antigua Observer": {
+    "country": "AG",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Antigua.news": {
+    "country": "AG",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Arab Times Kuwait": {
+    "country": "KW",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Asia-Plus": {
+    "country": "TJ",
+    "audience": "domestic",
+    "language": "ru",
+    "ownershipClass": "private"
+  },
+  "Avesta": {
+    "country": "TJ",
+    "audience": "domestic",
+    "language": "ru",
+    "ownershipClass": "private"
+  },
+  "Awate.com": {
+    "country": "US",
+    "audience": "diaspora",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "Awoko": {
+    "country": "SL",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Azadliq Radiosu (RFE/RL - Azerbaijan)": {
+    "country": "CZ",
+    "audience": "diaspora",
+    "language": "az",
+    "ownershipClass": "public-service"
+  },
+  "BBC Korean": {
+    "country": "GB",
+    "audience": "diaspora",
+    "language": "ko",
+    "ownershipClass": "public-service"
+  },
+  "BBC — Angola": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "BBC — Barbados": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "BBC — Central African Republic": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "BBC — Comoros": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "BBC — Côte d’Ivoire": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "BBC — El Salvador": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "BBC — Equatorial Guinea": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "BBC — Eswatini": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "BBC — Kiribati": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "BBC — Laos": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "BBC — Liechtenstein": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "BBC — Micronesia": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "BBC — Nauru": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "BBC — Tonga": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "BBC — Tuvalu": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "BBC — Vanuatu": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "BBC — Vatican City": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "Bahrain Mirror": {
+    "country": "GB",
+    "audience": "diaspora",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Barbados Today": {
+    "country": "BB",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Belsat TV": {
+    "country": "PL",
+    "audience": "diaspora",
+    "language": "be",
+    "ownershipClass": "public-service"
+  },
+  "Bernama": {
+    "country": "MY",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Bhutan Broadcasting Service": {
+    "country": "BT",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "state"
+  },
+  "BioBioChile": {
+    "country": "CL",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "BirGün": {
+    "country": "TR",
+    "audience": "domestic",
+    "language": "tr",
+    "ownershipClass": "private"
+  },
+  "Bondia": {
+    "country": "AD",
+    "audience": "domestic",
+    "language": "ca",
+    "ownershipClass": "private"
+  },
+  "Borneo Bulletin": {
+    "country": "BN",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Brecha": {
+    "country": "UY",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "Burkina24": {
+    "country": "BF",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Business Bhutan": {
+    "country": "BT",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Business Recorder": {
+    "country": "PK",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "CNC3": {
+    "country": "TT",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "CNN Chile": {
+    "country": "CL",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "CRTV (Cameroon Radio Television)": {
+    "country": "CM",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "state"
+  },
+  "Caixin Global": {
+    "country": "CN",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "CamboJA News": {
+    "country": "KH",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "Caribbean Broadcasting Corporation (CBC)": {
+    "country": "BB",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "state"
+  },
+  "Carta de Moçambique": {
+    "country": "MZ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Catholic Radio Network": {
+    "country": "SS",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "Channel 5 Belize": {
+    "country": "BZ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Chronicles of Turkmenistan": {
+    "country": "AT",
+    "audience": "diaspora",
+    "language": "ru",
+    "ownershipClass": "private"
+  },
+  "Ciperchile": {
+    "country": "CL",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "nonprofit"
+  },
+  "Citizen TV": {
+    "country": "KE",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "CivilNet": {
+    "country": "AM",
+    "audience": "domestic",
+    "language": "hy",
+    "ownershipClass": "private"
+  },
+  "Club of Mozambique": {
+    "country": "MZ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Confidencial": {
+    "country": "CR",
+    "audience": "diaspora",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "CongoPage": {
+    "country": "CG",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Connection Ivoirienne": {
+    "country": "CI",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Corbeau News Centrafrique": {
+    "country": "CF",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Criterio.hn": {
+    "country": "HN",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "Cumhuriyet": {
+    "country": "TR",
+    "audience": "domestic",
+    "language": "tr",
+    "ownershipClass": "private"
+  },
+  "Cyprus Mail": {
+    "country": "CY",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Cyprus News Agency": {
+    "country": "CY",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "DBS TV St Lucia": {
+    "country": "LC",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "DELFI Lithuania": {
+    "country": "LT",
+    "audience": "domestic",
+    "language": "lt",
+    "ownershipClass": "private"
+  },
+  "Dagsavisen": {
+    "country": "NO",
+    "audience": "domestic",
+    "language": "no",
+    "ownershipClass": "private"
+  },
+  "Daily Maverick": {
+    "country": "ZA",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Daily Mirror Sri Lanka": {
+    "country": "LK",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Daily NK": {
+    "country": "KR",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private",
+    "note": "North Korea reporting from outside North Korea; publisher contact page confirms location."
+  },
+  "Daily News": {
+    "country": "TZ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "state"
+  },
+  "Daily News Egypt": {
+    "country": "EG",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Danas": {
+    "country": "LU",
+    "audience": "international",
+    "language": "sr",
+    "ownershipClass": "private",
+    "note": "United Media publisher group domiciled in Luxembourg; local newsroom country RS."
+  },
+  "De Standaard": {
+    "country": "BE",
+    "audience": "domestic",
+    "language": "nl",
+    "ownershipClass": "private"
+  },
+  "De Ware Tijd": {
+    "country": "SR",
+    "audience": "domestic",
+    "language": "nl",
+    "ownershipClass": "private"
+  },
+  "De West": {
+    "country": "SR",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Delfi Latvia": {
+    "country": "LV",
+    "audience": "domestic",
+    "language": "lv",
+    "ownershipClass": "private"
+  },
+  "Delo": {
+    "country": "SI",
+    "audience": "domestic",
+    "language": "sl",
+    "ownershipClass": "private"
+  },
+  "Demerara Waves Online News": {
+    "country": "GY",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Denník N": {
+    "country": "SK",
+    "audience": "domestic",
+    "language": "sk",
+    "ownershipClass": "private"
+  },
+  "Der Standard": {
+    "country": "AT",
+    "audience": "domestic",
+    "language": "de",
+    "ownershipClass": "private"
+  },
+  "Dhauru": {
+    "country": "MV",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Diari d'Andorra": {
+    "country": "AD",
+    "audience": "domestic",
+    "language": "ca",
+    "ownershipClass": "private"
+  },
+  "Diario Co Latino": {
+    "country": "SV",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "Diario Libre": {
+    "country": "DO",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "Diario de Cuba": {
+    "country": "ES",
+    "audience": "diaspora",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "Die Presse": {
+    "country": "AT",
+    "audience": "domestic",
+    "language": "de",
+    "ownershipClass": "private"
+  },
+  "Diena": {
+    "country": "LV",
+    "audience": "domestic",
+    "language": "lv",
+    "ownershipClass": "private"
+  },
+  "Divergentes": {
+    "country": "CR",
+    "audience": "diaspora",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "Doha News": {
+    "country": "QA",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Dominica News Online": {
+    "country": "DM",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "EMTV Online": {
+    "country": "PG",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "EVN Report": {
+    "country": "AM",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "EconomyNext": {
+    "country": "LK",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "El Comercio": {
+    "country": "EC",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "El Comercio Peru": {
+    "country": "PE",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "El Deber": {
+    "country": "BO",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "El Día": {
+    "country": "DO",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "El Espectador": {
+    "country": "CO",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "El Faro": {
+    "country": "CR",
+    "audience": "diaspora",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "El Khabar": {
+    "country": "DZ",
+    "audience": "domestic",
+    "language": "ar",
+    "ownershipClass": "private"
+  },
+  "El País Uruguay": {
+    "country": "UY",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "El Periòdic d'Andorra": {
+    "country": "AD",
+    "audience": "domestic",
+    "language": "ca",
+    "ownershipClass": "private"
+  },
+  "El Pitazo": {
+    "country": "VE",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "Emonews": {
+    "country": "DM",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Entekhab.ir": {
+    "country": "IR",
+    "audience": "domestic",
+    "language": "fa",
+    "ownershipClass": "private"
+  },
+  "Etilaat Roz": {
+    "country": "US",
+    "audience": "diaspora",
+    "language": "fa",
+    "ownershipClass": "private"
+  },
+  "Euroradio": {
+    "country": "PL",
+    "audience": "diaspora",
+    "language": "be",
+    "ownershipClass": "private"
+  },
+  "Evrensel": {
+    "country": "TR",
+    "audience": "domestic",
+    "language": "tr",
+    "ownershipClass": "private"
+  },
+  "Expreso": {
+    "country": "EC",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "Express Tribune": {
+    "country": "PK",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Expresso": {
+    "country": "PT",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "private"
+  },
+  "Expresso das Ilhas": {
+    "country": "CV",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "private"
+  },
+  "Eye Radio": {
+    "country": "SS",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "Eyewitness News": {
+    "country": "BS",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "FBC News": {
+    "country": "FJ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "state"
+  },
+  "Falter": {
+    "country": "AT",
+    "audience": "domestic",
+    "language": "de",
+    "ownershipClass": "private"
+  },
+  "Fiji Sun": {
+    "country": "FJ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Fiji Times": {
+    "country": "FJ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Foroyaa": {
+    "country": "GM",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Franceinfo": {
+    "country": "FR",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "Fraternité": {
+    "country": "BJ",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "FrontPage Africa": {
+    "country": "LR",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "GMA News": {
+    "country": "PH",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Gabon Actu": {
+    "country": "GA",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Gabonews": {
+    "country": "GA",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Gabonreview": {
+    "country": "GA",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Garowe Online": {
+    "country": "SO",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Gazeta.uz": {
+    "country": "UZ",
+    "audience": "domestic",
+    "language": "uz",
+    "ownershipClass": "private"
+  },
+  "Ghana Business News": {
+    "country": "GH",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Giornale.sm": {
+    "country": "SM",
+    "audience": "domestic",
+    "language": "it",
+    "ownershipClass": "private"
+  },
+  "GoGo Mongolia": {
+    "country": "MN",
+    "audience": "domestic",
+    "language": "mn",
+    "ownershipClass": "private"
+  },
+  "Goobjoog News": {
+    "country": "SO",
+    "audience": "domestic",
+    "language": "so",
+    "ownershipClass": "private"
+  },
+  "Graphic Online": {
+    "country": "GH",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Grenada Broadcasting Network (GBN)": {
+    "country": "GD",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private",
+    "note": "Majority privately owned with a government minority shareholding, as disclosed by the publisher."
+  },
+  "GroundUp": {
+    "country": "ZA",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "Guardian — Angola": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Guardian — Barbados": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Guardian — Bolivia": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Guardian — Kiribati": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Guardian — Laos": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Guardian — Liechtenstein": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Guardian — Marshall Islands": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Guardian — Micronesia": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Guardian — Nauru": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Guardian — Palau": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Guardian — Tuvalu": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Guinee7.com": {
+    "country": "GN",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Guineematin.com": {
+    "country": "GN",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Guinéenews.org": {
+    "country": "GN",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Gulf Daily News": {
+    "country": "BH",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Gulf News": {
+    "country": "AE",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Gulf Times": {
+    "country": "QA",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Habari Za Comores": {
+    "country": "KM",
+    "audience": "domestic",
+    "language": "sw",
+    "ownershipClass": "private"
+  },
+  "Hankyoreh": {
+    "country": "KR",
+    "audience": "domestic",
+    "language": "ko",
+    "ownershipClass": "private"
+  },
+  "Helsingin Sanomat": {
+    "country": "FI",
+    "audience": "domestic",
+    "language": "fi",
+    "ownershipClass": "private"
+  },
+  "Hespress": {
+    "country": "MA",
+    "audience": "domestic",
+    "language": "ar",
+    "ownershipClass": "private"
+  },
+  "Hetq": {
+    "country": "AM",
+    "audience": "domestic",
+    "language": "hy",
+    "ownershipClass": "nonprofit"
+  },
+  "Hospodářské noviny": {
+    "country": "CZ",
+    "audience": "domestic",
+    "language": "cs",
+    "ownershipClass": "private"
+  },
+  "Hoy": {
+    "country": "DO",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "Hufvudstadsbladet": {
+    "country": "FI",
+    "audience": "domestic",
+    "language": "sv",
+    "ownershipClass": "private"
+  },
+  "IDL-Reporteros": {
+    "country": "PE",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "nonprofit"
+  },
+  "ITV Tanzania": {
+    "country": "TZ",
+    "audience": "domestic",
+    "language": "sw",
+    "ownershipClass": "private"
+  },
+  "Iceland Review": {
+    "country": "IS",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "IciLome": {
+    "country": "TG",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Il Post": {
+    "country": "IT",
+    "audience": "domestic",
+    "language": "it",
+    "ownershipClass": "private"
+  },
+  "Informburo.kz": {
+    "country": "KZ",
+    "audience": "domestic",
+    "language": "ru",
+    "ownershipClass": "private"
+  },
+  "Inforpress": {
+    "country": "CV",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "state"
+  },
+  "Inkyfada": {
+    "country": "TN",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "nonprofit"
+  },
+  "Insajder": {
+    "country": "RS",
+    "audience": "domestic",
+    "language": "sr",
+    "ownershipClass": "private"
+  },
+  "Ir": {
+    "country": "LV",
+    "audience": "domestic",
+    "language": "lv",
+    "ownershipClass": "private"
+  },
+  "Irish Independent": {
+    "country": "IE",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Island Sun": {
+    "country": "SB",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Islands Business": {
+    "country": "FJ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Iwacu": {
+    "country": "BI",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "nonprofit"
+  },
+  "Jamaica Information Service (JIS)": {
+    "country": "JM",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "state"
+  },
+  "Jamaica Observer": {
+    "country": "JM",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Japan Wire by Kyodo News": {
+    "country": "JP",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Jordan News": {
+    "country": "JO",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Jornal Tropical": {
+    "country": "ST",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "private"
+  },
+  "Journal de Brazza": {
+    "country": "CG",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Journal du Mali": {
+    "country": "ML",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Jyllands-Posten": {
+    "country": "DK",
+    "audience": "domestic",
+    "language": "da",
+    "ownershipClass": "private"
+  },
+  "KRIK": {
+    "country": "RS",
+    "audience": "domestic",
+    "language": "sr",
+    "ownershipClass": "nonprofit"
+  },
+  "KT Press": {
+    "country": "RW",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Kaieteur News": {
+    "country": "GY",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Kallxo": {
+    "country": "XK",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Khaleej Times": {
+    "country": "AE",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Khaosod English": {
+    "country": "TH",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Kiripost": {
+    "country": "KH",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Klix.ba": {
+    "country": "BA",
+    "audience": "domestic",
+    "language": "bs",
+    "ownershipClass": "private"
+  },
+  "Kloop.kg": {
+    "country": "KG",
+    "audience": "domestic",
+    "language": "ru",
+    "ownershipClass": "nonprofit"
+  },
+  "Koha": {
+    "country": "XK",
+    "audience": "domestic",
+    "language": "sq",
+    "ownershipClass": "private"
+  },
+  "Kompas": {
+    "country": "ID",
+    "audience": "domestic",
+    "language": "id",
+    "ownershipClass": "private"
+  },
+  "Korea Times": {
+    "country": "KR",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Kosovo 2.0": {
+    "country": "XK",
+    "audience": "domestic",
+    "language": "sq",
+    "ownershipClass": "nonprofit"
+  },
+  "Kuensel": {
+    "country": "BT",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Kun.uz": {
+    "country": "UZ",
+    "audience": "domestic",
+    "language": "uz",
+    "ownershipClass": "private"
+  },
+  "Kuwait News Agency": {
+    "country": "KW",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "state"
+  },
+  "Kuwait Times": {
+    "country": "KW",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "L'Express Mauritius": {
+    "country": "MU",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "L'Express de Madagascar": {
+    "country": "MG",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "L'Union": {
+    "country": "GA",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "state"
+  },
+  "La Diaria": {
+    "country": "UY",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "La Hora": {
+    "country": "GT",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "La Nación": {
+    "country": "CR",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "La Nación Argentina": {
+    "country": "AR",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "La Nación Paraguay": {
+    "country": "PY",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "La Nation": {
+    "country": "DJ",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "state"
+  },
+  "La Nouvelle Tribune": {
+    "country": "BJ",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "La Prensa": {
+    "country": "PA",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "La Prensa Honduras": {
+    "country": "HN",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "La Prensa Nicaragua": {
+    "country": "NI",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "La Presse de Tunisie": {
+    "country": "TN",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "state"
+  },
+  "La República Colombia": {
+    "country": "PE",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "La República Peru": {
+    "country": "PE",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "La Tercera": {
+    "country": "CL",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "La Voix de Djibouti": {
+    "country": "DJ",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Laotian Times": {
+    "country": "LA",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Le Calame": {
+    "country": "MR",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Le Desk": {
+    "country": "MA",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Le Défi Media Group": {
+    "country": "MU",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Le Jour": {
+    "country": "CM",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Le Mauricien": {
+    "country": "MU",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Le Nouvelliste": {
+    "country": "HT",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Le Pays Tchad": {
+    "country": "TD",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Le Potentiel": {
+    "country": "CD",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Le Républicain": {
+    "country": "ML",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Le Sahel": {
+    "country": "NE",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "state"
+  },
+  "Le Soir": {
+    "country": "BE",
+    "audience": "domestic",
+    "language": "nl",
+    "ownershipClass": "private"
+  },
+  "Le Soleil": {
+    "country": "SN",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "state"
+  },
+  "Le Temps": {
+    "country": "CH",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Les Dépêches de Brazzaville": {
+    "country": "CG",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Lesotho Times": {
+    "country": "LS",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Liberian Observer": {
+    "country": "LR",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Libertas.sm": {
+    "country": "SM",
+    "audience": "domestic",
+    "language": "it",
+    "ownershipClass": "private"
+  },
+  "Libération": {
+    "country": "FR",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Liechtensteiner Vaterland": {
+    "country": "LI",
+    "audience": "domestic",
+    "language": "de",
+    "ownershipClass": "private"
+  },
+  "Linfodrome": {
+    "country": "CI",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Los Tiempos": {
+    "country": "BO",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "Love FM": {
+    "country": "BZ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Lusaka Times": {
+    "country": "ZM",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Luxemburger Wort": {
+    "country": "LU",
+    "audience": "domestic",
+    "language": "de",
+    "ownershipClass": "private"
+  },
+  "Madagascar-Tribune.com": {
+    "country": "MG",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Mail & Guardian": {
+    "country": "ZA",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Makfax": {
+    "country": "MK",
+    "audience": "domestic",
+    "language": "mk",
+    "ownershipClass": "private"
+  },
+  "Malagen": {
+    "country": "GM",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "Malawi Nyasa Times": {
+    "country": "MW",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Malawi24": {
+    "country": "MW",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Malay Mail": {
+    "country": "MY",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Malaysiakini": {
+    "country": "MY",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Maldives Independent": {
+    "country": "MV",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "MaltaToday": {
+    "country": "MT",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Matangi Tonga": {
+    "country": "TO",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Matin Libre": {
+    "country": "BJ",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Mediapool.bg": {
+    "country": "BG",
+    "audience": "domestic",
+    "language": "bg",
+    "ownershipClass": "private"
+  },
+  "MercoPress": {
+    "country": "UY",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Meta.mk": {
+    "country": "MK",
+    "audience": "domestic",
+    "language": "mk",
+    "ownershipClass": "nonprofit"
+  },
+  "Meydan TV": {
+    "country": "DE",
+    "audience": "diaspora",
+    "language": "az",
+    "ownershipClass": "private"
+  },
+  "Midi Madagasikara": {
+    "country": "MG",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Mmegi": {
+    "country": "BW",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Moldova 1": {
+    "country": "MD",
+    "audience": "domestic",
+    "language": "ro",
+    "ownershipClass": "public-service"
+  },
+  "Monaco Life": {
+    "country": "MC",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Monaco Tribune": {
+    "country": "MC",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Monaco-Matin": {
+    "country": "MC",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Montsame": {
+    "country": "MN",
+    "audience": "domestic",
+    "language": "mn",
+    "ownershipClass": "state"
+  },
+  "Morocco World News": {
+    "country": "MA",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Mosaique FM": {
+    "country": "TN",
+    "audience": "domestic",
+    "language": "ar",
+    "ownershipClass": "private"
+  },
+  "Mothership": {
+    "country": "SG",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Muscat Daily": {
+    "country": "OM",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Myanmar Now": {
+    "country": "TH",
+    "audience": "diaspora",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "N1 Bosna i Hercegovina": {
+    "country": "LU",
+    "audience": "international",
+    "language": "bs",
+    "ownershipClass": "private",
+    "note": "United Media publisher group domiciled in Luxembourg; local newsroom country BA."
+  },
+  "N1 Info": {
+    "country": "LU",
+    "audience": "international",
+    "language": "sr",
+    "ownershipClass": "private",
+    "note": "United Media publisher group domiciled in Luxembourg; local newsroom country RS."
+  },
+  "NBC Radio": {
+    "country": "VC",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "state"
+  },
+  "NHK (日本放送協会)": {
+    "country": "JP",
+    "audience": "domestic",
+    "language": "ja",
+    "ownershipClass": "public-service"
+  },
+  "NK News": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private",
+    "note": "North Korea reporting from outside North Korea; publisher contact page confirms location."
+  },
+  "NOW Grenada": {
+    "country": "GD",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Namibia Economist": {
+    "country": "NA",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Nasha Niva": {
+    "country": "LT",
+    "audience": "diaspora",
+    "language": "be",
+    "ownershipClass": "private"
+  },
+  "Nawaat": {
+    "country": "TN",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "Nepali Times": {
+    "country": "NP",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Netgazeti": {
+    "country": "GE",
+    "audience": "domestic",
+    "language": "ka",
+    "ownershipClass": "private"
+  },
+  "Neue Zürcher Zeitung": {
+    "country": "CH",
+    "audience": "domestic",
+    "language": "de",
+    "ownershipClass": "private"
+  },
+  "New Era": {
+    "country": "NA",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "state"
+  },
+  "New Zealand Herald": {
+    "country": "NZ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "News Diggers!": {
+    "country": "ZM",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "News First Sri Lanka": {
+    "country": "LK",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "News Source Guyana": {
+    "country": "GY",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "News.MN": {
+    "country": "MN",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "NewsDay Zimbabwe": {
+    "country": "ZW",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Newsbook Malta": {
+    "country": "MT",
+    "audience": "domestic",
+    "language": "mt",
+    "ownershipClass": "private"
+  },
+  "Newsroom": {
+    "country": "NZ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "Nicaragua Investiga": {
+    "country": "CR",
+    "audience": "diaspora",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "Notícias do Norte": {
+    "country": "CV",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "private"
+  },
+  "Novi list": {
+    "country": "HR",
+    "audience": "domestic",
+    "language": "hr",
+    "ownershipClass": "private"
+  },
+  "O Democrata": {
+    "country": "GW",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "private"
+  },
+  "O País": {
+    "country": "MZ",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "private"
+  },
+  "ORF.at": {
+    "country": "AT",
+    "audience": "domestic",
+    "language": "de",
+    "ownershipClass": "public-service"
+  },
+  "ORTB Benin": {
+    "country": "BJ",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "state"
+  },
+  "Observador": {
+    "country": "PT",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "private"
+  },
+  "Online Khabar": {
+    "country": "NP",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Oslobođenje": {
+    "country": "BA",
+    "audience": "domestic",
+    "language": "bs",
+    "ownershipClass": "private"
+  },
+  "Palestine News Network": {
+    "country": "PS",
+    "audience": "domestic",
+    "language": "ar",
+    "ownershipClass": "private"
+  },
+  "Papua New Guinea Post-Courier": {
+    "country": "PG",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Phileleftheros": {
+    "country": "CY",
+    "audience": "domestic",
+    "language": "el",
+    "ownershipClass": "private"
+  },
+  "Philippine Daily Inquirer": {
+    "country": "PH",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Phnom Penh Post": {
+    "country": "KH",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Plaza Pública": {
+    "country": "GT",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "nonprofit"
+  },
+  "Podrobno.uz": {
+    "country": "UZ",
+    "audience": "domestic",
+    "language": "ru",
+    "ownershipClass": "private"
+  },
+  "Politis": {
+    "country": "CY",
+    "audience": "domestic",
+    "language": "el",
+    "ownershipClass": "private"
+  },
+  "Postimees": {
+    "country": "EE",
+    "audience": "domestic",
+    "language": "et",
+    "ownershipClass": "private"
+  },
+  "Prachatai": {
+    "country": "TH",
+    "audience": "domestic",
+    "language": "th",
+    "ownershipClass": "private"
+  },
+  "Prensa Comunitaria": {
+    "country": "GT",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "nonprofit"
+  },
+  "PressAfrik": {
+    "country": "SN",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Proceso Digital": {
+    "country": "HN",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "Prothom Alo": {
+    "country": "BD",
+    "audience": "domestic",
+    "language": "bn",
+    "ownershipClass": "private"
+  },
+  "Public Eye": {
+    "country": "LS",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Página/12": {
+    "country": "AR",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "RNZ": {
+    "country": "NZ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "RPP Noticias": {
+    "country": "PE",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "RTBF Info": {
+    "country": "BE",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "public-service"
+  },
+  "RTL Luxembourg": {
+    "country": "LU",
+    "audience": "domestic",
+    "language": "de",
+    "ownershipClass": "private"
+  },
+  "RTL Nieuws": {
+    "country": "NL",
+    "audience": "domestic",
+    "language": "nl",
+    "ownershipClass": "private"
+  },
+  "RTP Notícias": {
+    "country": "PT",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "public-service"
+  },
+  "RTV Slovenija": {
+    "country": "SI",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "RTVE Noticias": {
+    "country": "ES",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "RTÉ News": {
+    "country": "IE",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "Radio Azatlyk": {
+    "country": "CZ",
+    "audience": "diaspora",
+    "language": "tk",
+    "ownershipClass": "public-service"
+  },
+  "Radio Azattyk": {
+    "country": "CZ",
+    "audience": "diaspora",
+    "language": "ky",
+    "ownershipClass": "public-service"
+  },
+  "Radio Azattyq": {
+    "country": "CZ",
+    "audience": "diaspora",
+    "language": "kk",
+    "ownershipClass": "public-service"
+  },
+  "Radio Ergo": {
+    "country": "DK",
+    "audience": "diaspora",
+    "language": "so",
+    "ownershipClass": "nonprofit"
+  },
+  "Radio Jamaica News": {
+    "country": "JM",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Radio Ozodi": {
+    "country": "CZ",
+    "audience": "diaspora",
+    "language": "tg",
+    "ownershipClass": "public-service"
+  },
+  "Radio Prague International": {
+    "country": "CZ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "RTD Djibouti": {
+    "country": "DJ",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "state"
+  },
+  "Recorder": {
+    "country": "RO",
+    "audience": "domestic",
+    "language": "ro",
+    "ownershipClass": "nonprofit"
+  },
+  "Reforma": {
+    "country": "MX",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "Reporter.al": {
+    "country": "AL",
+    "audience": "domestic",
+    "language": "sq",
+    "ownershipClass": "nonprofit"
+  },
+  "Reuters — Algeria": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Andorra": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Angola": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Bahrain": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Bolivia": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Botswana": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Brunei": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Bulgaria": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Burkina Faso": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Burundi": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Cameroon": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Central African Republic": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Chad": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Comoros": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Congo - Brazzaville": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Congo - Kinshasa": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Costa Rica": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Cuba": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Denmark": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Djibouti": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Dominica": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Dominican Republic": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Equatorial Guinea": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Eritrea": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Estonia": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Grenada": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Guatemala": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Guinea": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Guinea-Bissau": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Guyana": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Honduras": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Iceland": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Jordan": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Kiribati": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Kuwait": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Laos": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Lesotho": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Liberia": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Libya": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Maldives": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Marshall Islands": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Mauritania": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Mauritius": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Mexico": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Monaco": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Montenegro": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Myanmar (Burma)": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Namibia": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Nauru": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — North Korea": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Palau": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Palestinian Territories": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Panama": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Papua New Guinea": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Paraguay": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Portugal": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Rwanda": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Samoa": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Saudi Arabia": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Seychelles": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Sierra Leone": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — St. Kitts & Nevis": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Sudan": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Timor-Leste": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Togo": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Tonga": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Tuvalu": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — United Arab Emirates": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Vatican City": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Yemen": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Zambia": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Reuters — Zimbabwe": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Rukhshana Media": {
+    "country": "GB",
+    "audience": "diaspora",
+    "language": "fa",
+    "ownershipClass": "nonprofit"
+  },
+  "RÚV (Ríkisútvarpið)": {
+    "country": "IS",
+    "audience": "domestic",
+    "language": "is",
+    "ownershipClass": "public-service"
+  },
+  "Rádio Nacional de Angola (RNA)": {
+    "country": "AO",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "state"
+  },
+  "Rádio Somos Todos Primos (RSTP)": {
+    "country": "ST",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "private"
+  },
+  "SBS News": {
+    "country": "AU",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "SIBC": {
+    "country": "SB",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "state"
+  },
+  "SOS Médias Burundi": {
+    "country": "BI",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "nonprofit"
+  },
+  "STP-Press": {
+    "country": "ST",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "state"
+  },
+  "Sahara Medias": {
+    "country": "MR",
+    "audience": "domestic",
+    "language": "ar",
+    "ownershipClass": "private"
+  },
+  "Sahelien.com": {
+    "country": "ML",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Samoa Global News": {
+    "country": "WS",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Samoa Observer": {
+    "country": "WS",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "San Marino Fixing": {
+    "country": "SM",
+    "audience": "domestic",
+    "language": "it",
+    "ownershipClass": "private"
+  },
+  "San Marino RTV": {
+    "country": "SM",
+    "audience": "domestic",
+    "language": "it",
+    "ownershipClass": "state"
+  },
+  "Saudi Gazette": {
+    "country": "SA",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Schweizer Radio und Fernsehen (SRF)": {
+    "country": "CH",
+    "audience": "domestic",
+    "language": "de",
+    "ownershipClass": "public-service"
+  },
+  "Scroll.in": {
+    "country": "IN",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Setit": {
+    "country": "US",
+    "audience": "diaspora",
+    "language": "en",
+    "ownershipClass": "unreviewed",
+    "note": "US contact inferred from publisher contact details; legal ownership status not independently verified."
+  },
+  "Setopati": {
+    "country": "NP",
+    "audience": "domestic",
+    "language": "ne",
+    "ownershipClass": "private"
+  },
+  "Seychelles Broadcasting Corporation": {
+    "country": "SC",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "state"
+  },
+  "Seychelles Nation": {
+    "country": "SC",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "state"
+  },
+  "Shafaq News": {
+    "country": "IQ",
+    "audience": "domestic",
+    "language": "ar",
+    "ownershipClass": "private"
+  },
+  "Shargh Daily": {
+    "country": "IR",
+    "audience": "domestic",
+    "language": "fa",
+    "ownershipClass": "private"
+  },
+  "Sixth Tone": {
+    "country": "CN",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "state"
+  },
+  "Sme": {
+    "country": "SK",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Solomon Star": {
+    "country": "SB",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Solomon Times": {
+    "country": "SB",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "St Lucia Times": {
+    "country": "LC",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "St Vincent Times": {
+    "country": "VC",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Straits Times": {
+    "country": "SG",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Studio Kalangou": {
+    "country": "NE",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Studio Yafa": {
+    "country": "BF",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "nonprofit"
+  },
+  "Stuff NZ": {
+    "country": "NZ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Sudan Tribune": {
+    "country": "FR",
+    "audience": "diaspora",
+    "language": "ar",
+    "ownershipClass": "nonprofit"
+  },
+  "Sudan War Monitor": {
+    "country": "SD",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Sudans Post": {
+    "country": "SS",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Sun Online": {
+    "country": "MV",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Suriname Herald": {
+    "country": "SR",
+    "audience": "domestic",
+    "language": "nl",
+    "ownershipClass": "private"
+  },
+  "Sveriges Radio": {
+    "country": "SE",
+    "audience": "domestic",
+    "language": "sv",
+    "ownershipClass": "public-service"
+  },
+  "Swaziland News": {
+    "country": "SZ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Sydney Morning Herald": {
+    "country": "AU",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "TA3": {
+    "country": "SK",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "TSA Algérie (Tout Sur l'Algérie)": {
+    "country": "DZ",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "TV 2": {
+    "country": "NO",
+    "audience": "domestic",
+    "language": "no",
+    "ownershipClass": "private"
+  },
+  "TV8": {
+    "country": "MD",
+    "audience": "domestic",
+    "language": "ro",
+    "ownershipClass": "nonprofit"
+  },
+  "TVN Noticias": {
+    "country": "PA",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "Taarifa Rwanda": {
+    "country": "RW",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Tages-Anzeiger": {
+    "country": "CH",
+    "audience": "domestic",
+    "language": "de",
+    "ownershipClass": "private"
+  },
+  "Tal Cual": {
+    "country": "VE",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "Talamua Online News": {
+    "country": "WS",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Tatoli": {
+    "country": "TL",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "state"
+  },
+  "TelQuel": {
+    "country": "MA",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Telefuturo": {
+    "country": "PY",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "Telenoticias (Teletica)": {
+    "country": "CR",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "Tempo Indonesia": {
+    "country": "ID",
+    "audience": "domestic",
+    "language": "id",
+    "ownershipClass": "private"
+  },
+  "Thanh Niên": {
+    "country": "VN",
+    "audience": "domestic",
+    "language": "vi",
+    "ownershipClass": "state"
+  },
+  "The Bhutanese": {
+    "country": "BT",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Botswana Gazette": {
+    "country": "BW",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Bruneian": {
+    "country": "BN",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Calabash Newspaper": {
+    "country": "SL",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Cambodia Daily": {
+    "country": "US",
+    "audience": "diaspora",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Chanzo": {
+    "country": "TZ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Citizen Tanzania": {
+    "country": "TZ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Dili Weekly": {
+    "country": "TL",
+    "audience": "domestic",
+    "language": "tet",
+    "ownershipClass": "private"
+  },
+  "The Financial Gazette": {
+    "country": "ZW",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Gleaner": {
+    "country": "JM",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Haitian Times": {
+    "country": "US",
+    "audience": "diaspora",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "The Independent (Uganda)": {
+    "country": "UG",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Insider": {
+    "country": "LV",
+    "audience": "diaspora",
+    "language": "ru",
+    "ownershipClass": "private"
+  },
+  "The Irish Times": {
+    "country": "IE",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Island": {
+    "country": "LK",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Jordan Times": {
+    "country": "JO",
+    "audience": "domestic",
+    "language": "ar",
+    "ownershipClass": "private"
+  },
+  "The Kathmandu Post": {
+    "country": "NP",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Korea Herald": {
+    "country": "KR",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Libya Observer": {
+    "country": "LY",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Marshall Islands Journal": {
+    "country": "MH",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Monitor Uganda": {
+    "country": "UG",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Namibian": {
+    "country": "NA",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Nassau Guardian": {
+    "country": "BS",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Nation Malawi": {
+    "country": "MW",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The National PNG": {
+    "country": "PG",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The New Dawn Liberia": {
+    "country": "LR",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The New Times Rwanda": {
+    "country": "RW",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Observer": {
+    "country": "UG",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Online Citizen": {
+    "country": "TW",
+    "audience": "diaspora",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "The Peninsula Qatar": {
+    "country": "QA",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Point": {
+    "country": "GM",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Public Source": {
+    "country": "LB",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "The Reporter": {
+    "country": "TW",
+    "audience": "domestic",
+    "language": "zh",
+    "ownershipClass": "nonprofit"
+  },
+  "The Reporter Lesotho": {
+    "country": "LS",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Reykjavík Grapevine": {
+    "country": "IS",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The San Pedro Sun": {
+    "country": "BZ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Scoop": {
+    "country": "BN",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Shift News": {
+    "country": "MT",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "The Sierra Leone Telegraph": {
+    "country": "SL",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Sofia Globe": {
+    "country": "BG",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The St Lucia Star": {
+    "country": "LC",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The St. Kitts-Nevis Observer": {
+    "country": "KN",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Standard": {
+    "country": "GM",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Standard Kenya": {
+    "country": "KE",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Star Kenya": {
+    "country": "KE",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Syrian Observer": {
+    "country": "SY",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Tashkent Times": {
+    "country": "UZ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Tico Times": {
+    "country": "CR",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "The Times Group Malawi": {
+    "country": "MW",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Tribune": {
+    "country": "BS",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The UB Post": {
+    "country": "MN",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Voice": {
+    "country": "BW",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Voice of Saint Lucia": {
+    "country": "LC",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Zimbabwe Independent": {
+    "country": "ZW",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "TheJournal.ie": {
+    "country": "IE",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Times of Eswatini": {
+    "country": "SZ",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Times of Malta": {
+    "country": "MT",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Times of Oman": {
+    "country": "OM",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Timor Post": {
+    "country": "TL",
+    "audience": "domestic",
+    "language": "tet",
+    "ownershipClass": "private"
+  },
+  "Tirana Times": {
+    "country": "AL",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Togotopnews": {
+    "country": "TG",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Togo‑Presse": {
+    "country": "TG",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "state"
+  },
+  "Trinidad Express": {
+    "country": "TT",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Trinidad Guardian": {
+    "country": "TT",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Turan": {
+    "country": "AZ",
+    "audience": "domestic",
+    "language": "az",
+    "ownershipClass": "private"
+  },
+  "Turkmen.news": {
+    "country": "NL",
+    "audience": "diaspora",
+    "language": "ru",
+    "ownershipClass": "private"
+  },
+  "Turun Sanomat": {
+    "country": "FI",
+    "audience": "domestic",
+    "language": "fi",
+    "ownershipClass": "private"
+  },
+  "Téla Nón": {
+    "country": "ST",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "private"
+  },
+  "Uganda Radio Network (URN)": {
+    "country": "UG",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "VRT NWS": {
+    "country": "BE",
+    "audience": "domestic",
+    "language": "nl",
+    "ownershipClass": "public-service"
+  },
+  "VBTC Vanuatu": {
+    "country": "VU",
+    "audience": "domestic",
+    "language": "bi",
+    "ownershipClass": "state"
+  },
+  "Vanuatu Daily Post": {
+    "country": "VU",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Vatican News English": {
+    "country": "VA",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "state"
+  },
+  "Verslo žinios": {
+    "country": "LT",
+    "audience": "domestic",
+    "language": "lt",
+    "ownershipClass": "private"
+  },
+  "Vietnam News": {
+    "country": "VN",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "state"
+  },
+  "Vijesti": {
+    "country": "ME",
+    "audience": "domestic",
+    "language": "cnr",
+    "ownershipClass": "private"
+  },
+  "Vlast.kz": {
+    "country": "KZ",
+    "audience": "domestic",
+    "language": "ru",
+    "ownershipClass": "private"
+  },
+  "WEE FM Radio Grenada": {
+    "country": "GD",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "WINNFM 98.9": {
+    "country": "KN",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Woxx": {
+    "country": "LU",
+    "audience": "domestic",
+    "language": "de",
+    "ownershipClass": "private"
+  },
+  "Yaga Burundi": {
+    "country": "BI",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "nonprofit"
+  },
+  "Your.tj": {
+    "country": "TJ",
+    "audience": "domestic",
+    "language": "ru",
+    "ownershipClass": "private"
+  },
+  "ZNS Bahamas": {
+    "country": "BS",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "state"
+  },
+  "Zitamar News": {
+    "country": "GB",
+    "audience": "diaspora",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "bdnews24": {
+    "country": "BD",
+    "audience": "domestic",
+    "language": "bn",
+    "ownershipClass": "private"
+  },
+  "de Volkskrant": {
+    "country": "NL",
+    "audience": "domestic",
+    "language": "nl",
+    "ownershipClass": "private"
+  },
+  "elDiario.es": {
+    "country": "ES",
+    "audience": "domestic",
+    "language": "es",
+    "ownershipClass": "private"
+  },
+  "iWitness News": {
+    "country": "VC",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Äripäev": {
+    "country": "EE",
+    "audience": "domestic",
+    "language": "et",
+    "ownershipClass": "private"
+  },
+  "ČT24": {
+    "country": "CZ",
+    "audience": "domestic",
+    "language": "cs",
+    "ownershipClass": "public-service"
+  },
+  "Le Quotidien Luxembourg": {
+    "country": "LU",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "N1 Slovenia": {
+    "country": "LU",
+    "audience": "international",
+    "language": "sl",
+    "ownershipClass": "private",
+    "note": "United Media publisher group domiciled in Luxembourg; local newsroom country SI."
+  },
+  "Matichon": {
+    "country": "TH",
+    "audience": "domestic",
+    "language": "th",
+    "ownershipClass": "private"
   }
 }

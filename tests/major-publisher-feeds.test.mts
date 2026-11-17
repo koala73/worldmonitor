@@ -4,7 +4,7 @@
 // site: feeds, default-on for English, last in their categories.
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { rmSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds';
@@ -22,6 +22,7 @@ interface FeedsModule {
   computeDefaultDisabledSources: (locale?: string) => string[];
 }
 
+const countryAdditions = new Set<string>(JSON.parse(readFileSync('shared/country-news-opt-ins.json', 'utf8')));
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tempDir = join(repoRoot, 'tmp-major-publisher-feeds-test');
 const gn = (q: string) => `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
@@ -61,7 +62,7 @@ describe('major publisher feeds', () => {
       const names = entries.map((feed) => feed.name);
       const firstNew = names.findIndex((name) => NAMES.includes(name));
       if (firstNew < 0) continue;
-      assert.ok(names.slice(firstNew).every((name) => NAMES.includes(name) || LATER.includes(name)), `${category}: new feeds are appended`);
+      assert.ok(names.slice(firstNew).every((name) => NAMES.includes(name) || LATER.includes(name) || countryAdditions.has(name)), `${category}: new feeds are appended`);
     }
   });
 
