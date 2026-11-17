@@ -95,13 +95,17 @@ test.describe('Pro strip on desktop', () => {
   // not, so the strip's click-through could not be measured. The click must
   // be recorded even when the analytics tracker has not loaded, and must not
   // hold up the navigation to /pro. The tracker never answers, and the
-  // budget covers the navigation commit only: timing the /pro page load as
-  // well failed on busy runners (3204 ms) with nothing holding the click.
+  // budget runs from the click to the navigation commit: timing the /pro page
+  // load as well failed on busy runners (3204 ms) with nothing holding the
+  // click. The deadline starts before the click, because click() itself waits
+  // out a handler that blocks.
   test('records a click without delaying the navigation to /pro', async ({ page }) => {
     await page.route(/abacus\.worldmonitor\.app/, () => { /* never settles */ });
     await openFreeDashboard(page);
-    await page.locator('.pro-banner-cta').click();
-    await page.waitForURL(/\/pro#pricing$/, { waitUntil: 'commit', timeout: 3000 });
+    await Promise.all([
+      page.waitForURL(/\/pro#pricing$/, { waitUntil: 'commit', timeout: 3000 }),
+      page.locator('.pro-banner-cta').click(),
+    ]);
     const pending = await page.evaluate(() => sessionStorage.getItem('wm-conversion-pending'));
     expect(JSON.parse(pending ?? '[]')).toContainEqual({ event: 'pro-banner-click', data: { state: 'upgrade' } });
   });
