@@ -1,23 +1,27 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, posix, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { parse } from 'yaml';
-import { decideReuse, outputsFor, REUSE_BLOCKER } from '../.github/scripts/reuse-pr-test-verdict.mjs';
+import { decideReuse, GROUPS, main, outputsFor, REUSE_BLOCKER } from '../.github/scripts/reuse-pr-test-verdict.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const workflow = parse(readFileSync(join(root, '.github/workflows/test.yml'), 'utf8'));
 const NOW = Date.parse('2026-11-17T12:00:00Z');
+const OURS = { head_branch: 'feat/x', head_repository: { full_name: 'o/r' } };
 
 const CODE_JOBS = ['unit-shard (1)', 'unit-shard (2)', 'unit-built-output', 'unit', 'sidecar', 'convex-tests', 'dom-tests'];
 const BROWSER_JOBS = ['variant-smoke (1)', 'variant-smoke (2)', 'variant-smoke-pro-webmcp (webmcp)', 'variant-smoke-full'];
 
 function fixture(overrides = {}) {
   const state = {
-    pulls: [{ number: 7, merge_commit_sha: 'S', merged_at: '2026-11-17T11:00:00Z', base: { ref: 'main' }, head: { sha: 'H' } }],
+    pulls: [{ number: 7, merge_commit_sha: 'S', merged_at: '2026-11-17T11:00:00Z', base: { ref: 'main' }, head: { sha: 'H', ref: 'feat/x', repo: { full_name: 'o/r' } } }],
+    events: [{ event: 'merged' }],
+    sharing: [{ number: 7, head: { sha: 'H' } }],
     compare: { status: 'ahead' },
     trees: { S: 'T1', H: 'T1' },
-    runs: [{ id: 99, status: 'completed', conclusion: 'success', created_at: '2026-11-17T10:00:00Z', updated_at: '2026-11-17T10:07:00Z' }],
+    runs: [{ id: 99, status: 'completed', conclusion: 'success', created_at: '2026-11-17T10:00:00Z', updated_at: '2026-11-17T10:07:00Z', ...OURS }],
     jobs: [...CODE_JOBS, ...BROWSER_JOBS, 'changes', 'docs-stats'].map((name) => ({ name, conclusion: 'success' })),
     ...overrides,
   };
@@ -26,6 +30,9 @@ function fixture(overrides = {}) {
     calls.push(path);
     if (state.fail && path.includes(state.fail)) throw new Error('HTTP 502');
     if (path === 'repos/o/r/commits/S/pulls') return state.pulls;
+    const events = path.match(/^repos\/o\/r\/issues\/7\/events\?per_page=100&page=(\d+)$/);
+    if (events) return typeof state.events === 'function' ? state.events(Number(events[1])) : (events[1] === '1' ? state.events : []);
+    if (path === 'repos/o/r/commits/H/pulls') return state.sharing;
     if (path === 'repos/o/r/compare/P...H') return state.compare;
     const tree = path.match(/^repos\/o\/r\/git\/commits\/(\w+)$/);
     if (tree) return { tree: { sha: state.trees[tree[1]] } };
@@ -74,8 +81,8 @@ describe('reuse of a green pull request Test verdict on a main push', () => {
   });
 
   it('trusts only the newest completed run, and only when it is green and under 24 hours old', async () => {
-    const green = { id: 99, status: 'completed', conclusion: 'success', created_at: '2026-11-17T10:00:00Z', updated_at: '2026-11-17T10:07:00Z' };
-    const red = { id: 100, status: 'completed', conclusion: 'failure', created_at: '2026-11-17T10:30:00Z', updated_at: '2026-11-17T10:37:00Z' };
+    const green = { id: 99, status: 'completed', conclusion: 'success', created_at: '2026-11-17T10:00:00Z', updated_at: '2026-11-17T10:07:00Z', ...OURS };
+    const red = { id: 100, status: 'completed', conclusion: 'failure', created_at: '2026-11-17T10:30:00Z', updated_at: '2026-11-17T10:37:00Z', ...OURS };
     assert.deepEqual((await decide({ runs: [green, red] })).reuse, {});
     assert.deepEqual((await decide({ runs: [{ ...green, conclusion: 'cancelled' }] })).reuse, {});
     assert.deepEqual((await decide({ runs: [] })).reuse, {});
@@ -84,13 +91,34 @@ describe('reuse of a green pull request Test verdict on a main push', () => {
     assert.deepEqual((await decide({ runs: [green, { ...red, status: 'in_progress', conclusion: null }] })).reuse, { code: true, browser: true });
   });
 
+  it('trusts only runs that merged this head onto main', async () => {
+    // A stacked PR tested against its parent branch before it was retargeted.
+    assert.deepEqual((await decide({ events: [{ event: 'base_ref_changed' }, { event: 'merged' }] })).reuse, {});
+    // A base change on a later events page is still found; an unbounded list is refused.
+    assert.deepEqual((await decide({ events: (page) => page === 1 ? Array(100).fill({ event: 'labeled' }) : [{ event: 'base_ref_changed' }] })).reuse, {});
+    assert.deepEqual((await decide({ events: () => Array(100).fill({ event: 'labeled' }) })).reuse, {});
+    assert.deepEqual((await decide({ events: (page) => page === 1 ? Array(100).fill({ event: 'labeled' }) : [] })).reuse, { code: true, browser: true });
+    // The same head opened as a second pull request.
+    assert.deepEqual((await decide({ sharing: [{ number: 7, head: { sha: 'H' } }, { number: 8, head: { sha: 'H' } }] })).reuse, {});
+    // A PR that merely contains the commit further down is not sharing the head.
+    assert.deepEqual((await decide({ sharing: [{ number: 7, head: { sha: 'H' } }, { number: 9, head: { sha: 'Z' } }] })).reuse, { code: true, browser: true });
+    // Runs from another branch or repository with the same head SHA are not this PR's.
+    const green = { id: 99, status: 'completed', conclusion: 'success', created_at: '2026-11-17T10:00:00Z', updated_at: '2026-11-17T10:07:00Z' };
+    assert.deepEqual((await decide({ runs: [{ ...green, head_branch: 'other', head_repository: { full_name: 'o/r' } }] })).reuse, {});
+    assert.deepEqual((await decide({ runs: [{ ...green, head_branch: 'feat/x', head_repository: { full_name: 'fork/r' } }] })).reuse, {});
+    // A newer green run from elsewhere does not hide an older red run of this PR.
+    const red = { id: 98, status: 'completed', conclusion: 'failure', created_at: '2026-11-17T09:00:00Z', updated_at: '2026-11-17T09:07:00Z', ...OURS };
+    assert.deepEqual((await decide({ runs: [{ ...green, head_branch: 'other', head_repository: { full_name: 'o/r' } }, red] })).reuse, {});
+  });
+
   it('refuses an incomplete job listing', async () => {
     assert.deepEqual((await decide({ jobsTotal: 200 })).reuse, {});
   });
 
   it('never reuses a push that changes a cache key input or a workflow, and asks GitHub nothing', async () => {
     for (const file of ['package.json', 'package-lock.json', 'scripts/package-lock.json', 'blog-site/package.json', '.npmrc',
-      'scripts/.npmrc', 'vendor/http-cache-semantics/index.js', '.github/workflows/test.yml', '.github/actions/install-root-deps/action.yml']) {
+      'scripts/.npmrc', 'vendor/http-cache-semantics/index.js', '.github/workflows/test.yml', '.github/actions/install-root-deps/action.yml',
+      'scripts/download-node.sh']) {
       assert.match(file, REUSE_BLOCKER, file);
       const d = await decide({}, { files: ['src/app/App.ts', file] });
       assert.deepEqual(d.reuse, {}, file);
@@ -108,6 +136,47 @@ describe('reuse of a green pull request Test verdict on a main push', () => {
   it('propagates API failures so the caller runs every job', async () => {
     await assert.rejects(decide({ fail: '/jobs' }));
     await assert.rejects(decide({ fail: '/compare/' }));
+  });
+
+  it('blocks every cache key input in test.yml and its local actions', () => {
+    const sources = [readFileSync(join(root, '.github/workflows/test.yml'), 'utf8'),
+      ...['install-root-deps', 'install-redis', 'install-browser-fonts'].map((a) => readFileSync(join(root, `.github/actions/${a}/action.yml`), 'utf8'))];
+    const inputs = sources.flatMap((s) => [...s.matchAll(/hashFiles\(([^)]*)\)/g)].flatMap((m) => [...m[1].matchAll(/'([^']+)'/g)].map((q) => q[1])));
+    assert.ok(inputs.length >= 10, 'expected the cache key inputs to be found');
+    for (const input of inputs) assert.match(input.replace(/\*\*$/, 'x'), REUSE_BLOCKER, `${input} feeds a cache key; a push changing it must run on main`);
+  });
+});
+
+describe('step entry point', () => {
+  const run = async (env, api) => {
+    const dir = mkdtempSync(join(tmpdir(), 'wm-reuse-'));
+    try {
+      writeFileSync(join(dir, 'out'), '');
+      writeFileSync(join(dir, 'summary'), '');
+      await main({ env: { GITHUB_REPOSITORY: 'o/r', GITHUB_SHA: 'S', BEFORE: 'P', GITHUB_OUTPUT: join(dir, 'out'), GITHUB_STEP_SUMMARY: join(dir, 'summary'), ...env }, api });
+      return { out: readFileSync(join(dir, 'out'), 'utf8'), summary: readFileSync(join(dir, 'summary'), 'utf8') };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it('writes the overrides for a reusable push', async () => {
+    const { out, summary } = await run({ FILES_JSON: '["src/app/App.ts"]' }, fixture().api);
+    assert.equal(out, 'code=false\nvalidation=false\nbrowser=false\n');
+    assert.match(summary, /PR #7 run 99 passed code, browser/);
+  });
+
+  it('writes nothing when a lookup fails, the file list is unreadable, or nothing qualifies', async () => {
+    for (const [env, api] of [
+      [{ FILES_JSON: '["src/app/App.ts"]' }, fixture({ fail: '/compare/' }).api],
+      [{ FILES_JSON: 'not json' }, fixture().api],
+      [{ FILES_JSON: '' }, fixture().api],
+      [{ FILES_JSON: '["package-lock.json"]' }, fixture().api],
+    ]) {
+      const { out, summary } = await run(env, api);
+      assert.equal(out, '', JSON.stringify(env));
+      assert.notEqual(summary, '', 'the reason is always reported');
+    }
   });
 });
 
@@ -137,6 +206,32 @@ describe('test.yml wiring', () => {
       assert.doesNotMatch(changes.outputs[key], /steps\.reuse/, key);
     }
     assert.deepEqual(Object.values(outputsFor({ code: true, browser: true })), ['false', 'false', 'false']);
+  });
+
+  it('covers every job gated on an output reuse can switch off', () => {
+    // A job gated on code/browser/validation that the groups do not list could be skipped
+    // on every PR for another reason and then skipped on main by reuse, unverified anywhere.
+    const allowed = { 'resilience-validation-smoke': 'runs only when code is false; unit covers its suite' };
+    for (const [id, job] of Object.entries(workflow.jobs)) {
+      const gate = `${job.if ?? ''}`;
+      if (!/needs\.changes\.outputs\.(code|browser|validation)\b/.test(gate) || allowed[id]) continue;
+      // GitHub names an unnamed matrix job "<id> (<values>)".
+      const name = job.name ?? (job.strategy?.matrix ? `${id} (1)` : id);
+      const covered = Object.values(GROUPS).flat().some((pattern) => pattern.test(name.replace(/\$\{\{ matrix\.\w+ \}\}/, '1')));
+      assert.ok(covered, `${id} is gated on a reusable output but not in GROUPS`);
+    }
+  });
+
+  it('checks out every file the script imports', () => {
+    const files = (path, seen = new Set()) => {
+      if (seen.has(path)) return seen;
+      seen.add(path);
+      for (const m of readFileSync(join(root, path), 'utf8').matchAll(/^import [^'"]*['"](\.[^'"]+)['"]/gm)) files(posix.normalize(posix.join(posix.dirname(path), m[1])), seen);
+      return seen;
+    };
+    const needed = [...files('.github/scripts/reuse-pr-test-verdict.mjs')].sort();
+    const checkout = changes.steps.find((step) => step.uses?.startsWith('actions/checkout@'));
+    assert.deepEqual(checkout.with['sparse-checkout'].trim().split('\n').sort(), needed);
   });
 
   it('grants the read scopes the lookups need', () => {

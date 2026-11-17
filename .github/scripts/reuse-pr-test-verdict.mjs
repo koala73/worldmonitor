@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// A push to main re-tests a tree its pull request already tested in 13 of 100
-// recent merges: the squash commit's tree equals the PR head's, and main's
+// A push to main re-tests a tree its pull request already tested in 18 of the
+// last 100 merges: the squash commit's tree equals the PR head's, and main's
 // previous tip was already inside that head, so the PR's merge ref was that
 // same tree. This script finds such a push and reports which expensive job
 // groups a green pull_request Test run on that head already passed, so the
@@ -11,10 +11,12 @@ import { appendFileSync } from 'node:fs';
 import { isMainModule } from '../../scripts/lib/main-module.mjs';
 
 // Shared caches are saved by main runs on a key miss, and these paths feed
-// their keys (root and nested lockfiles, .npmrc, the vendored package, the
-// install actions). Skipping such a push would leave the new entry unsaved and
-// every later PR missing it. Workflow edits change what the jobs do.
-export const REUSE_BLOCKER = /(^|\/)(package(-lock)?\.json|\.npmrc)$|^vendor\/|^\.github\//;
+// their keys (root and nested lockfiles, .npmrc, the vendored packages, the
+// install actions, the sidecar's shipped-Node download script: every
+// hashFiles() input in test.yml and its actions). Skipping such a push would
+// leave the new entry unsaved and every later PR missing it. Workflow edits
+// change what the jobs do.
+export const REUSE_BLOCKER = /(^|\/)(package(-lock)?\.json|\.npmrc)$|^vendor\/|^\.github\/|^scripts\/download-node\.sh$/;
 export const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 // The jobs each `changes` output gates. A group is reusable only when every
@@ -53,8 +55,24 @@ export async function decideReuse({ api, repo, sha, before, files, now = Date.no
   const [pushed, tested] = await Promise.all([api(`repos/${repo}/git/commits/${sha}`), api(`repos/${repo}/git/commits/${head}`)]);
   if (!pushed.tree?.sha || pushed.tree.sha !== tested.tree?.sha) return none(`tree differs from PR #${pr.number} head`);
 
+  // Every run on this head must have merged onto main. A stacked PR tested
+  // against its parent branch before being retargeted (1 of the last 100
+  // merges), or a second PR with the same head, merged another tree. A run's
+  // own pull_requests list cannot tell: GitHub empties it once the PR merges.
+  const events = [];
+  for (let page = 1; ; page++) {
+    const batch = await api(`repos/${repo}/issues/${pr.number}/events?per_page=100&page=${page}`);
+    events.push(...batch);
+    if (batch.length < 100) break;
+    if (page === 5) return none(`PR #${pr.number} has too many events to check its base history`);
+  }
+  if (events.some((event) => event.event === 'base_ref_changed')) return none(`PR #${pr.number} changed its base; earlier runs merged another branch`);
+  const sharing = await api(`repos/${repo}/commits/${head}/pulls`);
+  if (sharing.some((p) => p.number !== pr.number && p.head?.sha === head)) return none(`another pull request has PR #${pr.number}'s head`);
+
   const { workflow_runs: runs = [] } = await api(`repos/${repo}/actions/workflows/test.yml/runs?head_sha=${head}&event=pull_request&per_page=20`);
-  const latest = runs.filter((run) => run.status === 'completed').sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
+  const ours = runs.filter((run) => run.head_branch === pr.head.ref && run.head_repository?.full_name === pr.head.repo?.full_name);
+  const latest = ours.filter((run) => run.status === 'completed').sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
   if (!latest) return none(`no completed Test run on PR #${pr.number} head`);
   if (latest.conclusion !== 'success') return none(`latest Test run ${latest.id} on PR #${pr.number} head is ${latest.conclusion}`);
   if (!(now - Date.parse(latest.updated_at) <= MAX_AGE_MS)) return none(`Test run ${latest.id} is older than 24 h`);
@@ -77,15 +95,19 @@ export function outputsFor(reuse) {
   return out;
 }
 
-async function main() {
-  const { GH_TOKEN, GITHUB_REPOSITORY, GITHUB_SHA, BEFORE, FILES_JSON, GITHUB_OUTPUT, GITHUB_STEP_SUMMARY } = process.env;
-  const api = async (path) => {
+function githubApi(token) {
+  return async (path) => {
     const response = await fetch(`https://api.github.com/${path}`, {
-      headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json', 'User-Agent': 'worldmonitor-ci' },
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'worldmonitor-ci' },
     });
     if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
     return response.json();
   };
+}
+
+// The step entry point. Writes only the overrides; an error anywhere leaves none.
+export async function main({ env = process.env, api = githubApi(env.GH_TOKEN) } = {}) {
+  const { GITHUB_REPOSITORY, GITHUB_SHA, BEFORE, FILES_JSON, GITHUB_OUTPUT, GITHUB_STEP_SUMMARY } = env;
   let decision;
   try {
     decision = await decideReuse({ api, repo: GITHUB_REPOSITORY, sha: GITHUB_SHA, before: BEFORE, files: JSON.parse(FILES_JSON || '[]') });

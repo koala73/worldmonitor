@@ -303,12 +303,13 @@ jobs:
           ')
           echo "desktop_rust=$( [ "$DESKTOP_RUST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
       # A squash merge whose PR head already contained main's previous tip has
-      # the same tree that PR's runs tested (13 of 100 merges sampled on
-      # 2026-11-17, 19% of main-push Test minutes). Same tree, same verdict:
+      # the same tree that PR's runs tested (18 of the last 100 merges on
+      # 2026-11-17, 15% of main-push Test job-minutes). Same tree, same verdict:
       # the script switches off the unit and browser groups a green
       # pull_request run on that head passed within 24 h. It never reuses when
-      # a lockfile, .npmrc, vendor/ or .github/ changed (main saves the shared
-      # caches those key), and any lookup doubt or error leaves every job on.
+      # a lockfile, .npmrc, vendor/, .github/ or scripts/download-node.sh
+      # changed (main saves the shared caches those key), only trusts runs of
+      # that PR against main, and any lookup doubt or error leaves every job on.
       - name: Check out the verdict reuse script
         if: github.event_name == 'push'
         continue-on-error: true
