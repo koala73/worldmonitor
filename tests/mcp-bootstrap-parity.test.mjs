@@ -246,6 +246,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred: strict health seed probe added by #5055; disruptions are consumed by chokepoint hazard scoring until a PortWatch MCP expansion exists.'],
   ['seed-meta:comtrade:bilateral-hs4',
     'operational: meta-only aggregate health probe added by #5055 for sharded comtrade:bilateral-hs4:{iso2}:v1 payloads; no queryable data slice lives at this key.'],
+  ['seed-meta:comtrade:bilateral-hs4-ext',
+    'operational: meta-only aggregate health probe for the sharded extended-heading comtrade:bilateral-hs4-ext:{iso2}:v1 payloads, served through get-country-products; no queryable data slice lives at this key.'],
   ['seed-meta:trade:tariffs',
     'operational: meta-only aggregate health probe added by #6316 for sharded trade:tariffs:v2:{reporter} payloads; no queryable data slice lives at this key. The per-reporter payloads are Pro data, served by get_tariff_averages through the gated REST route (#9301).'],
   ['seed-meta:economic:us-cpi',

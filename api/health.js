@@ -620,6 +620,9 @@ const STANDALONE_KEYS = {
   // Meta-only aggregate: payloads are sharded by country, so use the seed-meta
   // key as the probe target rather than pretending one country key is global.
   comtradeBilateralHs4:  'seed-meta:comtrade:bilateral-hs4',
+  // Extended headings (rubber, cocoa, fish, processed food, oleochemicals):
+  // same per-country sharding, so the same meta-only probe.
+  comtradeBilateralHs4Ext: 'seed-meta:comtrade:bilateral-hs4-ext',
   // Meta-only probes. The CPI and par-curve documents are sharded, and the
   // canonical curve is large enough to time out a health GET.
   usCpiMonthly:          'seed-meta:economic:us-cpi',
@@ -1827,6 +1830,7 @@ const SEED_META = {
   },
   comtradeFlows:       { key: 'seed-meta:trade:comtrade-flows',               maxStaleMin: 2880 }, // 24h cron; 2880min = 48h = 2x interval
   comtradeBilateralHs4: { key: 'seed-meta:comtrade:bilateral-hs4',             maxStaleMin: 50400, minRecordCount: 110 }, // 35d health budget for monthly seed; 40d payload/meta TTL leaves a 5d stale-but-queryable warning window. minRecordCount mirrors MIN_COUNTRY_COVERAGE in scripts/seed-comtrade-bilateral-hs4.mjs (110 of 197 clusters) so a shrunken run reads COVERAGE_PARTIAL, not OK — without it 3-of-197 and 197-of-197 were indistinguishable for the full 35d window.
+  comtradeBilateralHs4Ext: { key: 'seed-meta:comtrade:bilateral-hs4-ext', maxStaleMin: 50400, minRecordCount: 110 }, // Same monthly budget and floor as comtradeBilateralHs4; mirrors MIN_COUNTRY_COVERAGE in scripts/seed-comtrade-bilateral-hs4-ext.mjs.
   supplyVulnerability: {
     key: 'seed-meta:supply-chain:vulnerability',
     maxStaleMin: 2880,

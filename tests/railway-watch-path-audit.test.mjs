@@ -1011,6 +1011,10 @@ describe('planned Railway service lifecycle', () => {
       // 441a7f0d-b3a7-464a-8328-9638c00c226c runs
       // `node seed-bundle-regional-energy.mjs` on cron */15 * * * *. Leaving it
       // planned would exempt a live cron from the watch-path and deploy-drift checks.
+      // seed-comtrade-bilateral-hs4-ext lands planned until its Railway service
+      // exists (cron 0 6 15 * *, COMTRADE_API_KEYS). Remove it from this list
+      // in the change that records the provisioned service.
+      'seed-comtrade-bilateral-hs4-ext',
       'seed-crypto-sectors',
       'seed-market-quotes',
       'seed-service-statuses',

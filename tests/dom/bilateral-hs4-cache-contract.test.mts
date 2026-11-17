@@ -608,3 +608,77 @@ it('the heading attempt is skipped when the catalogue attempt used up the reques
   expect(result.evidence?.lastAttemptState).toBe('incomplete');
   expect(result.evidence?.recoveredHs4s).toEqual([]);
 });
+
+const EXT = (iso2: string) => `comtrade:bilateral-hs4-ext:${iso2}:v1`;
+const EXT_PARTNERS = (iso2: string) => `comtrade:bilateral-hs4-ext-partners:${iso2}:v1`;
+const extRubber = (iso2: string, fetchedAt = fresh()) => ({
+  iso2, fetchedAt, source: 'UN Comtrade data API', requestedHs4s: ['4001', '1801'],
+  products: [{
+    hs4: '4001', description: 'Natural rubber', year: 2024, totalValue: 1000, denominatorBasis: 'reported_world',
+    topExporters: [{ partnerCode: 458, partnerIso2: '', value: 600, share: 0.6 }, { partnerCode: 764, partnerIso2: '', value: 400, share: 0.4 }],
+  }],
+});
+
+it('stored extended headings follow the core rows without making the core catalogue partial or fetching', async () => {
+  redis.store.set(CANONICAL('JP'), canonicalHelium('JP'));
+  redis.store.set(EXT('JP'), extRubber('JP'));
+  upstream(url => rows(url, []));
+
+  const result = await read({ iso2: 'JP' });
+
+  expect(upstreamCalls).toBe(0);
+  expect(result.products.map(p => p.hs4)).toEqual(['2804', '4001']);
+  const rubber = result.products[1]!;
+  expect(rubber.description).toBe('Natural rubber');
+  expect(rubber.topExporters[0]!.partnerIso2).toBe('MY');
+  expect(rubber.partnerBasis).toBe('leading_5');
+  expect(rubber.fetchedAt).toBe(redis.store.get(EXT('JP')) && (redis.store.get(EXT('JP')) as { fetchedAt: string }).fetchedAt);
+  expect(result.evidence?.missingHs4s).not.toContain('1801');
+  expect(result.evidence?.requestedHs4s).toEqual(expect.arrayContaining(['2804', '4001', '1801']));
+  // The extended sibling is read only for a requested extended heading.
+  expect(redis.reads).not.toContain(EXT_PARTNERS('JP'));
+});
+
+it('an extended heading is accepted, served from cache with its threshold detail, and never recovered upstream', async () => {
+  redis.store.set(CANONICAL('JP'), canonicalHelium('JP'));
+  redis.store.set(EXT('JP'), extRubber('JP'));
+  redis.store.set(EXT_PARTNERS('JP'), {
+    iso2: 'JP', fetchedAt: fresh(), requestedHs4s: ['4001'],
+    products: [{ hs4: '4001', year: 2024, denominatorBasis: 'reported_world', totalValue: 1000,
+      partners: [{ partnerCode: 458, partnerIso2: '', value: 600, share: 0.6, netWeightKg: 300_000, netWeightEstimated: false, quantity: null, quantityUnitCode: null }],
+      omittedCount: 0, omittedShare: 0 }],
+  });
+  upstream(url => rows(url, []));
+
+  const rubber = (await read({ iso2: 'JP', hs4: '4001' })).products.find(p => p.hs4 === '4001')!;
+  expect(rubber.partnerBasis).toBe('share_threshold');
+  expect(rubber.topExporters[0]).toMatchObject({ partnerIso2: 'MY', netWeightKg: 300_000 });
+
+  // A missing extended heading is not fetched on demand: the lazy route writes
+  // the core key family, which must never hold extended headings.
+  const cocoa = await read({ iso2: 'JP', hs4: '1801' });
+  expect(upstreamCalls).toBe(0);
+  expect(cocoa.products.some(p => p.hs4 === '1801')).toBe(false);
+  expect(cocoa.evidence?.recoveredHs4s).toEqual([]);
+  expect(redis.reads).not.toContain(PARTNERS('JP'));
+  expect(redis.reads).not.toContain(WORLD_EXPORTS);
+});
+
+it('a stale, mismatched or unreadable extended key adds nothing and leaves the core answer intact', async () => {
+  redis.store.set(CANONICAL('JP'), canonicalHelium('JP'));
+  upstream(url => rows(url, []));
+  for (const setup of [
+    () => redis.store.set(EXT('JP'), extRubber('JP', new Date(Date.now() - 40 * DAY * 1000).toISOString())),
+    () => redis.store.set(EXT('JP'), extRubber('KR')),
+    () => { redis.store.delete(EXT('JP')); redis.errors.add(EXT('JP')); },
+  ]) {
+    setup();
+    const result = await read({ iso2: 'JP' });
+    expect(result.products.map(p => p.hs4)).toEqual(['2804']);
+    expect(result.evidence?.state).not.toBe('cache_unavailable');
+  }
+});
+
+it('rejects a heading in neither catalogue', async () => {
+  await expect(read({ iso2: 'JP', hs4: '9999' })).rejects.toBeInstanceOf(ValidationError);
+});

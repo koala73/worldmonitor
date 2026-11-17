@@ -4,7 +4,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
 import { isAssignedCountryCode } from '../../../../shared/country-code-resolve';
-import { normalizeComtradeProducts, HS4_CODES, HS4_LABELS } from '../../../../scripts/shared/comtrade';
+import { normalizeComtradeProducts, HS4_CODES, HS4_LABELS, EXT_HS4_CODES, EXT_HS4_LABELS } from '../../../../scripts/shared/comtrade';
 import { isCallerPremium } from '../../../_shared/premium-check';
 import { getCachedJson, getLargeRawJson, logCacheReadError, readCachedJson } from '../../../_shared/redis';
 import { lazyFetchBilateralHs4, lazyFetchHeading, UPSTREAM_GAP_MS } from './_bilateral-hs4-lazy';
@@ -48,6 +48,14 @@ interface WorldExportsPayload {
 }
 
 const PARTNERS_KEY = (iso2: string): string => `comtrade:bilateral-hs4-partners:${iso2}:v1`;
+// Extended headings (rubber, cocoa, fish, processed food, oleochemicals) live
+// in their own key family, seeded by scripts/seed-comtrade-bilateral-hs4-ext.mjs
+// on a separate monthly tick. They are served from cache only: no lazy fetch,
+// no single-heading recovery and no world-exports scale, and their absence
+// never makes the core catalogue read as partial.
+const EXT_KEY = (iso2: string): string => `comtrade:bilateral-hs4-ext:${iso2}:v1`;
+const EXT_PARTNERS_KEY = (iso2: string): string => `comtrade:bilateral-hs4-ext-partners:${iso2}:v1`;
+const LABELS: Record<string, string> = { ...HS4_LABELS, ...EXT_HS4_LABELS };
 const WORLD_EXPORTS_KEY = 'comtrade:world-exports-hs4:v1';
 
 // Matches the bulk seeder's 35-day health staleness window.
@@ -82,7 +90,7 @@ const toExporter = (partner: PartnerRow): ProductExporter => defined({
 /** A sibling-shaped heading as a response row: threshold origins with volume. */
 const fromPartnersProduct = (product: PartnersProduct): CountryProduct => defined({
   hs4: product.hs4,
-  description: HS4_LABELS[product.hs4] ?? product.hs4,
+  description: LABELS[product.hs4] ?? product.hs4,
   totalValue: product.totalValue,
   topExporters: product.partners.map(toExporter),
   year: product.year,
@@ -110,6 +118,20 @@ function readSiblingProducts(read: { status: string; value?: unknown }, iso2: st
     }
   }
   return { rows, fetchedAt: typeof payload.fetchedAt === 'string' ? payload.fetchedAt : undefined };
+}
+
+/**
+ * The extended-heading payload, cache-only. Anything unreadable or malformed is
+ * treated as absent: extended rows add to the core answer and must never turn
+ * it into cache_unavailable.
+ */
+function readExtendedProducts(read: { status: string; value?: unknown }, iso2: string): { products: CountryProduct[]; fetchedAt?: string; requestedHs4s: string[] } {
+  const payload = (read.status === 'hit' ? read.value : null) as BilateralHs4Payload | null;
+  if (!payload || payload.iso2 !== iso2 || !Array.isArray(payload.products) || isStale(payload.fetchedAt)) return { products: [], requestedHs4s: [] };
+  const products = payload.products.filter(p => p && typeof p.hs4 === 'string' && EXT_HS4_CODES.includes(p.hs4)
+    && Array.isArray(p.topExporters) && p.topExporters.every(e => e && typeof e.partnerCode === 'number'));
+  const requestedHs4s = Array.isArray(payload.requestedHs4s) ? payload.requestedHs4s.filter(code => EXT_HS4_CODES.includes(code)) : [];
+  return { products, fetchedAt: payload.fetchedAt, requestedHs4s };
 }
 
 /**
@@ -208,7 +230,8 @@ export async function getCountryProducts(
     throw new ValidationError([{ field: 'iso2', description: 'iso2 must be an assigned ISO 3166-1 alpha-2 code, e.g. "IQ".' }]);
   }
   const hs4 = req.hs4?.trim();
-  if (hs4 && !HS4_CODES.includes(hs4)) {
+  const extHeading = hs4 != null && hs4 !== '' && EXT_HS4_CODES.includes(hs4);
+  if (hs4 && !HS4_CODES.includes(hs4) && !extHeading) {
     throw new ValidationError([{ field: 'hs4', description: 'hs4 must be a supported four-digit heading' }]);
   }
   const isPro = await isCallerPremium(ctx.request);
@@ -224,15 +247,21 @@ export async function getCountryProducts(
   // not read them: the snapshot is a few hundred kilobytes (36 headings x ~140
   // reporters), past what the 1.5 s single-GET deadline is sized for, and the
   // large-value reader waits on the pipeline deadline instead.
-  const [cached, siblingRead, worldExportsValue, meta] = await Promise.all([
+  const [cached, siblingRead, worldExportsValue, meta, extRead, extSiblingRead] = await Promise.all([
     readCachedJson(key, true),
-    hs4 ? readCachedJson(PARTNERS_KEY(iso2), true) : { status: 'miss' as const },
-    hs4 ? getLargeRawJson(WORLD_EXPORTS_KEY).catch(() => null) : null,
+    hs4 && !extHeading ? readCachedJson(PARTNERS_KEY(iso2), true) : { status: 'miss' as const },
+    hs4 && !extHeading ? getLargeRawJson(WORLD_EXPORTS_KEY).catch(() => null) : null,
     getCachedJson('seed-meta:comtrade:bilateral-hs4', true).catch(() => null) as Promise<{
       countryCoverage?: Record<string, { state?: string; attemptedAt?: string }>;
       preserveStreaks?: Record<string, number>;
     } | null>,
+    readCachedJson(EXT_KEY(iso2), true),
+    extHeading ? readCachedJson(EXT_PARTNERS_KEY(iso2), true) : { status: 'miss' as const },
   ]);
+  if (extRead.status === 'error') logCacheReadError(EXT_KEY(iso2), extRead.error);
+  if (extSiblingRead.status === 'error') logCacheReadError(EXT_PARTNERS_KEY(iso2), extSiblingRead.error);
+  const ext = readExtendedProducts(extRead, iso2);
+  const extSibling = readSiblingProducts(extSiblingRead, iso2);
   // A sibling read error degrades to the leading 5 silently for the caller, so
   // it is at least logged for the operator.
   if (siblingRead.status === 'error') logCacheReadError(PARTNERS_KEY(iso2), siblingRead.error);
@@ -273,7 +302,7 @@ export async function getCountryProducts(
   // heading, already answers for it; asking for the heading alone cannot differ.
   const catalogueAnswered = refreshed?.state === 'no_records'
     || (refreshed?.state === 'observed' && hs4 != null && refreshed.payload?.requestedHs4s?.includes(hs4) === true);
-  if (!cacheFailed && hs4 && (!storedRow || isStale(payload?.fetchedAt)) && !catalogueAnswered) {
+  if (!cacheFailed && hs4 && !extHeading && (!storedRow || isStale(payload?.fetchedAt)) && !catalogueAnswered) {
     const storedYears = [storedRow?.year, sibling.rows.get(hs4)?.year].filter((y): y is number => Number.isInteger(y));
     // The heading request follows the catalogue request on the same
     // rate-limited route, so it waits out the gap after it. With too little of
@@ -301,6 +330,13 @@ export async function getCountryProducts(
   const merged = (payload?.products ?? [])
     .filter(product => !(recovered && product.hs4 === recovered.hs4))
     .map(product => mergeProduct(product, siblingFor(product)));
+  // Extended rows follow the core catalogue, each from its own producing run.
+  // The extended sibling's threshold detail is served for the requested heading
+  // exactly as the core sibling is.
+  for (const product of ext.products) {
+    const detail = hs4 === product.hs4 && siblingIsCurrent(extSibling.fetchedAt, ext.fetchedAt) ? extSibling.rows.get(product.hs4) : undefined;
+    merged.push(defined({ ...mergeProduct(product, detail), fetchedAt: ext.fetchedAt }));
+  }
   if (recovered) {
     // Appended rather than re-ranked: the stored order is the producing run's
     // ranking. A recovered heading replaces its stale stored row and carries its
@@ -308,7 +344,7 @@ export async function getCountryProducts(
     merged.push(defined({ ...fromPartnersProduct(recovered), fetchedAt: recoveredFetchedAt }));
   }
   const products = normalizeComtradeProducts(merged).map((p: CountryProduct) => attachScale(
-    { ...p, description: HS4_LABELS[p.hs4] ?? p.description },
+    { ...p, description: LABELS[p.hs4] ?? p.description },
     byHeading.get(p.hs4),
   ));
 
@@ -330,9 +366,14 @@ export async function getCountryProducts(
       // heading, so it reads as "requested and empty" rather than "coverage
       // unverified". A busy, rate-limited or failed attempt proves nothing
       // about the heading and must not claim it was asked and answered.
-      requestedHs4s: headingAttempted
-        ? (attempt?.state === 'no_records' ? [...new Set([...(payload?.requestedHs4s ?? []), hs4!])] : payload?.requestedHs4s ?? [])
-        : attempt?.state === 'no_records' ? HS4_CODES : payload?.requestedHs4s ?? [],
+      requestedHs4s: [...new Set([
+        ...(headingAttempted
+          ? (attempt?.state === 'no_records' ? [...(payload?.requestedHs4s ?? []), hs4!] : payload?.requestedHs4s ?? [])
+          : attempt?.state === 'no_records' ? HS4_CODES : payload?.requestedHs4s ?? []),
+        // A stored extended payload's run asked for its headings, so an absent
+        // extended row reads as requested and empty rather than unverified.
+        ...ext.requestedHs4s,
+      ])],
       missingHs4s,
       lastAttemptAt: attempt?.attemptedAt ?? '',
       lastAttemptState: attempt?.state ?? (meta?.preserveStreaks?.[iso2] ? 'preserved_reason_unknown' : 'unknown'),
