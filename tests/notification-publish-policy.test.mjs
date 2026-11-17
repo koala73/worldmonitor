@@ -167,13 +167,13 @@ describe('corridor risk transitions', () => {
     assert.equal(rose.notifications.length, 1);
   });
 
-  function harness(stored, { readFails = false, publishOk = () => true } = {}) {
+  function harness(stored, { readFails = false, writeFails = false, publishOk = () => true } = {}) {
     const calls = { published: [], written: [] };
     return {
       calls,
       io: {
         readBands: async () => (readFails ? { ok: false } : { ok: true, bands: stored }),
-        writeBands: async (bands) => { calls.written.push(bands); },
+        writeBands: async (bands) => { calls.written.push(bands); return !writeFails; },
         publish: async (n) => { calls.published.push(n.payload.chokepointId); return publishOk(n); },
       },
     };
@@ -196,6 +196,19 @@ describe('corridor risk transitions', () => {
     assert.equal(out.skipped, 'state-read-failed');
     assert.deepEqual(calls.published, []);
     assert.deepEqual(calls.written, []);
+  });
+
+  it('relay glue: a failed state write is reported, not swallowed', async () => {
+    const quiet = harness({ suez: 'critical' }, { writeFails: true });
+    assert.deepEqual(
+      await policy.publishCorridorRiskTransitions({ scores: { suez: 60 }, ...quiet.io }),
+      { published: 0, skipped: 'state-write-failed' },
+    );
+    const rose = harness({ suez: 'none' }, { writeFails: true });
+    assert.deepEqual(
+      await policy.publishCorridorRiskTransitions({ scores: { suez: 90 }, ...rose.io }),
+      { published: 1, skipped: 'state-write-failed' },
+    );
   });
 
   it('relay glue: a rise whose publish fails keeps the old band so the next tick retries', async () => {

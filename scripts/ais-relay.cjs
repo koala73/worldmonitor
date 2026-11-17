@@ -8343,8 +8343,8 @@ async function seedCorridorRisk() {
       publish: (notification) => publishNotificationEvent({ ...notification, variant: undefined }),
     })
       .then(({ published, skipped }) => {
-        if (skipped) console.warn(`[Notify] CorridorRisk transitions skipped: ${skipped}`);
-        else if (published) console.log(`[Notify] CorridorRisk published ${published} band rise(s)`);
+        if (published) console.log(`[Notify] CorridorRisk published ${published} band rise(s)`);
+        if (skipped) console.warn(`[Notify] CorridorRisk transitions: ${skipped}`);
       })
       .catch(err => console.warn('[Notify] CorridorRisk publish error:', err?.message));
   } catch (e) {

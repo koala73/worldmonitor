@@ -181,7 +181,7 @@ function corridorRiskTransitions(previousBands, scores) {
  * Publish the corridor-risk band rises in one feed reading and record the new
  * bands. I/O is injected so the relay glue is testable:
  *  - readBands() -> { ok: true, bands: object | null } | { ok: false }
- *  - writeBands(bands) -> Promise
+ *  - writeBands(bands) -> Promise<boolean> (false is reported as skipped)
  *  - publish(notification) -> Promise<boolean> (true once queued or deduped)
  * A failed read publishes and writes nothing: treating it as a first reading
  * would overwrite the recorded bands and lose a rise. A rise whose publish
@@ -199,7 +199,8 @@ async function publishCorridorRiskTransitions({ scores, readBands, writeBands, p
     if (ok) published += 1;
     else nextBands[corridorId] = previous[corridorId];
   }
-  await writeBands(nextBands);
+  const written = await writeBands(nextBands);
+  if (written === false) return { published, skipped: 'state-write-failed' };
   return { published };
 }
 
