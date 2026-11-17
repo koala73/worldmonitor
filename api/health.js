@@ -1830,7 +1830,13 @@ const SEED_META = {
   },
   comtradeFlows:       { key: 'seed-meta:trade:comtrade-flows',               maxStaleMin: 2880 }, // 24h cron; 2880min = 48h = 2x interval
   comtradeBilateralHs4: { key: 'seed-meta:comtrade:bilateral-hs4',             maxStaleMin: 50400, minRecordCount: 110 }, // 35d health budget for monthly seed; 40d payload/meta TTL leaves a 5d stale-but-queryable warning window. minRecordCount mirrors MIN_COUNTRY_COVERAGE in scripts/seed-comtrade-bilateral-hs4.mjs (110 of 197 clusters) so a shrunken run reads COVERAGE_PARTIAL, not OK — without it 3-of-197 and 197-of-197 were indistinguishable for the full 35d window.
-  comtradeBilateralHs4Ext: { key: 'seed-meta:comtrade:bilateral-hs4-ext', maxStaleMin: 50400, minRecordCount: 110 }, // Same monthly budget and floor as comtradeBilateralHs4; mirrors MIN_COUNTRY_COVERAGE in scripts/seed-comtrade-bilateral-hs4-ext.mjs.
+  comtradeBilateralHs4Ext: {
+    key: 'seed-meta:comtrade:bilateral-hs4-ext', maxStaleMin: 50400, minRecordCount: 110,
+    // The Railway service lands planned (#10939); health stays soft until the
+    // first run that writes a country sets this marker.
+    activationKey: 'seed-activated:comtrade:bilateral-hs4-ext',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10939, activationKey: 'seed-activated:comtrade:bilateral-hs4-ext' },
+  }, // Same monthly budget and floor as comtradeBilateralHs4; mirrors MIN_COUNTRY_COVERAGE in scripts/seed-comtrade-bilateral-hs4-ext.mjs.
   supplyVulnerability: {
     key: 'seed-meta:supply-chain:vulnerability',
     maxStaleMin: 2880,
@@ -2880,6 +2886,7 @@ const GOVERNMENT_RELEASE_INCIDENT_GRACE_MIN = 30 * 24 * 60;
 // "Loading...". Removed marketImplications below.
 const ON_DEMAND_KEYS = new Set([
   'gridDisruptionClock',
+  'comtradeBilateralHs4Ext',
   'foodPricesPihps', 'foodPricesPbs', 'foodPricesDa', 'foodPricesCbsl',
   'foodPricesSniim', 'foodPricesGiews', 'foodPricesOnagri',
   'foodPricesNabc',
@@ -3139,6 +3146,7 @@ const ON_DEMAND_KEYS = new Set([
 // normal EMPTY/STALE_SEED rules apply.
 const ACTIVATION_MARKERS = {
   gridDisruptionClock: SEED_META.gridDisruptionClock.activationKey,
+  comtradeBilateralHs4Ext: SEED_META.comtradeBilateralHs4Ext.activationKey,
   regionalEnergyPgcb: SEED_META.regionalEnergyPgcb.activationKey,
   regionalEnergyPetrobangla: SEED_META.regionalEnergyPetrobangla.activationKey,
   regionalEnergyNiso: SEED_META.regionalEnergyNiso.activationKey,

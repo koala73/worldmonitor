@@ -46,6 +46,10 @@ loadEnvFile(import.meta.url);
 export const META_KEY = 'seed-meta:comtrade:bilateral-hs4-ext';
 export const KEY_PREFIX = 'comtrade:bilateral-hs4-ext:';
 export const PARTNERS_KEY_PREFIX = 'comtrade:bilateral-hs4-ext-partners:';
+// Durable "has ever published" marker read by /api/health (ACTIVATION_MARKERS):
+// set with no TTL once a run writes at least one country, so the probe stays
+// soft until the first real run and alarms normally afterwards.
+export const ACTIVATION_KEY = 'seed-activated:comtrade:bilateral-hs4-ext';
 const TTL_SECONDS = 3456000; // 40d: monthly cadence + 9d slack, as the core run
 const LOCK_DOMAIN = 'comtrade:bilateral-hs4-ext';
 const LOCK_TTL_MS = 30 * 60 * 1000;
@@ -241,6 +245,10 @@ export async function main({ requestBudget = REQUEST_BUDGET, now = Date.now() } 
 
     const status = coverageStatus(writtenCount);
     await writeMeta(writtenCount, status, preserveStreaks);
+    if (writtenCount > 0) {
+      await redisPipeline([['SET', ACTIVATION_KEY, '1']])
+        .catch(e => console.warn('[bilateral-hs4-ext] Failed to write activation marker:', e.message));
+    }
     logSeedResult('comtrade:bilateral-hs4-ext', writtenCount, Date.now() - startedAt, {
       countries: countries.length,
       failed: failedCount,

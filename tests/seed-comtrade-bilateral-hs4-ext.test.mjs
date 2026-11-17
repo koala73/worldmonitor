@@ -9,6 +9,7 @@ import {
   META_KEY,
   KEY_PREFIX,
   PARTNERS_KEY_PREFIX,
+  ACTIVATION_KEY,
   MIN_COUNTRY_COVERAGE,
   __setPaceSleepForTests,
 } from '../scripts/seed-comtrade-bilateral-hs4-ext.mjs';
@@ -98,7 +99,7 @@ test('a full run makes one request per reporter for every extended heading and w
     assert.equal(url.searchParams.get('flowCode'), 'M');
   }
   const written = sets().map(c => c[1]);
-  assert.ok(written.every(key => key === META_KEY || key.startsWith(KEY_PREFIX) || key.startsWith(PARTNERS_KEY_PREFIX)), 'never touches core keys');
+  assert.ok(written.every(key => key === META_KEY || key === ACTIVATION_KEY || key.startsWith(KEY_PREFIX) || key.startsWith(PARTNERS_KEY_PREFIX)), 'never touches core keys');
   const my = JSON.parse(sets().find(c => c[1] === `${KEY_PREFIX}MY:v1`)[2]);
   assert.deepEqual(my.requestedHs4s, EXT_HS4_CODES);
   const rubber = my.products.find(p => p.hs4 === '4001');
@@ -110,6 +111,8 @@ test('a full run makes one request per reporter for every extended heading and w
   assert.equal(m.recordCount, ROSTER_SIZE);
   assert.ok(ROSTER_SIZE >= MIN_COUNTRY_COVERAGE);
   assert.equal(m.countryCoverage.MY.state, 'observed');
+  // The activation marker is durable: no EX, so it outlives the seed-meta TTL.
+  assert.deepEqual(sets().find(c => c[1] === ACTIVATION_KEY), ['SET', ACTIVATION_KEY, '1']);
   assert.ok(m.countryCoverage.MY.missingHs4s.includes('1801'));
 });
 
@@ -136,6 +139,7 @@ test('an exhausted quota trips the breaker and preserves existing pairs', async 
   const m = meta();
   assert.equal(m.status, 'partial');
   assert.equal(m.preserveStreaks.MY, 1);
+  assert.equal(sets().some(c => c[1] === ACTIVATION_KEY), false, 'a run that wrote nothing does not activate the probe');
   const expired = redisCommands.filter(c => c[0] === 'EXPIRE').map(c => c[1]);
   assert.ok(expired.includes(`${KEY_PREFIX}MY:v1`) && expired.includes(`${PARTNERS_KEY_PREFIX}MY:v1`));
 });
