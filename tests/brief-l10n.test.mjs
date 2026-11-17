@@ -296,6 +296,11 @@ describe('translate prompt and parser', () => {
     assert.ok(one('The index changed by -5% after the report today.', 'Variation de l\u2019indice:-5% après le rapport aujourd\u2019hui.'));
   });
 
+  it('reads Arabic trillions', () => {
+    assert.ok(one('The fund holds 3 trillion dollars in assets this year.', '\u064A\u0645\u0644\u0643 \u0627\u0644\u0635\u0646\u062F\u0648\u0642 \u0663 \u062A\u0631\u064A\u0644\u064A\u0648\u0646 \u062F\u0648\u0644\u0627\u0631 \u0645\u0646 \u0627\u0644\u0623\u0635\u0648\u0644 \u0647\u0630\u0627 \u0627\u0644\u0639\u0627\u0645.', 'ar'));
+    assert.equal(one('The fund holds 3 dollars in assets this year.', '\u064A\u0645\u0644\u0643 \u0627\u0644\u0635\u0646\u062F\u0648\u0642 \u0663 \u062A\u0631\u0644\u064A\u0648\u0646 \u062F\u0648\u0644\u0627\u0631 \u0645\u0646 \u0627\u0644\u0623\u0635\u0648\u0644 \u0647\u0630\u0627 \u0627\u0644\u0639\u0627\u0645.', 'ar'), null);
+  });
+
   it('reads numbers after a URL at the right place', () => {
     const src = 'See https://example.com/r/2026-report for details: exports hit 3 million barrels.';
     assert.ok(one(src, '详情见 https://example.com/r/2026-report ：出口达到300万桶。', 'zh'));
@@ -316,6 +321,8 @@ describe('translate prompt and parser', () => {
     assert.equal(one(bracket, '背景は https://example.com/wiki/【政治】 を参照。', 'ja'), null);
     const plus = 'Background reading at https://example.com/wiki/Ａ＋Ｂ for this story.';
     assert.equal(one(plus, 'Contexte sur https://example.com/wiki/Ａ＋Ｃ pour cet article.'), null);
+    // Letters glued to a bare host change the host.
+    assert.equal(one('Read the full analysis at https://example.com today.', 'Lisez l\u2019analyse complète sur https://example.comévil.test aujourd\u2019hui.'), null);
     // Fullwidth parentheses around a URL are prose.
     assert.ok(one(src, '完整报告（https://example.com/report）。更多分析随后发布。', 'zh'));
   });
