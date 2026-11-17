@@ -398,7 +398,11 @@ test('loaded marker and search interactions retain original identity without dat
   expect(host.units).toBe(1);
   expect(host.methods).not.toContain('ui/message');
   host.removeSecondArticle();
-  await frame.getByRole('button', { name: 'Refresh news', exact: true }).click();
+  // focus_news_article smooth-scrolls the selected row to the centre (NewsPanel
+  // revealSearchItem), which can move this header button between a mouse click's
+  // down and up, so no click fires (CI run 44081615042). Enter activates it once,
+  // wherever it is; the two refreshes after focus_news_article below do the same.
+  await frame.getByRole('button', { name: 'Refresh news', exact: true }).press('Enter');
   await expect.poll(() => host.contexts.at(-1)?.latestInteraction).toBeNull();
   await newsAction(page, 'focus_news_article', { link: 'https://example.com/news' });
   await expect.poll(() => host.contexts.at(-1)?.latestInteraction?.link).toBe('https://example.com/news');
@@ -502,7 +506,7 @@ test('replacement news clears the host interaction even when its hazard reload f
   await expect.poll(() => host.contexts.at(-1)?.latestInteraction?.link).toBe('https://example.com/second');
   host.removeSecondArticle();
   host.failHazards();
-  await frame.getByRole('button', { name: 'Refresh news', exact: true }).click();
+  await frame.getByRole('button', { name: 'Refresh news', exact: true }).press('Enter');
   await expect(frame.locator('#pluginStatus')).toContainText('The requested view could not be applied');
   await expect.poll(() => host.contexts.at(-1)?.latestInteraction).toBeNull();
 });
@@ -516,7 +520,7 @@ test('an older failed hydration cannot clear a newer loaded article interaction'
   host.removeSecondArticle();
   host.delayHazards();
   host.failHazards();
-  await frame.getByRole('button', { name: 'Refresh news', exact: true }).click();
+  await frame.getByRole('button', { name: 'Refresh news', exact: true }).press('Enter');
   await expect.poll(() => host.calls.filter(call => call.name === 'get_natural_disasters').length).toBe(2);
   await expect.poll(() => host.contexts.at(-1)?.latestInteraction).toBeNull();
   const replacement = { ...host.snapshot };
