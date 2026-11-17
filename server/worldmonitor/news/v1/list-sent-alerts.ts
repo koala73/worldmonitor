@@ -6,7 +6,7 @@ import {
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
 import { isLinkSuppressed, parseSuppressionEntries } from '../../../../scripts/shared/notification-link-suppression.cjs';
 import { TRUSTED_USER_ID_HEADER } from '../../../_shared/mcp-internal-hmac';
-import { runRedisPipeline } from '../../../_shared/redis';
+import { readCachedJsonList, runRedisPipeline } from '../../../_shared/redis';
 import {
   BLOCKED_NOTIFICATION_LINKS_KEY,
   SENT_ALERTS_MAX,
@@ -18,15 +18,6 @@ import {
 
 const RETENTION_MS = SENT_ALERTS_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 const UNAVAILABLE: ListSentAlertsResponse = { alerts: [], state: 'unavailable' };
-
-function parseRow(row: unknown): SentAlertRecord | null {
-  if (typeof row !== 'string') return parseSentAlert(row);
-  try {
-    return parseSentAlert(JSON.parse(row));
-  } catch {
-    return null;
-  }
-}
 
 /**
  * The realtime alerts delivered to the calling account, newest first, so the
@@ -52,26 +43,22 @@ export async function listSentAlerts(
   if (!userId) throw new ApiError(401, 'Sign in to read the alerts sent to you', '');
 
   // raw: the relay writes both keys without the deployment prefix.
-  const results = await runRedisPipeline([
-    ['LRANGE', sentAlertsKey(userId), '0', String(SENT_ALERTS_MAX - 1)],
-    ['SMEMBERS', BLOCKED_NOTIFICATION_LINKS_KEY],
-  ], true);
-  const [history, blocked] = results;
-  if (
-    results.length !== 2
-    || history?.error || blocked?.error
-    || !Array.isArray(history?.result) || !Array.isArray(blocked?.result)
-  ) {
+  const [history, [blocked]] = await Promise.all([
+    readCachedJsonList(sentAlertsKey(userId), SENT_ALERTS_MAX, true),
+    runRedisPipeline([['SMEMBERS', BLOCKED_NOTIFICATION_LINKS_KEY]], true),
+  ]);
+  if (history.status === 'error' || !blocked || blocked.error || !Array.isArray(blocked.result)) {
     console.warn('[list-sent-alerts] history or link block list could not be read');
     return UNAVAILABLE;
   }
 
+  const rows = history.status === 'hit' && Array.isArray(history.value) ? history.value : [];
   const suppressed = parseSuppressionEntries(blocked.result);
   // The list keeps its TTL as long as alerts keep arriving, so an old row can
   // outlive the stated window; the window is applied here.
   const cutoff = Date.now() - RETENTION_MS;
-  const alerts = history.result
-    .map(parseRow)
+  const alerts = rows
+    .map(parseSentAlert)
     .filter((alert): alert is SentAlertRecord => (
       alert !== null && alert.sentAt >= cutoff && !isLinkSuppressed(alert.link, suppressed)
     ));

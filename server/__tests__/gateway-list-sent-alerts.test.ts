@@ -20,10 +20,9 @@ vi.hoisted(() => {
   process.env.CONVEX_SERVER_SHARED_SECRET = 'shared-secret';
 });
 
-// Every alert-history key the handler read. Other pipeline callers (rate
-// limits, usage) get an empty answer.
+// Every alert-history key the handler read.
 const historyReads: string[] = [];
-const runRedisPipeline = vi.fn();
+const readCachedJsonList = vi.fn();
 vi.mock('../_shared/redis', async (importActual) => {
   const actual = await importActual<typeof import('../_shared/redis')>();
   return {
@@ -31,7 +30,11 @@ vi.mock('../_shared/redis', async (importActual) => {
     // Entitlements: always a cache miss, so the gate asks the Convex stub below.
     getCachedJson: vi.fn().mockResolvedValue(null),
     setCachedJson: vi.fn().mockResolvedValue(true),
-    runRedisPipeline: (...a: unknown[]) => runRedisPipeline(...a),
+    // The link block list is empty; other pipeline callers get no answer.
+    runRedisPipeline: vi.fn(async (commands: string[][]) => (
+      commands[0]?.[0] === 'SMEMBERS' ? [{ result: [] }] : []
+    )),
+    readCachedJsonList: (...a: unknown[]) => readCachedJsonList(...a),
   };
 });
 
@@ -62,7 +65,7 @@ vi.mock('../_shared/usage', async (importActual) => {
 
 import { createDomainGateway, serverOptions } from '../gateway';
 import { __resetEntitlementNegativeCacheForTests } from '../_shared/entitlement-check';
-import { SENT_ALERTS_KEY_PREFIX, sentAlertsKey } from '../_shared/sent-alert-history';
+import { sentAlertsKey } from '../_shared/sent-alert-history';
 import { newsHandler } from '../worldmonitor/news/v1/handler';
 import { createNewsServiceRoutes } from '../../src/generated/server/worldmonitor/news/v1/service_server';
 
@@ -116,10 +119,10 @@ function session(userId: string | null, role: 'free' | 'pro' = 'free') {
 beforeEach(() => {
   __resetEntitlementNegativeCacheForTests();
   historyReads.length = 0;
-  runRedisPipeline.mockReset().mockImplementation(async (commands: string[][]) => {
-    if (!String(commands[0]?.[1]).startsWith(SENT_ALERTS_KEY_PREFIX)) return [];
-    historyReads.push(commands[0]![1]!);
-    return [{ result: (lists[commands[0]![1]!] ?? []).map((row) => JSON.stringify(row)) }, { result: [] }];
+  readCachedJsonList.mockReset().mockImplementation(async (key: string) => {
+    historyReads.push(key);
+    const value = lists[key];
+    return value ? { status: 'hit', value } : { status: 'miss' };
   });
   resolveClerkSession.mockReset().mockResolvedValue(null);
   validateApiKey.mockReset().mockResolvedValue({ valid: false, required: true, error: 'API key required' });

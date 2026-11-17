@@ -85,16 +85,20 @@ beforeEach(() => {
   delete process.env.LOCAL_API_MODE;
   __resetKeyPrefixCacheForTests();
   globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
-    const commands = JSON.parse(String(init?.body)) as string[][];
+    // The history is one LRANGE command; the block list is a one-command pipeline.
+    const body = JSON.parse(String(init?.body)) as string[] | string[][];
+    const isPipeline = Array.isArray(body[0]);
+    const commands = (isPipeline ? body : [body]) as string[][];
     reads.push(...commands);
     if (redisFails) return new Response(JSON.stringify({ error: 'ERR down' }), { status: 500 });
-    return new Response(JSON.stringify(commands.map(([name, key, start, stop]) => {
+    const answers = commands.map(([name, key, start, stop]) => {
       if (name === 'LRANGE') return { result: (lists.get(key!) ?? []).slice(Number(start), Number(stop) + 1) };
       if (name === 'SMEMBERS' && key === BLOCKED_NOTIFICATION_LINKS_KEY) {
         return blockListFails ? { error: 'ERR block list down' } : { result: blockedLinks };
       }
       throw new Error(`unexpected Redis command: ${name} ${key}`);
-    })));
+    });
+    return new Response(JSON.stringify(isPipeline ? answers : answers[0]));
   }) as typeof fetch;
 });
 
@@ -166,7 +170,7 @@ describe('ListSentAlerts', () => {
     seed('user-a', [record('Headline sent to A')]);
     const { body } = await call({ [TRUSTED_USER_ID_HEADER]: 'user-a' });
     assert.equal(body.alerts.length, 1);
-    assert.deepEqual(reads.map(command => command[1]), ['wm:notif:sent:v1:user-a', 'notif:blocked-links:v1']);
+    assert.deepEqual(reads.map(command => command[1]).sort(), ['notif:blocked-links:v1', 'wm:notif:sent:v1:user-a']);
   });
 
   it('answers ok with no alerts for an account that has none', async () => {
@@ -203,7 +207,7 @@ describe('ListSentAlerts', () => {
 
   it('asks Redis for at most the list cap', async () => {
     await call({ [TRUSTED_USER_ID_HEADER]: 'user-a' });
-    assert.deepEqual(reads[0], ['LRANGE', sentAlertsKey('user-a'), '0', String(SENT_ALERTS_MAX - 1)]);
+    assert.deepEqual(reads.find(command => command[0] === 'LRANGE'), ['LRANGE', sentAlertsKey('user-a'), '0', String(SENT_ALERTS_MAX - 1)]);
   });
 
   it('leaves out an alert whose link an operator blocked after it was sent', async () => {
