@@ -20,6 +20,9 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { createRequire } from 'node:module';
+
+const { withAlertReferrer, NOTIFY_ALERT_CHANNELS } = createRequire(import.meta.url)('../scripts/shared/notify-fields.cjs');
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -360,5 +363,40 @@ describe('push-handler.js notificationclick suppression (#8401)', () => {
     for (const p of waits) await p;
     assert.equal(box.opened, '/', 'notice click must open the dashboard without re-checking');
     assert.equal(box.shown.length, 0, 'notice click must not show another notice');
+  });
+});
+
+// The relay tags an alert's article link with a referrer
+// (utm_source=worldmonitor, utm_medium=alert, utm_campaign=<channel>), so the
+// URL a push carries differs from the one the feed published. The endpoint
+// and the service worker must reduce both to the same digest.
+describe('alert referrer tag does not defeat suppression (endpoint + service worker)', () => {
+  const RAW = 'https://evil.example/phish?x=1#frag';
+  const PUSHED = withAlertReferrer(RAW, 'web_push');
+  const EMAILED = withAlertReferrer(RAW, 'email');
+
+  async function publishedSnapshot(entries, tag) {
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({ result: entries }) });
+    const { default: handler } = await import(`../api/notification-suppressions.js?${tag}`);
+    const res = await handler(new Request('https://worldmonitor.app/api/notification-suppressions'));
+    return res.json();
+  }
+
+  it('the endpoint publishes one digest for a link, tagged or not', async () => {
+    const body = await publishedSnapshot([RAW, PUSHED, EMAILED], 'referrer-digest');
+    assert.deepEqual(body.suppressed, [digestUrl(RAW)]);
+  });
+
+  it('a raw entry blocks the tagged push click, and a pasted tagged entry blocks the raw link', async () => {
+    for (const [entry, tag] of [[RAW, 'referrer-raw'], [EMAILED, 'referrer-pasted']]) {
+      const snapshot = await publishedSnapshot([entry], tag);
+      const check = makeSwSandbox({ snapshot }).self.wmLinkSuppression;
+      for (const channel of NOTIFY_ALERT_CHANNELS) {
+        assert.equal(await check.checkLinkSuppressed(withAlertReferrer(RAW, channel)), true, `${entry} vs ${channel}`);
+      }
+      assert.equal(await check.checkLinkSuppressed(RAW), true, `${entry} vs raw`);
+      assert.equal(await check.checkLinkSuppressed('https://evil.example/phish?x=2#frag'), false);
+      assert.equal(await check.checkLinkSuppressed(`${RAW.replace('#frag', '')}&utm_source=newsletter#frag`), false);
+    }
   });
 });

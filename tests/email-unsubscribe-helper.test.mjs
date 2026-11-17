@@ -82,7 +82,7 @@ describe('workers wire the unsubscribe URL into recurring mail', () => {
 
   it('relay alert emails (real-time and held batches) pass the alerts URL', () => {
     const src = readFileSync(join(root, 'scripts/notification-relay.cjs'), 'utf8');
-    const realtime = src.match(/sendEmail\(ch\.email, subject, deliveryText, unsubscribeUrlFor\(ch, 'alerts'\), undefined, buildAlertEmailForEvent\(event, impactText\)\)/g) ?? [];
+    const realtime = src.match(/sendEmail\(ch\.email, subject, deliveryTextFor\('email'\), unsubscribeUrlFor\(ch, 'alerts'\), undefined, buildAlertEmailForEvent\(event, impactText\)\)/g) ?? [];
     assert.equal(realtime.length, 1, 'real-time alerts pass the alerts URL');
     // Held batches hoist the URL so the idempotency key hashes the exact payload sent.
     assert.match(src, /const unsubscribeUrl = unsubscribeUrlFor\(ch, 'alerts'\);/);

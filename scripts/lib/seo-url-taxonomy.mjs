@@ -146,6 +146,8 @@ const SEGMENT_FAMILIES = Object.freeze({
   fr: 'homepage',
   de: 'homepage',
   ar: 'homepage',
+  id: 'homepage',
+  ja: 'homepage',
   blog: 'blog',
   countries: 'country_pages',
   'country-instability-index': 'country_pages',
