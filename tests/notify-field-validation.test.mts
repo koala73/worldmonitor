@@ -52,13 +52,17 @@ const {
   escapeSlackText: relayEscapeSlackText,
   formatEventTitle: relayFormatEventTitle,
   formatEventLinkForPush: relayFormatEventLinkForPush,
+  formatPushClickUrl: relayFormatPushClickUrl,
+  buildTeamsAlertForEvent: relayBuildTeamsAlertForEvent,
   formatMessage: relayFormatMessage,
   formatSubject: relayFormatSubject,
   sanitizeImpactText: relaySanitizeImpactText,
   shapeEventForWebhook: relayShapeEventForWebhook,
   processEvent: relayProcessEvent,
 } = require('../scripts/notification-relay.cjs');
-const formatMessage: (event: unknown) => string = relayFormatMessage;
+const formatMessage: (event: unknown, channel?: string) => string = relayFormatMessage;
+const formatPushClickUrl: (event: unknown) => string = relayFormatPushClickUrl;
+const buildTeamsAlertForEvent: (event: unknown, impact?: string) => unknown = relayBuildTeamsAlertForEvent;
 const formatSubject: (event: unknown) => string = relayFormatSubject;
 const formatEventTitle: (event: unknown, fallback?: string) => string = relayFormatEventTitle;
 // The web-push click target is the one sink that derives its own link, so it
@@ -378,7 +382,7 @@ describe('formatMessage defence in depth (relay-originated events)', () => {
     // never mask the target. Assert the disclosure form rather than
     // substring-matching the URL (CodeQL incomplete-url-sanitization).
     assert.ok(
-      text.includes('https://example.com/wm-verify-account (source: example.com)'),
+      text.includes('https://example.com/wm-verify-account?utm_source=worldmonitor&utm_medium=alert (source: example.com)'),
       `must disclose the off-origin host inline: ${text}`,
     );
     assert.ok(text.includes('(source: example.com)'), `must disclose the destination host: ${text}`);
@@ -543,6 +547,60 @@ describe('formatMessage defence in depth (relay-originated events)', () => {
     assert.ok(text.includes('Reuters'), text);
     // Disclosure form, not a bare-host substring (CodeQL
     // incomplete-url-sanitization flags `.includes(host)` matches).
-    assert.ok(text.includes('https://reuters.com/world/story (source: reuters.com)'), text);
+    assert.ok(text.includes('https://reuters.com/world/story?utm_source=worldmonitor&utm_medium=alert (source: reuters.com)'), text);
+  });
+});
+
+describe('alert referrer tag on outbound article links', () => {
+  const link = 'https://www.egyptindependent.com/story/?ref=feed#top';
+  const tagged = (channel: string) =>
+    `https://www.egyptindependent.com/story/?ref=feed&utm_source=worldmonitor&utm_medium=alert&utm_campaign=${channel}#top`;
+  const relayEvent = {
+    eventType: 'rss_alert',
+    severity: 'critical',
+    payload: { title: 'Synthetic critical story', source: 'Egypt Independent', link },
+  };
+  const callerEvent = { ...relayEvent, userId: 'user_1' };
+
+  it('each text channel names itself as the campaign, and still discloses the host', () => {
+    for (const channel of ['telegram', 'slack', 'discord', 'email']) {
+      const text = formatMessage(relayEvent, channel);
+      assert.ok(text.endsWith(`${tagged(channel)} (source: www.egyptindependent.com)`), text);
+    }
+  });
+
+  it('survives each chat channel escaping as a working URL', () => {
+    assert.ok(
+      escapeSlackText(formatMessage(relayEvent, 'slack')).includes(tagged('slack').replaceAll('&', '&amp;')),
+      'Slack reads &amp; back as &',
+    );
+    assert.ok(relayEscapeDiscordText(formatMessage(relayEvent, 'discord')).includes(tagged('discord')));
+  });
+
+  it('web push opens the tagged link and the Teams button carries it', () => {
+    assert.equal(formatPushClickUrl(relayEvent), tagged('web_push'));
+    const card = JSON.stringify(buildTeamsAlertForEvent(relayEvent));
+    assert.ok(card.includes(JSON.stringify(tagged('teams'))), card);
+  });
+
+  it('the webhook payload keeps the link as data, untagged', () => {
+    assert.equal(shapeEventForWebhook(relayEvent).payload.link, link);
+    assert.equal(formatEventLinkForPush(relayEvent), link);
+  });
+
+  it('never tags a first-party link, the dashboard fallback, or a rejected link', () => {
+    for (const value of ['https://www.worldmonitor.app/brief/x', 'javascript:alert(1)', 'http://example.com/a', '']) {
+      const event = { ...relayEvent, payload: { ...relayEvent.payload, link: value } };
+      for (const out of [formatMessage(event, 'telegram'), formatPushClickUrl(event), JSON.stringify(buildTeamsAlertForEvent(event))]) {
+        assert.ok(!out.includes('utm_'), `${value} -> ${out}`);
+      }
+    }
+  });
+
+  it('never tags a caller-submitted link: the platform did not source it', () => {
+    const text = formatMessage(callerEvent, 'telegram');
+    assert.ok(text.endsWith('https://www.egyptindependent.com/story/?ref=feed#top (source: www.egyptindependent.com)'), text);
+    assert.ok(!JSON.stringify(buildTeamsAlertForEvent(callerEvent)).includes('utm_'));
+    assert.equal(formatPushClickUrl(callerEvent), 'https://worldmonitor.app/');
   });
 });
