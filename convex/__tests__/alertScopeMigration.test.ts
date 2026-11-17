@@ -206,6 +206,44 @@ describe("alert scope notice", () => {
     expect(none).toMatch(/>Choose your countries<\/a>/);
   });
 
+  // The relay's free ladder (freeTierCountryScope) delivers nothing on a free
+  // rule with no countries: no global critical events, no opt-in alerts.
+  test("tells a free account with no countries that realtime alerts are off until they choose some", () => {
+    const free = alertScopeNoticeContent([], { requireCountryScope: true, maxCountries: 3 });
+    expect(free.subject).toBe("Choose countries to turn realtime alerts back on");
+    expect(free.text).toContain("off until you choose up to 3 countries");
+    expect(free.text).not.toContain("opt-in");
+    expect(free.text).not.toContain("still reach you wherever they happen");
+    expect(free.html).toContain("WORLD MONITOR");
+    expect(free.html).toMatch(/>Choose your countries<\/a>/);
+    // A free account that was scoped gets the scoped copy: global critical
+    // events do reach a free rule with countries.
+    const freeScoped = alertScopeNoticeContent(["UA"], { requireCountryScope: true, maxCountries: 3 });
+    expect(freeScoped.text).toContain("still reach you wherever they happen");
+  });
+
+  test("sends the free-account copy to a free user and the paid copy to a paid one", async () => {
+    const t = convexTest(schema, modules);
+    await seedRule(t, "free1");
+    await makePro(t, "pro1");
+    await seedRule(t, "pro1");
+    await migrate(t, false);
+    await seedCustomer(t, "free1", "free@example.com");
+    await seedCustomer(t, "pro1", "pro@example.com");
+    process.env.RESEND_API_KEY = "test-key";
+    const bodies: any[] = [];
+    globalThis.fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ id: "msg_1" }), { status: 200 });
+    }) as any;
+
+    await t.action(fns.sendAlertScopeNotices, { live: true });
+    const byTo = new Map(bodies.map((b) => [b.to[0], b]));
+    expect(byTo.get("free@example.com").text).toContain("off until you choose up to 3 countries");
+    expect(byTo.get("free@example.com").text).not.toContain("opt-in");
+    expect(byTo.get("pro@example.com").text).toContain("plus any opt-in alerts you turned on");
+  });
+
   test("escapes a country name that is not a known region code", () => {
     const { html } = alertScopeNoticeContent(["<b>"]);
     expect(html).not.toContain("<b>");

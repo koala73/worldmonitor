@@ -36,6 +36,7 @@ import {
   internalMutation,
   internalQuery,
 } from "./_generated/server";
+import { loadAlertCapabilities } from "./lib/alertCapabilities";
 import { seedCountriesForRule } from "./lib/alertScopeSeed";
 import { ResendSendError, sendResendEmail } from "./lib/resendEmail";
 
@@ -119,7 +120,13 @@ type PendingNotice = {
   outcome: RuleOutcome;
   countries: string[];
   emailAttempts?: number;
+  audience: NoticeAudience;
 };
+
+/** What the relay's ladder delivers for this account (free rules need countries). */
+export type NoticeAudience = { requireCountryScope: boolean; maxCountries: number };
+// maxCountries only feeds the free copy; kept finite so it crosses the Convex boundary.
+const PAID_AUDIENCE: NoticeAudience = { requireCountryScope: false, maxCountries: 0 };
 
 export const listPendingNotices = internalQuery({
   args: { limit: v.number() },
@@ -132,7 +139,10 @@ export const listPendingNotices = internalQuery({
     // variants: a user split across runs would get a second email once
     // Resend's 24h idempotency window has passed.
     const rows: Doc<"alertScopeNotices">[] = [];
+    const audiences = new Map<string, NoticeAudience>();
     for (const userId of new Set(head.map((r) => r.userId))) {
+      const caps = await loadAlertCapabilities(ctx, userId);
+      audiences.set(userId, { requireCountryScope: caps.requireCountryScope, maxCountries: caps.maxCountries });
       const userRows = await ctx.db
         .query("alertScopeNotices")
         .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -145,6 +155,7 @@ export const listPendingNotices = internalQuery({
       outcome: r.outcome,
       countries: r.countries,
       ...(r.emailAttempts !== undefined ? { emailAttempts: r.emailAttempts } : {}),
+      audience: audiences.get(r.userId) ?? PAID_AUDIENCE,
     }));
   },
 });
@@ -210,7 +221,10 @@ function noticeCountries(rows: readonly PendingNotice[]): string[] {
   return [...seen];
 }
 
-export function alertScopeNoticeContent(countries: readonly string[]): {
+export function alertScopeNoticeContent(
+  countries: readonly string[],
+  audience: NoticeAudience = PAID_AUDIENCE,
+): {
   subject: string;
   text: string;
   html: string;
@@ -218,6 +232,21 @@ export function alertScopeNoticeContent(countries: readonly string[]): {
   const intro = "We've changed how realtime alerts work.";
   const global =
     "Global critical events, such as a market crash, a shipping shock or a national airspace shutdown, still reach you wherever they happen.";
+  if (countries.length === 0 && audience.requireCountryScope) {
+    // The free ladder (scripts/lib/free-tier-delivery.cjs freeTierCountryScope)
+    // delivers nothing on a free rule without countries: no global critical
+    // events and no opt-in alerts.
+    const subject = "Choose countries to turn realtime alerts back on";
+    const local = `Local events, such as severe weather, airport disruption, sirens and conflict, now reach you only for the countries you choose. Free accounts need at least one country for realtime alerts, so yours are off until you choose up to ${audience.maxCountries} countries.`;
+    const after =
+      "Once you choose countries, global critical events, such as a market crash, a shipping shock or a national airspace shutdown, reach you as well, wherever they happen.";
+    const cta = "Choose your countries";
+    return {
+      subject,
+      text: [intro, local, after, `${cta}: ${ALERT_SETTINGS_URL}`].join("\n\n"),
+      html: noticeHtml({ heading: subject, intro, local, countries: [], global: after, cta, globalLabel: "After you choose" }),
+    };
+  }
   if (countries.length === 0) {
     const subject = "Add countries to keep getting local alerts";
     const local =
@@ -268,6 +297,7 @@ function noticeHtml(args: {
   countries: readonly string[];
   global: string;
   cta: string;
+  globalLabel?: string;
 }): string {
   const chips = args.countries
     .map((name) => `<span style="display: inline-block; margin: 8px 6px 0 0; padding: 4px 10px; border: 1px solid #2a2a2a; background: #161616; color: #e0e0e0; font-size: 12px; border-radius: 3px;">${escapeHtml(name)}</span>`)
@@ -311,7 +341,7 @@ function noticeHtml(args: {
       <div style="font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 8px; line-height: 1.35;">${escapeHtml(args.heading)}</div>
       <div style="font-size: 14px; color: #888; line-height: 1.5; margin-bottom: 20px;">${escapeHtml(args.intro)}</div>
       ${noticeCard("Local events", NOTICE_ACCENT, `${paragraph(args.local)}${chips ? `<div>${chips}</div>` : ""}`)}
-      ${noticeCard("Everywhere", "#ef4444", paragraph(args.global))}
+      ${noticeCard(args.globalLabel ?? "Everywhere", "#ef4444", paragraph(args.global))}
       <div style="padding: 16px 0 28px;"><a href="${ALERT_SETTINGS_URL}" style="display: inline-block; background: ${NOTICE_ACCENT}; color: #0a0a0a; padding: 12px 28px; text-decoration: none; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 3px;">${escapeHtml(args.cta)}</a></div>
     </div>
     <div style="background: #0a0a0a; border-top: 1px solid #1a1a1a; padding: 20px 36px; text-align: center;">
@@ -374,7 +404,7 @@ export const sendAlertScopeNotices = internalAction({
         summary.skipped += 1;
         continue;
       }
-      const content = alertScopeNoticeContent(noticeCountries(rows));
+      const content = alertScopeNoticeContent(noticeCountries(rows), rows[0].audience);
       try {
         const result = await sendResendEmail(ctx, {
           apiKey,
