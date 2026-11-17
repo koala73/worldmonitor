@@ -57,16 +57,18 @@ function readBody(req) {
 
 // Upstash REST stand-in that keeps state, so SET NX answers as Redis does:
 // "OK" for a new key and null for one that exists. `failLpush` makes the event
-// queue refuse writes.
+// queue refuse writes; `failLpushCount` refuses only that many. `failSetNx`
+// answers SET NX with an error, as Upstash does in a partial outage.
 async function startUpstash(t) {
   const store = new Map();
   const queued = [];
   const apiFanout = [];
-  const state = { failLpush: false };
+  const state = { failLpush: false, failLpushCount: 0, failSetNx: false };
   const run = (command) => {
     const [name, key, value, ...rest] = command;
     if (name === 'GET') return store.has(key) ? store.get(key).value : null;
     if (name === 'SET') {
+      if (rest.includes('NX') && state.failSetNx) return 'ERR simulated outage';
       if (rest.includes('NX') && store.has(key)) return null;
       const ex = rest.indexOf('EX');
       store.set(key, { value, ttl: ex >= 0 ? Number(rest[ex + 1]) : null });
@@ -76,6 +78,7 @@ async function startUpstash(t) {
     if (name === 'LPUSH') {
       if (key === EVENT_QUEUE) {
         if (state.failLpush) return 0;
+        if (state.failLpushCount > 0) { state.failLpushCount -= 1; return 0; }
         queued.push(JSON.parse(value));
       }
       return 1;
@@ -283,6 +286,43 @@ test('two different headlines never share a story claim', async (t) => {
   await cycle([{ title: first, source: 'CNN World' }]);
   await cycle([{ title: second, source: 'CNN World' }]);
   assert.deepEqual(titles(upstash.alerts()), [first, second], output());
+});
+
+// The classify cycle does not await its publishes, so wait for the queue.
+async function waitForAlerts(upstash, count) {
+  const started = Date.now();
+  while (upstash.alerts().length < count && Date.now() - started < 3_000) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+test('a failed queue write does not lose a copy of the story published in the same cycle', async (t) => {
+  const { upstash, cycle, output } = await startRelay(t);
+  // Both copies are in one digest build, so their publishes run concurrently.
+  // The first claims the story and its queue write fails; the second must not
+  // have given up on the strength of that claim.
+  upstash.state.failLpushCount = 1;
+  await cycle([
+    { title: CNN_TITLE, source: 'CNN World' },
+    { title: EGYPT_INDEPENDENT_TITLE, source: 'Egypt Independent' },
+  ]);
+  await waitForAlerts(upstash, 1);
+  assert.equal(upstash.alerts().length, 1, output());
+});
+
+test('a failed queue write during a Redis outage does not hold the story in memory', async (t) => {
+  const { upstash, cycle, output } = await startRelay(t);
+  // SET NX errors, so a critical alert fails open on an in-process claim.
+  upstash.state.failSetNx = true;
+  upstash.state.failLpush = true;
+  await cycle([{ title: CNN_TITLE, source: 'CNN World' }]);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.deepEqual(titles(upstash.alerts()), []);
+
+  upstash.state.failLpush = false;
+  await cycle([{ title: EGYPT_INDEPENDENT_TITLE, source: 'Egypt Independent' }]);
+  await waitForAlerts(upstash, 1);
+  assert.deepEqual(titles(upstash.alerts()), [EGYPT_INDEPENDENT_TITLE], output());
 });
 
 test('a story whose queue write failed is not claimed, so the next sighting alerts', async (t) => {

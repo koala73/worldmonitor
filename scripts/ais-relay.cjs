@@ -86,7 +86,7 @@ const {
   xPostBudgetServiceStatus,
 } = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
-const { newsStoryKey, newsStoryKeyLoadError, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
+const { newsStoryKey, newsStoryKeyLoadError, publishInStoryOrder, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
 if (newsStoryKeyLoadError()) {
   // Alerts still publish, on the exact-title identity; a repeated headline can alert twice.
   console.warn('[Notify] News story key unavailable, falling back to exact-title dedup:', newsStoryKeyLoadError().message);
@@ -122,6 +122,7 @@ const {
   buildDedupMaterial,
   classifySetNxResult,
   recordDedupOutcome,
+  releaseFailOpenFallback,
 } = require('./shared/notification-dedup.cjs');
 const {
   AVIATION_MIN_SERVED_COVERAGE,
@@ -1059,7 +1060,12 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
       // Rollback the dedup key so the next poll cycle can retry — avoids silent
       // suppression for the full dedupTtl when a transient LPUSH fails.
       console.warn(`[Notify] LPUSH failed for ${eventType} — rolling back dedup key`);
-      upstashDel(dedupKey).catch(() => {});
+      // Awaited so a story publish queued behind this one (publishInStoryOrder)
+      // claims after the rollback, not before it.
+      await upstashDel(dedupKey).catch(() => {});
+      // During a SET NX outage the claim is an in-process reservation; drop
+      // it too, or it suppresses the story for the rest of its TTL.
+      if (dedupDecision.action === 'fail_open') releaseFailOpenFallback(dedupKey);
       return false;
     }
   } catch (e) {
@@ -5686,7 +5692,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
         // One alert per story per day, not per title string: a second
         // publisher carrying an alerted headline is the same story.
         const storyKey = newsStoryKey(chunk[idx], { severity: level, importanceScore });
-        publishNotificationEvent({
+        publishInStoryOrder(storyKey ? `rss_alert:${variant}:${storyKey}` : '', () => publishNotificationEvent({
           eventType: 'rss_alert',
           payload: {
             title: chunk[idx],
@@ -5708,7 +5714,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
           severity: level,
           variant,
           ...(storyKey ? { storyKey, dedupTtl: NEWS_STORY_DEDUP_TTL_SECONDS } : {}),
-        }).catch(e => console.warn('[Notify] Classify publish error:', e?.message));
+        })).catch(e => console.warn('[Notify] Classify publish error:', e?.message));
       }
     }
 
