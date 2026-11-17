@@ -552,6 +552,11 @@ export interface ParsedItem {
   originPublisherTrusted: boolean;
   title: string;
   link: string;
+  // #8398: true when `link` passed the ingest publisher gate in parseRssXml.
+  // Stamped there and nowhere else, so it always describes this item's own
+  // link. Optional: a feed row cached before the stamp shipped has none, and
+  // the relay then falls back to its family table.
+  linkVerified?: boolean;
   // Host of a link the ingest publisher gate blanked (#8990). Internal: lets
   // the evidence writer drop a stored link on a host the gate now rejects.
   blankedLinkHost?: string;
@@ -1424,6 +1429,8 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       originPublisherTrusted,
       title,
       link,
+      // Any link still set here passed the gate above.
+      linkVerified: link !== '',
       ...(blankedLinkHost ? { blankedLinkHost } : {}),
       publishedAt,
       isAlert,
@@ -2329,6 +2336,9 @@ export function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): Proto
     locationName: '',
     snippet: item.description ?? '',
     tickers: item.tickers ?? [],
+    // Only the parser's own stamp counts: a non-empty link without it (a row
+    // cached before the stamp shipped) is served as unverified.
+    linkVerified: item.linkVerified === true && item.link !== '',
   };
 }
 

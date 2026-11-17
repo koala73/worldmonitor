@@ -163,6 +163,53 @@ describe('relay rss_alert publisher-link gate (#8398)', () => {
     assert.equal(candidates.get('New outlet event').link, '');
   });
 
+  // The digest checks each link against the feed's own host, which the relay
+  // never sees. 2026-11-17: a critical Egypt Independent alert went out with
+  // no link because the relay's family table has no entry for that publisher.
+  const EGYPT_INDEPENDENT_LINK =
+    'https://www.egyptindependent.com/exclusive-us-intel-indicates-iran-developing-plans/';
+
+  it('keeps a link the digest verified, for a publisher the family table does not list', () => {
+    const candidates = buildClassifyCandidateMap(
+      digestFor([{
+        title: 'Egypt Independent event',
+        source: 'Egypt Independent',
+        publishedAt: now - 60_000,
+        link: EGYPT_INDEPENDENT_LINK,
+        linkVerified: true,
+      }]),
+      [],
+      'full',
+      now,
+      recencyMs,
+    );
+    assert.equal(candidates.get('Egypt Independent event').link, EGYPT_INDEPENDENT_LINK);
+  });
+
+  it('blanks an unlisted publisher link the digest did not verify', () => {
+    for (const linkVerified of [undefined, false, null, 'true', 1, {}]) {
+      assert.equal(
+        candidateLinkFor({ link: EGYPT_INDEPENDENT_LINK, source: 'Egypt Independent', linkVerified }),
+        '',
+        `linkVerified=${JSON.stringify(linkVerified)}`,
+      );
+    }
+  });
+
+  it('never keeps a non-http(s) link, verified or not', () => {
+    for (const link of ['javascript:alert(1)', 'data:text/html,x', '//evil.example/x', 'ftp://www.egyptindependent.com/x']) {
+      assert.equal(candidateLinkFor({ link, source: 'Egypt Independent', linkVerified: true }), '', link);
+    }
+  });
+
+  it('falls back to the family table for an item with no verified flag', () => {
+    // A digest built before the flag shipped, or a cached feed row: same
+    // result as before the flag existed.
+    const reuters = 'https://www.reuters.com/world/europe/x';
+    assert.equal(candidateLinkFor({ link: reuters, source: 'Reuters World' }), reuters);
+    assert.equal(candidateLinkFor({ link: 'https://evil.example/phish', source: 'Reuters World' }), '');
+  });
+
   it('candidateLinkFor passes a custom family resolver through', () => {
     assert.equal(
       candidateLinkFor(
