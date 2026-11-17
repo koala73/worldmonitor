@@ -19,6 +19,7 @@ import { CURATED_COUNTRIES } from '@/config/countries';
 import { getCountryMapFocus } from '@/app/country-map-focus';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import type { NewsItem, MapLayers, MilitaryBase } from '@/types';
+import type { HeadlineHistoryResultData } from '@/app/headline-history-search';
 import { UNDERSEA_CABLES, NUCLEAR_FACILITIES } from '@/config/geo-map';
 import { PIPELINES } from '@/config/pipelines';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
@@ -46,6 +47,8 @@ export interface SearchSelectionDispatcherBindings {
   resolveExecutableNewsPanel(
     link: string,
   ): [string, AppContext['newsPanels'][string]] | null;
+  /** Open a publisher article in a new tab. False when the URL is not openable. */
+  openArticle(url: string): boolean;
   saveToStorage(key: string, value: unknown): void;
   setTheme(theme: 'dark' | 'light'): void;
   /** Opens an article in a new tab. */
@@ -204,6 +207,12 @@ export class SearchSelectionDispatcher {
           commitTarget[1].scrollToNewsItem(commitItem.link);
           return true;
         }, 300, epoch);
+      }
+      case 'headline': {
+        // A headline from the server history is not in any panel, so there is
+        // nothing to scroll to: open the article itself.
+        const { link } = result.data as HeadlineHistoryResultData;
+        return this.bindings.openArticle(link);
       }
       case 'hotspot': {
         return this.schedule((commitMatch) => {

@@ -14,6 +14,25 @@ const {
 } = require('../scripts/lib/digest-stale-gate.cjs');
 
 describe('relay digest stale gate (#7084)', () => {
+  it('carries story tracking first-seen time so the relay can log how long an alert waited', () => {
+    const now = Date.parse('2026-11-16T23:45:00Z');
+    const digest = {
+      categories: {
+        politics: {
+          items: [
+            { title: 'tracked headline', source: 'CNN World', publishedAt: now - 60_000, storyMeta: { firstSeen: now - 30_000 } },
+            { title: 'untracked headline', source: 'CNN World', publishedAt: now - 60_000 },
+            { title: 'unset first seen', source: 'CNN World', publishedAt: now - 60_000, storyMeta: { firstSeen: 0 } },
+          ],
+        },
+      },
+    };
+    const candidates = buildClassifyCandidateMap(digest, [], 'full', now, 6 * 60 * 60 * 1000);
+    assert.equal(candidates.get('tracked headline').firstSeen, now - 30_000);
+    assert.equal('firstSeen' in candidates.get('untracked headline'), false);
+    assert.equal('firstSeen' in candidates.get('unset first seen'), false);
+  });
+
   it('skips a server-marked stale replay', () => {
     assert.equal(isStaleDigestReplay({ coverage: { servedStale: true, staleReason: 'build-error' } }), true);
     assert.equal(isStaleDigestReplay({ coverage: { servedStale: true, staleReason: 'gate-held' } }), true);
@@ -62,6 +81,7 @@ describe('relay digest stale gate (#7084)', () => {
         publishedAt: now - 30_000,
         corroborationCount: 1,
         link: 'https://x.com/trusted/status/1',
+        fromX: true,
       },
     ]]);
   });
@@ -89,6 +109,26 @@ describe('relay digest stale gate (#7084)', () => {
 
     assert.deepEqual([...candidates.keys()], ['fresh RSS event', 'fresh X event']);
     assert.equal(candidates.get('fresh RSS event').source, 'Reuters');
+  });
+
+  it('marks only X-only candidates, so a headline in both keeps its digest build time', () => {
+    // The relay records an alert's build-to-queue delay unless the candidate
+    // came from X, which has no digest build. A headline in both inputs is the
+    // digest's candidate and must keep that stage.
+    const now = Date.parse('2026-11-17T14:00:00Z');
+    const digest = {
+      coverage: { servedStale: false },
+      categories: { conflicts: { items: [{ title: 'in both', source: 'Reuters', publishedAt: now - 60_000 }] } },
+    };
+    const xCandidates = [
+      { title: 'in both', source: 'X duplicate', publishedAt: now, corroborationCount: 1, link: 'x-dup' },
+      { title: 'X only', source: 'Trusted X account', publishedAt: now, corroborationCount: 1, link: 'x-only' },
+    ];
+
+    const candidates = buildClassifyCandidateMap(digest, xCandidates, 'global', now, 6 * 60 * 60 * 1000);
+
+    assert.equal(candidates.get('in both').fromX, undefined);
+    assert.equal(candidates.get('X only').fromX, true);
   });
 
   it('is actually required by the relay at the digest alert pass', () => {

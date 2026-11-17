@@ -42,6 +42,9 @@
  *                                            -> shared WMShared<N> components
  *   - component schemas nothing can reach   -> removed
  *     (openapi-drop-unreachable-schemas.mjs)
+ *   - the emit-time component keys above    -> shorter keys (E429 -> 429,
+ *     Jmespath -> J, WorldMonitorInt64 -> Int64), every $ref rewritten
+ *     (compactComponentKeys; each key is paid once per pointer)
  *
  * `scripts/openapi-capacity-report.mjs` measures what is left and ranks what to
  * collapse next; docs/perf/openapi-bundle-capacity-2026-08-13.md is the plan.
@@ -318,6 +321,8 @@ export const SCANNER_BUNDLE_EXCLUDED_OPERATIONS = Object.freeze({
   '/api/news/v1/review-error-report': 'Operator review decision, secret-gated (#9093).',
   '/api/news/v1/search-fact-checks': 'Fact-check lookup for the /verify page and verify_claim (#9094); documented in the NewsService spec.',
   '/api/news/v1/search-claim-headlines': 'Claim headline search for the /verify page and verify_claim; documented in the NewsService spec.',
+  '/api/news/v1/search-headlines': 'Cmd+K headline search over the last 24 hours of served headlines, built for the dashboard; documented in the NewsService spec.',
+  '/api/news/v1/search-headline-archive': 'Cmd+K headline search over up to 7 days by language (Pro), built for the dashboard; documented in the NewsService spec.',
   '/api/news/v1/list-source-items': 'Cached rows for a dashboard panel\'s enabled sources below the digest category cap (#9796); documented in the NewsService spec.',
   '/api/economic/v1/get-capital-flows': 'Budget: the operation costs more than the bundle\'s remaining headroom (~2 KB on main at the time) and its full field documentation is kept rather than trimmed. Served, documented in the EconomicService spec and the YAML bundle, and exposed to agents by MCP get_capital_flows, whose tool description and schema do not depend on this artifact.',
   '/api/feedback/v1/submit-report': 'The dashboard\'s own feedback form. Budget: the country risk response\'s satellite imagery context costs about 650 bytes when about 25 were free. Served and documented in the FeedbackService spec and the YAML bundle.',
@@ -373,6 +378,91 @@ export function dropUnreferencedSecuritySchemes(spec) {
       stats.dropped += 1;
     }
   }
+  return stats;
+}
+
+/**
+ * Shorter keys for the components the dedup passes above create. Every `$ref`
+ * spells its target key out in full, so the key is paid once per pointer: the
+ * error responses alone take 1,499 pointers, and `WorldMonitorInt64` 125. The
+ * source YAML has no `components.responses`, `parameters` or `headers`, and no
+ * `WorldMonitorInt64` schema, so every key renamed here is an emit-time name
+ * and no reader of the YAML or the per-service specs depends on it. The
+ * component bodies are unchanged; a header or parameter keeps its wire name
+ * inside the component (`name: jmespath`, the `Idempotent-Replayed` map key).
+ */
+export const COMPACT_COMPONENT_KEYS = Object.freeze({
+  // E429 -> 429, E403_3 -> 403_3, EDEF -> DEF.
+  responses: (key) => key.replace(/^E(?=\d|DEF$)/, ''),
+  parameters: (key) => (key === 'Jmespath' ? 'J' : key),
+  // IdempotentReplayedHeader -> IdempotentReplayed, IdempotencyKeyHeader_2 -> IdempotencyKey_2.
+  headers: (key) => key.replace(/Header(?=_\d+$|$)/, ''),
+  schemas: (key) => (key === 'WorldMonitorInt64' ? 'Int64' : key),
+});
+
+/**
+ * Rename component keys by COMPACT_COMPONENT_KEYS and rewrite every `$ref` to
+ * them, including pointers into a renamed component. A rename whose target
+ * already exists, or that two keys would share, is skipped, so the mapping is
+ * always one-to-one and inverting it restores the input exactly. Example
+ * payloads are data, not references, and are not rewritten. Mutates `spec`;
+ * returns { renamed, rewrittenRefs, renames } where `renames` maps each
+ * `#/components/<bucket>/<old>` pointer to its new one.
+ */
+export function compactComponentKeys(spec, rules = COMPACT_COMPONENT_KEYS) {
+  const stats = { renamed: 0, rewrittenRefs: 0, renames: {} };
+  const components = spec?.components;
+  if (!components || typeof components !== 'object') return stats;
+
+  for (const [bucket, rename] of Object.entries(rules)) {
+    const entries = components[bucket];
+    if (!entries || typeof entries !== 'object') continue;
+    const keys = Object.keys(entries);
+    const taken = new Set(keys);
+    const plan = new Map();
+    for (const key of keys) {
+      const next = rename(key);
+      if (next === key || !next || taken.has(next)) continue;
+      taken.add(next);
+      plan.set(key, next);
+    }
+    if (plan.size === 0) continue;
+    // Rebuild in the original order so only the keys change.
+    components[bucket] = Object.fromEntries(keys.map((key) => [plan.get(key) ?? key, entries[key]]));
+    for (const [key, next] of plan) {
+      stats.renames[`#/components/${bucket}/${key}`] = `#/components/${bucket}/${next}`;
+      stats.renamed += 1;
+    }
+  }
+  if (stats.renamed === 0) return stats;
+
+  const rewrite = (ref) => {
+    const match = /^(#\/components\/[^/]+\/[^/]+)(\/.*)?$/.exec(ref);
+    const next = match && stats.renames[match[1]];
+    return next ? next + (match[2] ?? '') : ref;
+  };
+  const walk = (node, parentKey) => {
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, null);
+      return;
+    }
+    if (!node || typeof node !== 'object') return;
+    for (const [key, value] of Object.entries(node)) {
+      if (key === '$ref' && typeof value === 'string') {
+        const next = rewrite(value);
+        if (next !== value) {
+          node.$ref = next;
+          stats.rewrittenRefs += 1;
+        }
+        continue;
+      }
+      // `example`/`examples` hold payloads, except as a property NAME inside a
+      // schema's `properties`, where the value is a schema like any other.
+      if ((key === 'example' || key === 'examples') && parentKey !== 'properties') continue;
+      walk(value, key);
+    }
+  };
+  walk(spec, null);
   return stats;
 }
 
@@ -457,6 +547,9 @@ export function buildBundle({ spec: provided } = {}) {
   // schema targets alive wherever it runs — that unconditional seeding, not
   // this ordering, is the invariant a future edit must preserve.
   const unreachableStats = dropUnreachableSchemas(spec);
+  // After every pass that names or points at a component, so each of them still
+  // sees the descriptive keys its own contract tests pin.
+  const compactKeyStats = compactComponentKeys(spec);
   // Runs on the finished document so every surviving description, hoisted
   // component or inline copy alike, is compacted exactly once.
   const softBreakStats = collapseSoftLineBreaks(spec);
@@ -493,6 +586,7 @@ export function buildBundle({ spec: provided } = {}) {
     paramStats,
     inlineTypedStats,
     unreachableStats,
+    compactKeyStats,
     softBreakStats,
     defaultRequiredStats,
     successDescriptionStats,
@@ -521,6 +615,7 @@ function main() {
     paramStats,
     inlineTypedStats,
     unreachableStats,
+    compactKeyStats,
   } = buildBundle({ spec: parseYaml(yaml.toString('utf8')) });
   writeFileSync(jsonPath, json);
   writeFileSync(llmsPath, llms);
@@ -537,7 +632,8 @@ function main() {
       `reused ${schemaSubtreeStats.replacedRefs} byte-identical schema subtrees across ${schemaSubtreeStats.groups} groups; ` +
       `hoisted ${sharedSubtreeStats.replacedRefs} deep repeated subtrees into ${sharedSubtreeStats.groups} shared components (${sharedSubtreeStats.bytesFreed} bytes); ` +
       `reused ${chinaDateStats.replacedRefs} China date-precision schemas; ` +
-      `dropped ${unreachableStats.dropped} unreachable schemas worth ${unreachableStats.bytesFreed} bytes)`,
+      `dropped ${unreachableStats.dropped} unreachable schemas worth ${unreachableStats.bytesFreed} bytes; ` +
+      `shortened ${compactKeyStats.renamed} emitted component keys across ${compactKeyStats.rewrittenRefs} $refs)`,
   );
 }
 
