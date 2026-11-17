@@ -66,22 +66,14 @@ describe('api/brief/carousel cache policy', () => {
     const fontUrl = 'https://cdn.jsdelivr.net/npm/@fontsource/noto-serif/files/noto-serif-latin-400-normal.woff';
     const font = await readFile(resolve(dirname(fileURLToPath(import.meta.url)), '../blog-site/scripts/fonts/inter-regular.ttf'));
     const envelope = {
-      version: 1,
+      version: 4,
       issuedAt: 1_700_000_000_000,
       data: {
-        issue: '001',
-        dateLong: '19 April 2026',
-        user: { name: 'Test User' },
-        digest: {
-          greeting: 'Good morning',
-          lead: 'A sample lead.',
-          threads: [{ tag: 'TEST', teaser: 'A thread teaser' }],
-        },
+        user: { name: 'Test User', tz: 'UTC' }, issue: '001', date: '2026-04-19', dateLong: '19 April 2026',
+        digest: { greeting: 'Good morning', lead: 'A sample lead.', numbers: { clusters: 1, multiSource: 1, surfaced: 1 }, threads: [{ tag: 'TEST', teaser: 'A thread teaser' }], signals: [] },
         stories: [{
-          category: 'World',
-          headline: 'A headline',
-          threatLevel: 'low',
-          isAlert: false,
+          category: 'World', country: 'FR', threatLevel: 'low', headline: 'A headline', description: 'A description',
+          source: 'Wire', sourceUrl: 'https://example.com/1', clusterId: 'cluster-1', whyMatters: 'Why it matters.',
         }],
       },
     };
@@ -183,6 +175,21 @@ describe('api/brief/carousel cache policy', () => {
       }
     }
     assert.equal((await respond(sibling, 'HEAD')).headers.get('Cache-Control'), 'public, max-age=604800');
+
+    // A malformed canonical is a 404 even when a matching sibling would render,
+    // as on the magazine route.
+    const good = canonical;
+    (canonical as { data: unknown }).data = { ...good.data, user: { ...good.data.user, bogus: 1 } };
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const key = decodeURIComponent(url.split('/get/')[1] ?? '');
+      const value = key.startsWith('brief:l10n:') ? sibling : canonical;
+      return new Response(JSON.stringify({ result: JSON.stringify(value) }), { status: 200 });
+    };
+    const { signBriefToken } = await import('../server/_shared/brief-url.ts');
+    const token = await signBriefToken('user_test', '2026-04-18-0800', SECRET);
+    const { default: handler } = await import('../api/brief/carousel/[userId]/[issueDate]/[page].ts');
+    assert.equal((await handler(new Request(`${PATH}?t=${token}`))).status, 404);
   });
 
   // The one registered face is Noto Serif's Latin subset. A sibling in a
