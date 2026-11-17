@@ -16,6 +16,7 @@
 
 import { markdownToEmailHtml } from '../_digest-markdown.mjs';
 import { briefT } from '../../shared/brief-strings.js';
+import { isRtlLanguage } from '../../shared/ui-languages.js';
 
 /**
  * Inject the canonical synthesis (lead + threads + signals) into
@@ -95,7 +96,7 @@ export function injectEmailSummary(html, summary, lang = 'en') {
       signalBullets.join('')
     : '';
 
-  const summaryHtml = `<div style="background:#161616;border:1px solid #222;border-left:3px solid #4ade80;padding:18px 22px;margin:0 0 24px 0;">
+  const summaryHtml = `<div style="background:#161616;border:1px solid #222;border-${isRtlLanguage(lang) ? 'right' : 'left'}:3px solid #4ade80;padding:18px 22px;margin:0 0 24px 0;">
 <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#4ade80;margin-bottom:10px;">${chrome('email.execSummary')}</div>
 <div style="font-size:13px;line-height:1.7;color:#ccc;margin-bottom:${threadsHtml || signalsHtml ? '14px' : '0'};">${leadHtml}</div>
 ${threadsHtml}

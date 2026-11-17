@@ -29,6 +29,7 @@ import {
 import { stripSourceSuffix } from '../scripts/lib/brief-dedup-jaccard.mjs';
 import { digestCoverageText } from '../scripts/lib/digest-corroboration.mjs';
 import { briefIntlLocale, briefPlural, briefT, formatBriefDate } from '../shared/brief-strings.js';
+import { isRtlLanguage } from '../shared/ui-languages.js';
 import { truncateForDisplay } from '../shared/brief-text.js';
 
 const source = readFileSync(new URL('../scripts/seed-digest-notifications.mjs', import.meta.url), 'utf8');
@@ -47,7 +48,7 @@ const { formatDigest, buildChannelBodies, sanitizeTelegramHtml } = runInNewConte
     DIGEST_CRITICAL_LIMIT, DIGEST_HIGH_LIMIT, DIGEST_MEDIUM_LIMIT,
     DIVIDER: '─'.repeat(40),
     stripSourceSuffix, digestCoverageText, escapeDigestText, formatDigestItemTitle,
-    briefIntlLocale, briefPlural, briefT, formatBriefDate, truncateForDisplay,
+    briefIntlLocale, briefPlural, briefT, formatBriefDate, truncateForDisplay, isRtlLanguage,
     escapeTelegramHtml, escapeSlackMrkdwn, escapeDiscordText,
     markdownToTelegramHtml, markdownToSlackMrkdwn, markdownToDiscord,
   },
@@ -286,6 +287,20 @@ describe('email digest links', () => {
 });
 
 describe('localized chat chrome', () => {
+  it('wraps the bracketed source list in direction isolates for ar and fa only', () => {
+    const items = [story(1, { severity: 'critical', sources: ['AP', 'BBC'] })];
+    for (const lang of ['ar', 'fa']) {
+      for (const target of ['plain', 'telegram', 'slack', 'discord']) {
+        assert.match(formatDigest(items, NOW, target, lang), /\u2068\\?\[AP, BBC\\?\]\u2069/, `${lang} ${target}`);
+      }
+    }
+    for (const lang of ['en', 'fr']) {
+      const out = formatDigest(items, NOW, 'plain', lang);
+      assert.ok(out.includes(' [AP, BBC]'));
+      assert.doesNotMatch(out, /[\u2066-\u2069]/);
+    }
+  });
+
   it('formatDigest and buildChannelBodies use the brief language', () => {
     const items = [story(1, { severity: 'critical' }), story(2)];
     const plain = formatDigest(items, NOW, 'plain', 'fr');

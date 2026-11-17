@@ -255,10 +255,10 @@ describe('renderBriefMagazine — chrome invariants', () => {
     for (const m of html.matchAll(/<div class="page-number mono">([^<]*)<\/div>/g)) {
       assert.equal(m[1].length, 7, `counter "${m[1]}" must stay 7 characters`);
     }
-    assert.match(css, /\.page-number \{\s*position: absolute; top: 5vh; right: 4vw;[\s\S]*?letter-spacing: 0\.2em;/);
+    assert.match(css, /\.page-number \{\s*position: absolute; top: 5vh; inset-inline-end: 4vw;[\s\S]*?letter-spacing: 0\.2em;/);
     assert.match(
       css,
-      /\.digest \.running-head \{[^}]*font-family: 'IBM Plex Mono', monospace; font-size: max\(11px, 0\.85vw\);[^}]*padding-right: calc\(7ch \+ 1\.4em - 2vw \+ 1em\);/,
+      /\.digest \.running-head \{[^}]*font-family: 'IBM Plex Mono', monospace; font-size: max\(11px, 0\.85vw\);[^}]*padding-inline-end: calc\(7ch \+ 1\.4em - 2vw \+ 1em\);/,
     );
     // Digest copy stops above the fixed pager pill instead of scrolling under it.
     assert.match(css, /\.digest \{[^}]*border-bottom: var\(--pager-band\) solid transparent;/);
@@ -794,7 +794,7 @@ describe('renderBriefMagazine — v4 clusterId field (Sprint 1 canonical contrac
 
   it('the lang attribute value is HTML-escaped', () => {
     const src = readFileSync(new URL('../server/_shared/brief-render.js', import.meta.url), 'utf8');
-    assert.ok(src.includes(`'<html lang="' + escapeHtml(htmlLangFor(lang)) + '">'`));
+    assert.ok(src.includes(`'<html lang="' + escapeHtml(htmlLangFor(lang)) + '"'`));
   });
 
   it('English CSS output is unchanged apart from the appended :lang() rules', () => {

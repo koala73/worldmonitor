@@ -15,8 +15,8 @@ import { briefT, formatBriefDate, greetingKey } from '../../shared/brief-strings
 import { BRIEF_LLM_ALLOWED_PROVIDERS, BRIEF_LLM_MODEL_OVERRIDES } from './brief-llm.mjs';
 import { deriveThreadsFromOrderedStories } from './brief-compose.mjs';
 
-/** Refused even when allowlisted until RTL layout ships (PR 6). */
-export const BRIEF_L10N_GATED_LANGS = Object.freeze(['ar', 'fa']);
+/** Languages refused even when allowlisted. Empty since RTL layout shipped; keep it to re-gate a language. */
+export const BRIEF_L10N_GATED_LANGS = Object.freeze([]);
 
 const SHARED_TTL_SEC = 7 * 24 * 60 * 60;
 // Covers the 360-minute non-due reuse window (brief-synthesis-reuse.mjs).

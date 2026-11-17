@@ -38,6 +38,7 @@ import { getCorsHeaders, isDisallowedOrigin } from '../../../../_cors.js';
 import { readRawJsonFromUpstash } from '../../../../_upstash-json.js';
 import { briefLocalizedKey } from '../../../../../shared/brief-envelope.js';
 import { selectBriefEnvelope } from '../../../../../server/_shared/brief-render.js';
+import { isRtlLanguage } from '../../../../../shared/ui-languages.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../_sentry-edge.js';
 import { verifyBriefToken, BriefUrlError } from '../../../../../server/_shared/brief-url';
@@ -143,7 +144,10 @@ export default async function handler(
     return jsonError('service_unavailable', 503, cors);
   }
   if (!envelope) return jsonError('not_found', 404, cors);
-  envelope = selectBriefEnvelope(envelope, await siblingPromise);
+  const selected = selectBriefEnvelope(envelope, await siblingPromise);
+  // RTL siblings render English until the image renderer proves RTL output (PR 7 lifts this).
+  const selectedLang = (selected as { lang?: unknown } | null)?.lang;
+  envelope = typeof selectedLang === 'string' && isRtlLanguage(selectedLang) ? envelope : selected;
 
   // @vercel/og sets Cache-Control to
   // `public, immutable, no-transform, max-age=31536000` and extraHeaders

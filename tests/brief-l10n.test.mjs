@@ -122,17 +122,17 @@ describe('brief l10n config', () => {
     assert.equal(readBriefL10nConfig({ BRIEF_L10N_ENABLED: 'true' }).enabled, false);
   });
 
-  it('briefL10nTarget returns null for en, for unlisted languages, and for gated ar/fa', () => {
+  it('briefL10nTarget accepts ar and fa when allowlisted', () => {
     const config = readBriefL10nConfig({ BRIEF_L10N_ENABLED: '1', BRIEF_L10N_LANGS: 'fr,en,ar,fa' });
     assert.equal(briefL10nTarget('fr', config), 'fr');
     assert.equal(briefL10nTarget('en', config), null);
     assert.equal(briefL10nTarget('de', config), null);
-    assert.equal(briefL10nTarget('ar', config), null);
-    assert.equal(briefL10nTarget('fa', config), null);
+    assert.equal(briefL10nTarget('ar', config), 'ar');
+    assert.equal(briefL10nTarget('fa', config), 'fa');
     assert.equal(briefL10nTarget('xx', config), null);
     assert.equal(briefL10nTarget(undefined, config), null);
     assert.equal(briefL10nTarget('fr', { ...config, enabled: false }), null);
-    assert.deepEqual([...BRIEF_L10N_GATED_LANGS], ['ar', 'fa']);
+    assert.deepEqual([...BRIEF_L10N_GATED_LANGS], []);
   });
 });
 

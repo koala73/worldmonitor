@@ -100,7 +100,14 @@ const LOCALIZED = {
   el: { greeting: 'Καλησπέρα.', category: 'Ενέργεια', headline: 'Το Ιράν κρατά ανοιχτά τα Στενά του Ορμούζ ενώ οι ασφαλιστές επανεκτιμούν τον κίνδυνο.', description: 'Η Τεχεράνη έδειξε ότι τα εμπορικά πλοία μπορούν να συνεχίσουν· τα ασφάλιστρα για δεξαμενόπλοια στον Πειραιά παραμένουν υψηλά.', whyMatters: 'Από το Ορμούζ περνά περίπου το ένα πέμπτο του θαλάσσιου πετρελαίου: άέήίόύώ ϊϋΐΰ Ξεσκεπάζω την ψυχοφθόρα βδελυγμία.' },
 };
 
-const localized = Object.entries(LOCALIZED).map(([lang, t]) => {
+// Right-to-left briefs: their Arabic-script text falls to system fonts, so the layout pass sees dir="rtl" pages
+// without asking the subsets to cover Arabic. Latin and numeric fragments stay on the brief faces.
+const RTL_LOCALIZED = {
+  ar: { greeting: 'مساء الخير.', category: 'الطاقة', headline: 'إيران تبقي مضيق هرمز مفتوحًا بينما تعيد شركات التأمين تسعير المخاطر.', description: 'قالت طهران إن الشحن التجاري يمكنه مواصلة العبور، لكن أقساط ناقلات النفط ما زالت مرتفعة (Reuters, AP).', whyMatters: 'يمر عبر هرمز نحو خُمس النفط المنقول بحرًا، لذا قد يحرك أي إشارة استقرار أسعار الطاقة.' },
+  fa: { greeting: 'عصر بخیر.', category: 'انرژی', headline: 'ایران تنگه هرمز را باز نگه می‌دارد و بیمه‌گران ریسک را دوباره قیمت‌گذاری می‌کنند.', description: 'تهران اعلام کرد کشتیرانی تجاری می‌تواند ادامه یابد، اما حق بیمه نفتکش‌ها همچنان بالاست (Reuters, AP).', whyMatters: 'حدود یک‌پنجم نفت دریایی جهان از هرمز می‌گذرد؛ نشانه ثبات می‌تواند قیمت انرژی را جابه‌جا کند.' },
+};
+
+const localized = Object.entries({ ...LOCALIZED, ...RTL_LOCALIZED }).map(([lang, t]) => {
   const base = envelope([
     story({ category: t.category, headline: t.headline, description: t.description, whyMatters: t.whyMatters, threatLevel: 'critical', clusterId: `${lang}-1` }),
     story({ category: t.category, headline: t.description, description: t.whyMatters, whyMatters: t.headline, threatLevel: 'medium', clusterId: `${lang}-2` }),

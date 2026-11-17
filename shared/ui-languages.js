@@ -19,6 +19,16 @@ export const UI_LANGUAGE_SET = new Set(UI_LANGUAGES);
 /** @type {readonly ['ar','fa']} */
 export const RTL_UI_LANGUAGES = Object.freeze(['ar', 'fa']);
 
+/** True for languages written right to left (ar, fa). */
+export function isRtlLanguage(code) {
+  return RTL_UI_LANGUAGES.includes(code);
+}
+
+/** Value for the HTML dir attribute. */
+export function htmlDirFor(code) {
+  return isRtlLanguage(code) ? 'rtl' : 'ltr';
+}
+
 /** English names, used in LLM prompts (a bare code like `ja` is not enough). */
 export const UI_LANGUAGE_NAMES = Object.freeze({
   en: 'English', bg: 'Bulgarian', cs: 'Czech', fr: 'French', de: 'German', el: 'Greek',

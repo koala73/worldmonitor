@@ -56,7 +56,7 @@ describe('brief magazine fonts', () => {
   it('the renderer has no literal lang attribute outside htmlLangFor', () => {
     const text = fs.readFileSync(path.join(root, BRIEF_RENDERER), 'utf8');
     assert.deepEqual(literalLangAttrs(text), []);
-    assert.match(text, /'<html lang="' \+ escapeHtml\(htmlLangFor\(lang\)\) \+ '">'/);
+    assert.match(text, /'<html lang="' \+ escapeHtml\(htmlLangFor\(lang\)\) \+ '"'/);
   });
 
   it('were checked against the Google-served files', () => {
