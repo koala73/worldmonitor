@@ -88,12 +88,12 @@ service NewsService {
     option (sebuf.http.config) = {path: "/search-claim-headlines", method: HTTP_METHOD_GET};
   }
 
-  // SearchHeadlines finds headlines an edition served in the last 24 hours, including ones that have since left the dashboard. Reads the headline history the digest build writes; never fetches a feed.
+  // SearchHeadlines finds headlines an edition served in the last 24 hours, including ones no longer on the dashboard. No paid plan needed.
   rpc SearchHeadlines(SearchHeadlinesRequest) returns (SearchHeadlinesResponse) {
     option (sebuf.http.config) = {path: "/search-headlines", method: HTTP_METHOD_GET};
   }
 
-  // SearchHeadlineArchive finds headlines an edition served in the last 7 days in English, 3 days in most other languages and 1 day in the rest: the same search as SearchHeadlines over a longer window, for finding a story days after it left the dashboard. window_hours says which. Requires a Pro plan.
+  // SearchHeadlineArchive is SearchHeadlines over 7 days in English, 3 days in 17 common languages and 1 day in the rest; window_hours says which. Requires a Pro plan.
   rpc SearchHeadlineArchive(SearchHeadlinesRequest) returns (SearchHeadlinesResponse) {
     option (sebuf.http.config) = {path: "/search-headline-archive", method: HTTP_METHOD_GET};
   }

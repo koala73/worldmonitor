@@ -28238,7 +28238,7 @@ paths:
             tags:
                 - NewsService
             summary: SearchHeadlines
-            description: SearchHeadlines finds headlines an edition served in the last 24 hours, including ones that have since left the dashboard. Reads the headline history the digest build writes; never fetches a feed.
+            description: SearchHeadlines finds headlines an edition served in the last 24 hours, including ones no longer on the dashboard. No paid plan needed.
             operationId: SearchHeadlines
             parameters:
                 - name: query
@@ -28376,7 +28376,7 @@ paths:
             tags:
                 - NewsService
             summary: SearchHeadlineArchive
-            description: 'SearchHeadlineArchive finds headlines an edition served in the last 7 days in English, 3 days in most other languages and 1 day in the rest: the same search as SearchHeadlines over a longer window, for finding a story days after it left the dashboard. window_hours says which. Requires a Pro plan. PRO-gated. Requires entitlement tier >= 1.'
+            description: SearchHeadlineArchive is SearchHeadlines over 7 days in English, 3 days in 17 common languages and 1 day in the rest; window_hours says which. Requires a Pro plan. PRO-gated. Requires entitlement tier >= 1.
             operationId: SearchHeadlineArchive
             security:
                 - WorldMonitorKey: []
@@ -59274,7 +59274,7 @@ components:
                 windowHours:
                     type: integer
                     format: int32
-                    description: 'Window searched, in hours, counted from when a headline was last served. The route''s window cut to what the language keeps: at most 168 for en, 72 for the 3-day languages, 24 for the rest.'
+                    description: 'Hours searched back from when a headline was last served: up to 168 for en, 72 for the 3-day languages, 24 otherwise.'
                 state:
                     type: string
                     description: complete | unavailable. Unavailable searched nothing.
