@@ -269,6 +269,21 @@ describe('notification-relay link suppression (#8401)', () => {
     } finally { h.restore(); }
   });
 
+  it('keeps the digest count when fewer publishers carried the exact headline than the story', async () => {
+    // corroborationCount counts every wording of the story; the history counts
+    // one wording. One family on this headline must not relabel three as single.
+    const h = installHarness({ publisherFamilies: ['a'] });
+    try {
+      const event = { ...makeEvent(), variant: 'full' };
+      event.payload.importanceScore = 83;
+      event.payload.corroborationCount = 3;
+      await relay.processEvent(event);
+      const sent = h.calls.telegramBodies.join(' ');
+      assert.match(sent, /Coverage: 3 independent publishers/);
+      assert.doesNotMatch(sent, /single publisher/i);
+    } finally { h.restore(); }
+  });
+
   it('delivers when the link is not blocked', async () => {
     const h = installHarness({ smembers: ['https://other.example/unrelated'] });
     try {

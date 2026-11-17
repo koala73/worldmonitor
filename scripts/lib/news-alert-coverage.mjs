@@ -27,7 +27,13 @@ export async function refreshPublisherCounts(events, now = Date.now(), pipeline 
   for (const group of reads.values()) {
     const families = rows?.[i++]?.result;
     if (!Array.isArray(families) || !families.length) continue;
-    for (const event of group) event.observedPublisherCount = families.length;
+    // The producer's count spans every wording of the story; the history spans
+    // this one headline across builds. Neither contains the other, so keep the
+    // larger: one family on this wording must not relabel a covered story.
+    for (const event of group) {
+      const buildCount = Number(event.payload?.corroborationCount) || 0;
+      if (families.length > buildCount) event.observedPublisherCount = families.length;
+    }
   }
 }
 

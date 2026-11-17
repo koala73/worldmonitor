@@ -2677,27 +2677,44 @@ export async function listFeedDigest(
   }
 }
 
+// Two commands per key, so 400 keys stay under Upstash's 1,000-command cap.
+const PUBLISHER_COVERAGE_BATCH_KEYS = 400;
+
 // Each exact headline owns one sorted set. GT keeps a slower build from
 // moving a family's last observation backwards; retries replace the same member.
+//
+// Only served headlines get a key: the relay alerts on the digest response, so
+// a headline below every category cap can never be an alert title. Families
+// are still collected from every accepted item that shares a served headline.
+// The reader counts only the last 24 hours by score and EXPIRE retires an idle
+// key, so stale members need no separate trim.
 async function recordPublisherCoverage(
-  items: readonly ParsedItem[], variant: string, observedAt: number, deadlineAt: number,
+  items: readonly ParsedItem[],
+  servedItems: readonly ParsedItem[],
+  variant: string,
+  observedAt: number,
+  deadlineAt: number,
 ): Promise<void> {
   const groups = new Map<string, Set<string>>();
-  for (const item of items) {
-    const family = publisherFamilyForItem(item);
+  for (const item of servedItems) {
     const key = newsPublisherCoverageKey(variant, item.title);
-    if (!key || !family) continue;
-    let families = groups.get(key);
-    if (!families) groups.set(key, families = new Set());
-    families.add(family);
+    if (key && !groups.has(key)) groups.set(key, new Set());
   }
-  const entries = [...groups];
-  for (let start = 0; start < entries.length; start += STORY_BATCH_SIZE) {
+  for (const item of items) {
+    const families = groups.get(newsPublisherCoverageKey(variant, item.title));
+    if (!families) continue;
+    const family = publisherFamilyForItem(item);
+    if (family) families.add(family);
+  }
+  const entries = [...groups].filter(([, families]) => families.size > 0);
+  for (let start = 0; start < entries.length; start += PUBLISHER_COVERAGE_BATCH_KEYS) {
     const timeout = redisTimeoutForDeadline(deadlineAt);
-    if (!timeout) return;
-    const commands = entries.slice(start, start + STORY_BATCH_SIZE).flatMap(([key, families]) => [
+    if (!timeout) {
+      console.warn(`[digest] publisher coverage write cut short: ${entries.length - start} of ${entries.length} headlines unwritten`);
+      return;
+    }
+    const commands = entries.slice(start, start + PUBLISHER_COVERAGE_BATCH_KEYS).flatMap(([key, families]) => [
       ['ZADD', key, 'GT', ...[...families].flatMap(family => [observedAt, family])],
-      ['ZREMRANGEBYSCORE', key, '-inf', observedAt - 86_400_000],
       ['EXPIRE', key, 86_400],
     ]);
     const rows = await runRedisTransaction(commands, false, timeout);
@@ -3853,9 +3870,9 @@ async function buildDigest(
     const storyTrackingDeadlineAt = digestStartedAt + ADOPTION_DEADLINE_MS;
 
     const now = Date.now();
-    // Include accepted sightings below the category display cap. Run alongside
-    // story tracking within the same deadline, including when no alert queues.
-    const publisherCoverageWrite = recordPublisherCoverage(servableItems, variant, buildStart, storyTrackingDeadlineAt)
+    // Served headlines only, with families from accepted sightings below the
+    // category cap. Runs alongside story tracking within the same deadline.
+    const publisherCoverageWrite = recordPublisherCoverage(servableItems, allSliced, variant, buildStart, storyTrackingDeadlineAt)
       .catch((err: unknown) => console.warn('[digest] publisher coverage unavailable:', err));
 
     // Read existing story tracking BEFORE writing so we know the previous cycle's

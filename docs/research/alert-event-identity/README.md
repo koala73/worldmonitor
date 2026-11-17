@@ -29,6 +29,8 @@ Run chronologically, within edition, against retained alerts in a fixed 24-hour 
 
 ## Runtime behavior
 
-Digest builds write accepted feed items, including items below the category display cap, into per-edition sorted sets keyed by exact headline identity. Each trusted publisher family has one last-seen timestamp. Realtime notifications and quiet-hours summaries read the preceding 24 hours when rendering. A missing or unavailable history falls back to the digest count carried by the event. The historical count is display-only.
+Digest builds write one per-edition sorted set for each served headline, keyed by exact headline identity. A headline below every category cap is never served, so it can never be an alert title and gets no key. Accepted sightings below the cap still add their publisher family to a served headline they repeat. Each trusted publisher family has one last-seen timestamp. Each key costs two commands per build (`ZADD GT`, `EXPIRE`); the reader counts only the preceding 24 hours by score, so stale members need no trim.
+
+Realtime notifications and quiet-hours summaries read that window when rendering. The digest's own count covers every wording of the story, and the history covers one wording across builds, so the message shows the larger of the two. A missing or unavailable history falls back to the digest count carried by the event. The historical count is display-only.
 
 With `OPENROUTER_API_KEY` configured on the notification relay, eligible queued RSS alerts are compared to up to 64 recent eligible headlines from their edition, using the existing cached embedding client. The relay writes the nearest distinct headline ID, cosine score, timestamp, edition, eligibility, and an exploratory 0.85 threshold decision to the `[news-alert-semantic-shadow]` service log. Provider failures leave ordinary delivery running. This observer cannot claim an alert, add publishers, change the score, or suppress a rewrite.
