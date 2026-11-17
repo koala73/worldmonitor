@@ -166,11 +166,16 @@ function cleanHistory(entries) {
   return [...byEpoch.values()].sort((a, b) => a.epoch - b.epoch);
 }
 
-/** Each epoch's elements replaced by the median of it and its neighbours, so a one-epoch refit drops out. */
+/**
+ * Each epoch's elements replaced by the median of a three-epoch window, so a one-epoch refit drops
+ * out. At the first and last epochs the window is the nearest three, not the epoch alone: a refit on
+ * the newest epoch would otherwise enter the J2 rate of the very step it confirms.
+ */
 function smoothedElements(history) {
   const mid = (k, field) => {
-    const values = [history[k - 1], history[k], history[k + 1]].filter(Boolean).map((e) => e[field]);
-    return values.length === 3 ? median(values) : history[k][field];
+    if (history.length < 3) return history[k][field];
+    const lo = Math.min(Math.max(k - 1, 0), history.length - 3);
+    return median([history[lo][field], history[lo + 1][field], history[lo + 2][field]]);
   };
   return history.map((_, k) => ({
     meanMotion: mid(k, 'meanMotion'),
