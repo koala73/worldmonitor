@@ -32,13 +32,12 @@ describe('official food prices card', () => {
     expect(rows[1]!.textContent).toContain('Report date: 2026-10-26');
     expect(rows[1]!.textContent).toContain('vs 2026-10-15');
   });
-  it('shows the publisher credit as text next to the source, and nothing when none is stated', () => {
+  it('keeps the publisher attribution off the card and still links the source name', () => {
     const credit = 'Source: <b>Stat</b> (CC BY 4.0)';
     new FoodPricesCard(host).update([source({ attribution: credit })]);
-    expect(host.querySelector('.food-prices-attribution')?.textContent).toBe(credit);
+    expect(host.textContent).not.toContain('CC BY 4.0');
     expect(host.querySelector('b')).toBeNull();
-    new FoodPricesCard(host).update([source()]);
-    expect(host.querySelector('.food-prices-attribution')).toBeNull();
+    expect(host.querySelector('.food-prices-source a')?.textContent).toBe('DA');
   });
   it('switches countries and markets without mixing retail and wholesale prices', () => {
     new FoodPricesCard(host).update([source(), source({ id: 'cbsl', country: 'Sri Lanka', prices: [

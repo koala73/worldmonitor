@@ -126,7 +126,8 @@ export class FoodPricesCard {
   private sourceNote(source: FoodPriceSource): HTMLElement {
     return h('p', { className: 'food-prices-source', role: 'status' },
       sourceLink(source.url, source.name), ` · ${label(source.status)}`,
-      h('small', {}, `${label('report')}: ${source.latestReportDate || '—'} · ${label('checked')}: ${source.fetchedAt ? source.fetchedAt.slice(0, 10) : '—'}`),
-      ...(source.attribution ? [h('small', { className: 'food-prices-attribution' }, source.attribution)] : []));
+      // Publisher attribution lives in the API response and docs/food-price-sources.md,
+      // not on the card, so the price table stays at the top of the panel.
+      h('small', {}, `${label('report')}: ${source.latestReportDate || '—'} · ${label('checked')}: ${source.fetchedAt ? source.fetchedAt.slice(0, 10) : '—'}`));
   }
 }
