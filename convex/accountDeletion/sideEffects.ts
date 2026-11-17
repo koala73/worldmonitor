@@ -252,6 +252,9 @@ async function redisGetJson(key: string): Promise<unknown> {
   }
 }
 
+/** How long a digest compose can still see an erase; one compose run takes minutes. */
+const BRIEF_ERASED_TTL_SECONDS = 86_400;
+
 /** Bounds one account's slot index read; the writer trims it to the 7-day envelope TTL. */
 const MAX_BRIEF_SLOTS = 1_000;
 
@@ -278,6 +281,11 @@ async function deleteAccountRedisKeys(args: {
     ...args.embedKeyHashes.map((hash) => `embed-key:${hash}`),
   ];
 
+  // Marked first (briefErasedKey in shared/brief-envelope.js): a digest compose
+  // re-reads it after its envelope write, so a compose racing this erase
+  // either sees it and removes its own brief or wrote a slot the reads below
+  // find. It only has to outlive one compose run.
+  await redisRevoke([], [{ key: `brief:erased:${args.userId}`, value: "1", ttlSeconds: BRIEF_ERASED_TTL_SECONDS }]);
   const latest = await redisGetJson(`brief:latest:${args.userId}`);
   const slot =
     latest && typeof latest === "object" && typeof (latest as { issueSlot?: unknown }).issueSlot === "string"

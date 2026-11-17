@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 import { BRIEF_L10N_GATED_LANGS, UI_LANGUAGE_NAMES, briefL10nDeliverableLanguages, isUiLanguage } from '../../shared/ui-languages.js';
 import { sanitizeForPrompt } from '../../server/_shared/llm-sanitize.js';
 import { assertBriefEnvelope } from '../../server/_shared/brief-render.js';
-import { BRIEF_LOCALIZED_ENVELOPE_VERSION } from '../../shared/brief-envelope.js';
+import { BRIEF_LOCALIZED_ENVELOPE_VERSION, briefErasedKey, briefLocalizedKey, briefSlotsKey } from '../../shared/brief-envelope.js';
 import { briefT, formatBriefDate, greetingKey } from '../../shared/brief-strings.js';
 import { BRIEF_LLM_ALLOWED_PROVIDERS, BRIEF_LLM_MODEL_OVERRIDES } from './brief-llm.mjs';
 import { deriveThreadsFromOrderedStories } from './brief-compose.mjs';
@@ -59,8 +59,10 @@ const SCRIPT_RE = {
   fa: /\p{Script=Arabic}/u,
 };
 
-// Whole URLs, Unicode paths included (https://example.com/économie).
-const URL_RE = /https?:\/\/[^\s"'<>)\]]+/g;
+// Whole URLs, Unicode paths included (https://example.com/économie). CJK
+// punctuation and fullwidth forms end one: Chinese and Japanese put no space
+// before the next sentence ("…/report。更多分析").
+const URL_RE = /https?:\/\/[^\s"'<>)\]\u3000-\u303F\uFF00-\uFFEF]+/g;
 // Sentence punctuation a translation may move. "!" and "?" can end a real
 // URL (wiki/Yahoo!), so dropping them is an altered URL.
 const URL_TRAILING_PUNCT_RE = /[.,;:\u3001\u3002\uFF0C\uFF1A\uFF1B]+$/;
@@ -176,6 +178,39 @@ export async function writeBriefSlotIndex(commands, pipeline) {
 }
 
 /**
+ * Run after the envelope write. Account deletion sets briefErasedKey before it
+ * reads the slot index, so on one Redis either this read sees the marker, or
+ * the deletion's index read sees this compose's slot. When the marker is set,
+ * deletes what this compose wrote and returns true. Throws when the marker
+ * cannot be read or the cleanup fails, so no brief is sent for the user.
+ * @param {(commands: any[]) => Promise<any[] | null>} pipeline
+ */
+export async function undoBriefWriteIfErased(userId, issueSlot, pipeline) {
+  const read = await pipelineWithRetry([['GET', briefErasedKey(userId)]], pipeline);
+  if (!read) throw new Error('brief erase marker unreadable');
+  if (read[0]?.result == null) return false;
+  const cleanup = await pipelineWithRetry([
+    ['DEL', `brief:${userId}:${issueSlot}`],
+    ['DEL', briefLocalizedKey(userId, issueSlot)],
+    ['DEL', `brief:latest:${userId}`],
+    ['DEL', briefSlotsKey(userId)],
+  ], pipeline);
+  if (!cleanup) throw new Error('brief cleanup after account erase failed');
+  return true;
+}
+
+/** The pipeline's cells, retrying once; null when both attempts fail or return an error cell. */
+async function pipelineWithRetry(commands, pipeline) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const cells = await pipeline(commands).catch(() => null);
+    if (!Array.isArray(cells) || cells.length < commands.length) continue;
+    if (cells.some((cell) => cell && typeof cell === 'object' && 'error' in cell)) continue;
+    return cells;
+  }
+  return null;
+}
+
+/**
  * Error cells of a brief write pipeline. The first `requiredCount` commands
  * (canonical envelope, latest pointer) are fatal; the localized sibling is
  * best effort, because the English brief is already
@@ -240,28 +275,99 @@ function sourceUrlFor(outUrl, sourceUrls) {
     && NON_ASCII_LETTER_RE.test(outUrl.charAt(src.length))) ?? null;
 }
 
-// Grouped thousands (1,234 / 1.234 / 1 234) or a plain number with an
-// optional decimal part. Its value is its digits, so local formats compare equal.
-const NUMBER_RE = /\d{1,3}(?:[,.\u00A0\u202F ]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?/g;
-// Counts a compact-script translation may rescale (3 million -> 300万).
-const SCALED_SOURCE_RE = /^\s*(?:thousand|million|billion|trillion)\b/i;
-const SCALED_OUTPUT_RE = /^\s*[万萬亿億兆千만억천]/u;
+// A number: digits with thousands groups (1 234 / 1'234) and [.,] groups
+// (1,234.5 / 1.234,5 / 1,5 / 18.04.2026). parseNumber reads the value.
+const NUMBER_RE = /\d+(?:[\u00A0\u202F '](?=\d{3}(?!\d))\d{3})*(?:[,.]\d+)*/g;
+const ND_RE = /^\p{Nd}$/u;
+// A scale after a number (3 million, 300万, 30 लाख). Longest first.
+const SCALES = [
+  ['trillion', 1e12], ['billion', 1e9], ['million', 1e6], ['thousand', 1e3], ['bn', 1e9], ['tn', 1e12],
+  ['千万', 1e7], ['千萬', 1e7], ['百万', 1e6], ['百萬', 1e6], ['十亿', 1e9], ['十億', 1e9],
+  ['千', 1e3], ['万', 1e4], ['萬', 1e4], ['亿', 1e8], ['億', 1e8], ['兆', 1e12],
+  ['천만', 1e7], ['백만', 1e6], ['십억', 1e9], ['천', 1e3], ['만', 1e4], ['억', 1e8], ['조', 1e12],
+  ['करोड़', 1e7], ['करोड', 1e7], ['लाख', 1e5], ['अरब', 1e9],
+];
+const MONTH_RE = /\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sept?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\b/g;
 
-function numbersIn(text, scaledRe) {
-  const out = [];
-  for (const m of text.replace(URL_RE, ' ').matchAll(NUMBER_RE)) {
-    if (scaledRe && scaledRe.test(text.slice(m.index + m[0].length))) continue;
-    out.push(m[0].replace(/\D/g, ''));
-  }
-  return out.sort();
+/** Any decimal digit (Arabic-Indic ١٠, Persian ۱۰, Devanagari, fullwidth...) as ASCII. */
+function asciiDigits(text) {
+  return text.replace(/\p{Nd}/gu, (d) => {
+    const cp = d.codePointAt(0);
+    let zero = cp;
+    while (ND_RE.test(String.fromCodePoint(zero - 1))) zero -= 1;
+    return String((cp - zero) % 10);
+  });
 }
 
-/** The translation carries exactly the source's numbers. */
-function numbersKept(source, text, lang) {
-  const compact = COMPACT_LANGS.has(lang);
-  const want = numbersIn(source, compact ? SCALED_SOURCE_RE : null);
-  const got = numbersIn(text, compact ? SCALED_OUTPUT_RE : null);
-  return want.length === got.length && want.every((n, i) => n === got[i]);
+/**
+ * The values a number token can mean. "1,234" and "1.234" are a thousands
+ * group or a decimal depending on the language, so they mean either;
+ * "18.04.2026" is three numbers.
+ */
+function parseNumber(token) {
+  const t = token.replace(/[\u00A0\u202F ']/g, '');
+  const seps = t.match(/[,.]/g) ?? [];
+  if (seps.length === 0) return [[Number(t)]];
+  const parts = t.split(/[,.]/);
+  const grouped = parts.slice(1).every((p) => p.length === 3);
+  if (new Set(seps).size === 2) {
+    // Both kinds: the last one is the decimal point.
+    const at = Math.max(t.lastIndexOf(','), t.lastIndexOf('.'));
+    return [[Number(`${t.slice(0, at).replace(/[,.]/g, '')}.${t.slice(at + 1)}`)]];
+  }
+  if (seps.length === 1) {
+    const decimal = Number(`${parts[0]}.${parts[1]}`);
+    return [grouped ? [Number(parts.join('')), decimal] : [decimal]];
+  }
+  return grouped ? [[Number(parts.join(''))]] : parts.map((p) => [Number(p)]);
+}
+
+/** Every number in the text as its candidate values, a scale after it included. */
+function numbersIn(text) {
+  // URLs are blanked to the same length, so match offsets index this string.
+  const t = asciiDigits(text.replace(URL_RE, (url) => ' '.repeat(url.length)));
+  const out = [];
+  for (const m of t.matchAll(NUMBER_RE)) {
+    const after = t.slice(m.index + m[0].length).replace(/^[\u00A0\u202F ]/, '');
+    // Latin scale words are whole words; CJK, Hangul and Devanagari ones attach.
+    const scale = SCALES.find(([word]) => (/[a-z]/.test(word)
+      ? after.toLowerCase().startsWith(word) && !/^\p{L}/u.test(after.slice(word.length))
+      : after.startsWith(word)));
+    for (const values of parseNumber(m[0])) {
+      out.push(scale ? [...values, ...values.map((v) => v * scale[1])] : values);
+    }
+  }
+  return out;
+}
+
+const sameValue = (a, b) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+
+/**
+ * The translation carries exactly the source's numbers, compared by value: a
+ * scale, a decimal comma or native digits do not change a number. Each source
+ * number pairs with one output number; the only extras allowed are month
+ * numbers for month names the source spells out (April 18 -> 4月18日).
+ */
+function numbersKept(source, text) {
+  const want = numbersIn(source);
+  const got = numbersIn(text);
+  const months = (source.match(MONTH_RE) ?? []).length;
+  if (got.length < want.length || got.length > want.length + months) return false;
+  const isMonth = (values) => values.some((v) => Number.isInteger(v) && v >= 1 && v <= 12);
+  const left = [...want.map((values) => (o) => o.some((v) => values.some((w) => sameValue(v, w)))), ...Array.from({ length: months }, () => isMonth)];
+  // Bipartite matching (Kuhn): source numbers first, so they all stay matched.
+  const owner = new Array(got.length).fill(-1);
+  const tryMatch = (i, seen) => {
+    for (let j = 0; j < got.length; j += 1) {
+      if (seen[j] || !left[i](got[j])) continue;
+      seen[j] = true;
+      if (owner[j] < 0 || tryMatch(owner[j], seen)) { owner[j] = i; return true; }
+    }
+    return false;
+  };
+  for (let i = 0; i < want.length; i += 1) if (!tryMatch(i, [])) return false;
+  for (let i = want.length; i < left.length; i += 1) tryMatch(i, []);
+  return owner.every((i) => i >= 0);
 }
 
 function countOf(text, ch) {
@@ -286,10 +392,25 @@ const ENGLISH_MARKERS = new Set([
 /** Lower-case words only: capitalised ones are names ("The Guardian", "Von der Leyen"). */
 const lowerWordsOf = (text) => text.split(/[^\p{L}]+/u).filter((w) => w && w === w.toLowerCase());
 
+/**
+ * A headline capitalised word by word ("The President Meets The Leaders"):
+ * four or more words, at least four in five capitalised. Its capitals say
+ * nothing about names.
+ */
+function isTitleCase(text) {
+  const words = text.split(/[^\p{L}]+/u).filter(Boolean);
+  return words.length >= 4 && words.filter((w) => /^\p{Lu}/u.test(w)).length / words.length >= 0.8;
+}
+
+/** English marker words; in title case every word counts, otherwise only lower-case ones. */
+function englishMarkerCount(text) {
+  const words = isTitleCase(text) ? text.toLowerCase().split(/[^\p{L}]+/u) : lowerWordsOf(text);
+  return words.filter((w) => ENGLISH_MARKERS.has(w)).length;
+}
+
 /** True when the text reads as English prose rather than names or another language. */
 function looksEnglish(text) {
-  const markers = lowerWordsOf(text).filter((w) => ENGLISH_MARKERS.has(w)).length;
-  return markers >= 2;
+  return englishMarkerCount(text) >= 2;
 }
 
 /**
@@ -298,7 +419,7 @@ function looksEnglish(text) {
  * language even without accents ("Le gouvernement annonce un plan pour Paris").
  */
 const TARGET_MARKERS = {
-  fr: ['le', 'la', 'les', 'des', 'du', 'une', 'est', 'dans', 'pour', 'sur', 'avec', 'et', 'aux', 'qui', 'pas', 'ses', 'nouveau', 'nouvelle'],
+  fr: ['le', 'la', 'les', 'des', 'du', 'une', 'est', 'dans', 'pour', 'sur', 'avec', 'et', 'aux', 'au', 'qui', 'pas', 'ses', 'ces', 'cette', 'nouveau', 'nouvelle', 'contre', 'plusieurs', 'selon', 'entre', 'vers', 'chez', 'depuis', 'mais', 'leur', 'leurs'],
   es: ['el', 'los', 'las', 'del', 'una', 'por', 'para', 'con', 'que', 'en', 'y', 'sus', 'nuevo', 'nueva'],
   de: ['der', 'die', 'das', 'und', 'mit', 'von', 'den', 'dem', 'ein', 'eine', 'ist', 'nicht', 'auf', 'zu', 'neues', 'neue'],
   it: ['il', 'lo', 'gli', 'della', 'delle', 'del', 'una', 'per', 'con', 'che', 'di', 'nuovo', 'nuova', 'un'],
@@ -334,6 +455,8 @@ function readsAsLanguage(text, lang) {
  */
 function unchangedIsUntranslated(source, lang) {
   if (looksEnglish(source)) return true;
+  // A title-case headline: one English marker settles it; a list of names has none.
+  if (isTitleCase(source)) return englishMarkerCount(source) > 0;
   const prose = source.replace(URL_RE, '');
   // Accented or non-Latin letters, not typographic punctuation (’ —).
   if (NON_ASCII_LETTER_RE.test(prose)) return false;
@@ -376,7 +499,7 @@ function validTranslation(source, out, lang) {
   const mapped = urlsIn(text).map((url) => sourceUrlFor(url, sourceUrls));
   if (mapped.includes(null)) return false;
   if (sourceUrls.some((url) => !mapped.includes(url))) return false;
-  if (!numbersKept(source, text, lang)) return false;
+  if (!numbersKept(source, text)) return false;
   if (source.length < MIN_CHECKED_LENGTH) {
     if (text.length > Math.max(SHORT_SOURCE_MAX_LEN, source.length * MAX_RATIO)) return false;
   } else {

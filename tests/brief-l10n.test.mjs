@@ -12,6 +12,7 @@ import {
   briefPipelineErrors,
   sharedTranslateCacheKey,
   briefSlotIndexCommands,
+  undoBriefWriteIfErased,
   writeBriefSlotIndex,
   buildTranslatePrompt,
   fetchBriefL10nConfig,
@@ -190,6 +191,52 @@ describe('translate prompt and parser', () => {
     // Plain English with no function words is still untranslated.
     assert.equal(one('European Central Bank raises interest rates', 'European Central Bank raises interest rates', 'fr'), null);
     assert.equal(one('Le gouvernement annonce un nouveau plan pour Paris', 'Le gouvernement annonce un nouveau plan pour Paris', 'de'), null);
+  });
+
+  it('compares numbers by value: scale, decimals, native digits and dates', () => {
+    // A scaled amount is the same amount however it is written.
+    assert.ok(one('Oil exports reached 3 million barrels a day in March.', '石油出口在三月达到每天300万桶。', 'zh'));
+    assert.ok(one('Oil exports reached 3 million barrels a day in March.', '石油出口在三月达到每天3000000桶。', 'zh'));
+    assert.ok(one('Officials seized 10,000 tonnes of grain at the port.', '官员在港口查获了1万吨粮食。', 'zh'));
+    assert.ok(one('Oil exports reached 3 million barrels a day in March.', 'Les exportations ont atteint 3 millions de barils par jour en mars.'));
+    // A changed amount is rejected, scaled or not.
+    assert.equal(one('Oil exports reached 3 million barrels a day in March.', '石油出口在三月达到每天900万桶。', 'zh'), null);
+    assert.equal(one('Output rose to 1.5 million barrels after the deal.', 'La production a atteint 15 millions de barils après l\u2019accord.'), null);
+    assert.equal(one('Oil prices fell 1.5 percent after talks in Paris.', 'Les prix du pétrole ont baissé de 15 pour cent après les pourparlers à Paris.'), null);
+    // The decimal point stays where it was; its spelling does not matter.
+    assert.ok(one('Brent traded at 81.50 dollars after the meeting ended.', 'Le Brent s\u2019échangeait à 81,5 dollars après la réunion.'));
+    assert.ok(one('The index stood at 10.0 points by the end of the day.', 'L\u2019indice était à 10 points en fin de journée.'));
+    // Native digits are digits.
+    assert.ok(one('At least 10 people were injured in the blast on Monday.', '\u0623\u0635\u064A\u0628 \u0661\u0660 \u0623\u0634\u062E\u0627\u0635 \u0639\u0644\u0649 \u0627\u0644\u0623\u0642\u0644 \u0641\u064A \u0627\u0644\u0627\u0646\u0641\u062C\u0627\u0631 \u064A\u0648\u0645 \u0627\u0644\u0627\u062B\u0646\u064A\u0646.', 'ar'));
+    assert.ok(one('At least 10 people were injured in the blast on Monday.', '\u062F\u0633\u062A\u200C\u06A9\u0645 \u06F1\u06F0 \u0646\u0641\u0631 \u062F\u0631 \u0627\u0646\u0641\u062C\u0627\u0631 \u0631\u0648\u0632 \u062F\u0648\u0634\u0646\u0628\u0647 \u0632\u062E\u0645\u06CC \u0634\u062F\u0646\u062F.', 'fa'));
+    // A month name may become its number.
+    assert.ok(one('The summit opens on April 18, 2026 in Geneva.', '峰会将于2026年4月18日在日内瓦开幕。', 'zh'));
+    assert.equal(one('The summit opens on April 18, 2026 in Geneva.', '峰会将于2026年4月19日在日内瓦开幕。', 'zh'), null);
+    assert.equal(one('The summit opens on 18 March 2026 in Geneva.', '峰会将于2026年13月18日在日内瓦开幕。', 'zh'), null);
+  });
+
+  it('reads numbers after a URL at the right place', () => {
+    const src = 'See https://example.com/r/2026-report for details: exports hit 3 million barrels.';
+    assert.ok(one(src, '详情见 https://example.com/r/2026-report ：出口达到300万桶。', 'zh'));
+    assert.equal(one(src, '详情见 https://example.com/r/2026-report ：出口达到900万桶。', 'zh'), null);
+  });
+
+  it('ends a URL at CJK punctuation, so an unspaced sentence after it is prose', () => {
+    const src = 'Full report at https://example.com/report. More analysis follows later.';
+    assert.ok(one(src, '完整报告见 https://example.com/report。更多分析随后发布。', 'zh'));
+    assert.ok(one(src, '完整レポートは https://example.com/report。詳しい分析は後ほど。', 'ja'));
+  });
+
+  it('treats an unchanged title-case English headline as untranslated', () => {
+    const title = 'Oil Prices Fall Sharply After Talks Collapse In Geneva';
+    assert.equal(one(title, title), null);
+    const summit = 'The President Meets The Leaders After The Summit';
+    assert.equal(one(summit, summit), null);
+    // A title-case list of names has no English marker and stays.
+    const names = 'Nvidia Microsoft Apple Alphabet Amazon Meta';
+    assert.equal(one(names, names, 'es'), names);
+    const fr = 'Paris annonce plusieurs sanctions contre Moscou';
+    assert.equal(one(fr, fr), fr);
   });
 
   it('rejects a reply that is mostly English words, in any script', () => {
@@ -829,6 +876,38 @@ describe('cron wiring', () => {
     calls = 0;
     await assert.rejects(writeBriefSlotIndex(cmds, async () => { calls += 1; return [{ error: 'OOM' }, { result: 0 }, { result: 1 }]; }), /OOM/);
     assert.equal(calls, 2);
+  });
+
+  it('a compose that lost the race to account deletion removes what it wrote', async () => {
+    const seen = [];
+    const pipeline = (marker) => async (cmds) => { seen.push(cmds); return cmds.map((c) => (c[0] === 'GET' ? { result: marker } : { result: 1 })); };
+    assert.equal(await undoBriefWriteIfErased('u1', '2026-11-17-0800', pipeline(null)), false);
+    assert.deepEqual(seen, [[['GET', 'brief:erased:u1']]]);
+    seen.length = 0;
+    assert.equal(await undoBriefWriteIfErased('u1', '2026-11-17-0800', pipeline('1')), true);
+    assert.deepEqual(seen[1], [
+      ['DEL', 'brief:u1:2026-11-17-0800'],
+      ['DEL', 'brief:l10n:u1:2026-11-17-0800'],
+      ['DEL', 'brief:latest:u1'],
+      ['DEL', 'brief:slots:u1'],
+    ]);
+  });
+
+  it('an unreadable erase marker is retried once, then fails the compose', async () => {
+    let calls = 0;
+    assert.equal(await undoBriefWriteIfErased('u1', 's', async (c) => (++calls === 1 ? null : c.map(() => ({ result: null })))), false);
+    assert.equal(calls, 2);
+    calls = 0;
+    await assert.rejects(undoBriefWriteIfErased('u1', 's', async () => { calls += 1; return [{ error: 'down' }]; }), /erase marker/);
+    assert.equal(calls, 2);
+    // A marker that was read but whose cleanup failed also fails the compose.
+    await assert.rejects(undoBriefWriteIfErased('u1', 's', async (c) => c.map((cmd) => (cmd[0] === 'GET' ? { result: '1' } : { error: 'down' }))), /cleanup/);
+  });
+
+  it('the compose re-reads the erase marker after its envelope write and before signing a URL', () => {
+    const pipelineAt = cron.indexOf('const pipelineResult = await redisPipeline(briefCommands');
+    const checkAt = cron.indexOf('await undoBriefWriteIfErased(userId, issueSlot,');
+    assert.ok(pipelineAt > 0 && checkAt > pipelineAt && checkAt < cron.indexOf('const magazineUrl = await signBriefUrl('));
   });
 
   it('the translation budget never exceeds what is left of the pass budget', () => {
