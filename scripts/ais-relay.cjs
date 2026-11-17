@@ -86,6 +86,11 @@ const {
   xPostBudgetServiceStatus,
 } = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
+const { newsStoryKey, newsStoryKeyLoadError, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
+if (newsStoryKeyLoadError()) {
+  // Alerts still publish, on the exact-title identity; a repeated headline can alert twice.
+  console.warn('[Notify] News story key unavailable, falling back to exact-title dedup:', newsStoryKeyLoadError().message);
+}
 const {
   buildClassifyDigestUrl,
   classifyDigestTransport,
@@ -117,6 +122,7 @@ const {
   buildDedupMaterial,
   classifySetNxResult,
   recordDedupOutcome,
+  releaseFailOpenFallback,
 } = require('./shared/notification-dedup.cjs');
 const {
   AVIATION_MIN_SERVED_COVERAGE,
@@ -665,6 +671,9 @@ function upstashLpush(key, value) {
           resolve(typeof parsed?.result === 'number' && parsed.result > 0);
         } catch { resolve(false); }
       });
+      // A connection dropped mid-body emits close without end. A complete
+      // response has already resolved from end, so this is then a no-op.
+      resp.on('close', () => resolve(false));
     });
     req.on('error', () => resolve(false));
     req.on('timeout', () => { req.destroy(); resolve(false); });
@@ -694,6 +703,8 @@ function upstashSetNx(key, value, ttlSeconds) {
           resolve(classifySetNxResult(parsed?.result));
         } catch { resolve('error'); }
       });
+      // Settles a response cut off mid-body; a no-op after end.
+      resp.on('close', () => resolve('error'));
     });
     req.on('error', () => resolve('error'));
     req.on('timeout', () => { req.destroy(); resolve('error'); });
@@ -800,6 +811,8 @@ function upstashDel(key) {
       resp.on('end', () => {
         try { resolve(JSON.parse(data)?.result === 1); } catch { resolve(false); }
       });
+      // Settles a response cut off mid-body; a no-op after end.
+      resp.on('close', () => resolve(false));
     });
     req.on('error', () => resolve(false));
     req.on('timeout', () => { req.destroy(); resolve(false); });
@@ -990,7 +1003,56 @@ function marketMoveFields(assetClass, q) {
   };
 }
 
-async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800 }) {
+// Dedup claims this process took, whose queue write failed and whose rollback
+// DEL failed too (key -> expiry ms). Redis still holds the claim although
+// nothing was queued; without this, every later copy reads it as a duplicate
+// and the alert is lost for the claim's whole TTL.
+const unreleasedDedupClaims = new Map();
+const MAX_UNRELEASED_DEDUP_CLAIMS = 1_000;
+
+function holdsUnreleasedDedupClaim(key) {
+  const expiresAt = unreleasedDedupClaims.get(key);
+  if (expiresAt == null) return false;
+  if (expiresAt > Date.now()) return true;
+  unreleasedDedupClaims.delete(key);
+  return false;
+}
+
+function rememberUnreleasedDedupClaim(key, ttlSeconds) {
+  if (unreleasedDedupClaims.size >= MAX_UNRELEASED_DEDUP_CLAIMS) {
+    const now = Date.now();
+    for (const [k, expiresAt] of unreleasedDedupClaims) if (expiresAt <= now) unreleasedDedupClaims.delete(k);
+    if (unreleasedDedupClaims.size >= MAX_UNRELEASED_DEDUP_CLAIMS) {
+      unreleasedDedupClaims.delete(unreleasedDedupClaims.keys().next().value);
+    }
+  }
+  unreleasedDedupClaims.set(key, Date.now() + ttlSeconds * 1000);
+}
+
+// Publishes in flight per dedup key (key -> settled promise of the last one).
+// Callers publish without awaiting, so two same-key publishes race: the second
+// sees the first's claim and stops, and if the first's queue write then fails
+// and rolls the claim back, neither is queued. A claim kept in
+// unreleasedDedupClaims races the other way: both calls take it again and both
+// queue. Run in order, each sees the outcome of the one before it.
+const dedupKeyPublishes = new Map();
+
+function inDedupKeyOrder(key, publish) {
+  const prior = dedupKeyPublishes.get(key) ?? Promise.resolve();
+  const run = prior.then(() => publish());
+  const settled = run.then(() => {}, () => {});
+  dedupKeyPublishes.set(key, settled);
+  settled.then(() => { if (dedupKeyPublishes.get(key) === settled) dedupKeyPublishes.delete(key); });
+  return run;
+}
+
+// Test seam only: wait until no publish is in flight, so a test can assert that
+// an alert was not queued without guessing how long a publish takes.
+async function settleNotificationPublishes() {
+  while (dedupKeyPublishes.size > 0) await Promise.all(dedupKeyPublishes.values());
+}
+
+async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800, storyKey }) {
   try {
     // Include variant in dedup key so each variant can independently publish the same title
     // (e.g. finance and world users both receive an alert for the same headline).
@@ -999,45 +1061,77 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
     // event collapse at the publisher (queue stays clean) instead of N times
     // per recipient at the relay.
     const variantSuffix = variant ? `:${variant}` : '';
+    // storyKey (news alerts, lib/news-story-key.cjs) replaces the title here
+    // only. Unlike coalesceKey it is not in the payload, so the relay's
+    // per-user dedup still keys on the title, as for browser-submitted alerts.
+    // A story claim is held for a day, so it hashes with SHA-256: distinct
+    // headlines collide on the 32-bit notifySimpleHash and would silence each
+    // other for the whole window.
     const dedupMaterial = buildDedupMaterial(eventType, payload?.title, payload?.coalesceKey);
-    const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(dedupMaterial)}`;
-    const dedupResult = await upstashSetNx(dedupKey, '1', dedupTtl);
-    const dedupDecision = recordDedupOutcome(dedupResult, {
-      surface: 'ais-relay',
-      eventType,
-      severity,
-      fallbackKey: dedupKey,
-      fallbackTtlSeconds: dedupTtl,
-      emitTelemetry: recordNotificationDedupSetNxError,
+    const dedupHash = storyKey
+      ? `story-${crypto.createHash('sha256').update(storyKey).digest('hex').slice(0, 32)}`
+      : notifySimpleHash(dedupMaterial);
+    const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${dedupHash}`;
+    return await inDedupKeyOrder(dedupKey, async () => {
+      let dedupResult = await upstashSetNx(dedupKey, '1', dedupTtl);
+      // The existing claim is ours and was never queued: take it again.
+      if (dedupResult === 'duplicate' && holdsUnreleasedDedupClaim(dedupKey)) dedupResult = 'new';
+      const dedupDecision = recordDedupOutcome(dedupResult, {
+        surface: 'ais-relay',
+        eventType,
+        severity,
+        fallbackKey: dedupKey,
+        fallbackTtlSeconds: dedupTtl,
+        emitTelemetry: recordNotificationDedupSetNxError,
+      });
+      // Returns true once the event is queued or was already queued; callers
+      // that keep their own edge state retry on false.
+      const publishedAt = Date.now();
+      const fanout = API_FANOUT_EVENT_TYPES.has(eventType);
+      // Stable per-story / per-move id for API subscribers (occurrence-events.cjs).
+      // The relay ignores it; it rides along in the queue message unchanged.
+      if (fanout && payload && typeof payload === 'object' && !payload.eventId) {
+        const eventId = occurrenceEventIdFor(eventType, payload, publishedAt);
+        if (eventId) payload = { ...payload, eventId };
+      }
+      const msg = JSON.stringify({ eventType, payload, severity: dedupDecision.severity, ...(variant ? { variant } : {}), publishedAt });
+      if (!dedupDecision.shouldPublish) {
+        if (!dedupDecision.isDuplicate) return false;
+        console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
+        // A repeat of an alerted story still goes to API webhook subscribers,
+        // on the title identity they had before the story key. Each one filters
+        // by its own importance floor, severity and keywords, so the sighting
+        // that claimed the story may be one a subscriber rejected, and this one
+        // the first it accepts.
+        if (storyKey && fanout) {
+          const titleKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(dedupMaterial)}`;
+          const titleClaim = await upstashSetNx(titleKey, '1', 1800);
+          if (titleClaim !== 'duplicate' && titleClaim !== 'disabled') teeApiFanout(eventType, msg);
+        }
+        return true;
+      }
+      const ok = await upstashLpush('wm:events:queue', msg);
+      if (ok) {
+        unreleasedDedupClaims.delete(dedupKey);
+        if (fanout) teeApiFanout(eventType, msg);
+        console.log(`[Notify] Queued ${dedupDecision.severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
+        return true;
+      } else {
+        // Rollback the dedup key so the next poll cycle can retry — avoids silent
+        // suppression for the full dedupTtl when a transient LPUSH fails.
+        console.warn(`[Notify] LPUSH failed for ${eventType} — rolling back dedup key`);
+        // Awaited so a publish queued behind this one (inDedupKeyOrder)
+        // claims after the rollback, not before it.
+        const released = await upstashDel(dedupKey).catch(() => false);
+        // false also covers an absent key, which costs at most one re-claim.
+        if (released) unreleasedDedupClaims.delete(dedupKey);
+        else rememberUnreleasedDedupClaim(dedupKey, dedupTtl);
+        // During a SET NX outage the claim is an in-process reservation; drop
+        // it too, or it suppresses the story for the rest of its TTL.
+        if (dedupDecision.action === 'fail_open') releaseFailOpenFallback(dedupKey);
+        return false;
+      }
     });
-    // Returns true once the event is queued or was already queued; callers
-    // that keep their own edge state retry on false.
-    if (!dedupDecision.shouldPublish) {
-      if (!dedupDecision.isDuplicate) return false;
-      console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
-      return true;
-    }
-    const publishedAt = Date.now();
-    const fanout = API_FANOUT_EVENT_TYPES.has(eventType);
-    // Stable per-story / per-move id for API subscribers (occurrence-events.cjs).
-    // The relay ignores it; it rides along in the queue message unchanged.
-    if (fanout && payload && typeof payload === 'object' && !payload.eventId) {
-      const eventId = occurrenceEventIdFor(eventType, payload, publishedAt);
-      if (eventId) payload = { ...payload, eventId };
-    }
-    const msg = JSON.stringify({ eventType, payload, severity: dedupDecision.severity, ...(variant ? { variant } : {}), publishedAt });
-    const ok = await upstashLpush('wm:events:queue', msg);
-    if (ok) {
-      if (fanout) teeApiFanout(eventType, msg);
-      console.log(`[Notify] Queued ${dedupDecision.severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
-      return true;
-    } else {
-      // Rollback the dedup key so the next poll cycle can retry — avoids silent
-      // suppression for the full dedupTtl when a transient LPUSH fails.
-      console.warn(`[Notify] LPUSH failed for ${eventType} — rolling back dedup key`);
-      upstashDel(dedupKey).catch(() => {});
-      return false;
-    }
   } catch (e) {
     console.warn(`[Notify] publishNotificationEvent error (${eventType}):`, e?.message || e);
     return false;
@@ -5659,6 +5753,9 @@ async function seedClassifyForVariant(variant, seenTitles) {
         // The one country the title names anywhere, not the affected target
         // countryCodes keeps ("Russia attacks Ukraine" names two).
         const primaryCountryCode = notifyPolicy.primaryNewsCountryCode(countriesNamedInHeadline(chunk[idx]));
+        // One alert per story per day, not per title string: a second
+        // publisher carrying an alerted headline is the same story.
+        const storyKey = newsStoryKey(chunk[idx], { severity: level, importanceScore });
         publishNotificationEvent({
           eventType: 'rss_alert',
           payload: {
@@ -5680,6 +5777,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
           },
           severity: level,
           variant,
+          ...(storyKey ? { storyKey, dedupTtl: NEWS_STORY_DEDUP_TTL_SECONDS } : {}),
         }).catch(e => console.warn('[Notify] Classify publish error:', e?.message));
       }
     }
@@ -13603,8 +13701,9 @@ async function handleRelayRequest(req, res) {
     }, JSON.stringify(getRelayRollingMetrics()));
   } else if (pathname === '/__test/seed-classify' && RELAY_TEST_MODE) {
     // Test-only seam, same contract as /__test/seed-theater-posture: run one
-    // classify cycle on request.
+    // classify cycle on request, and answer once its alert publishes settle.
     await seedClassify();
+    await settleNotificationPublishes();
     return sendCompressed(req, res, 200, {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',

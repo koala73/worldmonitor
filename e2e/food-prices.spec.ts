@@ -36,8 +36,13 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       await panel.getByLabel('Country', { exact: true }).selectOption(id!);
       await expect(panel.locator('.food-prices-table').first()).toContainText(currency!);
     }
+    const malaysia = panel.locator('.food-prices-table').first();
+    await expect(malaysia.locator('tbody tr')).toHaveCount(39);
+    await expect(malaysia.locator('tbody tr').filter({ hasText: 'vs 2026-11-09' })).toHaveCount(39);
     await panel.locator('.food-prices-card h3').scrollIntoViewIfNeeded();
     await evidenceScreenshot(page, { path: testInfo.outputPath(`food-prices-${viewport.width}-daily.png`) });
+    await malaysia.locator('tbody tr').last().scrollIntoViewIfNeeded();
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`food-prices-${viewport.width}-daily-end.png`) });
     const contextMarket = panel.getByLabel('Sudan · FEWS NET monthly market prices · Market', { exact: true });
     const markets = await contextMarket.locator('option').evaluateAll(options => options.map(option => (option as HTMLOptionElement).value));
     await contextMarket.selectOption(markets[1]!);

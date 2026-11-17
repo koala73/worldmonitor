@@ -224,6 +224,12 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     notes: "brief:llm:translate:user:v1:{model}:{userId}:{lang}:{sha256}; keyed by content hash with no index, 8 h TTL",
   },
   {
+    target: "redis:sent-alerts",
+    action: "delete",
+    notes: "wm:notif:sent:v1:{userId}, the alerts delivered to the account; also expires 7 days after the last one. "
+      + "Sets wm:notif:sent-erased:v1:{userId} for 7 days first, which makes the relay refuse a late write for the account",
+  },
+  {
     target: "clerk.users",
     action: "delete",
     notes: "Backend Users API; 404 is success",

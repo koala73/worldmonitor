@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package worldmonitor.news.v1;
+
+import "sebuf/http/annotations.proto";
+
+// The account is the signed-in caller; the request carries no user field.
+
+message ListSentAlertsRequest {}
+
+// The relay record also holds the alert type, severity and channels. They are
+// left out of the API until a reader needs them: public/openapi.json has a
+// byte budget (tests/openapi-json-dedup.test.mjs).
+
+// One realtime alert delivered to the caller.
+message SentAlert {
+  // Alert headline.
+  string title = 1;
+  // Publisher; may be empty.
+  string source = 2;
+  // Article URL, or empty.
+  string link = 3;
+  // Delivery time, Unix epoch milliseconds.
+  int64 sent_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+message ListSentAlertsResponse {
+  // Newest first, last seven days, at most 200.
+  repeated SentAlert alerts = 1;
+  // ok | unavailable (record unreadable, not zero alerts).
+  string state = 2;
+}

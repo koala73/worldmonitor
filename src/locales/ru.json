@@ -638,7 +638,8 @@
         "techevent": "Технологическое мероприятие",
         "techhq": "Штаб-квартира",
         "accelerator": "Акселератор",
-        "flight": "Рейс"
+        "flight": "Рейс",
+        "alert": "Оповещение"
       },
       "flightOnGround": "На земле",
       "flightAirborne": "FL{{fl}} · {{kts}} kts",
@@ -646,7 +647,9 @@
       "flightMilitaryOnGround": "Военный · {{type}} · на земле",
       "flightSearchHint": "Нажмите Enter или кликните для поиска текущей позиции",
       "flightNotFound": "Текущая позиция не найдена для {{callsign}}",
-      "addPanel": "Добавить"
+      "addPanel": "Добавить",
+      "sentAlerts": "Отправленные вам оповещения",
+      "sentAlertTime": "Отправлено {{time}}"
     },
     "signal": {
       "title": "РАЗВЕДЫВАТЕЛЬНОЕ ОБНАРУЖЕНИЕ",

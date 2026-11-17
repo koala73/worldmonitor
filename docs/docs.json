@@ -43,7 +43,7 @@
     "links": [
       {
         "label": "Blog",
-        "href": "https://www.worldmonitor.app/blog"
+        "href": "https://www.worldmonitor.app/blog/"
       },
       {
         "label": "Dashboard",
@@ -609,7 +609,7 @@
           "links": [
             {
               "label": "博客",
-              "href": "https://www.worldmonitor.app/blog"
+              "href": "https://www.worldmonitor.app/blog/"
             },
             {
               "label": "仪表盘",
@@ -649,7 +649,7 @@
                 },
                 {
                   "label": "博客",
-                  "href": "https://www.worldmonitor.app/blog"
+                  "href": "https://www.worldmonitor.app/blog/"
                 }
               ]
             },
@@ -1225,7 +1225,7 @@
           },
           {
             "label": "Blog",
-            "href": "https://www.worldmonitor.app/blog"
+            "href": "https://www.worldmonitor.app/blog/"
           }
         ]
       },

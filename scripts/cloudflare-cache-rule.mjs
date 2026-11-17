@@ -152,8 +152,8 @@ export const FAMILY_EXCLUSIONS = Object.freeze({
 
 /**
  * Families whose bare path has no vercel.json header rule to mirror. `/docs` is a
- * 307 to `/docs/documentation` and nothing more; the corpus bare forms are 308s
- * too, but they carry a header rule, and `/blog` is the blog index itself.
+ * 307 to `/docs/documentation` and nothing more. The corpus bare forms and
+ * `/blog` are 308s too, but they carry a header rule.
  */
 const FAMILIES_WITHOUT_BARE_RULE = new Set(['docs']);
 

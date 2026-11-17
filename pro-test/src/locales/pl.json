@@ -447,7 +447,8 @@
       "trendRising": "rosnący",
       "trendFalling": "spadający",
       "trendStable": "stabilny",
-      "situationLink": "Monitoruj sytuację: kryzysy, wiadomości, wąskie gardła i awarie na jednym pulpicie"
+      "situationLink": "Monitoruj sytuację: kryzysy, wiadomości, wąskie gardła i awarie na jednym pulpicie",
+      "pizzaIndexLink": "Pentagoński indeks pizzy: jak zatłoczone są pizzerie w pobliżu Pentagonu"
     },
     "moments": {
       "eyebrow": "Silnik korelacji",

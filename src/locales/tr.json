@@ -632,7 +632,8 @@
         "techevent": "Teknoloji Etkinligi",
         "techhq": "Teknoloji Merkezi",
         "accelerator": "Hizlandirici",
-        "flight": "Uçuş"
+        "flight": "Uçuş",
+        "alert": "Uyarı"
       },
       "flightOnGround": "Yerdeki",
       "flightAirborne": "FL{{fl}} · {{kts}} knot",
@@ -640,7 +641,9 @@
       "flightMilitaryOnGround": "Askeri · {{type}} · yerdeki",
       "flightSearchHint": "Canlı konumu sorgulamak için Enter tuşuna basın veya tıklayın",
       "flightNotFound": "{{callsign}} için canlı konum bulunamadı",
-      "addPanel": "Ekle"
+      "addPanel": "Ekle",
+      "sentAlerts": "Size gönderilen uyarılar",
+      "sentAlertTime": "{{time}} tarihinde gönderildi"
     },
     "signal": {
       "title": "ISTIHBARAT BULGULARI",

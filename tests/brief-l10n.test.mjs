@@ -213,6 +213,16 @@ describe('translate prompt and parser', () => {
     assert.ok(one('The summit opens on April 18, 2026 in Geneva.', '峰会将于2026年4月18日在日内瓦开幕。', 'zh'));
     assert.equal(one('The summit opens on April 18, 2026 in Geneva.', '峰会将于2026年4月19日在日内瓦开幕。', 'zh'), null);
     assert.equal(one('The summit opens on 18 March 2026 in Geneva.', '峰会将于2026年13月18日在日内瓦开幕。', 'zh'), null);
+    // The month number must be the source month's.
+    assert.equal(one('The summit opens on April 18, 2026 in Geneva.', '峰会将于2026年5月18日在日内瓦开幕。', 'zh'), null);
+    assert.ok(one('Talks run from March 3 to April 18 in Geneva and Vienna.', '会谈将于3月3日至4月18日在日内瓦和维也纳举行。', 'zh'));
+    // A dropped scale is a changed amount; a translated scale word is not.
+    assert.equal(one('Oil exports reached 3 million barrels a day in March.', '石油出口在三月达到每天3桶。', 'zh'), null);
+    assert.ok(one('Oil exports reached 3 million barrels a day in March.', 'Die Ölexporte erreichten im März 3 Millionen Barrel pro Tag.', 'de'));
+    // A scale on the output alone is a changed amount too.
+    assert.equal(one('Officials said 3 people were hurt in the attack.', '官员说有3万人在袭击中受伤。', 'zh'), null);
+    // A word that merely starts like a scale word is not one.
+    assert.ok(one('Officials said 3 soldiers were hurt in the attack.', 'Selon les responsables, 3 militaires ont été blessés dans l\u2019attaque.'));
   });
 
   it('reads numbers after a URL at the right place', () => {
@@ -225,6 +235,16 @@ describe('translate prompt and parser', () => {
     const src = 'Full report at https://example.com/report. More analysis follows later.';
     assert.ok(one(src, '完整报告见 https://example.com/report。更多分析随后发布。', 'zh'));
     assert.ok(one(src, '完整レポートは https://example.com/report。詳しい分析は後ほど。', 'ja'));
+    // Fullwidth letters in a path are part of the URL, so a changed one is caught.
+    const wiki = 'Background reading at https://example.com/wiki/ＡＩ for this story.';
+    assert.ok(one(wiki, 'Contexte sur https://example.com/wiki/ＡＩ pour cet article.'));
+    assert.equal(one(wiki, 'Contexte sur https://example.com/wiki/ＤＸ pour cet article.'), null);
+  });
+
+  it('rejects short English prose returned unchanged, but keeps short labels and names', () => {
+    assert.equal(one('Oil prices rise', 'Oil prices rise', 'ja'), null);
+    assert.equal(one('Oil prices rise', 'Oil prices rise', 'fr'), null);
+    for (const label of ['Cyber', 'Energy', 'NATO', 'Nvidia, Microsoft']) assert.equal(one(label, label, 'ja'), label);
   });
 
   it('treats an unchanged title-case English headline as untranslated', () => {
@@ -895,11 +915,14 @@ describe('cron wiring', () => {
     assert.deepEqual(seen, [[['GET', 'brief:erased:u1']]]);
     seen.length = 0;
     assert.equal(await undoBriefWriteIfErased('u1', '2026-11-17-0800', pipeline('1')), true);
+    // Only this compose's slot: the index keeps every other slot, because the
+    // erase may not have read it yet.
     assert.deepEqual(seen[1], [
       ['DEL', 'brief:u1:2026-11-17-0800'],
       ['DEL', 'brief:l10n:u1:2026-11-17-0800'],
+      ['ZREM', 'brief:slots:u1', '2026-11-17-0800'],
+      // The pointer holds this compose's slot, written a moment ago.
       ['DEL', 'brief:latest:u1'],
-      ['DEL', 'brief:slots:u1'],
     ]);
   });
 
