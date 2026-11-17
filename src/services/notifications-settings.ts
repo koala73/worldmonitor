@@ -962,9 +962,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           <div class="ai-flow-section-label" style="margin-top:8px">Country scope</div>
           <div class="ai-flow-toggle-desc" style="margin-bottom:6px">${scopeRequired
             ? `Pick 1–${caps.maxCountries} countries (ISO-3166 alpha-2) to follow for alerts — the free plan needs an explicit country scope. Worldwide alerts are available on Pro.`
-            : 'Restrict alerts to specific countries (ISO-3166 alpha-2). Leave empty to receive alerts from all countries. When set, global alerts without a country (markets, shipping stress) are excluded; breaking-news and chokepoint alerts are still delivered.'}</div>
+            : 'Local alerts (severe weather, airport disruption, sirens, conflict) reach you only for the countries you pick. Global critical events (a market crash, a shipping shock, a national airspace shutdown) reach you either way.'}</div>
           <div id="usNotifCountryPicker"></div>
-          ${scopeRequired ? '<div id="usCountryScopeWarn" class="us-notif-ch-sub-warn us-notif-scope-warn" role="status" hidden>Alerts are paused until you pick at least one country.</div>' : ''}
+          ${scopeRequired
+            ? '<div id="usCountryScopeWarn" class="us-notif-ch-sub-warn us-notif-scope-warn" role="status" hidden>Alerts are paused until you pick at least one country.</div>'
+            : '<div id="usCountryScopeHint" class="ai-flow-toggle-desc" role="status" hidden>No countries picked: you get global critical events only. Add countries to get local alerts for them.</div>'}
           <div class="ai-flow-section-label" style="margin-top:8px">Timezone</div>
           <select class="unified-settings-select" id="usSharedTimezone" aria-label="Timezone" style="width:100%">${makeTzOptions(sharedTz)}</select>`;
         return html;
@@ -1096,7 +1098,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             //   (1) preselectCountry from caller (deep-dive "Notify me about
             //       this country" sub-action — PR B U8 R9 pre-fill).
             //   (2) followed-countries from PR A's primitive (smart default).
-            //   (3) [] fallback (all countries; current behavior).
+            //   (3) [] fallback (global critical events only, #10873).
             // (1) wins when present; the user explicitly clicked into this
             // form FROM a country deep-dive, so that country should be
             // pre-checked even if it's not in their watchlist.
@@ -1111,10 +1113,12 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           // #4273: the free plan requires an explicit 1..maxCountries scope —
           // the warning below the picker says so the moment it is empty,
           // before the server's ALERT_COUNTRY_SCOPE_REQUIRED would.
+          // #10873: a paid rule with no countries receives global critical
+          // events only, so the empty state says how to get local alerts.
           const refreshScopeWarn = (): void => {
-            if (!caps.requireCountryScope) return;
-            const warn = contentEl.querySelector<HTMLElement>('#usCountryScopeWarn');
-            if (warn) warn.hidden = (countryPicker?.getValue().length ?? 0) > 0;
+            const empty = (countryPicker?.getValue().length ?? 0) === 0;
+            const warn = contentEl.querySelector<HTMLElement>(caps.requireCountryScope ? '#usCountryScopeWarn' : '#usCountryScopeHint');
+            if (warn) warn.hidden = !empty;
           };
           countryPicker = mountCountryChipPicker(pickerRoot, {
             initial,

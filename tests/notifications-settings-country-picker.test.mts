@@ -86,12 +86,10 @@ describe('notifications-settings.ts — country picker integration', () => {
     );
   });
 
-  it('hint copy mentions "Leave empty" so users know the empty state means all-countries', () => {
-    assert.match(
-      settingsSrc,
-      /Leave empty to receive alerts from all countries/,
-      'must include the "leave empty" hint',
-    );
+  // #10873: an empty scope means global critical events only, not every country.
+  it('copy says an empty scope gets global critical events only', () => {
+    assert.match(settingsSrc, /No countries picked: you get global critical events only/);
+    assert.doesNotMatch(settingsSrc, /Leave empty to receive alerts from all countries/);
   });
 
   it('preselectCountry parameter is declared on the host interface (PR B U8 R9 receiver)', () => {
