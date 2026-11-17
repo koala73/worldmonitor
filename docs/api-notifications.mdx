@@ -60,15 +60,13 @@ A realtime rule's `countries` list decides which events reach it, depending on t
   - a market-wide move (an equity index, a commodity or a crypto asset, but not a volatility gauge);
   - news that names no single country, or names one but clears the critical importance bar.
 - **Local** events reach only rules whose `countries` list includes the event's country. For `regional_*` events, the list must include a member of the event's region. Local events are weather warnings, airport and airspace closures, sirens, conflict escalations, cyber threats, single-stock moves, and news about one country. A rule with no countries receives no local events. An event without a resolvable country is not delivered.
-- **Opt-in** events ignore `countries`: watchlist stories, chokepoint disruption and corridor risk, satellite site alerts, and reservoir levels. Each is scoped by its own list, as described below.
+- **Opt-in** events ignore `countries`: watchlist stories, chokepoint disruption, satellite site alerts, and reservoir levels. Each is scoped by its own list, as described below.
 
 Events submitted through `POST /api/notify` reach only the submitter's own rules and keep the earlier country semantics.
 
 ## Chokepoint disruption alerts
 
 A rule receives `chokepoint_disruption` only when its `eventTypes` lists it. A rule with an empty `eventTypes` list, which otherwise means every event type, does not receive it. Listing it does not narrow the rule's other alerts.
-
-`corridor_risk`, which fires when a shipping corridor's risk score enters the high or critical band, comes with the same opt-in: a rule that lists `chokepoint_disruption` receives it, filtered by the same `chokepoints` list. Listing `corridor_risk` alone has no effect.
 
 - **When it fires**: checked after each 6-minute chokepoint refresh. A chokepoint's `disruptionScore` is its standing threat level (war zone 70, critical 40, high 30, elevated 15, normal 0) plus live signals: navigational warnings, AIS disruption and a transit drop. An alert fires when the score is at least 50, the red band on the dashboard, and the live signals add at least 15 points. A war-zone chokepoint such as Hormuz therefore alerts on new activity, not on its standing level.
 - **Re-arming**: after an alert, the chokepoint can alert again only once the score drops below 40 or the live signals drop below 5 points, in a reading where the navigational-warning and AIS sources (and transit data, if a transit drop was part of the alert) were available. A chokepoint alerts at most once every 12 hours.
