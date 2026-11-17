@@ -65,12 +65,13 @@ function parseEpochMs(epoch) {
   if (typeof epoch !== 'string' || epoch.length === 0) return null;
   const ms = Date.parse(ZONED.test(epoch) ? epoch : `${epoch}Z`);
   if (!Number.isFinite(ms)) return null;
-  // Date.parse rolls an impossible day over (2026-02-30 becomes 2 March): a zone-less OMM
-  // epoch must name the UTC calendar day it parses to.
+  // Date.parse rolls an impossible day over (2026-02-30 becomes 2 March). The calendar day the
+  // epoch states must exist, whatever its zone: checked on the stated date, not the parsed instant,
+  // so a valid offset epoch that crosses a UTC day boundary still passes.
   const day = /^(\d{4})-(\d{2})-(\d{2})/.exec(epoch);
-  if (day && !ZONED.test(epoch)) {
-    const parsed = new Date(ms);
-    if (parsed.getUTCFullYear() !== Number(day[1]) || parsed.getUTCMonth() + 1 !== Number(day[2]) || parsed.getUTCDate() !== Number(day[3])) return null;
+  if (day) {
+    const stated = new Date(Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])));
+    if (stated.getUTCFullYear() !== Number(day[1]) || stated.getUTCMonth() + 1 !== Number(day[2]) || stated.getUTCDate() !== Number(day[3])) return null;
   }
   return ms;
 }

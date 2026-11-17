@@ -310,6 +310,12 @@ describe('review round 2 (#10865)', () => {
 
   it('rejects an impossible calendar day and non-numeric values', () => {
     assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, EPOCH: '2026-02-30T00:00:00' }), null);
+    assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, EPOCH: '2026-02-30T00:00:00Z' }), null, 'invalid day with Z');
+    assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, EPOCH: '2026-02-30T00:00:00+02:00' }), null, 'invalid day with an offset');
+    assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, EPOCH: '2026-04-31T12:00:00Z' }), null, '31 April');
+    // A valid offset epoch whose UTC instant falls on the previous day is accepted.
+    assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, EPOCH: '2026-03-01T00:30:00+02:00' }).epoch, Date.parse('2026-02-28T22:30:00Z'));
+    assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, EPOCH: '2028-02-29T00:00:00Z' }).epoch, Date.parse('2028-02-29T00:00:00Z'), 'leap day');
     assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, EPOCH: '2026-02-28T23:59:59.999999' }).epoch, Date.parse('2026-02-28T23:59:59.999Z'));
     for (const field of ['ECCENTRICITY', 'INCLINATION', 'RA_OF_ASC_NODE']) {
       assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, [field]: true }), null, field);
