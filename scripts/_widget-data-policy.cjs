@@ -352,6 +352,8 @@ const EXCLUDED_RPC_ROUTES = {
   "/api/news/v1/list-source-items": "Cached items of a panel's enabled sources below the digest category cap (#9796), not a widget data source",
   "/api/news/v1/list-sent-alerts": "Account-private alert history for the dashboard search; needs a signed-in Pro account (401 for the anonymous widget session)",
   "/api/news/v1/search-fact-checks": "Fact-check citations for /verify and verify_claim (#9094), not a widget data source",
+  "/api/news/v1/search-headlines": "Cmd+K headline search over the dashboard's last 24 hours; takes a typed query, not a widget data source",
+  "/api/news/v1/search-headline-archive": "Pro-only Cmd+K headline search (up to 7 days, by language); the widget session gets 401",
   "/api/news/v1/search-claim-headlines": "Claim headline search for /verify and verify_claim, not a widget data source",
   "/api/news/v1/summarize-article-cache": "Blocked by relay widget endpoint policy",
   "/api/positive-events/v1/list-positive-geo-events": "Same data as bootstrap key positiveGeoEvents",

@@ -278,6 +278,16 @@ function overrideStringExample(key, context = {}) {
     if (key === 'sources' || key === 'source') return 'France 24';
     if (key === 'state') return 'found';
   }
+  // SearchHeadlines / SearchHeadlineArchive validate the edition, and the
+  // heuristic's "example" is rejected with HTTP 400. The response sample is
+  // one real-looking match so publisher, title and state read as they are served.
+  if (where.includes('searchheadline') || where.includes('search-headline')) {
+    if (key === 'query') return 'hormuz tanker';
+    if (key === 'variant') return 'full';
+    if (key === 'state') return 'complete';
+    if (key === 'source') return 'Reuters World';
+    if (key === 'title') return 'Strait of Hormuz tanker seized by patrol boats';
+  }
   if (where.includes('listvulnerabilityrankings') || where.includes('list-vulnerability-rankings')) {
     if (key === 'commodityid') return 'crude_oil';
     if (key === 'band') return 'high';
@@ -1503,6 +1513,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   if (type === 'integer' && String(name ?? '').toLowerCase() === 'year') {
     const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
     if (where.includes('getbilateraltariff') || where.includes('get-bilateral-tariff')) return 2021;
+  }
+  // SearchHeadlines answers for a fixed window: 24 hours, or 168 on the Pro
+  // archive route. The generic integer `1` documents a window neither serves.
+  if (type === 'integer' && String(name ?? '').toLowerCase() === 'windowhours') {
+    const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
+    if (where.includes('searchheadlinearchive') || where.includes('search-headline-archive')) return 168;
+    if (where.includes('searchheadlines') || where.includes('search-headlines')) return 24;
   }
   if (type === 'number' && String(name ?? '').toLowerCase() === 'boundrate') {
     const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
