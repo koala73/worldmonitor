@@ -1046,6 +1046,12 @@ function inDedupKeyOrder(key, publish) {
   return run;
 }
 
+// Test seam only: wait until no publish is in flight, so a test can assert that
+// an alert was not queued without guessing how long a publish takes.
+async function settleNotificationPublishes() {
+  while (dedupKeyPublishes.size > 0) await Promise.all(dedupKeyPublishes.values());
+}
+
 async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800, storyKey }) {
   try {
     // Include variant in dedup key so each variant can independently publish the same title
@@ -13695,8 +13701,9 @@ async function handleRelayRequest(req, res) {
     }, JSON.stringify(getRelayRollingMetrics()));
   } else if (pathname === '/__test/seed-classify' && RELAY_TEST_MODE) {
     // Test-only seam, same contract as /__test/seed-theater-posture: run one
-    // classify cycle on request.
+    // classify cycle on request, and answer once its alert publishes settle.
     await seedClassify();
+    await settleNotificationPublishes();
     return sendCompressed(req, res, 200, {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',

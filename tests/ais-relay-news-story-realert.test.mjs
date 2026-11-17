@@ -297,14 +297,6 @@ test('two different headlines never share a story claim', async (t) => {
   assert.deepEqual(titles(upstash.alerts()), [first, second], output());
 });
 
-// The classify cycle does not await its publishes, so wait for the queue.
-async function waitForAlerts(upstash, count) {
-  const started = Date.now();
-  while (upstash.alerts().length < count && Date.now() - started < 3_000) {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-}
-
 test('a failed queue write does not lose a copy of the story published in the same cycle', async (t) => {
   const { upstash, cycle, output } = await startRelay(t);
   // Both copies are in one digest build, so their publishes run concurrently.
@@ -315,7 +307,6 @@ test('a failed queue write does not lose a copy of the story published in the sa
     { title: CNN_TITLE, source: 'CNN World' },
     { title: EGYPT_INDEPENDENT_TITLE, source: 'Egypt Independent' },
   ]);
-  await waitForAlerts(upstash, 1);
   assert.equal(upstash.alerts().length, 1, output());
 });
 
@@ -330,7 +321,6 @@ test('a Redis response cut off mid-body does not stall later copies of the story
     { title: CNN_TITLE, source: 'CNN World' },
     { title: EGYPT_INDEPENDENT_TITLE, source: 'Egypt Independent' },
   ]);
-  await waitForAlerts(upstash, 1);
   assert.deepEqual(titles(upstash.alerts()), [EGYPT_INDEPENDENT_TITLE], output());
 });
 
@@ -344,7 +334,6 @@ test('a failed queue write whose rollback also fails does not lose a copy publis
     { title: CNN_TITLE, source: 'CNN World' },
     { title: EGYPT_INDEPENDENT_TITLE, source: 'Egypt Independent' },
   ]);
-  await waitForAlerts(upstash, 1);
   assert.deepEqual(titles(upstash.alerts()), [EGYPT_INDEPENDENT_TITLE], output());
 });
 
@@ -353,21 +342,18 @@ test('a failed queue write whose rollback also fails does not hold the story for
   upstash.state.failLpush = true;
   upstash.state.failDel = true;
   await cycle([{ title: CNN_TITLE, source: 'CNN World' }]);
-  await new Promise((resolve) => setTimeout(resolve, 200));
   assert.deepEqual(titles(upstash.alerts()), []);
 
   // Redis recovers; the stale claim is still there.
   upstash.state.failLpush = false;
   upstash.state.failDel = false;
   await cycle([{ title: EGYPT_INDEPENDENT_TITLE, source: 'Egypt Independent' }]);
-  await waitForAlerts(upstash, 1);
   assert.deepEqual(titles(upstash.alerts()), [EGYPT_INDEPENDENT_TITLE], output());
 
   // Once a copy is queued, the claim holds again. The copy carries a title
   // not yet classified: a cached title never reaches publishing, so it would
   // pass this check even if the claim were still treated as unreleased.
   await cycle([{ title: `${EGYPT_INDEPENDENT_TITLE} - Reuters`, source: 'Reuters' }]);
-  await new Promise((resolve) => setTimeout(resolve, 200));
   assert.deepEqual(titles(upstash.alerts()), [EGYPT_INDEPENDENT_TITLE], output());
 });
 
@@ -377,12 +363,10 @@ test('a failed queue write during a Redis outage does not hold the story in memo
   upstash.state.failSetNx = true;
   upstash.state.failLpush = true;
   await cycle([{ title: CNN_TITLE, source: 'CNN World' }]);
-  await new Promise((resolve) => setTimeout(resolve, 200));
   assert.deepEqual(titles(upstash.alerts()), []);
 
   upstash.state.failLpush = false;
   await cycle([{ title: EGYPT_INDEPENDENT_TITLE, source: 'Egypt Independent' }]);
-  await waitForAlerts(upstash, 1);
   assert.deepEqual(titles(upstash.alerts()), [EGYPT_INDEPENDENT_TITLE], output());
 });
 
