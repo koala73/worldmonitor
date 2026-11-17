@@ -179,6 +179,11 @@ test('Malaysia reports the latest completed local day carrying every selected st
   assert.ok(report.refreshedReports.every(marker => marker.item), 'no date-wide refresh');
   assert.ok(report.observations.every(row => markers.has(`${row.date}|${row.item}`)));
   assert.equal(report.refreshedReports.filter(marker => marker.date === '2026-11-02').length, PRICECATCHER_BASKET_CODES.length);
+  // Basket items are refreshed on every loaded date in their window, so a withdrawn survey day cannot linger.
+  const basketStored = { ...report.observations.find(row => row.date === '2026-11-02'), date: '2026-11-03', price: 1 };
+  const cleared = mergeFoodSnapshot({ observations: [basketStored] }, { ...report, contexts: [] }, { surveyItems: PRICECATCHER_BASKET_NAMES });
+  assert.ok(!cleared.observations.some(row => row.date === '2026-11-03'), 'a stored survey row on a non-survey loaded day is dropped');
+  assert.equal(report.refreshedReports.filter(marker => marker.date === '2026-10-20').length, 0, 'unloaded October dates are left alone');
   // The October file did not load, so 28 October was not checked: no marker, and a stored baseline survives.
   assert.equal(report.refreshedReports.filter(marker => marker.date === '2026-10-28').length, 0);
   const stored = { ...report.observations.find(row => row.date === '2026-11-04'), date: '2026-10-28', price: 1 };
@@ -191,7 +196,8 @@ test('Malaysia reports the latest completed local day carrying every selected st
     if (url.endsWith('.csv')) return file('pricecatcher-items.csv').toString();
     return file('pricecatcher.parquet');
   }));
-  assert.equal(loaded.refreshedReports.filter(marker => marker.date === '2026-10-28').length, PRICECATCHER_DAILY_CODES.length);
+  // 28 October is the daily baseline day and inside the loaded basket window: every daily and basket item is marked.
+  assert.equal(loaded.refreshedReports.filter(marker => marker.date === '2026-10-28').length, PRICECATCHER_ITEM_CODES.length);
   const dropped = mergeFoodSnapshot({ observations: [stored] }, { ...loaded, contexts: [] }, { surveyItems: PRICECATCHER_BASKET_NAMES });
   assert.ok(!dropped.observations.some(row => row.date === '2026-10-28'));
 });

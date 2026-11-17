@@ -203,9 +203,19 @@ export async function collect(ctx) {
   const checked = [
     ...[latest, prior].filter(date => date && date >= since && loaded.has(date.slice(0, 7)))
       .flatMap(date => [...DAILY_NAMES].map(item => ({ date, item }))),
-    ...[...surveys].sort().flatMap(date => PRICECATCHER_BASKET_NAMES.map(item => ({ date, item }))),
+    // Every loaded date in the basket window, not only today's survey days, so a survey day the publisher withdraws
+    // (or that no longer qualifies) cannot keep serving its old basket prices.
+    ...windowDates(basketSince, before).filter(date => loaded.has(date.slice(0, 7)))
+      .flatMap(date => PRICECATCHER_BASKET_NAMES.map(item => ({ date, item }))),
   ];
   return { ...report, refreshedReports: checked };
+}
+
+/** ISO dates from `since` (inclusive) to `before` (exclusive). */
+function windowDates(since, before) {
+  const dates = [];
+  for (let ms = Date.parse(`${since}T00:00:00Z`); ms < Date.parse(`${before}T00:00:00Z`); ms += 86_400_000) dates.push(new Date(ms).toISOString().slice(0, 10));
+  return dates;
 }
 
 const DAILY_NAMES = new Set(PRICECATCHER_DAILY_CODES.map(code => ITEMS[code][0]));
