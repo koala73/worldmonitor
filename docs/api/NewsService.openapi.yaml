@@ -1725,7 +1725,7 @@ paths:
                 - name: query
                   in: query
                   description: Words to find in headline titles, 2 to 120 characters. Every word must appear; order does not matter.
-                  required: false
+                  required: true
                   example: "hormuz tanker"
                   schema:
                     type: string
@@ -1867,7 +1867,7 @@ paths:
                 - name: query
                   in: query
                   description: Words to find in headline titles, 2 to 120 characters. Every word must appear; order does not matter.
-                  required: false
+                  required: true
                   example: "hormuz tanker"
                   schema:
                     type: string
@@ -3234,6 +3234,7 @@ components:
                 query:
                     type: string
                     maxLength: 120
+                    minLength: 2
                     description: Words to find in headline titles, 2 to 120 characters. Every word must appear; order does not matter.
                 variant:
                     type: string
@@ -3243,6 +3244,8 @@ components:
                     type: string
                     maxLength: 8
                     description: Digest language, a lowercase two-letter code. Empty means en.
+            required:
+                - query
             description: SearchHeadlinesRequest names the words to find in headlines an edition served.
         SearchHeadlinesResponse:
             type: object

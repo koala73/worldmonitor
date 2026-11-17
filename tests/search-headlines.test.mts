@@ -552,6 +552,10 @@ describe('headline search failure and revocation', () => {
       const { status } = await search(freeRoute, query, extra);
       assert.equal(status, 400, `${query}${extra}`);
     }
+    for (const route of [freeRoute, archiveRoute]) {
+      const res = await route.handler(new Request(`https://example.test${route.path}?variant=full`));
+      assert.equal(res.status, 400, `${route.path} without a query`);
+    }
     assert.equal(commands.length, 0, 'a rejected request reads nothing');
   });
 });

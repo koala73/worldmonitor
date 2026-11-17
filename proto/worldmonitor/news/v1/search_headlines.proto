@@ -9,7 +9,8 @@ import "sebuf/http/annotations.proto";
 message SearchHeadlinesRequest {
   // Words to find in headline titles, 2 to 120 characters. Every word must appear; order does not matter.
   string query = 1 [
-    (sebuf.http.query) = { name: "query" },
+    (sebuf.http.query) = { name: "query", required: true },
+    (buf.validate.field).string.min_len = 2,
     (buf.validate.field).string.max_len = 120
   ];
   // Digest edition: full, tech, finance, happy, commodity or energy. Empty means full.
