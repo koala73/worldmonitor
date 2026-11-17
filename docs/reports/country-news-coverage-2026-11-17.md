@@ -102,7 +102,7 @@ Existing is the number of these selected sources already in the catalog. Country
 | Guatemala (GT) | 0 | 3 | 1 | La Hora; Plaza Pública; Prensa Comunitaria; Reuters — Guatemala |
 | Guinea (GN) | 0 | 3 | 1 | Guinéenews.org; Guineematin.com; Guinee7.com; Reuters — Guinea |
 | Guinea-Bissau (GW) | 0 | 2 | 2 | Agência de Notícias da Guiné (ANG); O Democrata; Reuters — Guinea-Bissau; AP — Guinea-Bissau † |
-| Guyana (GY) | 0 | 3 | 1 | Kaieteur News; Demerara Waves Online News; News Source Guyana; Reuters — Guyana |
+| Guyana (GY) | 0 | 3 | 1 | Kaieteur News; Demerara Waves Online News; News Room Guyana; Reuters — Guyana |
 | Haiti (HT) | 2 | 4 | 0 | AyiboPost; Le Nouvelliste; The Haitian Times; HaitiLibre English |
 | Honduras (HN) | 0 | 3 | 1 | Proceso Digital; Criterio.hn; La Prensa Honduras †; Reuters — Honduras |
 | Hungary (HU) | 4 | 4 | 0 | Telex; HVG; 444.hu; 24.hu |

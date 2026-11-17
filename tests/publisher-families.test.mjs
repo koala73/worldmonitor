@@ -115,6 +115,7 @@ describe('publisher-families map data', () => {
     // Cross-host families are legitimate but must be deliberate, so each one is
     // named with the reason it spans hosts.
     const CROSS_HOST_FAMILIES = {
+      matichon: 'Khaosod and Matichon share Matichon Group: https://www.khaosod.co.th/about-us',
       "n1-danas": "Common publisher group across its news brands: https://n1info.rs/english/news/united-media-takes-over-belgarde-danas-daily/",
       "alpha-media-zimbabwe": "Common publisher group across its news brands: https://www.newsday.co.zw/theindependent/terms-and-conditions",
       "rjr-gleaner": "Common publisher group across its news brands: https://rjrgleanergroup.com/about/",
@@ -394,4 +395,9 @@ describe('publisher-families resolution', () => {
     assert.equal(countPublisherFamilies('Reuters World'), 0);
     assert.deepEqual([...publisherFamiliesFor(undefined)], []);
   });
+});
+
+it('counts Matichon and Khaosod English as one publisher', () => {
+  assert.equal(publisherFamilyFor('Matichon'), publisherFamilyFor('Khaosod English'));
+  assert.equal(countPublisherFamilies(['Matichon', 'Khaosod English']), 1);
 });

@@ -1210,7 +1210,7 @@
       "sources": [
         "Kaieteur News",
         "Demerara Waves Online News",
-        "News Source Guyana",
+        "News Room Guyana",
         "Reuters — Guyana"
       ],
       "existingSources": [],
@@ -6847,7 +6847,8 @@
       "selectionBasis": "Established newsroom selected for country coverage.",
       "items": 63,
       "newest": "2026-11-16T12:49:32+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "publisherGroupReference": "https://www.khaosod.co.th/about-us"
     },
     "Kiripost": {
       "kind": "local",
@@ -8224,7 +8225,7 @@
       "newest": "2026-11-17T01:57:00+00:00",
       "verificationStatus": "dated-items"
     },
-    "News Source Guyana": {
+    "News Room Guyana": {
       "kind": "local",
       "coverageCountry": "GY",
       "publisherCountry": "GY",
@@ -8233,7 +8234,7 @@
       "language": "en",
       "ownershipClass": "private",
       "tier": 2,
-      "selectionBasis": "Established newsroom selected for country coverage.",
+      "selectionBasis": "News Room Guyana publisher identity verified against its own website; catalog label matches the queried publisher.",
       "items": 18,
       "newest": "2026-11-16T20:25:55+00:00",
       "verificationStatus": "dated-items"
@@ -11007,13 +11008,14 @@
       "publisherCountry": "JO",
       "home": "https://jordantimes.com/",
       "url": "https://news.google.com/rss/search?q=site%3Ajordantimes.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
-      "language": "ar",
+      "language": "en",
       "ownershipClass": "private",
       "tier": 2,
       "selectionBasis": "Established newsroom selected for country coverage.",
       "items": 17,
       "newest": "2026-11-15T22:09:35+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "editorialReference": "https://jordantimes.com/static/about-us"
     },
     "The Kathmandu Post": {
       "kind": "local",
@@ -12095,7 +12097,8 @@
       "selectionBasis": "Established Thai-language newspaper; native publisher RSS.",
       "items": 50,
       "newest": "2026-11-17T02:31:34+00:00",
-      "verificationStatus": "dated-items"
+      "verificationStatus": "dated-items",
+      "publisherGroupReference": "https://www.khaosod.co.th/about-us"
     },
     "Reuters — Bhutan": {
       "kind": "international",

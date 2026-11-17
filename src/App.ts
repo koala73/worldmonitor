@@ -326,6 +326,7 @@ export type { CountryBriefSignals } from '@/app/app-context';
 
 export class App {
   private state: AppContext;
+  private sourcePreferencesPendingPersistence = false;
   private resumeBillingPortal(capturedThisLoad = false): Promise<boolean> {
     return resumePendingBillingPortal({
       getUserId: () => getAuthState().user?.id,
@@ -607,7 +608,9 @@ export class App {
       if (!tierReconciliationDeferred && !freeTierLimitsInvoked) {
         this.enforceFreeTierLimits(cloudSyncVersion);
       }
-      this.state.disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+      if (!this.sourcePreferencesPendingPersistence) {
+        this.state.disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+      }
     }
 
     if (keySet.has(STORAGE_KEYS.monitors)) {
@@ -1611,6 +1614,7 @@ export class App {
     }
 
     const disabledSources = new Set(sessionDisabledSources ?? loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+    this.sourcePreferencesPendingPersistence = sessionDisabledSources !== undefined;
 
     // Build shared state object
     this.state = {
@@ -3515,6 +3519,9 @@ export class App {
     const persistedDisabled = new Set(
       loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []),
     );
+    const baselineDisabled = this.sourcePreferencesPendingPersistence
+      ? this.state.disabledSources
+      : persistedDisabled;
     const persistedGateOwned = new Set(
       loadFromStorage<string[]>(STORAGE_KEYS.sourceGateOwnership, []),
     );
@@ -3534,7 +3541,7 @@ export class App {
         protectedNames,
       ).autoDisabled;
       gateOwned = inferExactSourceGateOwnership(
-        persistedDisabled,
+        baselineDisabled,
         defaultUserDisabled,
         expectedGateOwned,
       ) ?? gateOwned;
@@ -3543,10 +3550,10 @@ export class App {
     let nextDisabled: Set<string>;
     let nextGateOwned: Set<string>;
     if (pro) {
-      nextDisabled = restoreGateOwnedSources(persistedDisabled, gateOwned);
+      nextDisabled = restoreGateOwnedSources(baselineDisabled, gateOwned);
       nextGateOwned = new Set();
     } else {
-      const userDisabled = restoreGateOwnedSources(persistedDisabled, gateOwned);
+      const userDisabled = restoreGateOwnedSources(baselineDisabled, gateOwned);
       const nextAutoDisabled = selectSourcesUnderCap(
         FEEDS,
         INTEL_SOURCES,
@@ -3577,6 +3584,7 @@ export class App {
     );
     const disabledPersisted = disabledChanged && persistence.preferencePersisted;
     const ownershipPersisted = ownershipChanged && persistence.ownershipPersisted;
+    this.sourcePreferencesPendingPersistence &&= !persistence.preferencePersisted;
     if (disabledChanged) {
       // The live entitlement boundary must not depend on localStorage health.
       // Durable writes remain ordered/retryable above, but free users stay

@@ -11,6 +11,8 @@ import { NEWS_LANGUAGES } from '../src/shared/public-rpc-cache';
 import { migrateCountryCoverageOptInsV12, migrateBrazilOptInsV11, buildMigrations, applyMigrationChain } from '../src/utils/cloud-prefs-migrations';
 import { SOURCE_PROPAGANDA_RISK } from '../shared/source-provenance';
 import { resolveHostOrigin } from '../scripts/source-origin.mjs';
+import { restoreGateOwnedSources, reconcileSourceGateOwnership, stringSetsEqual } from '../src/services/source-cap';
+import { persistGateOwnershipTransition } from '../src/services/variant-panel-ownership';
 import type { Feed } from '../src/types';
 
 const audit = JSON.parse(readFileSync('shared/country-news-coverage.json', 'utf8')) as {
@@ -26,6 +28,47 @@ after(() => rmSync(tempDir, { recursive: true, force: true }));
 
 const key = 'worldmonitor-disabled-feeds';
 describe('optional country news coverage', () => {
+  it('retains session choices through tier and cloud reloads until preferences can be saved', () => {
+    const app = readFileSync('src/App.ts', 'utf8');
+    const start = app.indexOf('  private reconcileSourceLimitForTier(');
+    const end = app.indexOf('  /**\n   * Enforce free-tier panel', start);
+    const cloudStart = app.indexOf('    if (\n      keySet.has(STORAGE_KEYS.disabledFeeds)');
+    const cloudEnd = app.indexOf('    if (keySet.has(STORAGE_KEYS.monitors))', cloudStart);
+    const code = transpileModule(`class Harness { ${app.slice(start, end)}
+      cloud() { const keySet = new Set(['disabled']); const tierReconciliationDeferred = true;
+        const freeTierLimitsInvoked = false; ${app.slice(cloudStart, cloudEnd)} }
+    }; Harness;`, {}).outputText;
+    for (const pro of [true, false]) {
+      const stored = new Map<string, string[]>([['disabled', ['existing', 'gate-owned']], ['owned', ['gate-owned']]]);
+      const Harness = runInNewContext(code, {
+        STORAGE_KEYS: { disabledFeeds: 'disabled', sourceGateOwnership: 'owned' },
+        localStorage: { getItem: () => 'present' },
+        loadFromStorage: (name: string, fallback: unknown) => stored.get(name) ?? fallback,
+        restoreGateOwnedSources, reconcileSourceGateOwnership, stringSetsEqual, persistGateOwnershipTransition,
+        selectSourcesUnderCap: () => ({ autoDisabled: new Set(['cap-fixture']) }),
+        FEEDS: {}, INTEL_SOURCES: [], FREE_MAX_SOURCES: 1, console: { log() {} },
+      });
+      const instance = new Harness();
+      instance.state = { disabledSources: new Set(['existing', 'country-opt-in', 'gate-owned']) };
+      instance.sourcePreferencesPendingPersistence = true;
+      instance.currentSourceCapLanguage = () => 'en';
+      instance.sourceCapProtectedNames = () => new Set();
+      instance.persistJsonStorageValue = () => false;
+      instance.reconcileSourceLimitForTier(pro);
+      assert.ok(instance.state.disabledSources.has('country-opt-in'), `${pro}: tier reconciliation`);
+      instance.cloud();
+      assert.ok(instance.state.disabledSources.has('country-opt-in'), `${pro}: cloud reload`);
+      instance.state.disabledSources.delete('country-opt-in');
+      instance.reconcileSourceLimitForTier(pro);
+      assert.ok(!instance.state.disabledSources.has('country-opt-in'), 'later explicit choice remains authoritative');
+      instance.persistJsonStorageValue = (name: string, value: string[]) => { stored.set(name, value); return true; };
+      instance.reconcileSourceLimitForTier(pro);
+      assert.equal(instance.sourcePreferencesPendingPersistence, false);
+      stored.set('disabled', ['cloud-choice']);
+      instance.cloud();
+      assert.deepEqual([...instance.state.disabledSources], ['cloud-choice'], 'cloud changes resume after durable save');
+    }
+  });
   it('offers four distinct feeds for all 197 reviewed countries', () => {
     assert.equal(Object.keys(audit.countries).length, 197);
     const available = new Set(Object.values(client.FULL_FEEDS).flat().map(feed => feed.name));

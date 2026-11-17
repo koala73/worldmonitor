@@ -2117,7 +2117,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "The Jordan Times",
           "url": "https://news.google.com/rss/search?q=site%3Ajordantimes.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
-          "lang": "ar",
+          "lang": "en",
           "fetchInAllLanguages": true
         },
         {
@@ -4149,7 +4149,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
           "fetchInAllLanguages": true
         },
         {
-          "name": "News Source Guyana",
+          "name": "News Room Guyana",
           "url": "https://news.google.com/rss/search?q=site%3Anewsroom.gy+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
           "lang": "en",
           "fetchInAllLanguages": true

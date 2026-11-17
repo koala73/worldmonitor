@@ -32,6 +32,7 @@
 // (guarded by tests/publisher-link-relay-gate.test.mjs).
 
 const PUBLISHER_LINK_DOMAINS = {
+  'matichon': ['matichon.co.th', 'khaosodenglish.com', 'khaosod.co.th'],
   "n1-danas": ["n1info.hr", "n1info.ba", "n1info.rs", "n1info.si", "danas.rs"],
   "alpha-media-zimbabwe": ["newsday.co.zw", "theindependent.co.zw"],
   "rjr-gleaner": ["jamaica-gleaner.com", "radiojamaicanewsonline.com"],
@@ -170,6 +171,9 @@ function isPublisherLink(link, expectedHosts) {
 // the `label:<name>` singleton namespace, which names no domains and
 // therefore blanks at the gate (fail-closed).
 const PUBLISHER_LINK_LABELS = {
+  'matichon': 'matichon',
+  'matichon group': 'matichon',
+  'khaosod english': 'matichon',
   "guardian — paraguay": "guardian",
   "reuters — mali": "reuters",
   "reuters — benin": "reuters",

@@ -792,7 +792,7 @@ export const CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS: Readonly<
   "New Zealand Herald": { risk: 'reviewed', type: 'reviewed' },
   "News Diggers!": { risk: 'reviewed', type: 'reviewed' },
   "News First Sri Lanka": { risk: 'reviewed', type: 'reviewed' },
-  "News Source Guyana": { risk: 'reviewed', type: 'reviewed' },
+  "News Room Guyana": { risk: 'reviewed', type: 'reviewed' },
   "News.MN": { risk: 'reviewed', type: 'reviewed' },
   "News24": { risk: 'unknown', type: 'unknown' },
   "Newsbook Malta": { risk: 'reviewed', type: 'reviewed' },

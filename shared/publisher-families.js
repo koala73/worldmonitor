@@ -49,6 +49,7 @@
  * A literal is the one form that works everywhere.
  */
 const PUBLISHER_FAMILY_DATA = {
+  'matichon': { publisher: 'Matichon Group', labels: ['Matichon', 'Khaosod English'] },
   "n1-danas": { publisher: "N1 and Danas", labels: ["N1 Croatia", "N1 Bosna i Hercegovina", "N1 Info", "N1 Slovenia", "Danas"] },
   "alpha-media-zimbabwe": { publisher: "Alpha Media Holdings", labels: ["NewsDay Zimbabwe", "The Zimbabwe Independent"] },
   "rjr-gleaner": { publisher: "RJRGLEANER", labels: ["The Gleaner", "Radio Jamaica News"] },
@@ -226,6 +227,7 @@ export const PUBLISHER_FAMILIES = Object.freeze(PUBLISHER_FAMILY_DATA);
  * that several publishers share cannot name one.
  */
 const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
+  'matichon': ['matichon.co.th', 'khaosodenglish.com', 'khaosod.co.th'],
   'n1-danas': ['n1info.hr', 'n1info.ba', 'n1info.rs', 'n1info.si', 'danas.rs'],
   'alpha-media-zimbabwe': ['newsday.co.zw', 'theindependent.co.zw'],
   'rjr-gleaner': ['jamaica-gleaner.com', 'radiojamaicanewsonline.com'],
