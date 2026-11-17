@@ -10,6 +10,7 @@ The command palette is the dashboard's one search surface: countries, panels, ho
 - `search-match` returns ranked entity and command matches for a typed query.
 - `search-close` closes the palette on Escape without trapping focus.
 - `search-mobile` opens the bottom sheet from `#mobileSearchBtn`.
+- `search-headline-history` lists headlines the dashboard served earlier and no longer holds, fetched from the server for the typed query (24 hours signed out or free, 7 days on Pro).
 
 ## How to get to it (user POV)
 
@@ -31,6 +32,7 @@ Preconditions:
 - **Escape.** Press `Escape`. `.search-modal` reaches hidden state.
 - **Shortcut entry.** Press `Meta+k` (`Control+k` off macOS). The palette reopens with its input visible.
 - **Proof.** `01-search-results.png` (the ranked list for the query) and `02-search-palette-via-shortcut.png`.
+- **Headline history.** Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/headline-history-search.mjs --name headline-history` (add `WM_VERIFY_MOBILE=1` for the phone sheet). The loaded news is a fixed digest served by `page.route`; the drive scrolls World News into view, then types `hormuz`. A headline that is not in World News is listed with `<publisher> · <age>` under it, a headline that is both loaded and in the history is listed once, and a signed-out browser asks only `/api/news/v1/search-headlines`. Selecting the older headline opens its article in a new tab. By default the history answers are `page.route` fixtures; `WM_VERIFY_HEADLINE_LIVE=1` sends them to the dev server's real handlers, which need a Redis seeded for the run (a local stand-in, never production).
 
 ## Gotchas
 
@@ -40,3 +42,7 @@ Preconditions:
 - Command rows also carry `data-index` (plus `data-command`). If a drive must isolate entity matches, exclude `.command-item`.
 - Flight search rows are PRO-gated and will not resolve on an unauthenticated local run.
 - The mobile sheet is a different DOM (`.search-sheet`, `.search-sheet-cancel`), not the desktop `.search-modal`.
+- A news panel loads its items when it scrolls into view, and the search index reads the loaded news when the palette opens. A drive that searches without first bringing the panel on screen sees no loaded-news rows at all.
+- History headlines arrive after the list first renders (one request about 250 ms after the typing pause). Wait for the row by its title; `.search-result-item[data-index]` alone resolves on the loaded rows.
+- The phone sheet hides result subtitles except on history headlines (`.search-result-headline`), which keep publisher and age.
+- The dev server runs RPC handlers without the gateway, so it answers `/api/news/v1/search-headline-archive` for anyone. Plan gating is proven by `tests/search-headlines-gateway.test.mts`, not by a local drive.

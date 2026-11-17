@@ -338,5 +338,9 @@ describe('Cmd+K headline history', () => {
       'Hormuz patrols doubled',
     ]);
     expect(rows()).toHaveLength(5);
+    // The phone sheet hides subtitles; history headlines carry the class that keeps theirs.
+    const marked = [...document.querySelectorAll('.search-result-item.search-result-headline .search-result-title')]
+      .map((title) => title.textContent);
+    expect(marked).toEqual(['Strait of Hormuz tanker seized', 'Hormuz patrols doubled']);
   });
 });

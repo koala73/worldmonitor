@@ -1090,7 +1090,7 @@ export class SearchModal {
 
     for (const result of this.results) {
       html += `
-        <div class="search-result-item ${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}">
+        <div class="search-result-item ${result.type === 'headline' ? 'search-result-headline' : ''} ${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}">
           <span class="search-result-icon">${icons[result.type]}</span>
           <div class="search-result-content">
             <div class="search-result-title">${this.highlightMatch(result.title)}</div>
