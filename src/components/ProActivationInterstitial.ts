@@ -27,6 +27,7 @@
 import { t } from '@/services/i18n';
 import { enqueueSentryCall, scheduleSentryInit } from '@/bootstrap/sentry-defer';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { getFollowed } from '@/services/followed-countries';
 import {
   claimProActivationPresentation,
   confirmProActivationPresentation,
@@ -960,6 +961,8 @@ export interface ActivationContext {
   channelsKnown: boolean;
   /** Whether the current-variant rule is enabled (drives alerts patch/seed choice). */
   hasEnabledRule: boolean;
+  /** The current-variant rule's stored countries; a seed never overwrites them (#10873). */
+  ruleCountries?: readonly string[];
 }
 
 export interface ProActivationFlowDependencies {
@@ -1127,6 +1130,7 @@ export function activationContextFromChannelsData(
     channels: channels.map((channel) => channel.channelType),
     channelsKnown: true,
     hasEnabledRule: !!rule?.enabled,
+    ruleCountries: rule?.countries ?? [],
   };
 }
 
@@ -1649,12 +1653,18 @@ async function confirmAlerts(
     reportActivationStepFailure(options, 'alerts', 'alerts-config-refresh', err);
     return 'failed';
   }
-  const payload = buildCriticalAlertsPayload(fresh.channels, fresh.hasEnabledRule);
+  const payload = buildCriticalAlertsPayload(
+    fresh.channels,
+    fresh.hasEnabledRule,
+    getFollowed(),
+    fresh.ruleCountries ?? [],
+  );
   try {
     await setNotificationConfig({
       variant: SITE_VARIANT,
       enabled: payload.enabled,
       ...(payload.sensitivity ? { sensitivity: payload.sensitivity } : {}),
+      ...(payload.countries ? { countries: payload.countries } : {}),
       channels: payload.channels as ChannelType[],
     }, options.accountUserId, signal);
     return isFlowAccountCurrent(options) ? 'verified' : 'failed';

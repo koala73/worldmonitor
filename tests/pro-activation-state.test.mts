@@ -891,6 +891,25 @@ describe('buildCriticalAlertsPayload — alerts step write delta (U5)', () => {
       sensitivity: 'critical',
     });
   });
+  // #10873: a realtime rule with no countries gets global critical events only,
+  // so the seeded rule carries the countries the user already follows.
+  it('seeds the rule with the followed countries, normalized and deduplicated', () => {
+    assert.deepEqual(buildCriticalAlertsPayload([], false, ['ua', 'IL', 'UA', 'bad']), {
+      enabled: true,
+      channels: ['web_push'],
+      sensitivity: 'critical',
+      countries: ['UA', 'IL'],
+    });
+  });
+
+  it('never writes countries over a stored scope or onto an enabled rule', () => {
+    assert.equal(buildCriticalAlertsPayload([], false, ['UA'], ['FR']).countries, undefined);
+    assert.equal(buildCriticalAlertsPayload(['email'], true, ['UA']).countries, undefined);
+  });
+
+  it('seeds no countries when the user follows none', () => {
+    assert.equal(buildCriticalAlertsPayload([], false, []).countries, undefined);
+  });
 });
 
 describe('buildExitSummary — R15 pending/verified/failed', () => {
