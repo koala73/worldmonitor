@@ -25,11 +25,12 @@ vi.mock('@/services/generated-rpc-clients', () => ({
   },
 }));
 
-import { searchHeadlineHistory } from '@/services/headline-history';
+import { resetHeadlineHistoryAccess, searchHeadlineHistory } from '@/services/headline-history';
 
 const query = { variant: 'full', lang: 'en' };
 
 beforeEach(() => {
+  resetHeadlineHistoryAccess();
   calls.length = 0;
   archiveError = null;
   archiveState = 'complete';
@@ -53,6 +54,18 @@ describe('headline history route choice', () => {
     const headlines = await searchHeadlineHistory('hormuz', { ...query, premium: true });
     expect(headlines.map((item) => item.title)).toEqual(['From the 24-hour route']);
     expect(calls.map((call) => call.method)).toEqual(['searchHeadlineArchive', 'searchHeadlines']);
+  });
+
+  it('does not pay for a second refusal on the next keystroke, and asks again after a reset', async () => {
+    archiveError = Object.assign(new Error('denied'), { statusCode: 403 });
+    await searchHeadlineHistory('hormuz', { ...query, premium: true });
+    await searchHeadlineHistory('hormuz t', { ...query, premium: true });
+    expect(calls.map((call) => call.method)).toEqual(['searchHeadlineArchive', 'searchHeadlines', 'searchHeadlines']);
+
+    resetHeadlineHistoryAccess();
+    archiveError = null;
+    const headlines = await searchHeadlineHistory('hormuz ta', { ...query, premium: true });
+    expect(headlines.map((item) => item.title)).toEqual(['From the 7-day route']);
   });
 
   it('reports a failed 7-day search as a failure, not as a 24-hour answer', async () => {

@@ -34,6 +34,11 @@ export interface HeadlineHistorySearchDeps {
   isLoadedMatch(titleKey: string, query: string): boolean;
   /** "3 hours ago" for a publication time. */
   formatAge(date: Date): string;
+  /**
+   * Whether an answer for the visible query is still on its way, so the list
+   * can say it is loading instead of "no results" in the meantime.
+   */
+  setPending(pending: boolean): void;
   setTimeout(callback: () => void, delay: number): ReturnType<typeof setTimeout>;
   clearTimeout(timer: ReturnType<typeof setTimeout>): void;
   now(): number;
@@ -71,8 +76,10 @@ export class HeadlineHistorySearch {
     this.stopPending();
     this.activeQuery = query;
 
-    if (headlineTitleKey(query).length < HEADLINE_HISTORY_MIN_QUERY_CHARS) {
+    // "flight <callsign>" is the live flight lookup, not a headline search.
+    if (query.startsWith('flight ') || headlineTitleKey(query).length < HEADLINE_HISTORY_MIN_QUERY_CHARS) {
       this.clear();
+      this.deps.setPending(false);
       return;
     }
     const remembered = this.answers.get(query);
@@ -80,10 +87,12 @@ export class HeadlineHistorySearch {
       // Called from inside the modal's own search for this query, which reads
       // the source right after this returns: no extra refresh needed.
       this.publishHeadlines(query, remembered.headlines, false);
+      this.deps.setPending(false);
       return;
     }
     // Results fetched for the previous query stay listed only where their
     // title still matches; the modal filters them like any other source.
+    this.deps.setPending(true);
     this.timer = this.deps.setTimeout(() => {
       this.timer = null;
       void this.fetch(query);
@@ -96,6 +105,7 @@ export class HeadlineHistorySearch {
     this.answers.clear();
     this.activeQuery = '';
     this.clear();
+    this.deps.setPending(false);
   }
 
   private stopPending(): void {
@@ -125,6 +135,7 @@ export class HeadlineHistorySearch {
       if (this.inFlight === controller) {
         this.inFlight = null;
         if (this.activeQuery === query) this.activeQuery = '';
+        this.deps.setPending(false);
       }
       return;
     }
@@ -136,6 +147,9 @@ export class HeadlineHistorySearch {
       this.answers.delete(this.answers.keys().next().value as string);
     }
     this.publishHeadlines(query, headlines, true);
+    // After publishing: with nothing new to list, this is what turns the
+    // loading state into "no results".
+    this.deps.setPending(false);
   }
 
   private publishHeadlines(query: string, headlines: readonly HistoryHeadline[], refresh: boolean): void {

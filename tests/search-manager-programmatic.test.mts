@@ -127,6 +127,7 @@ interface ModalDouble {
   resolveMatchByIdentity(identity: string): SearchMatch | undefined;
   registerSource(type: string, items: unknown[]): void;
   refreshSearch(): void;
+  setResultsPending(pending: boolean): void;
   open(): void;
   closeForProgrammaticSelection(): void;
   cancelPendingWork(): void;
@@ -219,6 +220,7 @@ function createHarness(variant: Variant, runtime: Runtime): new (ctx: any, callb
     // Headline history (Cmd+K server search).
     'HeadlineHistorySearch',
     'searchHeadlineHistory',
+    'resetHeadlineHistoryAccess',
     'isOpenableExternalUrl',
     'openExternalUrl',
     'headlineTitleKey',
@@ -347,6 +349,7 @@ function createHarness(variant: Variant, runtime: Runtime): new (ctx: any, callb
     WEBMCP_UNSUPPORTED_CANCELLATION_MESSAGE,
     HeadlineHistorySearch,
     async () => [],
+    () => {},
     (url: string) => /^https?:\/\//i.test(url),
     (url: string) => {
       runtime.openedArticles.push(url);
@@ -466,6 +469,7 @@ function makeScenario(
       }
     },
     refreshSearch: () => {},
+    setResultsPending: () => {},
     open: () => {
       modal.openCalls += 1;
       modal.isOpen = true;

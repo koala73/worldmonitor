@@ -57,7 +57,7 @@ import {
 } from '@/services/agent-analytics-privacy';
 import { SearchSelectionDispatcher } from '@/app/search-selection-dispatcher';
 import { HeadlineHistorySearch } from '@/app/headline-history-search';
-import { searchHeadlineHistory } from '@/services/headline-history';
+import { resetHeadlineHistoryAccess, searchHeadlineHistory } from '@/services/headline-history';
 import { isOpenableExternalUrl, openExternalUrl } from '@/services/external-navigation';
 import { headlineTitleKey } from '@/shared/headline-title-key';
 import { WebMcpSearchController } from '@/app/webmcp-search-controller';
@@ -260,6 +260,9 @@ export class SearchManager implements AppModule {
         this.loadedNewsSearchText.get(titleKey)?.some((text) => text.includes(query)) ?? false
       ),
       formatAge: formatTime,
+      setPending: (pending) => {
+        if (!this.destroyed) this.ctx.searchModal?.setResultsPending(pending);
+      },
       setTimeout: (callback, delay) => setTimeout(callback, delay),
       clearTimeout: (timer) => clearTimeout(timer),
       now: () => Date.now(),
@@ -299,7 +302,8 @@ export class SearchManager implements AppModule {
       subscribeWidgetAccess,
       onPremiumAccessChanged: (premium, premiumRestored) => {
         // The headline window is 24 hours or 7 days by plan: drop answers
-        // fetched under the other one.
+        // fetched under the other one, and ask the 7-day route again.
+        resetHeadlineHistoryAccess();
         this.headlineHistory.reset();
         if (!premium) {
           this.flightSearchItems = [];

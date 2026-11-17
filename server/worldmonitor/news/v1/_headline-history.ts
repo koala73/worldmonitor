@@ -3,9 +3,11 @@
  * week so Cmd+K can find one after it has left the dashboard.
  *
  * The dashboard holds only the current digest (20 items per category), and
- * the alert relay picks its titles from that same digest. A headline that
- * alerted a few hours ago has usually aged out, so searching the loaded items
- * cannot find it.
+ * the alert relay titles a news alert with the served digest item's title,
+ * verbatim (scripts/lib/digest-stale-gate.cjs). A headline that alerted a few
+ * hours ago has usually aged out, so searching the loaded items cannot find
+ * it. Not covered here: alerts the relay raises from X accounts, which are
+ * not digest items, and items whose link the publisher gate blanked.
  *
  * Storage: one Redis hash per (edition, language, UTC day served).
  *   news:headline-history:v1:<edition>:<lang>:<YYYY-MM-DD>
@@ -31,7 +33,7 @@
  */
 import { headlineTitleKey } from '../../../../src/shared/headline-title-key';
 import { readRevokedUrlSet } from '../../../_shared/digest-revocations';
-import { runRedisPipeline } from '../../../_shared/redis';
+import { isRedisConfigured, runRedisPipeline } from '../../../_shared/redis';
 
 export const HEADLINE_HISTORY_FREE_HOURS = 24;
 export const HEADLINE_HISTORY_PRO_HOURS = 7 * 24;
@@ -116,7 +118,8 @@ export function buildHeadlineHistoryWrite(
 /**
  * Record one digest build's served items. Returns whether Redis confirmed the
  * write. Keys carry the deployment prefix, so a preview build never writes
- * the production index.
+ * the production index. A deployment with no Redis (local dev, the desktop
+ * sidecar) has no index to fall behind, so there the answer is true.
  */
 export async function writeHeadlineHistory(
   items: readonly ServedHeadline[],
@@ -127,6 +130,7 @@ export async function writeHeadlineHistory(
 ): Promise<boolean> {
   const commands = buildHeadlineHistoryWrite(items, variant, lang, nowMs);
   if (commands.length === 0) return true;
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar' || !isRedisConfigured()) return true;
   const results = await runRedisPipeline(commands, false, timeoutMs);
   return results.length === commands.length && results.every((result) => !result?.error);
 }

@@ -2976,7 +2976,9 @@ function storyCorroborationByHash(
  * indexed, because a result nobody can open is not a result.
  *
  * Returns whether Redis confirmed the write. Never throws: a failed history
- * write must not fail the digest build.
+ * write must not fail the digest build. It is reported, though: nothing else
+ * watches this index, so an unconfirmed or skipped write is the only sign
+ * that search is falling behind the dashboard.
  */
 async function recordServedHeadlines(
   items: readonly ParsedItem[],
@@ -2984,10 +2986,14 @@ async function recordServedHeadlines(
   lang: string,
   deadlineAt = Number.POSITIVE_INFINITY,
 ): Promise<boolean> {
+  if (items.length === 0) return true;
   const timeoutMs = redisTimeoutForDeadline(deadlineAt);
-  if (items.length === 0 || timeoutMs === undefined) return false;
+  if (timeoutMs === undefined) {
+    console.warn(`[digest] headline history skipped for ${variant}:${lang}: no time left before the digest deadline`);
+    return false;
+  }
   try {
-    return await writeHeadlineHistory(
+    const confirmed = await writeHeadlineHistory(
       items.map((item) => ({
         title: item.title,
         source: item.source,
@@ -2999,8 +3005,10 @@ async function recordServedHeadlines(
       Date.now(),
       timeoutMs,
     );
+    if (!confirmed) console.warn(`[digest] headline history write not confirmed for ${variant}:${lang}`);
+    return confirmed;
   } catch (err) {
-    console.warn('[digest] headline history write failed:', err);
+    console.warn(`[digest] headline history write failed for ${variant}:${lang}:`, err);
     return false;
   }
 }

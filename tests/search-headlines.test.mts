@@ -37,6 +37,7 @@ let commands: string[][];
 let revoked: string[];
 let failRevocations: boolean;
 let failReads: boolean;
+let failWrites: boolean;
 
 const item = (title: string, link: string, source = 'Reuters World', publishedAt = NOW - HOUR) =>
   ({ title, link, source, publishedAt });
@@ -70,6 +71,7 @@ beforeEach(() => {
   revoked = [];
   failRevocations = false;
   failReads = false;
+  failWrites = false;
   globalThis.fetch = async (url, init) => {
     assert.equal(String(url), 'https://redis.example.test/pipeline', 'never fetch a publisher');
     const batch = JSON.parse(String(init?.body)) as string[][];
@@ -79,6 +81,7 @@ beforeEach(() => {
         assert.ok(key!.endsWith(REVOKED_URLS_KEY));
         return failRevocations ? { error: 'fixture read failure' } : { result: revoked };
       }
+      if (verb === 'HSET' && failWrites) return { error: 'fixture write failure' };
       if (verb === 'HSET') {
         const hash = hashes.get(key!) ?? new Map<string, string>();
         for (let i = 0; i + 1 < rest.length; i += 2) hash.set(rest[i]!, rest[i + 1]!);
@@ -156,6 +159,45 @@ describe('headline history write', () => {
     ] as never, 'full', 'en', NOW - 1);
     assert.equal(ok, false);
     assert.equal(commands.length, 0);
+  });
+
+  it('says so when Redis does not confirm the write, and when the deadline left no time for it', async () => {
+    const served = [{ source: 'Reuters World', title: 'Rates held', link: 'https://www.reuters.com/world/rates', publishedAt: NOW,
+      originPublisher: '', originPublisherTrusted: false }] as never;
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...parts: unknown[]) => { warnings.push(parts.map(String).join(' ')); };
+    try {
+      failWrites = true;
+      assert.equal(await digest.recordServedHeadlines(served, 'full', 'en'), false);
+      assert.equal(warnings.filter(line => line.includes('headline history')).length, 1, warnings.join('\n'));
+      assert.match(warnings.find(line => line.includes('headline history'))!, /full:en/);
+
+      failWrites = false;
+      warnings.length = 0;
+      assert.equal(await digest.recordServedHeadlines(served, 'full', 'en', NOW - 1), false);
+      assert.equal(warnings.filter(line => line.includes('headline history')).length, 1, 'a skipped write is reported too');
+
+      warnings.length = 0;
+      assert.equal(await digest.recordServedHeadlines(served, 'full', 'en'), true);
+      assert.deepEqual(warnings.filter(line => line.includes('headline history')), [], 'a confirmed write is quiet');
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('is quiet where there is no Redis to write to', async () => {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...parts: unknown[]) => { warnings.push(parts.map(String).join(' ')); };
+    try {
+      await digest.recordServedHeadlines([{ source: 'Reuters World', title: 'Rates held', link: 'https://www.reuters.com/world/rates',
+        publishedAt: NOW, originPublisher: '', originPublisherTrusted: false }] as never, 'full', 'en');
+      assert.deepEqual(warnings.filter(line => line.includes('headline history')), []);
+    } finally {
+      console.warn = originalWarn;
+    }
   });
 
   it('keeps a preview deployment out of the production index, on write and on read', async () => {

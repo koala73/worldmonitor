@@ -27,8 +27,22 @@ export interface HeadlineHistoryQuery {
 
 const HEADLINE_SEARCH_TIMEOUT_MS = 6_000;
 
+/**
+ * After the server refuses the 7-day route, ask the 24-hour route directly
+ * for a while instead of paying for a refusal on every keystroke. Short, so a
+ * token that was only briefly invalid costs a paying user minutes, not the
+ * session.
+ */
+const ARCHIVE_DENIAL_MEMORY_MS = 5 * 60_000;
+
 let freeClient: InstanceType<typeof NewsServiceClient> | null = null;
 let archiveClient: InstanceType<typeof NewsServiceClient> | null = null;
+let archiveDeniedUntil = 0;
+
+/** Forget a remembered refusal: the plan or the signed-in account changed. */
+export function resetHeadlineHistoryAccess(): void {
+  archiveDeniedUntil = 0;
+}
 
 function requestSignal(signal?: AbortSignal): AbortSignal {
   const deadline = AbortSignal.timeout(HEADLINE_SEARCH_TIMEOUT_MS);
@@ -45,7 +59,7 @@ function requestSignal(signal?: AbortSignal): AbortSignal {
  */
 export async function searchHeadlineHistory(query: string, options: HeadlineHistoryQuery): Promise<HistoryHeadline[]> {
   const request = { query, variant: options.variant, lang: options.lang };
-  if (options.premium) {
+  if (options.premium && Date.now() >= archiveDeniedUntil) {
     archiveClient ??= new NewsServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
     try {
       const response = await archiveClient.searchHeadlineArchive(request, { signal: requestSignal(options.signal) });
@@ -55,6 +69,7 @@ export async function searchHeadlineHistory(query: string, options: HeadlineHist
       // ApiError class: the generated client loads lazily, off the main bundle.
       const status = (error as { statusCode?: unknown } | null)?.statusCode;
       if (status !== 401 && status !== 403) throw error;
+      archiveDeniedUntil = Date.now() + ARCHIVE_DENIAL_MEMORY_MS;
     }
   }
   freeClient ??= new NewsServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });

@@ -102,6 +102,7 @@ function openModal(viewport: 'desktop' | 'mobile' = 'desktop'): void {
     },
     isLoadedMatch: (titleKey, query) => loadedText.get(titleKey)?.includes(query) ?? false,
     formatAge: (date) => `${Math.round((NOW - date.getTime()) / HOUR)}h ago`,
+    setPending: (pending) => current.setResultsPending(pending),
     setTimeout: (callback, delay) => setTimeout(callback, delay),
     clearTimeout: (timer) => clearTimeout(timer),
     now: () => Date.now(),
@@ -146,9 +147,13 @@ describe('Cmd+K headline history', () => {
     type('hormuz');
     await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS);
     expect(rows()).toEqual([]);
-    expect(document.querySelector('.search-empty')).not.toBeNull();
+    // Nothing loaded matches, but the server has not answered yet: the list
+    // says it is still loading, not that there are no results.
+    expect(document.querySelector('.search-empty[data-search-pending]')?.textContent).toContain('Loading...');
+    expect(document.querySelector('.search-empty')?.textContent).not.toContain('No results');
 
     await settle();
+    expect(document.querySelector('[data-search-pending]')).toBeNull();
     expect(rows()).toEqual([{
       title: 'Strait of Hormuz tanker seized by patrol boats',
       subtitle: 'Reuters World · 5h ago',
@@ -216,6 +221,30 @@ describe('Cmd+K headline history', () => {
     expect(requests).toEqual(['hormuz']);
   });
 
+  it('says there are no results once the server has answered with none, or failed', async () => {
+    openModal();
+    type('zzzqqq');
+    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS);
+    expect(document.querySelector('[data-search-pending]')).not.toBeNull();
+    await settle();
+    expect(document.querySelector('[data-search-pending]')).toBeNull();
+    expect(document.querySelector('.search-empty')?.textContent).toContain('No results');
+
+    failNextRequest = true;
+    await search('yyywww');
+    expect(document.querySelector('[data-search-pending]')).toBeNull();
+    expect(document.querySelector('.search-empty')?.textContent).toContain('No results');
+  });
+
+  it('leaves a live flight lookup alone', async () => {
+    openModal();
+    modal!.setOnFlightSearch(() => {});
+    await search('flight ab123');
+    expect(requests).toEqual([]);
+    expect(document.querySelector('[data-search-pending]')).toBeNull();
+    expect(document.querySelector('[data-flight-trigger="AB123"]')).not.toBeNull();
+  });
+
   it('does not ask for a query too short to be worth a week of headlines', async () => {
     openModal();
     await search('ho');
@@ -250,6 +279,7 @@ describe('Cmd+K headline history', () => {
       },
       isLoadedMatch: () => false,
       formatAge: () => '5h ago',
+      setPending: (pending) => modal!.setResultsPending(pending),
       setTimeout: (callback, delay) => setTimeout(callback, delay),
       clearTimeout: (timer) => clearTimeout(timer),
       now: () => Date.now(),

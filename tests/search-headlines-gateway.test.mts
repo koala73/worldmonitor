@@ -65,7 +65,52 @@ after(() => {
   restore('UPSTASH_REDIS_REST_TOKEN', saved.redisToken);
 });
 
+const USER_KEY = `wm_${'a'.repeat(40)}`;
+
+/** Answers the gateway's key and entitlement lookups for one account tier. */
+async function withAccountTier<T>(tier: number, run: () => Promise<T>): Promise<T> {
+  const savedSite = process.env.CONVEX_SITE_URL;
+  const savedSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+  const redisFetch = globalThis.fetch;
+  process.env.CONVEX_SITE_URL = 'https://test.convex.site';
+  process.env.CONVEX_SERVER_SHARED_SECRET = 'test-secret';
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (url.endsWith('/api/internal-validate-api-key')) {
+      return Response.json({ id: `key-${tier}`, userId: `user_tier_${tier}`, name: 'Test key', keyKind: 'api' });
+    }
+    if (url.endsWith('/api/internal-entitlements')) {
+      return Response.json({
+        planKey: tier > 0 ? 'pro_test' : 'api_free_test',
+        validUntil: Date.now() + 86_400_000,
+        features: { tier, apiAccess: true, apiRateLimit: 60, maxDashboards: 3, prioritySupport: false, exportFormats: [], mcpAccess: false },
+      });
+    }
+    return redisFetch(input, init);
+  }) as typeof fetch;
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = redisFetch;
+    restore('CONVEX_SITE_URL', savedSite);
+    restore('CONVEX_SERVER_SHARED_SECRET', savedSecret);
+  }
+}
+
 describe('headline search gateway access', () => {
+  it('tells a signed-in free account to upgrade for the 7-day window, and serves a Pro account', async () => {
+    reached = [];
+    const free = await withAccountTier(0, () => call(ARCHIVE_PATH, { 'X-Api-Key': USER_KEY }));
+    assert.equal(free.status, 403);
+    const body = await free.json() as { error?: string; requiredTier?: number; currentTier?: number };
+    assert.deepEqual([body.error, body.requiredTier, body.currentTier], ['Upgrade required', 1, 0]);
+    assert.deepEqual(reached, [], 'the 7-day handler never ran for a free account');
+
+    const pro = await withAccountTier(1, () => call(ARCHIVE_PATH, { 'X-Api-Key': USER_KEY }));
+    assert.equal(pro.status, 200);
+    assert.deepEqual(reached, [ARCHIVE_PATH]);
+  });
+
   it('serves the 24-hour window to an anonymous dashboard session and refuses it the 7-day window', async () => {
     reached = [];
     const free = await call(FREE_PATH, { 'X-WorldMonitor-Key': sessionToken });

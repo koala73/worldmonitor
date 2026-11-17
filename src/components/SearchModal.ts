@@ -154,6 +154,8 @@ export class SearchModal {
   private onHumanInteraction?: () => void;
   private onQueryChange?: (rawInput: string) => void;
   private onFlightSearch?: (callsign: string) => void;
+  /** A source is still fetching results for the visible query. */
+  private resultsPending = false;
   private currentFlightCallsign: string | null = null;
   private flightSearchFired = false;
   private placeholder: string;
@@ -302,6 +304,22 @@ export class SearchModal {
    */
   public setOnQueryChange(callback: (rawInput: string) => void): void {
     this.onQueryChange = callback;
+  }
+
+  /**
+   * A source is fetching results for the visible query (true) or has finished
+   * (false). While it is fetching, an empty list reads "Loading..." instead of
+   * "No results": the answer is not known yet.
+   */
+  public setResultsPending(pending: boolean): void {
+    if (this.resultsPending === pending) return;
+    this.resultsPending = pending;
+    // Turning it on happens inside the search that is about to render. Turning
+    // it off must repaint an empty list, or it would say "Loading..." forever.
+    if (pending || !this.overlay || this.totalResultCount > 0) return;
+    const query = (this.input?.value.toLowerCase() ?? '').trim();
+    if (!query || query !== this.lastSearchedQuery || this.currentFlightCallsign) return;
+    this.renderResults();
   }
 
   public refreshSearch(): void {
@@ -1022,6 +1040,16 @@ export class SearchModal {
           this.renderFlightSearchTrigger(this.currentFlightCallsign);
           this.announceResultCount(1);
         }
+        return;
+      }
+      if (this.resultsPending) {
+        // Not announced: there is no count to announce until the answer lands.
+        setTrustedHtml(this.resultsList, trustedHtml(`
+          <div class="search-empty" data-search-pending>
+            <div class="search-empty-icon">\u2026</div>
+            <div>${escapeHtml(t('common.loading'))}</div>
+          </div>
+        `, "legacy direct innerHTML migration"));
         return;
       }
       setTrustedHtml(this.resultsList, trustedHtml(`
