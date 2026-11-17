@@ -40,18 +40,32 @@ describe('market move severity', () => {
   });
 
   it('holds one move for a session, not an hour', () => {
-    assert.equal(policy.marketMoveDedupTtlSeconds('equity'), 24 * 3600);
-    assert.equal(policy.marketMoveDedupTtlSeconds('commodity'), 24 * 3600);
+    assert.equal(policy.marketMoveDedupTtlSeconds('equity'), 4 * 24 * 3600);
+    assert.equal(policy.marketMoveDedupTtlSeconds('commodity'), 4 * 24 * 3600);
     assert.equal(policy.marketMoveDedupTtlSeconds('crypto'), 24 * 3600);
   });
 
-  it('keys a daily move by session, so a move at the close cannot block the next open', () => {
-    const close = policy.marketMoveSessionKey('equity', Date.parse('2026-11-16T20:55:00Z'));
-    const nextOpen = policy.marketMoveSessionKey('equity', Date.parse('2026-11-17T14:35:00Z'));
+  it('keys a daily move by its trade session, so a move at the close cannot block the next open', () => {
+    const sec = (iso) => Date.parse(iso) / 1000;
+    const close = policy.marketMoveSessionKey('equity', sec('2026-11-16T20:55:00Z'));
+    const nextOpen = policy.marketMoveSessionKey('equity', sec('2026-11-17T14:35:00Z'));
     assert.equal(close, '2026-11-16');
     assert.notEqual(close, nextOpen);
-    assert.equal(policy.marketMoveSessionKey('commodity', NOW), '2026-11-16');
-    assert.equal(policy.marketMoveSessionKey('crypto', NOW), undefined);
+    assert.equal(policy.marketMoveSessionKey('crypto', sec('2026-11-16T20:55:00Z')), undefined);
+  });
+
+  it('keeps a closed market on its last session all weekend, past midnight UTC', () => {
+    const fridayClose = Date.parse('2026-11-13T21:00:00Z') / 1000;
+    const keys = ['2026-11-14T00:05:00Z', '2026-11-15T12:00:00Z', '2026-11-16T08:00:00Z']
+      .map((at) => policy.marketMoveSessionKey('equity', fridayClose, Date.parse(at)));
+    assert.deepEqual(new Set(keys), new Set(['2026-11-13']));
+    // The dedup outlives the closure the stable key spans.
+    assert.ok(policy.marketMoveDedupTtlSeconds('equity') >= 3 * 24 * 3600);
+  });
+
+  it('falls back to the wall-clock date without a trade time', () => {
+    assert.equal(policy.marketMoveSessionKey('commodity', undefined, NOW), '2026-11-16');
+    assert.equal(policy.marketMoveSessionKey('commodity', 0, NOW), '2026-11-16');
   });
 
   it('treats every catalog index as an index, caret or not', () => {
@@ -192,8 +206,9 @@ describe('ais-relay wiring', () => {
   const src = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
 
   it('keys equity and commodity moves by session, and weather by severity band', () => {
-    assert.match(src, /marketAlertCoalesceKey\('equity', q\.symbol, dir, severity, notifyPolicy\.marketMoveSessionKey\('equity'\)\)/);
-    assert.match(src, /marketAlertCoalesceKey\('commodity', q\.symbol \|\| q\.name, dir, severity, notifyPolicy\.marketMoveSessionKey\('commodity'\)\)/);
+    assert.match(src, /marketAlertCoalesceKey\('equity', q\.symbol, dir, severity, notifyPolicy\.marketMoveSessionKey\('equity', lastTradeAtBySymbol\.get\(q\.symbol\)\)\)/);
+    assert.match(src, /marketAlertCoalesceKey\('commodity', q\.symbol \|\| q\.name, dir, severity, notifyPolicy\.marketMoveSessionKey\('commodity', lastTradeAtBySymbol\.get\(q\.symbol\)\)\)/);
+    assert.match(src, /resolve\(\{ price: data\.c, changePercent: data\.dp, lastTradeAt: data\.t \}\)/);
     assert.match(src, /notifyPolicy\.weatherAlertCoalesceKey\(weatherAlertFamilyKey\(a\), a\.severity\)/);
   });
 

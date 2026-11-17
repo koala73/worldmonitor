@@ -3768,7 +3768,7 @@ function fetchFinnhubQuoteDirect(symbol, apiKey) {
         try {
           const data = JSON.parse(body);
           if (data.c === 0 && data.h === 0 && data.l === 0) return resolve(null);
-          resolve({ price: data.c, changePercent: data.dp });
+          resolve({ price: data.c, changePercent: data.dp, lastTradeAt: data.t });
         } catch { resolve(null); }
       });
     });
@@ -3823,6 +3823,8 @@ async function writeChinaCountryStockIndex() {
 async function seedMarketQuotes() {
   const previousPayloadPromise = envelopeRead('market:stocks-bootstrap:v1');
   const freshQuotes = [];
+  // Last trade (unix seconds) per fresh quote: a move's session key (#10873).
+  const lastTradeAtBySymbol = new Map();
   const finnhubSymbols = MARKET_SYMBOLS.filter((s) => !YAHOO_ONLY.has(s));
   const yahooSymbols = MARKET_SYMBOLS.filter((s) => YAHOO_ONLY.has(s));
 
@@ -3832,7 +3834,10 @@ async function seedMarketQuotes() {
       const r = results[i];
       const symbol = finnhubSymbols[i];
       const meta = MARKET_META.get(symbol);
-      if (r) freshQuotes.push({ symbol, name: meta?.name || symbol, display: meta?.display || symbol, price: r.price, change: r.changePercent, sparkline: [] });
+      if (r) {
+        freshQuotes.push({ symbol, name: meta?.name || symbol, display: meta?.display || symbol, price: r.price, change: r.changePercent, sparkline: [] });
+        lastTradeAtBySymbol.set(symbol, r.lastTradeAt);
+      }
     }
   }
 
@@ -3855,7 +3860,10 @@ async function seedMarketQuotes() {
     if (freshQuotes.some((q) => q.symbol === s)) continue;
     const yahoo = await fetchYahooChartDirect(s);
     const meta = MARKET_META.get(s);
-    if (yahoo) freshQuotes.push({ symbol: s, name: meta?.name || s, display: meta?.display || s, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
+    if (yahoo) {
+      freshQuotes.push({ symbol: s, name: meta?.name || s, display: meta?.display || s, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
+      lastTradeAtBySymbol.set(s, yahoo.lastTradeAt);
+    }
     await sleep(150);
   }
 
@@ -3908,7 +3916,7 @@ async function seedMarketQuotes() {
       payload: {
         title: `${q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`,
         source: 'Equity Market',
-        coalesceKey: marketAlertCoalesceKey('equity', q.symbol, dir, severity, notifyPolicy.marketMoveSessionKey('equity')),
+        coalesceKey: marketAlertCoalesceKey('equity', q.symbol, dir, severity, notifyPolicy.marketMoveSessionKey('equity', lastTradeAtBySymbol.get(q.symbol))),
         ...marketMoveFields('equity', q),
       },
       severity,
@@ -3922,7 +3930,9 @@ async function seedMarketQuotes() {
 async function seedCommodityQuotes() {
   const quotes = [];
   const missing = [];
-  const toQuote = async (symbol, meta, yahoo) => ({
+  // Last trade (unix seconds) per quote: a move's session key (#10873).
+  const lastTradeAtBySymbol = new Map();
+  const toQuote = async (symbol, meta, yahoo) => (lastTradeAtBySymbol.set(symbol, yahoo.lastTradeAt), {
     symbol, name: meta.name, display: meta.display, price: yahoo.price, change: yahoo.change,
     ...(await _commoditySparkline(symbol, yahoo)),
     ...crudeOilQuoteProvenance(symbol, 'Yahoo Finance', 'futures', yahoo.lastTradeAt * 1000),
@@ -3979,7 +3989,7 @@ async function seedCommodityQuotes() {
       payload: {
         title: `${q.name || q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`,
         source: 'Commodity Market',
-        coalesceKey: marketAlertCoalesceKey('commodity', q.symbol || q.name, dir, severity, notifyPolicy.marketMoveSessionKey('commodity')),
+        coalesceKey: marketAlertCoalesceKey('commodity', q.symbol || q.name, dir, severity, notifyPolicy.marketMoveSessionKey('commodity', lastTradeAtBySymbol.get(q.symbol))),
         ...marketMoveFields('commodity', q),
       },
       severity,

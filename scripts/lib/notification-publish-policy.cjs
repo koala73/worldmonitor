@@ -24,11 +24,12 @@ const HOUR_SECONDS = 3_600;
 const DAY_SECONDS = 86_400;
 
 // A move is a once-per-session fact: the daily change stays above the
-// threshold for the rest of the trading day, so a 1h TTL re-sent it hourly.
-// The coalesce key carries the UTC session date (marketMoveSessionKey), so the
-// next session's move gets a fresh key however late today's was published;
-// the TTL only has to outlive one date.
-const MARKET_MOVE_DEDUP_TTL_SECONDS = DAY_SECONDS;
+// threshold until the next session opens, through a weekend or a holiday, so
+// a 1h TTL re-sent it hourly. The coalesce key carries the session's trade
+// date (marketMoveSessionKey), so the next session's move gets a fresh key
+// however late today's was published, and the TTL only has to outlive the
+// longest closure (a holiday weekend).
+const MARKET_MOVE_DEDUP_TTL_SECONDS = 4 * DAY_SECONDS;
 // Crypto's change is a rolling 24h window, so the same move is visible for a day.
 const CRYPTO_MOVE_DEDUP_TTL_SECONDS = DAY_SECONDS;
 // Band-keyed states (corridor risk, shipping stress): an unchanged band is
@@ -82,14 +83,18 @@ function marketMoveDedupTtlSeconds(assetClass) {
 }
 
 /**
- * The session a daily move belongs to, for its coalesce key: the UTC date for
- * equities and commodities, so a move published at the close cannot block the
- * same move at the next open. Crypto's change is a rolling 24h window with no
- * session, so it has none (its 24h TTL alone bounds it).
+ * The session a daily move belongs to, for its coalesce key: the UTC date of
+ * the quote's last trade for equities and commodities. A move published at
+ * the close cannot block the same move at the next open, and a closed market
+ * still showing Friday's change keeps Friday's key all weekend. The wall-clock
+ * date is the fallback for a quote without a trade time. Crypto's change is a
+ * rolling 24h window with no session, so it has none (its 24h TTL bounds it).
  */
-function marketMoveSessionKey(assetClass, now = Date.now()) {
+function marketMoveSessionKey(assetClass, lastTradeAtSeconds, now = Date.now()) {
   if (assetClass === 'crypto') return undefined;
-  return new Date(now).toISOString().slice(0, 10);
+  const tradeAt = Number(lastTradeAtSeconds);
+  const at = Number.isFinite(tradeAt) && tradeAt > 0 ? tradeAt * 1000 : now;
+  return new Date(at).toISOString().slice(0, 10);
 }
 
 /**
