@@ -12,6 +12,8 @@ export interface BriefLanguageState {
   uiLanguage: string | null;
   briefLanguage: string | null;
   effective: string;
+  /** Languages the brief is delivered in now; absent from an older Convex deploy. */
+  deliverableLanguages?: string[];
 }
 
 export type BriefLanguageWriteResult = { ok: true } | { ok: false; reason: string };
@@ -40,7 +42,7 @@ export async function saveBriefLanguage(userId: string, lang: string | null): Pr
   try {
     const bound = await boundClient(userId);
     if (!bound || getCurrentClerkUser()?.id !== userId) return { ok: false, reason: 'unauthenticated' };
-    return await bound.client.mutation(bound.api.users.setBriefLanguage, { lang });
+    return await bound.client.mutation(bound.api.users.setBriefLanguage, { lang, expectedUserId: userId });
   } catch (error) {
     console.warn('[brief-language] write failed', error);
     return { ok: false, reason: 'error' };

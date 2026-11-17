@@ -26,7 +26,7 @@
 import { ImageResponse } from '@vercel/og';
 import { BRIEF_LOCALIZED_ENVELOPE_VERSION } from '../../shared/brief-envelope.js';
 import { briefPlural, briefT, type BriefStringKey } from '../../shared/brief-strings.js';
-import { RTL_UI_LANGUAGES } from '../../shared/ui-languages.js';
+import { isUiLanguage } from '../../shared/ui-languages.js';
 
 // RUNTIME DEPENDENCY on Google Fonts CDN via jsdelivr.
 //
@@ -98,10 +98,34 @@ type Envelope = {
   };
 };
 
-/** Chrome language: only a v5 sibling carries `lang`; RTL languages stay English until RTL renders are proven. */
+/**
+ * Languages the carousel draws localized. The one registered face is Noto
+ * Serif's Latin subset, whose character map covers these alphabets and the
+ * chrome strings and month names of these languages (the arrow aside, which
+ * English also lacks). Every other brief language (Latin Extended, Cyrillic,
+ * Greek, CJK, Thai, Devanagari, Arabic) would draw through @vercel/og's
+ * runtime font fallback. That fallback has no timeout and swallows a failed
+ * fetch, so the image ships with missing-glyph boxes and is cached; Thai and
+ * Devanagari show boxes even when the fetch works. Those languages keep the
+ * canonical English image until the renderer loads their fonts itself
+ * (l10n PR 7, #10888), which is where a language is added to this list.
+ */
+const CAROUSEL_LOCALIZED_LANGS: ReadonlySet<string> = new Set(['fr', 'de', 'es', 'it', 'pt', 'nl', 'sv', 'sw']);
+
+/**
+ * True when `sibling` is a localized brief in a language the carousel cannot
+ * draw yet. The route then renders the canonical English envelope.
+ */
+export function carouselKeepsEnglish(sibling: unknown): boolean {
+  const lang = (sibling as { lang?: unknown } | null)?.lang;
+  // A sibling marked English is invalid, not undrawable: selection rejects it.
+  return isUiLanguage(lang) && lang !== 'en' && !CAROUSEL_LOCALIZED_LANGS.has(lang);
+}
+
+/** Chrome language: only a v5 sibling in a language the carousel draws carries one. */
 function carouselLang(env: Envelope): string {
   if (env.version !== BRIEF_LOCALIZED_ENVELOPE_VERSION || typeof env.lang !== 'string') return 'en';
-  return RTL_UI_LANGUAGES.includes(env.lang as never) ? 'en' : env.lang;
+  return CAROUSEL_LOCALIZED_LANGS.has(env.lang) ? env.lang : 'en';
 }
 
 export type CarouselPage = 'cover' | 'threads' | 'story';
