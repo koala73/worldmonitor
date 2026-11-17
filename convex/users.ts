@@ -312,11 +312,15 @@ export const recordTermsAcceptance = internalMutation({
  * settings UI is reached only from the dashboard, where `ensureRecord` ran.
  */
 export const setBriefLanguage = mutation({
-  args: { lang: v.union(v.string(), v.null()) },
+  // expectedUserId: the account the save was started for. A save in flight
+  // across a reconnect is replayed with the token current then; if the
+  // signed-in account changed, it must not land on the new account's row.
+  args: { lang: v.union(v.string(), v.null()), expectedUserId: v.string() },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return { ok: false as const, reason: "unauthenticated" as const };
     const userId = identity.subject;
+    if (userId !== args.expectedUserId) return { ok: false as const, reason: "account-mismatch" as const };
     if (args.lang !== null && !isUiLanguage(args.lang)) {
       return { ok: false as const, reason: "invalid-input" as const };
     }
