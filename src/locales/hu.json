@@ -5863,7 +5863,9 @@
     "briefLanguage": {
       "label": "Az összefoglaló nyelve",
       "hint": "A napi összefoglaló nyelve: {{language}}.",
-      "sameAsApp": "Megegyezik az alkalmazás nyelvével"
+      "sameAsApp": "Megegyezik az alkalmazás nyelvével",
+      "loadFailed": "Betöltés sikertelen",
+      "saveFailed": "Nem sikerült elmenteni. Próbáld újra."
     }
   }
 }

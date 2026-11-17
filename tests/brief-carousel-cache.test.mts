@@ -129,11 +129,13 @@ describe('api/brief/carousel cache policy', () => {
       ...canonical, version: 5, lang: 'fr',
       data: { ...canonical.data, dateLong: '18 avril 2026', digest: { ...canonical.data.digest, greeting: 'Bonjour à tous' } },
     };
-    const render = async (siblingValue: unknown): Promise<Uint8Array> => {
+    const READ_FAILS = Symbol('read fails');
+    const respond = async (siblingValue: unknown): Promise<Response> => {
       globalThis.fetch = async (input: RequestInfo | URL) => {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
         if (url === fontUrl) return new Response(font, { status: 200, headers: { 'Content-Type': 'font/ttf' } });
         const key = decodeURIComponent(url.split('/get/')[1] ?? '');
+        if (key.startsWith('brief:l10n:') && siblingValue === READ_FAILS) return new Response('down', { status: 500 });
         const value = key.startsWith('brief:l10n:') ? siblingValue : canonical;
         return new Response(JSON.stringify({ result: value == null ? null : JSON.stringify(value) }), { status: 200 });
       };
@@ -142,12 +144,21 @@ describe('api/brief/carousel cache policy', () => {
       const { default: handler } = await import('../api/brief/carousel/[userId]/[issueDate]/[page].ts');
       const res = await handler(new Request(`${PATH}?t=${token}`));
       assert.equal(res.status, 200);
-      return new Uint8Array(await res.arrayBuffer());
+      return res;
     };
+    const render = async (siblingValue: unknown): Promise<Uint8Array> =>
+      new Uint8Array(await (await respond(siblingValue)).arrayBuffer());
     const english = await render(null);
     const localized = await render(sibling);
     const stale = await render({ ...sibling, issuedAt: canonical.issuedAt + 1 });
     assert.notDeepEqual(localized, english, 'a valid sibling must change the rendered image');
     assert.deepEqual(stale, english, 'a stale sibling must render the canonical image');
+
+    const fallback = await respond(READ_FAILS);
+    assert.deepEqual(new Uint8Array(await fallback.arrayBuffer()), english, 'a failed sibling read renders canonical');
+    for (const header of ['Cache-Control', 'CDN-Cache-Control', 'Vercel-CDN-Cache-Control']) {
+      assert.equal(fallback.headers.get(header), 'no-store', `${header} after a failed sibling read`);
+    }
+    assert.equal((await respond(null)).headers.get('Cache-Control'), 'public, max-age=604800');
   });
 });

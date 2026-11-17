@@ -5863,7 +5863,9 @@
     "briefLanguage": {
       "label": "Brifing dili",
       "hint": "Günlük brifinginiz {{language}} dilinde yazılacak.",
-      "sameAsApp": "Uygulama diliyle aynı"
+      "sameAsApp": "Uygulama diliyle aynı",
+      "loadFailed": "Yükleme başarısız",
+      "saveFailed": "Kaydedilemedi. Lütfen tekrar deneyin."
     }
   }
 }

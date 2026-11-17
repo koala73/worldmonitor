@@ -5909,7 +5909,9 @@
     "briefLanguage": {
       "label": "Jezik sažetka",
       "hint": "Vaš dnevni sažetak bit će na jeziku: {{language}}.",
-      "sameAsApp": "Isto kao jezik aplikacije"
+      "sameAsApp": "Isto kao jezik aplikacije",
+      "loadFailed": "Učitavanje nije uspjelo",
+      "saveFailed": "Nisam mogao to spremiti. Pokušajte ponovno."
     }
   },
   "app": {}

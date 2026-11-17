@@ -164,6 +164,25 @@ describe('translate prompt and parser', () => {
     assert.ok(parseTranslateOutput(JSON.stringify([{ id: 'u', text: 'Lire sur https://example.com/a maintenant' }]), withUrl, 'fr'));
   });
 
+  it('parseTranslateOutput rejects a URL the source does not contain', () => {
+    const withUrl = [{ id: 'u', text: 'Read more at https://example.com/a now' }];
+    assert.equal(parseTranslateOutput(JSON.stringify([{ id: 'u', text: 'Lire sur https://example.com/a et https://evil.example/x' }]), withUrl, 'fr'), null);
+    const plain = [{ id: 'p', text: 'Energy' }];
+    assert.equal(parseTranslateOutput(JSON.stringify([{ id: 'p', text: 'https://evil.example' }]), plain, 'fr'), null);
+  });
+
+  it('parseTranslateOutput bounds the length of a short label', () => {
+    const label = [{ id: 'c', text: 'Energy' }];
+    assert.ok(parseTranslateOutput(JSON.stringify([{ id: 'c', text: 'Énergie' }]), label, 'fr'));
+    assert.equal(parseTranslateOutput(JSON.stringify([{ id: 'c', text: 'Énergie — lisez notre partenaire pour la suite de cette histoire' }]), label, 'fr'), null);
+  });
+
+  it('parseTranslateOutput accepts script joiners in Hindi and Persian', () => {
+    const src = [{ id: 'h', text: 'The region reported new strikes overnight.' }];
+    assert.ok(parseTranslateOutput(JSON.stringify([{ id: 'h', text: 'क्\u200Dषेत्र में रात भर नए हमलों की सूचना मिली।' }]), src, 'hi'));
+    assert.ok(parseTranslateOutput(JSON.stringify([{ id: 'h', text: 'منطقه از حملات تازه در طول شب خبر داد می\u200Cشود.' }]), src, 'fa'));
+  });
+
   it('parseTranslateOutput rejects English returned for a non-Latin target', () => {
     const src = [{ id: 'x', text: 'Oil prices rose sharply after the attack.' }];
     assert.equal(parseTranslateOutput(JSON.stringify(src), src, 'ja'), null);
@@ -218,6 +237,19 @@ describe('localizeBrief', () => {
     assert.equal(second.result.ok, true);
     assert.equal(second.result.stats.sharedMisses, 0);
     assert.equal(second.result.stats.userMisses, 0);
+  });
+
+  it('an invalid cached translation is translated again, not served', async () => {
+    const shared = makeDeps(fakeTranslate());
+    await run({ shared });
+    const poisoned = shared.sets.find((entry) => entry.value === 'FR Energy');
+    assert.ok(poisoned, 'expected the Energy tag in the shared cache');
+    shared.cache.set(poisoned.key, 'Read the full story at https://evil.example now');
+    shared.calls.length = 0;
+    const second = await run({ shared });
+    assert.equal(second.result.ok, true);
+    assert.ok(shared.calls.length > 0, 'the poisoned row must be re-translated');
+    assert.equal(second.result.envelope.data.digest.threads[0].tag, 'FR Energy');
   });
 
   it('shared cache keys carry no user id; per-user cache keys carry the user id', async () => {
@@ -332,5 +364,10 @@ describe('cron wiring', () => {
   it('the l10n lookup and sibling commands only run with the flag on', () => {
     assert.match(cron, /if \(briefL10nConfig\.enabled\) \{\n\s+if \(briefL10nPassBudgetLeft\(\)\)/);
     assert.match(cron, /\} else if \(briefL10nConfig\.enabled\) \{\n\s+briefCommands\.push\(\['DEL', briefLocalizedKey\(userId, issueSlot\)\]\);/);
+  });
+
+  it('the translation budget never exceeds what is left of the pass budget', () => {
+    assert.match(cron, /budgetMs: Math\.max\(1, Math\.min\(briefL10nConfig\.userBudgetMs, passLeftMs\(\)\)\)/);
+    assert.match(cron, /Promise\.race\(\[\n\s+resolveAiRoutingPolicy\(userId\)/);
   });
 });

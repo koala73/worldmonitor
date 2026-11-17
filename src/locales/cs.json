@@ -5935,7 +5935,9 @@
     "briefLanguage": {
       "label": "Jazyk přehledu",
       "hint": "Váš denní přehled bude v jazyce {{language}}.",
-      "sameAsApp": "Stejný jako jazyk aplikace"
+      "sameAsApp": "Stejný jako jazyk aplikace",
+      "loadFailed": "Načtení se nezdařilo",
+      "saveFailed": "Nepodařilo se to uložit. Zkuste znovu."
     }
   }
 }
