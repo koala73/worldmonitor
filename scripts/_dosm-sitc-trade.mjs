@@ -83,9 +83,14 @@ export function buildSitcTradePayload(tradeCsv, indexCsv, fetchedAt = new Date()
   }
 
   let latestIndexMonth = '';
+  const indexSeen = new Set();
   for (const row of rows(indexCsv, ['date', 'section', ...INDEX_FIELDS.map(([column]) => column)], 'index')) {
     const month = monthOf(row.date, 'index');
-    const entry = series.get(sectionOf(row.section, 'index')).get(month);
+    const section = sectionOf(row.section, 'index');
+    // A repeated section and month would make the published value depend on row order.
+    if (indexSeen.has(`${section}|${month}`)) throw new Error(`DOSM index duplicate ${section} ${month}`);
+    indexSeen.add(`${section}|${month}`);
+    const entry = series.get(section).get(month);
     // An index month newer than the trade release cannot be attached to a trade row.
     if (!entry) continue;
     for (const [column, field] of INDEX_FIELDS) entry[field] = amount(row[column], `index ${column}`, { allowZero: false });

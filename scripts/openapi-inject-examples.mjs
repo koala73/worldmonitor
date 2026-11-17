@@ -243,6 +243,12 @@ function overrideStringExample(key, context = {}) {
   if (key === 'id' && (where.includes('getusinterestrates') || where.includes('get-us-interest-rates'))) {
     return 'fed_funds_effective';
   }
+  // GetMonthlySitcTrade covers Malaysia only and validates sections against
+  // "0"-"9" | "overall"; the heuristic's "US" / "example" would not run.
+  if (where.includes('getmonthlysitctrade') || where.includes('get-monthly-sitc-trade')) {
+    if (key === 'country') return 'MY';
+    if (key === 'sections') return '0';
+  }
   // ListMediaPerspective validates codes, audiences and region slugs; the
   // heuristic's "example" values are rejected with HTTP 400.
   if (where.includes('listmediaperspective') || where.includes('list-media-perspective')) {

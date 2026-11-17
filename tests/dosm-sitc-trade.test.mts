@@ -55,6 +55,9 @@ describe('DOSM SITC trade producer', () => {
     assert.throws(() => buildSitcTradePayload(TRADE.replace('2026-09-01,0,4834780427,', '2026-09-01,0,4834.780427,'), INDEX), /do not sum/);
     assert.throws(() => buildSitcTradePayload(TRADE.replace('2026-09-01,0,4834780427,', '2026-09-01,0,,'), INDEX), /value invalid/);
     assert.throws(() => buildSitcTradePayload(TRADE, INDEX.replace('2026-08-01,0,243.0974', '2026-08-01,0,0')), /value invalid/);
+    // A repeated index section and month would publish whichever row came last.
+    const indexRow = INDEX.split('\n').find((line) => line.startsWith('2026-08-01,0,'))!;
+    assert.throws(() => buildSitcTradePayload(TRADE, `${INDEX.trimEnd()}\n${indexRow.replace('243.0974', '250')}\n`), /index duplicate 0 2026-08/);
   });
 
   it('ignores index months the trade release has not reached', () => {

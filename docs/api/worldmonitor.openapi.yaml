@@ -37232,7 +37232,7 @@ paths:
                   in: query
                   description: ISO 3166-1 alpha-2 reporter. Empty selects "MY".
                   required: false
-                  example: "US"
+                  example: "MY"
                   schema:
                     type: string
                     pattern: '^([A-Z]{2})?$'
@@ -37247,7 +37247,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "example"
+                      - "0"
                   schema:
                     type: array
                     items:
@@ -37277,7 +37277,7 @@ paths:
                     content:
                         application/json:
                             example:
-                                "country": "US"
+                                "country": "MY"
                                 "currency": "USD"
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "indexBase": "example"
