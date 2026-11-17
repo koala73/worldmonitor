@@ -452,6 +452,8 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/news/v1/list-country-headlines': 'fast',
   '/api/news/v1/list-media-perspective': 'fast',
   '/api/news/v1/list-news-pool': 'fast',
+  // Account-private: one user's delivered alerts must never enter a shared cache.
+  '/api/news/v1/list-sent-alerts': 'no-store',
   // #9796: cached feed rows for a panel's enabled sources below the category cap.
   '/api/news/v1/list-source-items': 'fast',
   '/api/news/v1/list-label-changes': 'fast',

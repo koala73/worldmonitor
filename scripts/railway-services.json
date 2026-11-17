@@ -266,6 +266,7 @@
       "scripts/lib/quiet-hours.cjs",
       "scripts/lib/reservoir-level-alerts.cjs",
       "scripts/lib/resend-send.cjs",
+      "scripts/lib/sent-alert-history.cjs",
       "scripts/lib/user-context.cjs",
       "scripts/nixpacks.toml",
       "scripts/notification-relay.cjs",

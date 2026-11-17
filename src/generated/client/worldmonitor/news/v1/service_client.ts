@@ -355,6 +355,25 @@ export interface ClaimHeadline {
   publishedAt: number;
 }
 
+export interface ListSentAlertsRequest {
+}
+
+export interface ListSentAlertsResponse {
+  alerts: SentAlert[];
+  state: string;
+  retentionDays: number;
+}
+
+export interface SentAlert {
+  title: string;
+  source: string;
+  link: string;
+  eventType: string;
+  severity: string;
+  sentAt: number;
+  channels: string[];
+}
+
 export type StoryPhase = "STORY_PHASE_UNSPECIFIED" | "STORY_PHASE_BREAKING" | "STORY_PHASE_DEVELOPING" | "STORY_PHASE_SUSTAINED" | "STORY_PHASE_FADING";
 
 export type SummarizeStatus = "SUMMARIZE_STATUS_UNSPECIFIED" | "SUMMARIZE_STATUS_SUCCESS" | "SUMMARIZE_STATUS_CACHED" | "SUMMARIZE_STATUS_SKIPPED" | "SUMMARIZE_STATUS_ERROR";
@@ -740,6 +759,29 @@ export class NewsServiceClient {
     }
 
     return await resp.json() as SearchClaimHeadlinesResponse;
+  }
+
+  async listSentAlerts(_req: ListSentAlertsRequest, options?: NewsServiceCallOptions): Promise<ListSentAlertsResponse> {
+    let path = "/api/news/v1/list-sent-alerts";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListSentAlertsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

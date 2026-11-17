@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package worldmonitor.news.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ListSentAlertsRequest takes no parameters: the account is the signed-in caller.
+message ListSentAlertsRequest {}
+
+// SentAlert is one realtime alert that reached the caller on at least one channel.
+message SentAlert {
+  // Headline as the alert showed it.
+  string title = 1;
+  // Publisher or feed name as the alert showed it. Empty when the alert named none.
+  string source = 2;
+  // Article URL (http or https). Empty when the alert linked to no article.
+  string link = 3;
+  // Alert type, for example rss_alert.
+  string event_type = 4;
+  // Alert severity: critical | high | medium | low | info.
+  string severity = 5;
+  // Time the alert was delivered, Unix epoch milliseconds.
+  int64 sent_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Channels the alert was delivered on, for example email or web_push.
+  repeated string channels = 7;
+}
+
+// ListSentAlertsResponse lists the alerts delivered to the caller in the retention window, newest first.
+message ListSentAlertsResponse {
+  // Delivered alerts, newest first; at most 200.
+  repeated SentAlert alerts = 1;
+  // ok | unavailable. Unavailable means the record could not be read, not that no alert was sent.
+  string state = 2;
+  // Retention window in days.
+  int32 retention_days = 3;
+}
