@@ -1,5 +1,10 @@
 import { v } from "convex/values";
 
+export const deliveryAttemptValidator = v.optional(v.object({
+  sequence: v.number(),
+  pending: v.boolean(),
+}));
+
 export const deliveryFailureValidator = v.optional(v.object({
   count: v.number(),
   firstFailedAt: v.number(),
@@ -10,6 +15,7 @@ export const deliveryFailureValidator = v.optional(v.object({
 export const deliveryResultValidator = v.object({
   channelId: v.string(),
   linkedAt: v.number(),
+  sequence: v.optional(v.number()),
   error: v.union(v.string(), v.null()),
 });
 
