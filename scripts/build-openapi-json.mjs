@@ -331,6 +331,7 @@ export const SCANNER_BUNDLE_EXCLUDED_OPERATIONS = Object.freeze({
   '/api/orbital/v1/get-country-imagery-evidence': 'Budget: the per-country watched-site satellite evidence does not fit the 25 bytes of headroom left after the catalog exclusion. Served, documented in the OrbitalService spec and the YAML bundle, and exposed to agents by MCP get_country_imagery_evidence.',
   '/api/orbital/v1/get-watched-site-imagery': 'Budget: the map popup\'s watched-site image and next pass, read by site id; the bundle had about 25 bytes of headroom. Served and documented in the OrbitalService spec and the YAML bundle.',
   '/api/infrastructure/v1/search-place': 'Place-name search for the satellite pass lookup sheet; the bundle had about 25 bytes of headroom. Served and documented in the InfrastructureService spec and the YAML bundle.',
+  '/api/trade/v1/get-monthly-sitc-trade': 'Budget: Malaysia\'s DOSM monthly trade by SITC section costs about 4.8 KB when 97 bytes were free, and its unit and index-gap field documentation is kept rather than trimmed. Served and documented in the TradeService spec and the YAML bundle.',
   '/api/orbital/v1/list-imaging-satellites': 'Budget: the imaging-satellite catalog read by the point lookup carries the full OMM element schema and puts the scanner bundle 5,552 bytes over its cap. Served and documented in the OrbitalService spec and the YAML bundle.',
 });
 
