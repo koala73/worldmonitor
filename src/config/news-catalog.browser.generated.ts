@@ -1457,6 +1457,26 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
           "url": "https://www.14ymedio.com/rss/",
           "lang": "es",
           "digestLang": "es"
+        },
+        {
+          "name": "Guardian Brazil",
+          "url": "https://www.theguardian.com/world/brazil/rss"
+        },
+        {
+          "name": "Brazil Reports",
+          "url": "https://brazilreports.com/feed/"
+        },
+        {
+          "name": "G1 Política",
+          "url": "https://g1.globo.com/rss/g1/politica/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Agência Brasil",
+          "url": "https://agenciabrasil.ebc.com.br/rss/ultimasnoticias/feed.xml",
+          "lang": "pt",
+          "fetchInAllLanguages": true
         }
       ],
       "asia": [
