@@ -28,6 +28,7 @@ import {
 } from '../scripts/lib/digest-email-html.mjs';
 import { stripSourceSuffix } from '../scripts/lib/brief-dedup-jaccard.mjs';
 import { digestCoverageText } from '../scripts/lib/digest-corroboration.mjs';
+import { briefIntlLocale, briefPlural, briefT, formatBriefDate } from '../shared/brief-strings.js';
 
 const source = readFileSync(new URL('../scripts/seed-digest-notifications.mjs', import.meta.url), 'utf8');
 const parsed = ts.createSourceFile('digest.mjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
@@ -45,6 +46,7 @@ const { formatDigest, buildChannelBodies, sanitizeTelegramHtml } = runInNewConte
     DIGEST_CRITICAL_LIMIT, DIGEST_HIGH_LIMIT, DIGEST_MEDIUM_LIMIT,
     DIVIDER: '─'.repeat(40),
     stripSourceSuffix, digestCoverageText, escapeDigestText, formatDigestItemTitle,
+    briefIntlLocale, briefPlural, briefT, formatBriefDate,
     escapeTelegramHtml, escapeSlackMrkdwn, escapeDiscordText,
     markdownToTelegramHtml, markdownToSlackMrkdwn, markdownToDiscord,
   },
@@ -281,3 +283,26 @@ describe('email digest links', () => {
     }
   });
 });
+
+describe('localized chat chrome', () => {
+  it('formatDigest and buildChannelBodies use the brief language', () => {
+    const items = [story(1, { severity: 'critical' }), story(2)];
+    const plain = formatDigest(items, NOW, 'plain', 'fr');
+    assert.ok(plain.startsWith(`${briefT('fr', 'digest.header', { date: '17 octobre 2026' })}`), plain.split('\n')[0]);
+    assert.ok(plain.includes(briefT('fr', 'digest.viewDashboard')));
+    const bodies = buildChannelBodies({ plain, telegram: plain, slack: plain, discord: plain }, 'Résumé', 'https://worldmonitor.app/brief/x', 'fr');
+    assert.ok(bodies.text.startsWith(briefT('fr', 'digest.execSummaryCaps')));
+    assert.ok(bodies.text.includes(briefT('fr', 'digest.openMagazine')));
+    assert.ok(!bodies.slackText.includes('EXECUTIVE SUMMARY'));
+  });
+
+  it('English output is unchanged', () => {
+    const plain = formatDigest([story(1, { severity: 'critical' })], NOW);
+    assert.ok(plain.startsWith('WorldMonitor Daily Digest — October 17, 2026'));
+    assert.ok(plain.includes('CRITICAL (1 event)'));
+    const bodies = buildChannelBodies({ plain, telegram: plain, slack: plain, discord: plain }, 'Lead', 'https://worldmonitor.app/brief/x');
+    assert.ok(bodies.text.startsWith('EXECUTIVE SUMMARY'));
+    assert.ok(bodies.telegramText.includes('Open your WorldMonitor Brief magazine</a>'));
+  });
+});
+

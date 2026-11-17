@@ -53,6 +53,21 @@ export function digestCoverageText(story) {
   return text ? `Coverage: ${text}` : '';
 }
 
+/**
+ * Digest webhook body. Always the canonical English stories and summary, so
+ * `lang` reports the payload language ('en'), not the reader's brief language.
+ */
+export function buildDigestWebhookPayload(stories, summary) {
+  return {
+    version: '1',
+    eventType: 'digest',
+    lang: 'en',
+    stories: stories.map(digestWebhookStory),
+    summary: summary ?? null,
+    storyCount: stories.length,
+  };
+}
+
 /** One story in the digest webhook body; `corroboration` only when known. */
 export function digestWebhookStory(s) {
   return {

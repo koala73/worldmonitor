@@ -11,6 +11,7 @@ import { UI_LANGUAGE_NAMES, isUiLanguage } from '../../shared/ui-languages.js';
 import { sanitizeForPrompt } from '../../server/_shared/llm-sanitize.js';
 import { assertBriefEnvelope } from '../../server/_shared/brief-render.js';
 import { BRIEF_LOCALIZED_ENVELOPE_VERSION } from '../../shared/brief-envelope.js';
+import { briefT, formatBriefDate, greetingKey } from '../../shared/brief-strings.js';
 import { BRIEF_LLM_ALLOWED_PROVIDERS, BRIEF_LLM_MODEL_OVERRIDES } from './brief-llm.mjs';
 import { deriveThreadsFromOrderedStories } from './brief-compose.mjs';
 
@@ -313,9 +314,9 @@ export async function localizeBrief(input) {
       user: data.user,
       issue: data.issue,
       date: data.date,
-      dateLong: data.dateLong,
+      dateLong: formatBriefDate(lang, data.date, 'long'),
       digest: {
-        greeting: digest.greeting,
+        greeting: briefT(lang, greetingKey(digest.greeting)),
         lead: tr(user.map, digest.lead),
         numbers: digest.numbers,
         threads,

@@ -294,7 +294,9 @@ describe('localizeBrief', () => {
     assert.deepEqual(result.envelope.data.stories.map((s) => s.clusterId), can.data.stories.map((s) => s.clusterId));
     assert.equal(result.envelope.data.stories[0].headline, 'FR Oil tanker seized near strait 1');
     assert.equal(result.envelope.data.stories[0].sourceUrl, can.data.stories[0].sourceUrl);
-    assert.equal(result.envelope.data.digest.greeting, can.data.digest.greeting);
+    assert.equal(result.envelope.data.digest.greeting, 'Bonsoir.');
+    assert.equal(result.envelope.data.dateLong, '17 avril 2026');
+    assert.equal(result.envelope.data.date, can.data.date);
     assert.equal(result.synthesis.lead, `FR ${synthesis().lead}`);
     assert.equal('rankedStoryHashes' in result.synthesis, false);
   });

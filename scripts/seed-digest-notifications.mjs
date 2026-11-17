@@ -137,10 +137,11 @@ import { buildDigestDeliveryPlan } from './lib/digest-delivery-plan.mjs';
 import { selectDigestChannelContent } from './lib/digest-channel-content.mjs';
 import { briefL10nTarget, localizeBrief, readBriefL10nConfig } from './lib/brief-l10n.mjs';
 import { briefLocalizedKey } from '../shared/brief-envelope.js';
+import { briefIntlLocale, briefPlural, briefT, formatBriefDate } from '../shared/brief-strings.js';
 import {
   attachDigestCorroboration,
   digestCoverageText,
-  digestWebhookStory,
+  buildDigestWebhookPayload,
   readStoryCorroboration,
   storyCorroborationField,
 } from './lib/digest-corroboration.mjs';
@@ -1091,14 +1092,17 @@ async function buildDigest(rule, windowStartMs) {
 
 // target: 'plain' | 'telegram' | 'slack' | 'discord'. Chat targets return
 // channel-escaped text with each title linked to its original report (#9214).
-function formatDigest(stories, nowMs, target = 'plain') {
+function formatDigest(stories, nowMs, target = 'plain', lang = 'en') {
   if (!stories || stories.length === 0) return null;
   const esc = (text) => escapeDigestText(text, target);
-  const dateStr = new Intl.DateTimeFormat('en-US', {
-    month: 'long', day: 'numeric', year: 'numeric',
-  }).format(new Date(nowMs));
+  const dateStr = lang === 'en'
+    ? new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(new Date(nowMs))
+    : formatBriefDate(lang, nowMs, 'full');
+  const levelName = (level) => (lang === 'en'
+    ? level.toUpperCase()
+    : briefT(lang, `threat.${level}`).toLocaleUpperCase(briefIntlLocale(lang)));
 
-  const lines = [esc(`WorldMonitor Daily Digest — ${dateStr}`), ''];
+  const lines = [esc(briefT(lang, 'digest.header', { date: dateStr })), ''];
 
   const buckets = { critical: [], high: [], medium: [] };
   for (const s of stories) {
@@ -1111,7 +1115,7 @@ function formatDigest(stories, nowMs, target = 'plain') {
   for (const [level, items] of Object.entries(buckets)) {
     if (items.length === 0) continue;
     const limit = SEVERITY_LIMITS[level] ?? DIGEST_MEDIUM_LIMIT;
-    lines.push(esc(`${level.toUpperCase()} (${items.length} event${items.length !== 1 ? 's' : ''})`));
+    lines.push(esc(briefPlural(lang, 'digest.levelLine', items.length, { level: levelName(level) })));
     for (const item of items.slice(0, limit)) {
       const src = item.sources.length > 0
         ? ` [${item.sources.slice(0, 3).join(', ')}${item.sources.length > 3 ? ` +${item.sources.length - 3}` : ''}]`
@@ -1128,11 +1132,11 @@ function formatDigest(stories, nowMs, target = 'plain') {
         lines.push(`    ${esc(trimmed)}`);
       }
     }
-    if (items.length > limit) lines.push(esc(`  ... and ${items.length - limit} more`));
+    if (items.length > limit) lines.push(esc(`  ${briefT(lang, 'digest.andMore', { n: items.length - limit })}`));
     lines.push('');
   }
 
-  lines.push(esc('View full dashboard \u2192 worldmonitor.app'));
+  lines.push(esc(briefT(lang, 'digest.viewDashboard')));
   return lines.join('\n');
 }
 
@@ -1352,9 +1356,9 @@ async function sendTeams(userId, webhookEnvelope, payload, channel) {
     : result.status ? `HTTP ${result.status}` : deliveryErrorClass(result.error, 'URL rejected'));
 }
 
-async function sendEmail(email, subject, text, html, channel = null, occurrence = '') {
+async function sendEmail(email, subject, text, html, channel = null, occurrence = '', lang = 'en') {
   const unsubscribeUrl = unsubscribeUrlFor(channel, 'brief');
-  const label = 'Unsubscribe from the daily brief';
+  const label = briefT(lang, 'digest.unsubscribe');
   const payload = {
     from: RESEND_FROM, to: email, subject,
     text: appendUnsubscribeText(text, unsubscribeUrl, label),
@@ -1389,13 +1393,7 @@ async function sendWebhook(userId, webhookEnvelope, stories, aiSummary, webhookS
   } catch (err) {
     return recordDelivery(userId, 'webhook', channel, deliveryErrorClass(err, 'URL rejected'));
   }
-  const payload = JSON.stringify({
-    version: '1',
-    eventType: 'digest',
-    stories: stories.map(digestWebhookStory),
-    summary: aiSummary ?? null,
-    storyCount: stories.length,
-  });
+  const payload = JSON.stringify(buildDigestWebhookPayload(stories, aiSummary));
   try {
     const resp = await postJsonWithPinnedAddress(
       safeUrl,
@@ -1469,7 +1467,18 @@ const DIVIDER = '─'.repeat(40);
  * Keeps the per-channel formatting logic out of main() so its cognitive
  * complexity stays within the lint budget.
  */
-function buildChannelBodies(storyLists, aiSummary, magazineUrl) {
+/** Localized Teams digest card labels; English stays on the module defaults. */
+function teamsDigestLabels(lang) {
+  return {
+    openBrief: briefT(lang, 'teams.openBrief'),
+    openDashboard: briefT(lang, 'teams.openDashboard'),
+    execSummary: briefT(lang, 'teams.execSummary'),
+    stories: (n) => briefPlural(lang, 'teams.stories', n),
+    more: (n) => briefT(lang, 'teams.more', { n }),
+  };
+}
+
+function buildChannelBodies(storyLists, aiSummary, magazineUrl, lang = 'en') {
   // storyLists: formatDigest output per target. The chat lists are already
   // channel-escaped and carry per-story links, so they are not escaped again.
   const { plain: storyListPlain, telegram, slack, discord } = storyLists;
@@ -1487,17 +1496,19 @@ function buildChannelBodies(storyLists, aiSummary, magazineUrl) {
   const slackSafeUrl = magazineUrl
     ? String(magazineUrl).replace(/[<>|]/g, '')
     : '';
+  const openLabel = briefT(lang, 'digest.openMagazine');
+  const execCaps = briefT(lang, 'digest.execSummaryCaps');
   const briefFooterPlain = magazineUrl
-    ? `\n\n${DIVIDER}\n\n📖 Open your WorldMonitor Brief magazine:\n${magazineUrl}`
+    ? `\n\n${DIVIDER}\n\n📖 ${openLabel}:\n${magazineUrl}`
     : '';
   const briefFooterTelegram = magazineUrl
-    ? `\n\n${DIVIDER}\n\n📖 <a href="${telegramSafeUrl}">Open your WorldMonitor Brief magazine</a>`
+    ? `\n\n${DIVIDER}\n\n📖 <a href="${telegramSafeUrl}">${escapeDigestText(openLabel, 'telegram')}</a>`
     : '';
   const briefFooterSlack = magazineUrl
-    ? `\n\n${DIVIDER}\n\n📖 <${slackSafeUrl}|Open your WorldMonitor Brief magazine>`
+    ? `\n\n${DIVIDER}\n\n📖 <${slackSafeUrl}|${openLabel.replace(/[<>|]/g, '')}>`
     : '';
   const briefFooterDiscord = magazineUrl
-    ? `\n\n${DIVIDER}\n\n📖 [Open your WorldMonitor Brief magazine](${magazineUrl})`
+    ? `\n\n${DIVIDER}\n\n📖 [${openLabel.replace(/[[\]]/g, '')}](${magazineUrl})`
     : '';
   if (!aiSummary) {
     return {
@@ -1508,10 +1519,10 @@ function buildChannelBodies(storyLists, aiSummary, magazineUrl) {
     };
   }
   return {
-    text: `EXECUTIVE SUMMARY\n\n${aiSummary}\n\n${DIVIDER}\n\n${storyListPlain}${briefFooterPlain}`,
-    telegramText: `<b>EXECUTIVE SUMMARY</b>\n\n${markdownToTelegramHtml(aiSummary)}\n\n${DIVIDER}\n\n${telegram}${briefFooterTelegram}`,
-    slackText: `*EXECUTIVE SUMMARY*\n\n${markdownToSlackMrkdwn(aiSummary)}\n\n${DIVIDER}\n\n${slack}${briefFooterSlack}`,
-    discordText: `**EXECUTIVE SUMMARY**\n\n${markdownToDiscord(aiSummary)}\n\n${DIVIDER}\n\n${discord}${briefFooterDiscord}`,
+    text: `${execCaps}\n\n${aiSummary}\n\n${DIVIDER}\n\n${storyListPlain}${briefFooterPlain}`,
+    telegramText: `<b>${escapeDigestText(execCaps, 'telegram')}</b>\n\n${markdownToTelegramHtml(aiSummary)}\n\n${DIVIDER}\n\n${telegram}${briefFooterTelegram}`,
+    slackText: `*${execCaps}*\n\n${markdownToSlackMrkdwn(aiSummary)}\n\n${DIVIDER}\n\n${slack}${briefFooterSlack}`,
+    discordText: `**${execCaps}**\n\n${markdownToDiscord(aiSummary)}\n\n${DIVIDER}\n\n${discord}${briefFooterDiscord}`,
   };
 }
 
@@ -2550,19 +2561,22 @@ async function main() {
         sourceCountByClusterId,
       } = deliveryPlan;
 
-      const storyListPlain = formatDigest(formatterStories, nowMs);
+      const localizedLang = brief?.localizedEnvelope?.lang;
+      const channelLang = typeof localizedLang === 'string' ? localizedLang : 'en';
+      const storyListPlain = formatDigest(formatterStories, nowMs, 'plain', channelLang);
       if (!storyListPlain) continue;
 
       const magazineUrl = brief?.magazineUrl ?? null;
       const { text, telegramText, slackText, discordText } = buildChannelBodies(
         {
           plain: storyListPlain,
-          telegram: formatDigest(formatterStories, nowMs, 'telegram'),
-          slack: formatDigest(formatterStories, nowMs, 'slack'),
-          discord: formatDigest(formatterStories, nowMs, 'discord'),
+          telegram: formatDigest(formatterStories, nowMs, 'telegram', channelLang),
+          slack: formatDigest(formatterStories, nowMs, 'slack', channelLang),
+          discord: formatDigest(formatterStories, nowMs, 'discord', channelLang),
         },
         channelLead,
         magazineUrl,
+        channelLang,
       );
       // Email gets the FULL structured synthesis (lead + threads +
       // signals) so the editorial block matches the old Brain B
@@ -2579,7 +2593,7 @@ async function main() {
       const unsubscribeBytes = Math.max(0, ...deliverableChannels
         .filter((ch) => ch.channelType === 'email')
         .map((ch) => Buffer.byteLength(injectUnsubscribeFooterHtml(
-          '', unsubscribeUrlFor(ch, 'brief'), 'Unsubscribe from the daily brief',
+          '', unsubscribeUrlFor(ch, 'brief'), briefT(channelLang, 'digest.unsubscribe'),
         ), 'utf8')));
       const { html, truncated: htmlTruncated, bytes: htmlBytes, shownStories } = renderDigestEmailHtml({
         stories: formatterStories,
@@ -2587,6 +2601,7 @@ async function main() {
         synthesis: channelSynthesis,
         magazineUrl,
         maxBytes: DIGEST_EMAIL_MAX_HTML_BYTES - unsubscribeBytes,
+        lang: channelLang,
       });
       if (htmlTruncated) {
         console.warn(
@@ -2595,8 +2610,10 @@ async function main() {
         );
       }
 
-      const shortDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(nowMs));
-      const subject = subjectForBrief({ briefLead, synthesisLevel, shortDate });
+      const shortDate = channelLang === 'en'
+        ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(nowMs))
+        : formatBriefDate(channelLang, nowMs, 'short');
+      const subject = subjectForBrief({ briefLead, synthesisLevel, shortDate, lang: channelLang });
 
       // Sprint 1 / U5 — cooldown shadow-mode evaluation (per-cluster,
       // per-channel, BEFORE the channel send). The decision is computed
@@ -2755,7 +2772,7 @@ async function main() {
             // the long-form story list goes in the text message below so
             // it remains forwardable / quotable on its own.
             if (magazineUrl) {
-              const caption = `<b>WorldMonitor Brief — ${shortDate}</b>\n${formatterStories.length} ${formatterStories.length === 1 ? 'thread' : 'threads'} on the desk today.`;
+              const caption = `<b>${escapeDigestText(briefT(channelLang, 'digest.telegramCaption', { date: shortDate }), 'telegram')}</b>\n${escapeDigestText(briefPlural(channelLang, 'digest.threadsOnDesk', formatterStories.length), 'telegram')}`;
               await sendTelegramBriefCarousel(rule.userId, ch.chatId, caption, magazineUrl);
             }
             ok = await sendTelegram(rule.userId, ch.chatId, telegramText);
@@ -2773,11 +2790,12 @@ async function main() {
               summary: channelLead,
               stories: formatterStories.map((story) => ({ ...story, title: stripSourceSuffix(story.title) })),
               briefUrl: magazineUrl,
+              ...(channelLang === 'en' ? {} : { labels: teamsDigestLabels(channelLang) }),
             }), ch);
           } else if (ch.channelType === 'email' && ch.email) {
             // cooldownSlot is YYYY-MM-DD-HHMM; the hour prefix stays fixed across
             // retries within one scheduled hour.
-            ok = await sendEmail(ch.email, subject, text, html, ch, cooldownSlot.slice(0, 13));
+            ok = await sendEmail(ch.email, subject, text, html, ch, cooldownSlot.slice(0, 13), channelLang);
           } else if (ch.channelType === 'webhook' && ch.webhookEnvelope) {
             // Webhook payload's `summary` field reads the canonical
             // briefLead — same string the email exec block + magazine

@@ -160,12 +160,15 @@ When an alert fires, registered webhook URLs receive:
   {
     "version": "1",
     "eventType": "digest",
+    "lang": "en",
     "stories": [{ "title": "...", "severity": "high", "phase": "...", "sources": ["..."], "corroboration": { "state": "corroborated", "publishers": 3 } }],
     "summary": "...",
     "storyCount": 12
   }
   ```
   Each story's `corroboration` is the verdict the dashboard showed for it: `state` is `single-publisher`, `corroborated` or `tier4-only` (every publisher is a declared tier-4 aggregator or blog). It is omitted when unknown. Chat and email digests show it on each item as `Coverage: …`.
+
+  `lang` is the language of this payload. It is always `"en"`: webhooks carry the canonical English stories and summary even when the reader's email, chat and magazine brief are in another language.
 
 ### Signing secret
 

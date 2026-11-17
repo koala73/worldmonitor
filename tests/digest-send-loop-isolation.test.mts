@@ -7,6 +7,7 @@ import { runInNewContext } from 'node:vm';
 import { renderDigestEmailHtml, DIGEST_EMAIL_MAX_HTML_BYTES } from '../scripts/lib/digest-email-html.mjs';
 import { buildBriefOnlyRules, orderBriefOnlyRulesByStaleness } from '../scripts/lib/brief-compose.mjs';
 import { selectDigestChannelContent } from '../scripts/lib/digest-channel-content.mjs';
+import { briefIntlLocale, briefPlural, briefT, formatBriefDate } from '../shared/brief-strings.js';
 
 // A transient Upstash timeout in one user's send path used to reach
 // main().catch and end the whole cron tick, so every user after it in the
@@ -89,6 +90,7 @@ function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = 
     buildDigestDeliveryPlan: ({ rawStories }: any) => ({ formatterStories: rawStories, canonicalFormatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
     formatDigest: () => 'Synthetic digest',
     renderDigestEmailHtml,
+    briefIntlLocale, briefPlural, briefT, formatBriefDate,
     buildChannelBodies: (lists: { plain: string }) => ({ text: lists.plain }),
     subjectForBrief: () => 'Synthetic digest', issueSlotInTz: () => issueSlot,
     emitCooldownShadowLog: () => {}, upstashRest: async () => 'OK',
