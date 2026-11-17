@@ -10,6 +10,7 @@ const envelopeReader = relay.slice(relay.indexOf('async function envelopeRead(')
 const producer = relay.slice(relay.indexOf('const PIZZINT_SEED_INTERVAL_MS'), relay.indexOf('function startPizzintSeedLoop()'));
 const history = await import('../scripts/shared/pizzint-history.cjs');
 const { pizzintVenuePoint } = await import('../scripts/shared/pizzint-location.cjs');
+const { pizzIntViewModel } = await import('../scripts/crawlable-live-tools.mjs');
 const emptyResponse = {
   success: true, data: [], events: [], overall_index: 0, defcon_level: 5,
   active_spikes: 0, has_active_spikes: false, timestamp: '2026-09-25T12:09:33.653Z',
@@ -1200,4 +1201,82 @@ test('a closed-zero publication with a failing venue publishes but withholds the
   await advance(run);
   assert.equal(run.state.cache.get(payloadKey).data.data.pizzint.updatedAt, run.state.now, 'the closed venue is still published');
   assert.equal(run.state.cache.get(metaKey).data.fetchedAt, heartbeat, 'BestTime did not answer cleanly');
+});
+
+// 2026-11-17 14:45 UTC: PizzINT answered fresh with every venue closed and null
+// busyness (it used to send 0), and BestTime had no live reading for any venue.
+// The relay published nothing, so /get-pizzint-status returned no pizzint object.
+const quietMorning = JSON.parse(readFileSync(new URL('./fixtures/pizzint-dashboard-2026-11-17-quiet.json', import.meta.url), 'utf8'));
+
+test('a fresh all-closed PizzINT poll publishes the closed state when BestTime has no live reading', async () => {
+  const run = await quietAfterLive();
+  const lastLiveAt = run.state.now;
+  const calls = run.state.besttimeCalls.length;
+  run.state.source = quietMorning;
+  await advance(run, 7 * 60);
+  assert.equal(run.state.besttimeCalls.length - calls, run.ids.length, 'closed rows carry no busyness, so BestTime is still asked');
+  const stored = run.state.cache.get(payloadKey);
+  assert.ok(stored && run.state.now < stored.expiresAt, 'the closed state is published');
+  assert.equal(stored.data._seed.sourceVersion, 'pizzint');
+  const { locations, ...status } = stored.data.data.pizzint;
+  assert.deepEqual(status, {
+    defconLevel: 5, defconLabel: 'Normal Activity', aggregateActivity: 0, activeSpikes: 0,
+    locationsMonitored: 6, locationsOpen: 0, updatedAt: run.state.now, dataFreshness: 'DATA_FRESHNESS_FRESH',
+  });
+  assert.deepEqual(locations.map(l => [l.name, l.isClosedNow, l.noLiveSignal, l.currentPopularity]),
+    quietMorning.data.map(d => [d.name, true, false, 0]));
+  const meta = run.state.cache.get(metaKey).data;
+  assert.equal(meta.fetchedAt, run.state.now, 'every provider answered cleanly, so the heartbeat advances');
+  assert.equal(meta.lastLiveAt, lastLiveAt, 'a closed venue is not a live reading');
+  assert.equal(classifyPizzint(run.state).status, 'OK');
+  assert.equal(pizzIntViewModel(stored.data.data, run.state.now).available, false, 'the page still needs an open live venue for a current level');
+});
+
+for (const closedPopularity of [null, 0]) {
+  test(`PizzINT closed rows (busyness ${closedPopularity}) never outrank a BestTime live reading`, async () => {
+    const run = await quietAfterLive();
+    run.state.source = { ...quietMorning, data: quietMorning.data.map(d => ({ ...d, current_popularity: closedPopularity })) };
+    run.state.besttime.set(run.ids[4], liveReading(35, 0));
+    await advance(run);
+    const stored = run.state.cache.get(payloadKey).data;
+    assert.equal(stored._seed.sourceVersion, 'besttime-live');
+    assert.equal(stored.data.pizzint.locationsOpen, 1);
+    assert.equal(run.state.cache.get(metaKey).data.lastLiveAt, run.state.now);
+  });
+}
+
+test('a poll with nothing to publish keeps the last reading, marked stale, for 24 hours', async () => {
+  const run = await quietAfterLive();
+  const livePublishedAt = run.state.now;
+  const reading = run.status();
+  run.state.source = new Error('PizzINT down');
+  while (run.state.now + 15 * 60_000 < livePublishedAt + 24 * 60 * 60_000) {
+    await advance(run);
+    const stored = run.state.cache.get(payloadKey);
+    assert.ok(stored && run.state.now < stored.expiresAt, `kept at +${(run.state.now - livePublishedAt) / 60_000} min`);
+    assert.deepEqual(stored.data.data.pizzint, { ...reading, dataFreshness: 'DATA_FRESHNESS_STALE' }, 'only the freshness changes; updatedAt stays the real reading time');
+    assert.equal(stored.data._seed.fetchedAt, livePublishedAt);
+    assert.equal(pizzIntViewModel(stored.data.data, run.state.now).available, false, 'the page never shows a kept reading as current');
+  }
+  assert.ok(run.state.cache.get(payloadKey).expiresAt <= livePublishedAt + 24 * 60 * 60_000, 'the last keep never outlives 24 hours');
+  await advance(run);
+  assert.ok(!(run.state.cache.get(payloadKey)?.expiresAt > run.state.now), 'gone 24 hours after the reading');
+  assert.deepEqual(run.state.logs.at(-1), ['[PizzINT] No live reading; no reading from the last 24h to keep']);
+});
+
+test('a kept reading logs what the relay did with it', async () => {
+  const run = await quietAfterLive();
+  const at = new Date(run.state.now).toISOString();
+  await advance(run);
+  assert.deepEqual(run.state.logs.at(-1), [`[PizzINT] No live reading; kept the ${at} reading, marked stale`]);
+  assert.ok(!JSON.stringify(run.state.warnings).includes('preserving last good observation'));
+});
+
+test('a stopped loop lets the kept reading expire within one seed TTL, and health goes stale', async () => {
+  const run = await quietAfterLive();
+  for (let tick = 0; tick < 4; tick++) await advance(run);
+  assert.equal(run.status().dataFreshness, 'DATA_FRESHNESS_STALE');
+  run.state.now += 46 * 60_000;
+  assert.ok(!(run.state.cache.get(payloadKey).expiresAt > run.state.now), 'no seed loop, no payload');
+  assert.equal(classifyPizzint(run.state).status, 'STALE_SEED');
 });
