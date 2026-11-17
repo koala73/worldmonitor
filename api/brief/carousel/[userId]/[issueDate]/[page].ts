@@ -70,11 +70,12 @@ function jsonError(
 // (passing it via extraHeaders appends a second Cache-Control).
 const CAROUSEL_CACHE_CONTROL = 'public, max-age=604800';
 
-function withCacheControl(response: Response, body: BodyInit | null): Response {
+function withCacheControl(response: Response, body: BodyInit | null, cacheable = true): Response {
   const headers = new Headers(response.headers);
-  headers.set('Cache-Control', CAROUSEL_CACHE_CONTROL);
-  headers.set('CDN-Cache-Control', CAROUSEL_CACHE_CONTROL);
-  headers.set('Vercel-CDN-Cache-Control', CAROUSEL_CACHE_CONTROL);
+  const policy = cacheable ? CAROUSEL_CACHE_CONTROL : 'no-store';
+  headers.set('Cache-Control', policy);
+  headers.set('CDN-Cache-Control', policy);
+  headers.set('Vercel-CDN-Cache-Control', policy);
   return new Response(body, { status: response.status, headers });
 }
 
@@ -129,9 +130,14 @@ export default async function handler(
     throw err;
   }
 
-  // Optional localized sibling; a failed read falls back to canonical.
+  // Optional localized sibling; a failed read falls back to canonical but is
+  // not cached, so the localized image is served once the read recovers.
+  let siblingReadFailed = false;
   const siblingPromise = readRawJsonFromUpstash(briefLocalizedKey(userId, issueDate), 3_000, true)
-    .catch(() => null);
+    .catch(() => {
+      siblingReadFailed = true;
+      return null;
+    });
   let envelope;
   try {
     // Seeder-owned envelope (#7674): the Railway digest composer writes the
@@ -161,9 +167,9 @@ export default async function handler(
       // ImageResponse doesn't expose a HEAD mode, so echo the status
       // and headers without the body. Telegram's preflight + CDN
       // validation both respect this.
-      return withCacheControl(response, null);
+      return withCacheControl(response, null, !siblingReadFailed);
     }
-    return withCacheControl(response, response.body);
+    return withCacheControl(response, response.body, !siblingReadFailed);
   } catch (err) {
     // AbortSignal.timeout / AbortController.abort firing somewhere inside
     // `renderCarouselImageResponse` (remote image fetch, font load, OG

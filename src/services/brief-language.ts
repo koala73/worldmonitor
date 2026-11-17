@@ -5,6 +5,7 @@
  * mid-flight can never read or write the wrong row. Failures resolve to
  * `null` / `{ ok: false }`; nothing here throws.
  */
+import { getCurrentClerkUser } from './clerk';
 import { getConvexApi, getConvexClient, waitForConvexAuthForUser } from './convex-client';
 
 export interface BriefLanguageState {
@@ -27,7 +28,7 @@ async function boundClient(userId: string) {
 export async function loadBriefLanguage(userId: string): Promise<BriefLanguageState | null> {
   try {
     const bound = await boundClient(userId);
-    if (!bound) return null;
+    if (!bound || getCurrentClerkUser()?.id !== userId) return null;
     return (await bound.client.query(bound.api.users.getBriefLanguage, {})) ?? null;
   } catch (error) {
     console.warn('[brief-language] read failed', error);
@@ -38,7 +39,7 @@ export async function loadBriefLanguage(userId: string): Promise<BriefLanguageSt
 export async function saveBriefLanguage(userId: string, lang: string | null): Promise<BriefLanguageWriteResult> {
   try {
     const bound = await boundClient(userId);
-    if (!bound) return { ok: false, reason: 'unauthenticated' };
+    if (!bound || getCurrentClerkUser()?.id !== userId) return { ok: false, reason: 'unauthenticated' };
     return await bound.client.mutation(bound.api.users.setBriefLanguage, { lang });
   } catch (error) {
     console.warn('[brief-language] write failed', error);

@@ -5899,7 +5899,9 @@
     "briefLanguage": {
       "label": "Idioma do resumo",
       "hint": "O seu resumo diário será escrito em {{language}}.",
-      "sameAsApp": "Igual ao idioma da aplicação"
+      "sameAsApp": "Igual ao idioma da aplicação",
+      "loadFailed": "Falha ao carregar",
+      "saveFailed": "Não foi possível salvar. Tente novamente."
     }
   }
 }

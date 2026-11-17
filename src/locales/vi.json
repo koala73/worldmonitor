@@ -5827,7 +5827,9 @@
     "briefLanguage": {
       "label": "Ngôn ngữ bản tin",
       "hint": "Bản tin hằng ngày của bạn sẽ được viết bằng {{language}}.",
-      "sameAsApp": "Giống ngôn ngữ ứng dụng"
+      "sameAsApp": "Giống ngôn ngữ ứng dụng",
+      "loadFailed": "Không tải được",
+      "saveFailed": "Không thể lưu. Vui lòng thử lại."
     }
   }
 }

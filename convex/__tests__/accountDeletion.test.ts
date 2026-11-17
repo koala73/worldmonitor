@@ -843,7 +843,12 @@ describe("account deletion — external side effects", () => {
     expect(fetchCalls.some((call) => call.includes(`pro-mcp-token-neg:${String(tokenId)}`))).toBe(true);
     expect(fetchCalls.some((call) => call.includes("brief:latest:user_deletion_a"))).toBe(true);
     expect(fetchCalls.some((call) => call.includes("brief:user_deletion_a:2026-09-21-1200"))).toBe(true);
-    expect(fetchCalls.some((call) => call.includes("brief:l10n:user_deletion_a:2026-09-21-1200"))).toBe(true);
+    const pipeline = fetchCalls.find((call) => call.includes("brief:l10n:user_deletion_a:2026-09-21-1200"));
+    const commands = JSON.parse(pipeline?.slice(pipeline.indexOf("[")) ?? "[]") as string[][];
+    const delIndex = (key: string) => commands.findIndex((cmd) => cmd[0] === "DEL" && cmd[1] === key);
+    expect(delIndex("brief:l10n:user_deletion_a:2026-09-21-1200")).toBeGreaterThanOrEqual(0);
+    expect(delIndex("brief:user_deletion_a:2026-09-21-1200")).toBeGreaterThanOrEqual(0);
+    expect(delIndex("brief:latest:user_deletion_a")).toBeGreaterThan(delIndex("brief:l10n:user_deletion_a:2026-09-21-1200"));
     expect(await t.query(internal.mcpProTokens.validateProMcpToken, { tokenId })).toBeNull();
   });
 

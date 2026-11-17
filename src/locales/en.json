@@ -5842,7 +5842,9 @@
     "briefLanguage": {
       "label": "Brief language",
       "hint": "Your daily brief will be written in {{language}}.",
-      "sameAsApp": "Same as app language"
+      "sameAsApp": "Same as app language",
+      "loadFailed": "Failed to load",
+      "saveFailed": "Couldn't save that. Try again."
     }
   }
 }
