@@ -10,7 +10,7 @@ import { isMainModule } from './main-module.mjs';
 export const FOOD_FETCH_MARGIN_MS = 15_000;
 
 /** Merge validated reports without erasing last-good prices or regressing country context dates. */
-export function mergeFoodSnapshot(previous, incoming) {
+export function mergeFoodSnapshot(previous, incoming, source = undefined) {
   if (!incoming.observations.length && previous?.observations?.length) {
     throw new Error('food observations missing; retain last-good prices');
   }
@@ -25,7 +25,8 @@ export function mergeFoodSnapshot(previous, incoming) {
   }
   return {
     ...incoming,
-    observations: incoming.observations.length ? mergeHistory(previous?.observations ?? [], incoming.observations, incoming.refreshedReports) : [],
+    observations: incoming.observations.length ? mergeHistory(previous?.observations ?? [], incoming.observations, incoming.refreshedReports,
+      { keepIncoming: Array.isArray(source?.surveyItems) && source.surveyItems.length > 0 }) : [],
     contexts: incoming.contexts.map(context => (context.fetchFailed || regressed.has(context.countryCode)) && oldContexts.get(context.countryCode)?.referenceDate
       ? { ...oldContexts.get(context.countryCode), fetchFailed: true } : context),
   };
@@ -44,7 +45,7 @@ export function runFoodPriceSource(id, moduleUrl) {
   return runSeed('economic', resource, key, async () => {
     // A failed read must not erase history needed for the exact-week baseline.
     const previous = await readSeedSnapshot(key, { strict: true });
-    return mergeFoodSnapshot(previous, await collectFoodSource(id, { budgetMs: source.fetchBudgetMs, proxyAuth: resolveProxyForConnect() }));
+    return mergeFoodSnapshot(previous, await collectFoodSource(id, { budgetMs: source.fetchBudgetMs, proxyAuth: resolveProxyForConnect() }), source);
   }, {
     validateFn: data => count(data) > 0,
     recordInitialFetchFailure: true,

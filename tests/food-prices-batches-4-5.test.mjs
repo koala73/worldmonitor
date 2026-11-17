@@ -9,11 +9,12 @@ import { parseStatec, collect as collectStatec } from '../scripts/lib/food-price
 import { parseLatvia } from '../scripts/lib/food-prices-adapters/csblv.mjs';
 import { parseMakstat } from '../scripts/lib/food-prices-adapters/makstat.mjs';
 import { parseFoag, FOAG_CUBES, observationQuery } from '../scripts/lib/food-prices-adapters/foag.mjs';
-import { PRICECATCHER_BASKET_CODES, PRICECATCHER_DAILY_CODES, PRICECATCHER_ITEM_CODES, addPriceRows, aggregatePrices, basketObservations, basketSurveyDates, priceAccumulator, readPricecatcher, summarizePrices, collect as collectPricecatcher } from '../scripts/lib/food-prices-adapters/pricecatcher.mjs';
+import { PRICECATCHER_BASKET_CODES, PRICECATCHER_BASKET_NAMES, PRICECATCHER_DAILY_CODES, PRICECATCHER_ITEM_CODES, addPriceRows, aggregatePrices, basketObservations, basketSurveyDates, priceAccumulator, readPricecatcher, summarizePrices, collect as collectPricecatcher } from '../scripts/lib/food-prices-adapters/pricecatcher.mjs';
 import { parseMercado, readMercadoArchive, collect as collectMercado } from '../scripts/lib/food-prices-adapters/mcba.mjs';
 import { cubeCells, csvRows } from '../scripts/lib/food-prices-adapters/monthly.mjs';
 import { collectFoodSource } from '../scripts/lib/food-prices-fetch.mjs';
 import { mergeFoodSnapshot } from '../scripts/lib/food-prices-seed.mjs';
+import { mergeHistory } from '../scripts/lib/food-prices.mjs';
 import { FOOD_PRICE_ADAPTERS } from '../scripts/lib/food-prices-adapters/index.mjs';
 
 const file = name => readFileSync(new URL(`./fixtures/food-prices/${name}`, import.meta.url));
@@ -196,6 +197,22 @@ test('Malaysia detects basket-survey days from total basket quotes and pairs eac
   // Without a survey seven or more days earlier, the latest survey stands alone.
   const recent = addPriceRows(priceAccumulator(window), [...survey('2026-11-12'), ...survey('2026-11-16')]);
   assert.deepEqual(basketObservations(summarizePrices(recent, pricecatcherLookup()), basketSurveyDates(recent)).map(row => row.date), PRICECATCHER_BASKET_CODES.map(() => '2026-11-16'));
+});
+
+test('Malaysia basket items read four weeks back, are registered as survey items, and keep re-sent baselines in history', () => {
+  const sources = JSON.parse(readFileSync(new URL('../shared/food-price-sources.json', import.meta.url)));
+  assert.deepEqual([...sources.find(source => source.id === 'pricecatcher').surveyItems].sort(), [...PRICECATCHER_BASKET_NAMES].sort());
+  const quotes = (date, code) => Array.from({ length: 12 }, (_, index) => ({ date, premise_code: index + 1, item_code: Number(code), price: 3 }));
+  const acc = addPriceRows(priceAccumulator({ before: '2026-11-21', since: '2026-11-06', basketSince: '2026-10-24' }),
+    [...quotes('2026-11-05', '114'), ...quotes('2026-11-05', '266'), ...quotes('2026-10-23', '266')]);
+  assert.deepEqual([...acc.groups.keys()], ['2026-11-05|266'], 'the basket window reaches further back than the daily window, and no further');
+  // 20 November daily prices would prune 5 November history; the basket baseline the collector re-sends survives.
+  const row = { item: 'Cooking oil, pure palm (Seri Murni)', market: 'M', marketType: 'retail', unit: '5 kg', currency: 'MYR', origin: '', price: 30 };
+  const incoming = [{ ...row, item: 'Tomatoes', unit: 'kg', date: '2026-11-20' }, { ...row, date: '2026-11-16' }, { ...row, date: '2026-11-05' }];
+  const stale = { ...row, date: '2026-10-30' };
+  assert.deepEqual(mergeHistory([stale], incoming).map(row => row.date), ['2026-11-16', '2026-11-20'], 'other sources keep the 14-day prune');
+  const kept = mergeFoodSnapshot({ observations: [stale] }, { observations: incoming, contexts: [] }, sources.find(source => source.id === 'pricecatcher'));
+  assert.deepEqual(kept.observations.map(row => row.date), ['2026-11-05', '2026-11-16', '2026-11-20'], 'stale history is still pruned');
 });
 
 test('Malaysia chooses current and previous archives by local month and tolerates an unpublished current file', async () => {

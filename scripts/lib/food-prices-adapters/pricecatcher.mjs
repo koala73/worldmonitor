@@ -76,6 +76,8 @@ const ITEMS = {
 export const PRICECATCHER_ITEM_CODES = Object.keys(ITEMS);
 export const PRICECATCHER_DAILY_CODES = PRICECATCHER_ITEM_CODES.filter(code => ITEMS[code][3] === 'daily');
 export const PRICECATCHER_BASKET_CODES = PRICECATCHER_ITEM_CODES.filter(code => ITEMS[code][3] === 'basket');
+/** Display names of basket items; the source registry's `surveyItems` must list exactly these. */
+export const PRICECATCHER_BASKET_NAMES = PRICECATCHER_BASKET_CODES.map(code => ITEMS[code][0]);
 // Off-survey days still carry a few stray basket quotes (at most ~50 premises per item in November 2026, against
 // hundreds to ~1,800 on survey days). A survey day needs at least this many basket quotes in total and half the
 // window's busiest basket day, so a window without a survey cannot promote stray quotes to a latest price.
@@ -86,8 +88,8 @@ const BASKET_SURVEY_MIN_QUOTES = 1_000;
 const QUOTE_LIMIT = 1_000_000;
 
 /** Start a per-date, per-item accumulator of unique premise quotes inside [since, before). */
-export function priceAccumulator({ before, since, limit = QUOTE_LIMIT }) {
-  return { before, since, limit, groups: new Map(), quotes: 0 };
+export function priceAccumulator({ before, since, basketSince = since, limit = QUOTE_LIMIT }) {
+  return { before, since, basketSince, limit, groups: new Map(), quotes: 0 };
 }
 
 /** Fold decoded rows into the accumulator, keeping one quote per premise and rejecting conflicting duplicates. */
@@ -96,7 +98,8 @@ export function addPriceRows(acc, rows) {
     const code = String(row.item_code);
     if (!ITEMS[code]) continue;
     const date = row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date >= acc.before || date < acc.since || !positive(row.price)) continue;
+    const from = ITEMS[code][3] === 'basket' ? acc.basketSince : acc.since;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date >= acc.before || date < from || !positive(row.price)) continue;
     const premise = String(row.premise_code);
     if (!/^\d+$/.test(premise)) throw new Error('PriceCatcher premise code changed');
     const key = `${date}|${code}`;
@@ -163,16 +166,19 @@ export async function collect(ctx) {
   // Today's collection can be partial. Report the latest completed local calendar day available.
   const before = new Date(ctx.now.getTime() + 8 * 3600_000).toISOString().slice(0, 10);
   const since = ctx.dated(ctx.now, -15);
+  // Basket items need their previous survey, at least a week before a latest survey that can itself be days old.
+  // 28 days always stays inside the current and previous monthly files.
+  const basketSince = ctx.dated(ctx.now, -28);
   const current = before.slice(0, 7);
   const [year, month] = current.split('-').map(Number);
   const previous = new Date(Date.UTC(year, month - 2, 15)).toISOString().slice(0, 7);
-  const acc = priceAccumulator({ before, since });
+  const acc = priceAccumulator({ before, since, basketSince });
   try { await readPricecatcher(await ctx.get(`${BASE}pricecatcher_${current}.parquet`, { binary: true }), acc); }
   catch (error) { if (!/HTTP 404\b/.test(error.message)) throw error; ctx.warn('current-month file not yet published'); }
-  if (since.slice(0, 7) !== current) {
+  if (basketSince.slice(0, 7) !== current) {
     // A prior-month failure must not leave a partly folded file behind, so read it into its own accumulator,
     // capped per file like the current month, and merge only on success. Monthly files hold disjoint dates.
-    const prior = priceAccumulator({ before, since });
+    const prior = priceAccumulator({ before, since, basketSince });
     try {
       await readPricecatcher(await ctx.get(`${BASE}pricecatcher_${previous}.parquet`, { binary: true }), prior);
       for (const [key, shops] of prior.groups) acc.groups.set(key, shops);
