@@ -383,7 +383,6 @@
   "tests/cls-mover-tracker.test.mts": 65,
   "tests/cls-report.test.mts": 61,
   "tests/clustering.test.mjs": 149,
-  "tests/codeql-overlay-prune.test.mjs": 39,
   "tests/codeql-workflow.test.mjs": 88,
   "tests/coingecko-endpoint-tier.test.mts": 57,
   "tests/coinpaprika-edge-helper.test.mts": 85,
