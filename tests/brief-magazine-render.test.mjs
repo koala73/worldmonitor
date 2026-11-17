@@ -752,10 +752,29 @@ describe('renderBriefMagazine — v4 clusterId field (Sprint 1 canonical contrac
     assert.throws(() => renderBriefMagazine(env), /stories\[0\]\.clusterId must be a non-empty string on v4\+ envelopes/);
   });
 
-  it('renders a v5 envelope byte-identically to its v4 twin', () => {
-    const v4 = v4Envelope();
-    const v5 = /** @type {any} */ ({ ...v4, version: 5, lang: 'fr' });
-    assert.equal(renderBriefMagazine(v5), renderBriefMagazine(v4));
+  it('renders v5 fixed chrome in the envelope language', () => {
+    const v5 = /** @type {any} */ ({ ...v4Envelope(), version: 5, lang: 'fr' });
+    const html = renderBriefMagazine(v5, { shareUrl: 'https://worldmonitor.app/brief/public/abc' });
+    for (const label of ['Les chiffres du jour', 'Pourquoi c’est important', 'Merci de votre lecture', 'Signaux à surveiller', 'Partager', '← → / balayer / défiler']) {
+      assert.ok(html.includes(label), label);
+    }
+    assert.ok(!html.includes('The Numbers Today'));
+    assert.ok(html.includes('WorldMonitor Brief'));
+    assert.ok(html.startsWith('<!DOCTYPE html><html lang="en">'));
+  });
+
+  it('keeps v4 chrome English', () => {
+    const html = renderBriefMagazine(v4Envelope());
+    for (const label of ['The Numbers Today', 'Why this is important', 'Thank you for reading', '← → / swipe / scroll']) {
+      assert.ok(html.includes(label), label);
+    }
+  });
+
+  it('public mode renders English chrome even for a v5 envelope', () => {
+    const v5 = /** @type {any} */ ({ ...v4Envelope(), version: 5, lang: 'fr' });
+    const html = renderBriefMagazine(v5, { publicMode: true });
+    assert.ok(html.includes('The Numbers Today'));
+    assert.ok(!html.includes('Les chiffres du jour'));
   });
 });
 

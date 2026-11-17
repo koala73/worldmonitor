@@ -23,6 +23,7 @@
 
 import { BRIEF_LOCALIZED_ENVELOPE_VERSION, SUPPORTED_ENVELOPE_VERSIONS } from '../../shared/brief-envelope.js';
 import { BRIEF_FONTS } from './brief-fonts.generated.js';
+import { briefPlural, briefT } from '../../shared/brief-strings.js';
 
 /**
  * @typedef {import('../../shared/brief-envelope.js').BriefEnvelope} BriefEnvelope
@@ -512,19 +513,17 @@ function digestRunningHead(dateShort, label) {
  * Defensive: if the envelope ever produces an unexpected value, fall
  * back to a generic "Hello" rather than hardcoding a wrong time-of-day.
  */
-function coverGreeting(greeting) {
-  if (typeof greeting !== 'string' || greeting.length === 0) return 'Hello';
-  return greeting.replace(/\.+$/, '').trim() || 'Hello';
+function coverGreeting(greeting, lang = 'en') {
+  const hello = briefT(lang, 'greeting.hello');
+  if (typeof greeting !== 'string' || greeting.length === 0) return hello;
+  return greeting.replace(/[.。।]+$/, '').trim() || hello;
 }
 
 /**
  * @param {{ dateLong: string; issue: string; storyCount: number; pageIndex: number; totalPages: number; greeting: string }} opts
  */
-function renderCover({ dateLong, issue, storyCount, pageIndex, totalPages, greeting }) {
-  const blurb =
-    storyCount === 1
-      ? 'One thread that shaped the world today.'
-      : `${storyCount} threads that shaped the world today.`;
+function renderCover({ dateLong, issue, storyCount, pageIndex, totalPages, greeting, lang = 'en' }) {
+  const blurb = briefPlural(lang, 'mag.coverBlurb', storyCount);
   return (
     '<section class="page cover">' +
     '<div class="meta-top">' +
@@ -532,7 +531,7 @@ function renderCover({ dateLong, issue, storyCount, pageIndex, totalPages, greet
     logoRef({ size: 48 }) +
     '<span class="mono">WorldMonitor</span>' +
     '</span>' +
-    `<span class="mono">Issue № ${escapeHtml(issue)}</span>` +
+    `<span class="mono">${escapeHtml(briefT(lang, 'mag.issue', { issue }))}</span>` +
     '</div>' +
     '<div class="hero">' +
     `<div class="kicker">${escapeHtml(dateLong)}</div>` +
@@ -540,8 +539,8 @@ function renderCover({ dateLong, issue, storyCount, pageIndex, totalPages, greet
     `<p class="blurb">${escapeHtml(blurb)}</p>` +
     '</div>' +
     '<div class="meta-bottom">' +
-    `<span class="mono">${escapeHtml(coverGreeting(greeting))}</span>` +
-    '<span class="mono">Swipe / ↔ to begin</span>' +
+    `<span class="mono">${escapeHtml(coverGreeting(greeting, lang))}</span>` +
+    `<span class="mono">${escapeHtml(briefT(lang, 'mag.swipeToBegin'))}</span>` +
     '</div>' +
     `<div class="page-number mono">${pad2(pageIndex)} / ${pad2(totalPages)}</div>` +
     '</section>'
@@ -551,7 +550,7 @@ function renderCover({ dateLong, issue, storyCount, pageIndex, totalPages, greet
 /**
  * @param {{ greeting: string; lead: string; dateShort: string; pageIndex: number; totalPages: number }} opts
  */
-function renderDigestGreeting({ greeting, lead, dateShort, pageIndex, totalPages }) {
+function renderDigestGreeting({ greeting, lead, dateShort, pageIndex, totalPages, lang = 'en' }) {
   // Public-share fail-safe: when `lead` is empty, omit the pull-quote
   // entirely. Reached via redactForPublic when the envelope lacks a
   // non-empty `publicLead` — NEVER serve the personalised lead on the
@@ -563,9 +562,9 @@ function renderDigestGreeting({ greeting, lead, dateShort, pageIndex, totalPages
     : '';
   return (
     '<section class="page digest">' +
-    digestRunningHead(dateShort, 'Digest / 01') +
+    digestRunningHead(dateShort, briefT(lang, 'mag.digest01')) +
     '<div class="body">' +
-    '<div class="label mono">At The Top Of The Hour</div>' +
+    `<div class="label mono">${escapeHtml(briefT(lang, 'mag.topOfHour'))}</div>` +
     `<h2>${escapeHtml(greeting)}</h2>` +
     blockquote +
     '<hr class="rule" />' +
@@ -578,11 +577,11 @@ function renderDigestGreeting({ greeting, lead, dateShort, pageIndex, totalPages
 /**
  * @param {{ numbers: import('../../shared/brief-envelope.js').BriefNumbers; date: string; dateShort: string; pageIndex: number; totalPages: number }} opts
  */
-function renderDigestNumbers({ numbers, date, dateShort, pageIndex, totalPages }) {
+function renderDigestNumbers({ numbers, date, dateShort, pageIndex, totalPages, lang = 'en' }) {
   const rows = [
-    { n: numbers.clusters, label: 'story clusters ingested in the last 24 hours' },
-    { n: numbers.multiSource, label: 'multi-source confirmed events' },
-    { n: numbers.surfaced, label: 'threads surfaced in this brief' },
+    { n: numbers.clusters, label: briefT(lang, 'mag.statClusters') },
+    { n: numbers.multiSource, label: briefT(lang, 'mag.statMultiSource') },
+    { n: numbers.surfaced, label: briefT(lang, 'mag.statSurfaced') },
   ]
     .map(
       (row) =>
@@ -594,11 +593,11 @@ function renderDigestNumbers({ numbers, date, dateShort, pageIndex, totalPages }
     .join('');
   return (
     '<section class="page digest">' +
-    digestRunningHead(dateShort, 'Digest / 02 — At A Glance') +
+    digestRunningHead(dateShort, briefT(lang, 'mag.digest02')) +
     '<div class="body">' +
-    '<div class="label mono">The Numbers Today</div>' +
+    `<div class="label mono">${escapeHtml(briefT(lang, 'mag.numbersToday'))}</div>` +
     `<div class="stats">${rows}</div>` +
-    `<div class="footer-caption mono">Signal Window · ${escapeHtml(date)}</div>` +
+    `<div class="footer-caption mono">${escapeHtml(briefT(lang, 'mag.signalWindow', { date }))}</div>` +
     '</div>' +
     `<div class="page-number mono">${pad2(pageIndex)} / ${pad2(totalPages)}</div>` +
     '</section>'
@@ -616,6 +615,7 @@ function renderDigestThreadsPage({
   includeEndMarker,
   pageIndex,
   totalPages,
+  lang = 'en',
 }) {
   const rows = threads
     .map(
@@ -627,7 +627,7 @@ function renderDigestThreadsPage({
     )
     .join('');
   const endMarker = includeEndMarker
-    ? '<div class="end-marker"><hr /><span class="mono">Stories follow →</span></div>'
+    ? `<div class="end-marker"><hr /><span class="mono">${escapeHtml(briefT(lang, 'mag.storiesFollow'))}</span></div>`
     : '';
   return (
     '<section class="page digest">' +
@@ -646,18 +646,18 @@ function renderDigestThreadsPage({
 /**
  * @param {{ signals: string[]; dateShort: string; pageIndex: number; totalPages: number }} opts
  */
-function renderDigestSignals({ signals, dateShort, pageIndex, totalPages }) {
+function renderDigestSignals({ signals, dateShort, pageIndex, totalPages, lang = 'en' }) {
   const paragraphs = signals
     .map((s) => `<p class="signal">${escapeHtml(s)}</p>`)
     .join('');
   return (
     '<section class="page digest">' +
-    digestRunningHead(dateShort, 'Digest / 04 — Signals') +
+    digestRunningHead(dateShort, briefT(lang, 'mag.digest04')) +
     '<div class="body">' +
-    '<div class="label mono">Signals To Watch</div>' +
-    '<h2>What would change the story.</h2>' +
+    `<div class="label mono">${escapeHtml(briefT(lang, 'mag.signalsToWatch'))}</div>` +
+    `<h2>${escapeHtml(briefT(lang, 'mag.whatWouldChange'))}</h2>` +
     `<div class="signals">${paragraphs}</div>` +
-    '<div class="end-marker"><hr /><span class="mono">End of digest · Stories follow →</span></div>' +
+    `<div class="end-marker"><hr /><span class="mono">${escapeHtml(briefT(lang, 'mag.endOfDigest'))}</span></div>` +
     '</div>' +
     `<div class="page-number mono">${pad2(pageIndex)} / ${pad2(totalPages)}</div>` +
     '</section>'
@@ -716,9 +716,9 @@ function extractIso2Tokens(country) {
 /**
  * @param {{ story: BriefStory; rank: number; palette: 'light' | 'dark'; pageIndex: number; totalPages: number; issueDate: string; followedSet: Set<string> }} opts
  */
-function renderStoryPage({ story, rank, palette, pageIndex, totalPages, issueDate, followedSet }) {
+function renderStoryPage({ story, rank, palette, pageIndex, totalPages, issueDate, followedSet, lang = 'en' }) {
   const threatClass = HIGHLIGHTED_LEVELS.has(story.threatLevel) ? ' crit' : '';
-  const threatLabel = THREAT_LABELS[story.threatLevel];
+  const threatLabel = lang === 'en' ? THREAT_LABELS[story.threatLevel] : briefT(lang, `threat.${story.threatLevel}`);
   // U11 telemetry stamps. Pick the first ISO-2 token as the primary
   // country (composite stories like "IL / LB" still get a single
   // primary-country event property; a secondary country whose only
@@ -753,12 +753,12 @@ function renderStoryPage({ story, rank, palette, pageIndex, totalPages, issueDat
     '</div>' +
     `<h3>${escapeHtml(story.headline)}</h3>` +
     `<p class="desc">${escapeHtml(story.description)}</p>` +
-    `<div class="source">Source · ${sourceBlock}</div>` +
+    `<div class="source">${escapeHtml(briefT(lang, 'mag.source'))} · ${sourceBlock}</div>` +
     '</div>' +
     '</div>' +
     '<div class="right">' +
     '<div class="callout">' +
-    '<div class="label">Why this is important</div>' +
+    `<div class="label">${escapeHtml(briefT(lang, 'mag.whyImportant'))}</div>` +
     `<p class="note">${escapeHtml(story.whyMatters)}</p>` +
     '</div>' +
     '</div>' +
@@ -780,22 +780,22 @@ function renderStoryPage({ story, rank, palette, pageIndex, totalPages, issueDat
  *   refCode: string;
  * }} opts
  */
-function renderBackCover({ tz, pageIndex, totalPages, publicMode, refCode }) {
+function renderBackCover({ tz, pageIndex, totalPages, publicMode, refCode, lang = 'en' }) {
   const ctaHref = publicMode
     ? `https://worldmonitor.app/pro${refCode ? `?ref=${encodeURIComponent(refCode)}` : ''}`
     : 'https://worldmonitor.app';
   const kicker = publicMode
     ? 'You\u2019re reading a shared brief'
-    : 'Thank you for reading';
+    : escapeHtml(briefT(lang, 'mag.backKicker'));
   const headline = publicMode
     ? 'Get your own<br/>daily brief.'
-    : 'End of<br/>Transmission.';
+    : `${escapeHtml(briefT(lang, 'mag.backHeadline1'))}<br/>${escapeHtml(briefT(lang, 'mag.backHeadline2'))}`;
   const metaLeft = publicMode
     ? `<a href="${escapeHtml(ctaHref)}" class="mono back-cta" target="_blank" rel="noopener">Subscribe \u2192</a>`
     : '<span class="mono">worldmonitor.app</span>';
   const metaRight = publicMode
     ? '<span class="mono">worldmonitor.app</span>'
-    : `<span class="mono">Next brief \u00b7 08:00 ${escapeHtml(tz)}</span>`;
+    : `<span class="mono">${escapeHtml(briefT(lang, 'mag.nextBrief', { tz }))}</span>`;
   return (
     '<section class="page cover back">' +
     '<div class="hero">' +
@@ -1276,7 +1276,7 @@ const SHARE_SCRIPT = `<script>
     btn.dataset.state = 'sharing';
     try {
       var shareTitle = 'WorldMonitor Brief';
-      var shareText = 'My WorldMonitor Brief for today:';
+      var shareText = btn.dataset.shareText || 'My WorldMonitor Brief for today:';
       if (navigator.share) {
         try {
           await navigator.share({ title: shareTitle, text: shareText, url: shareUrl });
@@ -1295,7 +1295,7 @@ const SHARE_SCRIPT = `<script>
         btn.dataset.state = 'copied';
       } else {
         // Ancient browser. Show the URL so the user can copy manually.
-        window.prompt('Copy the link below:', shareUrl);
+        window.prompt(btn.dataset.copyPrompt || 'Copy the link below:', shareUrl);
         btn.dataset.state = 'copied';
       }
     } catch (err) {
@@ -1588,6 +1588,9 @@ export function renderBriefMagazine(envelope, options = {}) {
   const [, month, day] = date.split('-');
   const dateShort = `${day}.${month}`;
 
+  const lang = !publicMode && envelope.version === BRIEF_LOCALIZED_ENVELOPE_VERSION && typeof envelope.lang === 'string'
+    ? envelope.lang
+    : 'en';
   const threads = digest.threads;
   const hasSignals = digest.signals.length > 0;
   const splitThreads = threads.length > MAX_THREADS_PER_PAGE;
@@ -1611,6 +1614,7 @@ export function renderBriefMagazine(envelope, options = {}) {
 
   pagesHtml.push(
     renderCover({
+      lang,
       dateLong,
       issue,
       storyCount: stories.length,
@@ -1623,6 +1627,7 @@ export function renderBriefMagazine(envelope, options = {}) {
   digestIndexes.push(p);
   pagesHtml.push(
     renderDigestGreeting({
+      lang,
       greeting: digest.greeting,
       lead: digest.lead,
       dateShort,
@@ -1634,6 +1639,7 @@ export function renderBriefMagazine(envelope, options = {}) {
   digestIndexes.push(p);
   pagesHtml.push(
     renderDigestNumbers({
+      lang,
       numbers: digest.numbers,
       date,
       dateShort,
@@ -1647,12 +1653,13 @@ export function renderBriefMagazine(envelope, options = {}) {
     : [threads];
   threadsPages.forEach((slice, i) => {
     const label = threadsPages.length === 1
-      ? 'Digest / 03 — On The Desk'
-      : `Digest / 03${i === 0 ? 'a' : 'b'} — On The Desk`;
-    const heading = i === 0 ? 'What the desk is watching.' : '\u2026 continued.';
+      ? briefT(lang, 'mag.digest03')
+      : briefT(lang, i === 0 ? 'mag.digest03a' : 'mag.digest03b');
+    const heading = briefT(lang, i === 0 ? 'mag.deskWatching' : 'mag.continued');
     digestIndexes.push(p);
     pagesHtml.push(
       renderDigestThreadsPage({
+      lang,
         threads: slice,
         dateShort,
         label,
@@ -1668,6 +1675,7 @@ export function renderBriefMagazine(envelope, options = {}) {
     digestIndexes.push(p);
     pagesHtml.push(
       renderDigestSignals({
+      lang,
         signals: digest.signals,
         dateShort,
         pageIndex: ++p,
@@ -1679,6 +1687,7 @@ export function renderBriefMagazine(envelope, options = {}) {
   stories.forEach((story, i) => {
     pagesHtml.push(
       renderStoryPage({
+      lang,
         story,
         rank: i + 1,
         palette: i % 2 === 0 ? 'light' : 'dark',
@@ -1692,6 +1701,7 @@ export function renderBriefMagazine(envelope, options = {}) {
 
   pagesHtml.push(
     renderBackCover({
+      lang,
       tz: user.tz,
       pageIndex: ++p,
       totalPages,
@@ -1724,8 +1734,11 @@ export function renderBriefMagazine(envelope, options = {}) {
   // succeeded). The URL is embedded as data-share-url and read at
   // click time by SHARE_SCRIPT — no fetch, no auth required
   // client-side.
+  const shareLangAttrs = lang === 'en'
+    ? ''
+    : `data-share-text="${escapeHtml(briefT(lang, 'mag.shareText'))}" data-copy-prompt="${escapeHtml(briefT(lang, 'mag.shareCopyPrompt'))}" `;
   const shareButtonHtml = shareUrl
-    ? `<button class="wm-share" type="button" data-share-url="${escapeHtml(shareUrl)}" data-issue-date="${escapeHtml(date)}" aria-label="Share this brief">Share</button>`
+    ? `<button class="wm-share" type="button" data-share-url="${escapeHtml(shareUrl)}" data-issue-date="${escapeHtml(date)}" ${shareLangAttrs}aria-label="${escapeHtml(briefT(lang, 'mag.shareAria'))}">${escapeHtml(briefT(lang, 'mag.share'))}</button>`
     : '';
 
   const headMeta = publicMode
@@ -1754,7 +1767,7 @@ export function renderBriefMagazine(envelope, options = {}) {
     pagesHtml.join('') +
     '</div>' +
     '<div class="nav-dots" id="navDots"></div>' +
-    '<div class="hint">← → / swipe / scroll</div>' +
+    `<div class="hint">${escapeHtml(briefT(lang, 'mag.navHint'))}</div>` +
     (shareUrl ? SHARE_SCRIPT : '') +
     BRIEF_THREAD_OPEN_SCRIPT +
     NAV_SCRIPT +
