@@ -53,6 +53,7 @@ const fakeBundle = (spec, bytes) => ({
   headerStats: { hoisted: 0, replacedRefs: 0 },
   paramStats: { hoisted: 0, replacedRefs: 0 },
   unreachableStats: { dropped: 0, bytesFreed: 0, names: [] },
+  compactKeyStats: { renamed: 0, rewrittenRefs: 0, renames: {} },
 });
 
 const oneOperationSpec = () => ({

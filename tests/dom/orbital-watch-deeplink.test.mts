@@ -126,7 +126,7 @@ describe('place search in the satellite pass lookup', () => {
       ctx: { mapLayers: {}, map: null, panelSettings: {}, newsPanels: {} } as never,
       getVariant: () => 'full', hasPremiumAccess: () => false, openCountryBriefByCode: vi.fn(() => true), enablePanel: vi.fn(() => false),
       trackSearchResultSelected: vi.fn(), trackCountrySelected: vi.fn(), runWithAgentAnalyticsSuppressed: (callback) => callback(),
-      suppressNextAgentPanelView: vi.fn(), resolveExecutableNewsPanel: vi.fn(() => null), saveToStorage, setTheme: vi.fn(), openExternalLink: vi.fn(),
+      suppressNextAgentPanelView: vi.fn(), resolveExecutableNewsPanel: vi.fn(() => null), openArticle: vi.fn(() => true), saveToStorage, setTheme: vi.fn(), openExternalLink: vi.fn(),
       setTimeout: (callback, delay) => setTimeout(callback, delay), clearTimeout: (timer) => clearTimeout(timer),
     });
     dispatcher.handleCommand(command);
