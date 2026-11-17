@@ -63,7 +63,7 @@ async function startUpstash(t) {
   const store = new Map();
   const queued = [];
   const apiFanout = [];
-  const state = { failLpush: false, failLpushCount: 0, failSetNx: false };
+  const state = { failLpush: false, failLpushCount: 0, failSetNx: false, truncateDel: false };
   const run = (command) => {
     const [name, key, value, ...rest] = command;
     if (name === 'GET') return store.has(key) ? store.get(key).value : null;
@@ -96,6 +96,14 @@ async function startUpstash(t) {
     res.setHeader('Content-Type', 'application/json');
     if (req.url === '/pipeline') {
       return res.end(JSON.stringify((Array.isArray(command) ? command : []).map((row) => ({ result: run(row) }))));
+    }
+    if (state.truncateDel && Array.isArray(command) && command[0] === 'DEL') {
+      // Apply the delete, then drop the connection after the headers, so the
+      // response closes without ever ending.
+      run(command);
+      res.writeHead(200);
+      res.flushHeaders();
+      return setTimeout(() => res.socket?.destroy(), 20);
     }
     return res.end(JSON.stringify({ result: Array.isArray(command) ? run(command) : null }));
   });
@@ -308,6 +316,21 @@ test('a failed queue write does not lose a copy of the story published in the sa
   ]);
   await waitForAlerts(upstash, 1);
   assert.equal(upstash.alerts().length, 1, output());
+});
+
+test('a Redis response cut off mid-body does not stall later copies of the story', async (t) => {
+  const { upstash, cycle, output } = await startRelay(t);
+  // The first copy's queue write fails, and the rollback's response closes
+  // after its headers. The second copy waits on the first, so the rollback
+  // must settle for it to run.
+  upstash.state.failLpushCount = 1;
+  upstash.state.truncateDel = true;
+  await cycle([
+    { title: CNN_TITLE, source: 'CNN World' },
+    { title: EGYPT_INDEPENDENT_TITLE, source: 'Egypt Independent' },
+  ]);
+  await waitForAlerts(upstash, 1);
+  assert.deepEqual(titles(upstash.alerts()), [EGYPT_INDEPENDENT_TITLE], output());
 });
 
 test('a failed queue write during a Redis outage does not hold the story in memory', async (t) => {

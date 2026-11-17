@@ -671,6 +671,9 @@ function upstashLpush(key, value) {
           resolve(typeof parsed?.result === 'number' && parsed.result > 0);
         } catch { resolve(false); }
       });
+      // A connection dropped mid-body emits close without end. A complete
+      // response has already resolved from end, so this is then a no-op.
+      resp.on('close', () => resolve(false));
     });
     req.on('error', () => resolve(false));
     req.on('timeout', () => { req.destroy(); resolve(false); });
@@ -700,6 +703,8 @@ function upstashSetNx(key, value, ttlSeconds) {
           resolve(classifySetNxResult(parsed?.result));
         } catch { resolve('error'); }
       });
+      // Settles a response cut off mid-body; a no-op after end.
+      resp.on('close', () => resolve('error'));
     });
     req.on('error', () => resolve('error'));
     req.on('timeout', () => { req.destroy(); resolve('error'); });
@@ -806,6 +811,8 @@ function upstashDel(key) {
       resp.on('end', () => {
         try { resolve(JSON.parse(data)?.result === 1); } catch { resolve(false); }
       });
+      // Settles a response cut off mid-body; a no-op after end.
+      resp.on('close', () => resolve(false));
     });
     req.on('error', () => resolve(false));
     req.on('timeout', () => { req.destroy(); resolve(false); });
