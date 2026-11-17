@@ -633,7 +633,7 @@ function renderDigestThreadsPage({
     '<section class="page digest">' +
     digestRunningHead(dateShort, label) +
     '<div class="body">' +
-    '<div class="label mono">Today\u2019s Threads</div>' +
+    `<div class="label mono">${escapeHtml(briefT(lang, 'mag.todaysThreads'))}</div>` +
     `<h2>${escapeHtml(heading)}</h2>` +
     `<div class="threads">${rows}</div>` +
     endMarker +

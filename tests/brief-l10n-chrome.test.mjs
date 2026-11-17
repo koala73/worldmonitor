@@ -8,6 +8,9 @@ import { subjectForBrief } from '../scripts/lib/digest-orchestration-helpers.mjs
 import { buildDigestWebhookPayload } from '../scripts/lib/digest-corroboration.mjs';
 import { briefPlural, briefT } from '../shared/brief-strings.js';
 
+// English dates are formatted in the host time zone; pin it so fixed-date assertions hold.
+process.env.TZ = 'UTC';
+
 const require = createRequire(import.meta.url);
 const { buildTeamsDigestPayload } = require('../scripts/lib/notification-teams.cjs');
 
@@ -29,6 +32,17 @@ describe('localized email chrome', () => {
     for (const label of ['Executive Summary', 'Signals to watch:', 'Open Dashboard', 'November 17, 2026', 'Open your WorldMonitor Brief →']) {
       assert.ok(en.includes(label), label);
     }
+  });
+
+  it('localizes story phase and coverage labels, English unchanged', () => {
+    const tagged = [{ ...stories[0], phase: 'sustained', corroboration: { state: 'corroborated', publishers: 3 } }];
+    const fr = renderDigestEmailHtml({ stories: tagged, nowMs: NOW, synthesis, lang: 'fr' }).html;
+    assert.ok(fr.includes(briefT('fr', 'phase.sustained')));
+    assert.ok(fr.includes(briefT('fr', 'coverage.label', { text: briefPlural('fr', 'coverage.independent', 3) })));
+    assert.ok(!fr.includes('Coverage:'));
+    const en = renderDigestEmailHtml({ stories: tagged, nowMs: NOW, synthesis }).html;
+    assert.ok(en.includes('Sustained'));
+    assert.ok(en.includes('Coverage: 3 independent publishers'));
   });
 
   it('escapes translated strings in HTML', () => {

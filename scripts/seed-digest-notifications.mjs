@@ -1120,7 +1120,7 @@ function formatDigest(stories, nowMs, target = 'plain', lang = 'en') {
       const src = item.sources.length > 0
         ? ` [${item.sources.slice(0, 3).join(', ')}${item.sources.length > 3 ? ` +${item.sources.length - 3}` : ''}]`
         : '';
-      const coverage = digestCoverageText(item);
+      const coverage = digestCoverageText(item, lang);
       lines.push(`  \u2022 ${formatDigestItemTitle(stripSourceSuffix(item.title), item.link, target)}${esc(src)}${coverage ? esc(` \u00b7 ${coverage}`) : ''}`);
       // Append the RSS description as a short context line when upstream
       // persisted one. Truncated at a word boundary to ~200 chars to keep
@@ -2114,7 +2114,7 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
       briefL10nBudgetSkipped += 1;
     }
   }
-  const briefLang = localizedEnvelope ? targetLang : 'en';
+  let briefLang = localizedEnvelope ? targetLang : 'en';
 
   // Slot (YYYY-MM-DD-HHMM in the user's tz) is what routes the
   // magazine URL + Redis key. Using the same tz the composer used to
@@ -2151,11 +2151,16 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   if (!pipelineResult || !Array.isArray(pipelineResult) || pipelineResult.length < 2) {
     throw new Error('null pipeline response from Upstash');
   }
-  for (const cell of pipelineResult) {
-    if (cell && typeof cell === 'object' && 'error' in cell) {
-      throw new Error(`Upstash SETEX error: ${cell.error}`);
-    }
-  }
+  // The canonical envelope and pointer must land; a failed sibling command
+  // only costs the translation, so the user falls back to the English brief.
+  pipelineResult.forEach((cell, index) => {
+    if (!(cell && typeof cell === 'object' && 'error' in cell)) return;
+    if (index < 2) throw new Error(`Upstash SETEX error: ${cell.error}`);
+    console.warn(`[digest] brief l10n user=${userId} sibling write failed, sending English: ${cell.error}`);
+    localizedEnvelope = null;
+    localizedSynthesis = null;
+    briefLang = 'en';
+  });
 
   const magazineUrl = await signBriefUrl({
     userId,

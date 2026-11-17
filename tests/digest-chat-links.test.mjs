@@ -30,6 +30,9 @@ import { stripSourceSuffix } from '../scripts/lib/brief-dedup-jaccard.mjs';
 import { digestCoverageText } from '../scripts/lib/digest-corroboration.mjs';
 import { briefIntlLocale, briefPlural, briefT, formatBriefDate } from '../shared/brief-strings.js';
 
+// English dates are formatted in the host time zone; pin it so fixed-date assertions hold.
+process.env.TZ = 'UTC';
+
 const source = readFileSync(new URL('../scripts/seed-digest-notifications.mjs', import.meta.url), 'utf8');
 const parsed = ts.createSourceFile('digest.mjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
 function productionFunction(name) {

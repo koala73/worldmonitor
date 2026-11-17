@@ -44,9 +44,10 @@ export function briefT(lang, key, vars) {
 
 export function briefPlural(lang, key, count, vars) {
   const localized = table(lang)[key];
+  const allVars = { n: count, ...(vars ?? {}) };
+  if (typeof localized === 'string') return briefT(lang, key, allVars);
   const value = localized && typeof localized === 'object' ? localized : BRIEF_STRINGS.en[key];
   const useLang = value === localized ? lang : 'en';
-  const allVars = { n: count, ...(vars ?? {}) };
   if (!value || typeof value !== 'object') return briefT(useLang, key, allVars);
   let category = 'other';
   try {
