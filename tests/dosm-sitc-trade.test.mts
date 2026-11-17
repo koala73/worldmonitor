@@ -163,3 +163,28 @@ describe('GetMonthlySitcTrade handler', () => {
     assert.deepEqual(kept.series[0]!.months, [{ month: '2026-10', exports: 0, imports: 0 }]);
   });
 });
+
+describe('GetMonthlySitcTrade OpenAPI contract', () => {
+  // protoc-gen-openapiv3 drops these proto bounds; openapi-inject-required.mjs restores them.
+  const spec = JSON.parse(readFileSync(new URL('../docs/api/TradeService.openapi.json', import.meta.url), 'utf8'));
+  const yaml = readFileSync(new URL('../docs/api/TradeService.openapi.yaml', import.meta.url), 'utf8');
+
+  it('publishes the proto section and month bounds on the request schema and query parameters', () => {
+    const sections = spec.components.schemas.GetMonthlySitcTradeRequest.properties.sections;
+    assert.equal(sections.maxItems, 11);
+    assert.equal(sections.items.pattern, '^([0-9]|overall)$');
+    assert.equal('maxItems' in sections.items, false);
+    const params = Object.fromEntries(spec.paths['/api/trade/v1/get-monthly-sitc-trade'].get.parameters
+      .map((parameter: { name: string; schema: unknown }) => [parameter.name, parameter.schema]));
+    assert.deepEqual(params.sections, { type: 'array', items: { type: 'string', pattern: '^([0-9]|overall)$' }, maxItems: 11 });
+    assert.deepEqual(params.months, { type: 'integer', format: 'int32', minimum: 0, maximum: 480 });
+    const pattern = new RegExp(params.sections.items.pattern);
+    assert.deepEqual(['0', '9', 'overall', '10', 'food'].filter((value) => pattern.test(value)), ['0', '9', 'overall']);
+  });
+
+  it('carries the same bounds in the YAML spec', () => {
+    const operation = yaml.slice(yaml.indexOf('operationId: GetMonthlySitcTrade'), yaml.indexOf('- name: jmespath', yaml.indexOf('operationId: GetMonthlySitcTrade')));
+    assert.match(operation, /pattern: '\^\(\[0-9\]\|overall\)\$'\n\s+maxItems: 11/);
+    assert.match(operation, /minimum: 0\n\s+maximum: 480/);
+  });
+});

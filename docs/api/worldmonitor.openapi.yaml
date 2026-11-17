@@ -37252,6 +37252,8 @@ paths:
                     type: array
                     items:
                         type: string
+                        pattern: '^([0-9]|overall)$'
+                    maxItems: 11
                 - name: months
                   in: query
                   description: |-
@@ -37263,6 +37265,8 @@ paths:
                   schema:
                     type: integer
                     format: int32
+                    minimum: 0
+                    maximum: 480
                 - name: jmespath
                   in: query
                   description: |-
@@ -65625,7 +65629,7 @@ components:
                     type: array
                     items:
                         type: string
-                        maxItems: 11
+                        pattern: '^([0-9]|overall)$'
                         description: |-
                             SITC sections to return: "0" (food and live animals) through "9", or
                              "overall" (all goods). Empty returns every section. Food-security callers
