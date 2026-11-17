@@ -135,7 +135,7 @@ import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
 import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
 import { buildDigestDeliveryPlan } from './lib/digest-delivery-plan.mjs';
 import { selectDigestChannelContent } from './lib/digest-channel-content.mjs';
-import { briefL10nTarget, localizeBrief, readBriefL10nConfig } from './lib/brief-l10n.mjs';
+import { briefL10nTarget, fetchBriefL10nConfig, localizeBrief, readBriefL10nConfig } from './lib/brief-l10n.mjs';
 import { briefLocalizedKey, briefSlotsKey } from '../shared/brief-envelope.js';
 import {
   attachDigestCorroboration,
@@ -236,10 +236,11 @@ const BRIEF_SIGNING_SECRET_MISSING =
 // toggled independently (e.g. kill the brief LLM without silencing
 // the email's AI summary during a provider outage).
 const BRIEF_LLM_ENABLED = process.env.BRIEF_LLM_ENABLED !== '0';
-// Localized brief siblings (l10n PR 3). Off unless BRIEF_L10N_ENABLED=1;
-// BRIEF_L10N_LANGS is the allowlist. briefL10nSpentMs is the cumulative
-// lookup + translation time this run, capped by passBudgetMs.
-const briefL10nConfig = readBriefL10nConfig(process.env);
+// Localized brief siblings (l10n PR 3). Disabled until main() reads the
+// Convex switch (BRIEF_L10N_ENABLED / BRIEF_L10N_LANGS on the Convex
+// deployment, the same source the Settings page reads). briefL10nSpentMs is
+// the cumulative lookup + translation time this run, capped by passBudgetMs.
+let briefL10nConfig = readBriefL10nConfig({ ...process.env, BRIEF_L10N_ENABLED: '0', BRIEF_L10N_LANGS: '' });
 let briefL10nSpentMs = 0;
 let briefL10nBudgetSkipped = 0;
 function briefL10nPassBudgetLeft() {
@@ -2364,6 +2365,13 @@ async function main() {
   // enter the send loop below (it iterates `rules`), so nothing is delivered;
   // they are composed after deliveries (see the default-brief pass below).
   const briefOnlyRules = buildBriefOnlyRules(briefOnlyUserIds, rules);
+  briefL10nConfig = await fetchBriefL10nConfig({
+    siteUrl: CONVEX_SITE_URL,
+    secret: RELAY_SECRET,
+    env: process.env,
+    fetchImpl: (...args) => globalThis.fetch(...args),
+  });
+  if (briefL10nConfig.enabled) console.log(`[digest] brief l10n on: langs=${[...briefL10nConfig.allow].join(',')}`);
   let { briefByUser, composeSuccess, composeFailed } = await composeBriefsForRun(rules, nowMs);
 
   // Sprint 1 / U2 — option (a) canonical-send mapping. Build a per-user

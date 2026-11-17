@@ -120,7 +120,7 @@ beforeEach(() => {
   channelMocks.saveAlertRules.mockReset().mockResolvedValue(undefined);
   channelMocks.setNotificationConfig.mockReset().mockResolvedValue(undefined);
   channelMocks.setDigestSettings.mockReset().mockResolvedValue(undefined);
-  briefMocks.loadBriefLanguage.mockReset().mockResolvedValue({ uiLanguage: 'fr', briefLanguage: null, effective: 'fr' });
+  briefMocks.loadBriefLanguage.mockReset().mockResolvedValue({ uiLanguage: 'fr', briefLanguage: null, effective: 'fr', deliverableLanguages: LIVE });
   briefMocks.saveBriefLanguage.mockReset().mockResolvedValue({ ok: true });
 });
 
@@ -129,6 +129,8 @@ afterAll(() => {
   document.body.replaceChildren();
   vi.useRealTimers();
 });
+
+const LIVE = ['fr', 'de', 'es', 'ja'];
 
 async function mountBriefLanguage(): Promise<{ container: HTMLElement; select: HTMLSelectElement }> {
   const container = await mount(rule());
@@ -148,8 +150,44 @@ describe('notification settings brief language', () => {
     expect(q(container, '#usBriefLanguageHint').textContent).toBe('Your daily brief will be written in Français.');
   });
 
+  it('shows no promise while localization is off', async () => {
+    briefMocks.loadBriefLanguage.mockResolvedValue({ uiLanguage: 'fr', briefLanguage: null, effective: 'fr', deliverableLanguages: [] });
+    const { container } = await mountBriefLanguage();
+    const hint = q(container, '#usBriefLanguageHint');
+    expect(hint.hidden).toBe(true);
+    expect(hint.textContent).toBe('');
+  });
+
+  it('still confirms English while localization is off', async () => {
+    briefMocks.loadBriefLanguage.mockResolvedValue({ uiLanguage: null, briefLanguage: null, effective: 'en', deliverableLanguages: [] });
+    const { container } = await mountBriefLanguage();
+    const hint = q(container, '#usBriefLanguageHint');
+    expect(hint.hidden).toBe(false);
+    expect(hint.textContent).toBe('Your daily brief will be written in English.');
+  });
+
+  it('shows no promise for a language the brief is not delivered in yet, such as Persian', async () => {
+    briefMocks.loadBriefLanguage.mockResolvedValue({ uiLanguage: 'fa', briefLanguage: null, effective: 'fa', deliverableLanguages: ['fr'] });
+    const { container } = await mountBriefLanguage();
+    expect(q(container, '#usBriefLanguageHint').hidden).toBe(true);
+  });
+
+  it('saving a language that is not live hides the promise, and saving a live one shows it', async () => {
+    briefMocks.loadBriefLanguage.mockResolvedValue({ uiLanguage: 'fr', briefLanguage: null, effective: 'fr', deliverableLanguages: ['fr'] });
+    const { container, select } = await mountBriefLanguage();
+    const hint = q(container, '#usBriefLanguageHint');
+    expect(hint.hidden).toBe(false);
+    select.value = 'ko';
+    change(select);
+    await vi.waitFor(() => expect(hint.hidden).toBe(true));
+    select.value = '';
+    change(select);
+    await vi.waitFor(() => expect(hint.textContent).toBe('Your daily brief will be written in Français.'));
+    expect(hint.hidden).toBe(false);
+  });
+
   it('selects the stored override', async () => {
-    briefMocks.loadBriefLanguage.mockResolvedValue({ uiLanguage: 'fr', briefLanguage: 'ja', effective: 'ja' });
+    briefMocks.loadBriefLanguage.mockResolvedValue({ uiLanguage: 'fr', briefLanguage: 'ja', effective: 'ja', deliverableLanguages: LIVE });
     const { select } = await mountBriefLanguage();
     expect(select.value).toBe('ja');
   });
@@ -165,7 +203,7 @@ describe('notification settings brief language', () => {
   });
 
   it('choosing Same as app language saves null', async () => {
-    briefMocks.loadBriefLanguage.mockResolvedValue({ uiLanguage: 'fr', briefLanguage: 'ja', effective: 'ja' });
+    briefMocks.loadBriefLanguage.mockResolvedValue({ uiLanguage: 'fr', briefLanguage: 'ja', effective: 'ja', deliverableLanguages: LIVE });
     const { container, select } = await mountBriefLanguage();
     select.value = '';
     change(select);
@@ -174,7 +212,7 @@ describe('notification settings brief language', () => {
   });
 
   it('a failed save restores the previous selection', async () => {
-    briefMocks.loadBriefLanguage.mockResolvedValue({ uiLanguage: null, briefLanguage: 'es', effective: 'es' });
+    briefMocks.loadBriefLanguage.mockResolvedValue({ uiLanguage: null, briefLanguage: 'es', effective: 'es', deliverableLanguages: LIVE });
     briefMocks.saveBriefLanguage.mockResolvedValue({ ok: false, reason: 'error' });
     const { container, select } = await mountBriefLanguage();
     select.value = 'it';
@@ -192,7 +230,7 @@ describe('notification settings brief language', () => {
     const error = await vi.waitFor(() => q(container, '#usBriefLanguageRow .us-notif-error'));
     expect(error.textContent).toContain('Failed to load');
     expect(select.disabled).toBe(true);
-    briefMocks.loadBriefLanguage.mockResolvedValueOnce({ uiLanguage: 'fr', briefLanguage: 'ja', effective: 'ja' });
+    briefMocks.loadBriefLanguage.mockResolvedValueOnce({ uiLanguage: 'fr', briefLanguage: 'ja', effective: 'ja', deliverableLanguages: LIVE });
     q<HTMLButtonElement>(error, 'button').click();
     await vi.waitFor(() => expect(select.disabled).toBe(false));
     expect(select.value).toBe('ja');

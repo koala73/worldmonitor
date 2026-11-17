@@ -7,15 +7,15 @@
 
 import { createHash } from 'node:crypto';
 
-import { UI_LANGUAGE_NAMES, isUiLanguage } from '../../shared/ui-languages.js';
+import { BRIEF_L10N_GATED_LANGS, UI_LANGUAGE_NAMES, briefL10nDeliverableLanguages, isUiLanguage } from '../../shared/ui-languages.js';
 import { sanitizeForPrompt } from '../../server/_shared/llm-sanitize.js';
 import { assertBriefEnvelope } from '../../server/_shared/brief-render.js';
 import { BRIEF_LOCALIZED_ENVELOPE_VERSION } from '../../shared/brief-envelope.js';
 import { BRIEF_LLM_ALLOWED_PROVIDERS, BRIEF_LLM_MODEL_OVERRIDES } from './brief-llm.mjs';
 import { deriveThreadsFromOrderedStories } from './brief-compose.mjs';
 
-/** Refused even when allowlisted until RTL layout ships (PR 6). */
-export const BRIEF_L10N_GATED_LANGS = Object.freeze(['ar', 'fa']);
+/** Refused even when allowlisted until RTL layout ships (PR 6). Defined with the shared list so Convex applies the same gate. */
+export { BRIEF_L10N_GATED_LANGS };
 
 const SHARED_TTL_SEC = 7 * 24 * 60 * 60;
 // Covers the 360-minute non-due reuse window (brief-synthesis-reuse.mjs).
@@ -70,6 +70,37 @@ export function readBriefL10nConfig(env = {}) {
     userBudgetMs: positiveInt(env.BRIEF_L10N_USER_BUDGET_MS, 20_000),
     passBudgetMs: positiveInt(env.BRIEF_L10N_PASS_BUDGET_MS, 240_000),
   };
+}
+
+const CONFIG_FETCH_TIMEOUT_MS = 3_000;
+
+/**
+ * The run's localization config. Enablement and languages come from the
+ * Convex deployment (GET /relay/brief-l10n-config), the same source the
+ * Settings page reads, so the page and the cron cannot disagree. Budgets come
+ * from the cron's own env. BRIEF_L10N_ENABLED / BRIEF_L10N_LANGS in the cron
+ * env are ignored. Any failure, including an older Convex deploy without the
+ * route, returns a disabled config: English, and no brief:l10n: commands.
+ *
+ * @param {{ siteUrl: string, secret: string, env?: Record<string, string | undefined>, fetchImpl: typeof fetch }} input
+ */
+export async function fetchBriefL10nConfig({ siteUrl, secret, env = {}, fetchImpl }) {
+  const disabled = readBriefL10nConfig({ ...env, BRIEF_L10N_ENABLED: '0', BRIEF_L10N_LANGS: '' });
+  if (!siteUrl || !secret) return disabled;
+  try {
+    const res = await fetchImpl(`${siteUrl}/relay/brief-l10n-config`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${secret}`, 'User-Agent': 'worldmonitor-digest/1.0' },
+      signal: AbortSignal.timeout(CONFIG_FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) return disabled;
+    const body = await res.json();
+    if (body?.enabled !== true || !Array.isArray(body.langs)) return disabled;
+    const langs = briefL10nDeliverableLanguages({ BRIEF_L10N_ENABLED: '1', BRIEF_L10N_LANGS: body.langs.filter((l) => typeof l === 'string').join(',') });
+    return readBriefL10nConfig({ ...env, BRIEF_L10N_ENABLED: langs.length > 0 ? '1' : '0', BRIEF_L10N_LANGS: langs.join(',') });
+  } catch {
+    return disabled;
+  }
 }
 
 /** Language to localize into, or null for English. */

@@ -8,6 +8,7 @@ import {
   BRIEF_L10N_GATED_LANGS,
   briefL10nTarget,
   buildTranslatePrompt,
+  fetchBriefL10nConfig,
   localizeBrief,
   parseTranslateOutput,
   readBriefL10nConfig,
@@ -201,6 +202,52 @@ describe('translate prompt and parser', () => {
     const src = [{ id: 'n', text: 'Trump said output fell 1.5 million barrels.' }];
     assert.ok(parseTranslateOutput(JSON.stringify([{ id: 'n', text: 'Трамп заявил, что добыча упала на 1,5 млн баррелей.' }]), src, 'ru'));
     assert.ok(parseTranslateOutput(JSON.stringify([{ id: 'n', text: 'トランプ氏は、生産量が150万バレル減少したと述べた。' }]), src, 'ja'));
+  });
+});
+
+describe('fetchBriefL10nConfig', () => {
+  const opts = (impl, env = {}) => ({ siteUrl: 'https://convex.test', secret: 's3cret', env, fetchImpl: impl });
+
+  it('reads enablement and languages from Convex, keeping the cron budgets from its own env', async () => {
+    const seen = [];
+    const config = await fetchBriefL10nConfig(opts(async (url, init) => {
+      seen.push({ url, auth: init.headers.Authorization, ua: init.headers['User-Agent'] });
+      return { ok: true, json: async () => ({ enabled: true, langs: ['fr', 'de'] }) };
+    }, { BRIEF_L10N_USER_BUDGET_MS: '7000' }));
+    assert.deepEqual(seen, [{ url: 'https://convex.test/relay/brief-l10n-config', auth: 'Bearer s3cret', ua: 'worldmonitor-digest/1.0' }]);
+    assert.equal(config.enabled, true);
+    assert.deepEqual([...config.allow].sort(), ['de', 'fr']);
+    assert.equal(config.userBudgetMs, 7000);
+    assert.equal(briefL10nTarget('fr', config), 'fr');
+  });
+
+  it('ignores BRIEF_L10N_ENABLED and BRIEF_L10N_LANGS in the cron env: Convex is the only switch', async () => {
+    const config = await fetchBriefL10nConfig(opts(
+      async () => ({ ok: true, json: async () => ({ enabled: false, langs: [] }) }),
+      { BRIEF_L10N_ENABLED: '1', BRIEF_L10N_LANGS: 'fr' },
+    ));
+    assert.equal(config.enabled, false);
+    assert.equal(briefL10nTarget('fr', config), null);
+  });
+
+  it('fails closed to English on an HTTP error, a throw, a malformed body or an old Convex deploy', async () => {
+    const bodies = [
+      async () => ({ ok: false, status: 500, json: async () => ({}) }),
+      async () => { throw new Error('network'); },
+      async () => ({ ok: true, json: async () => ({ enabled: 'yes', langs: 'fr' }) }),
+      async () => ({ ok: false, status: 404, json: async () => ({}) }),
+    ];
+    for (const impl of bodies) {
+      const config = await fetchBriefL10nConfig(opts(impl, { BRIEF_L10N_ENABLED: '1', BRIEF_L10N_LANGS: 'fr' }));
+      assert.equal(config.enabled, false);
+      assert.equal(briefL10nTarget('fr', config), null);
+    }
+  });
+
+  it('never enables a gated language even when Convex lists it', async () => {
+    const config = await fetchBriefL10nConfig(opts(async () => ({ ok: true, json: async () => ({ enabled: true, langs: ['ar', 'fr'] }) })));
+    assert.equal(briefL10nTarget('ar', config), null);
+    assert.equal(briefL10nTarget('fr', config), 'fr');
   });
 });
 

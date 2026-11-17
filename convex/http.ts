@@ -19,6 +19,7 @@ import { channelTypeValidator, USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
 import { ALERT_CAPABILITY_VIOLATION_CODES, ALERT_UPGRADE_URL } from "../shared/alert-capabilities";
 import { isPreferenceVariant } from "../shared/cloud-preferences-contract";
 import { normalizeAcquisitionSource } from "../shared/acquisition-source";
+import { briefL10nDeliverableLanguages } from "../shared/ui-languages";
 import { verifyDunningPortalToken } from "./lib/identitySigning";
 import { buildUnsubscribeUrl, EMAIL_UNSUBSCRIBE_PATH, verifyUnsubscribeToken } from "./lib/emailUnsubscribe";
 import {
@@ -1662,6 +1663,23 @@ http.route({
     const rules = await collectPages((cursor) =>
       ctx.runQuery((internal as any).alertRules.getDigestRules, { cursor }));
     return new Response(JSON.stringify(rules), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// Service-to-service: the digest cron reads the brief localization switch once
+// per run. BRIEF_L10N_ENABLED / BRIEF_L10N_LANGS on this deployment are the only
+// switch; users.getBriefLanguage serves the same list to the Settings page.
+http.route({
+  path: "/relay/brief-l10n-config",
+  method: "GET",
+  handler: httpAction(async (_ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+    if (unauthorized) return unauthorized;
+    const langs = briefL10nDeliverableLanguages(process.env);
+    return new Response(JSON.stringify({ enabled: langs.length > 0, langs }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
