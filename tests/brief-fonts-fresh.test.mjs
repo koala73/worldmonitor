@@ -8,7 +8,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { briefFontInputs } from '../scripts/brief-fonts/inputs.mjs';
+import { BRIEF_RENDERER, briefFontInputs, literalLangAttrs } from '../scripts/brief-fonts/inputs.mjs';
 import { BRIEF_FONTS } from '../server/_shared/brief-fonts.generated.js';
 import { briefFontPlatform } from '../server/_shared/brief-font-platform.js';
 import { renderBriefMagazine } from '../server/_shared/brief-render.js';
@@ -50,7 +50,13 @@ describe('brief magazine fonts', () => {
   });
 
   it('were cut for the current page languages', () => {
-    assert.deepEqual(current.langs, manifest.inputs.langs, `A lang attribute changed; the subsets drop locl and assume these languages. ${RERUN}`);
+    assert.deepEqual(current.langs, manifest.inputs.langs, `The page languages changed; the subsets keep locl for these languages. ${RERUN}`);
+  });
+
+  it('the renderer has no literal lang attribute outside htmlLangFor', () => {
+    const text = fs.readFileSync(path.join(root, BRIEF_RENDERER), 'utf8');
+    assert.deepEqual(literalLangAttrs(text), []);
+    assert.match(text, /'<html lang="' \+ escapeHtml\(htmlLangFor\(lang\)\) \+ '">'/);
   });
 
   it('were checked against the Google-served files', () => {

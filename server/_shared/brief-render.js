@@ -22,6 +22,7 @@
 //   - Plan: docs/plans/2026-04-17-003-feat-worldmonitor-brief-magazine-plan.md
 
 import { BRIEF_LOCALIZED_ENVELOPE_VERSION, SUPPORTED_ENVELOPE_VERSIONS } from '../../shared/brief-envelope.js';
+import { htmlLangFor, isUiLanguage } from '../../shared/ui-languages.js';
 import { BRIEF_FONTS } from './brief-fonts.generated.js';
 import { briefPlural, briefT } from '../../shared/brief-strings.js';
 
@@ -251,7 +252,7 @@ export function assertBriefEnvelope(envelope) {
   if (!isFiniteNumber(env.issuedAt)) {
     throw new Error('renderBriefMagazine: envelope.issuedAt must be a finite number');
   }
-  if (isLocalized && (typeof env.lang !== 'string' || !LOCALIZED_LANG_RE.test(env.lang) || env.lang === 'en')) {
+  if (isLocalized && (typeof env.lang !== 'string' || !LOCALIZED_LANG_RE.test(env.lang) || !isUiLanguage(env.lang) || env.lang === 'en')) {
     throw new Error(
       `renderBriefMagazine: envelope.lang must be a non-English UI language code on v${BRIEF_LOCALIZED_ENVELOPE_VERSION} envelopes (got ${JSON.stringify(env.lang)})`,
     );
@@ -1246,6 +1247,29 @@ const STYLE_BLOCK = `<style>
   @media (max-width: 640px) {
     .wm-public-strip { font-size: 11px; padding: 0.7em 1em; gap: 0.6em; flex-wrap: wrap; }
   }
+  /* Scripts outside the subsets fall back to system fonts, which have no true italics. */
+  :lang(zh) .cover .hero .blurb, :lang(ja) .cover .hero .blurb, :lang(ko) .cover .hero .blurb,
+  :lang(hi) .cover .hero .blurb, :lang(th) .cover .hero .blurb, :lang(ar) .cover .hero .blurb, :lang(fa) .cover .hero .blurb,
+  :lang(zh) .digest blockquote, :lang(ja) .digest blockquote, :lang(ko) .digest blockquote,
+  :lang(hi) .digest blockquote, :lang(th) .digest blockquote, :lang(ar) .digest blockquote, :lang(fa) .digest blockquote,
+  :lang(zh) .digest .stat-label, :lang(ja) .digest .stat-label, :lang(ko) .digest .stat-label,
+  :lang(hi) .digest .stat-label, :lang(th) .digest .stat-label, :lang(ar) .digest .stat-label, :lang(fa) .digest .stat-label {
+    font-style: normal;
+  }
+  /* Letter-spacing breaks conjuncts and joins; these scripts have no case. */
+  :lang(hi) .mono, :lang(th) .mono, :lang(ar) .mono, :lang(fa) .mono,
+  :lang(hi) .cover .hero .kicker, :lang(th) .cover .hero .kicker, :lang(ar) .cover .hero .kicker, :lang(fa) .cover .hero .kicker,
+  :lang(hi) .digest .running-head, :lang(th) .digest .running-head, :lang(ar) .digest .running-head, :lang(fa) .digest .running-head,
+  :lang(hi) .digest .thread .tag, :lang(th) .digest .thread .tag, :lang(ar) .digest .thread .tag, :lang(fa) .digest .thread .tag,
+  :lang(hi) .story .tag, :lang(th) .story .tag, :lang(ar) .story .tag, :lang(fa) .story .tag,
+  :lang(hi) .story .source, :lang(th) .story .source, :lang(ar) .story .source, :lang(fa) .story .source,
+  :lang(hi) .story .callout .label, :lang(th) .story .callout .label, :lang(ar) .story .callout .label, :lang(fa) .story .callout .label,
+  :lang(hi) .hint, :lang(th) .hint, :lang(ar) .hint, :lang(fa) .hint,
+  :lang(hi) .page-number, :lang(th) .page-number, :lang(ar) .page-number, :lang(fa) .page-number,
+  :lang(hi) .wm-share, :lang(th) .wm-share, :lang(ar) .wm-share, :lang(fa) .wm-share {
+    letter-spacing: normal;
+    text-transform: none;
+  }
 </style>`;
 
 /**
@@ -1757,7 +1781,7 @@ export function renderBriefMagazine(envelope, options = {}) {
   const fonts = briefFonts(options.fontPlatform);
   return (
     '<!DOCTYPE html>' +
-    '<html lang="en">' +
+    '<html lang="' + escapeHtml(htmlLangFor(lang)) + '">' +
     '<head>' +
     '<meta charset="UTF-8" />' +
     '<meta name="viewport" content="width=device-width, initial-scale=1.0" />' +

@@ -138,6 +138,7 @@ import { selectDigestChannelContent } from './lib/digest-channel-content.mjs';
 import { briefL10nTarget, localizeBrief, readBriefL10nConfig } from './lib/brief-l10n.mjs';
 import { briefLocalizedKey } from '../shared/brief-envelope.js';
 import { briefIntlLocale, briefPlural, briefT, formatBriefDate } from '../shared/brief-strings.js';
+import { truncateForDisplay } from '../shared/brief-text.js';
 import {
   attachDigestCorroboration,
   digestCoverageText,
@@ -1126,9 +1127,7 @@ function formatDigest(stories, nowMs, target = 'plain', lang = 'en') {
       // persisted one. Truncated at a word boundary to ~200 chars to keep
       // the plain-text email terse. Empty \u2192 no context line (R6).
       if (typeof item.description === 'string' && item.description.length > 0) {
-        const trimmed = item.description.length > 200
-          ? item.description.slice(0, 200).replace(/\s+\S*$/, '') + '\u2026'
-          : item.description;
+        const trimmed = truncateForDisplay(item.description, 200, lang);
         lines.push(`    ${esc(trimmed)}`);
       }
     }

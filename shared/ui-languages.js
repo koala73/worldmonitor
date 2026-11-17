@@ -49,3 +49,27 @@ export function resolveBriefLanguage(input) {
   if (isUiLanguage(input?.uiLanguage)) return /** @type {string} */ (input.uiLanguage);
   return 'en';
 }
+
+/** BCP 47 tag for the HTML lang attribute and Intl: zh → "zh-CN", zh-TW → "zh-TW", others unchanged. */
+export function htmlLangFor(code) {
+  return code === 'zh' ? 'zh-CN' : code;
+}
+
+const NO_SUBSET_LANGUAGES = new Set(['ar', 'fa', 'zh', 'zh-TW', 'ja', 'ko', 'hi', 'th']);
+
+/** Languages whose script the magazine font subsets cover. */
+export const BRIEF_SUBSET_LANGUAGES = Object.freeze(UI_LANGUAGES.filter((code) => !NO_SUBSET_LANGUAGES.has(code)));
+
+const SCRIPT_CLASSES = {
+  bg: 'cyrillic', ru: 'cyrillic', uk: 'cyrillic',
+  el: 'greek',
+  zh: 'cjk', 'zh-TW': 'cjk', ja: 'cjk', ko: 'cjk',
+  ar: 'arabic', fa: 'arabic',
+  hi: 'devanagari',
+  th: 'thai',
+};
+
+/** Script class used for typography switches. */
+export function scriptClassFor(code) {
+  return SCRIPT_CLASSES[code] ?? 'latin';
+}

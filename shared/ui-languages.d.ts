@@ -7,3 +7,9 @@ export const UI_LANGUAGE_NAMES: Readonly<Record<UiLanguage, string>>;
 export function isUiLanguage(value: unknown): value is UiLanguage;
 /** override ?? explicit UI choice ?? 'en'. Unknown values are ignored. */
 export function resolveBriefLanguage(input: { uiLanguage?: string | null; briefLanguage?: string | null }): UiLanguage;
+/** BCP 47 tag for the HTML lang attribute and Intl: zh → "zh-CN", zh-TW → "zh-TW", others unchanged. */
+export function htmlLangFor(code: string): string;
+/** Languages whose script the magazine subsets cover. */
+export const BRIEF_SUBSET_LANGUAGES: readonly string[];
+/** Script class used for typography switches. */
+export function scriptClassFor(code: string): 'latin' | 'cyrillic' | 'greek' | 'cjk' | 'arabic' | 'devanagari' | 'thai';
