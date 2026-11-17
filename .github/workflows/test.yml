@@ -1,4 +1,9 @@
 name: Test
+# Records which pull request and base a run tested. GitHub keeps no reliable
+# record of it after the PR merges, and the push-to-main verdict reuse in the
+# `changes` job credits only runs named for that PR into main. Other events
+# get the default name.
+run-name: "${{ github.event_name == 'pull_request' && format('PR #{0} into {1}: {2}', github.event.pull_request.number, github.event.pull_request.base.ref, github.event.pull_request.title) || '' }}"
 
 on:
   pull_request:

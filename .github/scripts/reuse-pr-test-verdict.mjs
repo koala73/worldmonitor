@@ -55,23 +55,17 @@ export async function decideReuse({ api, repo, sha, before, files, now = Date.no
   const [pushed, tested] = await Promise.all([api(`repos/${repo}/git/commits/${sha}`), api(`repos/${repo}/git/commits/${head}`)]);
   if (!pushed.tree?.sha || pushed.tree.sha !== tested.tree?.sha) return none(`tree differs from PR #${pr.number} head`);
 
-  // Every run on this head must have merged onto main. A stacked PR tested
-  // against its parent branch before being retargeted (1 of the last 100
-  // merges), or a second PR with the same head, merged another tree. A run's
-  // own pull_requests list cannot tell: GitHub empties it once the PR merges.
-  const events = [];
-  for (let page = 1; ; page++) {
-    const batch = await api(`repos/${repo}/issues/${pr.number}/events?per_page=100&page=${page}`);
-    events.push(...batch);
-    if (batch.length < 100) break;
-    if (page === 5) return none(`PR #${pr.number} has too many events to check its base history`);
-  }
-  if (events.some((event) => event.event === 'base_ref_changed')) return none(`PR #${pr.number} changed its base; earlier runs merged another branch`);
-  const sharing = await api(`repos/${repo}/commits/${head}/pulls`);
-  if (sharing.some((p) => p.number !== pr.number && p.head?.sha === head)) return none(`another pull request has PR #${pr.number}'s head`);
-
-  const { workflow_runs: runs = [] } = await api(`repos/${repo}/actions/workflows/test.yml/runs?head_sha=${head}&event=pull_request&per_page=20`);
-  const ours = runs.filter((run) => run.head_branch === pr.head.ref && run.head_repository?.full_name === pr.head.repo?.full_name);
+  // Only a run of this PR against main merged the head onto main. A stacked
+  // PR tested against its parent branch before being retargeted (1 of the
+  // last 100 merges), or another PR from the same branch, merged another
+  // tree. GitHub keeps no reliable record of a run's base: it empties the
+  // run's pull_requests list once the PR merges, and can leave closed PRs out
+  // of commits/{sha}/pulls. So test.yml writes the PR number and base into
+  // every pull_request run's name, and only runs named for this PR into main
+  // count. Runs from before that name existed are never reused.
+  const runName = `PR #${pr.number} into main: `;
+  const { workflow_runs: runs = [] } = await api(`repos/${repo}/actions/workflows/test.yml/runs?head_sha=${head}&event=pull_request&per_page=100`);
+  const ours = runs.filter((run) => run.display_title?.startsWith(runName) && run.head_branch === pr.head.ref && run.head_repository?.full_name === pr.head.repo?.full_name);
   const latest = ours.filter((run) => run.status === 'completed').sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
   if (!latest) return none(`no completed Test run on PR #${pr.number} head`);
   if (latest.conclusion !== 'success') return none(`latest Test run ${latest.id} on PR #${pr.number} head is ${latest.conclusion}`);

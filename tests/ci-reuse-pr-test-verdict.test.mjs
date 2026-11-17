@@ -9,7 +9,7 @@ import { decideReuse, GROUPS, main, outputsFor, REUSE_BLOCKER } from '../.github
 const root = resolve(import.meta.dirname, '..');
 const workflow = parse(readFileSync(join(root, '.github/workflows/test.yml'), 'utf8'));
 const NOW = Date.parse('2026-11-17T12:00:00Z');
-const OURS = { head_branch: 'feat/x', head_repository: { full_name: 'o/r' } };
+const OURS = { display_title: 'PR #7 into main: feat: x', head_branch: 'feat/x', head_repository: { full_name: 'o/r' } };
 
 const CODE_JOBS = ['unit-shard (1)', 'unit-shard (2)', 'unit-built-output', 'unit', 'sidecar', 'convex-tests', 'dom-tests'];
 const BROWSER_JOBS = ['variant-smoke (1)', 'variant-smoke (2)', 'variant-smoke-pro-webmcp (webmcp)', 'variant-smoke-full'];
@@ -17,8 +17,6 @@ const BROWSER_JOBS = ['variant-smoke (1)', 'variant-smoke (2)', 'variant-smoke-p
 function fixture(overrides = {}) {
   const state = {
     pulls: [{ number: 7, merge_commit_sha: 'S', merged_at: '2026-11-17T11:00:00Z', base: { ref: 'main' }, head: { sha: 'H', ref: 'feat/x', repo: { full_name: 'o/r' } } }],
-    events: [{ event: 'merged' }],
-    sharing: [{ number: 7, head: { sha: 'H' } }],
     compare: { status: 'ahead' },
     trees: { S: 'T1', H: 'T1' },
     runs: [{ id: 99, status: 'completed', conclusion: 'success', created_at: '2026-11-17T10:00:00Z', updated_at: '2026-11-17T10:07:00Z', ...OURS }],
@@ -30,9 +28,6 @@ function fixture(overrides = {}) {
     calls.push(path);
     if (state.fail && path.includes(state.fail)) throw new Error('HTTP 502');
     if (path === 'repos/o/r/commits/S/pulls') return state.pulls;
-    const events = path.match(/^repos\/o\/r\/issues\/7\/events\?per_page=100&page=(\d+)$/);
-    if (events) return typeof state.events === 'function' ? state.events(Number(events[1])) : (events[1] === '1' ? state.events : []);
-    if (path === 'repos/o/r/commits/H/pulls') return state.sharing;
     if (path === 'repos/o/r/compare/P...H') return state.compare;
     const tree = path.match(/^repos\/o\/r\/git\/commits\/(\w+)$/);
     if (tree) return { tree: { sha: state.trees[tree[1]] } };
@@ -91,24 +86,30 @@ describe('reuse of a green pull request Test verdict on a main push', () => {
     assert.deepEqual((await decide({ runs: [green, { ...red, status: 'in_progress', conclusion: null }] })).reuse, { code: true, browser: true });
   });
 
-  it('trusts only runs that merged this head onto main', async () => {
-    // A stacked PR tested against its parent branch before it was retargeted.
-    assert.deepEqual((await decide({ events: [{ event: 'base_ref_changed' }, { event: 'merged' }] })).reuse, {});
-    // A base change on a later events page is still found; an unbounded list is refused.
-    assert.deepEqual((await decide({ events: (page) => page === 1 ? Array(100).fill({ event: 'labeled' }) : [{ event: 'base_ref_changed' }] })).reuse, {});
-    assert.deepEqual((await decide({ events: () => Array(100).fill({ event: 'labeled' }) })).reuse, {});
-    assert.deepEqual((await decide({ events: (page) => page === 1 ? Array(100).fill({ event: 'labeled' }) : [] })).reuse, { code: true, browser: true });
-    // The same head opened as a second pull request.
-    assert.deepEqual((await decide({ sharing: [{ number: 7, head: { sha: 'H' } }, { number: 8, head: { sha: 'H' } }] })).reuse, {});
-    // A PR that merely contains the commit further down is not sharing the head.
-    assert.deepEqual((await decide({ sharing: [{ number: 7, head: { sha: 'H' } }, { number: 9, head: { sha: 'Z' } }] })).reuse, { code: true, browser: true });
+  it('trusts only runs named for this PR into main', async () => {
+    const green = { id: 99, status: 'completed', conclusion: 'success', created_at: '2026-11-17T10:00:00Z', updated_at: '2026-11-17T10:07:00Z', ...OURS };
+    // A stacked PR's run while it still targeted its parent branch.
+    assert.deepEqual((await decide({ runs: [{ ...green, display_title: 'PR #7 into feat/base: feat: x' }] })).reuse, {});
+    // A run of an earlier PR (closed, perhaps unlisted by GitHub) from the same branch and head.
+    assert.deepEqual((await decide({ runs: [{ ...green, display_title: 'PR #5 into main: feat: x' }] })).reuse, {});
+    // A PR number that only shares a prefix, a title that mimics the name, and
+    // runs from before test.yml named them are not this PR's.
+    assert.deepEqual((await decide({ runs: [{ ...green, display_title: 'PR #70 into main: feat: x' }] })).reuse, {});
+    assert.deepEqual((await decide({ runs: [{ ...green, display_title: 'PR #8 into release: PR #7 into main: x' }] })).reuse, {});
+    assert.deepEqual((await decide({ runs: [{ ...green, display_title: 'feat: x' }] })).reuse, {});
+    assert.deepEqual((await decide({ runs: [{ ...green, display_title: undefined }] })).reuse, {});
+    // After a retarget, the runs named into main still certify the head.
+    assert.deepEqual((await decide({ runs: [{ ...green, id: 98, conclusion: 'failure', created_at: '2026-11-17T09:00:00Z', display_title: 'PR #7 into feat/base: feat: x' }, green] })).reuse, { code: true, browser: true });
+    // A newer green run of another base does not hide an older red run into main.
+    const red = { ...green, id: 98, conclusion: 'failure', created_at: '2026-11-17T09:00:00Z' };
+    assert.deepEqual((await decide({ runs: [{ ...green, display_title: 'PR #7 into feat/base: feat: x' }, red] })).reuse, {});
     // Runs from another branch or repository with the same head SHA are not this PR's.
-    const green = { id: 99, status: 'completed', conclusion: 'success', created_at: '2026-11-17T10:00:00Z', updated_at: '2026-11-17T10:07:00Z' };
-    assert.deepEqual((await decide({ runs: [{ ...green, head_branch: 'other', head_repository: { full_name: 'o/r' } }] })).reuse, {});
-    assert.deepEqual((await decide({ runs: [{ ...green, head_branch: 'feat/x', head_repository: { full_name: 'fork/r' } }] })).reuse, {});
-    // A newer green run from elsewhere does not hide an older red run of this PR.
-    const red = { id: 98, status: 'completed', conclusion: 'failure', created_at: '2026-11-17T09:00:00Z', updated_at: '2026-11-17T09:07:00Z', ...OURS };
-    assert.deepEqual((await decide({ runs: [{ ...green, head_branch: 'other', head_repository: { full_name: 'o/r' } }, red] })).reuse, {});
+    assert.deepEqual((await decide({ runs: [{ ...green, head_branch: 'other' }] })).reuse, {});
+    assert.deepEqual((await decide({ runs: [{ ...green, head_repository: { full_name: 'fork/r' } }] })).reuse, {});
+  });
+
+  it('names every pull_request run for its PR number and base', () => {
+    assert.match(workflow['run-name'], /github\.event_name == 'pull_request' && format\('PR #\{0\} into \{1\}: \{2\}', github\.event\.pull_request\.number, github\.event\.pull_request\.base\.ref, github\.event\.pull_request\.title\) \|\| ''/);
   });
 
   it('refuses an incomplete job listing', async () => {
