@@ -52,6 +52,14 @@ test('PriceCatcher survey items show their own date and latest baseline a week o
   const oilPrice = byItem.get('Cooking oil, pure palm (Seri Murni)')!;
   assert.deepEqual([oilPrice.date, oilPrice.previousDate, oilPrice.previousPrice], ['2026-10-26', '2026-10-15', 30]);
   assert.equal(data.prices.length, 3);
+  // A survey dated after the newest daily day does not hide the daily rows.
+  const later = buildFoodPriceSource(my, snapshot([daily, { ...daily, date: '2026-10-22', price: 5 }, { ...oil, date: '2026-10-29' }, { ...oil, date: '2026-10-20', price: 30 }]),
+    Date.parse('2026-10-30T12:00:00Z'));
+  const laterOil = buildFoodPriceSource(my, snapshot([{ ...daily, date: '2026-10-27' }, { ...daily, date: '2026-10-20', price: 5 }, { ...oil, date: '2026-10-29' }]),
+    Date.parse('2026-10-30T12:00:00Z'));
+  assert.equal(later.prices.length, 2);
+  assert.deepEqual(laterOil.prices.map(price => [price.item, price.date]).sort(), [['Cooking oil, pure palm (Seri Murni)', '2026-10-29'], ['Tomatoes', '2026-10-27']]);
+  assert.equal(laterOil.latestReportDate, '2026-10-29');
   // Other sources keep one shared latest date and an exact seven-day baseline.
   const shared = buildFoodPriceSource(source, snapshot([row, { ...row, item: 'Oil', date: '2026-10-26' }, { ...row, date: '2026-10-21', price: 50 }]), now);
   assert.deepEqual(shared.prices.map(price => [price.item, price.wowAvailable]), [['Rice', false]]);

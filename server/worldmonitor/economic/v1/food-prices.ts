@@ -51,7 +51,10 @@ export function buildFoodPriceSource(source: SourceDefinition, value: unknown, n
     if (!bySeries.has(key)) bySeries.set(key, []);
     bySeries.get(key)!.push(row);
   }
-  const latest = new Map(rows.filter(row => row.date === latestDate && !surveyItems.has(row.item)).map(row => [seriesKey(row), row]));
+  // The shared latest date comes from the other series only, so a basket survey dated after an incomplete daily
+  // day cannot hide every daily row. The source's report date and freshness still use its newest row.
+  const sharedDate = rows.filter(row => !surveyItems.has(row.item)).map(row => row.date).sort().slice(-1)[0] ?? '';
+  const latest = new Map(rows.filter(row => row.date === sharedDate && !surveyItems.has(row.item)).map(row => [seriesKey(row), row]));
   for (const [key, series] of bySeries) latest.set(key, series[0]!);
   const prices: FoodMarketPrice[] = [...latest.values()].map(row => {
     const date = new Date(Date.parse(row.date) - 7 * DAY).toISOString().slice(0, 10);
