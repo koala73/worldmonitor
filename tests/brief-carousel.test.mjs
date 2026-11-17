@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { pageFromIndex, renderCarouselImageResponse } from '../server/_shared/brief-carousel-render.ts';
+import { buildCarouselTree, pageFromIndex, renderCarouselImageResponse } from '../server/_shared/brief-carousel-render.ts';
 import { carouselUrlsFrom } from '../scripts/lib/digest-orchestration-helpers.mjs';
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
@@ -303,5 +303,31 @@ describe('renderCarouselImageResponse', () => {
       cc.includes('max-age=31536000'),
       `expected @vercel/og's default 1-year cache to survive on the raw ImageResponse, got "${cc}"`,
     );
+  });
+});
+
+describe('carousel chrome language', () => {
+  const texts = (env) => ['cover', 'threads', 'story'].map((p) => JSON.stringify(buildCarouselTree(env, p))).join('\n');
+  const v4 = { ...SAMPLE_ENVELOPE, version: 4 };
+
+  it('keeps English chrome for v1-v4 envelopes', () => {
+    const out = texts(v4);
+    for (const label of ['ISSUE Nº 001', '1 thread that shaped the world today.', 'Open for full brief →', 'Digest / On The Desk', "Today's Threads", 'Source · Reuters']) {
+      assert.ok(out.includes(label), label);
+    }
+  });
+
+  it('translates chrome for a v5 envelope', () => {
+    const out = texts({ ...v4, version: 5, lang: 'fr' });
+    for (const label of ['NUMÉRO 001', 'Ouvrir le brief complet →', 'Source · Reuters']) {
+      assert.ok(out.includes(label), label);
+    }
+    assert.ok(!out.includes('Open for full brief'));
+  });
+
+  it('ignores lang on non-v5 envelopes and keeps ar/fa English', () => {
+    for (const env of [{ ...v4, lang: 'fr' }, { ...v4, version: 5, lang: 'ar' }, { ...v4, version: 5, lang: 'fa' }]) {
+      assert.ok(texts(env).includes('Open for full brief →'), JSON.stringify(env.lang));
+    }
   });
 });

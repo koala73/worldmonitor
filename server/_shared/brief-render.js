@@ -1276,7 +1276,7 @@ const SHARE_SCRIPT = `<script>
     btn.dataset.state = 'sharing';
     try {
       var shareTitle = 'WorldMonitor Brief';
-      var shareText = btn.dataset.shareText || 'My WorldMonitor Brief for today:';
+      var shareText = 'My WorldMonitor Brief for today:';
       if (navigator.share) {
         try {
           await navigator.share({ title: shareTitle, text: shareText, url: shareUrl });
@@ -1295,7 +1295,7 @@ const SHARE_SCRIPT = `<script>
         btn.dataset.state = 'copied';
       } else {
         // Ancient browser. Show the URL so the user can copy manually.
-        window.prompt(btn.dataset.copyPrompt || 'Copy the link below:', shareUrl);
+        window.prompt('Copy the link below:', shareUrl);
         btn.dataset.state = 'copied';
       }
     } catch (err) {
@@ -1482,6 +1482,18 @@ const NAV_SCRIPT = `<script>
  * @param {BriefData} data
  * @returns {BriefData}
  */
+/** JS string literal safe to inline inside a <script> block. */
+function scriptString(str) {
+  return JSON.stringify(str).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+}
+
+function localizedShareScript(lang) {
+  if (lang === 'en') return SHARE_SCRIPT;
+  return SHARE_SCRIPT
+    .replace("'My WorldMonitor Brief for today:'", () => scriptString(briefT(lang, 'mag.shareText')))
+    .replace("'Copy the link below:'", () => scriptString(briefT(lang, 'mag.shareCopyPrompt')));
+}
+
 function redactForPublic(data) {
   const safeLead = typeof data.digest?.publicLead === 'string' && data.digest.publicLead.length > 0
     ? data.digest.publicLead
@@ -1734,11 +1746,8 @@ export function renderBriefMagazine(envelope, options = {}) {
   // succeeded). The URL is embedded as data-share-url and read at
   // click time by SHARE_SCRIPT — no fetch, no auth required
   // client-side.
-  const shareLangAttrs = lang === 'en'
-    ? ''
-    : `data-share-text="${escapeHtml(briefT(lang, 'mag.shareText'))}" data-copy-prompt="${escapeHtml(briefT(lang, 'mag.shareCopyPrompt'))}" `;
   const shareButtonHtml = shareUrl
-    ? `<button class="wm-share" type="button" data-share-url="${escapeHtml(shareUrl)}" data-issue-date="${escapeHtml(date)}" ${shareLangAttrs}aria-label="${escapeHtml(briefT(lang, 'mag.shareAria'))}">${escapeHtml(briefT(lang, 'mag.share'))}</button>`
+    ? `<button class="wm-share" type="button" data-share-url="${escapeHtml(shareUrl)}" data-issue-date="${escapeHtml(date)}" aria-label="${escapeHtml(briefT(lang, 'mag.shareAria'))}">${escapeHtml(briefT(lang, 'mag.share'))}</button>`
     : '';
 
   const headMeta = publicMode
@@ -1768,7 +1777,7 @@ export function renderBriefMagazine(envelope, options = {}) {
     '</div>' +
     '<div class="nav-dots" id="navDots"></div>' +
     `<div class="hint">${escapeHtml(briefT(lang, 'mag.navHint'))}</div>` +
-    (shareUrl ? SHARE_SCRIPT : '') +
+    (shareUrl ? localizedShareScript(lang) : '') +
     BRIEF_THREAD_OPEN_SCRIPT +
     NAV_SCRIPT +
     '</body>' +

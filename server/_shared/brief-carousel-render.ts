@@ -24,6 +24,9 @@
  */
 
 import { ImageResponse } from '@vercel/og';
+import { BRIEF_LOCALIZED_ENVELOPE_VERSION } from '../../shared/brief-envelope.js';
+import { briefPlural, briefT, type BriefStringKey } from '../../shared/brief-strings.js';
+import { RTL_UI_LANGUAGES } from '../../shared/ui-languages.js';
 
 // RUNTIME DEPENDENCY on Google Fonts CDN via jsdelivr.
 //
@@ -74,6 +77,7 @@ const COLORS = {
 
 type Envelope = {
   version: number;
+  lang?: string;
   issuedAt: number;
   data: {
     issue: string;
@@ -94,6 +98,12 @@ type Envelope = {
   };
 };
 
+/** Chrome language: only a v5 sibling carries `lang`; RTL languages stay English until RTL renders are proven. */
+function carouselLang(env: Envelope): string {
+  if (env.version !== BRIEF_LOCALIZED_ENVELOPE_VERSION || typeof env.lang !== 'string') return 'en';
+  return RTL_UI_LANGUAGES.includes(env.lang as never) ? 'en' : env.lang;
+}
+
 export type CarouselPage = 'cover' | 'threads' | 'story';
 
 export function pageFromIndex(i: number): CarouselPage | null {
@@ -106,6 +116,7 @@ export function pageFromIndex(i: number): CarouselPage | null {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function buildCover(env: Envelope): any {
   const { data } = env;
+  const lang = carouselLang(env);
   return {
     type: 'div',
     props: {
@@ -121,7 +132,7 @@ function buildCover(env: Envelope): any {
           type: 'div',
           props: {
             style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: 0.75, fontSize: 18, letterSpacing: '0.2em', textTransform: 'uppercase' },
-            children: ['WORLDMONITOR', `ISSUE Nº ${data.issue}`],
+            children: ['WORLDMONITOR', briefT(lang, 'carousel.issue', { issue: data.issue })],
           },
         },
         {
@@ -154,7 +165,7 @@ function buildCover(env: Envelope): any {
                 type: 'div',
                 props: {
                   style: { fontSize: 28, fontStyle: 'italic', opacity: 0.8, maxWidth: 900 },
-                  children: `${data.stories.length} ${data.stories.length === 1 ? 'thread' : 'threads'} that shaped the world today.`,
+                  children: briefPlural(lang, 'carousel.threadsLine', data.stories.length),
                 },
               },
             ],
@@ -164,7 +175,7 @@ function buildCover(env: Envelope): any {
           type: 'div',
           props: {
             style: { display: 'flex', justifyContent: 'space-between', opacity: 0.6, fontSize: 16, letterSpacing: '0.2em', textTransform: 'uppercase' },
-            children: [data.digest.greeting, 'Open for full brief →'],
+            children: [data.digest.greeting, briefT(lang, 'carousel.openFull')],
           },
         },
       ],
@@ -174,6 +185,7 @@ function buildCover(env: Envelope): any {
 
 function buildThreads(env: Envelope): any {
   const { data } = env;
+  const lang = carouselLang(env);
   const threads = data.digest.threads.slice(0, 5);
   return {
     type: 'div',
@@ -190,7 +202,7 @@ function buildThreads(env: Envelope): any {
           type: 'div',
           props: {
             style: { display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${COLORS.sienna}40`, paddingBottom: 14, fontSize: 16, letterSpacing: '0.2em', textTransform: 'uppercase', color: COLORS.sienna, fontWeight: 600 },
-            children: [`· WorldMonitor Brief · ${data.issue} ·`, 'Digest / On The Desk'],
+            children: [`· WorldMonitor Brief · ${data.issue} ·`, briefT(lang, 'carousel.digestOnDesk')],
           },
         },
         {
@@ -202,14 +214,14 @@ function buildThreads(env: Envelope): any {
                 type: 'div',
                 props: {
                   style: { color: COLORS.sienna, fontSize: 20, letterSpacing: '0.3em', textTransform: 'uppercase', marginBottom: 30 },
-                  children: "Today's Threads",
+                  children: briefT(lang, 'carousel.todaysThreads'),
                 },
               },
               {
                 type: 'div',
                 props: {
                   style: { fontSize: 80, lineHeight: 1.0, fontWeight: 900, letterSpacing: '-0.015em', marginBottom: 50, maxWidth: 1000 },
-                  children: 'What the desk is watching.',
+                  children: briefT(lang, 'mag.deskWatching'),
                 },
               },
               {
@@ -247,6 +259,7 @@ function buildThreads(env: Envelope): any {
 
 function buildStory(env: Envelope): any {
   const { data } = env;
+  const lang = carouselLang(env);
   const story = data.stories[0];
   if (!story) return buildCover(env);
   return {
@@ -288,7 +301,7 @@ function buildStory(env: Envelope): any {
                       type: 'div',
                       props: {
                         style: { backgroundColor: COLORS.paperInk, color: COLORS.paper, padding: '8px 16px', fontSize: 16, letterSpacing: '0.22em', textTransform: 'uppercase', fontWeight: 600 },
-                        children: story.threatLevel,
+                        children: lang === 'en' ? story.threatLevel : briefT(lang, `threat.${story.threatLevel}` as BriefStringKey),
                       },
                     },
                   ],
@@ -305,7 +318,7 @@ function buildStory(env: Envelope): any {
                 type: 'div',
                 props: {
                   style: { fontSize: 20, letterSpacing: '0.2em', textTransform: 'uppercase', opacity: 0.6 },
-                  children: `Source · ${story.source}`,
+                  children: `${briefT(lang, 'mag.source')} · ${story.source}`,
                 },
               },
             ],
@@ -324,6 +337,13 @@ function buildStory(env: Envelope): any {
  * callers (the edge route) should catch + return 503 no-store so
  * Vercel's CDN + Telegram's media fetcher don't pin a bad render.
  */
+/** The Satori element tree for one carousel page. Exported for tests. */
+export function buildCarouselTree(envelope: Envelope, page: CarouselPage): any {
+  if (page === 'cover') return buildCover(envelope);
+  if (page === 'threads') return buildThreads(envelope);
+  return buildStory(envelope);
+}
+
 export async function renderCarouselImageResponse(
   envelope: Envelope,
   page: CarouselPage,
@@ -333,10 +353,7 @@ export async function renderCarouselImageResponse(
 
   const fontData = await loadFont();
 
-  const tree =
-    page === 'cover' ? buildCover(envelope) :
-    page === 'threads' ? buildThreads(envelope) :
-    buildStory(envelope);
+  const tree = buildCarouselTree(envelope, page);
 
   return new ImageResponse(tree, {
     width: 1200,
