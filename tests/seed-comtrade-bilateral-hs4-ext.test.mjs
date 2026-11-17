@@ -26,6 +26,8 @@ let existingKeys;
 let priorMeta;
 let comtradeUrls;
 let comtradeStatus;
+/** Keys whose SET the fake Redis rejects inside an HTTP 200 pipeline answer. */
+let rejectedKeys;
 
 const respond = body => new Response(JSON.stringify(body), { status: 200 });
 // Malaysia (458) and Thailand (764) supplying natural rubber, Viet Nam (704) shrimp.
@@ -42,6 +44,7 @@ function runCommand(cmd) {
   const [op, key] = cmd;
   if (op === 'GET') return { result: key === META_KEY ? priorMeta : null };
   if (op === 'EXISTS' || op === 'EXPIRE') return { result: existingKeys.has(key) ? 1 : 0 };
+  if (op === 'SET' && rejectedKeys.has(key)) return { error: 'OOM command not allowed when used memory > maxmemory' };
   if (op === 'SET' || op === 'EVAL') return { result: op === 'SET' ? 'OK' : 1 };
   return { result: null };
 }
@@ -52,6 +55,7 @@ beforeEach(() => {
   priorMeta = null;
   comtradeUrls = [];
   comtradeStatus = null;
+  rejectedKeys = new Set();
   process.env.UPSTASH_REDIS_REST_URL = REDIS_URL;
   process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
   process.env.WM_SEED_RETRY_DELAY_MS = '1';
@@ -140,6 +144,19 @@ test('an exhausted quota trips the breaker and preserves existing pairs', async 
   assert.equal(m.status, 'partial');
   assert.equal(m.preserveStreaks.MY, 1);
   assert.equal(sets().some(c => c[1] === ACTIVATION_KEY), false, 'a run that wrote nothing does not activate the probe');
+  const expired = redisCommands.filter(c => c[0] === 'EXPIRE').map(c => c[1]);
+  assert.ok(expired.includes(`${KEY_PREFIX}MY:v1`) && expired.includes(`${PARTNERS_KEY_PREFIX}MY:v1`));
+});
+
+test('a write Redis rejects inside a 200 pipeline is not counted as saved and the last good pair is preserved', async () => {
+  rejectedKeys = new Set([`${PARTNERS_KEY_PREFIX}MY:v1`]);
+  existingKeys = new Set([`${KEY_PREFIX}MY:v1`, `${PARTNERS_KEY_PREFIX}MY:v1`]);
+  await main();
+  const m = meta();
+  assert.equal(m.recordCount, ROSTER_SIZE - 1);
+  assert.equal(m.countryCoverage.MY.state, 'cache_write_failed');
+  assert.equal(m.countryCoverage.TH.state, 'observed');
+  assert.equal(m.preserveStreaks.MY, 1);
   const expired = redisCommands.filter(c => c[0] === 'EXPIRE').map(c => c[1]);
   assert.ok(expired.includes(`${KEY_PREFIX}MY:v1`) && expired.includes(`${PARTNERS_KEY_PREFIX}MY:v1`));
 });

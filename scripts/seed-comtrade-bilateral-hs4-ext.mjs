@@ -139,7 +139,6 @@ export async function main({ requestBudget = REQUEST_BUDGET, now = Date.now() } 
     const commands = [];
     const writtenKeys = new Set();
     let pendingBytes = 0;
-    let writtenCount = 0;
     let failedCount = 0;
     let requestCount = 0;
     let budgetExhausted = false;
@@ -150,10 +149,44 @@ export async function main({ requestBudget = REQUEST_BUDGET, now = Date.now() } 
       }
       requestCount++;
     };
-    const queueWrite = (key, payload) => {
+    // The country each queued command belongs to, so a rejected write can be
+    // traced back to it.
+    const commandCountries = [];
+    const queueWrite = (iso2, key, payload) => {
       commands.push(['SET', key, payload, 'EX', String(TTL_SECONDS)]);
+      commandCountries.push(iso2);
       pendingBytes += payload.length;
       writtenKeys.add(key);
+    };
+    /** @type {Set<string>} countries whose writes all landed */
+    const savedCountries = new Set();
+    // Upstash answers a pipeline with HTTP 200 even when a single command is
+    // rejected, carrying `{ error }` in that command's slot. A country counts as
+    // saved only when every one of its writes succeeded; otherwise its keys are
+    // treated as not rewritten, so the preservation pass below can keep the last
+    // good pair and the coverage verdict does not count it.
+    const flush = async () => {
+      if (commands.length === 0) return;
+      const batch = commands.splice(0);
+      const owners = commandCountries.splice(0);
+      pendingBytes = 0;
+      const results = await redisPipeline(batch);
+      const rejected = new Set();
+      batch.forEach((_, index) => {
+        const entry = Array.isArray(results) ? results[index] : null;
+        if (!entry || entry.error || entry.result !== 'OK') rejected.add(owners[index]);
+      });
+      for (const iso2 of new Set(owners)) {
+        if (!rejected.has(iso2)) {
+          savedCountries.add(iso2);
+          continue;
+        }
+        writtenKeys.delete(canonicalKey(iso2));
+        writtenKeys.delete(partnersKey(iso2));
+        countryCoverage[iso2] = { ...countryCoverage[iso2], state: 'cache_write_failed' };
+        failedCount++;
+        console.warn(`  [bilateral-hs4-ext] ${iso2}: Redis rejected a write, preserving existing data`);
+      }
     };
 
     for (let i = 0; i < countries.length; i++) {
@@ -192,9 +225,8 @@ export async function main({ requestBudget = REQUEST_BUDGET, now = Date.now() } 
         if (products.length > 0) {
           const fetchedAt = new Date().toISOString();
           const base = { iso2, fetchedAt, source: COMTRADE_ROUTE.source, requestedHs4s: EXT_HS4_CODES };
-          queueWrite(canonicalKey(iso2), JSON.stringify({ ...base, products: products.map(toCanonicalProduct) }));
-          queueWrite(partnersKey(iso2), JSON.stringify({ ...base, products: products.map(toPartnersProduct) }));
-          writtenCount++;
+          queueWrite(iso2, canonicalKey(iso2), JSON.stringify({ ...base, products: products.map(toCanonicalProduct) }));
+          queueWrite(iso2, partnersKey(iso2), JSON.stringify({ ...base, products: products.map(toPartnersProduct) }));
           console.log(`    ${iso2}: ${products.length} products, ${records.length} records`);
         }
       } catch (err) {
@@ -203,10 +235,7 @@ export async function main({ requestBudget = REQUEST_BUDGET, now = Date.now() } 
         failedCount++;
       }
 
-      if (commands.length >= MAX_PIPELINE_COMMANDS || pendingBytes >= MAX_PIPELINE_BYTES) {
-        await redisPipeline(commands.splice(0));
-        pendingBytes = 0;
-      }
+      if (commands.length >= MAX_PIPELINE_COMMANDS || pendingBytes >= MAX_PIPELINE_BYTES) await flush();
       if (rateLimitStreak() >= MAX_CONSECUTIVE_RATE_LIMITED_FETCHES) {
         console.warn(`[bilateral-hs4-ext] ABORTING after ${rateLimitStreak()} consecutive refused fetches (HTTP 429/401/403); writing the partial result.`);
         break;
@@ -214,7 +243,8 @@ export async function main({ requestBudget = REQUEST_BUDGET, now = Date.now() } 
       if (budgetExhausted) break;
     }
 
-    if (commands.length > 0) await redisPipeline(commands);
+    await flush();
+    const writtenCount = savedCountries.size;
 
     // Countries not rewritten keep their last good pair for at most
     // MAX_PRESERVE_RUNS runs, as in the core run.
