@@ -340,7 +340,12 @@ export async function searchHeadlineHistory(
   // the other listed.
   const titles = new Set<string>();
   let newestServedAt = 0;
+  // The memoized index is up to a minute old and the window keeps moving, so
+  // the cutoff is applied here too. Entries are last served first: the first
+  // one outside the window ends the walk.
+  const cutoff = nowMs - windowHours * 60 * 60 * 1000;
   for (const entry of index.entries) {
+    if (entry.lastServedAt < cutoff) break;
     if (revoked.urls.has(entry.link) || titles.has(entry.key)) continue;
     titles.add(entry.key);
     if (entry.lastServedAt > newestServedAt) newestServedAt = entry.lastServedAt;

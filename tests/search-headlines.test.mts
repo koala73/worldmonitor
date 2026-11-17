@@ -432,6 +432,19 @@ describe('headline search', () => {
     assert.deepEqual(titles((await search(freeRoute, 'puces', '&lang=fr')).payload), ['Règles sur les puces renforcées']);
   });
 
+  it('applies the window on every request, also to an index it already holds', async () => {
+    await served(NOW - 24 * HOUR + 10_000, [item('Dock strike begins', 'https://www.reuters.com/begins')]);
+    await served(NOW, [item('Dock strike spreads', 'https://www.reuters.com/spreads')]);
+    assert.equal((await search(freeRoute, 'dock strike')).payload.headlines.length, 2, '23:59:50 old is inside the window');
+
+    commands = [];
+    mock.timers.setTime(NOW + 30_000);
+    const { payload } = await search(freeRoute, 'dock strike');
+    assert.deepEqual(titles(payload), ['Dock strike spreads'], '24:00:20 old is outside it');
+    assert.equal(payload.searchedHeadlines, 1);
+    assert.equal(commands.filter(command => command[0] === 'HVALS').length, 0, 'answered from the index already read');
+  });
+
   it('reads the index once a minute per window, not once per keystroke', async () => {
     await served(NOW, [item('Rates held at 4.5%', 'https://www.reuters.com/rates')]);
     commands = [];
