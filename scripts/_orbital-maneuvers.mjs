@@ -131,15 +131,21 @@ function wrapDeg(deg) {
   return ((((deg + 180) % 360) + 360) % 360) - 180;
 }
 
+/**
+ * Theil-Sen line: the median of the pairwise slopes and the median intercept. One element-set refit
+ * in the window, including one that predates the first comparison, cannot tilt or lift it.
+ */
 function fitLine(points) {
-  const n = points.length;
-  let st = 0; let sy = 0;
-  for (const { t, y } of points) { st += t; sy += y; }
-  const mt = st / n; const my = sy / n;
-  let num = 0; let den = 0;
-  for (const { t, y } of points) { num += (t - mt) * (y - my); den += (t - mt) ** 2; }
-  const slope = den > 0 ? num / den : 0;
-  return { predict: (t) => my + slope * (t - mt), slope };
+  const slopes = [];
+  for (let i = 0; i < points.length; i++) {
+    for (let j = i + 1; j < points.length; j++) {
+      const dt = points[j].t - points[i].t;
+      if (dt > 0) slopes.push((points[j].y - points[i].y) / dt);
+    }
+  }
+  const slope = slopes.length > 0 ? median(slopes) : 0;
+  const intercept = median(points.map(({ t, y }) => y - slope * t));
+  return { predict: (t) => intercept + slope * t, slope };
 }
 
 function median(values) {
@@ -160,18 +166,28 @@ function cleanHistory(entries) {
   return [...byEpoch.values()].sort((a, b) => a.epoch - b.epoch);
 }
 
+/** Each epoch's elements replaced by the median of it and its neighbours, so a one-epoch refit drops out. */
+function smoothedElements(history) {
+  const mid = (k, field) => {
+    const values = [history[k - 1], history[k], history[k + 1]].filter(Boolean).map((e) => e[field]);
+    return values.length === 3 ? median(values) : history[k][field];
+  };
+  return history.map((_, k) => ({
+    meanMotion: mid(k, 'meanMotion'),
+    eccentricity: mid(k, 'eccentricity'),
+    inclination: mid(k, 'inclination'),
+  }));
+}
+
 /**
  * Series per element, t in days since the first epoch. RAAN is J2-corrected and unwrapped.
- * The J2 rate comes from the satellite's median elements, not each epoch's own, so one bad
- * element set (a refit) cannot leave a lasting step in the cumulative node series.
+ * Each interval's J2 rate is the mean of its two epochs' rates, taken from elements smoothed over
+ * neighbouring epochs: the rate follows a real inclination or altitude change after one epoch, so
+ * a burn leaves no slope in the node series, while a one-epoch refit leaves no step in it.
  */
 function buildSeries(history) {
   const t0 = history[0].epoch;
-  const rate = j2RaanRateDegPerDay({
-    meanMotion: median(history.map((e) => e.meanMotion)),
-    eccentricity: median(history.map((e) => e.eccentricity)),
-    inclination: median(history.map((e) => e.inclination)),
-  });
+  const rates = smoothedElements(history).map((elements) => j2RaanRateDegPerDay(elements));
   const sma = [];
   const inc = [];
   const raan = [];
@@ -183,12 +199,15 @@ function buildSeries(history) {
     if (k > 0) {
       const prev = history[k - 1];
       const dtDays = (entry.epoch - prev.epoch) / DAY_MS;
-      residualRaan += wrapDeg(entry.raan - prev.raan - rate * dtDays);
+      residualRaan += wrapDeg(entry.raan - prev.raan - ((rates[k - 1] + rates[k]) / 2) * dtDays);
     }
     raan.push({ t, y: residualRaan });
   });
   return { semiMajorAxis: sma, inclination: inc, raan };
 }
+
+/** Degrees from the nearer equatorial orbit, prograde (0) or retrograde (180): the node is undefined at both. */
+const offEquatorDeg = (inclination) => Math.min(inclination, 180 - inclination);
 
 function summarize(entry) {
   return {
@@ -229,24 +248,34 @@ export function detectSatelliteManeuvers(entries, { nowMs, dragDisturbed, option
   }
 
   const regime = orbitRegime(newest);
-  const floors = REGIME_FLOORS[regime];
+  const regimes = history.map((entry) => orbitRegime(entry));
   const series = buildSeries(history);
   const candidates = [];
-  let comparedSteps = 0;
   // The newest step that can be judged is the one the newest epoch confirms.
   const latestK = history.length - 2;
-  let latestJudged = false;
+  // Elements that judged the newest step, and why the others did not.
+  const unjudged = [];
   let latestBlockedByGap = false;
 
   for (const element of Object.keys(ELEMENT_UNITS)) {
     const points = series[element];
-    // The baseline never reaches back across a flagged step: the trend restarts after a burn.
+    // The baseline never reaches back across a flagged or unattributed step: the trend restarts there.
     let baselineStart = 0;
     // Epochs that left the trend for one epoch only (refits): kept out of every later baseline.
     const refits = new Set();
+    let judgedLatest = false;
+    let notApplicable = false;
     for (let k = 1; k + 1 < points.length; k++) {
       const prevT = points[k - 1].t;
       const windowStart = prevT - options.baselineDays;
+      // Thresholds and the drag rule follow the orbit the step started from, not the newest one.
+      const stepRegime = regimes[k - 1];
+      const floors = REGIME_FLOORS[stepRegime];
+      // The node is compared only where every epoch the comparison could use is inclined enough to define it.
+      if (element === 'raan' && [k - 1, k, k + 1].some((i) => offEquatorDeg(history[i].inclination) < floors.raanMinInclinationDeg)) {
+        if (k === latestK) notApplicable = true;
+        continue;
+      }
       if (points[k].t - prevT > options.maxGapDays || points[k + 1].t - points[k].t > options.maxGapDays) {
         if (k === latestK) latestBlockedByGap = true;
         continue;
@@ -261,15 +290,13 @@ export function detectSatelliteManeuvers(entries, { nowMs, dragDisturbed, option
         if (k === latestK) latestBlockedByGap = true;
         continue;
       }
-      // The node is compared only where every epoch the comparison uses is inclined enough to define it.
-      if (element === 'raan') {
-        const used = [...indices, k - 1, k, k + 1];
-        if (used.some((i) => history[i].inclination < floors.raanMinInclinationDeg)) continue;
+      if (element === 'raan' && indices.some((i) => offEquatorDeg(history[i].inclination) < floors.raanMinInclinationDeg)) {
+        if (k === latestK) notApplicable = true;
+        continue;
       }
       const baseline = indices.map((i) => points[i]);
 
-      comparedSteps++;
-      if (k === latestK) latestJudged = true;
+      if (k === latestK) judgedLatest = true;
       const fit = fitLine(baseline);
       const sigma = robustSigma(baseline.map((p) => p.y - fit.predict(p.t)));
       const threshold = Math.max(floors[element], options.sigmaMultiplier * sigma);
@@ -284,12 +311,16 @@ export function detectSatelliteManeuvers(entries, { nowMs, dragDisturbed, option
 
       const from = history[k - 1];
       const to = history[k];
-      if (element === 'semiMajorAxis' && regime === 'leo') {
-        if (residual < 0) {
-          const disturbed = typeof dragDisturbed === 'function' ? dragDisturbed(from.epoch, to.epoch) : null;
-          if (disturbed !== false) continue;
-        } else if (points[k].y <= points[k - 1].y) {
+      if (element === 'semiMajorAxis' && (stepRegime === 'leo' || regimes[k] === 'leo')) {
+        const unattributed = residual < 0
+          // A fall: drag can do this unless drag is known to have been quiet.
+          ? (typeof dragDisturbed === 'function' ? dragDisturbed(from.epoch, to.epoch) : null) !== false
           // Above the trend but still falling: decay slowed (quieter drag), the orbit was not raised.
+          : points[k].y <= points[k - 1].y;
+        if (unattributed) {
+          // The level moved without being attributed to a burn: restart the trend so a later,
+          // quieter interval does not compare against the old level and flag this same step.
+          baselineStart = k;
           continue;
         }
       }
@@ -299,7 +330,7 @@ export function detectSatelliteManeuvers(entries, { nowMs, dragDisturbed, option
         noradId,
         element,
         unit: ELEMENT_UNITS[element],
-        regime,
+        regime: stepRegime,
         fromEpoch: new Date(from.epoch).toISOString(),
         toEpoch: new Date(to.epoch).toISOString(),
         confirmedByEpoch: new Date(history[k + 1].epoch).toISOString(),
@@ -312,16 +343,18 @@ export function detectSatelliteManeuvers(entries, { nowMs, dragDisturbed, option
       });
       baselineStart = k;
     }
+    if (!judgedLatest && !notApplicable) unjudged.push(element);
   }
 
-  // 'evaluated' only when the newest judgeable step was compared; otherwise say what stopped it,
-  // so an empty candidate list is never read as covering the latest change.
+  // 'evaluated' only when every element that applies judged the newest step; otherwise say what
+  // stopped it and which elements, so an empty candidate list is never read as covering the latest change.
   let status = 'evaluated';
-  if (!latestJudged) status = latestBlockedByGap ? 'gap' : 'insufficient-baseline';
+  if (unjudged.length > 0) status = latestBlockedByGap ? 'gap' : 'insufficient-baseline';
   return {
     noradId,
     status,
     regime,
+    ...(unjudged.length > 0 ? { unjudgedElements: unjudged } : {}),
     candidates: candidates.sort((a, b) => a.toEpoch.localeCompare(b.toEpoch) || a.element.localeCompare(b.element)),
   };
 }
