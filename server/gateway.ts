@@ -477,10 +477,11 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
 
   '/api/imagery/v1/search-imagery': 'static',
   '/api/orbital/v1/list-imaging-satellites': 'slow',
+  // Public: the satellite card and site sheet read it for every map user (#9110).
+  '/api/orbital/v1/list-satellite-maneuvers': 'slow',
   // Premium-gated, so served private in practice; the tiers document intent.
   '/api/orbital/v1/get-point-passes': 'medium',
   '/api/orbital/v1/get-country-imagery-evidence': 'slow',
-  '/api/orbital/v1/list-satellite-maneuvers': 'slow',
   '/api/orbital/v1/get-watched-site-imagery': 'slow',
 
   '/api/infrastructure/v1/list-temporal-anomalies': 'medium',
