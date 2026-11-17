@@ -22,7 +22,7 @@ This is a prompt template, not a promise that every requested source or field is
 
 ## Create, preview and save
 
-1. Open the custom-widget builder from the dashboard and describe the view you need.
+1. Go to the end of the dashboard panel grid and choose **Create Interactive Widget**, available with premium access. Describe the view you need.
 2. Wait for generation to finish. An error or incomplete preview is not a successful widget.
 3. Inspect the preview before choosing **Add to Dashboard**. Check labels, dates, source links and what happens to missing values.
 4. Add the widget, then reload the same browser profile and confirm it remains available.
@@ -40,7 +40,7 @@ If you cannot verify a claim, ask for a revision or leave it out. Generated cont
 
 ## Understand what saving means
 
-The custom-widget store uses browser local storage for saved widget content and conversation history. Reloading the same browser can restore that saved content. Clearing site data, using another profile or encountering a storage limit can affect it.
+The custom-widget store uses browser local storage for saved widget content and conversation history. Reloading the same browser can restore that saved content. Clearing site data, using another profile or encountering a storage limit can affect it. The local store retains the ten most recently saved widgets. Saving an eleventh removes the earliest saved widget from that store, so reloading will not restore it. This local storage limit is separate from any plan allowance for dashboards.
 
 Do not infer cross-device synchronization, team sharing or scheduled regeneration from a successful save. Those are separate capabilities. A stored widget can still display older information; check [data timestamps and freshness](/blog/posts/real-time-intelligence-data-freshness/) rather than treating persistence as an update guarantee.
 
