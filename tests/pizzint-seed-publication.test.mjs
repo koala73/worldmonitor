@@ -1221,6 +1221,31 @@ test('a closed-zero publication with a failing venue publishes but withholds the
   assert.equal(run.state.cache.get(metaKey).data.fetchedAt, heartbeat, 'BestTime did not answer cleanly');
 });
 
+for (const closed of [false, true]) {
+  test(`a PizzINT fetch failure with ${closed ? 'closed' : 'unavailable'} BestTime venues withholds the quiet heartbeat`, async () => {
+    const run = await quietAfterLive();
+    const heartbeat = structuredClone(run.state.cache.get(metaKey).data);
+    run.state.source = new Error('PizzINT down');
+    if (closed) run.state.besttime.set(run.ids[0], closedZero());
+    for (let tick = 0; tick < 4; tick++) await advance(run);
+    assert.deepEqual(run.state.cache.get(metaKey).data, heartbeat);
+    assert.equal(classifyPizzint(run.state).status, 'STALE_SEED');
+    run.state.source = emptyResponse;
+    await advance(run);
+    assert.equal(run.state.cache.get(metaKey).data.fetchedAt, run.state.now);
+    assert.equal(run.state.cache.get(metaKey).data.lastLiveAt, heartbeat.lastLiveAt);
+  });
+}
+
+test('a real BestTime live reading renews health even when PizzINT is down', async () => {
+  const run = await quietAfterLive();
+  run.state.source = new Error('PizzINT down');
+  run.state.besttime.set(run.ids[0], liveReading(40, 40));
+  await advance(run);
+  assert.equal(run.state.cache.get(metaKey).data.lastLiveAt, run.state.now);
+  assert.equal(run.status().dataFreshness, 'DATA_FRESHNESS_FRESH');
+});
+
 // 2026-11-17 14:45 UTC: PizzINT answered fresh with every venue closed and null
 // busyness (it used to send 0), and BestTime had no live reading for any venue.
 // The relay published nothing, so /get-pizzint-status returned no pizzint object.
