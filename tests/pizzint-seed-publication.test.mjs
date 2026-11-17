@@ -1288,6 +1288,21 @@ for (const closedPopularity of [null, 0]) {
   });
 }
 
+test('a BestTime open zero against its forecast does not hide fresh PizzINT closed rows', async () => {
+  const run = await quietAfterLive(lastLiveOnQuietMorning);
+  const lastLiveAt = run.state.now;
+  run.state.source = quietMorning;
+  run.state.now = quietMorningPoll;
+  run.state.besttime.set(run.ids[0], liveReading(0, 40));
+  await run.seed();
+  const stored = run.state.cache.get(payloadKey);
+  assert.ok(stored && run.state.now < stored.expiresAt, 'the closed state is published');
+  assert.equal(stored.data._seed.sourceVersion, 'pizzint', 'a reading the scorer calls no live signal does not win provider selection');
+  assert.equal(stored.data.data.pizzint.dataFreshness, 'DATA_FRESHNESS_FRESH');
+  assert.equal(stored.data.data.pizzint.locationsOpen, 0);
+  assert.equal(run.state.cache.get(metaKey).data.lastLiveAt, lastLiveAt, 'a closed venue is not a live reading');
+});
+
 test('a poll with nothing to publish keeps the last reading, marked stale, for 24 hours', async () => {
   const run = await quietAfterLive();
   const livePublishedAt = run.state.now;

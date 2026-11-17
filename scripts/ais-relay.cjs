@@ -9541,6 +9541,14 @@ let pizzintSeedInFlight = false;
 // Each sustained venue contributes min(25, excess percent / 5) index points.
 // Sum thresholds 25/50/70/85 map to DEFCON 4/3/2/1; otherwise DEFCON 5.
 // See docs/algorithms.mdx. This is a venue-activity index, not military readiness.
+// An open zero is a sensor gap, not an empty shop, unless the baseline is small.
+function pizzintNoLiveSignal(location) {
+  const live = location.currentPopularity;
+  const forecast = location.forecastPopularity;
+  return !Number.isFinite(live) || live < 0
+    || (!location.isClosedNow && live === 0 && (forecast >= 20 || !(forecast > 0)));
+}
+
 function scorePizzintLocations(locations, previous, now) {
   const gap = now - (previous?.updatedAt || 0);
   const priorLocations = Array.isArray(previous?.locations) ? previous.locations : [];
@@ -9549,8 +9557,7 @@ function scorePizzintLocations(locations, previous, now) {
     const live = location.currentPopularity;
     const forecast = location.forecastPopularity;
     location.hasBaseline = Number.isFinite(forecast) && forecast > 0;
-    location.noLiveSignal = !Number.isFinite(live) || live < 0
-      || (!location.isClosedNow && live === 0 && (forecast >= 20 || !(forecast > 0)));
+    location.noLiveSignal = pizzintNoLiveSignal(location);
     const delta = location.hasBaseline ? Math.max(0, live - forecast) : 0;
     const observedAt = Date.parse(location.recordedAt);
     const candidate = !location.isClosedNow && !location.noLiveSignal
@@ -9781,7 +9788,9 @@ async function seedPizzint() {
     const freshRow = d => d.data_freshness === 'fresh'
       && (!d.is_closed_now || Math.abs(Date.now() - Date.parse(d.recorded_at)) <= PIZZINT_SEED_INTERVAL_MS);
     const hasFreshClosed = raw?.data.some(d => d.is_closed_now && freshRow(d));
-    const fallback = besttime?.locations.length > 0 || !hasFreshClosed ? besttime : null;
+    // A BestTime row the scorer would call no live signal must not displace them.
+    const besttimeLive = besttime?.locations.some(l => !pizzintNoLiveSignal(l));
+    const fallback = besttimeLive || !hasFreshClosed ? besttime : null;
     // The heartbeat needs every polled provider to have answered cleanly; a BestTime
     // that answered no venue at all returns null.
     const answered = !besttimeKey || besttime?.answered === true;
