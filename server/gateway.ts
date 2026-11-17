@@ -461,10 +461,13 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/news/v1/search-fact-checks': 'slow',
   // /verify claim search over the feed caches; the CDN key includes the claim.
   '/api/news/v1/search-claim-headlines': 'fast',
-  // Cmd+K headline search; the cache key includes query, variant and lang.
-  // The 7-day route is premium, so its responses are private (browser only).
-  '/api/news/v1/search-headlines': 'fast',
-  '/api/news/v1/search-headline-archive': 'fast',
+  // Cmd+K headline search. Never stored: an operator revocation is applied on
+  // every request the handler answers, and a stored answer (the caller's own
+  // browser kept one for five minutes, thirty on an error) would go on
+  // listing the revoked article. The browser search source remembers answers
+  // itself for backspacing.
+  '/api/news/v1/search-headlines': 'no-store',
+  '/api/news/v1/search-headline-archive': 'no-store',
   '/api/intelligence/v1/get-country-facts': 'daily',
   '/api/intelligence/v1/list-security-advisories': 'slow',
   '/api/intelligence/v1/list-satellites': 'static',

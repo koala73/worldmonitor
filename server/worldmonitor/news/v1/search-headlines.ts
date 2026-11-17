@@ -22,8 +22,8 @@ import {
  * decides the depth by which URL a caller may reach, never by a parameter:
  *   /search-headlines          24 hours, any dashboard session
  *   /search-headline-archive   7 days, in PREMIUM_RPC_PATHS (gateway-enforced)
- * One URL per window also means the CDN cannot hand a 7-day answer to a free
- * caller: the cached body is keyed by path and query.
+ * Both routes are no-store in the gateway (RPC_CACHE_TIER): the history drops
+ * revoked articles on every request, so no cache may answer in its place.
  */
 async function search(
   ctx: ServerContext,
@@ -46,7 +46,9 @@ async function search(
     throw new ValidationError([{ field: 'lang', description: 'must be a lowercase two-letter language code' }]);
   }
   const result = await searchHeadlineHistory(words, variant, lang, windowHours);
-  // A search that did not run must not be cached as "no matches".
+  // A search that did not run must not be cached as "no matches". The gateway
+  // stores neither route; this keeps that true for any other caller of the
+  // handler.
   if (result.state === 'unavailable') markNoCacheResponse(ctx.request);
   return result;
 }

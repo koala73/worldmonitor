@@ -116,10 +116,8 @@ describe('headline search gateway access', () => {
     const free = await call(FREE_PATH, { 'X-WorldMonitor-Key': sessionToken });
     assert.equal(free.status, 200);
     // An operator revocation is applied on every request the handler sees, so
-    // no shared cache may answer in its place.
-    const cacheControl = free.headers.get('Cache-Control') ?? '';
-    assert.match(cacheControl, /\bprivate\b/, `a 24-hour answer is the caller's alone: ${cacheControl}`);
-    assert.ok(!/\bpublic\b|s-maxage/.test(cacheControl), `a 24-hour answer must not be shared-cacheable: ${cacheControl}`);
+    // no cache, shared or the caller's own browser, may answer in its place.
+    assert.equal(free.headers.get('Cache-Control'), 'no-store');
     assert.equal(free.headers.get('CDN-Cache-Control'), null);
 
     const archive = await call(ARCHIVE_PATH, { 'X-WorldMonitor-Key': sessionToken });
@@ -140,8 +138,7 @@ describe('headline search gateway access', () => {
     const archive = await call(ARCHIVE_PATH, { 'X-WorldMonitor-Key': 'real-key-123' });
     assert.equal(archive.status, 200);
     assert.deepEqual(reached, [ARCHIVE_PATH]);
-    const cacheControl = archive.headers.get('Cache-Control') ?? '';
-    assert.ok(!/\bpublic\b|s-maxage/.test(cacheControl), `a Pro answer must not be shared-cacheable: ${cacheControl}`);
+    assert.equal(archive.headers.get('Cache-Control'), 'no-store', 'a revoked article must not be answered from any cache');
     assert.equal(archive.headers.get('CDN-Cache-Control'), null);
   });
 });
