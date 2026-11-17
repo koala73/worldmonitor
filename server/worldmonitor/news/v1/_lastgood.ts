@@ -18,6 +18,7 @@ import {
   isAcceptableDigest,
   type DigestLike,
 } from '../../../../scripts/shared/digest-acceptance.mjs';
+import { NEWS_LANGUAGES } from '../../../../src/shared/public-rpc-cache';
 
 export { countDigestItems, isAcceptableDigest, type DigestLike };
 
@@ -109,10 +110,9 @@ export {
   type RevocationRead,
 } from '../../../_shared/digest-revocations';
 
-/** Key-cardinality clamp: variant/lang are request-supplied — only write
- *  scope keys for known variants and well-formed 2-letter languages. */
+/** Persist only supported digest languages and well-formed variant names. */
 export function isEligibleScope(variant: string, lang: string): boolean {
-  return /^[a-z]{2}$/.test(lang) && /^[a-z0-9-]+$/.test(variant);
+  return NEWS_LANGUAGES.has(lang) && /^[a-z0-9-]+$/.test(variant);
 }
 
 export interface AcceptedSnapshotMeta {
