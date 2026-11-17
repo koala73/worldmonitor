@@ -6,6 +6,11 @@ const ELLIPSIS = '…';
 // must not send them down the space-separated path.
 const UNSPACED_LANGS = new Set(['ja', 'zh', 'zh-TW', 'th']);
 
+// Without Intl.Segmenter: a base character plus its combining marks, emoji
+// modifiers, tag characters and ZWJ-joined followers, or a flag pair. Close
+// to extended grapheme clusters for the text a brief carries.
+const CLUSTER_RE = /\p{Regional_Indicator}{2}|[\s\S](?:[\p{M}\u{1F3FB}-\u{1F3FF}\u{E0020}-\u{E007F}]|\u200D[\s\S]?)*/gu;
+
 function segmenter(lang, granularity) {
   if (typeof Intl === 'undefined' || typeof Intl.Segmenter !== 'function') return null;
   try {
@@ -18,8 +23,8 @@ function segmenter(lang, granularity) {
 /**
  * Cut `text` to at most `max` grapheme clusters, ending on a word boundary for
  * the given language, and append "…" when cut. Never splits a surrogate pair or
- * a combining sequence. Uses Intl.Segmenter; falls back to a code-point slice
- * when Intl.Segmenter is unavailable.
+ * a combining sequence. Uses Intl.Segmenter; falls back to CLUSTER_RE when
+ * Intl.Segmenter is unavailable.
  * @param {string} text
  * @param {number} max
  * @param {string} [lang]
@@ -28,8 +33,8 @@ export function truncateForDisplay(text, max, lang = 'en') {
   const str = String(text ?? '');
   const graphemes = segmenter(lang, 'grapheme');
   if (!graphemes) {
-    const cps = Array.from(str);
-    return cps.length <= max ? str : `${cps.slice(0, max).join('').trimEnd()}${ELLIPSIS}`;
+    const clusters = str.match(CLUSTER_RE) ?? [];
+    return clusters.length <= max ? str : `${clusters.slice(0, max).join('').trimEnd()}${ELLIPSIS}`;
   }
   const clusters = Array.from(graphemes.segment(str), (s) => s.segment);
   if (clusters.length <= max) return str;
