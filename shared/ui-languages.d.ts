@@ -13,3 +13,7 @@ export function htmlLangFor(code: string): string;
 export const BRIEF_SUBSET_LANGUAGES: readonly string[];
 /** Script class used for typography switches. */
 export function scriptClassFor(code: string): 'latin' | 'cyrillic' | 'greek' | 'cjk' | 'arabic' | 'devanagari' | 'thai';
+/** Brief languages refused until right-to-left layout ships. */
+export const BRIEF_L10N_GATED_LANGS: readonly string[];
+/** Languages the brief is delivered in now, from the Convex BRIEF_L10N_ENABLED / BRIEF_L10N_LANGS env. */
+export function briefL10nDeliverableLanguages(env: { BRIEF_L10N_ENABLED?: string; BRIEF_L10N_LANGS?: string } | undefined): UiLanguage[];

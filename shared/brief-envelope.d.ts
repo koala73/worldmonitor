@@ -28,6 +28,9 @@ export const BRIEF_LOCALIZED_ENVELOPE_VERSION: 5;
 /** `brief:l10n:${userId}:${issueSlot}` */
 export function briefLocalizedKey(userId: string, issueSlot: string): string;
 
+/** `brief:slots:${userId}`: ZSET of issue slots, scored by write time in ms. */
+export function briefSlotsKey(userId: string): string;
+
 /**
  * Versions the renderer accepts from Redis on READ. Always contains
  * the current BRIEF_ENVELOPE_VERSION plus any versions still live in

@@ -2124,7 +2124,7 @@ describe("payments businessSeats extendBusinessInvite", () => {
     const html = emailedHtml(fetchMock);
     expect(html).toContain("This invite expires on ");
     expect(html).not.toContain("expires in 14 days");
-    const newToken = decodeURIComponent(/[?&]token=([^"&]+)/.exec(html)![1]!);
+    const newToken = decodeURIComponent(/(?:\?|&amp;)token=([^"&]+)/.exec(html)![1]!);
     expect(newToken.split(".")[1]).toBe(String(originalExpiry + 24 * HOUR_MS));
 
     // Past the original expiry, inside the extension.
@@ -2265,7 +2265,7 @@ describe("payments businessSeats extendBusinessInvite", () => {
     const unchanged = await t.run(async (ctx) => ctx.db.get(grantId));
     expect(unchanged?.expiresAt).toBe(expiry);
     await t.finishAllScheduledFunctions(vi.runAllTimers);
-    const token = decodeURIComponent(/[?&]token=([^"&]+)/.exec(emailedHtml(fetchMock))![1]!);
+    const token = decodeURIComponent(/(?:\?|&amp;)token=([^"&]+)/.exec(emailedHtml(fetchMock))![1]!);
     expect(token.split(".")[1]).toBe(String(expiry));
     fetchMock.mockRestore();
   });

@@ -4,7 +4,9 @@ import { describe, it } from 'node:test';
 
 import {
   BRIEF_SUBSET_LANGUAGES,
+  BRIEF_L10N_GATED_LANGS,
   RTL_UI_LANGUAGES,
+  briefL10nDeliverableLanguages,
   UI_LANGUAGES,
   UI_LANGUAGE_NAMES,
   htmlLangFor,
@@ -20,6 +22,20 @@ function supportedLanguagesLiteral() {
   assert.ok(declaration, 'SUPPORTED_LANGUAGES declaration must be extractable');
   return [...declaration[1].matchAll(/'([^']+)'/g)].map((match) => match[1]);
 }
+
+describe('briefL10nDeliverableLanguages', () => {
+  it('is empty unless BRIEF_L10N_ENABLED is exactly "1"', () => {
+    assert.deepEqual(briefL10nDeliverableLanguages({}), []);
+    assert.deepEqual(briefL10nDeliverableLanguages({ BRIEF_L10N_LANGS: 'fr' }), []);
+    assert.deepEqual(briefL10nDeliverableLanguages({ BRIEF_L10N_ENABLED: 'true', BRIEF_L10N_LANGS: 'fr' }), []);
+  });
+
+  it('keeps allowlisted UI languages in list order, dropping en, unknown codes and gated languages', () => {
+    const env = { BRIEF_L10N_ENABLED: '1', BRIEF_L10N_LANGS: ' de, xx ,en,fr,fa,ar,fr,' };
+    assert.deepEqual(briefL10nDeliverableLanguages(env), ['fr', 'de']);
+    assert.deepEqual([...BRIEF_L10N_GATED_LANGS], ['ar', 'fa']);
+  });
+});
 
 describe('shared/ui-languages', () => {
   it('UI_LANGUAGES matches the SUPPORTED_LANGUAGES literal in src/services/i18n.ts, in order', () => {

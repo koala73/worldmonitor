@@ -90,6 +90,7 @@ describe('api/brief/carousel cache policy', () => {
       if (url === fontUrl) {
         return new Response(font, { status: 200, headers: { 'Content-Type': 'font/ttf' } });
       }
+      if (decodeURIComponent(url).includes('brief:l10n:')) return new Response(JSON.stringify({ result: null }), { status: 200 });
       return new Response(JSON.stringify({ result: JSON.stringify(envelope) }), { status: 200 });
     };
     const { signBriefToken } = await import('../server/_shared/brief-url.ts');
@@ -107,7 +108,9 @@ describe('api/brief/carousel cache policy', () => {
     assert.equal(bytes[1], 0x50);
   });
 
-  it('carousel route prefers a valid sibling', { timeout: 60_000 }, async () => {
+  const READ_FAILS = Symbol('read fails');
+
+  async function siblingHarness() {
     process.env.BRIEF_URL_SIGNING_SECRET = SECRET;
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.invalid';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'tok';
@@ -129,8 +132,7 @@ describe('api/brief/carousel cache policy', () => {
       ...canonical, version: 5, lang: 'fr',
       data: { ...canonical.data, dateLong: '18 avril 2026', digest: { ...canonical.data.digest, greeting: 'Bonjour à tous' } },
     };
-    const READ_FAILS = Symbol('read fails');
-    const respond = async (siblingValue: unknown): Promise<Response> => {
+    const respond = async (siblingValue: unknown, method = 'GET'): Promise<Response> => {
       globalThis.fetch = async (input: RequestInfo | URL) => {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
         if (url === fontUrl) return new Response(font, { status: 200, headers: { 'Content-Type': 'font/ttf' } });
@@ -142,12 +144,17 @@ describe('api/brief/carousel cache policy', () => {
       const { signBriefToken } = await import('../server/_shared/brief-url.ts');
       const token = await signBriefToken('user_test', '2026-04-18-0800', SECRET);
       const { default: handler } = await import('../api/brief/carousel/[userId]/[issueDate]/[page].ts');
-      const res = await handler(new Request(`${PATH}?t=${token}`));
+      const res = await handler(new Request(`${PATH}?t=${token}`, { method }));
       assert.equal(res.status, 200);
       return res;
     };
     const render = async (siblingValue: unknown): Promise<Uint8Array> =>
       new Uint8Array(await (await respond(siblingValue)).arrayBuffer());
+    return { canonical, sibling, respond, render };
+  }
+
+  it('carousel route prefers a valid sibling', { timeout: 60_000 }, async () => {
+    const { canonical, sibling, respond, render } = await siblingHarness();
     const english = await render(null);
     const localized = await render(sibling);
     const stale = await render({ ...sibling, issuedAt: canonical.issuedAt + 1 });
@@ -160,5 +167,38 @@ describe('api/brief/carousel cache policy', () => {
       assert.equal(fallback.headers.get(header), 'no-store', `${header} after a failed sibling read`);
     }
     assert.equal((await respond(null)).headers.get('Cache-Control'), 'public, max-age=604800');
+
+    // A sibling that was read but rejected (stale issuedAt mid-regeneration,
+    // or invalid) renders English; that English image must not be cached.
+    for (const rejected of [{ ...sibling, issuedAt: canonical.issuedAt + 1 }, { ...sibling, lang: 'en' }]) {
+      for (const method of ['GET', 'HEAD']) {
+        const res = await respond(rejected, method);
+        for (const header of ['Cache-Control', 'CDN-Cache-Control', 'Vercel-CDN-Cache-Control']) {
+          assert.equal(res.headers.get(header), 'no-store', `${method} ${header} after a rejected sibling`);
+        }
+      }
+    }
+    assert.equal((await respond(sibling, 'HEAD')).headers.get('Cache-Control'), 'public, max-age=604800');
+  });
+
+  // The one registered face is Noto Serif's Latin subset. A sibling in a
+  // language it does not cover (Latin Extended, Cyrillic, CJK, Thai, ...)
+  // would draw through the image library's unbounded font fallback, so the
+  // route keeps the canonical English image. That image is the intended
+  // output, not a fallback after a failure, so it is cached.
+  it('a sibling in a language the carousel cannot draw renders the cached English image', { timeout: 60_000 }, async () => {
+    const { sibling, respond, render } = await siblingHarness();
+    const english = await render(null);
+    for (const [lang, greeting] of [['ja', 'こんばんは。'], ['ru', 'Добрый вечер.'], ['pl', 'Dzień dobry.'], ['th', 'สวัสดีตอนเย็น']]) {
+      const gated = { ...sibling, lang, data: { ...sibling.data, digest: { ...sibling.data.digest, greeting } } };
+      const res = await respond(gated);
+      assert.deepEqual(new Uint8Array(await res.arrayBuffer()), english, `${lang} must render the canonical image`);
+      for (const method of ['GET', 'HEAD']) {
+        const headers = (await respond(gated, method)).headers;
+        for (const header of ['Cache-Control', 'CDN-Cache-Control', 'Vercel-CDN-Cache-Control']) {
+          assert.equal(headers.get(header), 'public, max-age=604800', `${lang} ${method} ${header}`);
+        }
+      }
+    }
   });
 });

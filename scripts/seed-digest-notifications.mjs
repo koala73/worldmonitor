@@ -135,8 +135,8 @@ import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
 import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
 import { buildDigestDeliveryPlan } from './lib/digest-delivery-plan.mjs';
 import { selectDigestChannelContent } from './lib/digest-channel-content.mjs';
-import { briefL10nTarget, localizeBrief, readBriefL10nConfig } from './lib/brief-l10n.mjs';
-import { briefLocalizedKey } from '../shared/brief-envelope.js';
+import { briefL10nEnvOverrideWarning, briefL10nTarget, briefPipelineErrors, briefSlotIndexCommands, fetchBriefL10nConfig, localizeBrief, readBriefL10nConfig, writeBriefSlotIndex } from './lib/brief-l10n.mjs';
+import { briefLocalizedKey, briefSlotsKey } from '../shared/brief-envelope.js';
 import { briefIntlLocale, briefPlural, briefT, formatBriefDate } from '../shared/brief-strings.js';
 import { truncateForDisplay } from '../shared/brief-text.js';
 import {
@@ -238,14 +238,32 @@ const BRIEF_SIGNING_SECRET_MISSING =
 // toggled independently (e.g. kill the brief LLM without silencing
 // the email's AI summary during a provider outage).
 const BRIEF_LLM_ENABLED = process.env.BRIEF_LLM_ENABLED !== '0';
-// Localized brief siblings (l10n PR 3). Off unless BRIEF_L10N_ENABLED=1;
-// BRIEF_L10N_LANGS is the allowlist. briefL10nSpentMs is the cumulative
-// lookup + translation time this run, capped by passBudgetMs.
-const briefL10nConfig = readBriefL10nConfig(process.env);
+// Localized brief siblings (l10n PR 3). Disabled until main() reads the
+// Convex switch (BRIEF_L10N_ENABLED / BRIEF_L10N_LANGS on the Convex
+// deployment, the same source the Settings page reads). briefL10nSpentMs is
+// the cumulative lookup + translation time this run, capped by passBudgetMs.
+let briefL10nConfig = readBriefL10nConfig({ ...process.env, BRIEF_L10N_ENABLED: '0', BRIEF_L10N_LANGS: '' });
 let briefL10nSpentMs = 0;
 let briefL10nBudgetSkipped = 0;
 function briefL10nPassBudgetLeft() {
   return briefL10nSpentMs < briefL10nConfig.passBudgetMs;
+}
+// One read of the Convex switch per run (the cron is one process per tick);
+// both compose passes share it.
+let briefL10nConfigLoad = null;
+function loadBriefL10nConfigOnce() {
+  briefL10nConfigLoad ??= fetchBriefL10nConfig({
+    siteUrl: CONVEX_SITE_URL,
+    secret: RELAY_SECRET,
+    env: process.env,
+    fetchImpl: (...args) => globalThis.fetch(...args),
+  }).then((config) => {
+    briefL10nConfig = config;
+    const envWarning = briefL10nEnvOverrideWarning(process.env);
+    if (envWarning) console.warn(`[digest] brief l10n: ${envWarning}`);
+    if (config.enabled) console.log(`[digest] brief l10n on: langs=${[...config.allow].join(',')}`);
+  });
+  return briefL10nConfigLoad;
 }
 // #4917: freshness budget for reusing the prior envelope's prose on
 // non-due compose ticks (minutes; 0 disables reuse and restores the
@@ -1564,6 +1582,7 @@ async function composeBriefsForRun(rules, nowMs, { deadlineMs } = {}) {
     return { briefByUser, composeSuccess: 0, composeFailed: 1 };
   }
   if (!BRIEF_COMPOSE_ENABLED) return { briefByUser, composeSuccess: 0, composeFailed: 0 };
+  await loadBriefL10nConfigOnce();
 
   // The brief's story list now comes from the same digest accumulator
   // the email reads (buildDigest). news:insights:v1 is still consulted
@@ -2070,11 +2089,14 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
       const l10nStarted = Date.now();
       // Neither the policy lookup nor the translation may outlive the pass budget.
       const passLeftMs = () => briefL10nConfig.passBudgetMs - briefL10nSpentMs - (Date.now() - l10nStarted);
+      // The per-user cap starts before the policy lookup, so it covers both.
+      const userDeadline = l10nStarted + briefL10nConfig.userBudgetMs;
+      const leftMs = () => Math.min(userDeadline - Date.now(), passLeftMs());
       let outcome;
       let deadlineTimer;
       try {
         const deadline = new Promise((resolve) => {
-          deadlineTimer = setTimeout(resolve, Math.max(0, passLeftMs()), null);
+          deadlineTimer = setTimeout(resolve, Math.max(0, leftMs()), null);
         });
         const policy = await Promise.race([
           resolveAiRoutingPolicy(userId).then((value) => ({ value })),
@@ -2088,7 +2110,7 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
             sharedDeps: briefLlmDeps,
             userDeps: withAiRoutingPolicy(briefLlmDeps, policy.value),
             userId,
-            budgetMs: Math.max(1, Math.min(briefL10nConfig.userBudgetMs, passLeftMs())),
+            budgetMs: Math.max(1, Math.min(userDeadline - Date.now(), passLeftMs())),
           })
           : { ok: false, reason: 'pass-budget', stats: null };
       } catch (err) {
@@ -2113,7 +2135,6 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
       briefL10nBudgetSkipped += 1;
     }
   }
-  let briefLang = localizedEnvelope ? targetLang : 'en';
 
   // Slot (YYYY-MM-DD-HHMM in the user's tz) is what routes the
   // magazine URL + Redis key. Using the same tz the composer used to
@@ -2135,13 +2156,22 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   // raw = true pins the bare-key write (#7674): the digest composer publishes
   // the envelopes every api/brief reader resolves raw; see the insights read
   // above for the VERCEL_ENV-leak rationale.
+  // Slot index for account deletion, written before any envelope: if it
+  // cannot be written the compose fails, so no envelope exists that a
+  // deletion could not find.
+  await writeBriefSlotIndex(
+    briefSlotIndexCommands(briefSlotsKey(userId), issueSlot, Date.now(), BRIEF_TTL_SECONDS),
+    (commands) => redisPipeline(commands, 5_000, true),
+  );
   const briefCommands = [
     ['SETEX', key, String(BRIEF_TTL_SECONDS), JSON.stringify(finalEnvelope)],
     ['SETEX', latestPointerKey, String(BRIEF_TTL_SECONDS), latestPointerValue],
   ];
   // Flag on: write the sibling, or DEL it so a stale one cannot outlive a
   // switch back to English. Flag off: no brief:l10n: command at all.
+  let siblingIndex = -1;
   if (localizedEnvelope) {
+    siblingIndex = briefCommands.length;
     briefCommands.push(['SETEX', briefLocalizedKey(userId, issueSlot), String(BRIEF_TTL_SECONDS), JSON.stringify(localizedEnvelope)]);
   } else if (briefL10nConfig.enabled) {
     briefCommands.push(['DEL', briefLocalizedKey(userId, issueSlot)]);
@@ -2150,16 +2180,18 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   if (!pipelineResult || !Array.isArray(pipelineResult) || pipelineResult.length < 2) {
     throw new Error('null pipeline response from Upstash');
   }
-  // The canonical envelope and pointer must land; a failed sibling command
-  // only costs the translation, so the user falls back to the English brief.
-  pipelineResult.forEach((cell, index) => {
-    if (!(cell && typeof cell === 'object' && 'error' in cell)) return;
-    if (index < 2) throw new Error(`Upstash SETEX error: ${cell.error}`);
-    console.warn(`[digest] brief l10n user=${userId} sibling write failed, sending English: ${cell.error}`);
+  const pipelineErrors = briefPipelineErrors(pipelineResult, 2, siblingIndex);
+  if (pipelineErrors.fatal) throw new Error(`Upstash SETEX error: ${pipelineErrors.fatal}`);
+  if (pipelineErrors.other.length > 0) {
+    console.warn(`[digest] brief index/sibling write error user=${userId}: ${pipelineErrors.other.join('; ')}`);
+  }
+  // The magazine and carousel read the stored sibling. Without it they render
+  // English, so the email and channels go out in English too.
+  if (pipelineErrors.siblingFailed) {
     localizedEnvelope = null;
     localizedSynthesis = null;
-    briefLang = 'en';
-  });
+  }
+  const briefLang = localizedEnvelope ? targetLang : 'en';
 
   const magazineUrl = await signBriefUrl({
     userId,

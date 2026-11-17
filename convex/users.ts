@@ -22,7 +22,7 @@ import { v } from "convex/values";
 import { TERMS_VERSION } from "../shared/legal";
 import { isAccountDeleting } from "./accountDeletion/guard";
 import { agentRefColumns } from "../shared/agent-client-source";
-import { isUiLanguage, resolveBriefLanguage } from "../shared/ui-languages";
+import { briefL10nDeliverableLanguages, isUiLanguage, resolveBriefLanguage } from "../shared/ui-languages";
 
 // Validation invariants. Length-bounded BEFORE regex (defense in depth
 // against memory-exhaustion via huge strings).
@@ -335,7 +335,11 @@ export const setBriefLanguage = mutation({
   },
 });
 
-/** The caller's stored languages and the brief language they resolve to. */
+/**
+ * The caller's stored languages, the brief language they resolve to, and the
+ * languages the brief is delivered in now (Convex BRIEF_L10N_* env). The
+ * Settings page promises a language only when it is in that list.
+ */
 export const getBriefLanguage = query({
   args: {},
   handler: async (ctx) => {
@@ -347,7 +351,12 @@ export const getBriefLanguage = query({
       .unique();
     const uiLanguage = row?.uiLanguage ?? null;
     const briefLanguage = row?.briefLanguage ?? null;
-    return { uiLanguage, briefLanguage, effective: resolveBriefLanguage({ uiLanguage, briefLanguage }) };
+    return {
+      uiLanguage,
+      briefLanguage,
+      effective: resolveBriefLanguage({ uiLanguage, briefLanguage }),
+      deliverableLanguages: briefL10nDeliverableLanguages(process.env),
+    };
   },
 });
 

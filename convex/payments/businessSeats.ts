@@ -23,6 +23,7 @@ import { internal } from "../_generated/api";
 import { USER_AGENT } from "../broadcast/_resendContacts";
 import { ResendSendError, sendResendEmail } from "../lib/resendEmail";
 import { requireUserId, resolveUserIdentity } from "../lib/auth";
+import { EMAIL_RED, emailButton, emailCard, emailFrame, emailHeading, emailNote, emailParagraph, escapeEmailHtml } from "../../shared/email-frame";
 import {
   extractDomain,
   isCorporateDomain,
@@ -33,15 +34,6 @@ import {
   verifyBusinessInviteToken,
 } from "../lib/identitySigning";
 import { isBusinessPlan, isCoveringAt } from "./subscriptionHelpers";
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 const MAX_SEATS = 4;
 const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
@@ -298,6 +290,35 @@ async function sendSeatEmail(ctx: Pick<ActionCtx, "runQuery">, opts: {
   console.log(opts.successLog);
 }
 
+const SEAT_SUPPORT_NOTE = 'Questions? Reply to this email or contact <a href="mailto:support@worldmonitor.app" style="color: #4ade80;">support@worldmonitor.app</a>.';
+
+/** The team-access-ended email body. Exported for tests. */
+export function teamAccessEndedEmailHtml(): string {
+  return emailFrame({
+    preheader: "Your WorldMonitor Pro seat has ended and your account is back on the free tier.",
+    kicker: "Team access",
+    accent: EMAIL_RED,
+    bodyHtml: `${emailHeading("Team access ended")}
+      ${emailCard(emailParagraph("Your WorldMonitor Pro seat on a team Business plan has ended because the plan is no longer active. Your account has returned to the free tier."), { color: EMAIL_RED })}
+      ${emailButton("https://worldmonitor.app/pro", "View plans", EMAIL_RED)}
+      ${emailNote(SEAT_SUPPORT_NOTE)}`,
+    footerNote: "You're receiving this because you held a seat on a WorldMonitor team plan.",
+  });
+}
+
+/** The Business seat invite email body. Exported for tests. */
+export function businessInviteEmailHtml(args: { ownerEmail: string; acceptUrl: string; expiryNote: string }): string {
+  return emailFrame({
+    preheader: `${args.ownerEmail} invited you to a WorldMonitor Pro seat.`,
+    kicker: "Team invite",
+    bodyHtml: `${emailHeading("You're invited to WorldMonitor Pro")}
+      ${emailCard(emailParagraph(`${escapeEmailHtml(args.ownerEmail)} has invited you to a Pro seat on their WorldMonitor API Business plan. Accept the invite to unlock all Pro features, with no billing setup required.`))}
+      ${emailButton(args.acceptUrl, "Accept invite")}
+      ${emailNote(`${escapeEmailHtml(args.expiryNote)} If you didn't expect this email, you can ignore it.`)}`,
+    footerNote: "You're receiving this because a WorldMonitor Business plan owner invited this address.",
+  });
+}
+
 /**
  * Notifies a revoked invitee that their team access ended. Scheduled from the
  * revoke-on-lapse path in subscriptionHelpers.
@@ -305,23 +326,7 @@ async function sendSeatEmail(ctx: Pick<ActionCtx, "runQuery">, opts: {
 export const sendTeamAccessEndedEmail = internalAction({
   args: { inviteeEmail: v.string() },
   handler: async (ctx, args) => {
-    const html = `
-<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
-  <div style="background: #ef4444; height: 4px;"></div>
-  <div style="padding: 40px 32px;">
-    <p style="font-size: 22px; font-weight: 700; color: #fff; margin: 0 0 12px;">Team access ended</p>
-    <p style="font-size: 14px; color: #999; line-height: 1.5; margin: 0 0 24px;">
-      Your WorldMonitor Pro seat on a team Business plan has ended because the plan is no longer active.
-      Your account has returned to the free tier.
-    </p>
-    <div style="text-align: center;">
-      <a href="https://worldmonitor.app/pro" style="display: inline-block; background: #ef4444; color: #fff; padding: 14px 36px; text-decoration: none; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 2px;">View Plans</a>
-    </div>
-    <p style="font-size: 11px; color: #666; text-align: center; margin: 24px 0 0;">
-      Questions? Reply to this email or contact support@worldmonitor.app.
-    </p>
-  </div>
-</div>`;
+    const html = teamAccessEndedEmailHtml();
 
     await sendSeatEmail(ctx, {
       to: args.inviteeEmail,
@@ -352,23 +357,7 @@ export const sendBusinessInviteEmail = internalAction({
       ? "This invite expires in 14 days."
       : `This invite expires on ${formatInviteExpiry(args.expiresAt)}.`;
     const acceptUrl = `https://www.worldmonitor.app/dashboard?accept-business-invite=${encodeURIComponent(args.grantId)}&token=${encodeURIComponent(args.token)}`;
-    const html = `
-<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
-  <div style="background: #4ade80; height: 4px;"></div>
-  <div style="padding: 40px 32px;">
-    <p style="font-size: 22px; font-weight: 700; color: #fff; margin: 0 0 12px;">You're invited to WorldMonitor Pro</p>
-    <p style="font-size: 14px; color: #999; line-height: 1.5; margin: 0 0 24px;">
-      ${escapeHtml(args.ownerEmail)} has invited you to a Pro seat on their WorldMonitor API Business plan.
-      Accept the invite to unlock all Pro features — no billing setup required.
-    </p>
-    <div style="text-align: center;">
-      <a href="${acceptUrl}" style="display: inline-block; background: #4ade80; color: #0a0a0a; padding: 14px 36px; text-decoration: none; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 2px;">Accept Invite</a>
-    </div>
-    <p style="font-size: 11px; color: #666; text-align: center; margin: 24px 0 0;">
-      ${expiryNote} If you didn't expect this email, you can ignore it.
-    </p>
-  </div>
-</div>`;
+    const html = businessInviteEmailHtml({ ownerEmail: args.ownerEmail, acceptUrl, expiryNote });
 
     await sendSeatEmail(ctx, {
       to: args.inviteeEmail,
