@@ -59,6 +59,7 @@ export interface NewsItem {
   snippet: string;
   tickers: string[];
   credibilityScore: number;
+  linkVerified: boolean;
 }
 
 export interface ThreatClassification {
