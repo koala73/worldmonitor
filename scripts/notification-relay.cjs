@@ -1,5 +1,6 @@
 'use strict';
 
+const { createDeliveryReporter, deliveryErrorClass } = require('./lib/notification-delivery.cjs');
 const { createHash, randomUUID } = require('node:crypto');
 const { Resend } = require('resend');
 const { appendUnsubscribeText, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
@@ -350,6 +351,10 @@ async function deactivateChannel(userId, channelType) {
   }
 }
 
+// ── Delivery results ──────────────────────────────────────────────────────
+
+const { recordDelivery, withDeliveryReports } = createDeliveryReporter({ siteUrl: CONVEX_SITE_URL, secret: RELAY_SECRET, source: 'relay' });
+
 // ── Entitlement check (PRO gate for delivery) ───────────────────────────────
 
 const ENTITLEMENT_CACHE_TTL = 900; // 15 min — success-path cache
@@ -679,8 +684,8 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
   };
   const sendTextPart = (ch, part) => {
     if (ch.channelType === 'telegram' && ch.chatId) return sendTelegram(userId, ch.chatId, part);
-    if (ch.channelType === 'slack' && ch.webhookEnvelope) return sendSlack(userId, ch.webhookEnvelope, part);
-    if (ch.channelType === 'discord' && ch.webhookEnvelope) return sendDiscord(userId, ch.webhookEnvelope, part);
+    if (ch.channelType === 'slack' && ch.webhookEnvelope) return sendSlack(userId, ch.webhookEnvelope, part, ch);
+    if (ch.channelType === 'discord' && ch.webhookEnvelope) return sendDiscord(userId, ch.webhookEnvelope, part, 0, ch);
     return false;
   };
   let anyDelivered = false;
@@ -706,7 +711,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
         for (let i = 0; i < groups.length; i += 1) {
           const title = groups.length > 1 ? `${lines[0]} (part ${i + 1} of ${groups.length})` : lines[0];
           const payloads = buildTeamsNoticePayloads({ title, lines: groups[i], link: NOTIFY_DASHBOARD_URL, linkTitle: 'Open dashboard' });
-          if (!(await sendTeamsCards(userId, ch.webhookEnvelope, payloads))) { allSent = false; break; }
+          if (!(await sendTeamsCards(userId, ch.webhookEnvelope, payloads, ch))) { allSent = false; break; }
           delivered += groups[i].length;
         }
         ok = allSent;
@@ -738,7 +743,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
             ...(eventCorroboration(ev) ? { corroboration: eventCorroboration(ev) } : {}),
           })),
         },
-      }, ch.webhookSecret);
+      }, ch.webhookSecret, ch);
       else if (ch.channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {
         ok = await sendWebPush(userId, ch, {
           title: `WorldMonitor · ${events.length} held alert${events.length === 1 ? '' : 's'}`,
@@ -774,6 +779,10 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
 // whose quiet hours have ended. Self-contained — fetches its own rules.
 // No-op when QUIET_HOURS_BATCH_ENABLED=0 — held events will expire via TTL.
 async function drainBatchOnWake() {
+  return withDeliveryReports(drainBatchOnWakeDelivery);
+}
+
+async function drainBatchOnWakeDelivery() {
   if (!QUIET_HOURS_BATCH_ENABLED) return;
   let allRules;
   try {
@@ -874,25 +883,22 @@ async function sendTelegram(userId, chatId, text, _retryCount = 0) {
 const SLACK_RE = /^https:\/\/hooks\.slack\.com\/services\/[A-Z0-9]+\/[A-Z0-9]+\/[a-zA-Z0-9]+$/;
 const DISCORD_RE = /^https:\/\/discord\.com\/api(?:\/v\d+)?\/webhooks\/\d+\/[\w-]+\/?$/;
 
-async function sendSlack(userId, webhookEnvelope, text) {
+async function sendSlack(userId, webhookEnvelope, text, channel) {
   let webhookUrl;
   try {
     webhookUrl = decrypt(webhookEnvelope);
   } catch (err) {
-    console.warn(`[relay] Slack decrypt failed for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'slack', channel, 'Decrypt failed');
   }
   if (!SLACK_RE.test(webhookUrl)) {
-    console.warn(`[relay] Slack URL invalid for ${userId}`);
-    return false;
+    return recordDelivery(userId, 'slack', channel, 'URL rejected');
   }
   let safeUrl;
   let resolvedAddresses;
   try {
     ({ url: safeUrl, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(webhookUrl));
   } catch (err) {
-    console.warn(`[relay] Slack URL rejected for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'slack', channel, deliveryErrorClass(err, 'URL rejected'));
   }
   let res;
   try {
@@ -903,18 +909,9 @@ async function sendSlack(userId, webhookEnvelope, text) {
       resolvedAddresses,
     );
   } catch (err) {
-    console.warn(`[relay] Slack send error for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'slack', channel, deliveryErrorClass(err));
   }
-  if (res.status === 404 || res.status === 410) {
-    console.warn(`[relay] Slack webhook gone for ${userId} — deactivating`);
-    await deactivateChannel(userId, 'slack');
-    return false;
-  } else if (!res.ok) {
-    console.warn(`[relay] Slack send failed: ${res.status}`);
-    return false;
-  }
-  return true;
+  return recordDelivery(userId, 'slack', channel, res.ok ? null : `HTTP ${res.status}`);
 }
 
 // ── Delivery: Discord ─────────────────────────────────────────────────────────
@@ -959,25 +956,22 @@ function buildDiscordMessagePayload(text) {
   return { content, allowed_mentions: { parse: [] }, flags: DISCORD_SUPPRESS_EMBEDS };
 }
 
-async function sendDiscord(userId, webhookEnvelope, text, retryCount = 0) {
+async function sendDiscord(userId, webhookEnvelope, text, retryCount = 0, channel) {
   let webhookUrl;
   try {
     webhookUrl = decrypt(webhookEnvelope);
   } catch (err) {
-    console.warn(`[relay] Discord decrypt failed for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'discord', channel, 'Decrypt failed');
   }
   if (!DISCORD_RE.test(webhookUrl)) {
-    console.warn(`[relay] Discord URL invalid for ${userId}`);
-    return false;
+    return recordDelivery(userId, 'discord', channel, 'URL rejected');
   }
   let safeUrl;
   let resolvedAddresses;
   try {
     ({ url: safeUrl, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(webhookUrl));
   } catch (err) {
-    console.warn(`[relay] Discord URL rejected for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'discord', channel, deliveryErrorClass(err, 'URL rejected'));
   }
   let res;
   try {
@@ -988,52 +982,32 @@ async function sendDiscord(userId, webhookEnvelope, text, retryCount = 0) {
       resolvedAddresses,
     );
   } catch (err) {
-    console.warn(`[relay] Discord send error for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'discord', channel, deliveryErrorClass(err));
   }
-  if (res.status === 404 || res.status === 410) {
-    console.warn(`[relay] Discord webhook gone for ${userId} — deactivating`);
-    await deactivateChannel(userId, 'discord');
-    return false;
-  } else if (res.status === 429) {
+  if (res.status === 429) {
     if (retryCount >= 1) {
-      console.warn(`[relay] Discord 429 retry limit reached for ${userId}`);
-      return false;
+      return recordDelivery(userId, 'discord', channel, 'HTTP 429');
     }
     const body = await res.json().catch(() => ({}));
     const wait = ((body.retry_after ?? 1) + 0.5) * 1000;
     await new Promise(r => setTimeout(r, wait));
-    return sendDiscord(userId, webhookEnvelope, text, retryCount + 1);
-  } else if (!res.ok) {
-    console.warn(`[relay] Discord send failed: ${res.status}`);
-    return false;
+    return sendDiscord(userId, webhookEnvelope, text, retryCount + 1, channel);
   }
-  console.log(`[relay] Discord delivered to ${userId}`);
-  return true;
+  return recordDelivery(userId, 'discord', channel, res.ok ? null : `HTTP ${res.status}`);
 }
 
 // ── Delivery: Microsoft Teams ─────────────────────────────────────────────────
 
-async function sendTeams(userId, webhookEnvelope, payload) {
+async function sendTeams(userId, webhookEnvelope, payload, channel) {
   let webhookUrl;
   try {
     webhookUrl = decrypt(webhookEnvelope);
   } catch (err) {
-    console.warn(`[relay] Teams decrypt failed for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'teams', channel, 'Decrypt failed');
   }
   const result = await sendTeamsPayload(webhookUrl, payload, { userAgent: 'worldmonitor-relay/1.0' });
-  if (result.gone) {
-    console.warn(`[relay] Teams workflow gone (${result.status}) for ${userId} — deactivating`);
-    await deactivateChannel(userId, 'teams');
-    return false;
-  }
-  if (!result.ok) {
-    console.warn(`[relay] Teams send failed for ${userId}: ${result.error}`);
-    return false;
-  }
-  console.log(`[relay] Teams delivered to ${userId}`);
-  return true;
+  return recordDelivery(userId, 'teams', channel, result.ok ? null
+    : result.status ? `HTTP ${result.status}` : deliveryErrorClass(result.error, 'URL rejected'));
 }
 
 /**
@@ -1041,9 +1015,9 @@ async function sendTeams(userId, webhookEnvelope, payload) {
  * them are: a partly delivered quiet-hours batch keeps its held queue, so a
  * retry may repeat earlier cards but never drops an alert.
  */
-async function sendTeamsCards(userId, webhookEnvelope, payloads) {
+async function sendTeamsCards(userId, webhookEnvelope, payloads, channel) {
   for (const payload of payloads) {
-    if (!(await sendTeams(userId, webhookEnvelope, payload))) return false;
+    if (!(await sendTeams(userId, webhookEnvelope, payload, channel))) return false;
   }
   return payloads.length > 0;
 }
@@ -1076,15 +1050,14 @@ async function sendEmail(email, subject, text, unsubscribeUrl, idempotencyKey) {
   return result.ok;
 }
 
-async function sendWebhook(userId, webhookEnvelope, event, webhookSecretEnvelope) {
+async function sendWebhook(userId, webhookEnvelope, event, webhookSecretEnvelope, channel) {
   let url;
   let signingSecret;
   try {
     url = decrypt(webhookEnvelope);
     signingSecret = resolveWebhookSigningSecret(decrypt, webhookSecretEnvelope);
   } catch (err) {
-    console.warn(`[relay] Webhook decrypt failed for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'webhook', channel, 'Decrypt failed');
   }
 
   let safeUrl;
@@ -1092,8 +1065,7 @@ async function sendWebhook(userId, webhookEnvelope, event, webhookSecretEnvelope
   try {
     ({ url: safeUrl, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(url));
   } catch (err) {
-    console.warn(`[relay] Webhook URL rejected for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'webhook', channel, deliveryErrorClass(err, 'URL rejected'));
   }
 
   // Envelope version stays at '1'. Payload gained optional `corroborationCount`
@@ -1122,19 +1094,9 @@ async function sendWebhook(userId, webhookEnvelope, event, webhookSecretEnvelope
       },
       resolvedAddresses,
     );
-    if (resp.status === 404 || resp.status === 410 || resp.status === 403) {
-      console.warn(`[relay] Webhook ${resp.status} for ${userId} — deactivating`);
-      await deactivateChannel(userId, 'webhook');
-      return false;
-    }
-    if (!resp.ok) {
-      console.warn(`[relay] Webhook delivery failed for ${userId}: HTTP ${resp.status}`);
-      return false;
-    }
-    return true;
+    return recordDelivery(userId, 'webhook', channel, resp.ok ? null : `HTTP ${resp.status}`);
   } catch (err) {
-    console.warn(`[relay] Webhook delivery error for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'webhook', channel, deliveryErrorClass(err));
   }
 }
 
@@ -1327,16 +1289,10 @@ async function sendWebPush(userId, subscription, payload) {
       body,
       { TTL: ttlSec },
     );
-    return true;
+    return recordDelivery(userId, 'web_push', subscription);
   } catch (err) {
-    const code = err?.statusCode;
-    if (code === 404 || code === 410) {
-      console.warn(`[relay] web_push ${code} for ${userId} — deactivating`);
-      await deactivateChannel(userId, 'web_push');
-      return false;
-    }
-    console.warn(`[relay] web_push delivery error for ${userId}:`, err?.message ?? String(err));
-    return false;
+    return recordDelivery(userId, 'web_push', subscription,
+      err?.statusCode ? `HTTP ${err.statusCode}` : deliveryErrorClass(err));
   }
 }
 
@@ -1824,6 +1780,10 @@ function formatSubject(event) {
 }
 
 async function processWelcome(event) {
+  return withDeliveryReports(() => processWelcomeDelivery(event));
+}
+
+async function processWelcomeDelivery(event) {
   const { userId, channelType, welcomeId } = event;
   if (!userId || !channelType) return;
   // Telegram welcome is sent directly by Convex; no relay send needed.
@@ -1852,16 +1812,16 @@ async function processWelcome(event) {
   // Telegram welcome is sent directly by convex/http.ts after claimPairingToken succeeds.
   const text = `✅ WorldMonitor connected! You'll receive breaking news alerts here.`;
   if (channelType === 'slack' && ch.webhookEnvelope) {
-    await sendSlack(userId, ch.webhookEnvelope, text);
+    await sendSlack(userId, ch.webhookEnvelope, text, ch);
   } else if (channelType === 'discord' && ch.webhookEnvelope) {
-    await sendDiscord(userId, ch.webhookEnvelope, text);
+    await sendDiscord(userId, ch.webhookEnvelope, text, 0, ch);
   } else if (channelType === 'teams' && ch.webhookEnvelope) {
     await sendTeams(userId, ch.webhookEnvelope, buildTeamsNoticePayload({
       title: '✅ WorldMonitor connected',
       lines: ["You'll receive alerts here when events match your alert rules."],
       link: NOTIFY_DASHBOARD_URL,
       linkTitle: 'Open WorldMonitor',
-    }));
+    }), ch);
   } else if (channelType === 'email' && ch.email) {
     await sendEmail(ch.email, 'WorldMonitor Notifications Connected', text);
   } else if (channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {
@@ -2101,6 +2061,10 @@ async function releaseRealtimeClaim(dedupDecision, claim) {
 }
 
 async function processEvent(event) {
+  return withDeliveryReports(() => processEventDelivery(event));
+}
+
+async function processEventDelivery(event) {
   if (event.eventType === 'channel_welcome') { await processWelcome(event); return; }
   if (event.eventType === 'flush_quiet_held') { await processFlushQuietHeld(event); return; }
   const eventLog = JSON.stringify({ eventType: event.eventType, severity: event.severity ?? 'high' })
@@ -2333,15 +2297,15 @@ async function processEvent(event) {
         if (ch.channelType === 'telegram' && ch.chatId) {
           await sendTelegram(rule.userId, ch.chatId, deliveryText);
         } else if (ch.channelType === 'slack' && ch.webhookEnvelope) {
-          await sendSlack(rule.userId, ch.webhookEnvelope, deliveryText);
+          await sendSlack(rule.userId, ch.webhookEnvelope, deliveryText, ch);
         } else if (ch.channelType === 'discord' && ch.webhookEnvelope) {
-          await sendDiscord(rule.userId, ch.webhookEnvelope, deliveryText);
+          await sendDiscord(rule.userId, ch.webhookEnvelope, deliveryText, 0, ch);
         } else if (ch.channelType === 'teams' && ch.webhookEnvelope) {
-          await sendTeams(rule.userId, ch.webhookEnvelope, buildTeamsAlertForEvent(event, impactText));
+          await sendTeams(rule.userId, ch.webhookEnvelope, buildTeamsAlertForEvent(event, impactText), ch);
         } else if (ch.channelType === 'email' && ch.email) {
           await sendEmail(ch.email, subject, deliveryText, unsubscribeUrlFor(ch, 'alerts'));
         } else if (ch.channelType === 'webhook' && ch.webhookEnvelope) {
-          await sendWebhook(rule.userId, ch.webhookEnvelope, shapeEventForWebhook(event), ch.webhookSecret);
+          await sendWebhook(rule.userId, ch.webhookEnvelope, shapeEventForWebhook(event), ch.webhookSecret, ch);
         } else if (ch.channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {
           // Web push carries short payloads (Chrome caps at ~4KB and
           // auto-truncates longer ones anyway). Use title + first line

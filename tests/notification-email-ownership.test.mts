@@ -122,6 +122,7 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
       Date, Map, Set, AbortSignal, Buffer, createHash, process: { env: {} }, console: { log() {}, warn() {} },
       DIGEST_EMAIL_MAX_HTML_BYTES, injectUnsubscribeFooterHtml, unsubscribeUrlFor,
       appendUnsubscribeText, listUnsubscribeHeaders, resend: {}, RESEND_FROM: 'brief@example.com',
+      withDeliveryReports: async (deliver: () => Promise<unknown>) => deliver(),
       CONVEX_SITE_URL: 'https://convex.test', RELAY_SECRET: 'fake', DIGEST_LOOKBACK_MS: 86400000,
       scanAndEnqueueWatchlistStoryEvents: async () => {},
       fetch: async (url: string) => {

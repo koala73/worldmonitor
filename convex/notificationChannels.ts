@@ -9,7 +9,9 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { channelTypeValidator } from "./constants";
-import { requireVerifiedAccountEmail } from "./lib/notificationEmail";
+import { requireVerifiedAccountEmail, lookupVerifiedAccountEmail } from "./lib/notificationEmail";
+import { deliveryResultValidator, isDeliveryError } from "./lib/notificationDelivery";
+import { sendResendEmail } from "./lib/resendEmail";
 import { assertAlertCapabilities, loadAlertCapabilities } from "./lib/alertCapabilities";
 
 type ChannelType = Infer<typeof channelTypeValidator>;
@@ -598,6 +600,77 @@ export const deactivateChannelForUser = internalMutation({
   args: { userId: v.string(), channelType: channelTypeValidator },
   handler: async (ctx, args) => {
     await deactivateChannelRow(ctx, args.userId, args.channelType);
+  },
+});
+
+export const recordDeliveryResult = internalMutation({
+  args: { results: v.array(v.object({ userId: v.string(), channelType: channelTypeValidator, delivery: deliveryResultValidator })) },
+  handler: async (ctx, { results }) => {
+    if (results.length > 100) throw new Error("DELIVERY_BATCH_TOO_LARGE");
+    for (const result of results) await applyDeliveryResult(ctx, result);
+  },
+});
+
+async function applyDeliveryResult(ctx: MutationCtx, { userId, channelType, delivery }: {
+  userId: string; channelType: ChannelType; delivery: Infer<typeof deliveryResultValidator>;
+}) {
+  if (delivery.error !== null && !isDeliveryError(delivery.error)) throw new Error("INVALID_DELIVERY_ERROR");
+  const channel = await ctx.db.query("notificationChannels")
+    .withIndex("by_user_channel", q => q.eq("userId", userId).eq("channelType", channelType)).unique();
+  if (!channel?.verified || String(channel._id) !== delivery.channelId || channel.linkedAt !== delivery.linkedAt) return;
+  if (delivery.error === null) {
+    if (channel.deliveryFailure) await ctx.db.patch(channel._id, { deliveryFailure: undefined });
+    return;
+  }
+  const now = Date.now();
+  const failure = {
+    count: (channel.deliveryFailure?.count ?? 0) + 1,
+    firstFailedAt: channel.deliveryFailure?.firstFailedAt ?? now,
+    lastError: delivery.error,
+  };
+  const terminal = /^HTTP (401|403|404|410)$/.test(delivery.error);
+  const disable = terminal || (failure.count >= 10 && now - failure.firstFailedAt >= 24 * 60 * 60 * 1000);
+  await ctx.db.patch(channel._id, {
+    deliveryFailure: { ...failure, ...(disable ? { disabledAt: now } : {}) },
+    ...(disable ? { verified: false } : {}),
+  });
+  if (disable) {
+    await ctx.scheduler.runAfter(0, internal.notificationChannels.sendDisabledChannelNotice, {
+      userId, channelType, firstFailedAt: failure.firstFailedAt, error: failure.lastError,
+      noticeId: `${channel._id}-${channel.linkedAt}-${now}`,
+    });
+    console.log(JSON.stringify({ metric: "notification_channel_disabled", count: 1, channelType, errorClass: failure.lastError }));
+  }
+}
+
+export const sendDisabledChannelNotice = internalAction({
+  args: {
+    userId: v.string(), channelType: channelTypeValidator, firstFailedAt: v.number(),
+    error: v.string(), noticeId: v.string(), attempt: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const attempt = args.attempt ?? 0;
+    try {
+      if (!isDeliveryError(args.error)) throw new Error("INVALID_DELIVERY_ERROR");
+      const email = await lookupVerifiedAccountEmail(args.userId, { allowMissingUser: true });
+      if (!email) return;
+      const apiKey = process.env.RESEND_API_KEY;
+      if (!apiKey) throw new Error("EMAIL_UNAVAILABLE");
+      const text = `Your ${args.channelType} notification channel was disabled after delivery failures.\n\nError: ${args.error}\nFailures started: ${new Date(args.firstFailedAt).toISOString()}\n\nUpdate and save your channel to resume notifications:\nhttps://www.worldmonitor.app/dashboard?settings=notifications`;
+      await sendResendEmail(ctx, {
+        apiKey, from: process.env.RESEND_FROM ?? "WorldMonitor <notifications@worldmonitor.app>",
+        to: email, subject: "WorldMonitor notification channel disabled",
+        text, html: `<p>${text.replace(/\n/g, "<br>")}</p>`, purpose: "transactional",
+        idempotencyKey: `channel-disabled-${args.noticeId}`,
+      });
+    } catch {
+      if (attempt >= 5) {
+        throw new Error(`[notifications] Channel disable notice failed after retries (${args.channelType})`);
+      }
+      await ctx.scheduler.runAfter(60_000 * 2 ** attempt, internal.notificationChannels.sendDisabledChannelNotice, {
+        ...args, attempt: attempt + 1,
+      });
+    }
   },
 });
 

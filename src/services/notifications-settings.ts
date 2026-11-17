@@ -221,7 +221,7 @@ function applyWebPushRowState(
 ): void {
   rowEl.dataset.webPushState = state;
   rowEl.querySelector('.us-notif-error')?.remove();
-  const sub = rowEl.querySelector<HTMLElement>('.us-notif-ch-sub');
+  const sub = rowEl.querySelector<HTMLElement>('.us-notif-ch-sub:not([data-delivery-disabled])');
   if (sub) {
     // Role FIRST: a live region that is created already-populated has no
     // content change for assistive tech to announce.
@@ -468,6 +468,9 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       ): string {
         const icon = channelIcon(type);
         const name = CHANNEL_LABELS[type];
+        const disabledNotice = channel?.deliveryFailure?.disabledAt !== undefined && !channel.verified
+          ? '<div class="us-notif-ch-sub us-notif-ch-sub-wrap us-notif-ch-sub-warn" data-delivery-disabled role="status">Disabled after repeated delivery failures</div>'
+          : '';
         // #4273: a channel type outside the plan's ladder renders locked
         // behind the upgrade CTA instead of a Connect button. A row that is
         // already connected (written while the account was paid) keeps its
@@ -478,7 +481,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           return `<div class="us-notif-ch-row us-notif-ch-locked" data-channel-type="${type}">
             <div class="us-notif-ch-icon">${icon}</div>
             <div class="us-notif-ch-body">
-              <div class="us-notif-ch-name">${name}</div>
+              <div class="us-notif-ch-name">${name}</div>${disabledNotice}
               <div class="us-notif-ch-sub">Available on Pro</div>
             </div>
             <div class="us-notif-ch-actions">
@@ -503,7 +506,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             return `<div class="us-notif-ch-row us-notif-ch-on" data-channel-type="web_push" data-web-push-state="denied">
               <div class="us-notif-ch-icon">${icon}</div>
               <div class="us-notif-ch-body">
-                <div class="us-notif-ch-name">${name}</div>
+                <div class="us-notif-ch-name">${name}</div>${disabledNotice}
                 <div class="us-notif-ch-sub">${escapeHtml(webPushDeviceLabel(channel))}</div>
                 <div class="us-notif-ch-sub us-notif-ch-sub-wrap us-notif-ch-sub-warn" role="status">${escapeHtml(browserPushBlockedMessage())}</div>
               </div>
@@ -516,7 +519,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           return `<div class="us-notif-ch-row" data-channel-type="web_push" data-web-push-state="denied">
             <div class="us-notif-ch-icon">${icon}</div>
             <div class="us-notif-ch-body">
-              <div class="us-notif-ch-name">${name}</div>
+              <div class="us-notif-ch-name">${name}</div>${disabledNotice}
               <div class="us-notif-ch-sub us-notif-ch-sub-wrap" role="status">${escapeHtml(browserPushBlockedMessage())}</div>
             </div>
             <div class="us-notif-ch-actions">
@@ -568,7 +571,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           return `<div class="us-notif-ch-row us-notif-ch-on" data-channel-type="${type}">
             <div class="us-notif-ch-icon">${icon}</div>
             <div class="us-notif-ch-body">
-              <div class="us-notif-ch-name">${name}</div>
+              <div class="us-notif-ch-name">${name}</div>${disabledNotice}
               <div class="us-notif-ch-sub">${sub}</div>
               ${installHint}
             </div>
@@ -584,7 +587,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           return `<div class="us-notif-ch-row" data-channel-type="telegram">
             <div class="us-notif-ch-icon">${icon}</div>
             <div class="us-notif-ch-body">
-              <div class="us-notif-ch-name">${name}</div>
+              <div class="us-notif-ch-name">${name}</div>${disabledNotice}
               <div class="us-notif-ch-sub">Not connected</div>
             </div>
             <div class="us-notif-ch-actions">
@@ -597,7 +600,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           return `<div class="us-notif-ch-row" data-channel-type="email">
             <div class="us-notif-ch-icon">${icon}</div>
             <div class="us-notif-ch-body">
-              <div class="us-notif-ch-name">${name}</div>
+              <div class="us-notif-ch-name">${name}</div>${disabledNotice}
               <div class="us-notif-ch-sub">Use your account email</div>
             </div>
             <div class="us-notif-ch-actions">
@@ -610,7 +613,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           return `<div class="us-notif-ch-row" data-channel-type="slack">
             <div class="us-notif-ch-icon">${icon}</div>
             <div class="us-notif-ch-body">
-              <div class="us-notif-ch-name">${name}</div>
+              <div class="us-notif-ch-name">${name}</div>${disabledNotice}
               <div class="us-notif-ch-sub">Not connected</div>
             </div>
             <div class="us-notif-ch-actions">
@@ -626,7 +629,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           return `<div class="us-notif-ch-row" data-channel-type="discord">
             <div class="us-notif-ch-icon">${icon}</div>
             <div class="us-notif-ch-body">
-              <div class="us-notif-ch-name">${name}</div>
+              <div class="us-notif-ch-name">${name}</div>${disabledNotice}
               <div class="us-notif-ch-sub">Not connected</div>
             </div>
             <div class="us-notif-ch-actions">
@@ -642,7 +645,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           return `<div class="us-notif-ch-row" data-channel-type="teams">
             <div class="us-notif-ch-icon">${icon}</div>
             <div class="us-notif-ch-body">
-              <div class="us-notif-ch-name">${name}</div>
+              <div class="us-notif-ch-name">${name}</div>${disabledNotice}
               <div class="us-notif-ch-sub">Post alert cards to a channel through a Workflows webhook</div>
             </div>
             <div class="us-notif-ch-actions">
@@ -655,7 +658,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           return `<div class="us-notif-ch-row" data-channel-type="webhook">
             <div class="us-notif-ch-icon">${icon}</div>
             <div class="us-notif-ch-body">
-              <div class="us-notif-ch-name">${name}</div>
+              <div class="us-notif-ch-name">${name}</div>${disabledNotice}
               <div class="us-notif-ch-sub">Send structured JSON to any HTTPS endpoint</div>
             </div>
             <div class="us-notif-ch-actions">
@@ -669,7 +672,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             return `<div class="us-notif-ch-row" data-channel-type="web_push" data-web-push-state="unsupported">
               <div class="us-notif-ch-icon">${icon}</div>
               <div class="us-notif-ch-body">
-                <div class="us-notif-ch-name">${name}</div>
+                <div class="us-notif-ch-name">${name}</div>${disabledNotice}
                 <div class="us-notif-ch-sub us-notif-ch-sub-wrap">${escapeHtml(browserPushUnsupportedMessage())}</div>
               </div>
               <div class="us-notif-ch-actions">
@@ -681,7 +684,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           return `<div class="us-notif-ch-row" data-channel-type="web_push" data-web-push-state="available">
             <div class="us-notif-ch-icon">${icon}</div>
             <div class="us-notif-ch-body">
-              <div class="us-notif-ch-name">${name}</div>
+              <div class="us-notif-ch-name">${name}</div>${disabledNotice}
               <div class="us-notif-ch-sub">Native notifications on this device. Enabling here replaces any previously registered browser.</div>
             </div>
             <div class="us-notif-ch-actions">

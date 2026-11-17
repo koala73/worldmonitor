@@ -46,6 +46,7 @@ function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = 
   }];
   const run = runInNewContext(`${sendEmailSource}\n${mainSource}\nmain`, {
     Date, Map, Set, AbortSignal, Buffer, createHash,
+    withDeliveryReports: async (deliver: () => Promise<unknown>) => deliver(),
     process: { env: {}, exit: (code: number) => {
       exits.push(code);
       lifecycle.push('exit');

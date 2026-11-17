@@ -3,6 +3,7 @@ import type { Infer } from "convex/values";
 import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { lookupVerifiedAccountEmail, requireVerifiedAccountEmail } from "./lib/notificationEmail";
+import { isDeliveryError } from "./lib/notificationDelivery";
 import { timingSafeEqualStrings } from "./lib/svixVerify";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import { briefOnlyUserIds, type BriefRuleFlags } from "./alertRules";
@@ -1017,6 +1018,34 @@ const CHANNEL_TYPES: ReadonlySet<string> = new Set(channelTypeValidator.members.
 function isChannelType(value: unknown): value is Infer<typeof channelTypeValidator> {
   return typeof value === "string" && CHANNEL_TYPES.has(value);
 }
+
+http.route({
+  path: "/relay/delivery-result",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+    if (unauthorized) return unauthorized;
+    const body = await parseJsonObjectBody<Record<string, unknown>>(request);
+    const inputs = body && Array.isArray(body.results) ? body.results : [body];
+    if (inputs.length === 0 || inputs.length > 100) {
+      return Response.json({ error: "INVALID_DELIVERY_RESULT" }, { status: 400 });
+    }
+    const results = [];
+    for (const input of inputs) {
+      const delivery = input?.delivery;
+      if (!input || typeof input.userId !== "string" || !input.userId || !isChannelType(input.channelType)
+        || !delivery || typeof delivery.channelId !== "string" || !delivery.channelId
+        || typeof delivery.linkedAt !== "number" || !Number.isFinite(delivery.linkedAt)
+        || (delivery.error !== null && !isDeliveryError(delivery.error))) {
+        return Response.json({ error: "INVALID_DELIVERY_RESULT" }, { status: 400 });
+      }
+      results.push({ userId: input.userId, channelType: input.channelType,
+        delivery: { channelId: delivery.channelId, linkedAt: delivery.linkedAt, error: delivery.error } });
+    }
+    await ctx.runMutation(internal.notificationChannels.recordDeliveryResult, { results });
+    return Response.json({ ok: true });
+  }),
+});
 
 http.route({
   path: "/relay/deactivate",
