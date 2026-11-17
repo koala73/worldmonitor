@@ -135,7 +135,7 @@ import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
 import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
 import { buildDigestDeliveryPlan } from './lib/digest-delivery-plan.mjs';
 import { selectDigestChannelContent } from './lib/digest-channel-content.mjs';
-import { briefL10nTarget, fetchBriefL10nConfig, localizeBrief, readBriefL10nConfig } from './lib/brief-l10n.mjs';
+import { briefL10nEnvOverrideWarning, briefL10nTarget, briefPipelineErrors, fetchBriefL10nConfig, localizeBrief, readBriefL10nConfig } from './lib/brief-l10n.mjs';
 import { briefLocalizedKey, briefSlotsKey } from '../shared/brief-envelope.js';
 import {
   attachDigestCorroboration,
@@ -257,6 +257,8 @@ function loadBriefL10nConfigOnce() {
     fetchImpl: (...args) => globalThis.fetch(...args),
   }).then((config) => {
     briefL10nConfig = config;
+    const envWarning = briefL10nEnvOverrideWarning(process.env);
+    if (envWarning) console.warn(`[digest] brief l10n: ${envWarning}`);
     if (config.enabled) console.log(`[digest] brief l10n on: langs=${[...config.allow].join(',')}`);
   });
   return briefL10nConfigLoad;
@@ -1558,7 +1560,6 @@ function buildChannelBodies(storyLists, aiSummary, magazineUrl) {
  */
 async function composeBriefsForRun(rules, nowMs, { deadlineMs } = {}) {
   const briefByUser = new Map();
-  await loadBriefL10nConfigOnce();
   // Missing secret without explicit operator-disable = misconfigured
   // rollout. Count it as a compose failure so the end-of-run exit
   // gate trips and Railway flags the run red. Digest send still
@@ -1571,6 +1572,7 @@ async function composeBriefsForRun(rules, nowMs, { deadlineMs } = {}) {
     return { briefByUser, composeSuccess: 0, composeFailed: 1 };
   }
   if (!BRIEF_COMPOSE_ENABLED) return { briefByUser, composeSuccess: 0, composeFailed: 0 };
+  await loadBriefL10nConfigOnce();
 
   // The brief's story list now comes from the same digest accumulator
   // the email reads (buildDigest). news:insights:v1 is still consulted
@@ -2077,11 +2079,14 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
       const l10nStarted = Date.now();
       // Neither the policy lookup nor the translation may outlive the pass budget.
       const passLeftMs = () => briefL10nConfig.passBudgetMs - briefL10nSpentMs - (Date.now() - l10nStarted);
+      // The per-user cap starts before the policy lookup, so it covers both.
+      const userDeadline = l10nStarted + briefL10nConfig.userBudgetMs;
+      const leftMs = () => Math.min(userDeadline - Date.now(), passLeftMs());
       let outcome;
       let deadlineTimer;
       try {
         const deadline = new Promise((resolve) => {
-          deadlineTimer = setTimeout(resolve, Math.max(0, passLeftMs()), null);
+          deadlineTimer = setTimeout(resolve, Math.max(0, leftMs()), null);
         });
         const policy = await Promise.race([
           resolveAiRoutingPolicy(userId).then((value) => ({ value })),
@@ -2095,7 +2100,7 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
             sharedDeps: briefLlmDeps,
             userDeps: withAiRoutingPolicy(briefLlmDeps, policy.value),
             userId,
-            budgetMs: Math.max(1, Math.min(briefL10nConfig.userBudgetMs, passLeftMs())),
+            budgetMs: Math.max(1, Math.min(userDeadline - Date.now(), passLeftMs())),
           })
           : { ok: false, reason: 'pass-budget', stats: null };
       } catch (err) {
@@ -2163,10 +2168,10 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   if (!pipelineResult || !Array.isArray(pipelineResult) || pipelineResult.length < 2) {
     throw new Error('null pipeline response from Upstash');
   }
-  for (const cell of pipelineResult) {
-    if (cell && typeof cell === 'object' && 'error' in cell) {
-      throw new Error(`Upstash SETEX error: ${cell.error}`);
-    }
+  const pipelineErrors = briefPipelineErrors(pipelineResult, 2);
+  if (pipelineErrors.fatal) throw new Error(`Upstash SETEX error: ${pipelineErrors.fatal}`);
+  if (pipelineErrors.other.length > 0) {
+    console.warn(`[digest] brief index/sibling write error user=${userId}: ${pipelineErrors.other.join('; ')}`);
   }
 
   const magazineUrl = await signBriefUrl({
