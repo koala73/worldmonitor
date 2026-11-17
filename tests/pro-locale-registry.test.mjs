@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { nonDefaultLandingLocales } from '../shared/indexable-landing-locales.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -21,6 +22,7 @@ const EXPECTED_OG_LOCALE = {
   hi: 'hi_IN',
   hr: 'hr_HR',
   hu: 'hu_HU',
+  id: 'id_ID',
   it: 'it_IT',
   ja: 'ja_JP',
   ko: 'ko_KR',
@@ -38,6 +40,13 @@ const EXPECTED_OG_LOCALE = {
   zh: 'zh_CN',
   'zh-TW': 'zh_TW',
 };
+
+// Languages the marketing root ships and the dashboard does not. A prerendered
+// homepage needs the pro dictionary alone; the dashboard dictionary is a
+// separate, far larger translation. Adding a code here publishes marketing
+// copy in a language the product does not speak, so each one must be an
+// indexable landing.
+const LANDING_ONLY_LANGUAGES = ['id'];
 
 function parseStringArrayConst(source, name) {
   const match = source.match(new RegExp(String.raw`const\s+${name}\s*=\s*\[([^\]]+)\]`));
@@ -70,8 +79,18 @@ describe('pro locale registry', () => {
   const canonicalLanguages = parseStringArrayConst(appI18n, 'SUPPORTED_LANGUAGES');
   const proLanguages = parseStringArrayConst(proI18n, 'SUPPORTED_LANGUAGES');
 
-  it('registers the same languages as the main app in the same order', () => {
-    assert.deepEqual(proLanguages, canonicalLanguages);
+  const expectedProLanguages = [...canonicalLanguages, ...LANDING_ONLY_LANGUAGES];
+
+  it('registers the main app languages in the same order, then the landing-only languages', () => {
+    assert.deepEqual(proLanguages, expectedProLanguages);
+  });
+
+  it('backs every landing-only language with an indexable landing the dashboard does not cover', () => {
+    const landingIds = nonDefaultLandingLocales().map((locale) => locale.id);
+    for (const language of LANDING_ONLY_LANGUAGES) {
+      assert.ok(landingIds.includes(language), language + ' has a pro dictionary but no prerendered homepage');
+      assert.ok(!canonicalLanguages.includes(language), language + ' is a dashboard language now: drop it from LANDING_ONLY_LANGUAGES');
+    }
   });
 
   it('ships one parseable pro locale JSON file for every registered language', () => {
@@ -80,9 +99,9 @@ describe('pro locale registry', () => {
       .map((name) => name.replace(/\.json$/, ''))
       .sort();
 
-    assert.deepEqual(proLocaleFiles, [...canonicalLanguages].sort());
+    assert.deepEqual(proLocaleFiles, [...expectedProLanguages].sort());
 
-    for (const language of canonicalLanguages) {
+    for (const language of expectedProLanguages) {
       assert.doesNotThrow(
         () => JSON.parse(readFileSync(join(PRO_LOCALES_DIR, language + '.json'), 'utf8')),
         language + '.json should parse as JSON',
@@ -112,9 +131,9 @@ describe('pro locale registry', () => {
   it('keeps pro and app Open Graph locale maps aligned with registered languages', () => {
     const appOgLocales = parseRecord(app, 'ogLocaleMap');
     const proOgLocales = parseRecord(proI18n, 'OG_LOCALE');
-    const expectedOgLocales = Object.fromEntries(canonicalLanguages.map((language) => [language, EXPECTED_OG_LOCALE[language]]));
+    const expectedFor = (languages) => Object.fromEntries(languages.map((language) => [language, EXPECTED_OG_LOCALE[language]]));
 
-    assert.deepEqual(appOgLocales, expectedOgLocales);
-    assert.deepEqual(proOgLocales, expectedOgLocales);
+    assert.deepEqual(appOgLocales, expectedFor(canonicalLanguages));
+    assert.deepEqual(proOgLocales, expectedFor(expectedProLanguages));
   });
 });
