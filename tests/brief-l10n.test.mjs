@@ -322,6 +322,43 @@ describe('localizeBrief', () => {
     assert.equal(result.reason, 'timeout');
   });
 
+  it('no model call starts after the deadline, even when a slow cache read resolves later', async () => {
+    const shared = makeDeps(fakeTranslate());
+    const user = makeDeps(fakeTranslate());
+    for (const d of [shared, user]) {
+      d.deps.cacheGet = () => new Promise((resolve) => setTimeout(() => resolve(null), 60));
+    }
+    const { result } = await run({ shared, user, budgetMs: 20 });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'timeout');
+    await new Promise((r) => setTimeout(r, 120));
+    assert.equal(shared.calls.length + user.calls.length, 0, 'model called after the deadline');
+  });
+
+  it('every model call carries the absolute deadline', async () => {
+    const started = Date.now();
+    const { result, shared, user } = await run({ budgetMs: 5_000 });
+    assert.equal(result.ok, true);
+    for (const call of [...shared.calls, ...user.calls]) {
+      assert.equal(typeof call.opts.deadlineAt, 'number');
+      assert.ok(call.opts.deadlineAt <= started + 5_000 + 50, 'deadline beyond the budget');
+      assert.ok(call.opts.timeoutMs <= call.opts.deadlineAt - started + 50, 'per-call timeout beyond the deadline');
+    }
+  });
+
+  it('cache writes never hold localizeBrief past its deadline, and a valid translation is kept', async () => {
+    const shared = makeDeps(async (s, u) => {
+      await new Promise((r) => setTimeout(r, 150));
+      return fakeTranslate()(s, u);
+    });
+    shared.deps.cacheSet = () => new Promise(() => {});
+    const started = Date.now();
+    const { result } = await run({ shared, budgetMs: 300 });
+    const elapsed = Date.now() - started;
+    assert.equal(result.ok, true);
+    assert.ok(elapsed < 400, `took ${elapsed}ms against a 300ms budget`);
+  });
+
   it('the localized envelope passes assertBriefEnvelope with version 5 and the same issuedAt and clusterIds', async () => {
     const { result } = await run();
     assert.equal(result.ok, true);

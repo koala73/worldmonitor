@@ -349,3 +349,30 @@ test('narrative: validate_reject and success attempts both reach the ingest', as
   assert.equal(captured[2].ok, true);
   assert.equal(captured[2].fallback_index, 2);
 });
+
+test('llm-chain: no further provider is tried once deadlineAt has passed', async () => {
+  baseEnv();
+  delete process.env.USAGE_TELEMETRY;
+  const attempted = [];
+  global.fetch = async (url, init = {}) => {
+    attempted.push(JSON.parse(String(init.body || '{}')).model);
+    await new Promise((r) => setTimeout(r, 80));
+    return { ok: true, json: async () => llmJson('') };
+  };
+  const text = await callLLM('system', 'user prompt', { deadlineAt: Date.now() + 50 });
+  assert.equal(text, null);
+  assert.equal(attempted.length, 1, `tried ${attempted.length} providers after the deadline`);
+});
+
+test('llm-chain: a provider request is aborted at deadlineAt, not at its own longer timeout', async () => {
+  baseEnv();
+  delete process.env.USAGE_TELEMETRY;
+  global.fetch = (_url, init = {}) => new Promise((_resolve, reject) => {
+    init.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'TimeoutError' })));
+  });
+  const started = Date.now();
+  const text = await callLLM('system', 'user prompt', { timeoutMs: 20_000, deadlineAt: Date.now() + 100 });
+  const elapsed = Date.now() - started;
+  assert.equal(text, null);
+  assert.ok(elapsed < 1_000, `ran ${elapsed}ms past a 100ms deadline`);
+});

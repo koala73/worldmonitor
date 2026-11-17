@@ -20,8 +20,10 @@ export const BRIEF_L10N_GATED_LANGS = Object.freeze(['ar', 'fa']);
 const SHARED_TTL_SEC = 7 * 24 * 60 * 60;
 // Covers the 360-minute non-due reuse window (brief-synthesis-reuse.mjs).
 const USER_TTL_SEC = 8 * 60 * 60;
-/** Cache writes are best-effort; never let a slow Redis hold up the send loop. */
+/** Cache writes are best-effort and also bounded by the localization deadline. */
 const CACHE_WRITE_BUDGET_MS = 2_000;
+/** Below this much time left, a model call cannot finish; do not start one. */
+const MIN_MODEL_CALL_MS = 250;
 const MIN_CHECKED_LENGTH = 20;
 /** Upper bound for a translated short label (category, tag, short headline). */
 const SHORT_SOURCE_MAX_LEN = 32;
@@ -186,11 +188,14 @@ function nonEmpty(value) {
  * Translate unique texts. Returns Map<text, translated> or null on failure.
  * @param {string[]} texts
  */
-async function translateTexts(texts, { lang, deps, keyFor, callOpts }) {
+async function translateTexts(texts, { lang, deps, keyFor, callOpts, deadlineAt }) {
   const result = new Map();
   const misses = [];
   const hits = await Promise.all(
-    texts.map((text) => Promise.resolve().then(() => deps.cacheGet(keyFor(text))).catch(() => null)),
+    texts.map((text) => withTimeout(
+      Promise.resolve().then(() => deps.cacheGet(keyFor(text))).catch(() => null),
+      Math.max(0, deadlineAt - Date.now()),
+    ).then((hit) => (hit && typeof hit === 'object' && hit.timedOut === true ? null : hit))),
   );
   texts.forEach((text, i) => {
     // Cached rows are model output shared across users; re-check them.
@@ -199,11 +204,15 @@ async function translateTexts(texts, { lang, deps, keyFor, callOpts }) {
   });
   const stats = { hits: result.size, misses: misses.length, ms: 0 };
   if (misses.length === 0) return { map: result, stats, fresh: [] };
+  const remainingMs = deadlineAt - Date.now();
+  if (remainingMs < MIN_MODEL_CALL_MS) return { map: null, stats, fresh: [], timedOut: true };
   const items = misses.map((text, i) => ({ id: `t${i}`, text }));
   const { system, user } = buildTranslatePrompt(items, lang);
   const started = Date.now();
   const raw = await deps.callLLM(system, user, {
     ...callOpts,
+    timeoutMs: Math.min(callOpts.timeoutMs, remainingMs),
+    deadlineAt,
     allowedProviders: BRIEF_LLM_ALLOWED_PROVIDERS,
     modelOverrides: BRIEF_LLM_MODEL_OVERRIDES,
   });
@@ -262,6 +271,8 @@ function translateThreads(threads, user) {
 export async function localizeBrief(input) {
   const { envelope, synthesis, lang, sharedDeps, userDeps, userId, budgetMs } = input;
   const stats = { sharedMs: 0, userMs: 0, sharedHits: 0, sharedMisses: 0, userHits: 0, userMisses: 0 };
+  // One deadline for the whole operation: cache reads, model calls and cache writes.
+  const deadlineAt = Date.now() + budgetMs;
   const data = envelope?.data;
   const stories = Array.isArray(data?.stories) ? data.stories : null;
   const digest = data?.digest;
@@ -290,14 +301,14 @@ export async function localizeBrief(input) {
       lang,
       deps: sharedDeps,
       keyFor: (text) => sharedTranslateCacheKey(lang, text),
-      ttlSec: SHARED_TTL_SEC,
+      deadlineAt,
       callOpts: { maxTokens: 4096, temperature: 0.2, timeoutMs: 15_000, stage: 'brief-l10n-shared' },
     }),
     translateTexts(userTexts, {
       lang,
       deps: userDeps,
       keyFor: (text) => userTranslateCacheKey(userId, lang, text),
-      ttlSec: USER_TTL_SEC,
+      deadlineAt,
       callOpts: { maxTokens: 2048, temperature: 0.2, timeoutMs: 12_000, stage: 'brief-l10n-user' },
     }),
   ]);
@@ -314,6 +325,7 @@ export async function localizeBrief(input) {
     sharedMs: shared.stats.ms, sharedHits: shared.stats.hits, sharedMisses: shared.stats.misses,
     userMs: user.stats.ms, userHits: user.stats.hits, userMisses: user.stats.misses,
   });
+  if (shared.timedOut || user.timedOut) return { ok: false, reason: 'timeout', stats };
   if (!shared.map) return { ok: false, reason: 'shared-invalid', stats };
   if (!user.map) return { ok: false, reason: 'user-invalid', stats };
 
@@ -359,8 +371,13 @@ export async function localizeBrief(input) {
       sharedDeps.cacheSet(sharedTranslateCacheKey(lang, text), translated, SHARED_TTL_SEC)),
     ...user.fresh.map(([text, translated]) => () =>
       userDeps.cacheSet(userTranslateCacheKey(userId, lang, text), translated, USER_TTL_SEC)),
-  ].map((write) => Promise.resolve().then(write).catch(() => {}));
-  await withTimeout(Promise.all(writes), CACHE_WRITE_BUDGET_MS);
+  ];
+  // The translation is already validated; a write that misses the deadline
+  // only costs a cache entry, so it is abandoned rather than failing the brief.
+  const writeBudgetMs = Math.min(CACHE_WRITE_BUDGET_MS, deadlineAt - Date.now());
+  if (writes.length > 0 && writeBudgetMs > 0) {
+    await withTimeout(Promise.all(writes.map((write) => Promise.resolve().then(write).catch(() => {}))), writeBudgetMs);
+  }
 
   return { ok: true, envelope: localized, synthesis: localizedSynthesis, stats };
 }
