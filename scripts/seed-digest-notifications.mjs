@@ -2058,19 +2058,33 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   if (targetLang && BRIEF_LLM_ENABLED) {
     if (briefL10nPassBudgetLeft()) {
       const l10nStarted = Date.now();
+      // Neither the policy lookup nor the translation may outlive the pass budget.
+      const passLeftMs = () => briefL10nConfig.passBudgetMs - briefL10nSpentMs - (Date.now() - l10nStarted);
       let outcome;
+      let deadlineTimer;
       try {
-        outcome = await localizeBrief({
-          envelope: finalEnvelope,
-          synthesis,
-          lang: targetLang,
-          sharedDeps: briefLlmDeps,
-          userDeps: withAiRoutingPolicy(briefLlmDeps, await resolveAiRoutingPolicy(userId)),
-          userId,
-          budgetMs: briefL10nConfig.userBudgetMs,
+        const deadline = new Promise((resolve) => {
+          deadlineTimer = setTimeout(resolve, Math.max(0, passLeftMs()), null);
         });
+        const policy = await Promise.race([
+          resolveAiRoutingPolicy(userId).then((value) => ({ value })),
+          deadline,
+        ]);
+        outcome = policy
+          ? await localizeBrief({
+            envelope: finalEnvelope,
+            synthesis,
+            lang: targetLang,
+            sharedDeps: briefLlmDeps,
+            userDeps: withAiRoutingPolicy(briefLlmDeps, policy.value),
+            userId,
+            budgetMs: Math.max(1, Math.min(briefL10nConfig.userBudgetMs, passLeftMs())),
+          })
+          : { ok: false, reason: 'pass-budget', stats: null };
       } catch (err) {
         outcome = { ok: false, reason: `throw:${err?.message ?? err}`, stats: null };
+      } finally {
+        clearTimeout(deadlineTimer);
       }
       briefL10nSpentMs += Date.now() - l10nStarted;
       if (outcome.ok) {
