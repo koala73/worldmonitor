@@ -83,7 +83,7 @@ describe('reported landing-page SEO metadata', () => {
   it('keeps the homepage snippet brand-first, bounded, and identical on every emission', () => {
     const welcomeHtml = source('pro-test/welcome.html');
     const welcomeLocale = JSON.parse(source('pro-test/src/locales/en.json')).welcome.meta;
-    const expectedTitle = 'World Monitor: Live War Monitor & Geopolitical Dashboard';
+    const expectedTitle = 'World Monitor: Free Live Geopolitical Intelligence Dashboard';
     const expectedDescription = 'Monitor the situation live: World Monitor is a free real-time map of wars and conflicts, shipping, flights, markets and cyber, with an API and MCP server.';
 
     assert.match(welcomeLocale.title, /^World Monitor: /, 'the homepage title must lead with the brand');
