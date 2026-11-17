@@ -66,13 +66,20 @@ function resolveLink(rawLink, label = 'Read the original report') {
   return { url: classified.url, label, host: firstParty ? null : classified.host };
 }
 
+// An anchor to a publisher. No `noreferrer`, and an explicit policy that sends
+// the origin, so the anchor itself never withholds the Referer header. A mail
+// client decides what it sends (a webmail sends its own origin, a desktop
+// client sends none), so the referrer tag the relay puts on the URL is what a
+// publisher can rely on.
+const ARTICLE_LINK_ATTRS = 'rel="noopener" referrerpolicy="strict-origin-when-cross-origin"';
+
 function severityPill(severity) {
   const color = severityColor(severity);
   return `<span style="display: inline-block; padding: 3px 8px; border: 1px solid ${color}; color: ${color}; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; border-radius: 3px;">${escapeHtml(severityLabel(severity))}</span>`;
 }
 
-function primaryButton(href, label) {
-  return `<a href="${escapeHtml(href)}" style="display: inline-block; background: ${ACCENT}; color: #0a0a0a; padding: 12px 28px; text-decoration: none; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 3px;">${escapeHtml(label)}</a>`;
+function primaryButton(href, label, attrs = '') {
+  return `<a href="${escapeHtml(href)}"${attrs ? ` ${attrs}` : ''} style="display: inline-block; background: ${ACCENT}; color: #0a0a0a; padding: 12px 28px; text-decoration: none; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 3px;">${escapeHtml(label)}</a>`;
 }
 
 function secondaryButton(href, label) {
@@ -172,7 +179,7 @@ function buildAlertEmailHtml(alert) {
     : '';
 
   const buttons = link && link.url !== NOTIFY_DASHBOARD_URL
-    ? `${primaryButton(link.url, link.label)}<span style="display: inline-block; width: 10px;"></span>${secondaryButton(NOTIFY_DASHBOARD_URL, 'Open dashboard')}`
+    ? `${primaryButton(link.url, link.label, link.host ? ARTICLE_LINK_ATTRS : '')}<span style="display: inline-block; width: 10px;"></span>${secondaryButton(NOTIFY_DASHBOARD_URL, 'Open dashboard')}`
     : primaryButton(NOTIFY_DASHBOARD_URL, 'Open dashboard');
   const hostNote = link?.host
     ? `<div style="margin-top: 10px; font-size: 11px; color: #666;">The report opens on ${escapeHtml(link.host)}.</div>`
@@ -213,7 +220,7 @@ function buildHeldAlertsEmailHtml(items) {
     const color = severityColor(item.severity);
     const link = resolveLink(item.link);
     const titleHtml = link && link.url !== NOTIFY_DASHBOARD_URL
-      ? `<a href="${escapeHtml(link.url)}" style="color: #e0e0e0; text-decoration: none; font-size: 14px; font-weight: 600; line-height: 1.4;">${escapeHtml(item.title)}</a>`
+      ? `<a href="${escapeHtml(link.url)}"${link.host ? ` ${ARTICLE_LINK_ATTRS}` : ''} style="color: #e0e0e0; text-decoration: none; font-size: 14px; font-weight: 600; line-height: 1.4;">${escapeHtml(item.title)}</a>`
       : `<span style="color: #e0e0e0; font-size: 14px; font-weight: 600; line-height: 1.4;">${escapeHtml(item.title)}</span>`;
     const meta = [
       `<span style="font-size: 10px; color: ${color}; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">${escapeHtml(severityLabel(item.severity))}</span>`,

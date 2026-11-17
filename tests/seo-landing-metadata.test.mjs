@@ -76,27 +76,44 @@ describe('reported landing-page SEO metadata', () => {
     assertDescription('Chinese sandbox', sandboxDescription);
   });
 
-  it('keeps the homepage description product-led, canonical, and bounded', () => {
+  // The hydrated app rewrites the title and description from the locale file,
+  // and the English prerender keeps the template's head and JSON-LD as
+  // authored, so the two sources must agree on every tag a search result, a
+  // share card or the WebPage node is built from.
+  it('keeps the homepage snippet brand-first, bounded, and identical on every emission', () => {
     const welcomeHtml = source('pro-test/welcome.html');
     const welcomeLocale = JSON.parse(source('pro-test/src/locales/en.json')).welcome.meta;
-    const expectedDescription = 'World Monitor: real-time geopolitical intelligence dashboard. A free live map of conflicts, shipping, flights, markets and cyber, with an API and MCP server.';
-    const expectedTitle = 'World Monitor: Free Geopolitical Intelligence Dashboard';
+    const expectedTitle = 'World Monitor: Free Live Geopolitical Intelligence Dashboard';
+    const expectedDescription = 'Monitor the situation live: World Monitor is a free real-time map of wars and conflicts, shipping, flights, markets and cyber, with an API and MCP server.';
 
+    assert.match(welcomeLocale.title, /^World Monitor: /, 'the homepage title must lead with the brand');
     assertTitle('homepage locale', welcomeLocale.title);
     assertDescription('homepage locale', welcomeLocale.description);
+    assert.ok(
+      welcomeLocale.description.length <= 155,
+      `homepage description must be at most 155 characters, got ${welcomeLocale.description.length}`,
+    );
     assert.equal(welcomeLocale.title, expectedTitle);
     assert.equal(welcomeLocale.ogTitle, expectedTitle);
     assert.equal(welcomeLocale.description, expectedDescription);
     assert.equal(welcomeLocale.ogDescription, expectedDescription);
 
-    const htmlTitle = welcomeHtml.match(/<title>([^<]+)<\/title>/)?.[1];
-    const htmlDescription = welcomeHtml.match(/<meta name="description" content="([^"]+)"/)?.[1];
-    const ogDescription = welcomeHtml.match(/<meta property="og:description" content="([^"]+)"/)?.[1];
-    const twitterDescription = welcomeHtml.match(/<meta name="twitter:description" content="([^"]+)"/)?.[1];
-    assert.equal(htmlTitle, expectedTitle);
-    assert.equal(htmlDescription, expectedDescription);
-    assert.equal(ogDescription, expectedDescription);
-    assert.equal(twitterDescription, expectedDescription);
+    const decode = (value) => value?.replaceAll('&amp;', '&');
+    const meta = (attr, key) => decode(
+      welcomeHtml.match(new RegExp(`<meta ${attr}="${key}" content="([^"]+)"`))?.[1],
+    );
+    assert.equal(decode(welcomeHtml.match(/<title>([^<]+)<\/title>/)?.[1]), expectedTitle);
+    assert.equal(meta('property', 'og:title'), expectedTitle);
+    assert.equal(meta('name', 'twitter:title'), expectedTitle);
+    assert.equal(meta('name', 'description'), expectedDescription);
+    assert.equal(meta('property', 'og:description'), expectedDescription);
+    assert.equal(meta('name', 'twitter:description'), expectedDescription);
+
+    const webPage = [...welcomeHtml.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
+      .map((match) => JSON.parse(match[1]))
+      .find((node) => node['@type'] === 'WebPage');
+    assert.equal(webPage?.name, expectedTitle);
+    assert.equal(webPage?.description, expectedDescription);
 
     // The paragraph after the H1 is the slogan, so speakable must name the
     // definition paragraph by class rather than by position.
@@ -110,6 +127,12 @@ describe('reported landing-page SEO metadata', () => {
   // Every locale serves its own welcome title and description, so the search
   // snippet limits apply to each one, and a key left in English is a missed
   // translation the EN baseline would otherwise mark as current.
+  //
+  // The localized snippets still translate the English that preceded the
+  // current one. The baseline was advanced without retranslating them so an
+  // English-only snippet test stays English, which means translate-locales
+  // reports them fresh. To retranslate, delete the four `welcome.meta.*`
+  // entries from scripts/locale-baselines/pro-test.json and run it.
   it('keeps every localized homepage title and description translated and bounded', () => {
     const dir = resolve(root, 'pro-test/src/locales');
     const welcome = (file) => JSON.parse(readFileSync(resolve(dir, file), 'utf8')).welcome;
