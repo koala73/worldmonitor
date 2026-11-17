@@ -502,6 +502,8 @@ describe('seedTransitSummaries (relay)', () => {
     const source = [
       extractConstLine('CORRIDOR_RISK_BASE_URL'),
       extractConstLine('CORRIDOR_RISK_TTL'),
+      extractConstLine('CORRIDOR_RISK_BANDS_KEY'),
+      extractConstLine('CORRIDOR_RISK_BANDS_TTL'),
       'let corridorRiskSeedInFlight = false;',
       `async function seedCorridorRisk() {${corridorBody}\n}`,
       seedHarnessSrc.replace('return seedTransitSummaries;', 'return { seedCorridorRisk, seedTransitSummaries };'),
@@ -513,7 +515,7 @@ describe('seedTransitSummaries (relay)', () => {
         'fetch', 'envelopeRead', 'envelopeWrite', 'upstashSet', 'console', 'UPSTASH_ENABLED',
         'chokepointCrossings', 'detectTrafficAnomaly', 'summarizePortwatchHistory', 'CHOKEPOINT_THREAT_LEVELS',
         'CORRIDOR_RISK_NAME_MAP', 'deriveCorridorRiskLevel', 'CHROME_UA', 'publishNotificationEvent', 'readTransitWindow', 'upstashEval', 'transitTracker',
-        'notifyPolicy',
+        'notifyPolicy', 'upstashGet',
         source,
       )(
         async () => Response.json([{ name: 'Strait of Hormuz', score: 80, incident_count_7d: 628,
@@ -528,6 +530,8 @@ describe('seedTransitSummaries (relay)', () => {
         async event => { notifications.push(event); },
         readTransitWindow, transitStore(), { flush: async () => new Set() },
         createRequire(import.meta.url)('../scripts/lib/notification-publish-policy.cjs'),
+        // Hormuz was last recorded high, so this critical reading is a rise.
+        async key => (key === 'wm:notif:state:corridor-risk-bands:v1' ? { hormuz_strait: 'high' } : null),
       );
       await seed.seedCorridorRisk();
       await seed.seedTransitSummaries();

@@ -8264,6 +8264,10 @@ const CORRIDOR_RISK_BASE_URL = 'https://corridorrisk.io/api/corridors';
 const CORRIDOR_RISK_REDIS_KEY = 'supply_chain:corridorrisk:v1';
 const CORRIDOR_RISK_TTL = 14400; // 4h (seed runs hourly, gives 3 retries before expiry)
 const CORRIDOR_RISK_SEED_INTERVAL_MS = 60 * 60 * 1000;
+// Last notified band per corridor. Outlives a week-long feed outage; when it
+// does expire, the next reading is recorded silently.
+const CORRIDOR_RISK_BANDS_KEY = 'wm:notif:state:corridor-risk-bands:v1';
+const CORRIDOR_RISK_BANDS_TTL = 7 * 86400;
 let corridorRiskSeedInFlight = false;
 let latestCorridorRiskData = null;
 
@@ -8324,14 +8328,25 @@ async function seedCorridorRisk() {
     await upstashSet('seed-meta:supply_chain:corridorrisk', { fetchedAt: Date.now(), recordCount: Object.keys(result).length }, 604800);
     console.log(`[CorridorRisk] Seeded ${Object.keys(result).length} corridors (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     seedTransitSummaries().catch(e => console.warn('[TransitSummary] Post-CorridorRisk seed error:', e?.message || e));
-    // Keyed on corridor + band for a day (#10873): an unchanged score used to
-    // re-notify hourly because the dedup hash covered the title's live score.
-    for (const [corridorId, c] of Object.entries(result)) {
-      const notification = notifyPolicy.corridorRiskNotification(corridorId, c.riskScore);
-      if (!notification) continue;
-      publishNotificationEvent({ ...notification, variant: undefined })
-        .catch(err => console.warn('[Notify] CorridorRisk publish error:', err?.message));
-    }
+    // Only a rise into a higher band is sent, judged against the bands recorded
+    // in Redis. Band-keyed dedup alone (#10873) still re-sent every corridor
+    // pinned at the feed's 85 ceiling as critical once a day.
+    const scores = Object.fromEntries(Object.entries(result).map(([id, c]) => [id, c.riskScore]));
+    notifyPolicy.publishCorridorRiskTransitions({
+      scores,
+      readBands: async () => {
+        let failed = false;
+        const bands = await upstashGet(CORRIDOR_RISK_BANDS_KEY, () => { failed = true; });
+        return failed ? { ok: false } : { ok: true, bands };
+      },
+      writeBands: (bands) => upstashSet(CORRIDOR_RISK_BANDS_KEY, bands, CORRIDOR_RISK_BANDS_TTL),
+      publish: (notification) => publishNotificationEvent({ ...notification, variant: undefined }),
+    })
+      .then(({ published, skipped }) => {
+        if (skipped) console.warn(`[Notify] CorridorRisk transitions skipped: ${skipped}`);
+        else if (published) console.log(`[Notify] CorridorRisk published ${published} band rise(s)`);
+      })
+      .catch(err => console.warn('[Notify] CorridorRisk publish error:', err?.message));
   } catch (e) {
     console.warn('[CorridorRisk] Seed error:', e?.message || e);
   } finally {

@@ -123,6 +123,95 @@ describe('corridor risk', () => {
   });
 });
 
+describe('corridor risk transitions', () => {
+  // The feed on 2026-11-17: every corridor at 85, the score's ceiling, whether
+  // it logged 12 incidents in a week (Suez) or 703 (South China Sea). The
+  // 24h band dedup re-sent all five as critical every day.
+  const PINNED = { hormuz_strait: 85, bab_el_mandeb: 85, suez: 85, taiwan_strait: 85, bosphorus: 85 };
+  const ALL_CRITICAL = Object.fromEntries(Object.keys(PINNED).map((id) => [id, 'critical']));
+
+  it('sends nothing for a corridor that stays in its band', () => {
+    const { notifications, nextBands } = policy.corridorRiskTransitions(ALL_CRITICAL, PINNED);
+    assert.deepEqual(notifications, []);
+    assert.deepEqual(nextBands, ALL_CRITICAL);
+  });
+
+  it('records the first reading silently, so a deploy or a fresh key does not page everyone', () => {
+    const { notifications, nextBands } = policy.corridorRiskTransitions(null, { suez: 72, bosphorus: 40 });
+    assert.deepEqual(notifications, []);
+    assert.deepEqual(nextBands, { suez: 'critical', bosphorus: 'none' });
+  });
+
+  it('records a corridor first seen in a later reading silently', () => {
+    const { notifications } = policy.corridorRiskTransitions({ suez: 'none' }, { suez: 40, hormuz_strait: 90 });
+    assert.deepEqual(notifications, []);
+  });
+
+  it('sends once when a corridor rises into a higher band', () => {
+    const { notifications, nextBands } = policy.corridorRiskTransitions(
+      { suez: 'none', hormuz_strait: 'high', bosphorus: 'critical' },
+      { suez: 72, hormuz_strait: 75, bosphorus: 90 },
+    );
+    assert.deepEqual(notifications.map((n) => [n.payload.chokepointId, n.severity]), [
+      ['suez', 'critical'],
+      ['hormuz_strait', 'critical'],
+    ]);
+    assert.equal(nextBands.bosphorus, 'critical');
+  });
+
+  it('sends nothing when a corridor falls to a lower band, and re-arms the rise', () => {
+    const fell = policy.corridorRiskTransitions({ suez: 'critical' }, { suez: 60 });
+    assert.deepEqual(fell.notifications, []);
+    assert.deepEqual(fell.nextBands, { suez: 'high' });
+    const rose = policy.corridorRiskTransitions(fell.nextBands, { suez: 80 });
+    assert.equal(rose.notifications.length, 1);
+  });
+
+  function harness(stored, { readFails = false, publishOk = () => true } = {}) {
+    const calls = { published: [], written: [] };
+    return {
+      calls,
+      io: {
+        readBands: async () => (readFails ? { ok: false } : { ok: true, bands: stored }),
+        writeBands: async (bands) => { calls.written.push(bands); },
+        publish: async (n) => { calls.published.push(n.payload.chokepointId); return publishOk(n); },
+      },
+    };
+  }
+
+  it('relay glue: an unchanged pinned feed publishes nothing hour after hour', async () => {
+    let stored = null;
+    for (let tick = 0; tick < 24; tick++) {
+      const { calls, io } = harness(stored);
+      await policy.publishCorridorRiskTransitions({ scores: PINNED, ...io });
+      assert.deepEqual(calls.published, []);
+      stored = calls.written.at(-1);
+    }
+    assert.deepEqual(stored, ALL_CRITICAL);
+  });
+
+  it('relay glue: a failed state read publishes and writes nothing', async () => {
+    const { calls, io } = harness(null, { readFails: true });
+    const out = await policy.publishCorridorRiskTransitions({ scores: { suez: 90 }, ...io });
+    assert.equal(out.skipped, 'state-read-failed');
+    assert.deepEqual(calls.published, []);
+    assert.deepEqual(calls.written, []);
+  });
+
+  it('relay glue: a rise whose publish fails keeps the old band so the next tick retries', async () => {
+    const { calls, io } = harness({ suez: 'none', bosphorus: 'none' }, { publishOk: (n) => n.payload.chokepointId !== 'suez' });
+    await policy.publishCorridorRiskTransitions({ scores: { suez: 90, bosphorus: 90 }, ...io });
+    assert.deepEqual(calls.published, ['suez', 'bosphorus']);
+    assert.deepEqual(calls.written[0], { suez: 'none', bosphorus: 'critical' });
+  });
+
+  it('ignores a corridor whose score is not a number', () => {
+    const { notifications, nextBands } = policy.corridorRiskTransitions({ suez: 'none' }, { suez: 'n/a' });
+    assert.deepEqual(notifications, []);
+    assert.deepEqual(nextBands, { suez: 'none' });
+  });
+});
+
 describe('shipping stress', () => {
   it('dedups on the band for a day', () => {
     const a = policy.shippingStressNotification(91, 'critical');
@@ -227,7 +316,8 @@ describe('ais-relay wiring', () => {
   });
 
   it('publishes corridor risk and shipping stress through the band-keyed builders', () => {
-    assert.match(src, /notifyPolicy\.corridorRiskNotification\(corridorId, c\.riskScore\)/);
+    assert.match(src, /notifyPolicy\.publishCorridorRiskTransitions\(\{/);
+    assert.doesNotMatch(src, /notifyPolicy\.corridorRiskNotification\(/);
     assert.match(src, /notifyPolicy\.shippingStressNotification\(stressScore, stressLevel\)/);
   });
 

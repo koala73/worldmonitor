@@ -145,6 +145,64 @@ function corridorRiskNotification(corridorId, riskScore) {
   };
 }
 
+const CORRIDOR_BAND_RANK = { none: 0, high: 1, critical: 2 };
+
+/**
+ * Corridor-risk notifications for one feed reading, judged against the bands
+ * last recorded per corridor. Only a rise into a higher band is sent: a
+ * corridor that stays critical is a state, not news, and the 24h band dedup
+ * alone re-sent every pinned corridor daily (the feed sat at its 85 ceiling
+ * for all of them on 2026-11-17). No previous bands (first reading, lost
+ * state) or a corridor not seen before records the band without sending.
+ *
+ * @param {Record<string, string> | null} previousBands corridorId -> 'none' | 'high' | 'critical'
+ * @param {Record<string, number>} scores corridorId -> 0-100 score
+ * @returns {{ notifications: object[], nextBands: Record<string, string> }}
+ */
+function corridorRiskTransitions(previousBands, scores) {
+  const previous = previousBands && typeof previousBands === 'object' ? previousBands : null;
+  const nextBands = { ...(previous || {}) };
+  const notifications = [];
+  for (const [corridorId, rawScore] of Object.entries(scores || {})) {
+    const score = Number(rawScore);
+    if (!corridorId || !Number.isFinite(score)) continue;
+    const band = corridorRiskBand(score) || 'none';
+    const before = previous?.[corridorId];
+    nextBands[corridorId] = band;
+    if (!(before in CORRIDOR_BAND_RANK)) continue;
+    if (CORRIDOR_BAND_RANK[band] <= CORRIDOR_BAND_RANK[before]) continue;
+    const notification = corridorRiskNotification(corridorId, score);
+    if (notification) notifications.push(notification);
+  }
+  return { notifications, nextBands };
+}
+
+/**
+ * Publish the corridor-risk band rises in one feed reading and record the new
+ * bands. I/O is injected so the relay glue is testable:
+ *  - readBands() -> { ok: true, bands: object | null } | { ok: false }
+ *  - writeBands(bands) -> Promise
+ *  - publish(notification) -> Promise<boolean> (true once queued or deduped)
+ * A failed read publishes and writes nothing: treating it as a first reading
+ * would overwrite the recorded bands and lose a rise. A rise whose publish
+ * fails keeps its previous band, so the next reading retries it.
+ */
+async function publishCorridorRiskTransitions({ scores, readBands, writeBands, publish }) {
+  const read = await readBands();
+  if (!read?.ok) return { published: 0, skipped: 'state-read-failed' };
+  const previous = read.bands && typeof read.bands === 'object' ? read.bands : null;
+  const { notifications, nextBands } = corridorRiskTransitions(previous, scores);
+  let published = 0;
+  for (const notification of notifications) {
+    const corridorId = notification.payload.chokepointId;
+    const ok = await publish(notification).catch(() => false);
+    if (ok) published += 1;
+    else nextBands[corridorId] = previous[corridorId];
+  }
+  await writeBands(nextBands);
+  return { published };
+}
+
 /** The global shipping-stress notification, or null below the alert band. */
 function shippingStressNotification(stressScore, stressLevel) {
   const score = Number(stressScore);
@@ -275,6 +333,8 @@ module.exports = {
   isEquityIndexSymbol,
   isVolatilitySymbol,
   corridorRiskNotification,
+  corridorRiskTransitions,
+  publishCorridorRiskTransitions,
   shippingStressNotification,
   countryDisplayName,
   weatherAlertNotifyTitle,
