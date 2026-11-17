@@ -62,14 +62,18 @@ it('shows a stale reading without its level colour, so an hours-old level never 
   };
   const defcon = () => indicator.getElement().querySelector<HTMLElement>('.pizzint-defcon')!;
   const label = () => indicator.getElement().querySelector<HTMLElement>('.pizzint-defcon-label')!;
+  const venue = () => indicator.getElement().querySelector<HTMLElement>('.pizzint-location-status')!;
   indicator.updateStatus(status);
   expect(defcon().style.background).not.toBe('');
   expect(label().style.color).not.toBe('');
+  expect(venue().className).toBe('pizzint-location-status spike');
   indicator.updateStatus({ ...status, dataFreshness: 'stale' });
   expect(defcon().textContent, 'the level stays readable').toBe('components.pizzint.defcon');
   expect(defcon().style.background).toBe('');
   expect(defcon().style.color).toBe('');
   expect(label().style.color).toBe('');
+  expect(venue().className, 'an hours-old spike is muted too').toBe('pizzint-location-status closed');
+  expect(venue().textContent).toBe('components.pizzint.statusSpike +100%');
   expect(indicator.getElement().querySelector('.pizzint-updated')!.textContent).toBe('components.pizzint.updated');
 });
 

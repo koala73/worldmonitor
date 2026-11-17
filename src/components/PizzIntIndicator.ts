@@ -196,6 +196,8 @@ export class PizzIntIndicator {
   }
 
   private getStatusClass(loc: PizzIntLocation): string {
+    // A stale reading's venue states are hours old too; mute them like the level.
+    if (this.status?.dataFreshness !== 'fresh') return 'closed';
     if (loc.is_closed_now) return 'closed';
     if (loc.no_live_signal) return 'closed';
     if (loc.is_spike) return 'spike';
