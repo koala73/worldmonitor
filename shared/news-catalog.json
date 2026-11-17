@@ -9797,6 +9797,58 @@
           "browserOrder": 103
         }
       ]
+    },
+    {
+      "name": "Guardian Brazil",
+      "url": "https://www.theguardian.com/world/brazil/rss",
+      "placements": [
+        {
+          "edition": "full",
+          "category": "latam",
+          "browserOrder": 25,
+          "serverOrder": 25
+        }
+      ]
+    },
+    {
+      "name": "Brazil Reports",
+      "url": "https://brazilreports.com/feed/",
+      "placements": [
+        {
+          "edition": "full",
+          "category": "latam",
+          "browserOrder": 26,
+          "serverOrder": 26
+        }
+      ]
+    },
+    {
+      "name": "G1 Política",
+      "url": "https://g1.globo.com/rss/g1/politica/",
+      "lang": "pt",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "latam",
+          "browserOrder": 27,
+          "serverOrder": 27
+        }
+      ]
+    },
+    {
+      "name": "Agência Brasil",
+      "url": "https://agenciabrasil.ebc.com.br/rss/ultimasnoticias/feed.xml",
+      "lang": "pt",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "latam",
+          "browserOrder": 28,
+          "serverOrder": 28
+        }
+      ]
     }
   ]
 }

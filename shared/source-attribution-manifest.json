@@ -279,6 +279,20 @@
       ]
     },
     {
+      "host": "agenciabrasil.ebc.com.br",
+      "provider": "agenciabrasil.ebc.com.br",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit Agência Brasil and link to the original article.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "agentskills.io",
       "provider": "agentskills.io",
       "kind": "structured",
@@ -2160,6 +2174,20 @@
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit bothsidesofthetable.com and link to the original upstream API/dataset.",
       "status": "excluded"
+    },
+    {
+      "host": "brazilreports.com",
+      "provider": "brazilreports.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit Brazil Reports and link to the original article.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
     },
     {
       "host": "breakingdefense.com",
@@ -4950,6 +4978,20 @@
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit fxempire.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "g1.globo.com",
+      "provider": "g1.globo.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit G1 and link to the original article.",
       "status": "terms-review",
       "references": [
         {
