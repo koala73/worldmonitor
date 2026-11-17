@@ -50,7 +50,7 @@ export interface CountryChipPickerOptions {
   initial?: string[];
   onChange?: (codes: string[]) => void;
   // When true, render the inline "Leave empty to receive global critical
-  // events only" hint underneath the chip row (#10873). Default true.
+  // events and the opt-in alerts you turned on" hint underneath the chip row (#10873). Default true.
   showAllHint?: boolean;
   /**
    * Selection cap, defaulting to COUNTRY_CHIP_PICKER_MAX. The free alert
@@ -140,7 +140,7 @@ export function mountCountryChipPicker(
         <button type="button" class="us-notif-ch-btn" data-country-add-btn>Add</button>
         <span class="us-notif-country-error" data-country-error hidden>Enter a 2-letter ISO country code (e.g. US, GB).</span>
       </div>
-      ${showAllHint ? '<div class="ai-flow-toggle-desc us-notif-country-hint">Leave empty to receive global critical events only.</div>' : ''}
+      ${showAllHint ? '<div class="ai-flow-toggle-desc us-notif-country-hint">Leave empty to receive global critical events and the opt-in alerts you turned on.</div>' : ''}
     `, "legacy direct innerHTML migration"));
   }
 

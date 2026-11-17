@@ -966,7 +966,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           <div id="usNotifCountryPicker"></div>
           ${scopeRequired
             ? '<div id="usCountryScopeWarn" class="us-notif-ch-sub-warn us-notif-scope-warn" role="status" hidden>Alerts are paused until you pick at least one country.</div>'
-            : '<div id="usCountryScopeHint" class="ai-flow-toggle-desc" role="status" hidden>No countries picked: real-time alerts cover global critical events only. Add countries to get local alerts for them.</div>'}
+            : '<div id="usCountryScopeHint" class="ai-flow-toggle-desc" role="status" hidden>No countries picked: real-time alerts cover global critical events, plus any opt-in alerts you turned on (chokepoints, watchlist, sites, reservoirs). Add countries to get local alerts for them.</div>'}
           <div class="ai-flow-section-label" style="margin-top:8px">Timezone</div>
           <select class="unified-settings-select" id="usSharedTimezone" aria-label="Timezone" style="width:100%">${makeTzOptions(sharedTz)}</select>`;
         return html;
@@ -1098,7 +1098,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             //   (1) preselectCountry from caller (deep-dive "Notify me about
             //       this country" sub-action — PR B U8 R9 pre-fill).
             //   (2) followed-countries from PR A's primitive (smart default).
-            //   (3) [] fallback (global critical events only, #10873).
+            //   (3) [] fallback (global critical events plus enabled opt-in alerts, #10873).
             // (1) wins when present; the user explicitly clicked into this
             // form FROM a country deep-dive, so that country should be
             // pre-checked even if it's not in their watchlist.
