@@ -89,6 +89,9 @@ function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs,
         publishedAt: candidate.publishedAt,
         corroborationCount: candidate.corroborationCount,
         link: candidate.link,
+        // No digest build behind it. A title in both inputs keeps the digest
+        // candidate above, and with it the build stage of the latency log.
+        fromX: true,
       });
     }
   }
