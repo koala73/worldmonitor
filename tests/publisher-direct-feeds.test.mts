@@ -7,6 +7,8 @@ import { after, before, describe, it } from 'node:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
+import { transpileModule } from 'typescript';
 import { bundleFeedsModule } from './_lib/bundle-feeds-module.mts';
 import { VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds';
 import { __testing__ } from '../server/worldmonitor/news/v1/list-feed-digest';
@@ -110,6 +112,47 @@ describe('publisher-direct RSS feeds', () => {
     for (const raw of ['[]', 'bad-json', '[42]', '{}']) {
       const blob = { [key]: raw };
       assert.equal(migratePublisherDirectOptInsV13(blob, names), blob, 'preserve enable-all and invalid preferences');
+    }
+  });
+
+  it('keeps the new feeds disabled for the session when startup cannot save the migration', () => {
+    const app = readFileSync('src/App.ts', 'utf8');
+    const start = app.indexOf('      const publisherDirectOptInKey =');
+    const end = app.indexOf('      // Locale boost:', start);
+    assert.ok(start >= 0 && end > start);
+    const startup = transpileModule(
+      `let sessionDisabledSources;\nconst pendingMigrationMarkers = [];\n${app.slice(start, end)}\n({ sessionDisabledSources, pendingMigrationMarkers });`,
+      {},
+    ).outputText;
+    const key = 'worldmonitor-disabled-feeds';
+    const marker = 'worldmonitor-publisher-direct-optin-v1';
+    for (const failure of ['preferences', 'marker'] as const) {
+      for (const previous of [undefined, '["existing-choice"]']) {
+        const store = new Map<string, string>();
+        if (previous !== undefined) store.set(key, previous);
+        const result = runInNewContext(startup, {
+          STORAGE_KEYS: { disabledFeeds: key }, PUBLISHER_DIRECT_OPT_IN_SOURCES: names, userLang: 'en',
+          computeDefaultDisabledSources: client.computeDefaultDisabledSources,
+          migratePublisherDirectOptInsV13,
+          safeStorageGet: (name: string) => store.get(name) ?? null,
+          loadFromStorage: (name: string, fallback: unknown) => store.has(name) ? JSON.parse(store.get(name)!) : fallback,
+          saveToStorage: (name: string, value: unknown) => {
+            if (failure === 'preferences') return false;
+            store.set(name, JSON.stringify(value));
+            return true;
+          },
+          safeStorageSetChecked: () => false,
+          safeStorageRemoveChecked: (name: string) => { store.delete(name); return true; },
+        }) as { sessionDisabledSources?: string[]; pendingMigrationMarkers: string[] };
+        const label = `${failure} write fails, stored ${previous ?? 'nothing'}`;
+        assert.equal(store.get(key), previous, `${label}: stored preferences are untouched`);
+        assert.equal(store.get(marker), undefined, `${label}: migration stays retryable`);
+        for (const name of names) {
+          assert.ok(result.sessionDisabledSources?.includes(name), `${label}: ${name} stays disabled this session`);
+        }
+        if (previous) assert.ok(result.sessionDisabledSources?.includes('existing-choice'), `${label}: prior choice kept`);
+        assert.deepEqual([...result.pendingMigrationMarkers], [marker], `${label}: marker is written once preferences persist`);
+      }
     }
   });
 
