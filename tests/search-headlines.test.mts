@@ -56,6 +56,10 @@ async function search(route: typeof freeRoute, query: string, extra = '') {
 
 const titles = (payload: SearchHeadlinesResponse) => payload.headlines.map(headline => headline.title);
 
+/** The titles an HSET from buildHeadlineHistoryWrite carries, in order. */
+const writtenTitles = (write: ReturnType<typeof buildHeadlineHistoryWrite>) =>
+  write[0]!.slice(2).filter((_, index) => index % 2 === 1).map(value => JSON.parse(String(value)).t as string);
+
 beforeEach(() => {
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture-token';
@@ -118,7 +122,7 @@ describe('headline history write', () => {
     const [hset, expire] = write;
     assert.deepEqual(hset!.slice(0, 2), ['HSET', 'news:headline-history:v1:full:en:2026-11-17']);
     assert.equal(hset!.length, 2 + 2 * 2, 'two fields, one command');
-    assert.equal(hset![2], 'https://www.reuters.com/a', 'the field is the article URL');
+    assert.match(String(hset![2]), /^https:\/\/www\.reuters\.com\/a\n[0-9a-z]+$/, 'the field is the article URL and a hash of its title');
     assert.deepEqual(JSON.parse(String(hset![3])), {
       t: 'Rates held at 4.5%', s: 'Reuters World', l: 'https://www.reuters.com/a', p: NOW - HOUR, a: NOW,
     });
@@ -132,10 +136,32 @@ describe('headline history write', () => {
       item('   ', 'https://www.reuters.com/blank-title'),
       item('No source', 'https://www.reuters.com/no-source', ''),
       item('Kept', 'https://www.reuters.com/kept'),
-      item('Kept again under the same URL', 'https://www.reuters.com/kept'),
+      item('KEPT!', 'https://www.reuters.com/kept'),
     ], 'full', 'en', NOW);
-    assert.deepEqual(write[0]!.slice(2).filter((_, index) => index % 2 === 0), ['https://www.reuters.com/kept']);
+    assert.deepEqual(writtenTitles(write), ['Kept'], 'the same title under the same URL is written once');
     assert.deepEqual(buildHeadlineHistoryWrite([item('Gate blanked', '')], 'full', 'en', NOW), [], 'nothing to write');
+  });
+
+  it('keeps each wording a URL was served under, and overwrites only the same wording', async () => {
+    const url = 'https://www.reuters.com/minister';
+    const key = headlineHistoryBucketKey('full', 'en', NOW);
+    await served(NOW - 3 * HOUR, [item('Minister resigns after budget row', url)]);
+    await served(NOW - 2 * HOUR, [item('Minister quits: what happens next', url)]);
+    assert.equal(hashes.get(key)!.size, 2, 'the retitle did not overwrite the first wording');
+    await served(NOW - HOUR, [item('Minister quits - what happens next?', url)]);
+    const stored = [...hashes.get(key)!.values()].map(value => JSON.parse(value) as { t: string; a: number });
+    assert.deepEqual(stored.map(entry => [entry.t, entry.a]), [
+      ['Minister resigns after budget row', NOW - 3 * HOUR],
+      ['Minister quits - what happens next?', NOW - HOUR],
+    ], 'a rebuild of the same wording (case and punctuation aside) refreshes its field');
+  });
+
+  it('writes at most twelve wordings of one URL in a build', () => {
+    const write = buildHeadlineHistoryWrite(
+      Array.from({ length: 14 }, (_, index) => item(`Live: update ${index}`, 'https://www.reuters.com/live')),
+      'full', 'en', NOW,
+    );
+    assert.deepEqual(writtenTitles(write), Array.from({ length: 12 }, (_, index) => `Live: update ${index}`));
   });
 
   it('the digest build records every served item with a publisher-gated link', async () => {
@@ -147,7 +173,7 @@ describe('headline history write', () => {
     ] as never, 'full', 'en');
     assert.equal(ok, true);
     const bucket = hashes.get(headlineHistoryBucketKey('full', 'en', NOW))!;
-    assert.deepEqual([...bucket.keys()], ['https://www.reuters.com/world/rates'], 'the off-publisher link is not indexed');
+    assert.deepEqual([...bucket.values()].map(value => JSON.parse(value).l), ['https://www.reuters.com/world/rates'], 'the off-publisher link is not indexed');
     const { payload } = await search(freeRoute, 'rates held');
     assert.deepEqual(titles(payload), ['Rates held at 4.5%']);
   });
@@ -302,6 +328,49 @@ describe('headline search', () => {
     assert.equal(payload.searchedHeadlines, 1);
   });
 
+  it('finds a retitled article by the wording it was served under earlier', async () => {
+    const url = 'https://www.reuters.com/minister';
+    await served(NOW - 5 * HOUR, [item('Minister resigns after budget row', url, 'Reuters World', NOW - 6 * HOUR)]);
+    await served(NOW, [item('Minister quits: what happens next', url, 'Reuters World', NOW - 6 * HOUR)]);
+
+    const alerted = await search(freeRoute, 'minister resigns after budget row');
+    assert.deepEqual(alerted.payload.headlines, [{
+      source: 'Reuters World',
+      title: 'Minister resigns after budget row',
+      link: url,
+      publishedAt: NOW - 6 * HOUR,
+      lastServedAt: NOW - 5 * HOUR,
+    }], 'the words of an alert sent before the retitle still find the article');
+    assert.deepEqual(titles((await search(freeRoute, 'quits')).payload), ['Minister quits: what happens next']);
+
+    const both = await search(freeRoute, 'minister');
+    assert.deepEqual(titles(both.payload), ['Minister quits: what happens next'], 'one row per article: the wording served last');
+    assert.equal(both.payload.searchedHeadlines, 2, 'each wording is a headline searched');
+  });
+
+  it('keeps an earlier wording that is only in an earlier day bucket', async () => {
+    const url = 'https://www.reuters.com/minister';
+    await served(NOW - 20 * HOUR, [item('Minister resigns after budget row', url)]);
+    await served(NOW, [item('Minister quits: what happens next', url)]);
+    assert.equal(hashes.size, 2, 'two day buckets');
+    assert.deepEqual(titles((await search(freeRoute, 'resigns budget')).payload), ['Minister resigns after budget row']);
+    assert.deepEqual(titles((await search(freeRoute, 'minister')).payload), ['Minister quits: what happens next']);
+  });
+
+  it('searches the twelve wordings of a URL served last, however many separate builds wrote', async () => {
+    const url = 'https://www.reuters.com/live';
+    const wordings = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel', 'india', 'juliet', 'kilo', 'lima', 'mike', 'november'];
+    for (const [index, wording] of wordings.entries()) {
+      await served(NOW - (wordings.length - index) * 60_000, [item(`Live blog: ${wording}`, url)]);
+    }
+    assert.equal(hashes.get(headlineHistoryBucketKey('full', 'en', NOW))!.size, 14, 'a build cannot see what earlier builds wrote');
+    const { payload } = await search(freeRoute, 'live blog');
+    assert.equal(payload.searchedHeadlines, 12);
+    assert.deepEqual(titles(payload), ['Live blog: november']);
+    assert.deepEqual(titles((await search(freeRoute, 'charlie')).payload), ['Live blog: charlie']);
+    assert.deepEqual(titles((await search(freeRoute, 'bravo')).payload), [], 'the thirteenth wording back is not searched');
+  });
+
   it('returns at most 20 headlines, newest first', async () => {
     await served(NOW, Array.from({ length: 30 }, (_, index) =>
       item(`Quake update ${index}`, `https://www.reuters.com/q${index}`, 'Reuters World', NOW - index * 60_000)));
@@ -361,6 +430,19 @@ describe('headline search failure and revocation', () => {
     revoked = [];
     const lifted = await search(freeRoute, 'minister');
     assert.equal(lifted.payload.headlines.length, 2, 'lifting the revocation lists it again');
+  });
+
+  it('drops every wording of a revoked article', async () => {
+    const url = 'https://www.reuters.com/retracted';
+    await served(NOW - 2 * HOUR, [item('Minister took bribes, sources say', url)]);
+    await served(NOW, [item('Correction: minister bribe claim withdrawn', url)]);
+    assert.equal((await search(freeRoute, 'minister')).payload.searchedHeadlines, 2);
+    revoked = [url];
+    for (const query of ['minister', 'bribes sources', 'correction']) {
+      const { payload } = await search(freeRoute, query);
+      assert.deepEqual(payload.headlines, [], query);
+      assert.equal(payload.searchedHeadlines, 0);
+    }
   });
 
   it('fails closed on an index it already holds when revocations cannot be read, then recovers', async () => {

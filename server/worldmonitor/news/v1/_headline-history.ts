@@ -11,12 +11,24 @@
  *
  * Storage: one Redis hash per (edition, language, UTC day served).
  *   news:headline-history:v1:<edition>:<lang>:<YYYY-MM-DD>
- *   field = article URL, value = {t,s,l,p,a} (title, source, link,
- *   publishedAt, last served at).
+ *   field = article URL + "\n" + hash of the normalized title,
+ *   value = {t,s,l,p,a} (title, source, link, publishedAt, last served at).
  * Each digest build sends its served items in one HSET, so the write is one
  * command however many items there are, and a rebuild overwrites the same
  * fields. A headline served on three days is in three buckets; the reader
  * keeps its newest copy.
+ *
+ * The title is part of the field because publishers retitle articles, and an
+ * alert quotes the wording served at the time. With the URL alone as the
+ * field, a retitle overwrote the wording an earlier alert had used. Now each
+ * wording a URL was served under is its own row, on write and on read, and a
+ * search lists one row per URL: the wording that matches.
+ *
+ * Wordings per URL: a build writes at most 12 and a search reads the 12
+ * served last. Both are hard limits. What a bucket holds for one URL is not:
+ * the write is a blind HSET, so a title that changes on every build adds a
+ * field per build. That is measured, not enforced (see Size); the ceiling is
+ * the 1,000 fields a build may write.
  *
  * Buckets are keyed by the day the headline was SERVED, not published: an
  * alert sent two hours ago can be for an article published thirty hours ago,
@@ -24,12 +36,16 @@
  *
  * Size, measured on production 2026-11-17 from the digest accumulators: an
  * edition serves about 1,600 distinct headlines per day in one language
- * (tech/en 1,900), at about 300 bytes each (78 title, 166 link, 12 source,
- * plus JSON). One cell is about 0.5 MB per day, 4.5 MB for the nine days a
- * bucket lives. All 60 cells together serve about 50,000 per day: about
- * 135 MB retained. A 24-hour search reads two buckets (about 1 MB); a 7-day
- * search reads eight (about 4 MB), which is why the read is memoized per
- * isolate and why the window stops at seven days.
+ * (tech/en 1,900). Each is stored in about 480 bytes: a 300-byte value (78
+ * title, 166 link, 12 source, plus JSON) and a 180-byte field. One cell is
+ * about 0.8 MB per day, 7 MB for the nine days a bucket lives. All 60 cells
+ * together serve about 50,000 per day: about 215 MB retained. Retitles are
+ * inside those counts: per day, 2% (tech/en) to 6% (finance/en) more rows
+ * than distinct URLs, and no URL under more than 8 wordings in 48 hours.
+ * That is a floor, because the accumulators merge near-identical wordings.
+ * A search reads values only: a 24-hour search reads two buckets (about
+ * 1 MB), a 7-day search eight (about 4 MB), which is why the read is
+ * memoized per isolate and why the window stops at seven days.
  *
  * Revocations: an article an operator revoked (_shared/digest-revocations.ts)
  * is left out of every answer. Only the headlines are memoized. The revoked
@@ -38,6 +54,7 @@
  */
 import { headlineTitleKey } from '../../../../src/shared/headline-title-key';
 import { readRevokedUrlSet } from '../../../_shared/digest-revocations';
+import { hashString } from '../../../_shared/hash';
 import { isRedisConfigured, runRedisPipeline } from '../../../_shared/redis';
 
 export const HEADLINE_HISTORY_FREE_HOURS = 24;
@@ -50,6 +67,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const BUCKET_RETENTION_DAYS = 9;
 /** A digest serves at most 20 items in each of about 20 categories. */
 const MAX_ITEMS_PER_WRITE = 1000;
+/**
+ * Wordings of one URL a build writes, and wordings of one URL a search reads.
+ * The most one URL was served under in 48 hours of full/en and finance/en was
+ * 8 (market live pages, production 2026-11-17).
+ */
+const MAX_TITLES_PER_LINK = 12;
 const MAX_TITLE_CHARS = 500;
 const MAX_SOURCE_CHARS = 200;
 const MAX_LINK_CHARS = 2048;
@@ -85,6 +108,21 @@ export function headlineHistoryBucketKey(variant: string, lang: string, atMs: nu
 }
 
 /**
+ * The hash field for one wording of one article: the URL, then a hash of the
+ * normalized title. The title is part of the field so that a retitled article
+ * adds a field instead of overwriting the wording served before.
+ *
+ * hashString is not collision-resistant, and need not be here. The URL is in
+ * the field verbatim, so a collision can only be between two wordings of the
+ * same URL, where the later one overwrites the earlier: what a URL-only field
+ * did for every retitle. Nothing reads the field name; the reader takes the
+ * URL and title from the value.
+ */
+function headlineHistoryField(link: string, titleKey: string): string {
+  return `${link}\n${hashString(titleKey)}`;
+}
+
+/**
  * The Redis commands that record one digest build's served items: one HSET of
  * every indexable item into today's bucket, then the bucket's fixed expiry.
  */
@@ -95,6 +133,7 @@ export function buildHeadlineHistoryWrite(
   nowMs: number,
 ): RedisCommand[] {
   const fields = new Map<string, string>();
+  const titlesPerLink = new Map<string, number>();
   for (const item of items) {
     if (fields.size >= MAX_ITEMS_PER_WRITE) break;
     const title = typeof item.title === 'string' ? item.title.replace(/\s+/g, ' ').trim() : '';
@@ -102,8 +141,15 @@ export function buildHeadlineHistoryWrite(
     const source = typeof item.source === 'string' ? item.source.replace(/\s+/g, ' ').trim() : '';
     if (!title || title.length > MAX_TITLE_CHARS || !source || source.length > MAX_SOURCE_CHARS) continue;
     if (!/^https?:\/\//i.test(link) || link.length > MAX_LINK_CHARS) continue;
-    if (fields.has(link)) continue;
-    fields.set(link, JSON.stringify({
+    // A title with no letter or digit has nothing to match a query against.
+    const titleKey = headlineTitleKey(title);
+    if (!titleKey) continue;
+    const field = headlineHistoryField(link, titleKey);
+    if (fields.has(field)) continue;
+    const titles = titlesPerLink.get(link) ?? 0;
+    if (titles >= MAX_TITLES_PER_LINK) continue;
+    titlesPerLink.set(link, titles + 1);
+    fields.set(field, JSON.stringify({
       t: title,
       s: source,
       l: link,
@@ -151,7 +197,7 @@ interface PoolEntry extends HeadlineHistoryEntry {
  */
 interface HeadlineIndex {
   readable: boolean;
-  /** One entry per article URL, last served first. */
+  /** One entry per wording of an article URL, last served first. */
   entries: PoolEntry[];
 }
 
@@ -194,21 +240,30 @@ async function readIndex(variant: string, lang: string, windowHours: number, now
   if (results.some((result) => result?.error || !Array.isArray(result?.result))) return UNREADABLE;
 
   // A headline served on several days is in several buckets: keep the copy
-  // served last.
-  const byLink = new Map<string, PoolEntry>();
+  // served last. A copy is one wording of one URL, so an article that was
+  // retitled keeps a row for each wording it was served under.
+  const byWording = new Map<string, PoolEntry>();
   for (const result of results) {
     for (const raw of result.result as unknown[]) {
       const entry = parseEntry(raw);
       if (!entry || entry.lastServedAt < cutoff) continue;
-      const seen = byLink.get(entry.link);
-      if (!seen || entry.lastServedAt > seen.lastServedAt) byLink.set(entry.link, entry);
+      const id = `${entry.link}\n${entry.key}`;
+      const seen = byWording.get(id);
+      if (!seen || entry.lastServedAt > seen.lastServedAt) byWording.set(id, entry);
     }
   }
   // Last served first, so a search that walks the entries in order meets the
-  // copy to list for a title before its older copies.
-  const entries = [...byLink.values()].sort(
-    (a, b) => b.lastServedAt - a.lastServedAt || b.publishedAt - a.publishedAt,
-  );
+  // copy to list for a title before its older copies, and so the wordings
+  // kept for a URL are the ones served last.
+  const titlesPerLink = new Map<string, number>();
+  const entries = [...byWording.values()]
+    .sort((a, b) => b.lastServedAt - a.lastServedAt || b.publishedAt - a.publishedAt)
+    .filter((entry) => {
+      const titles = titlesPerLink.get(entry.link) ?? 0;
+      if (titles >= MAX_TITLES_PER_LINK) return false;
+      titlesPerLink.set(entry.link, titles + 1);
+      return true;
+    });
   return { readable: true, entries };
 }
 
@@ -288,9 +343,21 @@ export async function searchHeadlineHistory(
   }
   matches.sort((a, b) =>
     Number(b.phrase) - Number(a.phrase)
-    || (b.entry.publishedAt || b.entry.lastServedAt) - (a.entry.publishedAt || a.entry.lastServedAt));
+    || (b.entry.publishedAt || b.entry.lastServedAt) - (a.entry.publishedAt || a.entry.lastServedAt)
+    || b.entry.lastServedAt - a.entry.lastServedAt);
+  // One row per article. Where several wordings of a URL match, the first in
+  // rank order is listed: the wording that holds the query as a phrase (the
+  // title an alert quoted), otherwise the wording served last.
+  const links = new Set<string>();
+  const listed: PoolEntry[] = [];
+  for (const { entry } of matches) {
+    if (links.has(entry.link)) continue;
+    links.add(entry.link);
+    listed.push(entry);
+    if (listed.length >= HEADLINE_SEARCH_MAX_RESULTS) break;
+  }
   return {
-    headlines: matches.slice(0, HEADLINE_SEARCH_MAX_RESULTS).map(({ entry }) => ({
+    headlines: listed.map((entry) => ({
       title: entry.title,
       source: entry.source,
       link: entry.link,
