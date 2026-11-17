@@ -136,7 +136,7 @@ import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
 import { buildDigestDeliveryPlan } from './lib/digest-delivery-plan.mjs';
 import { selectDigestChannelContent } from './lib/digest-channel-content.mjs';
 import { briefL10nTarget, localizeBrief, readBriefL10nConfig } from './lib/brief-l10n.mjs';
-import { briefLocalizedKey } from '../shared/brief-envelope.js';
+import { briefLocalizedKey, briefSlotsKey } from '../shared/brief-envelope.js';
 import {
   attachDigestCorroboration,
   digestCoverageText,
@@ -2125,9 +2125,15 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   // raw = true pins the bare-key write (#7674): the digest composer publishes
   // the envelopes every api/brief reader resolves raw; see the insights read
   // above for the VERCEL_ENV-leak rationale.
+  const slotsKey = briefSlotsKey(userId);
   const briefCommands = [
     ['SETEX', key, String(BRIEF_TTL_SECONDS), JSON.stringify(finalEnvelope)],
     ['SETEX', latestPointerKey, String(BRIEF_TTL_SECONDS), latestPointerValue],
+    // Slot index for account deletion; entries older than the envelope TTL
+    // point at expired keys and are trimmed on every write.
+    ['ZADD', slotsKey, String(nowMs), issueSlot],
+    ['ZREMRANGEBYSCORE', slotsKey, '-inf', String(nowMs - BRIEF_TTL_SECONDS * 1000)],
+    ['EXPIRE', slotsKey, String(BRIEF_TTL_SECONDS)],
   ];
   // Flag on: write the sibling, or DEL it so a stale one cannot outlive a
   // switch back to English. Flag off: no brief:l10n: command at all.

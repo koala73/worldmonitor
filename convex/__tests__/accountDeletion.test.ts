@@ -112,6 +112,9 @@ async function makeT() {
           result: JSON.stringify({ issueSlot: "2026-09-21-1200" }),
         });
       }
+      if (url.includes("/zrange/")) {
+        return Response.json({ result: ["2026-09-14-1200", "2026-09-21-1200"] });
+      }
       return Response.json(
         url.includes("/pipeline")
           ? [{ result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }]
@@ -849,6 +852,13 @@ describe("account deletion — external side effects", () => {
     expect(delIndex("brief:l10n:user_deletion_a:2026-09-21-1200")).toBeGreaterThanOrEqual(0);
     expect(delIndex("brief:user_deletion_a:2026-09-21-1200")).toBeGreaterThanOrEqual(0);
     expect(delIndex("brief:latest:user_deletion_a")).toBeGreaterThan(delIndex("brief:l10n:user_deletion_a:2026-09-21-1200"));
+    // Every slot in the per-user index is deleted, not only the latest one.
+    expect(fetchCalls.some((call) => call.includes("/zrange/brief:slots:user_deletion_a/0/"))).toBe(true);
+    expect(delIndex("brief:user_deletion_a:2026-09-14-1200")).toBeGreaterThanOrEqual(0);
+    expect(delIndex("brief:l10n:user_deletion_a:2026-09-14-1200")).toBeGreaterThanOrEqual(0);
+    // The index and the pointer go last, so a partial pipeline still lets a retry find every slot.
+    const lastBriefKeys = commands.filter((cmd) => cmd[0] === "DEL" && String(cmd[1]).startsWith("brief:")).slice(-2).map((cmd) => cmd[1]);
+    expect(lastBriefKeys.sort()).toEqual(["brief:latest:user_deletion_a", "brief:slots:user_deletion_a"]);
     expect(await t.query(internal.mcpProTokens.validateProMcpToken, { tokenId })).toBeNull();
   });
 

@@ -408,6 +408,13 @@ describe('cron wiring', () => {
     assert.match(cron, /\} else if \(briefL10nConfig\.enabled\) \{\n\s+briefCommands\.push\(\['DEL', briefLocalizedKey\(userId, issueSlot\)\]\);/);
   });
 
+  it('every brief write indexes its slot so account deletion can find it', () => {
+    assert.match(cron, /\['ZADD', slotsKey, String\(nowMs\), issueSlot\]/);
+    assert.match(cron, /\['ZREMRANGEBYSCORE', slotsKey, '-inf', String\(nowMs - BRIEF_TTL_SECONDS \* 1000\)\]/);
+    assert.match(cron, /\['EXPIRE', slotsKey, String\(BRIEF_TTL_SECONDS\)\]/);
+    assert.match(cron, /const slotsKey = briefSlotsKey\(userId\);\n\s+const briefCommands = \[/);
+  });
+
   it('the translation budget never exceeds what is left of the pass budget', () => {
     assert.match(cron, /budgetMs: Math\.max\(1, Math\.min\(briefL10nConfig\.userBudgetMs, passLeftMs\(\)\)\)/);
     assert.match(cron, /Promise\.race\(\[\n\s+resolveAiRoutingPolicy\(userId\)/);
