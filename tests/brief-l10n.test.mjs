@@ -221,6 +221,19 @@ describe('translate prompt and parser', () => {
     assert.ok(one('Oil exports reached 3 million barrels a day in March.', 'Die Ölexporte erreichten im März 3 Millionen Barrel pro Tag.', 'de'));
     // A scale on the output alone is a changed amount too.
     assert.equal(one('Officials said 3 people were hurt in the attack.', '官员说有3万人在袭击中受伤。', 'zh'), null);
+    // A translated "thousand" is a thousand.
+    assert.ok(one('Officials evacuated 3 thousand people after the flood.', 'Nach der Flut evakuierten die Behörden 3 Tausend Menschen.', 'de'));
+    assert.ok(one('Officials evacuated 3 thousand people after the flood.', 'После наводнения власти эвакуировали 3 тысячи человек.', 'ru'));
+    assert.ok(one('Officials evacuated 3 thousand people after the flood.', 'Las autoridades evacuaron a 3 mil personas tras la inundación.', 'es'));
+    // A known scale is compared by value, however the coefficient is spelled.
+    assert.equal(one('The fund lost 1 million dollars during the crisis.', 'Le fonds a perdu 1,0 milliard de dollars pendant la crise.'), null);
+    assert.equal(one('The fund lost 1 million dollars during the crisis.', 'The fund lost 1.0 billion dollars during the crisis', 'fr'), null);
+    assert.ok(one('The fund lost 1.5 billion dollars during the crisis.', 'Le fonds a perdu 1,5 milliard de dollars pendant la crise.'));
+    assert.ok(one('Spain will spend 3 billion euros on defence this year.', 'España gastará 3 mil millones de euros en defensa este año.', 'es'));
+    // An English source writes thousands with a comma: 1,000 is never 1.
+    assert.equal(one('At least 1,000 people were injured in the blast on Monday.', 'Au moins 1 personne a été blessée dans l\u2019explosion lundi.'), null);
+    assert.equal(one('At least 1,500 people were injured in the blast on Monday.', 'Au moins 1,5 personne a été blessée dans l\u2019explosion lundi.'), null);
+    assert.ok(one('At least 1,500 people were injured in the blast on Monday.', 'Mindestens 1.500 Menschen wurden am Montag bei der Explosion verletzt.', 'de'));
     // A word that merely starts like a scale word is not one.
     assert.ok(one('Officials said 3 soldiers were hurt in the attack.', 'Selon les responsables, 3 militaires ont été blessés dans l\u2019attaque.'));
   });
@@ -239,12 +252,28 @@ describe('translate prompt and parser', () => {
     const wiki = 'Background reading at https://example.com/wiki/ＡＩ for this story.';
     assert.ok(one(wiki, 'Contexte sur https://example.com/wiki/ＡＩ pour cet article.'));
     assert.equal(one(wiki, 'Contexte sur https://example.com/wiki/ＤＸ pour cet article.'), null);
+    // Brackets and fullwidth symbols inside a path are part of it.
+    const bracket = 'Background reading at https://example.com/wiki/【経済】 for this story.';
+    assert.ok(one(bracket, '背景は https://example.com/wiki/【経済】 を参照。', 'ja'));
+    assert.equal(one(bracket, '背景は https://example.com/wiki/【政治】 を参照。', 'ja'), null);
+    const plus = 'Background reading at https://example.com/wiki/Ａ＋Ｂ for this story.';
+    assert.equal(one(plus, 'Contexte sur https://example.com/wiki/Ａ＋Ｃ pour cet article.'), null);
+    // Fullwidth parentheses around a URL are prose.
+    assert.ok(one(src, '完整报告（https://example.com/report）。更多分析随后发布。', 'zh'));
   });
 
   it('rejects short English prose returned unchanged, but keeps short labels and names', () => {
     assert.equal(one('Oil prices rise', 'Oil prices rise', 'ja'), null);
-    assert.equal(one('Oil prices rise', 'Oil prices rise', 'fr'), null);
-    for (const label of ['Cyber', 'Energy', 'NATO', 'Nvidia, Microsoft']) assert.equal(one(label, label, 'ja'), label);
+    assert.equal(one('Talks with the EU', 'Talks with the EU', 'fr'), null);
+    for (const label of ['Cyber', 'Energy', 'NATO', 'Nvidia, Microsoft', 'macOS']) {
+      assert.equal(one(label, label, 'ja'), label);
+      assert.equal(one(label, label, 'fr'), label);
+    }
+    // A lower-case category may come back capitalised.
+    assert.equal(one('cyber', 'Cyber', 'de'), 'Cyber');
+    // In a Latin-script language, a short phrase with no English word may
+    // already be that language; in another script it cannot be.
+    assert.equal(one('Paris sous pression', 'Paris sous pression', 'fr'), 'Paris sous pression');
   });
 
   it('treats an unchanged title-case English headline as untranslated', () => {
@@ -257,6 +286,9 @@ describe('translate prompt and parser', () => {
     assert.equal(one(names, names, 'es'), names);
     const fr = 'Paris annonce plusieurs sanctions contre Moscou';
     assert.equal(one(fr, fr), fr);
+    // Mostly title case, no marker word, but a lower-case English word.
+    const mixed = 'Oil Prices Fall despite Rising Supply Fears';
+    assert.equal(one(mixed, mixed), null);
   });
 
   it('rejects a reply that is mostly English words, in any script', () => {
@@ -917,13 +949,27 @@ describe('cron wiring', () => {
     assert.equal(await undoBriefWriteIfErased('u1', '2026-11-17-0800', pipeline('1')), true);
     // Only this compose's slot: the index keeps every other slot, because the
     // erase may not have read it yet.
+    // The envelopes go first: the index and pointer are how the erase finds
+    // them, so they are dropped only once the envelopes are gone.
     assert.deepEqual(seen[1], [
       ['DEL', 'brief:u1:2026-11-17-0800'],
       ['DEL', 'brief:l10n:u1:2026-11-17-0800'],
+    ]);
+    assert.deepEqual(seen[2], [
       ['ZREM', 'brief:slots:u1', '2026-11-17-0800'],
       // The pointer holds this compose's slot, written a moment ago.
       ['DEL', 'brief:latest:u1'],
     ]);
+  });
+
+  it('keeps the index and pointer when the envelope delete fails, so the erase still finds the envelope', async () => {
+    const seen = [];
+    const pipeline = async (cmds) => {
+      seen.push(cmds);
+      return cmds.map((c) => (c[0] === 'GET' ? { result: '1' } : c[0] === 'DEL' && c[1] === 'brief:u1:s' ? { error: 'down' } : { result: 1 }));
+    };
+    await assert.rejects(undoBriefWriteIfErased('u1', 's', pipeline), /cleanup/);
+    assert.ok(!seen.flat().some((c) => c[0] === 'ZREM' || c[1] === 'brief:latest:u1'));
   });
 
   it('an unreadable erase marker is retried once, then fails the compose', async () => {

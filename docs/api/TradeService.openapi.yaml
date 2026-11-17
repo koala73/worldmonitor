@@ -1080,6 +1080,168 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/trade/v1/get-monthly-sitc-trade:
+        get:
+            tags:
+                - TradeService
+            summary: GetMonthlySitcTrade
+            description: GetMonthlySitcTrade returns a country's monthly exports and imports by SITC section from the national statistics office, with unit value and volume indices; Malaysia (DOSM) is covered.
+            operationId: GetMonthlySitcTrade
+            parameters:
+                - name: country
+                  in: query
+                  description: ISO 3166-1 alpha-2 reporter. Empty selects "MY".
+                  required: false
+                  example: "MY"
+                  schema:
+                    type: string
+                    pattern: '^([A-Z]{2})?$'
+                - name: sections
+                  in: query
+                  description: |-
+                    SITC sections to return: "0" (food and live animals) through "9", or
+                     "overall" (all goods). Empty returns every section. Food-security callers
+                     typically ask for 0 (food), 1 (beverages and tobacco) and 4 (animal and
+                     vegetable oils and fats).
+                  required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "0"
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                        pattern: '^([0-9]|overall)$'
+                    maxItems: 11
+                - name: months
+                  in: query
+                  description: |-
+                    Number of months to return, counted back from the newest seeded month and
+                     including it. 0 selects the default of 60; the maximum of 480 covers the
+                     full seeded history, which starts in January 1990.
+                  required: false
+                  example: 1
+                  schema:
+                    type: integer
+                    format: int32
+                    minimum: 0
+                    maximum: 480
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "country": "MY"
+                                "currency": "MYR"
+                                "fetchedAt": 1794902400000
+                                "indexBase": "2010=100"
+                                "latestIndexMonth": "2026-08"
+                                "latestMonth": "2026-09"
+                                "series":
+                                    - "label": "Food"
+                                      "months":
+                                          - "exports": 4834780427
+                                            "imports": 7086989476
+                                            "month": "2026-09"
+                                      "section": "0"
+                                "source": "DOSM Monthly Trade by SITC Section"
+                                "sourceUrl": "https://open.dosm.gov.my/data-catalogue/trade_sitc_1d"
+                                "upstreamUnavailable": false
+                            schema:
+                                $ref: '#/components/schemas/GetMonthlySitcTradeResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/trade/v1/list-comtrade-flows:
         get:
             tags:
@@ -2066,6 +2228,143 @@ components:
                     type: number
                     format: double
             description: Monthly US customs duties revenue from Treasury MTS data.
+        GetMonthlySitcTradeRequest:
+            type: object
+            properties:
+                country:
+                    type: string
+                    pattern: ^([A-Z]{2})?$
+                    description: ISO 3166-1 alpha-2 reporter. Empty selects "MY".
+                sections:
+                    type: array
+                    items:
+                        type: string
+                        pattern: '^([0-9]|overall)$'
+                        description: |-
+                            SITC sections to return: "0" (food and live animals) through "9", or
+                             "overall" (all goods). Empty returns every section. Food-security callers
+                             typically ask for 0 (food), 1 (beverages and tobacco) and 4 (animal and
+                             vegetable oils and fats).
+                    maxItems: 11
+                months:
+                    type: integer
+                    maximum: 480
+                    minimum: 0
+                    format: int32
+                    description: |-
+                        Number of months to return, counted back from the newest seeded month and
+                         including it. 0 selects the default of 60; the maximum of 480 covers the
+                         full seeded history, which starts in January 1990.
+            description: |-
+                Request for a country's monthly merchandise trade by SITC section.
+
+                 Coverage is seed-backed: Railway pre-fetches the national statistics office
+                 files and this API serves slices of that history. Only Malaysia ("MY", DOSM
+                 Monthly Trade by SITC Section) is seeded today. Any other well-formed country
+                 is answered with unavailable_reason TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED,
+                 so coverage can widen without a contract change.
+        GetMonthlySitcTradeResponse:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: ISO 3166-1 alpha-2 reporter that was resolved, for example "MY".
+                currency:
+                    type: string
+                    description: ISO 4217 currency of `exports` and `imports`, for example "MYR".
+                source:
+                    type: string
+                    description: Publisher and dataset, for example "DOSM Monthly Trade by SITC Section".
+                sourceUrl:
+                    type: string
+                    description: Publisher dataset page.
+                indexBase:
+                    type: string
+                    description: Base period of the unit value and volume indices, for example "2010=100".
+                latestMonth:
+                    type: string
+                    description: Newest month with trade values, YYYY-MM. Empty when no series are returned.
+                latestIndexMonth:
+                    type: string
+                    description: Newest month with unit value and volume indices, YYYY-MM.
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: |-
+                        When the seed fetched the publisher files, as Unix epoch milliseconds.
+                         0 when no seed was served.. Warning: Values > 2^53 may lose precision in JavaScript
+                series:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SitcTradeSeries'
+                upstreamUnavailable:
+                    type: boolean
+                    description: |-
+                        True when series could not be served because of a fault: a covered
+                         country whose cache entry is gone, or a cache read that failed. False
+                         when series are served and when the country is simply not covered.
+                unavailableReason:
+                    type: string
+                    enum:
+                        - TRADE_FLOW_UNAVAILABLE_REASON_UNSPECIFIED
+                        - TRADE_FLOW_UNAVAILABLE_REASON_INVALID_REQUEST
+                        - TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED
+                        - TRADE_FLOW_UNAVAILABLE_REASON_SEED_MISSING
+                        - TRADE_FLOW_UNAVAILABLE_REASON_COVERAGE_UNKNOWN
+                        - TRADE_FLOW_UNAVAILABLE_REASON_CACHE_UNAVAILABLE
+                    description: |-
+                        TradeFlowUnavailableReason says why no rows were returned. The distinction
+                         that matters is NOT_COVERED — a contract answer, nothing is broken and a
+                         retry cannot help — against every other member, which names a fault.
+            description: Response with a country's monthly trade by SITC section.
+        SitcTradeSeries:
+            type: object
+            properties:
+                section:
+                    type: string
+                    description: SITC section code "0" through "9", or "overall".
+                label:
+                    type: string
+                    description: Publisher's English section label, for example "Food".
+                months:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SitcTradeMonth'
+            description: Monthly history for one SITC section, oldest month first.
+        SitcTradeMonth:
+            type: object
+            properties:
+                month:
+                    type: string
+                    description: Reference month, YYYY-MM.
+                exports:
+                    type: number
+                    format: double
+                    description: Exports in whole units of `currency` (not millions), free on board.
+                imports:
+                    type: number
+                    format: double
+                    description: Imports in whole units of `currency` (not millions), cost, insurance and freight.
+                exportsUnitValueIndex:
+                    type: number
+                    format: double
+                    description: |-
+                        Export unit value index (base in `index_base`). Absent before the index
+                         series starts (January 2015 for Malaysia) and for the newest month or two
+                         that the index release has not yet reached.
+                exportsVolumeIndex:
+                    type: number
+                    format: double
+                    description: Export volume index (base in `index_base`). Absent like the unit value index.
+                importsUnitValueIndex:
+                    type: number
+                    format: double
+                    description: Import unit value index (base in `index_base`). Absent like the export indices.
+                importsVolumeIndex:
+                    type: number
+                    format: double
+                    description: Import volume index (base in `index_base`). Absent like the export indices.
+            description: One month of trade for one SITC section.
         ListComtradeFlowsRequest:
             type: object
             properties:
