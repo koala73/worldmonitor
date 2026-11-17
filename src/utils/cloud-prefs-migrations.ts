@@ -242,6 +242,9 @@ export interface CloudPrefsMigrationOptions {
     sources: ReadonlyArray<string>;
     locale: () => string;
   };
+  countryCoverage?: {
+    optInSources: ReadonlyArray<string>;
+  };
   brazil?: {
     optInSources: ReadonlyArray<string>;
   };
@@ -286,6 +289,7 @@ export function buildMigrations(
       ? migrateGermanRssSourcesV10(data, options.germanRss.sources, options.germanRss.locale())
       : data,
     11: (data) => migrateBrazilOptInsV11(data, options.brazil?.optInSources ?? []),
+    12: (data) => migrateCountryCoverageOptInsV12(data, options.countryCoverage?.optInSources ?? []),
   };
 }
 
@@ -685,6 +689,20 @@ export function migrateGermanRssSourcesV10(
 
 /** Preserve an explicit enable-all choice; other returning profiles receive the new opt-ins. */
 export function migrateBrazilOptInsV11(
+  data: Record<string, unknown>,
+  sources: ReadonlyArray<string>,
+): Record<string, unknown> {
+  return appendOptInSources(data, sources);
+}
+
+export function migrateCountryCoverageOptInsV12(
+  data: Record<string, unknown>,
+  sources: ReadonlyArray<string>,
+): Record<string, unknown> {
+  return appendOptInSources(data, sources);
+}
+
+function appendOptInSources(
   data: Record<string, unknown>,
   sources: ReadonlyArray<string>,
 ): Record<string, unknown> {

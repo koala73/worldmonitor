@@ -770,7 +770,7 @@ export function buildSourceCatalog(entries, { logicalProviders = [] } = {}) {
     ]);
     catalog.push({
       provider: logical.provider,
-      displayName: sourceProviderDisplayName(logical.provider, hosts),
+      displayName: logical.provider,
       domainId: 'news',
       originCountry: logical.originCountry ?? resolveSourceOrigin({
         provider: logical.provider,

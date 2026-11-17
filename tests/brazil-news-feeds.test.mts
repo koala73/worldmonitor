@@ -18,6 +18,7 @@ import { SOURCE_TIERS } from '../server/_shared/source-tiers';
 import { applyMigrationChain, buildMigrations, migrateBrazilOptInsV11 } from '../src/utils/cloud-prefs-migrations';
 import type { Feed } from '../src/types';
 
+const countryAdditions = new Set<string>(JSON.parse(readFileSync('shared/country-news-opt-ins.json', 'utf8')));
 const SOURCES = [
   { name: 'Guardian Brazil', url: 'https://www.theguardian.com/world/brazil/rss', lang: undefined },
   { name: 'Brazil Reports', url: 'https://brazilreports.com/feed/', lang: undefined },
@@ -41,7 +42,7 @@ describe('opt-in Brazil news coverage', () => {
     const start = app.indexOf("      const brazilOptInKey =");
     const end = app.indexOf('      // Locale boost:', start);
     assert.ok(start >= 0 && end > start);
-    const startup = transpileModule(app.slice(start, end), {}).outputText;
+    const startup = transpileModule(`let sessionDisabledSources;\n${app.slice(start, end)}`, {}).outputText;
     const key = 'worldmonitor-disabled-feeds';
     const marker = 'worldmonitor-brazil-optin-v1';
     for (const previous of [undefined, '["existing-choice"]']) {
@@ -128,9 +129,9 @@ describe('opt-in Brazil news coverage', () => {
     assert.equal(migrateBrazilOptInsV11(missing, names), missing);
   });
 
-  it('registers the sources at the end of Full Latin America and schedules their selected content', () => {
+  it('preserves the Brazil block before later Full Latin America additions and schedules their selected content', () => {
     for (const view of [client.FULL_FEEDS, VARIANT_FEEDS.full]) {
-      assert.deepEqual(view.latam!.slice(-4).map(feed => feed.name), names);
+      assert.deepEqual(view.latam!.filter(feed => !countryAdditions.has(feed.name)).slice(-4).map(feed => feed.name), names);
       for (const source of SOURCES) {
         const feed = view.latam!.find(feed => feed.name === source.name)!;
         assert.equal(feed.url, source.url);

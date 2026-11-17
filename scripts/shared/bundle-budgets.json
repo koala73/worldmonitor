@@ -101,7 +101,7 @@
   },
   "deferred": {
     "total": {
-      "raw": 1631272
+      "raw": 1843216
     },
     "chunks": {
       "App": {
@@ -141,7 +141,7 @@
         "files": 1
       },
       "corroboration": {
-        "raw": 14573,
+        "raw": 20304,
         "files": 1
       },
       "country-names": {
@@ -161,7 +161,7 @@
         "files": 1
       },
       "feeds": {
-        "raw": 101331,
+        "raw": 191400,
         "files": 1
       },
       "gdelt-intel": {
@@ -229,7 +229,7 @@
         "files": 1
       },
       "source-provenance": {
-        "raw": 91470,
+        "raw": 207614,
         "files": 1
       },
       "storage-facility-registry-store": {
