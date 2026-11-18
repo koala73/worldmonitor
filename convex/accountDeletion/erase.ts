@@ -475,7 +475,7 @@ export const markExternalComplete = internalMutation({
     // after our index snapshot and fail to clean them up itself.
     await ctx.scheduler.runAfter(15 * 60_000,
       internal.accountDeletion.sideEffects.sweepBriefEnvelopes,
-      { deletionId: row._id, localized: false, cursor: "0", attempt: 0 },
+      { deletionId: row._id, cursor: "0", attempt: 0 },
     );
     await ctx.db.patch(args.deletionId, {
       step: "complete",
