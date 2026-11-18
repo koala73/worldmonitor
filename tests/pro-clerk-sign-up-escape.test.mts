@@ -23,6 +23,7 @@ function fakeClerk(emailAddress: string | null) {
     openSignIn: (props?: unknown) => {
       calls.push({ op: 'openSignIn', props });
       mounted = true; // the sign-in modal stays on screen
+      signIn = true;
       mountedFrames = Number.POSITIVE_INFINITY;
     },
   } as unknown as LoadedClerk;
@@ -34,9 +35,11 @@ function fakeClerk(emailAddress: string | null) {
 const frames: Array<() => void> = [];
 let clock = 0;
 let mounted = true;
+let signIn = false;
 let mountedFrames = 0;
 const switchDeps = {
   authSurfaceMounted: () => mounted,
+  signInMounted: () => signIn,
   now: () => clock,
   nextFrame: (cb: () => void) => { frames.push(cb); },
 };
@@ -56,6 +59,7 @@ beforeEach(() => {
   frames.length = 0;
   clock = 0;
   mounted = true;
+  signIn = false;
   mountedFrames = 0;
 });
 afterEach(() => setAuthReturnUrls(null));
@@ -97,9 +101,9 @@ describe('pro sign-up code card escape', () => {
 
   it('ignores a second click while the switch runs', async () => {
     const { instance, calls } = fakeClerk('existing-buyer@example.com');
-    const escape = createSignInEscape(instance, switchDeps);
-    escape();
-    escape();
+    const signInEscape = createSignInEscape(instance, switchDeps);
+    signInEscape();
+    signInEscape();
     await nextTask();
     assert.deepEqual(calls.map((c) => c.op), ['closeSignUp', 'closeSignIn', 'openSignIn']);
   });

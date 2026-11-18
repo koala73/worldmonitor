@@ -53,10 +53,16 @@ function buildEscape(doc: Document, onSignIn: () => void): HTMLElement {
  * Returns a disposer that stops watching and removes every added action.
  */
 export function installSignUpSignInEscape(doc: Document, onSignIn: () => void): () => void {
+  const removeOwnRow = (el: Element): void => {
+    for (const row of el.querySelectorAll(`:scope > [${ESCAPE_ATTR}]`)) row.remove();
+  };
   const decorateCard = (card: Element): void => {
     // Clerk also puts the class on an ancestor of the card. Only the innermost
     // match is the card; decorating both renders a second row.
-    if (card.getElementsByClassName(SIGN_UP_CODE_CARD_CLASS).length > 0) return;
+    if (card.getElementsByClassName(SIGN_UP_CODE_CARD_CLASS).length > 0) {
+      removeOwnRow(card);
+      return;
+    }
     if (!card.querySelector(`[${ESCAPE_ATTR}]`)) card.append(buildEscape(doc, onSignIn));
   };
   const decorateTree = (root: Element): void => {
@@ -73,9 +79,15 @@ export function installSignUpSignInEscape(doc: Document, onSignIn: () => void): 
       const target = record.target;
       if (!(target instanceof Element)) continue;
       if (record.type === 'attributes') {
-        if (target.classList.contains(SIGN_UP_CODE_CARD_CLASS)) decorateTree(target);
-        // It left the code step: drop its own row, not a nested card's.
-        else for (const row of target.querySelectorAll(`:scope > [${ESCAPE_ATTR}]`)) row.remove();
+        if (target.classList.contains(SIGN_UP_CODE_CARD_CLASS)) {
+          decorateTree(target);
+          // An enclosing card is no longer the innermost: its row moves here.
+          const outer = target.parentElement?.closest(SIGN_UP_CODE_CARD_SELECTOR);
+          if (outer) decorateCard(outer);
+        } else {
+          // It left the code step: drop its own row, not a nested card's.
+          removeOwnRow(target);
+        }
         continue;
       }
       const card = target.closest(SIGN_UP_CODE_CARD_SELECTOR);
@@ -95,11 +107,17 @@ export function installSignUpSignInEscape(doc: Document, onSignIn: () => void): 
 
 /** Clerk's auth surfaces; reopening sign-in waits until none is mounted. */
 const CLERK_AUTH_SURFACE_SELECTOR = '.cl-signUp-root, .cl-signIn-root, .cl-modalBackdrop';
+const CLERK_SIGN_IN_SELECTOR = '.cl-signIn-root';
+/** Every sign-up element carries a `cl-signUp-` class, including inside the sign-in modal. */
+const CLERK_SIGN_UP_SELECTOR = '[class*="cl-signUp-"]';
 /** Upper bound on each wait (unmount, then sign-in mount), so the switch always ends. */
 export const SIGN_IN_REOPEN_MAX_WAIT_MS = 2_000;
 
 export interface SignInSwitchDeps {
+  /** Any Clerk auth form or its modal is mounted. */
   readonly authSurfaceMounted: () => boolean;
+  /** Sign-in is on screen and no sign-up form is (sign-up can be a route inside the sign-in modal). */
+  readonly signInMounted: () => boolean;
   readonly now: () => number;
   readonly nextFrame: (cb: () => void) => void;
 }
@@ -107,6 +125,8 @@ export interface SignInSwitchDeps {
 function defaultSwitchDeps(): SignInSwitchDeps {
   return {
     authSurfaceMounted: () => document.querySelector(CLERK_AUTH_SURFACE_SELECTOR) !== null,
+    signInMounted: () => document.querySelector(CLERK_SIGN_IN_SELECTOR) !== null
+      && document.querySelector(CLERK_SIGN_UP_SELECTOR) === null,
     now: () => performance.now(),
     nextFrame: (cb) => { requestAnimationFrame(() => cb()); },
   };
@@ -159,7 +179,7 @@ export function createSignUpToSignInSwitch(
           running = false;
           throw err;
         }
-        waitFor(deps.authSurfaceMounted, () => { running = false; });
+        waitFor(deps.signInMounted, () => { running = false; });
       });
     },
     inFlight: () => running,

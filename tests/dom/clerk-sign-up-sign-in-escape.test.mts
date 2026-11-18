@@ -110,6 +110,30 @@ describe('sign-up code card escape to sign-in', () => {
     expect(inner.querySelectorAll('[data-wm-sign-in-escape]').length).toBe(1);
   });
 
+  it('moves the action to a matching card that appears inside an already decorated one', async () => {
+    dispose = installSignUpSignInEscape(document, () => {});
+    const outer = clerkCard('cl-signUp-emailCode');
+    await flush();
+    expect(escapeButton(outer)).not.toBeNull();
+    const inner = document.createElement('div');
+    inner.className = 'cl-card cl-signUp-emailCode';
+    outer.append(inner);
+    await flush();
+    expect(document.querySelectorAll('[data-wm-sign-in-escape]').length).toBe(1);
+    expect(inner.querySelector(':scope > [data-wm-sign-in-escape]')).not.toBeNull();
+
+    document.body.replaceChildren();
+    const box = clerkCard('cl-signUp-emailCode');
+    const child = document.createElement('div');
+    child.className = 'cl-card';
+    box.append(child);
+    await flush();
+    child.className = 'cl-card cl-signUp-emailCode';
+    await flush();
+    expect(document.querySelectorAll('[data-wm-sign-in-escape]').length).toBe(1);
+    expect(child.querySelector(':scope > [data-wm-sign-in-escape]')).not.toBeNull();
+  });
+
   it('restores the action when Clerk replaces the card\'s children', async () => {
     dispose = installSignUpSignInEscape(document, () => {});
     const card = clerkCard('cl-signUp-emailCode');
@@ -158,9 +182,10 @@ describe('switching from sign-up to sign-in', () => {
     const log: string[] = [];
     const frames: Array<() => void> = [];
     let clock = 0;
-    const state = { mounted: true };
+    const state = { mounted: true, signIn: false };
     const deps = {
       authSurfaceMounted: () => state.mounted,
+      signInMounted: () => state.signIn,
       now: () => clock,
       nextFrame: (cb: () => void) => { frames.push(cb); },
     };
@@ -197,6 +222,7 @@ describe('switching from sign-up to sign-in', () => {
     for (let i = 0; i < 50; i++) h.runFrame();
     expect(sw.inFlight()).toBe(true);
     h.state.mounted = true;
+    h.state.signIn = true;
     h.runFrame();
     expect(sw.inFlight()).toBe(false);
     expect(h.log.filter((e) => e === 'open').length).toBe(1);
@@ -221,6 +247,22 @@ describe('switching from sign-up to sign-in', () => {
     h.runFrame();
     expect(sw.inFlight()).toBe(false);
     expect(h.frames.length).toBe(0);
+  });
+
+  it('does not end the switch on a sign-up form still on screen after the open', async () => {
+    // At the cap sign-up may still be mounted, so Clerk can ignore openSignIn.
+    const { createSignUpToSignInSwitch } = await import('../../shared/clerk-sign-up-escape');
+    const h = harness();
+    const sw = createSignUpToSignInSwitch(h.clerk, h.deps);
+    sw.run(() => h.log.push('open'));
+    const capFrame = Math.ceil(CAP_MS / FRAME_MS);
+    for (let i = 0; i < capFrame; i++) h.runFrame();
+    expect(h.log).toContain('open');
+    h.runFrame();
+    expect(sw.inFlight()).toBe(true);
+    h.state.signIn = true;
+    h.runFrame();
+    expect(sw.inFlight()).toBe(false);
   });
 
   it('ends the switch when opening sign-in throws', async () => {
