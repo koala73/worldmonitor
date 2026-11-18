@@ -154,11 +154,20 @@
     {
       "id": "crimean-bridge-collapse",
       "date": "2026-11-18",
-      "summary": "A section of the Crimean Bridge collapsed after Ukrainian strikes. The 2026-11-18 wordings all scored under the realtime bar.",
+      "summary": "A section of the Crimean Bridge collapsed after Ukrainian strikes. The BBC copy scored 83 on 2026-11-17 and reached 13 realtime subscribers. The 2026-11-18 copies scored under the bar, but they repeat a story that had already alerted.",
       "evidence": "https://github.com/koala73/worldmonitor/issues/10975",
       "expected": "alert",
-      "knownMiss": "#10977",
       "wordings": [
+        {
+          "source": "BBC World",
+          "title": "Putin's Crimean Bridge partly collapses as Zelensky hails 'unprecedented' attack by Ukraine",
+          "label": "critical",
+          "variant": "full",
+          "publishedAt": "2026-11-17T16:56:38.000Z",
+          "seenAt": "2026-11-17T17:16:23.788Z",
+          "corroboration": 1,
+          "observedScore": 83
+        },
         {
           "source": "Kyiv Independent",
           "title": "Ukraine war latest: Entire section of Crimean Bridge collapses after 'seven-phase operation,' Zelensky reveals - The Kyiv Independent",
@@ -214,7 +223,7 @@
     {
       "id": "hormuz-mine-strikes",
       "date": "2026-11-14",
-      "summary": "Two oil tankers hit mines and caught fire in the Strait of Hormuz. Missed at the time; CNA now resolves to tier 2, so its copy clears the bar.",
+      "summary": "Two oil tankers hit mines and caught fire in the Strait of Hormuz. The National's copy scored 83 twelve minutes after CNA's 73, so the story cleared the bar at the time; delivery is unverified because the sent-alert history starts on 2026-11-17. CNA now resolves to tier 2 as well.",
       "evidence": "https://github.com/koala73/worldmonitor/issues/10975",
       "expected": "alert",
       "wordings": [
@@ -229,6 +238,16 @@
           "observedScore": 73,
           "scoreNow": 83,
           "scoreNowBecause": "#10941 read CNA as a tier-2 publisher (was unlisted, tier 4)"
+        },
+        {
+          "source": "The National",
+          "title": "Middle East latest: IRGC says two oil tankers caught fire after hitting sea mines in Hormuz",
+          "label": "critical",
+          "variant": "full",
+          "publishedAt": "2026-11-14T04:42:53.000Z",
+          "seenAt": "2026-11-14T05:13:34.625Z",
+          "corroboration": 1,
+          "observedScore": 83
         },
         {
           "source": "Shipping & Freight",
