@@ -661,8 +661,10 @@ const DOMAIN_CREDIT_RE = /\.(?:com|org|net|co\.uk)\s*$/;
 export function classifyCacheIdentity(title) {
   if (typeof title !== 'string') return '';
   const lower = title.toLowerCase();
-  const credit = lower.slice(stripAttributionSuffix(lower, { allowPipe: false }).length).trim();
-  const story = normalizeNewsStoryTitle(title.replace(IN_WORD_HYPHEN_RE, ' '));
+  const stripped = stripAttributionSuffix(lower, { allowPipe: false });
+  const credit = lower.slice(stripped.length).trim();
+  // Split in-word dashes after the credit is gone, so "Hormuz—Reuters" still strips.
+  const story = normalizeNewsStoryTitle(stripped.replace(IN_WORD_HYPHEN_RE, ' '));
   if (story.split(' ').length < 4 || (/\s/.test(credit.replace(/^[-–—|:]\s*/, '')) && DOMAIN_CREDIT_RE.test(credit))) return lower;
   return story + (CLASSIFY_QUESTION_RE.test(title) ? ' ?' : '');
 }

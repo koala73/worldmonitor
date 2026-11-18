@@ -44,6 +44,13 @@ describe('classify cache key is the story, not the title string (#10976)', () =>
     }
   });
 
+  it('strips an outlet suffix joined by a dash with no spaces', async () => {
+    assert.equal(
+      await buildClassifyCacheKey('Iran closes Strait of Hormuz—Reuters'),
+      await buildClassifyCacheKey('Iran closes Strait of Hormuz'),
+    );
+  });
+
   it('keeps an in-word hyphen as a word break', async () => {
     assert.notEqual(
       await buildClassifyCacheKey('Minister will re-sign trade agreement'),
