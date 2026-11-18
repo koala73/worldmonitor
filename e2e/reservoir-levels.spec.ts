@@ -188,9 +188,11 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await expect(panel.locator('[data-reservoir-id="mead"]')).toHaveCount(0);
     await expect(panel.locator('.panel-scope-strip')).toContainText('Showing Egypt');
     await expect(panel.locator('.panel-scope-chip')).toHaveCount(0);
-    for (const key of ['climate', 'population-exposure']) {
-      await expect(page.locator(`.panel[data-panel="${key}"] .panel-scope-chip`)).toHaveText('Not filtered');
-    }
+    await expect(page.locator('.panel[data-panel="climate"] .panel-scope-chip')).toHaveText('Not filtered');
+    // Population exposure filters by country since #10581, so it carries no "Not filtered" chip.
+    const exposure = page.locator('.panel[data-panel="population-exposure"]');
+    await expect(exposure).toHaveCount(1);
+    await expect(exposure.locator('.panel-scope-chip')).toHaveCount(0);
     await evidenceScreenshot(panel, { path: testInfo.outputPath(`focus-egypt-${viewport.width}.png`) });
     await panel.locator('[data-scope-action="show-all"]').click();
     await expect(panel.locator('.wl-row')).toHaveCount(48);

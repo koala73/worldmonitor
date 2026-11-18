@@ -73,19 +73,22 @@ for (const width of [320, 1280]) {
         await expect(details).toContainText(lang === 'de' ? 'Geschätzt' : 'Estimated');
         await expect(details.locator('a')).toHaveCount(2);
         await expect(details.locator('img')).toHaveCount(0);
-        const geometry = await popup.evaluate(element => {
-          const rect = element.getBoundingClientRect();
-          const title = element.querySelector('h3')!;
-          return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom,
-            overflow: element.scrollWidth - element.clientWidth,
-            titleOverflow: title.scrollWidth - title.clientWidth };
-        });
-        expect(geometry.left).toBeGreaterThanOrEqual(0);
-        expect(geometry.right).toBeLessThanOrEqual(width);
-        expect(geometry.top).toBeGreaterThanOrEqual(0);
-        expect(geometry.bottom).toBeLessThanOrEqual(900);
-        expect(geometry.overflow).toBeLessThanOrEqual(1);
-        expect(geometry.titleOverflow).toBeLessThanOrEqual(1);
+        // At 320px this is the phone sheet, which slides up (main.css .map-popup-sheet); assert where it rests.
+        await expect(async () => {
+          const geometry = await popup.evaluate(element => {
+            const rect = element.getBoundingClientRect();
+            const title = element.querySelector('h3')!;
+            return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom,
+              overflow: element.scrollWidth - element.clientWidth,
+              titleOverflow: title.scrollWidth - title.clientWidth };
+          });
+          expect(geometry.left).toBeGreaterThanOrEqual(0);
+          expect(geometry.right).toBeLessThanOrEqual(width);
+          expect(geometry.top).toBeGreaterThanOrEqual(0);
+          expect(geometry.bottom).toBeLessThanOrEqual(900);
+          expect(geometry.overflow).toBeLessThanOrEqual(1);
+          expect(geometry.titleOverflow).toBeLessThanOrEqual(1);
+        }).toPass({ timeout: 5_000 });
         await details.locator('h3').scrollIntoViewIfNeeded();
         await evidenceScreenshot(popup, { path: testInfo.outputPath(`datacenter-details-${lang}-${width}.png`) });
         await details.locator('a').last().scrollIntoViewIfNeeded();
