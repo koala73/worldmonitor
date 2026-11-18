@@ -527,6 +527,24 @@ export class App {
     if (keys.length === 0) return;
 
     const keySet = new Set(keys);
+    // An ownership-only event can mean the cloud preference write failed.
+    // Retain the ownership of that unchanged baseline until preferences land.
+    if (this.state.pendingSourcePreferences && keySet.has(STORAGE_KEYS.disabledFeeds)) {
+      const cloudGateOwned = new Set(loadFromStorage<string[]>(STORAGE_KEYS.sourceGateOwnership, []));
+      this.state.pendingSourcePreferences.baselineGateOwned = cloudGateOwned;
+      this.state.pendingSourcePreferences.gateOwned = cloudGateOwned;
+      this.state.pendingSourcePreferences.fallbackDisabledSources = undefined;
+    }
+    // Apply the landed selection before enforcement, which can defer while
+    // entitlement is unresolved even after the preference handoff completes.
+    if (keySet.has(STORAGE_KEYS.disabledFeeds)) {
+      const disabled = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+      for (const [name, value] of this.state.pendingSourcePreferences?.edits ?? []) {
+        if (value) disabled.add(name);
+        else disabled.delete(name);
+      }
+      this.state.disabledSources = disabled;
+    }
     let freeTierLimitsInvoked = false;
     const tierReconciliationDeferred = this.shouldDeferTierPreferenceReconciliation();
     invalidatePanelStorageCacheForKeys(keys);
@@ -613,6 +631,7 @@ export class App {
       if (!this.state.pendingSourcePreferences) {
         this.state.disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
       }
+      this.state.unifiedSettings?.refreshSourceToggles();
     }
 
     if (keySet.has(STORAGE_KEYS.monitors)) {
@@ -1368,10 +1387,9 @@ export class App {
     let sessionDisabledSources: string[] | undefined = currentVariant === 'full' && !storageAvailable
       ? computeDefaultDisabledSources(this.currentSourceCapLanguage())
       : undefined;
-    // Opt-in migrations that applied only to this session; their markers are
-    // written once the preferences they produced persist. Defaults already
-    // disable every opt-in pack, so a session seeded from them owes all three.
-    const pendingMigrationMarkers: string[] = sessionDisabledSources
+    let sourcePreferencesMissing = !storageAvailable;
+    const sessionSourceEdits = new Map<string, boolean>();
+    const pendingSourceMigrationMarkers: string[] = sessionDisabledSources
       ? [
         'worldmonitor-country-coverage-optin-v1',
         'worldmonitor-brazil-optin-v1',
@@ -1569,6 +1587,9 @@ export class App {
         );
         if (persisted) safeStorageSet(germanRssKey, 'done');
       }
+      const sourceMigrationBaselineValue = loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+      sourcePreferencesMissing = sourceMigrationBaselineValue === null;
+      const sourceMigrationBaseline = new Set(sourceMigrationBaselineValue ?? computeDefaultDisabledSources(userLang));
       const countryCoverageOptInKey = 'worldmonitor-country-coverage-optin-v1';
       if (!safeStorageGet(countryCoverageOptInKey)) {
         const current = loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
@@ -1579,9 +1600,13 @@ export class App {
           STORAGE_KEYS.disabledFeeds,
           updated,
         );
-        if (!persisted) sessionDisabledSources = updated;
+        if (!persisted) {
+          sessionDisabledSources = updated;
+          pendingSourceMigrationMarkers.push(countryCoverageOptInKey);
+        }
         if (persisted && !safeStorageSetChecked(countryCoverageOptInKey, 'done')) {
           sessionDisabledSources = updated;
+          pendingSourceMigrationMarkers.push(countryCoverageOptInKey);
           if (current === null) safeStorageRemoveChecked(STORAGE_KEYS.disabledFeeds);
           else saveToStorage(STORAGE_KEYS.disabledFeeds, current);
         }
@@ -1593,13 +1618,16 @@ export class App {
         const migrated = migrateBrazilOptInsV11(blob, BRAZIL_OPT_IN_SOURCES);
         const updated = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
         if (sessionDisabledSources) sessionDisabledSources = updated;
-        const persisted = (current !== null && migrated === blob) || saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
-        const marked = persisted && safeStorageSetChecked(brazilOptInKey, 'done');
-        if (!marked) {
+        const persisted = (current !== null && migrated === blob) || saveToStorage(
+          STORAGE_KEYS.disabledFeeds,
+          updated,
+        );
+        if (!persisted || sessionDisabledSources) {
           sessionDisabledSources = updated;
-          pendingMigrationMarkers.push(brazilOptInKey);
-        }
-        if (persisted && !marked) {
+          pendingSourceMigrationMarkers.push(brazilOptInKey);
+        } else if (!safeStorageSetChecked(brazilOptInKey, 'done')) {
+          sessionDisabledSources = updated;
+          pendingSourceMigrationMarkers.push(brazilOptInKey);
           if (current === null) safeStorageRemoveChecked(STORAGE_KEYS.disabledFeeds);
           else saveToStorage(STORAGE_KEYS.disabledFeeds, current);
         }
@@ -1612,12 +1640,12 @@ export class App {
         const updated = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
         if (sessionDisabledSources) sessionDisabledSources = updated;
         const persisted = (current !== null && migrated === blob) || saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
-        const marked = persisted && safeStorageSetChecked(publisherDirectOptInKey, 'done');
-        if (!marked) {
+        if (!persisted || sessionDisabledSources) {
           sessionDisabledSources = updated;
-          pendingMigrationMarkers.push(publisherDirectOptInKey);
-        }
-        if (persisted && !marked) {
+          pendingSourceMigrationMarkers.push(publisherDirectOptInKey);
+        } else if (!safeStorageSetChecked(publisherDirectOptInKey, 'done')) {
+          sessionDisabledSources = updated;
+          pendingSourceMigrationMarkers.push(publisherDirectOptInKey);
           if (current === null) safeStorageRemoveChecked(STORAGE_KEYS.disabledFeeds);
           else saveToStorage(STORAGE_KEYS.disabledFeeds, current);
         }
@@ -1643,6 +1671,27 @@ export class App {
           console.log(`[App] Locale boost (${userLang}): enabled ${current.length - updated.length} sources`);
         }
         localStorage.setItem(localeKey, 'done');
+      }
+      if (sessionDisabledSources) {
+        const sessionDisabled = new Set(sessionDisabledSources);
+        // Default seeding is a replaceable baseline. Only failed opt-in
+        // migrations and actual changes are replayed over incoming cloud choices.
+        const pendingPacks: Array<[string, readonly string[]]> = [
+          [countryCoverageOptInKey, COUNTRY_COVERAGE_OPT_IN_SOURCES],
+          [brazilOptInKey, BRAZIL_OPT_IN_SOURCES],
+          [publisherDirectOptInKey, PUBLISHER_DIRECT_OPT_IN_SOURCES],
+        ];
+        for (const [marker, sources] of pendingPacks) {
+          if (!pendingSourceMigrationMarkers.includes(marker)) continue;
+          for (const name of sources) {
+            if (sessionDisabled.has(name)) sessionSourceEdits.set(name, true);
+          }
+        }
+        for (const name of new Set([...sourceMigrationBaseline, ...sessionDisabled])) {
+          if (sourceMigrationBaseline.has(name) !== sessionDisabled.has(name)) {
+            sessionSourceEdits.set(name, sessionDisabled.has(name));
+          }
+        }
       }
     }
 
@@ -1670,7 +1719,10 @@ export class App {
       disabledSources,
       pendingSourcePreferences: sessionDisabledSources === undefined ? undefined : {
         gateOwned: null,
-        migrationMarkers: [...new Set(['worldmonitor-country-coverage-optin-v1', ...pendingMigrationMarkers])],
+        baselineGateOwned: null,
+        fallbackDisabledSources: sourcePreferencesMissing ? new Set(sessionDisabledSources) : undefined,
+        edits: sessionSourceEdits,
+        migrationMarkers: pendingSourceMigrationMarkers,
       },
       currentTimeRange: '7d',
       inFlight: new Set(),
@@ -3548,23 +3600,24 @@ export class App {
     try {
       ownershipMetadataExists = localStorage.getItem(STORAGE_KEYS.sourceGateOwnership) !== null;
     } catch { /* optional persistence */ }
-    const persistedDisabled = new Set(
-      loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []),
-    );
+    const storedDisabled = loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+    const persistedDisabled = new Set(storedDisabled ?? []);
     const pending = this.state.pendingSourcePreferences;
-    const baselineDisabled = pending
-      ? this.state.disabledSources
-      : persistedDisabled;
+    const baselineDisabled = new Set(pending?.fallbackDisabledSources ?? storedDisabled ?? []);
+    for (const [name, disabled] of pending?.edits ?? []) {
+      if (disabled) baselineDisabled.add(name);
+      else baselineDisabled.delete(name);
+    }
     const persistedGateOwned = new Set(
       loadFromStorage<string[]>(STORAGE_KEYS.sourceGateOwnership, []),
     );
-    let gateOwned = new Set(pending?.gateOwned ?? persistedGateOwned);
+    let gateOwned = new Set(pending?.baselineGateOwned ?? persistedGateOwned);
     const userLang = this.currentSourceCapLanguage();
     const protectedNames = this.sourceCapProtectedNames(userLang);
 
     // Heal untouched profiles capped before ownership metadata existed. Exact
     // matching preserves every customized denylist.
-    if (!ownershipMetadataExists && !pending?.gateOwned) {
+    if (!ownershipMetadataExists && !pending?.baselineGateOwned) {
       const defaultUserDisabled = new Set(computeDefaultDisabledSources(userLang));
       const expectedGateOwned = selectSourcesUnderCap(
         FEEDS,
@@ -3580,13 +3633,14 @@ export class App {
       ) ?? gateOwned;
     }
 
+    for (const name of pending?.edits.keys() ?? []) gateOwned.delete(name);
+    const userDisabled = restoreGateOwnedSources(baselineDisabled, gateOwned);
     let nextDisabled: Set<string>;
     let nextGateOwned: Set<string>;
     if (pro) {
-      nextDisabled = restoreGateOwnedSources(baselineDisabled, gateOwned);
+      nextDisabled = userDisabled;
       nextGateOwned = new Set();
     } else {
-      const userDisabled = restoreGateOwnedSources(baselineDisabled, gateOwned);
       const nextAutoDisabled = selectSourcesUnderCap(
         FEEDS,
         INTEL_SOURCES,
@@ -3617,13 +3671,18 @@ export class App {
     );
     const disabledPersisted = disabledChanged && persistence.preferencePersisted;
     const ownershipPersisted = ownershipChanged && persistence.ownershipPersisted;
-    const markers = pending?.migrationMarkers ?? [];
-    const markersPending = persistence.preferencePersisted
-      ? markers.filter((marker) => !safeStorageSetChecked(marker, 'done'))
-      : [...markers];
-    this.state.pendingSourcePreferences = persistence.complete && markersPending.length === 0
+    const migrationMarkers = (pending?.migrationMarkers ?? []).filter(marker =>
+      !persistence.preferencePersisted || !safeStorageSetChecked(marker, 'done'));
+    this.state.pendingSourcePreferences = persistence.complete && migrationMarkers.length === 0
       ? undefined
-      : { gateOwned: nextGateOwned, migrationMarkers: markersPending };
+      : {
+        gateOwned: nextGateOwned,
+        // A partial write can leave the stored and live cap on different snapshots.
+        baselineGateOwned: persistence.preferencePersisted ? nextGateOwned : gateOwned,
+        fallbackDisabledSources: persistence.preferencePersisted ? undefined : pending?.fallbackDisabledSources,
+        edits: pending?.edits ?? new Map(),
+        migrationMarkers,
+      };
     if (!stringSetsEqual(this.state.disabledSources, nextDisabled)) {
       // The live entitlement boundary must not depend on localStorage health.
       // Durable writes remain ordered/retryable above, but free users stay

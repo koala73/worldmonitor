@@ -216,7 +216,7 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
   {
     target: "redis:briefs",
     action: "delete",
-    notes: "sets brief:erased:{userId} (1-day TTL; a racing digest compose removes its own brief when it sees it), then deletes brief:{userId}:{slot} and brief:l10n:{userId}:{slot} for every indexed slot and the pointer slot; then, only once those succeed, the brief:slots:{userId} index and brief:latest:{userId} pointer",
+    notes: "sets brief:erased:{userId} (1-day TTL; a racing digest compose removes its own brief when it sees it), then deletes brief:{userId}:{slot} and brief:l10n:{userId}:{slot} for every indexed slot and the pointer slot; then, only once those succeed, the brief:slots:{userId} index and brief:latest:{userId} pointer; completion atomically schedules a second sweep 15 minutes later: one escaped SCAN MATCH pass that deletes every account brief key a racing compose can write (envelopes, localized siblings, the slot index and the latest pointer, but not the erase tombstone), one cursor page per action with bounded delete batches and five attempts per page retaining failed-delete keys, even when billing cleanup reopens deletion; 1,000 pages total (COUNT 1,000), above one full keyspace scan; budget exhaustion emits account_deletion_brief_sweep_truncated with the next cursor for operator continuation, and exhausted failures emit account_deletion_brief_sweep_failed",
   },
   {
     target: "redis:brief-translation-user-cache",

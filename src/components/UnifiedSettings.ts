@@ -970,6 +970,24 @@ export class UnifiedSettings {
     this.config.onSourcesChanged?.();
   }
 
+  public refreshSourceToggles(): void {
+    const active = document.activeElement;
+    const focusedSource = active instanceof HTMLElement
+      && this.overlay.contains(active) && active.classList.contains('source-toggle-item')
+      ? active.dataset.source : undefined;
+    this.renderSourcesGrid();
+    this.updateSourcesCounter();
+    this.refreshSummaries();
+    if (focusedSource !== undefined) {
+      restoreSettingsToggleFocus(
+        true,
+        this.overlay.querySelectorAll<HTMLElement>('.source-toggle-item'),
+        'source',
+        focusedSource,
+      );
+    }
+  }
+
   public refreshPanelToggles(): void {
     this.resetPanelDraft();
     this.renderPanelsTab();
@@ -2187,7 +2205,7 @@ export class UnifiedSettings {
 
     const disabled = this.config.getDisabledSources();
     const allSources = this.config.getAllSourceNames();
-    const enabledTotal = allSources.length - disabled.size;
+    const enabledTotal = allSources.filter(name => !disabled.has(name)).length;
 
     counter.textContent = t('header.sourcesEnabled', { enabled: String(enabledTotal), total: String(allSources.length) });
   }
