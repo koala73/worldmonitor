@@ -116,6 +116,25 @@ test('Pro-locked panels shrink to one grid row', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
 
+  // Once gating has run, a locked panel's deferred shell must already have the
+  // one-row footprint, so mounting the locked panel into it moves nothing.
+  await expect
+    .poll(
+      () => page.evaluate((panels: string[]) => {
+        const shells = panels.flatMap((id) => {
+          const shell = document.querySelector<HTMLElement>(`#panelsGrid > .panel-deferred-shell[data-panel="${id}"]`);
+          if (!shell) return [];
+          const rowMin = parseFloat(getComputedStyle(shell).getPropertyValue('--dashboard-panel-row-min')) || 200;
+          const height = shell.getBoundingClientRect().height;
+          return [height > 0 && height <= rowMin + 1 ? 'one row' : `${id} shell ${Math.round(height)}px`];
+        });
+        if (shells.length === 0) return 'no deferred shell';
+        return shells.find((s) => s !== 'one row') ?? 'one row';
+      }, LOCKED_PANELS),
+      { message: 'locked panel shells reserve one row', timeout: 30_000 },
+    )
+    .toBe('one row');
+
   for (const id of LOCKED_PANELS) {
     await expect
       .poll(
@@ -128,6 +147,9 @@ test('Pro-locked panels shrink to one grid row', async ({ page }) => {
           const card = panel.querySelector<HTMLElement>('.panel-locked-state');
           if (!card) return 'no lock card';
           const slot = panel.getBoundingClientRect();
+          const cardBox = card.getBoundingClientRect();
+          // A hidden panel measures 0x0 and would pass the size checks below.
+          if (!slot.width || !slot.height || !cardBox.width || !cardBox.height) return 'not rendered';
           const rowMin = parseFloat(getComputedStyle(panel).getPropertyValue('--dashboard-panel-row-min')) || 200;
           const cardBottom = card.getBoundingClientRect().bottom;
           if (cardBottom > slot.bottom + 1) return `lock card clipped (${Math.round(cardBottom - slot.bottom)}px)`;
