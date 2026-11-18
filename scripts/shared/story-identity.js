@@ -670,12 +670,12 @@ export function classifyCacheIdentity(title) {
   // too long to finish keeps the exact title.
   let rest = lower;
   for (let i = 0; ; i += 1) {
-    if (i === 8) return lower;
     const domainless = stripOneAttribution(rest, 'domain', false);
     const credit = rest.slice(domainless.length).trim().replace(/^[-–—|]\s*/, '');
     if (credit && !BARE_HOST_RE.test(credit)) return lower;
     const next = stripOneAttribution(domainless, 'publisher', false);
     if (next === rest) break;
+    if (i === 8) return lower;
     rest = next;
   }
   // Split in-word dashes after the credits are gone, so "Hormuz—Reuters" still strips.

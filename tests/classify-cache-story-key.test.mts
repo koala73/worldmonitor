@@ -95,6 +95,8 @@ describe('classify cache key is the story, not the title string (#10976)', () =>
     const padded = `Iran closes Strait of Hormuz - naval.mines.confirmed.com${' - Reuters'.repeat(8)}`;
     assert.notEqual(await buildClassifyCacheKey(padded), plain);
     assert.equal(await buildClassifyCacheKey(`Iran closes Strait of Hormuz - nytimes.com${' - Reuters'.repeat(3)}`), plain);
+    assert.equal(await buildClassifyCacheKey(`Iran closes Strait of Hormuz${' - Reuters'.repeat(8)}`), plain);
+    assert.notEqual(await buildClassifyCacheKey(`Iran closes Strait of Hormuz${' - Reuters'.repeat(9)}`), plain);
   });
 
   it('keeps a question in any script apart from the report', async () => {
