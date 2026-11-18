@@ -90,9 +90,33 @@ test('the first usable publish sets a durable one-way marker, including mixed-ag
   assert.deepEqual(writes, []);
   const usable = regions(start, 0);
   usable[0].current.partial = true;
-  assert.equal((await afterGridClockPublish({ regions: usable }, options)).freshnessMetaPatch.sourceState, 'degraded');
+  assert.equal(await afterGridClockPublish({ regions: usable }, options), undefined);
   assert.deepEqual(writes, [['SET', GRID_CLOCK_ACTIVATION_KEY, '1', 'NX']]);
   assert.equal(await afterGridClockPublish({ regions: regions(start, 0) }, options), undefined);
+});
+
+// MassOutage flags its national report whenever any contributing utility is
+// late, and that flag is copied onto every state at once. Production saw it on
+// 69 of 143 runs in a day, and each onset re-fired a health incident
+// (WORLDMONITOR-1EM). The panel already labels partial data and skips its
+// comparison, so a fresh partial report is a healthy publish.
+test('a fresh partial report is healthy; missing, stale and unavailable inputs stay degraded', () => {
+  const now = start + tick;
+  const partial = regions(now, 40);
+  for (const region of partial) region.current.partial = true;
+  assert.equal(gridClockHealth({ regions: partial }, now), undefined);
+
+  const missing = regions(now, 40);
+  missing[2].current = null;
+  const stale = regions(now - 61 * 60_000, 40);
+  const unavailable = regions(now, 40);
+  unavailable[4].warningSources[0].status = 'unavailable';
+  for (const [snapshot, code] of [[missing, 'TX'], [stale, 'CA'], [unavailable, 'NY']]) {
+    const patch = gridClockHealth({ regions: snapshot }, now).freshnessMetaPatch;
+    assert.equal(patch.sourceState, 'degraded');
+    assert.equal(patch.errorCode, 'GRID_CLOCK_PARTIAL');
+    assert.match(patch.errorDetail, new RegExp(code));
+  }
 });
 
 test('clock health grants pre-activation grace and enforces missing data and degraded publication afterward', () => {

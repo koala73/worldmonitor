@@ -31,14 +31,19 @@ interface ServiceWorkerContainerLike {
  * passes and the first real READ throws, which at module scope takes the rest
  * of the entry module's top-level statements down with it (WORLDMONITOR-Y5).
  *
- * Returns null whenever the container is unreadable or absent, so every caller
- * can treat "no service worker here" as one ordinary branch.
+ * An automation browser can also replace the container with a plain object that
+ * has no `addEventListener`, which threw the same way (WORLDMONITOR-1FB).
+ *
+ * Returns null whenever the container is unreadable, absent or not a real
+ * event target, so every caller can treat "no service worker here" as one
+ * ordinary branch.
  */
 export function readServiceWorkerContainer(
   nav: Navigator = navigator,
 ): ServiceWorkerContainerLike | null {
   try {
-    return (nav as { serviceWorker?: ServiceWorkerContainerLike }).serviceWorker ?? null;
+    const container = (nav as { serviceWorker?: ServiceWorkerContainerLike }).serviceWorker;
+    return typeof container?.addEventListener === 'function' ? container : null;
   } catch {
     return null;
   }
