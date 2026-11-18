@@ -1624,9 +1624,8 @@ function webPushTagFor(event, userId) {
 // A local news story reaches only rules scoped to its country
 // (eventMatchesDeliveryScope), and those rules get their own bar.
 function isLocalNewsForRule(rule, event) {
-  if (!Array.isArray(rule.countries) || rule.countries.length === 0) return false;
   const { tier, country } = resolveDeliveryTier(event);
-  return tier === TIER_LOCAL && country != null && rule.countries.includes(country);
+  return tier === TIER_LOCAL && country != null && !event.userId && eventMatchesDeliveryScope(event, rule);
 }
 
 function shouldNotify(rule, event) {

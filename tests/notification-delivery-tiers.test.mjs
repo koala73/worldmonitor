@@ -235,8 +235,17 @@ describe('local news has its own realtime bar (#10977)', () => {
   }));
 
   it('keeps the global bar of 82 for a rule scoped to another country', () => withScoreGate(() => {
+    assert.equal(relay.shouldNotify(JP_RULE, story(80)), true);
+    assert.equal(relay.shouldNotify(US_RULE, story(80)), false);
+    assert.equal(relay.shouldNotify(ALL_RULE, story(80)), false);
     assert.equal(delivers(US_RULE, story(80)), false);
     assert.equal(delivers(US_RULE, story(82)), true);
     assert.equal(delivers(ALL_RULE, story(82)), true);
+  }));
+
+  it('applies the local bar wherever the country scope matches', () => withScoreGate(() => {
+    const ukStory = ev('rss_alert', { countryCode: 'UK', importanceScore: 79 });
+    assert.equal(relay.eventMatchesDeliveryScope(ukStory, { ...US_RULE, countries: ['GB'] }), true);
+    assert.equal(delivers({ ...JP_RULE, countries: ['GB'] }, ukStory), true);
   }));
 });
