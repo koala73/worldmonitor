@@ -24,6 +24,7 @@ interface Wording {
   source: string;
   title: string;
   label: 'critical' | 'high' | 'medium' | 'low' | 'info';
+  variant: string;
   publishedAt: string;
   seenAt: string;
   corroboration: number;
@@ -42,7 +43,7 @@ function replay(wording: Wording) {
   const now = mock.method(Date, 'now', () => Date.parse(wording.seenAt));
   try {
     const score = computeImportanceScore(wording.label, wording.source, wording.corroboration, Date.parse(wording.publishedAt), { title: wording.title });
-    const event = { eventType: 'rss_alert', severity: wording.label, payload: { title: wording.title, source: wording.source, importanceScore: score } };
+    const event = { eventType: 'rss_alert', severity: wording.label, variant: wording.variant, payload: { title: wording.title, source: wording.source, importanceScore: score } };
     return { score, alerts: shouldNotify(CRITICAL_REALTIME_RULE, event) as boolean };
   } finally {
     now.mock.restore();
@@ -58,7 +59,7 @@ describe('alert replay set (#10976)', () => {
       const results = incident.wordings.map((w) => ({ wording: w, ...replay(w) }));
 
       for (const { wording, score } of results) {
-        it(`scores the ${wording.source} copy as production did`, () => {
+        it(`scores the ${wording.source} copy queued at ${wording.seenAt} as production did`, () => {
           assert.equal(score, wording.scoreNow ?? wording.observedScore);
         });
       }
