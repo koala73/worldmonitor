@@ -7,6 +7,7 @@
 
 import { compareRules, MAX_STORIES_PER_USER } from './brief-compose.mjs';
 import { generateDigestProse } from './brief-llm.mjs';
+import { briefT } from '../../shared/brief-strings.js';
 
 /**
  * Whether an entitlement tier may receive the Pro digest. Unknown (`null`,
@@ -62,11 +63,11 @@ export function carouselUrlsFrom(magazineUrl) {
  * @param {{ briefLead: string | null | undefined; synthesisLevel: number; shortDate: string }} input
  * @returns {string}
  */
-export function subjectForBrief({ briefLead, synthesisLevel, shortDate }) {
+export function subjectForBrief({ briefLead, synthesisLevel, shortDate, lang = 'en' }) {
   if (briefLead && synthesisLevel >= 1 && synthesisLevel <= 2) {
-    return `WorldMonitor Intelligence Brief — ${shortDate}`;
+    return briefT(lang, 'subject.intel', { date: shortDate });
   }
-  return `WorldMonitor Digest — ${shortDate}`;
+  return briefT(lang, 'subject.digest', { date: shortDate });
 }
 
 /**

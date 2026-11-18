@@ -14,7 +14,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { pageFromIndex, renderCarouselImageResponse } from '../server/_shared/brief-carousel-render.ts';
+import { buildCarouselTree, carouselKeepsEnglish, pageFromIndex, renderCarouselImageResponse } from '../server/_shared/brief-carousel-render.ts';
+import { BRIEF_STRING_KEYS, briefPlural, briefT, formatBriefDate } from '../shared/brief-strings.js';
+import { UI_LANGUAGES } from '../shared/ui-languages.js';
 import { carouselUrlsFrom } from '../scripts/lib/digest-orchestration-helpers.mjs';
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
@@ -303,5 +305,56 @@ describe('renderCarouselImageResponse', () => {
       cc.includes('max-age=31536000'),
       `expected @vercel/og's default 1-year cache to survive on the raw ImageResponse, got "${cc}"`,
     );
+  });
+});
+
+describe('carousel chrome language', () => {
+  const texts = (env) => ['cover', 'threads', 'story'].map((p) => JSON.stringify(buildCarouselTree(env, p))).join('\n');
+  const v4 = { ...SAMPLE_ENVELOPE, version: 4 };
+
+  it('keeps English chrome for v1-v4 envelopes', () => {
+    const out = texts(v4);
+    for (const label of ['ISSUE Nº 001', '1 thread that shaped the world today.', 'Open for full brief →', 'Digest / On The Desk', "Today's Threads", 'Source · Reuters']) {
+      assert.ok(out.includes(label), label);
+    }
+  });
+
+  it('translates chrome for a v5 envelope', () => {
+    const out = texts({ ...v4, version: 5, lang: 'fr' });
+    for (const label of ['NUMÉRO 001', 'Ouvrir le brief complet →', 'Source · Reuters']) {
+      assert.ok(out.includes(label), label);
+    }
+    assert.ok(!out.includes('Open for full brief'));
+  });
+
+  it('ignores lang on non-v5 envelopes and keeps undrawable languages English', () => {
+    for (const env of [{ ...v4, lang: 'fr' }, ...['ar', 'fa', 'ja', 'ru', 'pl', 'th'].map((lang) => ({ ...v4, version: 5, lang }))]) {
+      assert.ok(texts(env).includes('Open for full brief →'), JSON.stringify(env.lang));
+    }
+  });
+
+  // Character map of the registered face (noto-serif-latin-400-normal.woff):
+  // Basic Latin, Latin-1, a few marks and typographic punctuation. The arrow
+  // is outside it for English too and is left out of the comparison.
+  const FACE = /^[\u0020-\u007E\u00A0-\u00FF\u0131\u0152\u0153\u2013\u2014\u2018-\u201A\u201C-\u201E\u2022\u2026\u2032\u2033\u2039\u203A\u20AC\u2122\u2212\u2192]*$/;
+
+  it('localizes exactly the languages whose carousel text the registered face covers', () => {
+    const keys = BRIEF_STRING_KEYS.filter((k) => /^(carousel|greeting|threat)\./.test(k) || k === 'mag.deskWatching' || k === 'mag.source');
+    assert.ok(keys.length >= 10, 'carousel string keys');
+    for (const lang of UI_LANGUAGES.filter((l) => l !== 'en')) {
+      const strings = [
+        ...keys.flatMap((key) => [1, 2, 5, 12].map((n) => briefPlural(lang, key, n, { issue: '17.11' }))),
+        ...Array.from({ length: 12 }, (_, m) => formatBriefDate(lang, `2026-${String(m + 1).padStart(2, '0')}-17`, 'long')),
+      ].join(' ');
+      const covered = FACE.test(strings) && FACE.test(strings.toLocaleUpperCase(lang));
+      assert.equal(carouselKeepsEnglish({ version: 5, lang }), !covered, `${lang}: face covers its text = ${covered}`);
+    }
+    assert.equal(briefT('fr', 'carousel.openFull'), 'Ouvrir le brief complet →');
+  });
+
+  it('never treats a missing, English or unknown sibling language as undrawable', () => {
+    for (const sibling of [null, undefined, 'x', {}, { lang: 'en' }, { lang: 'xx' }, { lang: 7 }]) {
+      assert.equal(carouselKeepsEnglish(sibling), false, JSON.stringify(sibling));
+    }
   });
 });

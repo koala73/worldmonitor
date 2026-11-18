@@ -68,7 +68,7 @@ describe('workers wire the unsubscribe URL into recurring mail', () => {
   it('digest email passes the brief URL and the template has the footer slot', () => {
     const src = readFileSync(join(root, 'scripts/seed-digest-notifications.mjs'), 'utf8');
     const template = readFileSync(join(root, 'scripts/lib/digest-email-html.mjs'), 'utf8');
-    assert.match(src, /sendEmail\(ch\.email, subject, text, html, ch, cooldownSlot\.slice\(0, 13\)\)/);
+    assert.match(src, /sendEmail\(ch\.email, subject, text, html, ch, cooldownSlot\.slice\(0, 13\), channelLang\)/);
     assert.match(src, /unsubscribeUrlFor\(channel, 'brief'\)/);
     assert.ok(template.includes(UNSUBSCRIBE_SLOT), 'formatDigestHtml footer must keep the unsubscribe slot');
     assert.match(src, /headers: listUnsubscribeHeaders\(unsubscribeUrl\)/);
