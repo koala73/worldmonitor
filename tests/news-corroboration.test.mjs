@@ -54,6 +54,34 @@ describe('news cross-wording corroboration (#10977)', () => {
     assert.deepEqual(found.get('Attack on ADNOC vessel reported off Hormuz').families.sort(), [familyOf('Gulf News'), familyOf('Reuters')].sort());
   });
 
+  it('counts the publishers the digest saw carry each headline, not the topic feed that served it', async () => {
+    const { pipeline } = memoryPipeline();
+    const yes = async () => '{"same":true}';
+    // Four outlets through one topic feed are four publishers.
+    await recordSightings([
+      { title: 'ADNOC says one of its vessels attacked in Strait of Hormuz', source: 'Shipping & Freight', level: 'critical', families: ['label:wana news agency'] },
+      { title: 'ADNOC L&S says crew member missing after attack on vessel', source: 'Shipping & Freight', level: 'high', families: ['reuters', 'label:arab times'] },
+    ], { now: NOW - 60_000, pipeline });
+    const four = await crossWordingFamilies(
+      [{ title: 'ADNOC ship attacked in Hormuz as risks rise', source: 'Shipping & Freight', families: ['label:oilprice.com'] }],
+      { now: NOW, pipeline, embed, judge: yes, log: () => {} },
+    );
+    assert.deepEqual(four.get('ADNOC ship attacked in Hormuz as risks rise').families.sort(),
+      ['label:arab times', 'label:oilprice.com', 'label:wana news agency', 'reuters']);
+    // One outlet through two topic feeds, in two wordings, is one publisher.
+    const other = memoryPipeline();
+    await recordSightings([
+      { title: 'Live: ADNOC vessel hit in Hormuz', source: 'Strategic Chokepoints', level: 'critical', families: ['label:gulf news'] },
+    ], { now: NOW - 60_000, pipeline: other.pipeline });
+    let judged = false;
+    const one = await crossWordingFamilies(
+      [{ title: 'Live: ADNOC vessel hit, crew hurt', source: 'Tanker & Shipping', families: ['label:gulf news'] }],
+      { now: NOW, pipeline: other.pipeline, embed, judge: async () => { judged = true; return '{"same":true}'; }, log: () => {} },
+    );
+    assert.equal(one.size, 0);
+    assert.equal(judged, false);
+  });
+
   it('adds the families of the wordings the judge calls the same incident', async () => {
     const { pipeline } = memoryPipeline();
     await recordSightings([

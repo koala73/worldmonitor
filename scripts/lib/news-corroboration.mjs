@@ -31,11 +31,19 @@ export function familyOf(source) {
   return publisherFamilyFor(source) || `source:${source.trim().toLowerCase()}`;
 }
 
+// The publishers of one headline: the families the digest's coverage history
+// holds for it (a topic feed's copy resolves to its original publisher there),
+// or the source's own family when there is no history.
+function familiesOf({ source, families }) {
+  const known = Array.isArray(families) ? families.filter(f => typeof f === 'string' && f) : [];
+  return known.length ? [...new Set(known)] : [familyOf(source)].filter(Boolean);
+}
+
 /** Records the critical and high headlines this batch labelled. */
 export async function recordSightings(sightings, { now = Date.now(), pipeline = defaultRedisPipeline, log = console.log } = {}) {
   const members = sightings
-    .filter(s => fits(s.title) && familyOf(s.source))
-    .flatMap(s => [String(now), JSON.stringify({ title: s.title, family: familyOf(s.source), level: s.level })]);
+    .filter(s => fits(s.title))
+    .flatMap(s => familiesOf(s).flatMap(family => [String(now), JSON.stringify({ title: s.title, family, level: s.level })]));
   if (!members.length) return;
   const rows = await pipeline([
     ['ZADD', SIGHTINGS_KEY, ...members],
@@ -101,7 +109,7 @@ async function readSightings(now, pipeline) {
 
 async function match(candidate, sightings, { now, embed, judge }) {
   if (!fits(candidate.title)) return null;
-  const own = familyOf(candidate.source);
+  const own = new Set(familiesOf(candidate));
   const key = normalizeForEmbedding(candidate.title);
   // One copy per wording: the judge sees each wording once.
   const wordings = new Map();
@@ -113,7 +121,7 @@ async function match(candidate, sightings, { now, embed, judge }) {
     w.families.add(s.family);
     w.at = Math.min(w.at, s.at);
   }
-  const pool = [...wordings.values()].filter(w => [...w.families].some(f => f !== own));
+  const pool = [...wordings.values()].filter(w => [...w.families].some(f => !own.has(f)));
   if (!pool.length) return null;
   const vectors = await embed([key, ...pool.map(w => normalizeForEmbedding(w.title))]);
   const shortlist = pool
@@ -125,12 +133,12 @@ async function match(candidate, sightings, { now, embed, judge }) {
   const verdicts = await Promise.all(shortlist.map(w => judge(JUDGE_SYSTEM_PROMPT, judgePrompt(candidate.title, w, now)).then(parseJudgeVerdict)));
   if (verdicts.includes(null)) throw new Error('unreadable verdict');
   const matched = shortlist.filter((_, i) => verdicts[i]);
-  const families = new Set([own, ...matched.flatMap(w => [...w.families])].filter(Boolean));
+  const families = new Set([...own, ...matched.flatMap(w => [...w.families])]);
   return { families: [...families], matched: matched.map(w => ({ title: w.title, families: [...w.families], score: Number(w.score.toFixed(3)) })) };
 }
 
 /**
- * For each critical candidate ({ title, source }), the publisher families of
+ * For each critical candidate ({ title, source, families? }), the publisher families of
  * every wording that reports the same incident, its own included. A title is
  * missing from the result when it was not checked, matched nothing, or failed.
  * Never throws; the whole call ends by `deadlineMs`.

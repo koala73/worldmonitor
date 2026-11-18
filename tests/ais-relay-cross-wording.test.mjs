@@ -55,11 +55,22 @@ describe('relay cross-wording corroboration (#10977)', () => {
       { title: 'medium copy', level: 'medium' },
       { title: 'critical over the bar', level: 'critical', meta: { corroborationCount: 4 } },
       { title: 'critical with coverage', level: 'critical' },
-    ], new Map([['critical with coverage', 4]]));
+    ], new Map([['critical with coverage', ['a', 'b', 'c', 'd']]]));
     assert.deepEqual(titlesOf(h.recorded), ['critical under the bar', 'high copy', 'critical over the bar', 'critical with coverage']);
     assert.deepEqual(h.recorded.map((s) => s.level), ['critical', 'high', 'critical', 'critical']);
     assert.deepEqual(titlesOf(h.checked), ['critical under the bar']);
     assert.deepEqual([...found.keys()], ['critical under the bar']);
+  });
+
+  it('hands on the publishers the coverage history holds for each headline', async () => {
+    const h = harness();
+    await h.run([
+      { title: 'critical under the bar', level: 'critical' },
+      { title: 'high copy', level: 'high' },
+      { title: 'no history', level: 'high' },
+    ], new Map([['critical under the bar', ['label:oilprice.com']], ['high copy', ['reuters', 'label:arab times']]]));
+    assert.deepEqual(h.recorded.map((s) => s.families), [['label:oilprice.com'], ['reuters', 'label:arab times'], undefined]);
+    assert.deepEqual(h.checked.map((c) => c.families), [['label:oilprice.com']]);
   });
 
   it('leaves out X posts, and never checks a copy the relay gates will drop', async () => {

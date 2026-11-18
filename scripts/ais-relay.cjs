@@ -5231,8 +5231,8 @@ function relayEntityCorroborationScore(count) {
 // corroborationCount → 1 and publishedAt → Date.now() when upstream omits them.
 // Publisher families the digest saw carry each headline in the last day, over
 // every build and edition (#10977), in one short read. A title without a
-// count falls back to the build's own count.
-async function readObservedPublisherCounts(titles) {
+// history falls back to the build's own count.
+async function readObservedPublishers(titles) {
   if (titles.length === 0) return new Map();
   const now = Date.now();
   const keyed = titles.map((title) => [title, newsPublisherCoverageKey(title)]).filter(([, key]) => key);
@@ -5240,12 +5240,12 @@ async function readObservedPublisherCounts(titles) {
     keyed.map(([, key]) => ['ZRANGEBYSCORE', key, `(${now - NEWS_STORY_DEDUP_TTL_SECONDS * 1000}`, now]),
     { deadlineMs: 1500 },
   );
-  const counts = new Map();
+  const observed = new Map();
   keyed.forEach(([title], i) => {
     const families = rows?.[i]?.result;
-    if (Array.isArray(families)) counts.set(title, families.length);
+    if (Array.isArray(families)) observed.set(title, families.filter((family) => typeof family === 'string' && family));
   });
-  return counts;
+  return observed;
 }
 
 function relayComputeImportanceScore(level, source, corroborationCount, publishedAt, context = {}) {
@@ -5665,15 +5665,17 @@ async function crossWordingFamilies(chunk, acceptedLevels, allTitles, observedPu
     const level = acceptedLevels.get(i);
     const meta = allTitles.get(title);
     if (!meta || meta.fromX || (level !== 'critical' && level !== 'high')) return;
-    sightings.push({ title, source: meta.source, level });
+    // The digest's families name the publisher behind a topic feed's copy.
+    const families = observedPublishers.get(title);
+    sightings.push({ title, source: meta.source, level, families });
     if (level !== 'critical') return;
     if (shouldDropRelaySourceForTier(RELAY_GATES_READY, meta.source, RELAY_TIER4_SOURCES)) return;
     if (RELAY_GATES_READY && meta.publishedAt && Date.now() - meta.publishedAt > RELAY_RECENCY_MS) return;
-    const count = Math.max(meta.corroborationCount ?? 1, observedPublishers.get(title) ?? 0);
+    const count = Math.max(meta.corroborationCount ?? 1, families?.length ?? 0);
     const score = relayComputeImportanceScore(level, meta.source, count, meta.publishedAt ?? Date.now(), {
       title, classSource: 'llm', entityCorroborationCount: 0,
     });
-    if (!reachesRealtimeRules(level, score)) candidates.push({ title, source: meta.source });
+    if (!reachesRealtimeRules(level, score)) candidates.push({ title, source: meta.source, families });
   });
   const corroboration = await newsCorroborationPromise;
   if (!corroboration || sightings.length === 0) return new Map();
@@ -5824,7 +5826,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
       if (typeof entry?.i === 'number' && !acceptedLevels.has(entry.i)
         && CLASSIFY_VALID_LEVELS.includes(entry.l) && CLASSIFY_VALID_CATEGORIES.includes(entry.c)) acceptedLevels.set(entry.i, entry.l);
     }
-    const observedPublishers = await readObservedPublisherCounts(chunk.filter((title, i) =>
+    const observedPublishers = await readObservedPublishers(chunk.filter((title, i) =>
       !allTitles.get(title)?.fromX && ['critical', 'high'].includes(acceptedLevels.get(i))));
     const crossWording = await crossWordingFamilies(chunk, acceptedLevels, allTitles, observedPublishers);
     const classifiedSet = new Set();
@@ -5876,7 +5878,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
         // across builds and editions. Neither contains the other.
         const corroborationCount = Math.max(
           meta.corroborationCount ?? 1,
-          meta.fromX ? 0 : (observedPublishers.get(chunk[idx]) ?? 0),
+          meta.fromX ? 0 : (observedPublishers.get(chunk[idx])?.length ?? 0),
           level === 'critical' ? (crossWording.get(chunk[idx])?.families.length ?? 0) : 0,
         );
         const corroboratedBy = level === 'critical' ? crossWording.get(chunk[idx])?.families : undefined;
