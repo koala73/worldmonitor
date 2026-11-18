@@ -175,46 +175,55 @@ function inputKey(basketItemId: string, retailerProductId: string) {
   return `${basketItemId}|${retailerProductId}`;
 }
 
-// Latest current-methodology index row before this run's date for each series.
-// The run's own date is excluded so an hourly rerun recomputes from the same
-// anchor instead of compounding on itself.
-async function getPreviousIndices(basketId: string, metricDate: string): Promise<Map<string, PreviousIndex>> {
-  const result = await query<{ category: string | null; metric_key: string; metric_date: string; metric_value: string }>(
-    `SELECT DISTINCT ON (category, metric_key)
-            category, metric_key, to_char(metric_date, 'YYYY-MM-DD') AS metric_date, metric_value
-     FROM computed_indices
-     WHERE basket_id = $1 AND retailer_id IS NULL
-       AND metric_key IN ('essentials_index', 'value_index')
-       AND methodology_version = $2
-       AND metric_date < $3::date
-     ORDER BY category, metric_key, metric_date DESC`,
+// Latest current-methodology index row before this run's date for each
+// series, with the (basket item, product, price) rows that day was computed
+// from. The run's own date is excluded so an hourly rerun recomputes from the
+// same anchor instead of compounding on itself. One statement, one snapshot:
+// a run for the anchor date committing between two reads would otherwise pair
+// its old level with its replacement prices. The stored inputs, not a fresh
+// look at observation history, are what the next link divides by, so a scrape
+// that landed after the aggregate, or a product that was not in that day's
+// basket, cannot enter the anchor.
+async function getAnchors(basketId: string, metricDate: string) {
+  const result = await query<{
+    kind: 'index' | 'input';
+    category: string | null;
+    metric_key: string | null;
+    metric_date: string;
+    metric_value: string | null;
+    basket_item_id: string | null;
+    retailer_product_id: string | null;
+    price: string | null;
+  }>(
+    `WITH prev AS (
+       SELECT DISTINCT ON (category, metric_key) category, metric_key, metric_date, metric_value
+       FROM computed_indices
+       WHERE basket_id = $1 AND retailer_id IS NULL
+         AND metric_key IN ('essentials_index', 'value_index')
+         AND methodology_version = $2
+         AND metric_date < $3::date
+       ORDER BY category, metric_key, metric_date DESC
+     )
+     SELECT 'index' AS kind, category, metric_key, to_char(metric_date, 'YYYY-MM-DD') AS metric_date,
+            metric_value, NULL::uuid AS basket_item_id, NULL::uuid AS retailer_product_id, NULL::numeric AS price
+     FROM prev
+     UNION ALL
+     SELECT 'input', NULL, NULL, to_char(i.metric_date, 'YYYY-MM-DD'), NULL, i.basket_item_id, i.retailer_product_id, i.price
+     FROM computed_index_inputs i
+     WHERE i.basket_id = $1 AND i.metric_date IN (SELECT DISTINCT metric_date FROM prev)`,
     [basketId, INDEX_METHODOLOGY_VERSION, metricDate],
   );
-  const map = new Map<string, PreviousIndex>();
+  const previous = new Map<string, PreviousIndex>();
+  const inputsByDate = new Map<string, Map<string, number>>();
   for (const r of result.rows) {
-    map.set(seriesKey(r.category, r.metric_key), { date: r.metric_date, value: parseFloat(r.metric_value) });
+    if (r.kind === 'index') {
+      previous.set(seriesKey(r.category, r.metric_key!), { date: r.metric_date, value: parseFloat(r.metric_value!) });
+    } else {
+      if (!inputsByDate.has(r.metric_date)) inputsByDate.set(r.metric_date, new Map());
+      inputsByDate.get(r.metric_date)!.set(inputKey(r.basket_item_id!, r.retailer_product_id!), parseFloat(r.price!));
+    }
   }
-  return map;
-}
-
-// The exact (basket item, product, price) rows the index on each date was
-// computed from, as that day's last run stored them. Re-deriving them from
-// observation history would let a scrape that landed after the aggregate, or
-// a product that was not in that day's basket, into the anchor.
-async function getIndexInputs(basketId: string, dates: string[]): Promise<Map<string, Map<string, number>>> {
-  const map = new Map<string, Map<string, number>>();
-  if (dates.length === 0) return map;
-  const result = await query<{ metric_date: string; basket_item_id: string; retailer_product_id: string; price: string }>(
-    `SELECT to_char(metric_date, 'YYYY-MM-DD') AS metric_date, basket_item_id, retailer_product_id, price
-     FROM computed_index_inputs
-     WHERE basket_id = $1 AND metric_date = ANY($2::date[])`,
-    [basketId, dates],
-  );
-  for (const r of result.rows) {
-    if (!map.has(r.metric_date)) map.set(r.metric_date, new Map());
-    map.get(r.metric_date)!.set(inputKey(r.basket_item_id, r.retailer_product_id), parseFloat(r.price));
-  }
-  return map;
+  return { previous, inputsByDate };
 }
 
 // Matched-model chain link. A product entering or leaving the basket must not
@@ -291,18 +300,20 @@ async function writeComputedIndex(
 
 type IndexWrite = [retailerId: string | null, category: string | null, metricKey: string, metricValue: number];
 
-export async function aggregateBasket(basketSlug: string, marketCode: string) {
+// Returns false when the basket was aggregated without its indices (migration
+// 013 not applied), so the run can fail instead of reporting success.
+export async function aggregateBasket(basketSlug: string, marketCode: string): Promise<boolean> {
   const configs = loadAllBasketConfigs();
   const basketConfig = configs.find((b) => b.slug === basketSlug && b.marketCode === marketCode);
   if (!basketConfig) {
     logger.warn(`Basket ${basketSlug}:${marketCode} not found in config`);
-    return;
+    return true;
   }
 
   const basketResult = await query<{ id: string }>(`SELECT id FROM baskets WHERE slug = $1`, [basketSlug]);
   if (!basketResult.rows.length) {
     logger.warn(`Basket ${basketSlug} not found in DB — run seed first`);
-    return;
+    return true;
   }
   const basketId = basketResult.rows[0].id;
 
@@ -328,6 +339,7 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
     // indices deleted with nothing in their place, or the overview would fall
     // back to an older covered day.
     await withTransaction(async (execute) => {
+      await execute(`SELECT pg_advisory_xact_lock(hashtext($1 || '|' || $2))`, [basketId, metricDate]);
       await execute(`DELETE FROM computed_indices
        WHERE basket_id = $1 AND metric_date = $2::date`, [basketId, metricDate]);
       if (hasInputs) {
@@ -336,16 +348,15 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
       await writeComputedIndex(basketId, metricDate, null, null, 'coverage_pct', 0, execute);
     });
     logger.warn(`No fresh matched products for ${basketSlug}:${marketCode} — coverage recorded as 0`);
-    return;
+    return true;
   }
 
   const uniqueItemIds = [...new Set(rows.map((r) => r.basketItemId))];
   const baselines = await getBaselinePrices(uniqueItemIds, basketConfig.baseDate);
 
-  const previous = hasInputs ? await getPreviousIndices(basketId, metricDate) : new Map<string, PreviousIndex>();
-  const inputsByDate = hasInputs
-    ? await getIndexInputs(basketId, [...new Set([...previous.values()].map((p) => p.date))])
-    : new Map<string, Map<string, number>>();
+  const { previous, inputsByDate } = hasInputs
+    ? await getAnchors(basketId, metricDate)
+    : { previous: new Map<string, PreviousIndex>(), inputsByDate: new Map<string, Map<string, number>>() };
   const chain = (series: BasketRow[], category: string | null, metricKey: string, compute: typeof computeFixedIndex) =>
     hasInputs
       ? chainIndex(series, baselines, previous.get(seriesKey(category, metricKey)), inputsByDate, compute, `${basketSlug}:${category ?? 'all'}:${metricKey}`)
@@ -428,10 +439,19 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
     writes.push([null, null, 'basket_total_usd', Math.round(basketTotalLocal * fxRate * 100) / 100]);
   }
 
-  // The day's index rows and the prices they were computed from are replaced
-  // together, so the next day's chain link always reads the inputs that
-  // produced its anchor.
+  // Only prices that contributed to today's index are stored as its inputs.
+  // An item with no baseline was skipped by the index; storing it would make
+  // it a "continuing" product tomorrow and move the link on its first baseline.
+  const inputs = rows.filter((r) => baselines.get(r.basketItemId));
+
+  // The day's rows are replaced as one set: the lock serialises overlapping
+  // runs for this basket and date, and clearing the day first removes series a
+  // rerun no longer produces (a category that dropped out), which would
+  // otherwise linger as tomorrow's anchor with no inputs behind it. Only this
+  // job writes computed_indices.
   await withTransaction(async (execute) => {
+    await execute(`SELECT pg_advisory_xact_lock(hashtext($1 || '|' || $2))`, [basketId, metricDate]);
+    await execute(`DELETE FROM computed_indices WHERE basket_id = $1 AND metric_date = $2::date`, [basketId, metricDate]);
     if (hasInputs) {
       await execute(`DELETE FROM computed_index_inputs WHERE basket_id = $1 AND metric_date = $2::date`, [basketId, metricDate]);
       await execute(
@@ -439,7 +459,7 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
          SELECT $1, $2::date, i.item, i.product, i.price
          FROM unnest($3::uuid[], $4::uuid[], $5::numeric[]) AS i(item, product, price)
          ON CONFLICT DO NOTHING`,
-        [basketId, metricDate, rows.map((r) => r.basketItemId), rows.map((r) => r.retailerProductId), rows.map((r) => r.price)],
+        [basketId, metricDate, inputs.map((r) => r.basketItemId), inputs.map((r) => r.retailerProductId), inputs.map((r) => r.price)],
       );
     }
     for (const [retailerId, category, metricKey, metricValue] of writes) {
@@ -448,20 +468,24 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
   });
 
   logger.info(`${basketSlug}:${marketCode} essentials=${essentialsIndex?.toFixed(2) ?? 'none'} value=${valueIndex?.toFixed(2) ?? 'none'} baselines=${baselines.size}/${uniqueItemIds.length} coverage=${coveragePct.toFixed(1)}%`);
+  return hasInputs;
 }
 
 export async function aggregateAll() {
   const configs = loadAllBasketConfigs();
   let failed = 0;
+  let unindexed = 0;
   for (const c of configs) {
     try {
-      await aggregateBasket(c.slug, c.marketCode);
+      if (!(await aggregateBasket(c.slug, c.marketCode))) unindexed++;
     } catch (err) {
       logger.warn(`aggregateBasket ${c.slug}:${c.marketCode} failed: ${err}`);
       failed++;
     }
   }
   if (failed > 0) throw new Error(`${failed}/${configs.length} basket(s) failed`);
+  // Coverage was written, but no index was: the cron must not read as healthy.
+  if (unindexed > 0) throw new Error(`${unindexed}/${configs.length} basket(s) wrote no index — apply migration 013 (computed_index_inputs)`);
 }
 
 export async function validateAndAggregateAll() {

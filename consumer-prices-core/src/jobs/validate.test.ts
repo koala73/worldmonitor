@@ -122,7 +122,9 @@ it('records zero coverage when the freshness window leaves the basket empty', as
   expect(clear).toBeLessThan(sqls.findIndex((sql) => sql.includes('INSERT INTO computed_indices')));
   expect(tx.mock.calls[clear][1]).toEqual(['basket', '2026-11-18']);
   // The day's stored index inputs go with it, so no later chain link reads them.
-  expect(sqls.some((sql) => sql.includes('DELETE FROM computed_index_inputs'))).toBe(true);
+  const clearInputs = sqls.findIndex((sql) => /DELETE FROM computed_index_inputs WHERE basket_id = \$1 AND metric_date = \$2::date/.test(sql));
+  expect(clearInputs).toBeGreaterThan(-1);
+  expect(tx.mock.calls[clearInputs][1]).toEqual(['basket', '2026-11-18']);
 });
 it('keeps its hold while another retailer was seen recently but is missing from the priced rows', async () => {
   // The peer's latest observation is out of stock, so the priced query drops it;
