@@ -1,6 +1,6 @@
 {
   "name": "@vercel/og",
-  "version": "1.0.3-worldmonitor.1",
+  "version": "1.0.3-worldmonitor.2",
   "description": "Generate Open Graph Images dynamically from HTML/CSS without a browser",
   "repository": {
     "type": "git",
