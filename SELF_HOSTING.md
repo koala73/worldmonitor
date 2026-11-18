@@ -388,8 +388,10 @@ above. The 10-second memo is only part of that wait: a digest build that read
 the set before the `SREM` can take up to 25 seconds and still publish its
 copy without the item, so delete the keys only after any such build is done.
 If a CDN sits in front of the stack, it can still hold a digest without the
-item: once `/api/news/v1/list-feed-digest` at the origin shows it again, purge
-that CDN path as for a revocation. A purely local Docker stack can stop at the
+item. Once `/api/news/v1/list-feed-digest` at the origin shows it again, and
+at least one minute after deleting the digest keys, purge that CDN path: a
+request that read the old digest before the deletion can still finish and
+refill the CDN within that minute. A purely local Docker stack can stop at the
 origin check.
 
 ```bash
