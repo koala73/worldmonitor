@@ -31,6 +31,7 @@ function parseWindow(argv) {
     throw new Error('--date needs a real YYYY-MM-DD day');
   }
   if (from < Date.now() - RETENTION_DAYS * DAY_MS) throw new Error(`--date ${date} is older than the score log's ${RETENTION_DAYS}-day retention`);
+  if (from + DAY_MS > Date.now() - SETTLE_MS) throw new Error(`--date ${date} has not finished yet; omit --date for the last 24 hours`);
   return { from, to: from + DAY_MS };
 }
 
