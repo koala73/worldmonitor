@@ -263,10 +263,12 @@ test.describe('AI widget builder — PRO tier', () => {
   test('shows the PRO builder when the tester-key session check resolves after boot', async ({ page }) => {
     // The key-session exchange can land after auth settles, and no auth or entitlement event follows.
     // Hold every session answer until the dashboard is ready with the block hidden, then release.
+    // The client aborts a session request after 10s and does not retry, so the hold ends by 8s.
     let release!: () => void;
     const released = new Promise<void>((resolve) => { release = resolve; });
+    let holdExpired = false;
     await page.route('**/api/wm-session', async (route) => {
-      await released;
+      await Promise.race([released, new Promise<void>((resolve) => setTimeout(() => { holdExpired = true; resolve(); }, 8_000))]);
       if (route.request().method() !== 'GET') return route.fulfill({ json: { exp: Date.now() + 3_600_000 } });
       await route.fulfill({ json: { widget: true, pro: true }, headers: { 'Cache-Control': 'no-store' } });
     });
@@ -275,6 +277,7 @@ test.describe('AI widget builder — PRO tier', () => {
     const block = page.locator('#panelsGrid .ai-widget-block-pro');
     await expect(block).toHaveCount(1);
     await expect(block).toBeHidden();
+    expect(holdExpired, 'the dashboard became ready before the held session answer was due').toBe(false);
     release();
     await expect(block).toBeVisible({ timeout: 15_000 });
   });

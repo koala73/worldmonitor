@@ -44,6 +44,35 @@ async function liveNewsTransportCount(page: Page): Promise<number> {
 }
 
 /**
+ * Every live video plays as a live YouTube stream: no HLS, a blank embed, and an IFrame API stand-in
+ * that reports isLive and PLAYING. Cases that fast-forward past the verdict deadline then test the
+ * idle timer alone, not whether a real channel happens to be live on the network.
+ */
+async function stubLiveVideoProvider(page: Page): Promise<void> {
+  await page.route(/\.m3u8(?:[?#]|$)/i, (route) => route.abort());
+  await page.route(/(?:youtube\.com\/embed\/|\/api\/youtube-embed)/i, (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>stub</title>' }));
+  await page.route('https://www.youtube.com/iframe_api', (route) => route.fulfill({
+    contentType: 'text/javascript',
+    body: `window.YT = { Player: function (frame, options) {
+      var started = Date.now();
+      var player = {
+        getVideoData: function () { return { video_id: 'stub', isLive: true, title: 'Stub', author: 'Stub' }; },
+        getPlayerState: function () { return 1; },
+        getDuration: function () { return 3600 + (Date.now() - started) / 1000; },
+        isMuted: function () { return true; },
+        mute: function () {}, unMute: function () {}, playVideo: function () {}, pauseVideo: function () {}, destroy: function () {},
+      };
+      setTimeout(function () {
+        options.events.onReady({ target: player });
+        options.events.onStateChange({ data: 1, target: player });
+      }, 0);
+      return player;
+    } };
+    if (window.onYouTubeIframeAPIReady) window.onYouTubeIframeAPIReady();`,
+  }));
+}
+
+/**
  * The dashboard swaps a deferred shell for the real panel while it settles. Scrolling or observing the
  * shell races that swap ("Element is not attached"), and the real panel's lazy start never sees it.
  */
@@ -297,6 +326,7 @@ test.describe('live media intent gating', () => {
     const minute = 60_000;
     const hour = 60 * minute;
     await installCleanLiveMediaPrefs(page);
+    await stubLiveVideoProvider(page);
     await page.clock.install();
 
     await page.goto('/dashboard?liveMediaIdle=1', { waitUntil: 'domcontentloaded' });
@@ -341,6 +371,7 @@ test.describe('live media intent gating', () => {
 
   test('a saved always-on dashboard keeps live news playing through a long idle stretch', async ({ page }) => {
     await installAlwaysOnLiveMediaPrefs(page);
+    await stubLiveVideoProvider(page);
     await page.clock.install();
 
     await page.goto('/dashboard?liveMediaIdleAlwaysOn=1', { waitUntil: 'domcontentloaded' });
