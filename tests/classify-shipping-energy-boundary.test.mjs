@@ -38,12 +38,17 @@ describe('shipping and energy attack label set', () => {
   it('is well formed', () => {
     assert.equal(new Set(set.rows.map((r) => r.title)).size, set.rows.length);
     for (const r of set.rows) assert.ok(LEVELS.includes(r.judge) && typeof r.borderline === 'boolean', r.title);
-    for (const [name, run] of Object.entries(set.runs)) assert.equal(run.labels.length, set.rows.length, name);
+    for (const [name, run] of Object.entries(set.runs)) {
+      assert.equal(run.labels.length, set.rows.length, name);
+      run.labels.forEach((label, i) => assert.ok(LEVELS.includes(label), `${name}: no label for ${set.rows[i].title}`));
+    }
   });
 
   it('its runs are the prompt and model production sends today', () => {
     // If this reds, re-capture: node scripts/eval-classify-labels.mjs --fixture
     // tests/fixtures/classify-judged-shipping-energy.json --path relay|rpc --capture <run> --force
+    // Then review the changed labels against the judged rows, and update the
+    // boundary counts and the Reuters expectation below for the changes you accept.
     for (const name of ['relay-after', 'relay-after-rerun']) {
       assert.equal(set.runs[name].promptSha, promptSha(extractRelayPrompt(relaySrc)), name);
       assert.equal(set.runs[name].model, extractRelayOpenRouterModel(relaySrc), name);
