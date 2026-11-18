@@ -13404,6 +13404,14 @@ button.popup-link {
   white-space: nowrap;
 }
 
+/* A whole metric phrase ("7 warning(s) · 1 Ship tracking disruptions", the
+   flow line with its hazard badge) is wider than a 271px card, so it may
+   wrap. Its inner pieces (a value, a badge) still stay on one line. */
+.sc-metric-row > span {
+  white-space: normal;
+  min-width: 0;
+}
+
 .sc-disrupt-red { color: var(--red, #ff5252); }
 .sc-disrupt-yellow { color: var(--yellow, #ffd740); }
 .sc-disrupt-green { color: var(--green, #69f0ae); }
