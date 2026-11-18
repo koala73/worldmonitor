@@ -627,7 +627,9 @@ function upstashMGet(keys) {
 // null when the request fails.
 // `deadlineMs` bounds the whole request; `timeoutMs` only an idle socket.
 function upstashPipeline(commands, { timeoutMs = 10000, deadlineMs } = {}) {
-  return new Promise((resolve) => {
+  return new Promise((settle) => {
+    let deadline = null;
+    const resolve = (value) => { clearTimeout(deadline); settle(value); };
     if (!UPSTASH_ENABLED || commands.length === 0) return resolve(null);
     const url = new URL('/pipeline', UPSTASH_REDIS_REST_URL);
     const req = UPSTASH_HTTP_MODULE.request(url, {
@@ -655,7 +657,7 @@ function upstashPipeline(commands, { timeoutMs = 10000, deadlineMs } = {}) {
     });
     req.on('error', () => resolve(null));
     req.on('timeout', () => { req.destroy(); resolve(null); });
-    if (deadlineMs) setTimeout(() => { req.destroy(); resolve(null); }, deadlineMs).unref?.();
+    if (deadlineMs) deadline = setTimeout(() => { req.destroy(); resolve(null); }, deadlineMs);
     req.end(JSON.stringify(commands));
   });
 }
@@ -5776,9 +5778,13 @@ async function seedClassifyForVariant(variant, seenTitles) {
     }
 
     // Only titles that can alert: labelled critical or high, from a digest feed.
+    const acceptedLevels = new Map();
+    for (const entry of llmResult) {
+      if (typeof entry?.i === 'number' && !acceptedLevels.has(entry.i)
+        && CLASSIFY_VALID_LEVELS.includes(entry.l) && CLASSIFY_VALID_CATEGORIES.includes(entry.c)) acceptedLevels.set(entry.i, entry.l);
+    }
     const observedPublishers = await readObservedPublisherCounts(chunk.filter((title, i) =>
-      !allTitles.get(title)?.fromX
-      && llmResult.some((entry) => entry?.i === i && (entry.l === 'critical' || entry.l === 'high'))));
+      !allTitles.get(title)?.fromX && ['critical', 'high'].includes(acceptedLevels.get(i))));
     const classifiedSet = new Set();
     const labelled = [];
     for (const entry of llmResult) {
