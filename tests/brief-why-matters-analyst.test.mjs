@@ -11,7 +11,7 @@
  * Run: node --test tests/brief-why-matters-analyst.test.mjs
  */
 
-import { describe, it } from 'node:test';
+import { before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { generateWhyMatters } from '../scripts/lib/brief-llm.mjs';
@@ -785,10 +785,9 @@ describe('endpoint validation contract', () => {
 
 describe('buildAnalystWhyMattersPrompt — shape and budget', () => {
   let builder;
-  it('loads', async () => {
+  before(async () => {
     const mod = await import('../server/worldmonitor/intelligence/v1/brief-why-matters-prompt.ts');
     builder = mod.buildAnalystWhyMattersPrompt;
-    assert.ok(typeof builder === 'function');
   });
 
   it('uses the analyst v2 system prompt (multi-sentence, grounded, varied) + date-grounding line', async () => {
@@ -915,11 +914,10 @@ describe('buildAnalystWhyMattersPrompt — shape and budget', () => {
 describe('sectionsForCategory — structural relevance gating', () => {
   let sectionsForCategory;
   let builder;
-  it('loads', async () => {
+  before(async () => {
     const mod = await import('../server/worldmonitor/intelligence/v1/brief-why-matters-prompt.ts');
     sectionsForCategory = mod.sectionsForCategory;
     builder = mod.buildAnalystWhyMattersPrompt;
-    assert.ok(typeof sectionsForCategory === 'function');
   });
 
   it('market/commodity/finance → includes marketData + forecasts, excludes riskScores', () => {
