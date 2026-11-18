@@ -53,6 +53,22 @@ describe('daily miss audit', () => {
     assert.equal(result.deliveredBeforeWire, 1);
   });
 
+  it('counts a wire copy that arrives through a topic feed', () => {
+    const viaTopicFeed = [
+      queued('08:55', 'Tanker & Shipping', 'UAE\'s ADNOC L&S says one crew member missing after attack on its vessel in Hormuz - Reuters', 59, 'high'),
+      queued('09:00', 'Shipping & Freight', 'Gas tanker in Strait of Hormuz set ablaze - BBC News', 72),
+    ];
+    const result = auditMisses({
+      queued: viaTopicFeed,
+      sent: [
+        { title: 'ADNOC L&S says one crew member missing after attack on its vessel in Hormuz', sentAt: at('09:30') },
+        { title: 'Gas tanker in Strait of Hormuz set ablaze', sentAt: at('09:30') },
+      ],
+    });
+    assert.equal(result.wireStories, 2);
+    assert.equal(result.deliveredBeforeWire, 0);
+  });
+
   it('joins two groups that a later headline links into one story', () => {
     const rows = [
       { title: 'Crimean Bridge span collapses after strike' },

@@ -8,10 +8,12 @@ export const REALTIME_CRITICAL_SCORE = 82;
 // Two wordings of one development share most content words once each word is
 // cut to its first five letters (attacked/attack, vessels/vessel).
 export const STORY_MATCH_MIN = 0.4;
-export const BREAKING_WIRES = ['Reuters', 'AP News', 'Associated Press', 'AFP', 'Bloomberg', 'BBC World'];
+export const BREAKING_WIRES = ['Reuters', 'AP News', 'Associated Press', 'AFP', 'Bloomberg', 'BBC World', 'BBC News'];
 
 const stems = (title) => new Set([...extractTitleWords(title)].map((word) => word.slice(0, 5)));
-const isWire = (source) => BREAKING_WIRES.some((wire) => String(source ?? '').toLowerCase().startsWith(wire.toLowerCase()));
+const namesWire = (text) => BREAKING_WIRES.some((wire) => text.toLowerCase().startsWith(wire.toLowerCase()));
+// Topic feeds carry the publisher only as a title suffix: "... - Reuters".
+const isWire = (row) => namesWire(String(row.source ?? '')) || namesWire(String(row.title ?? '').match(/\s[-–—|]\s*([^-–—|]+)$/u)?.[1] ?? '');
 
 /** Single-link clusters of rows whose headlines match. Each row: { title, ... }. */
 export function groupStories(rows) {
@@ -48,7 +50,7 @@ export function auditMisses({ queued, sent }) {
     const storyQueued = story.filter((r) => r.kind === 'queued');
     if (storyQueued.length === 0) continue;
     const sentAts = story.filter((r) => r.kind === 'sent').map((r) => r.sentAt);
-    const wireAts = storyQueued.filter((r) => isWire(r.source)).map((r) => r.publishedAt || r.ts);
+    const wireAts = storyQueued.filter(isWire).map((r) => r.publishedAt || r.ts);
     if (wireAts.length > 0) {
       wireStories++;
       if (sentAts.length > 0 && Math.min(...sentAts) < Math.min(...wireAts)) beforeWire++;
