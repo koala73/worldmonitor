@@ -75,11 +75,11 @@ function reachesLocalRules(severity, importanceScore) {
 /**
  * The story key for a news alert, or '' to keep the exact-title identity.
  *
- * Sightings a realtime rule can deliver claim one key, and the rest another.
- * A sighting graded high, or critical below the score realtime rules require,
- * reaches nobody, so it must not use up the story before a later sighting can
- * be delivered. The cost is a second queued event for such a story, never a
- * missed alert.
+ * Each audience gets its own key: realtime sightings reach every realtime
+ * rule, local ones (critical, 78 to 81) reach only rules scoped to the story's
+ * country, and standard ones reach no realtime rule. A sighting must not use
+ * up the story before a later, higher-scoring one reaches a wider audience.
+ * The cost is an extra queued event for such a story, never a missed alert.
  */
 function newsStoryKey(title, { severity, importanceScore } = {}) {
   const normalized = normalizeNewsStoryTitle(title);
