@@ -236,7 +236,7 @@
       "internetOutages": "Kuvunjika kwa mtandao: {{count}}",
       "recentEarthquakes": "Matetemeko ya ardhi ya hivi karibuni: {{count}}",
       "stockIndex": "Faharasa ya hisa: {{value}}",
-      "activeStrikes": "Shambulio za kijeshi zinazofanyika: {{count}}"
+      "activeStrikes": "Mashambulizi na uzuiaji: {{count}}"
     },
     "countryFacts": "Mambo ya Nchi",
     "loadingFacts": "Inapakia ukweli wa nchi...",

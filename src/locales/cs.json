@@ -74,7 +74,7 @@
       "internetOutages": "Přerušení internetu: {{count}}",
       "recentEarthquakes": "Nedávná zemětřesení: {{count}}",
       "stockIndex": "Akciový index: {{value}}",
-      "activeStrikes": "Aktivní vojenské údery: {{count}}"
+      "activeStrikes": "Útoky a záchyty: {{count}}"
     },
     "militaryActivity": "Vojenská aktivita",
     "defenseIndustrial": {

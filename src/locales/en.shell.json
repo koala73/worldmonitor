@@ -419,7 +419,7 @@
       "internetOutages": "Internet disruptions: {{count}}",
       "recentEarthquakes": "Recent earthquakes: {{count}}",
       "stockIndex": "Stock index: {{value}}",
-      "activeStrikes": "Active military strikes: {{count}}"
+      "activeStrikes": "Attacks and interceptions: {{count}}"
     },
     "china": {
       "title": "China Country Snapshot",

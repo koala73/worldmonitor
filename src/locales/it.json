@@ -74,7 +74,7 @@
       "internetOutages": "Interruzioni internet: {{count}}",
       "recentEarthquakes": "Terremoti recenti: {{count}}",
       "stockIndex": "Indice azionario: {{value}}",
-      "activeStrikes": "Attacchi militari attivi: {{count}}"
+      "activeStrikes": "Attacchi e intercettazioni: {{count}}"
     },
     "militaryActivity": "Attività militare",
     "defenseIndustrial": {

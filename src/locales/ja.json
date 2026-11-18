@@ -132,7 +132,7 @@
       "internetOutages": "インターネット中断: {{count}}",
       "recentEarthquakes": "最近の地震: {{count}}",
       "stockIndex": "株価指数：{{value}}",
-      "activeStrikes": "活動中の軍事攻撃: {{count}}"
+      "activeStrikes": "攻撃および迎撃: {{count}}"
     },
     "countryFacts": "国の基本情報",
     "loadingFacts": "国の基本情報を読み込み中...",

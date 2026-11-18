@@ -132,7 +132,7 @@
       "internetOutages": "Διακοπές διαδικτύου: {{count}}",
       "recentEarthquakes": "Πρόσφατες σεισμικές δονήσεις: {{count}}",
       "stockIndex": "Χρηματιστηριακός δείκτης: {{value}}",
-      "activeStrikes": "Ενεργές στρατιωτικές επιδρομές: {{count}}"
+      "activeStrikes": "Επιθέσεις και αναχαιτίσεις: {{count}}"
     },
     "countryFacts": "Στοιχεία χώρας",
     "loadingFacts": "Φόρτωση στοιχείων χώρας...",

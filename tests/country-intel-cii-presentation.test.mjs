@@ -46,7 +46,7 @@ const mlWorker = { isAvailable: false };
 const getActiveFrameworkForPanel = () => null;
 const BETA_MODE = false;
 const getCurrentLanguage = () => 'en';
-const isDesktopRuntime = () => false;
+const isDesktopRuntime = () => fixture.desktop === true;
 ${managerClass.getText(ast)}
 export { CountryBriefController };
 `, loader: 'ts', resolveDir: root }, bundle: true, platform: 'node', format: 'esm', write: false,
@@ -79,7 +79,7 @@ function deferred() { let resolve, reject; const promise = new Promise((resolveP
 async function drain() { for (let iteration = 0; iteration < 40; iteration++) await Promise.resolve(); }
 let serial = 0;
 async function fixture(run, { initial = score(), realController = false } = {}) {
-  const state = { scores: { CN: initial, US: score(75, 'US') }, getterCalls: 0, countryData: {}, signalQueue: [], hydrations: [], openings: [], signalCalls: 0, assessmentCalls: 0, networkAttempts: 0, warnings: [], errors: [] };
+  const state = { scores: { CN: initial, US: score(75, 'US') }, getterCalls: 0, countryData: {}, signalQueue: [], hydrations: [], briefPayloads: [], openings: [], signalCalls: 0, assessmentCalls: 0, networkAttempts: 0, warnings: [], errors: [] };
   globalThis.__ciiPresentationTest = state;
   const { CountryIntelManager, CountryBriefController } = await import(moduleUrl + '#' + serial++);
   const harness = await createCountryDeepDivePanelHarness();
@@ -94,6 +94,7 @@ async function fixture(run, { initial = score(), realController = false } = {}) 
   state.makePanel = () => {
     const panel = harness.createPanel();
     for (const name of ['updateSignalDetails', 'updateMilitaryActivity', 'updateSignals', 'updateChinaCountrySummary', 'updateNews', 'updateInfrastructure', 'updateBrief', 'updateCountryFacts', 'updateEnergyProfile', 'updateMaritimeActivity', 'updateMarkets', 'updateHousingCycle', 'setSectionFailure', 'setSectionCoverage']) panel[name] = () => {};
+    panel.updateBrief = payload => { state.briefPayloads.push(payload); };
     return panel;
   };
   const map = { setRenderPaused() {}, clearCountryHighlight() {}, highlightCountry() {}, fitCountry() {} };
@@ -163,6 +164,21 @@ async function fixture(run, { initial = score(), realController = false } = {}) 
 test('R1-R2: refreshing CII synchronizes real headline and economic DOM, including null', async () => {
   await fixture(async fixtureState => { await fixtureState.open(); fixtureState.check(68); const chips = fixtureState.panelRoot().querySelector('.cdp-signal-chips'); await fixtureState.refresh(score(71)); fixtureState.check(71); assert.equal(chips.parentNode, null); assert.notEqual(fixtureState.panelRoot().querySelector('.cdp-signal-chips'), chips); await fixtureState.refresh(null); fixtureState.check(null); assert.equal(fixtureState.assessmentCalls, 1); });
 });
+
+// With no AI brief and no signal rows, only the desktop app can act on the key
+// hint: it is the only runtime with a Settings field for OPENROUTER_API_KEY.
+for (const desktop of [false, true]) {
+  test(`no-row brief: ${desktop ? 'desktop shows' : 'web omits'} the OPENROUTER_API_KEY hint`, async () => {
+    await fixture(async fixtureState => {
+      fixtureState.desktop = desktop;
+      await fixtureState.open();
+      const last = fixtureState.briefPayloads.at(-1);
+      assert.equal(last?.brief, '');
+      if (desktop) assert.match(last.error, /OPENROUTER_API_KEY in Settings/);
+      else assert.equal(last.error, undefined);
+    });
+  });
+}
 
 test('R2: olderRefresh direct 68-to-null refresh removes Regime without fabricating zero', async () => {
   await fixture(async fixtureState => { await fixtureState.open(); fixtureState.check(68); await fixtureState.refresh(null); fixtureState.check(null); assert.equal(fixtureState.assessmentCalls, 1); });

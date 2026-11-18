@@ -2185,7 +2185,7 @@
   "countryBrief.facts.headOfState": "Head of State",
   "countryBrief.facts.languages": "Languages",
   "countryBrief.facts.population": "Population",
-  "countryBrief.fallback.activeStrikes": "Active military strikes: {{count}}",
+  "countryBrief.fallback.activeStrikes": "Attacks and interceptions: {{count}}",
   "countryBrief.fallback.aircraftTracked": "Military aircraft tracked: {{count}}",
   "countryBrief.fallback.instabilityIndex": "**Instability Index: {{score}}/100** ({{level}}, {{trend}})",
   "countryBrief.fallback.internetOutages": "Internet disruptions: {{count}}",

@@ -132,7 +132,7 @@
       "internetOutages": "Întreruperi de internet: {{count}}",
       "recentEarthquakes": "Cutremure recente: {{count}}",
       "stockIndex": "Indice bursier: {{value}}",
-      "activeStrikes": "Lovituri militare active: {{count}}"
+      "activeStrikes": "Atacuri și interceptări: {{count}}"
     },
     "countryFacts": "Date despre țară",
     "loadingFacts": "Se încarcă datele țării...",

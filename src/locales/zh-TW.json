@@ -132,7 +132,7 @@
       "internetOutages": "網際網路中斷：{{count}}",
       "recentEarthquakes": "最近的地震：{{count}}",
       "stockIndex": "股票指數：{{value}}",
-      "activeStrikes": "活躍軍事打擊：{{count}}"
+      "activeStrikes": "攻擊和攔截：{{count}}"
     },
     "countryFacts": "國家概況",
     "loadingFacts": "正在載入國家概況...",

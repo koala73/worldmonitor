@@ -254,7 +254,7 @@
       "internetOutages": "Перебої інтернету: {{count}}",
       "recentEarthquakes": "Нещодавні землетруси: {{count}}",
       "stockIndex": "Фондовий індекс: {{value}}",
-      "activeStrikes": "Активні військові удари: {{count}}"
+      "activeStrikes": "Атаки та перехоплення: {{count}}"
     },
     "countryFacts": "Факти про країну",
     "loadingFacts": "Завантаження даних про країну...",

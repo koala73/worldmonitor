@@ -132,7 +132,7 @@
       "internetOutages": "การหยุดชะงักของอินเทอร์เน็ต: {{count}}",
       "recentEarthquakes": "แผ่นดินไหวเมื่อเร็ว ๆ นี้: {{count}}",
       "stockIndex": "ดัชนีหุ้น: {{value}}",
-      "activeStrikes": "การโจมตีทางทหารที่กำลังดำเนินการ: {{count}}"
+      "activeStrikes": "การโจมตีและการสกัดกั้น: {{count}}"
     },
     "countryFacts": "ข้อมูลประเทศ",
     "loadingFacts": "กำลังโหลดข้อมูลประเทศ...",

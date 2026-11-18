@@ -203,7 +203,7 @@
       "internetOutages": "قطع‌های اینترنت: {{count}}",
       "recentEarthquakes": "زلزله‌های اخیر: {{count}}",
       "stockIndex": "شاخص سهام: {{value}}",
-      "activeStrikes": "حملات نظامی فعال: {{count}}"
+      "activeStrikes": "حملات و رهگیری‌ها: {{count}}"
     },
     "countryFacts": "اطلاعات کشور",
     "loadingFacts": "در حال بارگذاری اطلاعات کشور...",

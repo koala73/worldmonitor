@@ -74,7 +74,7 @@
       "internetOutages": "انقطاعات الإنترنت: {{count}}",
       "recentEarthquakes": "زلازل حديثة: {{count}}",
       "stockIndex": "مؤشر الأسهم: {{value}}",
-      "activeStrikes": "غارات عسكرية نشطة: {{count}}"
+      "activeStrikes": "الهجمات والاعتراضات: {{count}}"
     },
     "militaryActivity": "النشاط العسكري",
     "defenseIndustrial": {

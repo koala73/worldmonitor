@@ -132,7 +132,7 @@
       "internetOutages": "İnternet kesintileri: {{count}}",
       "recentEarthquakes": "Son depremler: {{count}}",
       "stockIndex": "Borsa endeksi: {{value}}",
-      "activeStrikes": "Etkin askeri saldırılar: {{count}}"
+      "activeStrikes": "Saldırılar ve önlemeler: {{count}}"
     },
     "countryFacts": "Ülke bilgileri",
     "loadingFacts": "Ülke bilgileri yükleniyor...",

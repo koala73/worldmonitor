@@ -132,7 +132,7 @@
       "internetOutages": "인터넷 두절: {{count}}",
       "recentEarthquakes": "최근 지진: {{count}}",
       "stockIndex": "주가 지수: {{value}}",
-      "activeStrikes": "진행 중인 군사 공격: {{count}}"
+      "activeStrikes": "공격 및 요격: {{count}}"
     },
     "countryFacts": "국가 정보",
     "loadingFacts": "국가 정보 로딩 중...",

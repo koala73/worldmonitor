@@ -201,7 +201,7 @@
       "internetOutages": "Prekidi interneta: {{count}}",
       "recentEarthquakes": "Nedavni potresi: {{count}}",
       "stockIndex": "Indeks dionica: {{value}}",
-      "activeStrikes": "Aktivni vojni udari: {{count}}"
+      "activeStrikes": "Napadi i presretanja: {{count}}"
     },
     "countryFacts": "Činjenice o zemlji",
     "loadingFacts": "Učitavanje činjenica o zemlji...",

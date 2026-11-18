@@ -4236,7 +4236,7 @@
       "internetOutages": "Internetverstoringen: {{count}}",
       "recentEarthquakes": "Recente aardbevingen: {{count}}",
       "stockIndex": "Beursindex: {{value}}",
-      "activeStrikes": "Actieve militaire aanvallen: {{count}}"
+      "activeStrikes": "Aanvallen en onderscheppingen: {{count}}"
     },
     "militaryActivity": "Militaire activiteit",
     "defenseIndustrial": {

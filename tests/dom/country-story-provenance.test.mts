@@ -79,10 +79,19 @@ describe('Actual assessment renderer to captured story provenance', () => {
 
   it('keeps each fallback signal on its own row in the summary view', () => {
     const { panel } = fixture();
-    panel.updateBrief({ code: 'CA', fallback: true, brief: '**Instability Index: 52/100** (Elevated, Rising)\nActive protests: 1\nMilitary aircraft tracked: 3' });
+    panel.updateBrief({ code: 'CA', fallback: true, signalRows: true, brief: '**Instability Index: 52/100** (Elevated, Rising)\nActive protests: 1\nMilitary aircraft tracked: 3' });
     const summary = panel.briefBody.querySelector('.cdp-assessment-text.cdp-summary-only') as HTMLElement;
     const rows = [...summary.querySelectorAll('.brief-para, .brief-section-header')].map((row) => row.textContent?.trim());
     expect(rows).toEqual(expect.arrayContaining(['Active protests: 1', 'Military aircraft tracked: 3']));
+  });
+
+  it('keeps a local-model prose fallback on the three-sentence summary', () => {
+    const { panel } = fixture();
+    const prose = 'One happened. Two followed. Three came next. Four was later. Five closed it. Six was extra.';
+    panel.updateBrief({ code: 'CA', fallback: true, brief: prose });
+    const summary = panel.briefBody.querySelector('.cdp-assessment-text.cdp-summary-only') as HTMLElement;
+    expect(summary.textContent).toContain('Three came next.');
+    expect(summary.textContent).not.toContain('Four was later.');
   });
 
   it('preserves actual unavailable assessment state without stale footers or invented clocks', async () => {

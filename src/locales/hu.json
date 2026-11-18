@@ -201,7 +201,7 @@
       "internetOutages": "Internetkimaradások: {{count}}",
       "recentEarthquakes": "Közelmúltbeli földrengések: {{count}}",
       "stockIndex": "Tőzsdeindex: {{value}}",
-      "activeStrikes": "Aktív katonai támadások: {{count}}"
+      "activeStrikes": "Támadások és elfogások: {{count}}"
     },
     "countryFacts": "Ország adatai",
     "loadingFacts": "Ország adatai betöltődnek...",

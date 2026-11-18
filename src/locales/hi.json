@@ -201,7 +201,7 @@
       "internetOutages": "इंटरनेट व्यवधान: {{count}}",
       "recentEarthquakes": "हाल के भूकंप: {{count}}",
       "stockIndex": "स्टॉक इंडेक्स: {{value}}",
-      "activeStrikes": "सक्रिय सैन्य हमले: {{count}}"
+      "activeStrikes": "हमले और अवरोधन: {{count}}"
     },
     "countryFacts": "देश की जानकारी",
     "loadingFacts": "देश की जानकारी लोड कर रहे हैं...",

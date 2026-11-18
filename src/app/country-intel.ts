@@ -827,7 +827,7 @@ export class CountryIntelManager implements AppModule {
           } else {
             const lines = this.buildFallbackSignalLines(presentation.score, signals, country, context);
             if (lines.length > 0) {
-              this.ctx.countryBriefPage?.updateBrief({ brief: lines.join('\n'), country, code, fallback: true });
+              this.ctx.countryBriefPage?.updateBrief({ brief: lines.join('\n'), country, code, fallback: true, signalRows: true });
             } else {
               // Only the desktop app has a Settings field for the key; web
               // visitors get the page's neutral "unavailable" text.
@@ -931,7 +931,7 @@ export class CountryIntelManager implements AppModule {
         if (page.isFallbackBrief?.()) {
           const lines = this.buildFallbackSignalLines(score, signals, name, {});
           if (lines.length > 0) {
-            page.updateBrief({ brief: lines.join('\n'), country: name, code, fallback: true });
+            page.updateBrief({ brief: lines.join('\n'), country: name, code, fallback: true, signalRows: true });
           }
         }
         try {

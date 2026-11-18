@@ -21,6 +21,8 @@ export interface CountryIntelData {
   skipped?: boolean;
   reason?: string;
   fallback?: boolean;
+  /** The brief is one signal per line (no sentences), not prose. */
+  signalRows?: boolean;
   sources?: BriefSource[];
   evidence?: IntelBriefEvidence[];
 }

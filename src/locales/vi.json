@@ -132,7 +132,7 @@
       "internetOutages": "Gián đoạn Internet: {{count}}",
       "recentEarthquakes": "Các trận động đất gần đây: {{count}}",
       "stockIndex": "Chỉ số chứng khoán: {{value}}",
-      "activeStrikes": "Các cuộc tấn công quân sự đang diễn ra: {{count}}"
+      "activeStrikes": "Các cuộc tấn công và đánh chặn: {{count}}"
     },
     "countryFacts": "Thông tin quốc gia",
     "loadingFacts": "Đang tải thông tin quốc gia...",

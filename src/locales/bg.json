@@ -132,7 +132,7 @@
       "internetOutages": "Прекъсвания на интернета: {{count}}",
       "recentEarthquakes": "Последни земетресения: {{count}}",
       "stockIndex": "Фондов индекс: {{value}}",
-      "activeStrikes": "Активни военни удари: {{count}}"
+      "activeStrikes": "Атаки и прехващания: {{count}}"
     },
     "countryFacts": "Факти за страната",
     "loadingFacts": "Зареждане на фактите за страната...",
