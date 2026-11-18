@@ -508,8 +508,13 @@ function upstashGet(key, onFailure, timeoutMs = 5000) {
         resp.resume();
         return fail(`HTTP ${resp.statusCode}`);
       }
+      // Decode across chunks, so a multi-byte character split by the network
+      // stays whole, and settle when the body breaks off.
+      resp.setEncoding('utf8');
       let data = '';
       resp.on('data', (chunk) => { data += chunk; });
+      resp.on('error', (e) => fail((e && e.message) || e));
+      resp.on('aborted', () => fail('response aborted'));
       resp.on('end', () => {
         try {
           const parsed = JSON.parse(data);
