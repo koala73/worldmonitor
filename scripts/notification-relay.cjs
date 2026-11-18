@@ -649,6 +649,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
     return;
   }
 
+  await refreshAlertCoverage(events);
   const heldLines = formatHeldAlertLines(events);
   const lines = [`WorldMonitor — ${events.length} held alert${events.length !== 1 ? 's' : ''} from quiet hours`, '', ...heldLines];
   lines.push('', 'View full dashboard → worldmonitor.app');
@@ -1721,6 +1722,17 @@ function formatMessage(event, channel) {
   return parts.join('\n');
 }
 
+async function refreshAlertCoverage(events) {
+  try {
+    const { refreshPublisherCounts } = await import('./lib/news-alert-coverage.mjs');
+    await refreshPublisherCounts(events);
+  } catch (err) {
+    // A held event can carry an old snapshot even if the reader never loaded.
+    for (const event of events) delete event.observedPublisherCount;
+    console.warn('[relay] publisher coverage unavailable:', err?.name);
+  }
+}
+
 /**
  * #9213: the story's corroboration, as assessCorroboration gives a digest item
  * with this publisher count, or null when unknown. Only relay-originated
@@ -1729,7 +1741,7 @@ function formatMessage(event, channel) {
  */
 function eventCorroboration(event) {
   if (event.userId) return null;
-  return corroborationFromItemCount(event.payload?.corroborationCount);
+  return corroborationFromItemCount(event.observedPublisherCount ?? event.payload?.corroborationCount);
 }
 
 /**
@@ -2194,6 +2206,10 @@ async function processEventDelivery(event) {
   // events carry importanceScore; for everything else shadowLogScore would
   // short-circuit, but we still pay the promise/microtask cost unless gated here.
   if (event.eventType === 'rss_alert') shadowLogScore(event).catch(() => {});
+  if (event.eventType === 'rss_alert' && !event.userId && process.env.OPENROUTER_API_KEY) {
+    import('./lib/news-alert-coverage.mjs').then(({ observeSemanticMatch }) => observeSemanticMatch(event))
+      .catch(err => console.warn('[news-alert-semantic-shadow] unavailable:', err?.name));
+  }
 
   // Score gate — only for relay-emitted rss_alert (no userId). Browser-submitted
   // events (with userId) have importanceScore stripped at ingestion and no server-
@@ -2267,6 +2283,8 @@ async function processEventDelivery(event) {
   }
 
   if (matching.length === 0) return;
+  await refreshAlertCoverage([event]);
+
 
   // Batch tier check: resolve all unique userIds in parallel instead of
   // one-by-one. getUserTier() has a 15-min Redis cache, so this is cheap
