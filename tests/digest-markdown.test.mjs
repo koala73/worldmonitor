@@ -307,3 +307,23 @@ describe('realistic AI summary — cross-channel smoke test', () => {
     assert.match(out, / & still/);
   });
 });
+
+describe('section headers across scripts', () => {
+  it('section headers are detected for accented and Cyrillic labels', () => {
+    assert.match(markdownToTelegramHtml('Évaluation: le détroit reste ouvert.'), /<b>Évaluation:<\/b> le détroit/);
+    assert.match(markdownToTelegramHtml('Оценка: пролив открыт.'), /<b>Оценка:<\/b> пролив/);
+    assert.match(markdownToEmailHtml('Signaux à surveiller: x'), />Signaux à surveiller:<\/strong> x/);
+    assert.match(markdownToSlackMrkdwn('Ausblick: y'), /\*Ausblick:\* y/);
+    assert.match(markdownToDiscord('Перспектива: z'), /\*\*Перспектива:\*\* z/);
+  });
+
+  it('ASCII header behaviour is unchanged', () => {
+    assert.match(markdownToTelegramHtml('Assessment: steady.'), /<b>Assessment:<\/b> steady\./);
+    assert.match(markdownToSlackMrkdwn('Signals to watch: a'), /\*Signals to watch:\* a/);
+    assert.doesNotMatch(markdownToTelegramHtml('note: lower case'), /<b>/);
+  });
+
+  it('a full-width colon is accepted', () => {
+    assert.match(markdownToTelegramHtml('Évaluation： ouvert'), /<b>Évaluation:<\/b> ouvert/);
+  });
+});

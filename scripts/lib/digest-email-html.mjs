@@ -10,6 +10,7 @@ import { stripSourceSuffix } from './brief-dedup-jaccard.mjs';
 import { injectEmailSummary } from './email-summary-html.mjs';
 import { digestCoverageText } from './digest-corroboration.mjs';
 import { briefPlural, briefT, formatBriefDate } from '../../shared/brief-strings.js';
+import { truncateForDisplay } from '../../shared/brief-text.js';
 
 /** Chrome string for HTML. English table values are HTML-safe and stay byte-identical. */
 function chromeHtml(lang, key, vars) {
@@ -93,9 +94,7 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
     // between title and meta when present. Empty → section omitted (R6).
     let snippetEl = '';
     if (typeof s.description === 'string' && s.description.length > 0) {
-      const trimmed = s.description.length > 200
-        ? s.description.slice(0, 200).replace(/\s+\S*$/, '') + '…'
-        : s.description;
+      const trimmed = truncateForDisplay(s.description, 200, lang);
       snippetEl = `<div style="margin-top: 6px; font-size: 12px; color: #999; line-height: 1.45;">${escapeHtml(trimmed)}</div>`;
     }
     const meta = [

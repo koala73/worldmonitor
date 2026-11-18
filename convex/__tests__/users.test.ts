@@ -490,25 +490,36 @@ describe("users — brief language (#10883)", () => {
   test("setBriefLanguage stores, clears with null, and rejects unknown codes", async () => {
     const t = convexTest(schema, modules);
     const asA = t.withIdentity(USER_A);
-    expect(await t.mutation(api.users.setBriefLanguage, { lang: "fr" })).toEqual({ ok: false, reason: "unauthenticated" });
-    expect(await asA.mutation(api.users.setBriefLanguage, { lang: "fr" })).toEqual({ ok: false, reason: "no-user-record" });
+    expect(await t.mutation(api.users.setBriefLanguage, { lang: "fr", expectedUserId: USER_A.subject })).toEqual({ ok: false, reason: "unauthenticated" });
+    expect(await asA.mutation(api.users.setBriefLanguage, { lang: "fr", expectedUserId: USER_A.subject })).toEqual({ ok: false, reason: "no-user-record" });
     await asA.mutation(api.users.ensureRecord, base);
 
-    expect(await asA.mutation(api.users.setBriefLanguage, { lang: "de" })).toEqual({ ok: true });
+    expect(await asA.mutation(api.users.setBriefLanguage, { lang: "de", expectedUserId: USER_A.subject })).toEqual({ ok: true });
     expect((await readRow(t))?.briefLanguage).toBe("de");
-    expect(await asA.mutation(api.users.setBriefLanguage, { lang: "xx" })).toEqual({ ok: false, reason: "invalid-input" });
+    expect(await asA.mutation(api.users.setBriefLanguage, { lang: "xx", expectedUserId: USER_A.subject })).toEqual({ ok: false, reason: "invalid-input" });
     expect((await readRow(t))?.briefLanguage).toBe("de");
-    expect(await asA.mutation(api.users.setBriefLanguage, { lang: null })).toEqual({ ok: true });
+    expect(await asA.mutation(api.users.setBriefLanguage, { lang: null, expectedUserId: USER_A.subject })).toEqual({ ok: true });
     expect((await readRow(t))?.briefLanguage).toBeUndefined();
+  });
+
+  test("setBriefLanguage rejects a save started for another account", async () => {
+    const t = convexTest(schema, modules);
+    const asA = t.withIdentity(USER_A);
+    await asA.mutation(api.users.ensureRecord, base);
+    await asA.mutation(api.users.setBriefLanguage, { lang: "it", expectedUserId: USER_A.subject });
+    // A save started for another account, replayed after a reconnect as A.
+    expect(await asA.mutation(api.users.setBriefLanguage, { lang: "fr", expectedUserId: "user_someone_else" }))
+      .toEqual({ ok: false, reason: "account-mismatch" });
+    expect((await readRow(t))?.briefLanguage).toBe("it");
   });
 
   test("setBriefLanguage is a no-op when the value is unchanged", async () => {
     const t = convexTest(schema, modules);
     const asA = t.withIdentity(USER_A);
     await asA.mutation(api.users.ensureRecord, base);
-    await asA.mutation(api.users.setBriefLanguage, { lang: "it" });
+    await asA.mutation(api.users.setBriefLanguage, { lang: "it", expectedUserId: USER_A.subject });
     const before = await readRow(t);
-    expect(await asA.mutation(api.users.setBriefLanguage, { lang: "it" })).toEqual({ ok: true });
+    expect(await asA.mutation(api.users.setBriefLanguage, { lang: "it", expectedUserId: USER_A.subject })).toEqual({ ok: true });
     const after = await readRow(t);
     expect(after?._creationTime).toBe(before?._creationTime);
     expect(after).toEqual(before);
@@ -521,7 +532,7 @@ describe("users — brief language (#10883)", () => {
     expect(await asA.query(api.users.getBriefLanguage, {})).toEqual({ uiLanguage: null, briefLanguage: null, effective: "en", deliverableLanguages: [] });
     await asA.mutation(api.users.ensureRecord, { ...base, uiLanguage: "fa" });
     expect(await asA.query(api.users.getBriefLanguage, {})).toEqual({ uiLanguage: "fa", briefLanguage: null, effective: "fa", deliverableLanguages: [] });
-    await asA.mutation(api.users.setBriefLanguage, { lang: "ko" });
+    await asA.mutation(api.users.setBriefLanguage, { lang: "ko", expectedUserId: USER_A.subject });
     expect(await asA.query(api.users.getBriefLanguage, {})).toEqual({ uiLanguage: "fa", briefLanguage: "ko", effective: "ko", deliverableLanguages: [] });
   });
 

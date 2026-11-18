@@ -3,10 +3,19 @@
 // current renderer to say when `npm run brief-fonts:subset` needs rerunning.
 import fs from 'node:fs';
 import path from 'node:path';
+import { BRIEF_SUBSET_LANGUAGES, htmlLangFor } from '../../shared/ui-languages.js';
 
 export const BRIEF_RENDERER = 'server/_shared/brief-render.js';
 const FONT_PROPS = /(?<![\w-])(font-weight|font-style|font-variant(?:-[a-z]+)?|font-feature-settings|font-variation-settings|font-synthesis(?:-[a-z]+)?|font-family|font-optical-sizing|font|text-transform|hyphens)\s*:\s*([^;{}\n]+)/g;
 const LANG_ATTR = /\blang=["']([^"']+)["']/g;
+
+/** The page languages the subsets are cut for (locl forms included), as HTML lang tags. */
+export const BRIEF_FONT_LANGS = Object.freeze(['en', ...BRIEF_SUBSET_LANGUAGES.filter((c) => c !== 'en')].map(htmlLangFor).sort());
+
+/** Literal lang="…" attributes in the renderer; the page language must go through htmlLangFor. */
+export function literalLangAttrs(text) {
+  return [...text.matchAll(LANG_ATTR)].map((m) => m[1]);
+}
 
 // The rule's selector, so moving a declaration to another rule also asks for a rerun.
 function selector(text, index) {
@@ -24,6 +33,5 @@ export function briefFontInputs(root) {
     const value = m[2].trim().replace(/['"`]\s*\+?\s*$/, '').replace(/\s+/g, ' ');
     declarations.add(`${selector(text, m.index)} | ${m[1]}: ${value}`);
   }
-  const langs = new Set([...text.matchAll(LANG_ATTR)].map((m) => m[1].toLowerCase()));
-  return { declarations: [...declarations].sort(), langs: [...langs].sort() };
+  return { declarations: [...declarations].sort(), langs: [...BRIEF_FONT_LANGS] };
 }

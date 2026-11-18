@@ -3,13 +3,16 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
+  BRIEF_SUBSET_LANGUAGES,
   BRIEF_L10N_GATED_LANGS,
   RTL_UI_LANGUAGES,
   briefL10nDeliverableLanguages,
   UI_LANGUAGES,
   UI_LANGUAGE_NAMES,
+  htmlLangFor,
   isUiLanguage,
   resolveBriefLanguage,
+  scriptClassFor,
 } from '../shared/ui-languages.js';
 import { NEWS_LANGUAGES } from '../src/shared/public-rpc-cache.ts';
 
@@ -66,5 +69,28 @@ describe('shared/ui-languages', () => {
     assert.equal(resolveBriefLanguage({ uiLanguage: 'FR', briefLanguage: '__proto__' }), 'en');
     assert.equal(resolveBriefLanguage({ uiLanguage: 'zh-tw' }), 'en');
     assert.equal(isUiLanguage(42), false);
+  });
+});
+
+describe('brief typography helpers', () => {
+  it('htmlLangFor maps zh and zh-TW', () => {
+    assert.equal(htmlLangFor('zh'), 'zh-CN');
+    assert.equal(htmlLangFor('zh-TW'), 'zh-TW');
+    assert.equal(htmlLangFor('fr'), 'fr');
+    assert.equal(htmlLangFor('en'), 'en');
+  });
+
+  it('BRIEF_SUBSET_LANGUAGES excludes ar, fa, zh, zh-TW, ja, ko, hi, th', () => {
+    const excluded = ['ar', 'fa', 'zh', 'zh-TW', 'ja', 'ko', 'hi', 'th'];
+    assert.deepEqual([...BRIEF_SUBSET_LANGUAGES], UI_LANGUAGES.filter((c) => !excluded.includes(c)));
+  });
+
+  it('scriptClassFor classifies every UI language', () => {
+    const expected = {
+      bg: 'cyrillic', ru: 'cyrillic', uk: 'cyrillic', el: 'greek',
+      zh: 'cjk', 'zh-TW': 'cjk', ja: 'cjk', ko: 'cjk',
+      ar: 'arabic', fa: 'arabic', hi: 'devanagari', th: 'thai',
+    };
+    for (const code of UI_LANGUAGES) assert.equal(scriptClassFor(code), expected[code] ?? 'latin', code);
   });
 });

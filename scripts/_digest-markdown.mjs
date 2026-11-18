@@ -32,7 +32,7 @@ export function renderEmailInline(text) {
   out = out.replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '<em>$1</em>');
   // Section header (label at start of the block, e.g. "Assessment:", "Signals to watch:")
   out = out.replace(
-    /^([A-Z][A-Za-z ]+): */,
+    /^(\p{Lu}[\p{L}\p{M} ]+)[:：] */u,
     '<strong style="color:#4ade80;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">$1:</strong> ',
   );
   return out;
@@ -98,7 +98,7 @@ export function markdownToTelegramHtml(md) {
   // Italic: *text* (single asterisk, not part of bold)
   html = html.replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '<i>$1</i>');
   // Section headers: Assessment: / Signals to watch:
-  html = html.replace(/^([A-Z][A-Za-z ]+): */gm, '<b>$1:</b> ');
+  html = html.replace(/^(\p{Lu}[\p{L}\p{M} ]+)[:：] */gmu, '<b>$1:</b> ');
   return html;
 }
 
@@ -125,7 +125,7 @@ export function markdownToSlackMrkdwn(md) {
   // Restore bold markers
   txt = txt.replace(/\u0001/g, '*');
   // Section headers → *bold*
-  txt = txt.replace(/^([A-Z][A-Za-z ]+): */gm, '*$1:* ');
+  txt = txt.replace(/^(\p{Lu}[\p{L}\p{M} ]+)[:：] */gmu, '*$1:* ');
   return txt;
 }
 
@@ -144,7 +144,7 @@ export function escapeDiscordText(str) {
 export function markdownToDiscord(md) {
   let txt = escapeDiscordText(md);
   txt = txt.replace(/^\*\s+/gm, '- ');
-  txt = txt.replace(/^([A-Z][A-Za-z ]+): */gm, '**$1:** ');
+  txt = txt.replace(/^(\p{Lu}[\p{L}\p{M} ]+)[:：] */gmu, '**$1:** ');
   return txt;
 }
 

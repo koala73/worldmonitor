@@ -8,7 +8,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { briefFontInputs } from '../scripts/brief-fonts/inputs.mjs';
+import { BRIEF_RENDERER, briefFontInputs, literalLangAttrs } from '../scripts/brief-fonts/inputs.mjs';
 import { BRIEF_FONTS } from '../server/_shared/brief-fonts.generated.js';
 import { briefFontPlatform } from '../server/_shared/brief-font-platform.js';
 import { renderBriefMagazine } from '../server/_shared/brief-render.js';
@@ -50,7 +50,13 @@ describe('brief magazine fonts', () => {
   });
 
   it('were cut for the current page languages', () => {
-    assert.deepEqual(current.langs, manifest.inputs.langs, `A lang attribute changed; the subsets drop locl and assume these languages. ${RERUN}`);
+    assert.deepEqual(current.langs, manifest.inputs.langs, `The page languages changed; the subsets keep locl for these languages. ${RERUN}`);
+  });
+
+  it('the renderer has no literal lang attribute outside htmlLangFor', () => {
+    const text = fs.readFileSync(path.join(root, BRIEF_RENDERER), 'utf8');
+    assert.deepEqual(literalLangAttrs(text), []);
+    assert.match(text, /'<html lang="' \+ escapeHtml\(htmlLangFor\(lang\)\) \+ '">'/);
   });
 
   it('were checked against the Google-served files', () => {
@@ -154,4 +160,13 @@ describe('briefFontPlatform', () => {
   for (const [ua, expected] of GOOGLE_PROBED) {
     it(`${expected} for ${ua || '(no user agent)'}`, () => assert.equal(briefFontPlatform(ua), expected));
   }
+});
+
+describe('brief font run collection', () => {
+  const runner = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../scripts/brief-fonts/run.mjs'), 'utf8');
+  it('reproduces CSS uppercase with the content language', () => {
+    assert.match(runner, /text\.toLocaleUpperCase\(locale\)/);
+    assert.equal('İstihbarat ılımlı'.toLocaleUpperCase('tr'), 'İSTİHBARAT ILIMLI');
+    assert.notEqual('İstihbarat ılımlı'.toUpperCase(), 'İSTİHBARAT ILIMLI');
+  });
 });

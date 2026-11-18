@@ -20,6 +20,7 @@ import { formatDigestHtml } from '../scripts/lib/digest-email-html.mjs';
 import { stripSourceSuffix } from '../scripts/lib/brief-dedup-jaccard.mjs';
 import { escapeDigestText, formatDigestItemTitle } from '../scripts/_digest-markdown.mjs';
 import { briefIntlLocale, briefPlural, briefT, formatBriefDate } from '../shared/brief-strings.js';
+import { truncateForDisplay } from '../shared/brief-text.js';
 
 const NOW = Date.UTC(2026, 9, 17, 12);
 
@@ -65,9 +66,9 @@ assert.ok(formatDigestNode, 'formatDigest must exist');
 const formatDigest = new Function(
   'DIGEST_CRITICAL_LIMIT', 'DIGEST_HIGH_LIMIT', 'DIGEST_MEDIUM_LIMIT', 'stripSourceSuffix', 'digestCoverageText',
   'escapeDigestText', 'formatDigestItemTitle',
-  'briefIntlLocale', 'briefPlural', 'briefT', 'formatBriefDate',
+  'briefIntlLocale', 'briefPlural', 'briefT', 'formatBriefDate', 'truncateForDisplay',
   `${formatDigestNode.getText(parsed)}\nreturn formatDigest;`,
-)(Infinity, 15, 10, stripSourceSuffix, digestCoverageText, escapeDigestText, formatDigestItemTitle, briefIntlLocale, briefPlural, briefT, formatBriefDate) as (
+)(Infinity, 15, 10, stripSourceSuffix, digestCoverageText, escapeDigestText, formatDigestItemTitle, briefIntlLocale, briefPlural, briefT, formatBriefDate, truncateForDisplay) as (
   stories: unknown[], nowMs: number, target?: string,
 ) => string;
 
