@@ -81,6 +81,15 @@ function matchCommands(
 ): SearchCommandMatch[] {
   if (query.length < 2) return [];
   const matched: SearchCommandMatch[] = [];
+  // Every country's brief command carries "brief", so for "brief china" the
+  // single best term ties across all of them. For a multi-word query, rank
+  // first on how well each word matches: exact beats prefix beats substring,
+  // so "ukraine" picks Ukraine over Russia, whose aliases mention Ukraine.
+  const words = query.split(/\s+/).filter((word) => word.length >= 2);
+  const coverage = new Map<SearchCommandMatch, number>();
+  const wordScore = (terms: string[], word: string): number => Math.max(0, ...terms.map((term) => (
+    term === word ? 3 : term.startsWith(word) ? 2 : term.includes(word) ? 1 : 0
+  )));
 
   for (const command of options.commands) {
     if (!commandMatchesSearchScope(options.scope, command.category)) continue;
@@ -102,17 +111,24 @@ function matchCommands(
       }
     }
     if (bestScore > 0) {
-      matched.push({
+      const match: SearchCommandMatch = {
         kind: 'command',
         command,
         score: bestScore,
         title,
         subtitle: options.resolveCommandCategoryLabel(command),
-      });
+      };
+      matched.push(match);
+      coverage.set(match, words.length > 1 ? words.reduce((sum, word) => sum + wordScore(terms, word), 0) : 0);
     }
   }
 
-  return matched.sort((left, right) => right.score - left.score).slice(0, MAX_COMMANDS);
+  return matched
+    // A keyword equal to the whole query still ranks first.
+    .sort((left, right) => (Number(right.score === 3) - Number(left.score === 3))
+      || (coverage.get(right)! - coverage.get(left)!)
+      || (right.score - left.score))
+    .slice(0, MAX_COMMANDS);
 }
 
 // What alert channels put before a headline: the email subject prefix and the

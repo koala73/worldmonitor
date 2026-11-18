@@ -407,6 +407,7 @@ export class EventHandlerManager implements AppModule {
     try { history.replaceState(history.state, '', withUrlFragment(url, window.location.hash)); } catch { }
   };
   private readonly debouncedUrlSync = debounce(this.writeUrlState, 250);
+  private urlStateSyncStarted = false;
 
   private readonly debouncedWebcamReload = debounce(() => {
     if (this.ctx.mapLayers?.webcams) {
@@ -1611,6 +1612,7 @@ export class EventHandlerManager implements AppModule {
 
   setupUrlStateSync(): void {
     if (!this.ctx.map) return;
+    this.urlStateSyncStarted = true;
 
     this.ctx.map.onStateChanged(() => {
       this.debouncedUrlSync();
@@ -1646,6 +1648,14 @@ export class EventHandlerManager implements AppModule {
 
   syncUrlState(): void {
     this.debouncedUrlSync();
+  }
+
+  /**
+   * For map changes that also fire during boot, such as the deep link's time
+   * range. Writing before setupUrlStateSync() would record the map mid-flyTo.
+   */
+  syncUrlStateIfStarted(): void {
+    if (this.urlStateSyncStarted) this.debouncedUrlSync();
   }
 
   syncUrlStateNow(): void {

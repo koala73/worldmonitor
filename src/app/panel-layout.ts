@@ -473,6 +473,7 @@ export interface PanelLayoutManagerCallbacks {
   loadTelegramIntel?: () => Promise<void>;
   applyMapLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'programmatic') => void;
   isFreeTierFallbackActive?: () => boolean;
+  syncUrlState?: () => void;
 }
 
 interface DeferredPanelMount {
@@ -4238,6 +4239,9 @@ export class PanelLayoutManager implements AppModule {
     this.ctx.map.onTimeRangeChanged((range) => {
       this.ctx.currentTimeRange = range;
       this.applyTimeRangeFilterDebounced();
+      // The URL otherwise follows map movement only, so a reload or shared
+      // link restored the previous range.
+      this.callbacks.syncUrlState?.();
     });
 
     this.applyPanelSettings();
