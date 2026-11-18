@@ -324,21 +324,28 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
   });
 
   test('reveals an enabled alert panel and reports when none are enabled', async ({ page }) => {
+    // Disable panels through stored settings: a .hidden class added from the test is lost
+    // when the real panel replaces its deferred shell, which raced on CI.
+    const disablePanels = async (ids: string[]) => {
+      const found = await page.evaluate((panelIds) => {
+        const panels = JSON.parse(localStorage.getItem('worldmonitor-panels') || '{}') as Record<string, { enabled?: boolean }>;
+        for (const id of panelIds) if (panels[id]) panels[id] = { ...panels[id], enabled: false };
+        localStorage.setItem('worldmonitor-panels', JSON.stringify(panels));
+        return panelIds.filter((id) => panels[id]);
+      }, ids);
+      expect(found).toEqual(ids);
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true', { timeout: 45_000 });
+      for (const id of ids) await expect(page.locator(`#panelsGrid [data-panel="${id}"]:not(.hidden)`)).toHaveCount(0);
+    };
+
+    await disablePanels(['oref-sirens', 'intel']);
     const strategicRisk = page.locator('#panelsGrid [data-panel="strategic-risk"]');
     await expect(strategicRisk).toHaveCount(1);
-    await page.locator('#panelsGrid [data-panel="oref-sirens"], #panelsGrid [data-panel="intel"]').evaluateAll((panels) => {
-      panels.forEach((panel) => panel.classList.add('hidden'));
-    });
-    await strategicRisk.evaluate((panel) => {
-      panel.classList.remove('hidden');
-    });
-
     await page.locator('[data-mobile-tab="alerts"]').click();
     await expect(strategicRisk).toBeInViewport();
 
-    await page.locator('#panelsGrid [data-panel="strategic-risk"], #panelsGrid [data-panel="oref-sirens"], #panelsGrid [data-panel="intel"]').evaluateAll((panels) => {
-      panels.forEach((panel) => panel.classList.add('hidden'));
-    });
+    await disablePanels(['oref-sirens', 'intel', 'strategic-risk']);
     await page.locator('[data-mobile-tab="alerts"]').click();
     await expect(page.locator('.toast-notification')).toContainText('No active alerts yet');
   });

@@ -107,9 +107,10 @@ test('Water Levels markers follow the layer toggle and open a popup in each rend
         ? map.buildLayers().find((layer: { id: string }) => layer.id === 'reservoir-levels-layer')?.props.data.length ?? 0
         : exports.GlobeMap ? map.globe.htmlElementsData().filter((item: { _kind: string }) => item._kind === 'reservoirLevel').length
           : container.querySelectorAll('.wl-marker').length;
+      // Bounded by timer turns, not wall time: a long GPU stall must not end the wait before the
+      // renderer's own queued render timer gets to run.
       const waitFor = async (check: () => boolean, ms = 5000) => {
-        const deadline = performance.now() + ms;
-        while (!check() && performance.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+        for (let turn = 0; turn < ms / 50 && !check(); turn++) await new Promise((resolve) => setTimeout(resolve, 50));
       };
       await waitFor(() => count() > 0);
       const enabled = count();
