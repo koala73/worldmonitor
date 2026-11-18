@@ -95,7 +95,8 @@ export interface AppContext {
   disabledSources: Set<string>;
   pendingSourcePreferences?: {
     gateOwned: Set<string> | null;
-    countryCoverageMigration: boolean;
+    /** Opt-in migration markers to write once these preferences persist. */
+    migrationMarkers: string[];
   };
   currentTimeRange: import('@/components').TimeRange;
 

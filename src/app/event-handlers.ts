@@ -3157,15 +3157,16 @@ export class EventHandlerManager implements AppModule {
     const pending = this.ctx.pendingSourcePreferences;
     const gateOwned = pending?.gateOwned ?? persistedGateOwned;
     const nextGateOwned = releaseSourceGateOwnership(gateOwned, names);
-    this.ctx.pendingSourcePreferences = {
-      gateOwned: nextGateOwned,
-      countryCoverageMigration: pending?.countryCoverageMigration ?? false,
-    };
+    const markers = pending?.migrationMarkers ?? [];
+    this.ctx.pendingSourcePreferences = { gateOwned: nextGateOwned, migrationMarkers: markers };
     if (!stringSetsEqual(persistedGateOwned, nextGateOwned)
       && !writeStorageValue(STORAGE_KEYS.sourceGateOwnership, JSON.stringify([...nextGateOwned]))) return;
     if (!saveToStorage(STORAGE_KEYS.disabledFeeds, [...this.ctx.disabledSources])) return;
-    if (pending?.countryCoverageMigration
-      && !writeStorageValue('worldmonitor-country-coverage-optin-v1', 'done')) return;
+    const unwritten = markers.filter((marker) => !writeStorageValue(marker, 'done'));
+    if (unwritten.length > 0) {
+      this.ctx.pendingSourcePreferences = { gateOwned: nextGateOwned, migrationMarkers: unwritten };
+      return;
+    }
     this.ctx.pendingSourcePreferences = undefined;
   }
 

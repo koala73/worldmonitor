@@ -8,7 +8,7 @@ import { transpileModule } from 'typescript';
 import { bundleFeedsModule } from './_lib/bundle-feeds-module.mts';
 import { NEWS_CATALOG, buildDigestWarmCells } from '../shared/news-catalog';
 import { NEWS_LANGUAGES } from '../src/shared/public-rpc-cache';
-import { migrateCountryCoverageOptInsV12, migrateBrazilOptInsV11, buildMigrations, applyMigrationChain } from '../src/utils/cloud-prefs-migrations';
+import { migrateCountryCoverageOptInsV12, migrateBrazilOptInsV11, migratePublisherDirectOptInsV13, buildMigrations, applyMigrationChain } from '../src/utils/cloud-prefs-migrations';
 import { SOURCE_PROPAGANDA_RISK } from '../shared/source-provenance';
 import { resolveHostOrigin } from '../scripts/source-origin.mjs';
 import { restoreGateOwnedSources, reconcileSourceGateOwnership, stringSetsEqual, inferExactSourceGateOwnership, transferSourceGateOwnershipToUser } from '../src/services/source-cap';
@@ -56,7 +56,7 @@ describe('optional country news coverage', () => {
       });
       const instance = new Harness();
       instance.state = { disabledSources: new Set(['existing', 'country-opt-in', sidecar ? 'gate-owned' : 'cap-fixture']) };
-      instance.state.pendingSourcePreferences = { gateOwned: null, countryCoverageMigration: true };
+      instance.state.pendingSourcePreferences = { gateOwned: null, migrationMarkers: ['worldmonitor-country-coverage-optin-v1'] };
       instance.currentSourceCapLanguage = () => 'en';
       instance.sourceCapProtectedNames = () => new Set();
       instance.persistJsonStorageValue = () => false;
@@ -76,7 +76,7 @@ describe('optional country news coverage', () => {
       assert.ok(!instance.state.disabledSources.has('country-opt-in'), 'later explicit choice remains authoritative');
       instance.persistJsonStorageValue = (name: string, value: string[]) => { stored.set(name, value); return true; };
       instance.reconcileSourceLimitForTier(pro);
-      assert.equal(instance.state.pendingSourcePreferences?.countryCoverageMigration, true, 'failed marker remains retryable');
+      assert.deepEqual([...instance.state.pendingSourcePreferences?.migrationMarkers ?? []], ['worldmonitor-country-coverage-optin-v1'], 'failed marker remains retryable');
       markerWritable = true;
       instance.reconcileSourceLimitForTier(pro);
       assert.equal(instance.state.pendingSourcePreferences, undefined);
@@ -111,7 +111,10 @@ describe('optional country news coverage', () => {
     const instance = new Harness();
     instance.ctx = {
       disabledSources: new Set(['existing', 'new-cap']),
-      pendingSourcePreferences: { gateOwned: new Set(['new-cap']), countryCoverageMigration: true },
+      pendingSourcePreferences: {
+        gateOwned: new Set(['new-cap']),
+        migrationMarkers: ['worldmonitor-country-coverage-optin-v1', 'worldmonitor-publisher-direct-optin-v1'],
+      },
     };
     instance.persistSourcePreferences(['new-cap']);
     assert.equal(instance.ctx.pendingSourcePreferences.gateOwned.size, 0, 'explicit opt-out transfers the session ownership even when storage fails');
@@ -121,6 +124,7 @@ describe('optional country news coverage', () => {
     assert.equal(instance.ctx.pendingSourcePreferences, undefined);
     assert.deepEqual([...stored.get('disabled') as string[]], ['existing', 'new-cap']);
     assert.equal(stored.get('worldmonitor-country-coverage-optin-v1'), 'done');
+    assert.equal(stored.get('worldmonitor-publisher-direct-optin-v1'), 'done', 'every deferred migration is acknowledged');
   });
   it('offers four distinct feeds for all 197 reviewed countries', () => {
     assert.equal(Object.keys(audit.countries).length, 197);
@@ -185,14 +189,14 @@ describe('optional country news coverage', () => {
     const start = app.indexOf('      const countryCoverageOptInKey =');
     const end = app.indexOf('      // Locale boost:', start);
     const initialization = app.match(/    const disabledSources = new Set\([^\n]+/)!;
-    const code = transpileModule(`let sessionDisabledSources;\n${app.slice(start, end)}\n${initialization[0]}\n[...disabledSources];`, {}).outputText;
+    const code = transpileModule(`let sessionDisabledSources;\nconst pendingMigrationMarkers = [];\n${app.slice(start, end)}\n${initialization[0]}\n[...disabledSources];`, {}).outputText;
     for (const failedWrite of ['preferences', 'marker']) {
       const store = new Map([[key, '["existing-choice"]']]);
       const disabled = runInNewContext(code, {
         STORAGE_KEYS: { disabledFeeds: key }, COUNTRY_COVERAGE_OPT_IN_SOURCES: optIns,
-        BRAZIL_OPT_IN_SOURCES: ['Brazil fixture'], userLang: 'en',
+        BRAZIL_OPT_IN_SOURCES: ['Brazil fixture'], PUBLISHER_DIRECT_OPT_IN_SOURCES: ['Publisher fixture'], userLang: 'en',
         computeDefaultDisabledSources: client.computeDefaultDisabledSources,
-        migrateCountryCoverageOptInsV12, migrateBrazilOptInsV11,
+        migrateCountryCoverageOptInsV12, migrateBrazilOptInsV11, migratePublisherDirectOptInsV13,
         safeStorageGet: (name: string) => store.get(name) ?? null,
         loadFromStorage: (name: string, fallback: unknown) => store.has(name) ? JSON.parse(store.get(name)!) : fallback,
         saveToStorage: (name: string, value: unknown) => {
@@ -205,7 +209,7 @@ describe('optional country news coverage', () => {
         },
         safeStorageRemoveChecked: (name: string) => store.delete(name),
       }) as string[];
-      for (const name of [...optIns, 'existing-choice', 'Brazil fixture']) assert.ok(disabled.includes(name), `${failedWrite}: ${name}`);
+      for (const name of [...optIns, 'existing-choice', 'Brazil fixture', 'Publisher fixture']) assert.ok(disabled.includes(name), `${failedWrite}: ${name}`);
       assert.ok(!store.has('worldmonitor-country-coverage-optin-v1'));
     }
   });

@@ -15,7 +15,11 @@ import { SOURCE_TIERS } from '../server/_shared/source-tiers';
 import type { Feed } from '../src/types';
 import { applyMigrationChain, buildMigrations, migrateGermanRssSourcesV10 } from '../src/utils/cloud-prefs-migrations';
 
-const countryAdditions = new Set<string>(JSON.parse(readFileSync('shared/country-news-opt-ins.json', 'utf8')));
+// Opt-in packs appended after this one.
+const laterAdditions = new Set<string>([
+  ...JSON.parse(readFileSync('shared/country-news-opt-ins.json', 'utf8')),
+  ...JSON.parse(readFileSync('shared/publisher-direct-opt-ins.json', 'utf8')),
+]);
 const SOURCES = [
   { name: 'Deutschlandfunk', url: 'https://www.deutschlandfunk.de/nachrichten-100.rss', domain: 'deutschlandfunk.de' },
   { name: 'ZDFheute', url: 'https://www.zdfheute.de/rss/zdf/nachrichten', domain: 'zdfheute.de' },
@@ -60,7 +64,7 @@ describe('German public-service RSS sources', () => {
   });
   it('preserves matching German feeds before later Full Europe additions, with no other variant placement', () => {
     for (const view of [client.FULL_FEEDS, VARIANT_FEEDS.full]) {
-      assert.deepEqual(view.europe!.filter(feed => !countryAdditions.has(feed.name)).slice(-2).map(f => f.name), SOURCES.map(s => s.name));
+      assert.deepEqual(view.europe!.filter(feed => !laterAdditions.has(feed.name)).slice(-2).map(f => f.name), SOURCES.map(s => s.name));
       for (const row of SOURCES) {
         const feed = view.europe!.find(f => f.name === row.name);
         assert.equal(feed?.url, row.url);

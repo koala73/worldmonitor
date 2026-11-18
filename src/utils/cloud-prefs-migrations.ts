@@ -248,6 +248,9 @@ export interface CloudPrefsMigrationOptions {
   brazil?: {
     optInSources: ReadonlyArray<string>;
   };
+  publisherDirect?: {
+    optInSources: ReadonlyArray<string>;
+  };
 }
 
 /** Build the numbered preference migrations; locale providers are read when a migration runs. */
@@ -290,6 +293,7 @@ export function buildMigrations(
       : data,
     11: (data) => migrateBrazilOptInsV11(data, options.brazil?.optInSources ?? []),
     12: (data) => migrateCountryCoverageOptInsV12(data, options.countryCoverage?.optInSources ?? []),
+    13: (data) => migratePublisherDirectOptInsV13(data, options.publisherDirect?.optInSources ?? []),
   };
 }
 
@@ -696,6 +700,13 @@ export function migrateBrazilOptInsV11(
 }
 
 export function migrateCountryCoverageOptInsV12(
+  data: Record<string, unknown>,
+  sources: ReadonlyArray<string>,
+): Record<string, unknown> {
+  return appendOptInSources(data, sources);
+}
+
+export function migratePublisherDirectOptInsV13(
   data: Record<string, unknown>,
   sources: ReadonlyArray<string>,
 ): Record<string, unknown> {
