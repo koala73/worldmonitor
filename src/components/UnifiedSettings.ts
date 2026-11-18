@@ -971,9 +971,21 @@ export class UnifiedSettings {
   }
 
   public refreshSourceToggles(): void {
+    const active = document.activeElement;
+    const focusedSource = active instanceof HTMLElement
+      && this.overlay.contains(active) && active.classList.contains('source-toggle-item')
+      ? active.dataset.source : undefined;
     this.renderSourcesGrid();
     this.updateSourcesCounter();
     this.refreshSummaries();
+    if (focusedSource !== undefined) {
+      restoreSettingsToggleFocus(
+        true,
+        this.overlay.querySelectorAll<HTMLElement>('.source-toggle-item'),
+        'source',
+        focusedSource,
+      );
+    }
   }
 
   public refreshPanelToggles(): void {

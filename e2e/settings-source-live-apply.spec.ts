@@ -223,6 +223,7 @@ test.describe('settings source live apply (#6380)', () => {
 
     // Emulate the existing cloud-applied boundary: a new snapshot landed, but
     // subsequent preference and migration-marker writes still fail.
+    await source('BBC World').focus();
     await page.evaluate(() => {
       sessionStorage.setItem('__source_writes_allowed__', '1');
       localStorage.setItem('worldmonitor-disabled-feeds', '["CNN World", "Guardian Brazil"]');
@@ -232,6 +233,7 @@ test.describe('settings source live apply (#6380)', () => {
       }));
     });
     await expect(source('BBC World')).toHaveClass(/\bactive\b/);
+    await expect(source('BBC World')).toBeFocused();
     await evidenceScreenshot(page, { path: testInfo.outputPath('pending-after-cloud.png') });
     await expect(await showSource('CNN World')).not.toHaveClass(/\bactive\b/);
     await expect(await showSource('Guardian Brazil')).toHaveClass(/\bactive\b/);
