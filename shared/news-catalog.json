@@ -274,6 +274,11 @@
     {
       "name": "CNN World",
       "url": "https://www.cnn.com/sitemap/news.xml",
+      "excludePathSegments": [
+        "video",
+        "cnn-underscored",
+        "brandstories"
+      ],
       "placements": [
         {
           "edition": "full",
@@ -301,6 +306,7 @@
     {
       "name": "New York Times World",
       "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+      "newestFirst": true,
       "notes": [
         "Major publishers Google News World leads with and no feed carried (2026-10-16 audit). Publisher RSS since issue #10937; it previously used a Google News site: query.",
         "Major publishers Google News World leads with and no feed carried (2026-10-16 audit). Last in the category, so the free-tier cap's declaration-order pick keeps every earlier source."
@@ -317,6 +323,7 @@
     {
       "name": "Washington Post World",
       "url": "https://feeds.washingtonpost.com/rss/world",
+      "depthUrl": "https://news.google.com/rss/search?q=site%3Awashingtonpost.com%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
       "placements": [
         {
           "edition": "full",
@@ -1294,6 +1301,10 @@
     {
       "name": "Kyiv Independent",
       "url": "https://kyivindependent.com/news-archive/rss/",
+      "depthUrl": "https://news.google.com/rss/search?q=site%3Akyivindependent.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en",
+      "browser": {
+        "url": "https://news.google.com/rss/search?q=site%3Akyivindependent.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en"
+      },
       "notes": [
         "Ukraine war frontline for EN digests (#5949). Names must match client DEFAULT_ENABLED_SOURCES.europe. Ordinary non-en `lang` tags are filtered from EN digests; strategic defaults explicitly bypass that filter.",
         "English-language (no lang tag) — always EN-digest-reachable"
@@ -1310,6 +1321,7 @@
     {
       "name": "Ukrinform",
       "url": "https://www.ukrinform.net/rss/block-lastnews",
+      "depthUrl": "https://news.google.com/rss/search?q=site%3Aukrinform.net%20when%3A3d&hl=en-US&gl=US&ceid=US:en",
       "browser": {
         "url": {
           "en": "https://news.google.com/rss/search?q=site:ukrinform.net+when:3d&hl=en-US&gl=US&ceid=US:en",
@@ -1361,7 +1373,8 @@
     },
     {
       "name": "NV EN",
-      "url": "https://english.nv.ua/rss/all.xml",
+      "url": "https://english.nv.ua/rss/all_english.xml",
+      "depthUrl": "https://news.google.com/rss/search?q=site%3Aenglish.nv.ua%20when%3A2d&hl=en-US&gl=US&ceid=US:en",
       "placements": [
         {
           "edition": "full",
@@ -1944,6 +1957,7 @@
     {
       "name": "Sky News",
       "url": "https://feeds.skynews.com/feeds/rss/home.xml",
+      "depthUrl": "https://news.google.com/rss/search?q=site%3Anews.sky.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
       "placements": [
         {
           "edition": "full",

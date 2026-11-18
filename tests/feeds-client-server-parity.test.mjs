@@ -172,6 +172,7 @@ describe('feed parity: client vs server (PR #3715 follow-up)', () => {
   const digestOnlyDirect = new Map([
     ['CNN World', 'https://www.cnn.com/sitemap/news.xml'],
     ['Ukrinform', 'https://www.ukrinform.net/rss/block-lastnews'],
+    ['Kyiv Independent', 'https://kyivindependent.com/news-archive/rss/'],
   ]);
 
   it('every NEW shared feed name uses consistent routing (grandfathered drift snapshot)', () => {
@@ -263,6 +264,7 @@ describe('feed parity: client vs server (PR #3715 follow-up)', () => {
     ['europe:Meduza', 'Locale variants intentionally select language-specific Meduza feeds.'],
     ['europe:Suspilne', 'Locale variants intentionally select language-specific Suspilne feeds.'],
     ['europe:Ukrinform', 'Locale variants intentionally select language-specific Ukrinform feeds.'],
+    ['europe:Kyiv Independent', 'The digest reads the publisher RSS. The browser keeps the Google News search because kyivindependent.com is relay-only (#10937).'],
     ['middleeast:Al Arabiya', 'Locale variants intentionally select language-specific Al Arabiya feeds.'],
     ['middleeast:Al Jazeera', 'Locale variants intentionally select language-specific Al Jazeera feeds.'],
     ['middleeast:Rudaw', 'The client requests the en edition explicitly; the server relies on the default edition.'],

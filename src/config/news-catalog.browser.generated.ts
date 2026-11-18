@@ -657,7 +657,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Kyiv Independent",
-          "url": "https://kyivindependent.com/news-archive/rss/"
+          "url": "https://news.google.com/rss/search?q=site%3Akyivindependent.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Ukrinform",
@@ -679,7 +679,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "NV EN",
-          "url": "https://english.nv.ua/rss/all.xml"
+          "url": "https://english.nv.ua/rss/all_english.xml"
         },
         {
           "name": "Hromadske EN",

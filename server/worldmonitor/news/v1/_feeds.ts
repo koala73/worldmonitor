@@ -32,6 +32,17 @@ export interface ServerFeed {
    * the one feed, never in a publisher family.
    */
   linkHosts?: string[];
+  /**
+   * The feed lists items in editorial order, not by date. The parser ranks
+   * them newest first before taking the digest's top items.
+   */
+  newestFirst?: boolean;
+  /**
+   * Link path segments that mark items outside this feed's scope (CNN's
+   * site-wide news sitemap lists video clips and shopping pages). An item
+   * whose link path has one of these segments is dropped before ranking.
+   */
+  excludePathSegments?: string[];
 }
 
 /** Match the digest language unless the catalog explicitly permits cross-language fetching. */

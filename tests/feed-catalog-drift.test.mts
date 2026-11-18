@@ -649,7 +649,7 @@ describe('feed catalog drift', () => {
     const expectedUrls: Record<string, string> = {
       'Kyiv Independent': 'https://kyivindependent.com/news-archive/rss/',
       'Ukrainska Pravda EN': 'https://news.google.com/rss/search?q=site%3Aeuromaidanpress.com%20when%3A2d&hl=en-US&gl=US&ceid=US:en',
-      'NV EN': 'https://english.nv.ua/rss/all.xml',
+      'NV EN': 'https://english.nv.ua/rss/all_english.xml',
       TVN24: 'https://tvn24.pl/swiat.xml',
       Rzeczpospolita: 'https://www.rp.pl/rss_main',
       Meduza: 'https://meduza.io/rss/en/all',

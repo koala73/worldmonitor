@@ -104,6 +104,18 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
     reason: 'The publisher supplies the direct news feed and the articles indexed by its existing Google News search.',
     reviewReference: 'Issue #10937',
   }),
+  'sky-news': Object.freeze({
+    provider: 'Sky News',
+    memberHosts: Object.freeze(['feeds.skynews.com', 'news.sky.com']),
+    reason: 'The publisher supplies the direct news feed and the articles indexed by its Google News claim-depth search.',
+    reviewReference: 'Issue #10937',
+  }),
+  'washington-post': Object.freeze({
+    provider: 'The Washington Post',
+    memberHosts: Object.freeze(['feeds.washingtonpost.com', 'washingtonpost.com']),
+    reason: 'The publisher supplies the direct news feed and the articles indexed by its Google News claim-depth search.',
+    reviewReference: 'Issue #10937',
+  }),
   ukrinform: Object.freeze({
     provider: 'Ukrinform',
     memberHosts: Object.freeze(['ukrinform.net', 'www.ukrinform.net']),
@@ -482,18 +494,18 @@ const PROVIDER_OVERRIDES = {
   'www.cnn.com': { ...publisherMetadataFeed('CNN'), identityGroup: 'cnn' },
   'ukrinform.net': { ...publisherMetadataFeed('Ukrinform'), identityGroup: 'ukrinform' },
   'www.ukrinform.net': { ...publisherMetadataFeed('Ukrinform'), identityGroup: 'ukrinform' },
-  'nytimes.com': publisherMetadataFeed('The New York Times'),
   'rss.nytimes.com': publisherMetadataFeed('The New York Times'),
   // Al Jazeera's claim-pool depth search (2026-10-17 /verify audit).
   'aljazeera.com': { ...publisherMetadataFeed('Al Jazeera'), identityGroup: 'al-jazeera' },
   'www.aljazeera.com': { provider: 'Al Jazeera', identityGroup: 'al-jazeera' },
-  'washingtonpost.com': publisherMetadataFeed('The Washington Post'),
-  'feeds.washingtonpost.com': publisherMetadataFeed('The Washington Post'),
+  'washingtonpost.com': { ...publisherMetadataFeed('The Washington Post'), identityGroup: 'washington-post' },
+  'feeds.washingtonpost.com': { ...publisherMetadataFeed('The Washington Post'), identityGroup: 'washington-post' },
   'economist.com': publisherMetadataFeed('The Economist'),
-  'independent.co.uk': publisherMetadataFeed('The Independent'),
   'www.independent.co.uk': publisherMetadataFeed('The Independent'),
-  'news.sky.com': publisherMetadataFeed('Sky News'),
-  'feeds.skynews.com': publisherMetadataFeed('Sky News'),
+  'news.sky.com': { ...publisherMetadataFeed('Sky News'), identityGroup: 'sky-news' },
+  'feeds.skynews.com': { ...publisherMetadataFeed('Sky News'), identityGroup: 'sky-news' },
+  'kyivindependent.com': publisherMetadataFeed('The Kyiv Independent'),
+  'english.nv.ua': publisherMetadataFeed('The New Voice of Ukraine'),
   'timesofisrael.com': publisherMetadataFeed('Times of Israel'),
   'middleeasteye.net': publisherMetadataFeed('Middle East Eye'),
   'japantimes.co.jp': publisherMetadataFeed('Japan Times'),
@@ -1200,7 +1212,13 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: 'b973167af31bb62016048b0517171231abb26311b9e00b794264c238f13d1859',
+  sha256: '4f72ae2f202c4c2aaa7e62472559f43490304fc4497da46772dea78bd41b3d30',
+  // 2026-11-18 (#10937): name The Kyiv Independent and The New Voice of
+  // Ukraine on their direct feeds. Group Sky News and The Washington Post with
+  // the hosts their Google News claim-depth searches fetch again. Drop the
+  // nytimes.com and independent.co.uk rows: both outlets now fetch only
+  // rss.nytimes.com and www.independent.co.uk, so the old rows read as
+  // dropped sources.
   // 2026-11-13: name CelesTrak as the provider of the orbit elements behind
   // satellite tracking and the point lookup (issue #10615), with its licence.
   // 2026-11-13: add the browser-direct satellite image archives for the point

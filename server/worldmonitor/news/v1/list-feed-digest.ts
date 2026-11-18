@@ -1293,6 +1293,22 @@ function channelDateMs(xml: string, xmlLower: string, isAtom: boolean): number |
   return null;
 }
 
+function feedItemLink(block: string, lower: string, sitemap: boolean, isAtom: boolean): string {
+  if (isAtom) return block.match(/<link[^<>]+href=["']([^"']+)["']/)?.[1] ?? '';
+  return extractTag(block, sitemap ? 'loc' : 'link', lower);
+}
+
+/** True when a link's path has one of the segments, compared whole (`video`, not `videos-of-the-week`). */
+function hasExcludedPathSegment(link: string, segments: ReadonlySet<string>): boolean {
+  let path: string;
+  try {
+    path = new URL(link).pathname;
+  } catch {
+    return false;
+  }
+  return path.split('/').some(segment => segments.has(segment));
+}
+
 function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResult | null {
   const items: ParsedItem[] = [];
   const countryItems: NonNullable<ParseResult['countryItems']> = [];
@@ -1303,20 +1319,25 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
   const xmlLower = asciiLower(xml);
   const sitemap = isNewsSitemap(xmlLower.slice(0, 2048));
   let matches = scanTagBlocks(xml, xmlLower, sitemap ? 'url' : 'item');
-  if (sitemap) {
-    // News sitemaps can be ordered by last modification. Rank once by the
-    // original publication date so updated articles cannot crowd out new ones.
-    const dated = matches.flatMap(block => {
-      const lower = asciiLower(block);
-      if (!extractTag(block, 'news:title', lower) || !extractTag(block, 'loc', lower)) return [];
-      const publishedAt = usableFeedDateMs(extractTag(block, 'news:publication_date', lower));
-      return [{ block, publishedAt: publishedAt ?? -Infinity }];
-    });
-    dated.sort((a, b) => b.publishedAt - a.publishedAt);
-    matches = dated.map(row => row.block);
-  }
   const isAtom = !sitemap && matches.length === 0;
   if (isAtom) matches = scanTagBlocks(xml, xmlLower, 'entry');
+  const excluded = feed.excludePathSegments?.length ? new Set(feed.excludePathSegments) : null;
+  if (sitemap || feed.newestFirst || excluded) {
+    // News sitemaps can be ordered by last modification, and some RSS feeds
+    // (NYT World) list items in editorial order. Rank once by publication
+    // date so older or updated items cannot crowd new ones out of the top
+    // items. Excluded paths drop out first so they never take a slot.
+    const ranked = matches.flatMap((block, index) => {
+      const lower = asciiLower(block);
+      if (sitemap && (!extractTag(block, 'news:title', lower) || !extractTag(block, 'loc', lower))) return [];
+      if (excluded && hasExcludedPathSegment(feedItemLink(block, lower, sitemap, isAtom), excluded)) return [];
+      if (!sitemap && !feed.newestFirst) return [{ block, index, publishedAt: 0 }];
+      const raw = sitemap ? extractTag(block, 'news:publication_date', lower) : extractFirstDateTag(block, isAtom, lower);
+      return [{ block, index, publishedAt: usableFeedDateMs(raw) ?? -Infinity }];
+    });
+    ranked.sort((a, b) => (a.publishedAt === b.publishedAt ? a.index - b.index : b.publishedAt > a.publishedAt ? 1 : -1));
+    matches = ranked.map(row => row.block);
+  }
   const originPublisherTrusted = !isAtom && isTrustedOriginAggregator(feed.url);
   const snapshotDateMs = feed.channelDated ? channelDateMs(xml, xmlLower, isAtom) : null;
 
