@@ -92,3 +92,49 @@ test('pinned dashboard panels do not overlap their grid neighbours', async ({ pa
       .toEqual([]);
   }
 });
+
+// A Pro-locked panel shows only a lock card (about 150px). Keeping its
+// two-row or four-row slot left a block of empty space above the panels below
+// it, so a signed-out visitor saw Supply Chain start mid-column.
+const LOCKED_PANELS = ['global-procurement', 'trade-policy'];
+
+test('Pro-locked panels shrink to one grid row', async ({ page }) => {
+  test.setTimeout(120_000);
+
+  await page.addInitScript((panels: string[]) => {
+    if (sessionStorage.getItem('__locked_footprint_e2e_init__')) return;
+    localStorage.setItem('worldmonitor-variant', 'full');
+    localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
+    localStorage.setItem('wm-layer-warning-dismissed', 'true');
+    localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
+    const settings = JSON.parse(localStorage.getItem('worldmonitor-panels') || '{}');
+    for (const id of panels) settings[id] = { name: id, enabled: true, priority: 1 };
+    localStorage.setItem('worldmonitor-panels', JSON.stringify(settings));
+    sessionStorage.setItem('__locked_footprint_e2e_init__', '1');
+  }, LOCKED_PANELS);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+
+  for (const id of LOCKED_PANELS) {
+    await expect
+      .poll(
+        () => page.evaluate((panelId: string) => {
+          const panel = document.querySelector<HTMLElement>(`#panelsGrid > .panel[data-panel="${panelId}"]`);
+          if (!panel) return 'missing';
+          panel.scrollIntoView({ block: 'center' });
+          if (panel.dataset.deferredPanel === 'true') return 'deferred';
+          if (!panel.classList.contains('panel-is-locked')) return 'unlocked';
+          const card = panel.querySelector<HTMLElement>('.panel-locked-state');
+          if (!card) return 'no lock card';
+          const slot = panel.getBoundingClientRect();
+          const rowMin = parseFloat(getComputedStyle(panel).getPropertyValue('--dashboard-panel-row-min')) || 200;
+          const cardBottom = card.getBoundingClientRect().bottom;
+          if (cardBottom > slot.bottom + 1) return `lock card clipped (${Math.round(cardBottom - slot.bottom)}px)`;
+          return slot.height <= rowMin + 1 ? 'one row' : `slot ${Math.round(slot.height)}px`;
+        }, id),
+        { message: `${id} locked footprint`, timeout: 60_000 },
+      )
+      .toBe('one row');
+  }
+});
