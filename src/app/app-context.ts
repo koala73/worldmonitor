@@ -94,8 +94,13 @@ export interface AppContext {
 
   disabledSources: Set<string>;
   pendingSourcePreferences?: {
+    /** Ownership for the live source selection. */
     gateOwned: Set<string> | null;
-    countryCoverageMigration: boolean;
+    /** Ownership for the stored selection after a partial write. */
+    baselineGateOwned: Set<string> | null;
+    /** Session overrides; true disables a source, false enables it. */
+    edits: Map<string, boolean>;
+    migrationMarkers: string[];
   };
   currentTimeRange: import('@/components').TimeRange;
 

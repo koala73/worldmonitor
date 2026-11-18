@@ -42,7 +42,7 @@ describe('opt-in Brazil news coverage', () => {
     const start = app.indexOf("      const brazilOptInKey =");
     const end = app.indexOf('      // Locale boost:', start);
     assert.ok(start >= 0 && end > start);
-    const startup = transpileModule(`let sessionDisabledSources;\n${app.slice(start, end)}`, {}).outputText;
+    const startup = transpileModule(`let sessionDisabledSources; const pendingSourceMigrationMarkers = [];\n${app.slice(start, end)}`, {}).outputText;
     const key = 'worldmonitor-disabled-feeds';
     const marker = 'worldmonitor-brazil-optin-v1';
     for (const previous of [undefined, '["existing-choice"]']) {

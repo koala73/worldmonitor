@@ -28,24 +28,36 @@ after(() => rmSync(tempDir, { recursive: true, force: true }));
 
 const key = 'worldmonitor-disabled-feeds';
 describe('optional country news coverage', () => {
-  it('retains session choices through tier and cloud reloads until preferences can be saved', () => {
+  it('applies cloud choices while replaying unsaved session edits through tier changes', () => {
     const app = readFileSync('src/App.ts', 'utf8');
     const start = app.indexOf('  private reconcileSourceLimitForTier(');
     const end = app.indexOf('  /**\n   * Enforce free-tier panel', start);
-    const cloudStart = app.indexOf('    if (\n      keySet.has(STORAGE_KEYS.disabledFeeds)');
-    const cloudEnd = app.indexOf('    if (keySet.has(STORAGE_KEYS.monitors))', cloudStart);
+    const cloudStart = app.indexOf('  private applyCloudSyncedPrefsToRuntime(');
+    const cloudEnd = app.indexOf('  private isPanelNearViewport(', cloudStart);
+    const handlers = readFileSync('src/app/event-handlers.ts', 'utf8');
+    const saveStart = handlers.indexOf('  private persistSourcePreferences(');
+    const saveEnd = handlers.indexOf('  getAllSourceNames()', saveStart);
     const code = transpileModule(`class Harness { ${app.slice(start, end)}
-      cloud() { const keySet = new Set(['disabled']); const tierReconciliationDeferred = true;
-        const freeTierLimitsInvoked = false; ${app.slice(cloudStart, cloudEnd)} }
+      ${app.slice(cloudStart, cloudEnd)}
+      ${handlers.slice(saveStart, saveEnd)}
+      cloud() { this.applyCloudSyncedPrefsToRuntime(['disabled']); }
     }; Harness;`, {}).outputText;
-    for (const [pro, sidecar] of [[true, true], [false, true], [true, false], [false, false]]) {
+    for (const [pro, sidecar, failedWrite] of [true, false].flatMap(pro =>
+      [true, false].flatMap(sidecar => ['both', 'disabled', 'owned'].map(failedWrite =>
+        [pro, sidecar, failedWrite] as const)))) {
       const stored = new Map<string, string[]>([['disabled', ['existing', 'gate-owned']], ['owned', ['gate-owned']]]);
-      if (!sidecar) stored.delete('owned');
+      if (!sidecar) {
+        stored.delete('owned');
+        stored.set('disabled', ['existing', 'cap-fixture']);
+      }
       const markers = new Map<string, string>();
       let markerWritable = false;
       const Harness = runInNewContext(code, {
         safeStorageSetChecked: (name: string, value: string) => { if (!markerWritable) return false; markers.set(name, value); return true; },
         STORAGE_KEYS: { disabledFeeds: 'disabled', sourceGateOwnership: 'owned' },
+        FONT_SCALE_STORAGE_KEY: 'font', invalidatePanelStorageCacheForKeys() {},
+        releaseSourceGateOwnership: transferSourceGateOwnershipToUser,
+        writeStorageValue: () => false, saveToStorage: () => false,
         localStorage: { getItem: () => sidecar ? 'present' : null },
         computeDefaultDisabledSources: () => ['existing', 'country-opt-in'],
         inferExactSourceGateOwnership,
@@ -56,32 +68,61 @@ describe('optional country news coverage', () => {
       });
       const instance = new Harness();
       instance.state = { disabledSources: new Set(['existing', 'country-opt-in', sidecar ? 'gate-owned' : 'cap-fixture']) };
-      instance.state.pendingSourcePreferences = { gateOwned: null, countryCoverageMigration: true };
+      instance.state.pendingSourcePreferences = { gateOwned: null, migrationMarkers: ['worldmonitor-country-coverage-optin-v1', 'worldmonitor-brazil-optin-v1'], edits: new Map([['country-opt-in', true]]) };
+      instance.ctx = instance.state;
+      instance.shouldDeferTierPreferenceReconciliation = () => false;
+      instance.enforceFreeTierLimits = () => instance.reconcileSourceLimitForTier(pro);
       instance.currentSourceCapLanguage = () => 'en';
       instance.sourceCapProtectedNames = () => new Set();
-      instance.persistJsonStorageValue = () => false;
+      instance.persistJsonStorageValue = (name: string, value: string[]) => {
+        if (failedWrite === 'both' || name === failedWrite) return false;
+        stored.set(name, value);
+        return true;
+      };
       if (!sidecar) {
         instance.reconcileSourceLimitForTier(true);
         assert.ok(!instance.state.disabledSources.has('cap-fixture'), 'missing sidecar infers legacy cap ownership');
       }
       instance.reconcileSourceLimitForTier(false);
+      assert.ok(instance.state.pendingSourcePreferences.gateOwned.has('cap-fixture'), 'pending live ownership tracks the active cap');
+      instance.persistSourcePreferences([]);
+      assert.ok(instance.state.pendingSourcePreferences.gateOwned.has('cap-fixture'), 'settings save retains live cap ownership when writes fail');
       instance.reconcileSourceLimitForTier(true);
       assert.ok(!instance.state.disabledSources.has('cap-fixture'), 'Pro restores the session cap after a failed ownership write');
       instance.reconcileSourceLimitForTier(pro);
       assert.ok(instance.state.disabledSources.has('country-opt-in'), `${pro}: tier reconciliation`);
+      stored.set('disabled', ['cloud-choice']);
+      stored.set('owned', []);
       instance.cloud();
+      assert.ok(instance.state.disabledSources.has('cloud-choice'), 'cloud choices apply before durable save');
+      assert.ok(!instance.state.disabledSources.has('existing'), 'cloud can enable an untouched source');
+      instance.shouldDeferTierPreferenceReconciliation = () => true;
+      stored.set('disabled', ['deferred-cloud-choice']);
+      instance.cloud();
+      assert.ok(instance.state.disabledSources.has('deferred-cloud-choice'), 'cloud choices apply during tier handoff');
       assert.ok(instance.state.disabledSources.has('country-opt-in'), `${pro}: cloud reload`);
+      instance.shouldDeferTierPreferenceReconciliation = () => false;
       instance.state.disabledSources.delete('country-opt-in');
+      instance.persistSourcePreferences(['country-opt-in']);
+      instance.state.disabledSources.add('session-opt-out');
+      instance.persistSourcePreferences(['session-opt-out']);
+      stored.set('disabled', ['country-opt-in', 'second-cloud-choice']);
+      instance.cloud();
+      assert.ok(instance.state.disabledSources.has('session-opt-out'), 'local opt-out overrides cloud');
+      assert.ok(instance.state.disabledSources.has('second-cloud-choice'), 'later cloud snapshot replaces untouched choices');
+      assert.ok(!instance.state.disabledSources.has('cloud-choice'), 'old cloud choice is not a session edit');
       instance.reconcileSourceLimitForTier(pro);
       assert.ok(!instance.state.disabledSources.has('country-opt-in'), 'later explicit choice remains authoritative');
       instance.persistJsonStorageValue = (name: string, value: string[]) => { stored.set(name, value); return true; };
       instance.reconcileSourceLimitForTier(pro);
-      assert.equal(instance.state.pendingSourcePreferences?.countryCoverageMigration, true, 'failed marker remains retryable');
+      assert.equal(instance.state.pendingSourcePreferences?.migrationMarkers.length, 2, 'failed marker remains retryable');
       markerWritable = true;
       instance.reconcileSourceLimitForTier(pro);
       assert.equal(instance.state.pendingSourcePreferences, undefined);
+      assert.equal(markers.get('worldmonitor-brazil-optin-v1'), 'done');
       assert.equal(markers.get('worldmonitor-country-coverage-optin-v1'), 'done', 'recovery acknowledges the migration before later choices');
       stored.set('disabled', ['cloud-choice']);
+      instance.shouldDeferTierPreferenceReconciliation = () => true;
       instance.cloud();
       assert.deepEqual([...instance.state.disabledSources], ['cloud-choice'], 'cloud changes resume after durable save');
     }
@@ -111,10 +152,10 @@ describe('optional country news coverage', () => {
     const instance = new Harness();
     instance.ctx = {
       disabledSources: new Set(['existing', 'new-cap']),
-      pendingSourcePreferences: { gateOwned: new Set(['new-cap']), countryCoverageMigration: true },
+      pendingSourcePreferences: { gateOwned: new Set(['new-cap']), edits: new Map(), migrationMarkers: ['worldmonitor-country-coverage-optin-v1'] },
     };
     instance.persistSourcePreferences(['new-cap']);
-    assert.equal(instance.ctx.pendingSourcePreferences.gateOwned.size, 0, 'explicit opt-out transfers the session ownership even when storage fails');
+    assert.equal(instance.ctx.pendingSourcePreferences.edits.get('new-cap'), true, 'explicit opt-out stays pending when storage fails');
     assert.equal(stored.get('worldmonitor-country-coverage-optin-v1'), undefined);
     writable = true;
     instance.persistSourcePreferences([]);
@@ -185,7 +226,7 @@ describe('optional country news coverage', () => {
     const start = app.indexOf('      const countryCoverageOptInKey =');
     const end = app.indexOf('      // Locale boost:', start);
     const initialization = app.match(/    const disabledSources = new Set\([^\n]+/)!;
-    const code = transpileModule(`let sessionDisabledSources;\n${app.slice(start, end)}\n${initialization[0]}\n[...disabledSources];`, {}).outputText;
+    const code = transpileModule(`let sessionDisabledSources; const pendingSourceMigrationMarkers = [];\n${app.slice(start, end)}\n${initialization[0]}\n[...disabledSources];`, {}).outputText;
     for (const failedWrite of ['preferences', 'marker']) {
       const store = new Map([[key, '["existing-choice"]']]);
       const disabled = runInNewContext(code, {
@@ -255,7 +296,7 @@ describe('optional country news coverage', () => {
     const start = app.indexOf('      const countryCoverageOptInKey =');
     const end = app.indexOf('      const brazilOptInKey =', start);
     assert.ok(start >= 0 && end > start);
-    const startup = transpileModule(`let sessionDisabledSources;\n${app.slice(start, end)}`, {}).outputText;
+    const startup = transpileModule(`let sessionDisabledSources; const pendingSourceMigrationMarkers = [];\n${app.slice(start, end)}`, {}).outputText;
     const marker = 'worldmonitor-country-coverage-optin-v1';
     const store = new Map<string, string>([[key, '["existing-choice"]']]);
     let failMarker = true;
