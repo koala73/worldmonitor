@@ -363,10 +363,11 @@ long before the item is gone everywhere.
 1. **It does not evict shared caches.** `/api/news/v1/list-feed-digest` is
    served with `max-age=60, s-maxage=300` and `CDN-Cache-Control: s-maxage=600`. Once a
    revocation is live the endpoint stops feeding shared caches, but copies
-   already stored survive. **Wait 10 seconds after the `SADD`, then purge the
-   CDN for that path** if you have one in front of the stack: a purge inside
-   those seconds can be refilled by an instance that has not seen the
-   revocation yet. A purely local Docker stack has no CDN and can skip this.
+   already stored survive. **Wait one minute after the `SADD`, then purge the
+   CDN for that path** if you have one in front of the stack. An instance can
+   keep its old read of the set for 10 seconds, and a digest request can take
+   up to 25 seconds, so a request that started before the revocation can
+   still finish and refill the CDN within that minute. A purely local Docker stack has no CDN and can skip this.
 2. **It does not force a rebuild.** The existing digest keeps being rebuilt on
    its normal ~900s cycle. To rebuild immediately:
 
@@ -379,8 +380,11 @@ long before the item is gone everywhere.
 
    Note the key version is **v1**. Repeat per `<variant>:<lang>` scope you serve.
 
-To lift a revocation, `SREM` the same URL — stored bodies are kept unfiltered on
-purpose, so the item reappears within 10 seconds without waiting for a rebuild.
+To lift a revocation, `SREM` the same URL. Paths that store items unfiltered
+show it again within 10 seconds. A digest built while the URL was revoked left
+the item out, so it returns to the digest only on the next rebuild. To rebuild
+now, wait 10 seconds after the `SREM`, then delete the digest keys as in step 2
+above.
 
 ```bash
 curl -s -X POST "$UPSTASH_REDIS_REST_URL/pipeline" \

@@ -106,6 +106,34 @@ describe('readRevokedUrlSet per-instance memo', () => {
     assert.equal(calls.length, 1);
   });
 
+  it('counts time spent waiting for Redis toward the window', async () => {
+    mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+    const reply = deferred<void>();
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      if (calls === 1) await reply.promise;
+      return Response.json([{ result: [] }]);
+    }) as typeof fetch;
+    const slow = readRevokedUrlSet();
+    mock.timers.tick(4_000);
+    reply.resolve();
+    await slow;
+    mock.timers.tick(REVOCATION_MEMO_TTL_MS - 4_000);
+    await readRevokedUrlSet();
+    assert.equal(calls, 2, 'a set read 10 s ago is not reused, however long its reply took');
+  });
+
+  it('reads Redis directly when the caller asks for a fresh set', async () => {
+    let members = ['https://example.com/a'];
+    const calls = stubRedis(() => members);
+    await readRevokedUrlSet();
+    members = ['https://example.com/a', 'https://example.com/b'];
+    const fresh = await readRevokedUrlSet({ fresh: true });
+    assert.equal(calls.length, 2);
+    assert.deepEqual([...fresh.urls].sort(), ['https://example.com/a', 'https://example.com/b']);
+  });
+
   it('keeps the window at a few seconds', () => {
     assert.ok(REVOCATION_MEMO_TTL_MS > 0 && REVOCATION_MEMO_TTL_MS <= 10_000);
   });

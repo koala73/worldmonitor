@@ -72,22 +72,28 @@ export function filterRevokedUrls<T extends { link?: unknown }>(
  *    fail CLOSED on this one: a suppression control that cannot be read must
  *    not be assumed empty.
  */
-export async function readRevokedUrlSet(): Promise<RevocationRead> {
+export async function readRevokedUrlSet(opts: { fresh?: boolean } = {}): Promise<RevocationRead> {
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
     return { urls: new Set(), readable: true };
   }
   if (!isRedisConfigured()) {
     return { urls: new Set(), readable: true };
   }
+  // A caller that stores what it builds from this set for longer than the
+  // memo window reads Redis directly.
+  if (opts.fresh) return readFromRedis();
   if (memo && memo.expiresAt > Date.now()) return memo.read;
   if (!pendingRead) {
     const generation = memoGeneration;
+    // The window starts when the read starts, so a slow reply cannot stretch
+    // how old a reused set may be.
+    const startedAt = Date.now();
     const read = readFromRedis().then((result) => {
       // A failed read is not kept: the next request retries rather than
       // failing closed for the whole window. A read that outlived a reset
       // is not kept either.
       if (result.readable && generation === memoGeneration) {
-        memo = { read: result, expiresAt: Date.now() + REVOCATION_MEMO_TTL_MS };
+        memo = { read: result, expiresAt: startedAt + REVOCATION_MEMO_TTL_MS };
       }
       return result;
     }).finally(() => {
