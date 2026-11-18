@@ -666,9 +666,11 @@ export function classifyCacheIdentity(title) {
   if (typeof title !== 'string') return '';
   const lower = title.toLowerCase();
   // Strip credits one at a time, as normalizeNewsStoryTitle would, so a clause
-  // ending in a domain is caught behind any number of outlet credits.
+  // ending in a domain is caught behind any number of outlet credits. A chain
+  // too long to finish keeps the exact title.
   let rest = lower;
-  for (let i = 0; i < 8; i += 1) {
+  for (let i = 0; ; i += 1) {
+    if (i === 8) return lower;
     const domainless = stripOneAttribution(rest, 'domain', false);
     const credit = rest.slice(domainless.length).trim().replace(/^[-–—|]\s*/, '');
     if (credit && !BARE_HOST_RE.test(credit)) return lower;
