@@ -1,6 +1,6 @@
 // Major publishers that Google News World leads with and no feed carried
 // (2026-10-16 audit): NYT, Washington Post, The Economist, The Independent,
-// Sky News, Times of Israel, Middle East Eye and Japan Times. Google News
+// Sky News, Times of Israel, Middle East Eye and Japan Times. Publisher RSS or Google News
 // site: feeds, default-on for English, last in their categories.
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
@@ -22,20 +22,24 @@ interface FeedsModule {
   computeDefaultDisabledSources: (locale?: string) => string[];
 }
 
-const countryAdditions = new Set<string>(JSON.parse(readFileSync('shared/country-news-opt-ins.json', 'utf8')));
+// Opt-in packs appended after this one.
+const laterAdditions = new Set<string>([
+  ...JSON.parse(readFileSync('shared/country-news-opt-ins.json', 'utf8')),
+  ...JSON.parse(readFileSync('shared/publisher-direct-opt-ins.json', 'utf8')),
+]);
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tempDir = join(repoRoot, 'tmp-major-publisher-feeds-test');
 const gn = (q: string) => `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
 
-const EXPECTED: Record<string, { category: string; query: string }> = {
-  'New York Times World': { category: 'politics', query: 'site:nytimes.com world when:1d' },
-  'Washington Post World': { category: 'politics', query: 'site:washingtonpost.com world when:1d' },
-  'The Economist': { category: 'politics', query: 'site:economist.com when:1d' },
-  'The Independent': { category: 'politics', query: 'site:independent.co.uk world when:1d' },
-  'Sky News': { category: 'europe', query: 'site:news.sky.com when:1d' },
-  'Times of Israel': { category: 'middleeast', query: 'site:timesofisrael.com when:1d' },
-  'Middle East Eye': { category: 'middleeast', query: 'site:middleeasteye.net when:1d' },
-  'Japan Times': { category: 'asia', query: 'site:japantimes.co.jp when:1d' },
+const EXPECTED: Record<string, { category: string; url: string }> = {
+  'New York Times World': { category: 'politics', url: 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml' },
+  'Washington Post World': { category: 'politics', url: 'https://feeds.washingtonpost.com/rss/world' },
+  'The Economist': { category: 'politics', url: gn('site:economist.com when:1d') },
+  'The Independent': { category: 'politics', url: 'https://www.independent.co.uk/news/world/rss' },
+  'Sky News': { category: 'europe', url: 'https://feeds.skynews.com/feeds/rss/home.xml' },
+  'Times of Israel': { category: 'middleeast', url: gn('site:timesofisrael.com when:1d') },
+  'Middle East Eye': { category: 'middleeast', url: gn('site:middleeasteye.net when:1d') },
+  'Japan Times': { category: 'asia', url: gn('site:japantimes.co.jp when:1d') },
 };
 const NAMES = Object.keys(EXPECTED);
 // Appended after this pack by the 2026-10-17 audit (tests/deeper-feed-pool.test.mts).
@@ -46,13 +50,13 @@ before(async () => { feeds = await bundleFeedsModule<FeedsModule>({ repoRoot, te
 after(() => rmSync(tempDir, { recursive: true, force: true }));
 
 describe('major publisher feeds', () => {
-  it('both catalogs carry each feed in the same category with the same Google News site: query', () => {
+  it('both catalogs carry each feed in the same category with the same upstream URL', () => {
     assert.deepEqual([...feeds.MAJOR_PUBLISHER_DEFAULT_SOURCES].sort(), [...NAMES].sort());
-    for (const [name, { category, query }] of Object.entries(EXPECTED)) {
+    for (const [name, { category, url }] of Object.entries(EXPECTED)) {
       const server = VARIANT_FEEDS.full![category]!.find((feed) => feed.name === name);
       const client = feeds.FULL_FEEDS[category]!.find((feed) => feed.name === name);
-      assert.equal(server?.url, gn(query), `${name}: server URL`);
-      assert.equal(client?.url, gn(query), `${name}: client URL`);
+      assert.equal(server?.url, url, `${name}: server URL`);
+      assert.equal(client?.url, url, `${name}: client URL`);
       assert.equal(server?.lang, undefined, `${name}: reachable from every digest language`);
     }
   });
@@ -62,7 +66,7 @@ describe('major publisher feeds', () => {
       const names = entries.map((feed) => feed.name);
       const firstNew = names.findIndex((name) => NAMES.includes(name));
       if (firstNew < 0) continue;
-      assert.ok(names.slice(firstNew).every((name) => NAMES.includes(name) || LATER.includes(name) || countryAdditions.has(name)), `${category}: new feeds are appended`);
+      assert.ok(names.slice(firstNew).every((name) => NAMES.includes(name) || LATER.includes(name) || laterAdditions.has(name)), `${category}: new feeds are appended`);
     }
   });
 

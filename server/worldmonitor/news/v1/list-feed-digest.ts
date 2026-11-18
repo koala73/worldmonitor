@@ -88,7 +88,7 @@ import {
   isPublisherLink,
   linkHostname,
 } from '../../../../shared/publisher-link-gate.js';
-import { stripAttributionSuffix } from '../../../../shared/story-identity.js';
+import { newsPublisherCoverageKey, stripAttributionSuffix } from '../../../../shared/story-identity.js';
 // @ts-expect-error — JS module, no declaration file
 import { STORY_ALIAS_PUBLISH_SCRIPT } from '../../../../shared/story-alias-publish-script.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
@@ -838,7 +838,11 @@ function createTimeoutLinkedController(parentSignal: AbortSignal): {
 export function looksLikeRssXml(text: string): boolean {
   const head = text.slice(0, 2048).toLowerCase();
   if (/<!doctype\s+html|<html[\s>]/.test(head)) return false;
-  return /<rss[\s>]|<feed[\s>]|<rdf:rdf[\s>]/.test(head);
+  return isNewsSitemap(head) || /<rss[\s>]|<feed[\s>]|<rdf:rdf[\s>]/.test(head);
+}
+
+function isNewsSitemap(head: string): boolean {
+  return /<urlset\b[^<>]*\sxmlns:news=["']http:\/\/www\.google\.com\/schemas\/sitemap-news\/0\.9["']/.test(head);
 }
 
 /** HTTP validators from a direct 200, replayed as a conditional GET on refresh. */
@@ -1289,6 +1293,22 @@ function channelDateMs(xml: string, xmlLower: string, isAtom: boolean): number |
   return null;
 }
 
+function feedItemLink(block: string, lower: string, sitemap: boolean, isAtom: boolean): string {
+  if (isAtom) return block.match(/<link[^<>]+href=["']([^"']+)["']/)?.[1] ?? '';
+  return extractTag(block, sitemap ? 'loc' : 'link', lower);
+}
+
+/** True when a link's path has one of the segments, compared whole (`video`, not `videos-of-the-week`). */
+function hasExcludedPathSegment(link: string, segments: ReadonlySet<string>): boolean {
+  let path: string;
+  try {
+    path = new URL(link).pathname;
+  } catch {
+    return false;
+  }
+  return path.split('/').some(segment => segments.has(segment));
+}
+
 function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResult | null {
   const items: ParsedItem[] = [];
   const countryItems: NonNullable<ParseResult['countryItems']> = [];
@@ -1297,9 +1317,27 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
   let droppedUndated = 0;
 
   const xmlLower = asciiLower(xml);
-  let matches = scanTagBlocks(xml, xmlLower, 'item');
-  const isAtom = matches.length === 0;
+  const sitemap = isNewsSitemap(xmlLower.slice(0, 2048));
+  let matches = scanTagBlocks(xml, xmlLower, sitemap ? 'url' : 'item');
+  const isAtom = !sitemap && matches.length === 0;
   if (isAtom) matches = scanTagBlocks(xml, xmlLower, 'entry');
+  const excluded = feed.excludePathSegments?.length ? new Set(feed.excludePathSegments) : null;
+  if (sitemap || feed.newestFirst || excluded) {
+    // News sitemaps can be ordered by last modification, and some RSS feeds
+    // (NYT World) list items in editorial order. Rank once by publication
+    // date so older or updated items cannot crowd new ones out of the top
+    // items. Excluded paths drop out first so they never take a slot.
+    const ranked = matches.flatMap((block, index) => {
+      const lower = asciiLower(block);
+      if (sitemap && (!extractTag(block, 'news:title', lower) || !extractTag(block, 'loc', lower))) return [];
+      if (excluded && hasExcludedPathSegment(feedItemLink(block, lower, sitemap, isAtom), excluded)) return [];
+      if (!sitemap && !feed.newestFirst) return [{ block, index, publishedAt: 0 }];
+      const raw = sitemap ? extractTag(block, 'news:publication_date', lower) : extractFirstDateTag(block, isAtom, lower);
+      return [{ block, index, publishedAt: usableFeedDateMs(raw) ?? -Infinity }];
+    });
+    ranked.sort((a, b) => (a.publishedAt === b.publishedAt ? a.index - b.index : b.publishedAt > a.publishedAt ? 1 : -1));
+    matches = ranked.map(row => row.block);
+  }
   const originPublisherTrusted = !isAtom && isTrustedOriginAggregator(feed.url);
   const snapshotDateMs = feed.channelDated ? channelDateMs(xml, xmlLower, isAtom) : null;
 
@@ -1314,7 +1352,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     const blockLower = asciiLower(block);
     const forDigest = index < ITEMS_PER_FEED;
 
-    const title = extractTag(block, 'title', blockLower);
+    const title = extractTag(block, sitemap ? 'news:title' : 'title', blockLower);
     if (!title) continue;
 
     if (forDigest) parsedTotal++;
@@ -1327,7 +1365,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       const hrefMatch = block.match(/<link[^<>]+href=["']([^"']+)["']/);
       link = hrefMatch?.[1] ?? '';
     } else {
-      link = extractTag(block, 'link', blockLower);
+      link = extractTag(block, sitemap ? 'loc' : 'link', blockLower);
     }
     // A publisher click counter carries the article URL after a `*`
     // (redir.folha.com.br/.../*https://www1.folha.uol.com.br/...). Keep the
@@ -1349,7 +1387,8 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     // (which is the bug that let static institutional pages reach the brief).
     // A channel-dated snapshot feed's undated item takes the channel's date,
     // which passes the same gate.
-    const pubDateStr = extractFirstDateTag(block, isAtom, blockLower);
+    const pubDateStr = sitemap ? extractTag(block, 'news:publication_date', blockLower)
+      : extractFirstDateTag(block, isAtom, blockLower);
     const publishedAt = pubDateStr ? usableFeedDateMs(pubDateStr) : snapshotDateMs;
     if (publishedAt === null) {
       if (forDigest) droppedUndated++;
@@ -1362,7 +1401,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     // dialect is read; extractTag's [^<]* body would not match a container
     // anyway, but skipping Atom keeps that an invariant rather than a
     // regex accident.
-    const extractedOriginPublisher = isAtom ? '' : extractTag(block, 'source', blockLower);
+    const extractedOriginPublisher = isAtom || sitemap ? '' : extractTag(block, 'source', blockLower);
     // Ordinary feeds cannot vouch for RSS <source>. The country reader already
     // ignores untrusted origin metadata, so keep those late headlines and store
     // an empty publisher. Trusted aggregators still have the 200-character
@@ -2677,6 +2716,54 @@ export async function listFeedDigest(
   }
 }
 
+// Two commands per key, so 400 keys stay under Upstash's 1,000-command cap.
+const PUBLISHER_COVERAGE_BATCH_KEYS = 400;
+
+// Each exact headline owns one sorted set. GT keeps a slower build from
+// moving a family's last observation backwards; retries replace the same member.
+//
+// Only served headlines get a key: the relay alerts on the digest response, so
+// a headline below every category cap can never be an alert title. Families
+// are still collected from every accepted item that shares a served headline.
+// The reader counts only the last 24 hours by score and EXPIRE retires an idle
+// key, so stale members need no separate trim.
+async function recordPublisherCoverage(
+  items: readonly ParsedItem[],
+  servedItems: readonly ParsedItem[],
+  variant: string,
+  observedAt: number,
+  deadlineAt: number,
+): Promise<void> {
+  const groups = new Map<string, Set<string>>();
+  for (const item of servedItems) {
+    const key = newsPublisherCoverageKey(variant, item.title);
+    if (key && !groups.has(key)) groups.set(key, new Set());
+  }
+  for (const item of items) {
+    const families = groups.get(newsPublisherCoverageKey(variant, item.title));
+    if (!families) continue;
+    const family = publisherFamilyForItem(item);
+    if (family) families.add(family);
+  }
+  const entries = [...groups].filter(([, families]) => families.size > 0);
+  for (let start = 0; start < entries.length; start += PUBLISHER_COVERAGE_BATCH_KEYS) {
+    const timeout = redisTimeoutForDeadline(deadlineAt);
+    if (!timeout) {
+      console.warn(`[digest] publisher coverage write cut short: ${entries.length - start} of ${entries.length} headlines unwritten`);
+      return;
+    }
+    const commands = entries.slice(start, start + PUBLISHER_COVERAGE_BATCH_KEYS).flatMap(([key, families]) => [
+      ['ZADD', key, 'GT', ...[...families].flatMap(family => [observedAt, family])],
+      ['EXPIRE', key, 86_400],
+    ]);
+    const rows = await runRedisTransaction(commands, false, timeout);
+    if (!redisPipelineConfirmed(rows, commands.length)) {
+      console.warn('[digest] publisher coverage write unavailable');
+      return;
+    }
+  }
+}
+
 function redisPipelineConfirmed(
   results: Array<{ result?: unknown; error?: string }>,
   expectedCommands: number,
@@ -3822,6 +3909,10 @@ async function buildDigest(
     const storyTrackingDeadlineAt = digestStartedAt + ADOPTION_DEADLINE_MS;
 
     const now = Date.now();
+    // Served headlines only, with families from accepted sightings below the
+    // category cap. Runs alongside story tracking within the same deadline.
+    const publisherCoverageWrite = recordPublisherCoverage(servableItems, allSliced, variant, buildStart, storyTrackingDeadlineAt)
+      .catch((err: unknown) => console.warn('[digest] publisher coverage unavailable:', err));
 
     // Read existing story tracking BEFORE writing so we know the previous cycle's
     // mentionCount. We merge read state + this cycle's increment in memory to
@@ -3905,7 +3996,7 @@ async function buildDigest(
       };
     }
 
-    await headlineHistoryWrite;
+    await Promise.all([headlineHistoryWrite, publisherCoverageWrite]);
 
     // #4920: publish the coverage ledger — every gate's drop count plus
     // what survived — as a side key. Best-effort: ledger failures never
@@ -3928,8 +4019,10 @@ async function buildDigest(
     if (VARIANT_FEEDS[variant] && DIGEST_LANGUAGES.has(lang)) {
       // #4927 review P2: awaited — a fire-and-forget write can be killed
       // when the response finishes before the side write lands.
-      await setCachedJson(`news:coverage-ledger:v1:${variant}:${lang}`, ledger, 7200).catch((err: unknown) =>
-        console.warn('[digest] coverage-ledger write failed:', err),
+      await writeCoverageLedger(
+        `news:coverage-ledger:v1:${variant}:${lang}`,
+        ledger,
+        digestStartedAt + DIGEST_RESPONSE_TIMEOUT_MS - LEDGER_WRITE_GUARD_MS,
       );
     }
 
@@ -3976,6 +4069,22 @@ function rememberLabelCounts(response: ListFeedDigestResponse, counts: LabelCoun
  * Write the counts of a build the gate accepted. A rejected or unpublished
  * build leaves /trust describing the digest that is still served.
  */
+// The ledger write runs after the story-tracking, history and coverage writes
+// join, which may hold until the 11 s tracking deadline. Its own Redis timeout
+// is 5 s, so unbounded it could carry the build past the 14 s response timeout
+// and lose a finished digest. Stop waiting this long before that timeout.
+const LEDGER_WRITE_GUARD_MS = 1_000;
+
+/** Best-effort ledger write that never waits past `deadlineAt`. */
+async function writeCoverageLedger(key: string, ledger: unknown, deadlineAt: number): Promise<void> {
+  const write = setCachedJson(key, ledger, 7200).catch((err: unknown) => {
+    console.warn('[digest] coverage-ledger write failed:', err);
+    return false;
+  });
+  const settled = await settleBeforeDeadline(write.then(() => true), deadlineAt, false);
+  if (!settled) console.warn('[digest] coverage-ledger write abandoned at the response deadline');
+}
+
 async function publishAcceptedLabelCounts(response: ListFeedDigestResponse, deadlineAt: number): Promise<void> {
   const counts = pendingLabelCounts.get(response);
   if (!counts) return;
@@ -3988,6 +4097,8 @@ async function publishAcceptedLabelCounts(response: ListFeedDigestResponse, dead
 
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
+  recordPublisherCoverage,
+  writeCoverageLedger,
   storyCorroborationByHash,
   // #7084 serving path. Exported so the wiring can be EXECUTED in tests rather
   // than asserted against this file's own source text — a grep for

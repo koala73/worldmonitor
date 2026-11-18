@@ -460,7 +460,7 @@ export const DOCS_PAGE_DATES: Record<string, { datePublished: string; dateModifi
   "zh/api-commerce": {"datePublished":"2026-07-11","dateModified":"2026-11-06"},
   "zh/api-key-deployment": {"datePublished":"2026-07-11","dateModified":"2026-07-11"},
   "zh/api-keys": {"datePublished":"2026-07-11","dateModified":"2026-11-14"},
-  "zh/api-notifications": {"datePublished":"2026-07-11","dateModified":"2026-11-16"},
+  "zh/api-notifications": {"datePublished":"2026-07-11","dateModified":"2026-11-17"},
   "zh/api-oauth": {"datePublished":"2026-07-11","dateModified":"2026-10-23"},
   "zh/api-platform": {"datePublished":"2026-07-11","dateModified":"2026-11-17"},
   "zh/api-proxies": {"datePublished":"2026-07-11","dateModified":"2026-11-01"},

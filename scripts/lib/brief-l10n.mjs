@@ -11,10 +11,11 @@ import { BRIEF_L10N_GATED_LANGS, UI_LANGUAGE_NAMES, briefL10nDeliverableLanguage
 import { sanitizeForPrompt } from '../../server/_shared/llm-sanitize.js';
 import { assertBriefEnvelope } from '../../server/_shared/brief-render.js';
 import { BRIEF_LOCALIZED_ENVELOPE_VERSION, briefErasedKey, briefLocalizedKey, briefSlotsKey } from '../../shared/brief-envelope.js';
+import { briefT, formatBriefDate, greetingKey } from '../../shared/brief-strings.js';
 import { BRIEF_LLM_ALLOWED_PROVIDERS, BRIEF_LLM_MODEL_OVERRIDES } from './brief-llm.mjs';
 import { deriveThreadsFromOrderedStories } from './brief-compose.mjs';
 
-/** Refused even when allowlisted until RTL layout ships (PR 6). Defined with the shared list so Convex applies the same gate. */
+/** Languages refused even when allowlisted. Defined with the shared list so Convex applies the same gate. */
 export { BRIEF_L10N_GATED_LANGS };
 
 const SHARED_TTL_SEC = 7 * 24 * 60 * 60;
@@ -603,13 +604,13 @@ function isShortLatinPhrase(source) {
   return words.length >= 2 && lowerWordsOf(prose).some((w) => w.length >= 3 && !NAME_PARTICLES.has(w));
 }
 
-// Soft hyphen and zero-width (non-)joiners are legitimate in Indic, Persian
-// and Thai text; sanitizeForPrompt strips them, so drop them before comparing.
-const FORMAT_CHARS_RE = /[\u00AD\u200B-\u200D\uFEFF]/g;
+// Joiners, soft hyphens and BOMs are ordinary in Persian, Arabic and Indic
+// text; sanitizeForPrompt strips them, so drop them before comparing.
+const INVISIBLE_FORMAT_RE = /[\u00AD\u200B-\u200D\uFEFF]/g;
 
 function hasPromptMarker(text) {
-  const base = text.replace(FORMAT_CHARS_RE, '');
-  return sanitizeForPrompt(base) !== base.replace(/\s{2,}/g, ' ').trim();
+  const visible = text.replace(INVISIBLE_FORMAT_RE, '');
+  return sanitizeForPrompt(visible) !== visible.replace(/\s{2,}/g, ' ').trim();
 }
 
 function scriptShareOk(text, lang) {
@@ -692,8 +693,16 @@ function sha256(text) {
 // A model change must not serve the previous model's rows.
 const TRANSLATE_MODEL_TAG = sha256(JSON.stringify(BRIEF_LLM_MODEL_OVERRIDES ?? {})).slice(0, 8);
 
-export function sharedTranslateCacheKey(lang, text) {
-  return `brief:llm:translate:v1:${TRANSLATE_MODEL_TAG}:${lang}:${sha256(text)}`;
+/**
+ * `scope` names where the text came from: 'label' (a category label), 'solo'
+ * (text translated in a call of its own) or a story's scope hash. The cache
+ * is read by every brief in the language, so a row is only ever written by a
+ * call that carried nothing from outside its scope. There is no default: an
+ * unscoped row would be one any call could write and any brief could read.
+ */
+export function sharedTranslateCacheKey(lang, text, scope) {
+  if (typeof scope !== 'string' || scope.length === 0) throw new TypeError('sharedTranslateCacheKey: scope is required');
+  return `brief:llm:translate:v2:${TRANSLATE_MODEL_TAG}:${lang}:${scope}:${sha256(text)}`;
 }
 
 export function userTranslateCacheKey(userId, lang, text) {
@@ -844,17 +853,41 @@ export async function localizeBrief(input) {
   // story's translation, and that row is cached for every reader of the
   // language. A story can then only rewrite its own text.
   const storyGroups = stories.map((s) => uniqueTexts([s.headline, s.description, s.whyMatters]));
+  // A text more than one story carries (a copied description), or that is
+  // also a category label, has a cache row other stories read. It goes in a
+  // call of its own, never next to one story's other fields.
+  const carriers = new Map();
+  for (const text of storyGroups.flat()) carriers.set(text, (carriers.get(text) ?? 0) + 1);
+  const labels = new Set(uniqueTexts(stories.map((s) => s.category)));
+  const ownedByOneStory = (text) => carriers.get(text) === 1 && !labels.has(text);
   const sharedBatchesFor = (misses) => {
     const missing = new Set(misses);
     const batches = [];
     for (const group of storyGroups) {
-      const batch = group.filter((text) => missing.delete(text));
+      const batch = group.filter((text) => ownedByOneStory(text) && missing.delete(text));
       if (batch.length > 0) batches.push(batch);
+    }
+    for (const text of [...missing]) {
+      if (carriers.has(text) && missing.delete(text)) batches.push([text]);
     }
     // What is left is category labels only.
     if (missing.size > 0) batches.push([...missing]);
     return batches;
   };
+  // A row is keyed by the call that may write it: a story's own text by the
+  // texts of that story's call, a label as a label, anything else as text
+  // translated alone. A row written while translating one story is then never
+  // the row another brief reads for a label or for a different story, even
+  // when the text is identical.
+  const scopeOf = new Map();
+  for (const group of storyGroups) {
+    const scope = sha256(JSON.stringify(group)).slice(0, 32);
+    for (const text of group) {
+      if (ownedByOneStory(text)) scopeOf.set(text, scope);
+    }
+  }
+  const sharedKeyFor = (text) =>
+    sharedTranslateCacheKey(lang, text, scopeOf.get(text) ?? (labels.has(text) ? 'label' : 'solo'));
   // Text that is also story text (reuse-tick threads are story category and
   // description) is translated once, on the shared route, never through the
   // user's routing policy.
@@ -872,7 +905,7 @@ export async function localizeBrief(input) {
     translateTexts(sharedTexts, {
       lang,
       deps: sharedDeps,
-      keyFor: (text) => sharedTranslateCacheKey(lang, text),
+      keyFor: sharedKeyFor,
       deadlineAt: callDeadlineAt,
       batchesFor: sharedBatchesFor,
       callOpts: { maxTokens: 4096, temperature: 0.2, timeoutMs: 15_000, stage: 'brief-l10n-shared' },
@@ -905,7 +938,7 @@ export async function localizeBrief(input) {
   // batch, failed: the next user or tick then pays only for what is missing.
   const writes = [
     ...shared.fresh.map(([text, translated]) => () =>
-      sharedDeps.cacheSet(sharedTranslateCacheKey(lang, text), translated, SHARED_TTL_SEC)),
+      sharedDeps.cacheSet(sharedKeyFor(text), translated, SHARED_TTL_SEC)),
     ...user.fresh.map(([text, translated]) => () =>
       userDeps.cacheSet(userTranslateCacheKey(userId, lang, text), translated, USER_TTL_SEC)),
   ];
@@ -933,9 +966,9 @@ export async function localizeBrief(input) {
       user: data.user,
       issue: data.issue,
       date: data.date,
-      dateLong: data.dateLong,
+      dateLong: formatBriefDate(lang, data.date, 'long'),
       digest: {
-        greeting: digest.greeting,
+        greeting: briefT(lang, greetingKey(digest.greeting)),
         lead: tr(all, digest.lead),
         numbers: digest.numbers,
         threads,

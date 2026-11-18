@@ -16,7 +16,7 @@
     "predictionMarkets": "Rynki prognostyczne",
     "loadingMarkets": "Ładowanie rynków prognostycznych...",
     "infrastructure": "Ekspozycja infrastruktury",
-    "briefUnavailable": "Raport AI niedostępny — skonfiguruj OPENROUTER_API_KEY w Ustawieniach.",
+    "briefUnavailable": "Podsumowanie AI niedostępne w tej chwili.",
     "cached": "Z pamięci podręcznej",
     "fresh": "Aktualne",
     "noMarkets": "Nie znaleziono rynków prognostycznych",
@@ -68,13 +68,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Indeks niestabilności: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} aktywnych protestów wykrytych",
-      "aircraftTracked": "{{count}} śledzonych samolotów wojskowych",
-      "vesselsTracked": "{{count}} śledzonych okrętów wojskowych",
-      "internetOutages": "{{count}} awarii internetu",
-      "recentEarthquakes": "{{count}} niedawnych trzęsień ziemi",
+      "protestsDetected": "Aktywne protesty: {{count}}",
+      "aircraftTracked": "Monitorowane samoloty wojskowe: {{count}}",
+      "vesselsTracked": "Monitorowane okręty wojenne: {{count}}",
+      "internetOutages": "Przerwy w internecie: {{count}}",
+      "recentEarthquakes": "Ostatnie trzęsienia ziemi: {{count}}",
       "stockIndex": "Indeks giełdowy: {{value}}",
-      "activeStrikes": "Wykryto {{count}} aktywnych strajków"
+      "activeStrikes": "Ataki i przechwycenia: {{count}}"
     },
     "militaryActivity": "Aktywność wojskowa",
     "defenseIndustrial": {
@@ -774,7 +774,7 @@
       "fresh": "Świeży",
       "noMarkets": "Nie znaleziono rynków prognostycznych",
       "predictionMarkets": "Rynki prognostyczne",
-      "unavailable": "Opis AI niedostępny — skonfiguruj OPENROUTER_API_KEY w Ustawieniach."
+      "unavailable": "Podsumowanie AI niedostępne w tej chwili."
     },
     "countryBrief": {
       "components": {
@@ -810,7 +810,7 @@
       "predictionMarkets": "Rynki prognostyczne",
       "loadingMarkets": "Ładowanie rynków prognoz...",
       "infrastructure": "Ekspozycja infrastruktury",
-      "briefUnavailable": "Opis AI niedostępny — skonfiguruj OPENROUTER_API_KEY w Ustawieniach.",
+      "briefUnavailable": "Podsumowanie AI niedostępne w tej chwili.",
       "cached": "w pamieci podrecznej",
       "fresh": "Świeży",
       "noMarkets": "Nie znaleziono rynków prognostycznych",

@@ -341,6 +341,123 @@ async function deleteAccountRedisKeys(args: {
   await redisRevoke([slotsKey, `brief:latest:${args.userId}`], []);
 }
 
+const MAX_BRIEF_SWEEP_PAGES = 1_000;
+
+/**
+ * The brief keys a compose writes for an account: envelopes and localized
+ * siblings per slot, the slot index, and the latest pointer. The erase
+ * tombstone is excluded: a compose still running reads it to remove its own
+ * brief.
+ */
+function isAccountBriefKey(key: string, userId: string): boolean {
+  if (key === `brief:slots:${userId}` || key === `brief:latest:${userId}`) return true;
+  for (const prefix of [`brief:${userId}:`, `brief:l10n:${userId}:`]) {
+    if (key.startsWith(prefix)) {
+      const slot = key.slice(prefix.length);
+      return slot.length > 0 && !slot.includes(":");
+    }
+  }
+  return false;
+}
+
+function reportBriefSweepFailure(
+  args: { deletionId: string; cursor: string; pages?: number },
+  error: string,
+): void {
+  // sentry-coverage-ok: structured console.error is forwarded by Convex.
+  console.error(JSON.stringify({ breadcrumb: "account_deletion_brief_sweep_failed",
+    deletionId: args.deletionId, cursor: args.cursor, pages: args.pages ?? 0, error }));
+}
+
+/**
+ * Bound both each action and the total shared-keyspace scan per sweep. One
+ * pass matches every brief key shape for the account, so a full sweep costs
+ * one keyspace scan (~580 pages at COUNT 1000 today), within the budget.
+ */
+export const sweepBriefEnvelopes = internalAction({
+  args: {
+    deletionId: v.id("accountDeletions"),
+    cursor: v.string(),
+    attempt: v.number(),
+    pages: v.optional(v.number()),
+    page: v.optional(v.object({ cursor: v.string(), keys: v.array(v.string()) })),
+  },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    let page = args.page;
+    try {
+      const snapshot = await ctx.runQuery(internal.accountDeletion.erase.getExternalEraseSnapshot,
+        { deletionId: args.deletionId });
+      // Billing events can reopen an erased account's deletion. Its personal
+      // data still needs cleanup even if cancellation is pending or failed.
+      if (!snapshot) return null;
+      const { userId } = snapshot;
+      // Redis MATCH is a glob, not a literal. Escape identity characters; the
+      // glob over-matches (brief:erased:, ids sharing a prefix), so every key
+      // is checked against the exact account shapes before deleting.
+      const pattern = `brief:*${userId.replace(/[\\*?\[\]]/g, "\\$&")}*`;
+      if (!page) {
+        const response = await redisCommand("", {
+          body: JSON.stringify(["SCAN", args.cursor, "MATCH", pattern, "COUNT", "1000"]),
+        });
+        const body = await redisResult(response, "BRIEF_SCAN") as { result?: unknown };
+        const result = body.result;
+        if (!Array.isArray(result) || result.length !== 2 ||
+            typeof result[0] !== "string" || !/^\d+$/.test(result[0]) ||
+            !Array.isArray(result[1]) || !result[1].every((key: unknown) =>
+              typeof key === "string" && key.startsWith("brief:") && key.includes(userId))) {
+          throw new Error("REDIS_BRIEF_SCAN_INVALID_RESULT");
+        }
+        page = { cursor: result[0], keys: (result[1] as string[]).filter(key => isAccountBriefKey(key, userId)) };
+      }
+      if (!page.keys.every(key => isAccountBriefKey(key, userId))) {
+        throw new Error("REDIS_BRIEF_PAGE_INVALID_KEYS");
+      }
+      const { keys, cursor } = page;
+      // COUNT is a hint, so bound each delete request independently.
+      for (let i = 0; i < keys.length; i += 100) {
+        await redisRevoke(keys.slice(i, i + 100), []);
+      }
+      if (cursor !== "0") {
+        const pages = (args.pages ?? 0) + 1;
+        if (pages >= MAX_BRIEF_SWEEP_PAGES) {
+          // sentry-coverage-ok: structured console.error is forwarded by Convex.
+          // Include the next cursor so an operator can continue this sweep
+          // with pages: 0 after checking Redis load, without rescanning.
+          console.error(JSON.stringify({ breadcrumb: "account_deletion_brief_sweep_truncated",
+            deletionId: args.deletionId, cursor, pages }));
+          return null;
+        }
+        await ctx.scheduler.runAfter(0, internal.accountDeletion.sideEffects.sweepBriefEnvelopes, {
+          deletionId: args.deletionId, cursor, attempt: 0, pages,
+        });
+      }
+    } catch (err) {
+      if (args.attempt + 1 < MAX_EXTERNAL_ATTEMPTS) {
+        // SCAN may not return the same keys when a cursor is replayed. Keep
+        // this page until every DEL succeeds; repeated deletes are safe.
+        try {
+          await ctx.scheduler.runAfter(
+            Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** args.attempt),
+            internal.accountDeletion.sideEffects.sweepBriefEnvelopes,
+            { ...args, ...(page ? { page } : {}), attempt: args.attempt + 1 },
+          );
+        } catch (scheduleErr) {
+          // Nothing retries a scheduled action, so a lost continuation must be
+          // reported. Resume from this page's own cursor: its keys may not all
+          // be deleted, so the next cursor is not safe.
+          reportBriefSweepFailure(args, `${errorMessage(err)}; retry not scheduled: ${errorMessage(scheduleErr)}`);
+          throw scheduleErr;
+        }
+      } else {
+        reportBriefSweepFailure(args, errorMessage(err));
+        throw err;
+      }
+    }
+    return null;
+  },
+});
+
 async function deleteClerkUser(userId: string): Promise<"deleted" | "missing"> {
   const secret = process.env.CLERK_SECRET_KEY;
   if (!secret) {

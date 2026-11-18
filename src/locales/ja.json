@@ -16,7 +16,7 @@
     "predictionMarkets": "予測市場",
     "loadingMarkets": "予測市場を読み込み中...",
     "infrastructure": "インフラ露出度",
-    "briefUnavailable": "AIブリーフ利用不可 — 設定でOPENROUTER_API_KEYを構成してください。",
+    "briefUnavailable": "AI ブリーフは現在利用できません。",
     "cached": "キャッシュ済",
     "fresh": "最新",
     "noMarkets": "予測市場が見つからない",
@@ -126,13 +126,13 @@
     },
     "fallback": {
       "instabilityIndex": "**不安定性指数：{{score}}/100**（{{level}}、{{trend}}）",
-      "protestsDetected": "{{count}}件の活発な抗議活動を検知",
-      "aircraftTracked": "{{count}}機の軍用機を追跡中",
-      "vesselsTracked": "{{count}}隻の軍艦を追跡中",
-      "internetOutages": "{{count}}件のインターネット障害",
-      "recentEarthquakes": "{{count}}件の最近の地震",
+      "protestsDetected": "活動中のデモ: {{count}}",
+      "aircraftTracked": "監視中の軍用機: {{count}}",
+      "vesselsTracked": "監視中の軍艦: {{count}}",
+      "internetOutages": "インターネット中断: {{count}}",
+      "recentEarthquakes": "最近の地震: {{count}}",
       "stockIndex": "株価指数：{{value}}",
-      "activeStrikes": "{{count}}件の活発なストライキを検知"
+      "activeStrikes": "攻撃および迎撃: {{count}}"
     },
     "countryFacts": "国の基本情報",
     "loadingFacts": "国の基本情報を読み込み中...",
@@ -808,7 +808,7 @@
       "fresh": "最新",
       "noMarkets": "予測市場が見つからない",
       "predictionMarkets": "予測市場",
-      "unavailable": "AIブリーフ利用不可 — 設定でOPENROUTER_API_KEYを構成してください。"
+      "unavailable": "AI ブリーフは現在利用できません。"
     },
     "countryBrief": {
       "identifying": "国を特定中...",
@@ -824,7 +824,7 @@
       "predictionMarkets": "予測市場",
       "loadingMarkets": "予測市場を読み込み中...",
       "infrastructure": "インフラ露出度",
-      "briefUnavailable": "AIブリーフ利用不可 — 設定でOPENROUTER_API_KEYを構成してください。",
+      "briefUnavailable": "AI ブリーフは現在利用できません。",
       "cached": "キャッシュ済",
       "fresh": "最新",
       "noMarkets": "予測市場が見つからない",

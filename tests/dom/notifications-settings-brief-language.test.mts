@@ -166,7 +166,7 @@ describe('notification settings brief language', () => {
     expect(hint.textContent).toBe('Your daily brief will be written in English.');
   });
 
-  it('shows no promise for a language the brief is not delivered in yet, such as Persian', async () => {
+  it('shows no promise for a language the brief is not delivered in yet', async () => {
     briefMocks.loadBriefLanguage.mockResolvedValue({ uiLanguage: 'fa', briefLanguage: null, effective: 'fa', deliverableLanguages: ['fr'] });
     const { container } = await mountBriefLanguage();
     expect(q(container, '#usBriefLanguageHint').hidden).toBe(true);

@@ -273,7 +273,6 @@ const EVENTS = {
   'sign-up-started': true,
   'sign-up-resumed': true,
   'sign-up-resume-dismissed': true,
-  'sign-out': true,
   'gate-hit': true,
   'panel-gate-click': true,
   // Free-user Pro strip call to action. Views are gate-hit feature=pro-banner;
@@ -992,10 +991,6 @@ export function isLikelyFreshSignup(
   // Reject: < -5s (createdAt unrealistically far in the future — malformed)
   //         > 60s (returning user, not a fresh signup)
   return age >= -FRESH_SIGNUP_CLOCK_SKEW_MS && age <= FRESH_SIGNUP_WINDOW_MS;
-}
-
-export function trackSignOut(): void {
-  track('sign-out');
 }
 
 /**

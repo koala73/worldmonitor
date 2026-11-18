@@ -47,6 +47,54 @@ let ratelimit: Ratelimit | null = null;
 const GLOBAL_RATE_LIMIT = 600;
 const GLOBAL_RATE_WINDOW: Duration = '60 s';
 const GLOBAL_RATE_WINDOW_SECONDS = durationToSeconds(GLOBAL_RATE_WINDOW);
+/** Upper bound on remembered denials, so callers that never return cannot grow it forever. */
+export const GLOBAL_BLOCKED_MAX_ENTRIES = 10_000;
+
+/**
+ * identifier -> blocked-until (ms). @upstash/ratelimit records each Redis
+ * denial here and answers later requests in the same window from it without
+ * Redis. Owning the Map lets the gateway read the same verdict synchronously.
+ * Keys carry the limiter prefix: `${GLOBAL_RATE_PREFIX}:${identifier}`.
+ *
+ * The cap is enforced on every write, the SDK's included. Past it, expired
+ * entries go first, then the oldest. An evicted caller is decided by Redis
+ * again, whose sliding window may admit it before the evicted reset; the
+ * entry only ever made the verdict stricter than Redis's. Eviction needs more
+ * than GLOBAL_BLOCKED_MAX_ENTRIES callers denied at once on one instance.
+ */
+class BoundedBlockedMap extends Map<string, number> {
+  override set(key: string, blockedUntil: number): this {
+    // A late reply from an earlier window must not shorten a live block.
+    const current = super.get(key);
+    if (current !== undefined && current > blockedUntil && current >= Date.now()) return this;
+    // Re-insert so iteration order stays oldest-first for eviction.
+    super.delete(key);
+    super.set(key, blockedUntil);
+    if (this.size <= GLOBAL_BLOCKED_MAX_ENTRIES) return this;
+    const now = Date.now();
+    // Same boundary as the SDK: an entry is live while now <= blockedUntil.
+    for (const [entry, until] of this) {
+      if (until < now) super.delete(entry);
+    }
+    for (const entry of this.keys()) {
+      if (this.size <= GLOBAL_BLOCKED_MAX_ENTRIES) break;
+      super.delete(entry);
+    }
+    return this;
+  }
+}
+
+const globalBlockedUntil = new BoundedBlockedMap();
+const GLOBAL_RATE_PREFIX = 'rl';
+
+export function __globalBlockedSizeForTest(): number {
+  return globalBlockedUntil.size;
+}
+
+/** The Map handed to @upstash/ratelimit as ephemeralCache, for tests that write to it as the SDK does. */
+export function __globalBlockedMapForTest(): Map<string, number> {
+  return globalBlockedUntil;
+}
 
 function getRatelimit(): Ratelimit | null {
   if (ratelimit) return ratelimit;
@@ -57,8 +105,9 @@ function getRatelimit(): Ratelimit | null {
   ratelimit = new Ratelimit({
     redis: new Redis(upstashRedisOptions(url, token)),
     limiter: Ratelimit.slidingWindow(GLOBAL_RATE_LIMIT, GLOBAL_RATE_WINDOW),
-    prefix: 'rl',
+    prefix: GLOBAL_RATE_PREFIX,
     analytics: false,
+    ephemeralCache: globalBlockedUntil,
   });
   return ratelimit;
 }
@@ -543,6 +592,34 @@ function getPrincipalRateLimitIdentifier(
   return scope === 'api_key' ? `apikey-user:${principalUserId}` : `user:${principalUserId}`;
 }
 
+function globalBlockedKey(identifier: string): string {
+  return `${GLOBAL_RATE_PREFIX}:${identifier}`;
+}
+
+function globalRateLimitIdentifier(request: Request, opts: RateLimitOptions): string {
+  // Preserve the long-standing raw-IP key for anonymous traffic so an
+  // in-flight 60-second bucket does not reset during rollout. Trusted
+  // principals use a separate namespace.
+  return getPrincipalRateLimitIdentifier(opts.principalUserId, opts.principalScope) ??
+    getClientRateLimitKey(request);
+}
+
+/**
+ * True when this instance already knows checkRateLimit will deny the request:
+ * an unproven Cloudflare IP, or a caller the limiter denied earlier in the
+ * current window. Makes no Redis call.
+ */
+export function isGlobalRateLimitDenialKnown(request: Request, opts: RateLimitOptions = {}): boolean {
+  if (!opts.principalUserId && hasUnprovenCloudflareClientIp(request)) return true;
+  const key = globalBlockedKey(globalRateLimitIdentifier(request, opts));
+  const blockedUntil = globalBlockedUntil.get(key);
+  if (blockedUntil === undefined) return false;
+  // Same boundary as the SDK: live while now <= blockedUntil.
+  if (blockedUntil >= Date.now()) return true;
+  globalBlockedUntil.delete(key);
+  return false;
+}
+
 export async function checkRateLimit(request: Request, corsHeaders: Record<string, string>, opts: RateLimitOptions = {}): Promise<Response | null> {
   const proofDenied = !opts.principalUserId && checkIpScopedEdgeProof(request, corsHeaders);
   if (proofDenied) return proofDenied;
@@ -555,12 +632,7 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
     return null;
   }
 
-  // Preserve the long-standing raw-IP key for anonymous traffic so an
-  // in-flight 60-second bucket does not reset during rollout. Trusted
-  // principals use a separate namespace.
-  const identifier =
-    getPrincipalRateLimitIdentifier(opts.principalUserId, opts.principalScope) ??
-    getClientRateLimitKey(request);
+  const identifier = globalRateLimitIdentifier(request, opts);
 
   try {
     const { success, limit, reset, reason } = await limitWithFallback(
@@ -574,6 +646,9 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
     if (reason === 'timeout') throw new Error('rate-limit decision timed out');
 
     if (!success) {
+      // @upstash/ratelimit records Lua denials here itself; the fixed-window
+      // fallback does not, so record every denial for the gateway to read.
+      globalBlockedUntil.set(globalBlockedKey(identifier), reset);
       return tooManyRequestsResponse(limit, reset, corsHeaders, GLOBAL_RATE_WINDOW_SECONDS);
     }
 
@@ -1383,6 +1458,7 @@ export function __resetRateLimitForTest(): void {
   nativeGoogleFlightsAdmissions = [];
   nativeAviationNewsAdmissions = [];
   ratelimit = null;
+  globalBlockedUntil.clear();
   endpointLimiters.clear();
   scopedLimiters.clear();
   scopedMissingConfigStages.clear();

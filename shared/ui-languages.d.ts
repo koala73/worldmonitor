@@ -2,12 +2,20 @@ export const UI_LANGUAGES: readonly ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', '
 export type UiLanguage = typeof UI_LANGUAGES[number];
 export const UI_LANGUAGE_SET: ReadonlySet<string>;
 export const RTL_UI_LANGUAGES: readonly ['ar', 'fa'];
+/** True for languages written right to left (ar, fa). */
+export function isRtlLanguage(code: string): boolean;
 /** English names, used in LLM prompts. Same content as TRANSLATE_LANGUAGE_NAMES. */
 export const UI_LANGUAGE_NAMES: Readonly<Record<UiLanguage, string>>;
 export function isUiLanguage(value: unknown): value is UiLanguage;
 /** override ?? explicit UI choice ?? 'en'. Unknown values are ignored. */
 export function resolveBriefLanguage(input: { uiLanguage?: string | null; briefLanguage?: string | null }): UiLanguage;
-/** Brief languages refused until right-to-left layout ships. */
+/** BCP 47 tag for the HTML lang attribute and Intl: zh → "zh-CN", zh-TW → "zh-TW", others unchanged. */
+export function htmlLangFor(code: string): string;
+/** Languages whose script the magazine subsets cover. */
+export const BRIEF_SUBSET_LANGUAGES: readonly string[];
+/** Script class used for typography switches. */
+export function scriptClassFor(code: string): 'latin' | 'cyrillic' | 'greek' | 'cjk' | 'arabic' | 'devanagari' | 'thai';
+/** Languages refused even when allowlisted (empty since right-to-left layout shipped). */
 export const BRIEF_L10N_GATED_LANGS: readonly string[];
 /** Languages the brief is delivered in now, from the Convex BRIEF_L10N_ENABLED / BRIEF_L10N_LANGS env. */
 export function briefL10nDeliverableLanguages(env: { BRIEF_L10N_ENABLED?: string; BRIEF_L10N_LANGS?: string } | undefined): UiLanguage[];

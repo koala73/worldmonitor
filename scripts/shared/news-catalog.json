@@ -273,7 +273,12 @@
     },
     {
       "name": "CNN World",
-      "url": "https://news.google.com/rss/search?q=site%3Acnn.com%20world%20news%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://www.cnn.com/sitemap/news.xml",
+      "excludePathSegments": [
+        "video",
+        "cnn-underscored",
+        "brandstories"
+      ],
       "placements": [
         {
           "edition": "full",
@@ -281,7 +286,10 @@
           "serverOrder": 4,
           "browserOrder": 4
         }
-      ]
+      ],
+      "browser": {
+        "url": "https://news.google.com/rss/search?q=site%3Acnn.com%20world%20news%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+      }
     },
     {
       "name": "Trump - Truth Social",
@@ -297,9 +305,10 @@
     },
     {
       "name": "New York Times World",
-      "url": "https://news.google.com/rss/search?q=site%3Anytimes.com%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+      "newestFirst": true,
       "notes": [
-        "Major publishers Google News World leads with and no feed carried (2026-10-16 audit). Google News site: queries, like AP and Reuters.",
+        "Major publishers Google News World leads with and no feed carried (2026-10-16 audit). Publisher RSS since issue #10937; it previously used a Google News site: query.",
         "Major publishers Google News World leads with and no feed carried (2026-10-16 audit). Last in the category, so the free-tier cap's declaration-order pick keeps every earlier source."
       ],
       "placements": [
@@ -313,7 +322,8 @@
     },
     {
       "name": "Washington Post World",
-      "url": "https://news.google.com/rss/search?q=site%3Awashingtonpost.com%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://feeds.washingtonpost.com/rss/world",
+      "depthUrl": "https://news.google.com/rss/search?q=site%3Awashingtonpost.com%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
       "placements": [
         {
           "edition": "full",
@@ -337,7 +347,7 @@
     },
     {
       "name": "The Independent",
-      "url": "https://news.google.com/rss/search?q=site%3Aindependent.co.uk%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://www.independent.co.uk/news/world/rss",
       "placements": [
         {
           "edition": "full",
@@ -1290,7 +1300,11 @@
     },
     {
       "name": "Kyiv Independent",
-      "url": "https://news.google.com/rss/search?q=site%3Akyivindependent.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://kyivindependent.com/news-archive/rss/",
+      "depthUrl": "https://news.google.com/rss/search?q=site%3Akyivindependent.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en",
+      "browser": {
+        "url": "https://news.google.com/rss/search?q=site%3Akyivindependent.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en"
+      },
       "notes": [
         "Ukraine war frontline for EN digests (#5949). Names must match client DEFAULT_ENABLED_SOURCES.europe. Ordinary non-en `lang` tags are filtered from EN digests; strategic defaults explicitly bypass that filter.",
         "English-language (no lang tag) — always EN-digest-reachable"
@@ -1306,7 +1320,8 @@
     },
     {
       "name": "Ukrinform",
-      "url": "https://news.google.com/rss/search?q=site%3Aukrinform.net%20when%3A3d&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://www.ukrinform.net/rss/block-lastnews",
+      "depthUrl": "https://news.google.com/rss/search?q=site%3Aukrinform.net%20when%3A3d&hl=en-US&gl=US&ceid=US:en",
       "browser": {
         "url": {
           "en": "https://news.google.com/rss/search?q=site:ukrinform.net+when:3d&hl=en-US&gl=US&ceid=US:en",
@@ -1358,7 +1373,8 @@
     },
     {
       "name": "NV EN",
-      "url": "https://news.google.com/rss/search?q=site%3Aenglish.nv.ua%20when%3A2d&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://english.nv.ua/rss/all_english.xml",
+      "depthUrl": "https://news.google.com/rss/search?q=site%3Aenglish.nv.ua%20when%3A2d&hl=en-US&gl=US&ceid=US:en",
       "placements": [
         {
           "edition": "full",
@@ -1940,7 +1956,8 @@
     },
     {
       "name": "Sky News",
-      "url": "https://news.google.com/rss/search?q=site%3Anews.sky.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://feeds.skynews.com/feeds/rss/home.xml",
+      "depthUrl": "https://news.google.com/rss/search?q=site%3Anews.sky.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
       "placements": [
         {
           "edition": "full",
@@ -5727,7 +5744,7 @@
         "url": "https://news.google.com/rss/search?q=site:kitco.com+(gold+OR+silver+OR+metals)+when:1d&hl=en-US&gl=US&ceid=US:en"
       },
       "notes": [
-        "Kitco shut down their public RSS feeds in 2025 (every /rss/*, /news/feed, /news/category/*/feed path now returns an HTML SPA page, not XML). Fall back to Google News scoped to site:kitco.com, matching the pattern used by TASS / Kyiv Independent / Telegraaf elsewhere in this file."
+        "Kitco shut down their public RSS feeds in 2025 (every /rss/*, /news/feed, /news/category/*/feed path now returns an HTML SPA page, not XML). Fall back to Google News scoped to site:kitco.com, matching the pattern used by TASS / Telegraaf elsewhere in this file."
       ],
       "placements": [
         {
@@ -12344,7 +12361,7 @@
     },
     {
       "name": "Franceinfo",
-      "url": "https://www.francetvinfo.fr/titres.rss",
+      "url": "https://www.franceinfo.fr/titres.rss",
       "lang": "fr",
       "fetchInAllLanguages": true,
       "placements": [
@@ -18485,6 +18502,336 @@
           "category": "asia",
           "browserOrder": 178,
           "serverOrder": 178
+        }
+      ]
+    },
+    {
+      "name": "ProPublica",
+      "url": "https://www.propublica.org/feeds/propublica/main",
+      "linkHosts": [
+        "projects.propublica.org"
+      ],
+      "placements": [
+        {
+          "edition": "full",
+          "category": "us",
+          "browserOrder": 34,
+          "serverOrder": 34
+        }
+      ]
+    },
+    {
+      "name": "The Atlantic",
+      "url": "https://www.theatlantic.com/feed/all/",
+      "placements": [
+        {
+          "edition": "full",
+          "category": "us",
+          "browserOrder": 35,
+          "serverOrder": 35
+        }
+      ]
+    },
+    {
+      "name": "NPR World",
+      "url": "https://feeds.npr.org/1004/rss.xml",
+      "placements": [
+        {
+          "edition": "full",
+          "category": "politics",
+          "browserOrder": 10,
+          "serverOrder": 10
+        }
+      ]
+    },
+    {
+      "name": "BBC News",
+      "url": "https://feeds.bbci.co.uk/news/rss.xml",
+      "placements": [
+        {
+          "edition": "full",
+          "category": "europe",
+          "browserOrder": 247,
+          "serverOrder": 247
+        }
+      ]
+    },
+    {
+      "name": "Guardian UK",
+      "url": "https://www.theguardian.com/uk-news/rss",
+      "placements": [
+        {
+          "edition": "full",
+          "category": "europe",
+          "browserOrder": 248,
+          "serverOrder": 248
+        }
+      ]
+    },
+    {
+      "name": "Channel 4 News",
+      "url": "https://www.channel4.com/news/feed",
+      "placements": [
+        {
+          "edition": "full",
+          "category": "europe",
+          "browserOrder": 249,
+          "serverOrder": 249
+        }
+      ]
+    },
+    {
+      "name": "g1",
+      "url": "https://g1.globo.com/rss/g1/",
+      "lang": "pt",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "latam",
+          "browserOrder": 143,
+          "serverOrder": 143
+        }
+      ]
+    },
+    {
+      "name": "g1 Mundo",
+      "url": "https://g1.globo.com/rss/g1/mundo/",
+      "lang": "pt",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "latam",
+          "browserOrder": 144,
+          "serverOrder": 144
+        }
+      ]
+    },
+    {
+      "name": "Folha Mundo",
+      "url": "https://feeds.folha.uol.com.br/mundo/rss091.xml",
+      "lang": "pt",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "latam",
+          "browserOrder": 145,
+          "serverOrder": 145
+        }
+      ]
+    },
+    {
+      "name": "Estadão Política",
+      "url": "https://www.estadao.com.br/arc/outboundfeeds/feeds/rss/sections/politica/",
+      "lang": "pt",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "latam",
+          "browserOrder": 146,
+          "serverOrder": 146
+        }
+      ]
+    },
+    {
+      "name": "Estadão Internacional",
+      "url": "https://www.estadao.com.br/arc/outboundfeeds/feeds/rss/sections/internacional/",
+      "lang": "pt",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "latam",
+          "browserOrder": 147,
+          "serverOrder": 147
+        }
+      ]
+    },
+    {
+      "name": "BBC News Brasil",
+      "url": "https://feeds.bbci.co.uk/portuguese/rss.xml",
+      "lang": "pt",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "latam",
+          "browserOrder": 148,
+          "serverOrder": 148
+        }
+      ]
+    },
+    {
+      "name": "Nexo Jornal",
+      "url": "https://www.nexojornal.com.br/rss.xml",
+      "lang": "pt",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "latam",
+          "browserOrder": 149,
+          "serverOrder": 149
+        }
+      ]
+    },
+    {
+      "name": "DW Brasil",
+      "url": "https://rss.dw.com/xml/rss-br-all",
+      "lang": "pt",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "latam",
+          "browserOrder": 150,
+          "serverOrder": 150
+        }
+      ]
+    },
+    {
+      "name": "RFI Brasil",
+      "url": "https://www.rfi.fr/br/rss",
+      "lang": "pt",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "latam",
+          "browserOrder": 151,
+          "serverOrder": 151
+        }
+      ]
+    },
+    {
+      "name": "Le Monde à la une",
+      "url": "https://www.lemonde.fr/rss/une.xml",
+      "lang": "fr",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "europe",
+          "browserOrder": 250,
+          "serverOrder": 250
+        }
+      ]
+    },
+    {
+      "name": "Le Monde International",
+      "url": "https://www.lemonde.fr/international/rss_full.xml",
+      "lang": "fr",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "europe",
+          "browserOrder": 251,
+          "serverOrder": 251
+        }
+      ]
+    },
+    {
+      "name": "Le Figaro",
+      "url": "https://www.lefigaro.fr/rss/figaro_actualites.xml",
+      "lang": "fr",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "europe",
+          "browserOrder": 252,
+          "serverOrder": 252
+        }
+      ]
+    },
+    {
+      "name": "L'Express",
+      "url": "https://www.lexpress.fr/arc/outboundfeeds/rss/alaune.xml",
+      "lang": "fr",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "europe",
+          "browserOrder": 253,
+          "serverOrder": 253
+        }
+      ]
+    },
+    {
+      "name": "Le Nouvel Obs",
+      "url": "https://www.nouvelobs.com/a-la-une/rss.xml",
+      "lang": "fr",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "europe",
+          "browserOrder": 254,
+          "serverOrder": 254
+        }
+      ]
+    },
+    {
+      "name": "Courrier international",
+      "url": "https://www.courrierinternational.com/feed/all/rss.xml",
+      "lang": "fr",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "europe",
+          "browserOrder": 255,
+          "serverOrder": 255
+        }
+      ]
+    },
+    {
+      "name": "France 24 Français",
+      "url": "https://www.france24.com/fr/rss",
+      "lang": "fr",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "europe",
+          "browserOrder": 256,
+          "serverOrder": 256
+        }
+      ]
+    },
+    {
+      "name": "RFI",
+      "url": "https://www.rfi.fr/fr/rss",
+      "lang": "fr",
+      "fetchInAllLanguages": true,
+      "linkHosts": [
+        "www.france24.com"
+      ],
+      "placements": [
+        {
+          "edition": "full",
+          "category": "europe",
+          "browserOrder": 257,
+          "serverOrder": 257
+        }
+      ]
+    },
+    {
+      "name": "TV5Monde Info",
+      "url": "https://information.tv5monde.com/rss.xml",
+      "lang": "fr",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "europe",
+          "browserOrder": 259,
+          "serverOrder": 259
         }
       ]
     }

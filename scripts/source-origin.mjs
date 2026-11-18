@@ -346,6 +346,11 @@ const HOST_ORIGINS = Object.freeze({
   "znsbahamas.com": "BS",
 
   // RIPE NCC's publishing organization is based in Amsterdam.
+  'channel4.com': 'GB',
+  'courrierinternational.com': 'FR',
+  'information.tv5monde.com': 'FR',
+  'nouvelobs.com': 'FR',
+  'propublica.org': 'US',
   'stat.ripe.net': 'NL',
   'fdw.fews.net': 'US',
   'lindas.cz-aws.net': 'CH',
@@ -353,6 +358,7 @@ const HOST_ORIGINS = Object.freeze({
   'iss.moex.com': 'RU',
   'simaniger.net': 'NE',
   'data.1212.mn': 'MN',
+  'theatlantic.com': 'US',
   'www.ocpv-ci.com': 'CI',
   'api.cammesa.com': 'AR',
   'admin.gse.com.ge': 'GE',
@@ -894,6 +900,7 @@ const HOST_ORIGINS = Object.freeze({
   'japantimes.co.jp': 'JP',
   'middleeasteye.net': 'GB',
   'news.sky.com': 'GB',
+  'feeds.skynews.com': 'GB',
   'noaadata.apps.nsidc.org': 'US',
   'nsidc.org': 'US',
   'cmr.earthdata.nasa.gov': 'US',
@@ -903,8 +910,10 @@ const HOST_ORIGINS = Object.freeze({
   'sliderule.slideruleearth.io': 'US',
   'slideruleearth.io': 'US',
   'nytimes.com': 'US',
+  'rss.nytimes.com': 'US',
   'timesofisrael.com': 'IL',
   'washingtonpost.com': 'US',
+  'feeds.washingtonpost.com': 'US',
 });
 
 // Provider-level overrides win when the host is a CDN, cloud, or shared

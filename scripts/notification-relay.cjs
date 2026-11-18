@@ -649,6 +649,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
     return;
   }
 
+  await refreshAlertCoverage(events);
   const heldLines = formatHeldAlertLines(events);
   const lines = [`WorldMonitor — ${events.length} held alert${events.length !== 1 ? 's' : ''} from quiet hours`, '', ...heldLines];
   lines.push('', 'View full dashboard → worldmonitor.app');
@@ -1721,6 +1722,17 @@ function formatMessage(event, channel) {
   return parts.join('\n');
 }
 
+async function refreshAlertCoverage(events) {
+  try {
+    const { refreshPublisherCounts } = await import('./lib/news-alert-coverage.mjs');
+    await refreshPublisherCounts(events);
+  } catch (err) {
+    // A held event can carry an old snapshot even if the reader never loaded.
+    for (const event of events) delete event.observedPublisherCount;
+    console.warn('[relay] publisher coverage unavailable:', err?.name);
+  }
+}
+
 /**
  * #9213: the story's corroboration, as assessCorroboration gives a digest item
  * with this publisher count, or null when unknown. Only relay-originated
@@ -1729,7 +1741,7 @@ function formatMessage(event, channel) {
  */
 function eventCorroboration(event) {
   if (event.userId) return null;
-  return corroborationFromItemCount(event.payload?.corroborationCount);
+  return corroborationFromItemCount(event.observedPublisherCount ?? event.payload?.corroborationCount);
 }
 
 /**
@@ -2179,6 +2191,58 @@ async function releaseRealtimeClaim(dedupDecision, claim) {
   return false;
 }
 
+// #10916: a deliverable news alert that rewords one the user already had is
+// skipped for that user. lib/news-alert-coverage.mjs finds the earlier alert
+// (embeddings, then a language model on the closest few). Without the
+// OpenRouter key, or on any failure, nobody is skipped.
+const NO_REWRITE = { applies: false, decision: null, alreadyAlerted: new Set(), lib: null };
+
+async function checkAlertRewrite(event, matching) {
+  if (!process.env.OPENROUTER_API_KEY) return NO_REWRITE;
+  try {
+    const lib = await import('./lib/news-alert-coverage.mjs');
+    if (!lib.rewriteCheckApplies(event)) return NO_REWRITE;
+    const decision = await lib.findRewriteAnchor(event);
+    const userIds = [...new Set(matching.map(r => r.userId))];
+    const alreadyAlerted = decision.anchor ? await lib.usersAlertedFor(decision.anchor.id, userIds) : new Set();
+    const coverageMerged = decision.anchor ? await lib.mergeStoryCoverage(event, decision.anchor.id) : false;
+    return { applies: true, decision, alreadyAlerted, coverageMerged, lib };
+  } catch (err) {
+    console.warn('[news-alert-rewrite] unavailable:', err?.name);
+    return NO_REWRITE;
+  }
+}
+
+// The alert becomes an anchor for the users it reached (delivered or held),
+// so a suppressed rewrite, which reached nobody new, never becomes one.
+async function finishAlertRewrite(event, rewrite, reachedUsers, skippedUsers) {
+  if (!rewrite.applies) return;
+  const anchored = reachedUsers.size > 0 && await rewrite.lib.recordAlertAnchor(event, [...reachedUsers], {
+    matchedAnchorId: rewrite.decision.anchor?.id ?? null,
+  });
+  const { decision } = rewrite;
+  console.info('[news-alert-rewrite]', JSON.stringify({
+    at: Date.now(),
+    edition: event.variant,
+    id: decision.id,
+    // Titles let a skip be audited after the anchors expire.
+    title: formatEventTitle(event).slice(0, 300),
+    model: decision.model,
+    importanceScore: event.payload?.importanceScore ?? null,
+    candidates: decision.candidates,
+    best: decision.best,
+    judged: decision.judged,
+    verdict: decision.verdict,
+    anchor: decision.anchor ? { id: decision.anchor.id, score: decision.anchor.score, title: String(decision.anchor.title).slice(0, 300) } : null,
+    error: decision.error,
+    ms: decision.ms,
+    coverageMerged: rewrite.coverageMerged,
+    skippedUsers,
+    reachedUsers: reachedUsers.size,
+    anchored,
+  }));
+}
+
 async function processEvent(event) {
   return withDeliveryReports(() => withSentAlertLog(() => processEventDelivery(event)));
 }
@@ -2267,6 +2331,12 @@ async function processEventDelivery(event) {
   }
 
   if (matching.length === 0) return;
+  // Before the coverage read: a matched rewrite merges both wordings' publishers.
+  const rewrite = await checkAlertRewrite(event, matching);
+  await refreshAlertCoverage([event]);
+  const reachedUsers = new Set();
+  let rewriteSkips = 0;
+
 
   // Batch tier check: resolve all unique userIds in parallel instead of
   // one-by-one. getUserTier() has a 15-min Redis cache, so this is cheap
@@ -2311,6 +2381,13 @@ async function processEventDelivery(event) {
       continue;
     }
 
+    // #10916: this user already had an alert for the same development under
+    // another outlet's wording. Users the earlier alert did not reach still get it.
+    if (rewrite.alreadyAlerted.has(rule.userId)) {
+      rewriteSkips += 1;
+      continue;
+    }
+
     const quietAction = resolveQuietAction(rule, eventSeverity);
 
     if (quietAction === 'suppress') {
@@ -2339,6 +2416,7 @@ async function processEventDelivery(event) {
       }
       console.log(`[relay] Quiet hours hold for ${rule.userId} — queuing for batch_on_wake`);
       await holdEvent(rule.userId, rule.variant ?? 'full', JSON.stringify(event));
+      reachedUsers.add(rule.userId);
       continue;
     }
 
@@ -2449,8 +2527,12 @@ async function processEventDelivery(event) {
         console.warn(`[relay] Delivery error for ${rule.userId}/${ch.channelType}:`, err instanceof Error ? err.message : String(err));
       }
     }
-    if (deliveredChannels.length > 0) await noteSentAlertForEvent(rule.userId, event, deliveredChannels);
+    if (deliveredChannels.length > 0) {
+      reachedUsers.add(rule.userId);
+      await noteSentAlertForEvent(rule.userId, event, deliveredChannels);
+    }
   }
+  await finishAlertRewrite(event, rewrite, reachedUsers, rewriteSkips);
 
   if (freeSeverityDrops > 0) console.log(`[relay] Free-ladder severity clamp: dropped ${freeSeverityDrops} rule(s) for non-critical event (severity=${eventSeverity})`);
   if (freeEventTypeDrops > 0) console.log(`[relay] Free-ladder event-type clamp: dropped ${freeEventTypeDrops} rule(s) for Pro-only event type (${String(event.eventType ?? 'unknown').replace(/[\r\n]/g, ' ').slice(0, 80)})`);

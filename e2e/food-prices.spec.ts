@@ -5,19 +5,25 @@ import { evidenceScreenshot } from './evidence-screenshot';
 const fixture = JSON.parse(readFileSync(new URL('../tests/fixtures/food-prices/card.json', import.meta.url), 'utf8'));
 const additions = JSON.parse(readFileSync(new URL('../tests/fixtures/food-prices/batches-4-5-card.json', import.meta.url), 'utf8'));
 
+// Runs in the page before boot. Every case needs the same seed, so it lives in one place.
+function seedFoodPricesDashboard() {
+  localStorage.setItem('wm-layer-warning-dismissed', 'true');
+  localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
+  localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
+  localStorage.setItem('wm-pro-key', 'wm-test-food-prices');
+  // Mark the full layout as applied, or the first boot resets panels to the variant defaults.
+  localStorage.setItem('worldmonitor-variant', 'full');
+  localStorage.setItem('worldmonitor-panel-layout-variant', 'full');
+  localStorage.setItem('worldmonitor-panels', JSON.stringify({ 'fao-food-price-index': { name: 'Food prices', enabled: true, priority: 0 } }));
+}
+
 for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
   test(`food prices: source selection and dated context at ${viewport.width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
     await acceptTesterKeySession(page);
     await page.route('**/api/economic/v1/get-food-prices*', route => route.fulfill({ json: { sources: [...fixture.sources, ...additions.sources] } }));
-    await page.addInitScript(() => {
-      localStorage.setItem('wm-layer-warning-dismissed', 'true');
-      localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
-      localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
-      localStorage.setItem('wm-pro-key', 'wm-test-food-prices');
-      localStorage.setItem('worldmonitor-panels', JSON.stringify({ 'fao-food-price-index': { name: 'Food prices', enabled: true, priority: 0 } }));
-    });
+    await page.addInitScript(seedFoodPricesDashboard);
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true');
     const panel = page.locator('[data-panel="fao-food-price-index"]');
@@ -76,13 +82,7 @@ for (const failure of ['http', 'empty']) {
     await page.route('**/api/economic/v1/get-fao-food-price-index*', route => failed
       ? route.fulfill({ status: failure === 'http' ? 503 : 200, json: {} })
       : route.fulfill({ json: { points: [{ date: '2026-09', ffpi: 126 }], currentFfpi: 126, momPct: 0.8, yoyPct: 2.1 } }));
-    await page.addInitScript(() => {
-      localStorage.setItem('wm-layer-warning-dismissed', 'true');
-      localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
-      localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
-      localStorage.setItem('wm-pro-key', 'wm-test-food-prices');
-      localStorage.setItem('worldmonitor-panels', JSON.stringify({ 'fao-food-price-index': { name: 'Food prices', enabled: true, priority: 0 } }));
-    });
+    await page.addInitScript(seedFoodPricesDashboard);
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true');
     const panel = page.locator('[data-panel="fao-food-price-index"]');
@@ -104,13 +104,7 @@ for (const degraded of [{ sources: [] }, { unavailable: true, sources: fixture.s
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
     await acceptTesterKeySession(page);
     await page.route('**/api/economic/v1/get-food-prices*', route => route.fulfill({ json: failed ? degraded : fixture }));
-    await page.addInitScript(() => {
-      localStorage.setItem('wm-layer-warning-dismissed', 'true');
-      localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
-      localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
-      localStorage.setItem('wm-pro-key', 'wm-test-food-prices');
-      localStorage.setItem('worldmonitor-panels', JSON.stringify({ 'fao-food-price-index': { name: 'Food prices', enabled: true, priority: 0 } }));
-    });
+    await page.addInitScript(seedFoodPricesDashboard);
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true');
     const panel = page.locator('[data-panel="fao-food-price-index"]');

@@ -9011,5 +9011,149 @@
     "audience": "international",
     "language": "en",
     "ownershipClass": "private"
+  },
+  "ProPublica": {
+    "country": "US",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "The Atlantic": {
+    "country": "US",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "NPR World": {
+    "country": "US",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "BBC News": {
+    "country": "GB",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "Guardian UK": {
+    "country": "GB",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Channel 4 News": {
+    "country": "GB",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "public-service"
+  },
+  "g1": {
+    "country": "BR",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "private"
+  },
+  "g1 Mundo": {
+    "country": "BR",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "private"
+  },
+  "Folha Mundo": {
+    "country": "BR",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "private"
+  },
+  "Estadão Política": {
+    "country": "BR",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "private"
+  },
+  "Estadão Internacional": {
+    "country": "BR",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "private"
+  },
+  "BBC News Brasil": {
+    "country": "GB",
+    "audience": "international",
+    "language": "pt",
+    "ownershipClass": "public-service"
+  },
+  "Nexo Jornal": {
+    "country": "BR",
+    "audience": "domestic",
+    "language": "pt",
+    "ownershipClass": "private"
+  },
+  "DW Brasil": {
+    "country": "DE",
+    "audience": "international",
+    "language": "pt",
+    "ownershipClass": "public-service"
+  },
+  "RFI Brasil": {
+    "country": "FR",
+    "audience": "international",
+    "language": "pt",
+    "ownershipClass": "public-service"
+  },
+  "Le Monde à la une": {
+    "country": "FR",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Le Monde International": {
+    "country": "FR",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Le Figaro": {
+    "country": "FR",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "L'Express": {
+    "country": "FR",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Le Nouvel Obs": {
+    "country": "FR",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Courrier international": {
+    "country": "FR",
+    "audience": "domestic",
+    "language": "fr",
+    "ownershipClass": "private"
+  },
+  "France 24 Français": {
+    "country": "FR",
+    "audience": "international",
+    "language": "fr",
+    "ownershipClass": "public-service"
+  },
+  "RFI": {
+    "country": "FR",
+    "audience": "international",
+    "language": "fr",
+    "ownershipClass": "public-service"
+  },
+  "TV5Monde Info": {
+    "country": "FR",
+    "audience": "international",
+    "language": "fr",
+    "ownershipClass": "public-service"
   }
 }

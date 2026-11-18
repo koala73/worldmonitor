@@ -799,6 +799,20 @@ jobs:
     if: needs.changes.outputs.consumer_prices == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        env:
+          POSTGRES_DB: consumer_prices_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready --username=postgres --dbname=consumer_prices_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -809,6 +823,8 @@ jobs:
       - uses: ./.github/actions/install-redis
       - run: npm ci --prefix consumer-prices-core
       - run: npm test --prefix consumer-prices-core
+        env:
+          CONSUMER_PRICES_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/consumer_prices_test
 
   umami-postgres:
     needs: changes
@@ -1038,7 +1054,10 @@ jobs:
         with:
           node-version: '24'
       - uses: ./.github/actions/install-root-deps
-      - run: npm run test:convex
+      # Vitest defaults to one worker fewer than the CPU count, which leaves one
+      # of the runner's 4 vCPUs idle. Four workers took the suite from 48.8s
+      # (81% CPU busy) to 45.5s (94%), alternating on one VM (bench run 44274790851).
+      - run: npm run test:convex -- --maxWorkers=4
 
   # DOM-behavioral gate tests (#5634). Kept OUT of the `unit` job's tsx glob:
   # the components under test import `@/services/i18n`, which uses
@@ -1059,7 +1078,14 @@ jobs:
       # never be type-checked — the first run of this config caught four real
       # type errors in them.
       - run: npm run typecheck:dom-tests
+      # Vitest defaults to one worker fewer than the CPU count. Four workers, one
+      # per vCPU, took the suite from 196.5s (74% CPU busy) to 176.1s (89%),
+      # alternating on one VM; six reached 170.5s at 95% (bench run 44274790851).
+      # VITEST_MAX_THREADS is the config's existing override, so local runs keep
+      # Vitest's default.
       - run: npm run test:dom
+        env:
+          VITEST_MAX_THREADS: '4'
 
   variant-smoke-shards:
     name: variant-smoke (${{ matrix.shard }})

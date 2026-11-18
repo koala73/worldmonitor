@@ -32,6 +32,12 @@ Joining the two splits the delay. Seven days to 2026-11-17, in minutes:
 `node scripts/report-alert-latency.mjs --hours 168` prints the first row, and
 the per-stage rows once the relay has recorded samples.
 
+First sight belongs to the headline, not the outlet: the track is keyed by
+normalized title. When another outlet carried an identical headline before
+this item's own timestamp, the sample has no publish-to-first-sight value for
+this outlet. `--by-source` reports those samples as `seen_earlier` rather
+than dropping them, so read a per-outlet p50 together with that count.
+
 ## What each stage was
 
 - **Feed polling was not the delay in the main edition.** Feed caches

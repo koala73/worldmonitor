@@ -19,8 +19,9 @@
 // title. It stays out of the payload, so the notification relay's per-user
 // dedup still keys on the title, as it does for the alerts a browser submits.
 //
-// It merges repeats of one headline, not rewrites of one event. Two outlets
-// that word the story differently still alert separately.
+// It merges repeats of one headline, not rewrites of one event. The
+// notification relay skips rewrites for users who already had the story
+// (lib/news-alert-coverage.mjs, #10916).
 
 /**
  * How long a story stays claimed. A day is how long an exact repeat is already
@@ -34,33 +35,15 @@ const NEWS_STORY_DEDUP_TTL_SECONDS = 86_400;
 // scripts written without spaces count as one word and do the same.
 const MIN_STORY_WORDS = 4;
 
-const NORMALIZED_TITLE_SCAN = 2_000;
-
-// scripts/shared/, not repo-root shared/: the module imports @noble/hashes,
-// which the relay image installs under scripts/node_modules only.
-let stripAttributionSuffix = null;
+// Keep exact-title delivery available if the scripts image lacks the shared module.
+let normalizeNewsStoryTitle = () => '';
 let loadError = null;
 try {
-  ({ stripAttributionSuffix } = require('../shared/story-identity.js'));
-  if (typeof stripAttributionSuffix !== 'function') throw new Error('stripAttributionSuffix is not exported');
+  const identity = require('../shared/story-identity.js');
+  if (typeof identity.normalizeNewsStoryTitle !== 'function') throw new Error('normalizeNewsStoryTitle is not exported');
+  normalizeNewsStoryTitle = identity.normalizeNewsStoryTitle;
 } catch (err) {
-  stripAttributionSuffix = null;
   loadError = err;
-}
-
-/** The headline as story tracking normalizes it, uncut, or '' when the normalizer did not load. */
-function normalizeNewsStoryTitle(title) {
-  if (!stripAttributionSuffix || typeof title !== 'string') return '';
-  const stripped = stripAttributionSuffix(title.toLowerCase(), { allowPipe: false });
-  const bounded = stripped.length > NORMALIZED_TITLE_SCAN ? stripped.slice(0, NORMALIZED_TITLE_SCAN) : stripped;
-  return bounded
-    // Story tracking drops all punctuation, which makes "1.5 million" and
-    // "15 million" one headline. Held for a day, that would silence the
-    // second, so punctuation inside a number becomes a space instead.
-    .replace(/(?<=\p{N})[^\p{L}\p{N}\s]+(?=\p{N})/gu, ' ')
-    .replace(/[^\p{L}\p{N}\s]/gu, '')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 // The score a critical news alert needs to reach a realtime rule
@@ -99,6 +82,7 @@ module.exports = {
   REALTIME_CRITICAL_IMPORTANCE_SCORE,
   normalizeNewsStoryTitle,
   newsStoryKey,
+  reachesRealtimeRules,
   /** Why the normalizer is unavailable, or null. The relay logs it at boot. */
   newsStoryKeyLoadError: () => loadError,
 };

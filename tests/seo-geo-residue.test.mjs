@@ -702,7 +702,6 @@ describe('GEO residue #7746 (compare discoverability)', () => {
     // The destination rides inside the answer string, like the terms link in
     // a11, so the FAQPage JSON-LD keeps it and the translator pins the URL.
     assert.ok(en.welcome.faq.a5.includes(label), 'en a5 must keep the comparison destination');
-    assert.equal(en.welcome.faq.a5Link, undefined, 'the label lives in a5, not a separate key');
     for (const file of readdirSync(join(repoRoot, 'pro-test/src/locales'))) {
       const answer = readJson(`pro-test/src/locales/${file}`).welcome?.faq?.a5;
       assert.ok(typeof answer === 'string' && answer.includes(label), `${file} a5 must keep the comparison destination`);

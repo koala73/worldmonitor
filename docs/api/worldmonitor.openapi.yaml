@@ -34056,7 +34056,11 @@ paths:
                     pattern: '^[A-Z]{2}$'
                 - name: hs4
                   in: query
-                  description: Optional requested heading; permits bounded recovery of a missing product.
+                  description: |-
+                    Optional requested heading; permits bounded recovery of a missing core
+                     product. Extended headings (rubber, cocoa, fish and seafood, fruit,
+                     processed food, oleochemicals) are accepted too and served from their
+                     separately seeded cache only, never recovered on demand.
                   required: false
                   example: "example"
                   schema:
@@ -37505,8 +37509,12 @@ paths:
             tags:
                 - TradeService
             summary: GetMonthlySitcTrade
-            description: GetMonthlySitcTrade returns a country's monthly exports and imports by SITC section from the national statistics office, with unit value and volume indices; Malaysia (DOSM) is covered.
+            description: GetMonthlySitcTrade returns a country's monthly exports and imports by SITC section from the national statistics office, with unit value and volume indices; Malaysia (DOSM) is covered. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetMonthlySitcTrade
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: country
                   in: query
@@ -37594,7 +37602,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: PRO entitlement access denied.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -63657,7 +63665,11 @@ components:
                     description: ISO 3166-1 alpha-2 country code whose strategic products should be returned.
                 hs4:
                     type: string
-                    description: Optional requested heading; permits bounded recovery of a missing product.
+                    description: |-
+                        Optional requested heading; permits bounded recovery of a missing core
+                         product. Extended headings (rubber, cocoa, fish and seafood, fruit,
+                         processed food, oleochemicals) are accepted too and served from their
+                         separately seeded cache only, never recovered on demand.
             required:
                 - iso2
         worldmonitor_supply_chain_v1_GetCountryProductsResponse:
@@ -63701,7 +63713,8 @@ components:
                     type: string
                     description: |-
                         ISO timestamp this heading alone was fetched at. Present only on a heading
-                         recovered on demand, whose fetch time differs from the payload's.
+                         recovered on demand or an extended heading, whose fetch time differs from
+                         the payload's.
                 partnerBasis:
                     type: string
                     description: |-
@@ -63821,7 +63834,9 @@ components:
                     type: array
                     items:
                         type: string
-                        description: Catalogue headings with no usable product row.
+                        description: |-
+                            Core catalogue headings with no usable product row. Extended headings are
+                             never listed here; an absent extended row adds no product.
                 lastAttemptAt:
                     type: string
                     description: ISO timestamp of the last refresh attempt; empty when unknown.

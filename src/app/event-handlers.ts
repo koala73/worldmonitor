@@ -265,6 +265,10 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
     this.instance?.refreshPanelToggles();
   }
 
+  refreshSourceToggles(): void {
+    this.instance?.refreshSourceToggles();
+  }
+
   close(): void {
     this.instance?.close();
   }
@@ -407,6 +411,7 @@ export class EventHandlerManager implements AppModule {
     try { history.replaceState(history.state, '', withUrlFragment(url, window.location.hash)); } catch { }
   };
   private readonly debouncedUrlSync = debounce(this.writeUrlState, 250);
+  private urlStateSyncReady = false;
 
   private readonly debouncedWebcamReload = debounce(() => {
     if (this.ctx.mapLayers?.webcams) {
@@ -1634,18 +1639,31 @@ export class EventHandlerManager implements AppModule {
       // and may finish before this listener is attached, so this settled write
       // is also what preserves its initial lat/lon URL state.
       void this.ctx.map.whenViewportSettled().then(() => {
+        this.urlStateSyncReady = true;
         if (!this.ctx.isDestroyed) this.debouncedUrlSync();
       }).catch(() => {
         // A superseding interaction or renderer switch owns the newer state;
         // its normal state-change listener will sync that viewport.
+        this.urlStateSyncReady = true;
       });
     } else {
       this.debouncedUrlSync();
+      this.urlStateSyncReady = true;
     }
   }
 
   syncUrlState(): void {
     this.debouncedUrlSync();
+  }
+
+  /**
+   * For map changes that also fire during boot, such as the deep link's time
+   * range. Until setupUrlStateSync() has run and any deep-link flyTo has
+   * settled, a write would record the map mid-flight; the settled write then
+   * carries the current state, time range included.
+   */
+  syncUrlStateIfStarted(): void {
+    if (this.urlStateSyncReady) this.debouncedUrlSync();
   }
 
   syncUrlStateNow(): void {
@@ -3156,16 +3174,25 @@ export class EventHandlerManager implements AppModule {
     );
     const pending = this.ctx.pendingSourcePreferences;
     const gateOwned = pending?.gateOwned ?? persistedGateOwned;
-    const nextGateOwned = releaseSourceGateOwnership(gateOwned, names);
+    const edits = new Map(pending?.edits);
+    const editedNames = [...names];
+    for (const name of editedNames) edits.set(name, this.ctx.disabledSources.has(name));
+    const nextGateOwned = releaseSourceGateOwnership(gateOwned, editedNames);
     this.ctx.pendingSourcePreferences = {
       gateOwned: nextGateOwned,
-      countryCoverageMigration: pending?.countryCoverageMigration ?? false,
+      baselineGateOwned: pending?.baselineGateOwned ?? persistedGateOwned,
+      fallbackDisabledSources: pending?.fallbackDisabledSources,
+      edits,
+      migrationMarkers: pending?.migrationMarkers ?? [],
     };
     if (!stringSetsEqual(persistedGateOwned, nextGateOwned)
       && !writeStorageValue(STORAGE_KEYS.sourceGateOwnership, JSON.stringify([...nextGateOwned]))) return;
     if (!saveToStorage(STORAGE_KEYS.disabledFeeds, [...this.ctx.disabledSources])) return;
-    if (pending?.countryCoverageMigration
-      && !writeStorageValue('worldmonitor-country-coverage-optin-v1', 'done')) return;
+    this.ctx.pendingSourcePreferences.baselineGateOwned = nextGateOwned;
+    this.ctx.pendingSourcePreferences.fallbackDisabledSources = undefined;
+    for (const marker of pending?.migrationMarkers ?? []) {
+      if (!writeStorageValue(marker, 'done')) return;
+    }
     this.ctx.pendingSourcePreferences = undefined;
   }
 

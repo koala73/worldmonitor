@@ -59,6 +59,7 @@ const RELAY_PATHS = new Set([
   '/api/trade/v1/list-comtrade-flows',
   '/api/trade/v1/get-tariff-trends',
   '/api/trade/v1/get-bilateral-tariff',
+  '/api/trade/v1/get-monthly-sitc-trade',
   '/api/trade/v1/get-us-import-duty',
   '/api/scenario/v1/run-scenario',
   '/api/scenario/v1/get-scenario-status',

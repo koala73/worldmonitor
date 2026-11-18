@@ -1717,7 +1717,12 @@ canvas,
   min-width: 0;
   order: 0;
 }
+/* position: relative makes the row the containing block for its visually
+   hidden reason span, so overflow: hidden clips it. Without it the absolute
+   span escaped to the end of the unclipped text and widened the page at
+   800px (PR #10989). */
 .digest-coverage-row {
+  position: relative;
   font-family: var(--font-mono, monospace);
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
@@ -1950,6 +1955,18 @@ canvas,
     grid-row: span 4 !important;
     height: 100%;
   }
+}
+
+/* A Pro-locked panel holds only its lock card (about 150px), so the row
+   spans and height pins above left up to 660px of empty panel and pushed
+   the panels below it down the column. Give it one row until it unlocks.
+   The attribute selector matches the pins' specificity, and this rule comes
+   later, so it wins. A size the user set (.resized) and a collapsed panel
+   keep their own footprint. */
+#panelsGrid > .panel[data-panel].panel-is-locked:not(.resized):not(.panel-collapsed) {
+  grid-row: span 1 !important;
+  height: auto !important;
+  min-height: var(--dashboard-panel-row-min) !important;
 }
 
 /* #8276: Reserve enough grid rows for the natural wide video panels.
@@ -13400,8 +13417,11 @@ button.popup-link {
   margin: 2px 0;
 }
 
+/* Flex-wrap already moves whole items to the next line; normal white-space
+   lets an item longer than the card wrap instead of running past its edge. */
 .sc-metric-row span {
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .sc-disrupt-red { color: var(--red, #ff5252); }
@@ -19650,8 +19670,9 @@ button.popup-link {
   width: calc(100% - 16px);
   margin: 4px 8px;
   padding: 4px 8px;
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.15);
+  /* Theme tokens: hard-coded white alpha left the box invisible in light mode. */
+  background: var(--overlay-light);
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
   color: inherit;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
@@ -19659,11 +19680,11 @@ button.popup-link {
   outline: none;
 }
 .deckgl-layer-toggles .layer-search::placeholder {
-  color: rgba(255,255,255,0.4);
+  color: var(--text-dim);
 }
 .deckgl-layer-toggles .layer-search:focus {
-  border-color: rgba(255,255,255,0.3);
-  background: rgba(255,255,255,0.12);
+  border-color: var(--text-dim);
+  background: var(--overlay-medium);
 }
 
 .deckgl-layer-toggles .layer-toggle {

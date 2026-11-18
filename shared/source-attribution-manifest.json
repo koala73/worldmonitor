@@ -3314,12 +3314,12 @@
     },
     {
       "host": "cnn.com",
-      "provider": "cnn.com",
+      "provider": "CNN",
       "kind": "feed",
       "observed": true,
-      "license": "Provider terms for this feed publisher; verify before redistribution",
-      "attribution": "Credit cnn.com and link to the original feed publisher.",
-      "status": "terms-review",
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit CNN and link to the original publisher item.",
+      "status": "reviewed",
       "references": [
         {
           "path": "shared/news-catalog.json"
@@ -5339,12 +5339,12 @@
     },
     {
       "host": "english.nv.ua",
-      "provider": "english.nv.ua",
+      "provider": "The New Voice of Ukraine",
       "kind": "feed",
       "observed": true,
-      "license": "Provider terms for this feed publisher; verify before redistribution",
-      "attribution": "Credit english.nv.ua and link to the original feed publisher.",
-      "status": "terms-review",
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit The New Voice of Ukraine and link to the original publisher item.",
+      "status": "reviewed",
       "references": [
         {
           "path": "shared/news-catalog.json"
@@ -5985,6 +5985,34 @@
       ]
     },
     {
+      "host": "feeds.skynews.com",
+      "provider": "Sky News",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Sky News and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "feeds.washingtonpost.com",
+      "provider": "The Washington Post",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit The Washington Post and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "fema.gov",
       "provider": "fema.gov",
       "kind": "feed",
@@ -6184,10 +6212,15 @@
       "host": "fonts.googleapis.com",
       "provider": "fonts.googleapis.com",
       "kind": "structured",
-      "observed": false,
+      "observed": true,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded"
+      "status": "excluded",
+      "references": [
+        {
+          "path": "server/_shared/brief-carousel-render.ts"
+        }
+      ]
     },
     {
       "host": "foreignpolicy.com",
@@ -7385,20 +7418,6 @@
       ]
     },
     {
-      "host": "independent.co.uk",
-      "provider": "The Independent",
-      "kind": "feed",
-      "observed": true,
-      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
-      "attribution": "Credit The Independent and link to the original publisher item.",
-      "status": "reviewed",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        }
-      ]
-    },
-    {
       "host": "index.hu",
       "provider": "index.hu",
       "kind": "feed",
@@ -7437,6 +7456,20 @@
       "references": [
         {
           "path": "src/config/live-video-sources.ts"
+        }
+      ]
+    },
+    {
+      "host": "information.tv5monde.com",
+      "provider": "information.tv5monde.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit information.tv5monde.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8217,12 +8250,12 @@
     },
     {
       "host": "kyivindependent.com",
-      "provider": "kyivindependent.com",
+      "provider": "The Kyiv Independent",
       "kind": "feed",
       "observed": true,
-      "license": "Provider terms for this feed publisher; verify before redistribution",
-      "attribution": "Credit kyivindependent.com and link to the original feed publisher.",
-      "status": "terms-review",
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit The Kyiv Independent and link to the original publisher item.",
+      "status": "reviewed",
       "references": [
         {
           "path": "shared/news-catalog.json"
@@ -10414,20 +10447,6 @@
       ]
     },
     {
-      "host": "nytimes.com",
-      "provider": "The New York Times",
-      "kind": "feed",
-      "observed": true,
-      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
-      "attribution": "Credit The New York Times and link to the original publisher item.",
-      "status": "reviewed",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        }
-      ]
-    },
-    {
       "host": "nzherald.co.nz",
       "provider": "nzherald.co.nz",
       "kind": "feed",
@@ -11776,6 +11795,9 @@
           "path": "scripts/ais-relay.cjs"
         },
         {
+          "path": "scripts/lib/wsb-tickers.cjs"
+        },
+        {
           "path": "src/services/story-share.ts"
         }
       ]
@@ -12016,6 +12038,20 @@
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit rss.libsyn.com and link to the original feed publisher.",
       "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "rss.nytimes.com",
+      "provider": "The New York Times",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit The New York Times and link to the original publisher item.",
+      "status": "reviewed",
       "references": [
         {
           "path": "shared/news-catalog.json"
@@ -15155,12 +15191,12 @@
     },
     {
       "host": "ukrinform.net",
-      "provider": "ukrinform.net",
+      "provider": "Ukrinform",
       "kind": "feed",
       "observed": true,
-      "license": "Provider terms for this feed publisher; verify before redistribution",
-      "attribution": "Credit ukrinform.net and link to the original feed publisher.",
-      "status": "terms-review",
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Ukrinform and link to the original publisher item.",
+      "status": "reviewed",
       "references": [
         {
           "path": "shared/news-catalog.json"
@@ -16950,6 +16986,20 @@
       ]
     },
     {
+      "host": "www.channel4.com",
+      "provider": "www.channel4.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.channel4.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "www.channelnewsasia.com",
       "provider": "www.channelnewsasia.com",
       "kind": "feed",
@@ -17118,6 +17168,20 @@
       ]
     },
     {
+      "host": "www.cnn.com",
+      "provider": "CNN",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit CNN and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "www.cnn.gr",
       "provider": "www.cnn.gr",
       "kind": "feed",
@@ -17207,6 +17271,20 @@
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.corriere.it and link to the original feed publisher.",
       "status": "excluded"
+    },
+    {
+      "host": "www.courrierinternational.com",
+      "provider": "www.courrierinternational.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.courrierinternational.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
     },
     {
       "host": "www.crisisgroup.org",
@@ -17890,6 +17968,20 @@
       ]
     },
     {
+      "host": "www.estadao.com.br",
+      "provider": "www.estadao.com.br",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.estadao.com.br and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "www.ethiopia-insight.com",
       "provider": "www.ethiopia-insight.com",
       "kind": "feed",
@@ -18172,18 +18264,27 @@
       ]
     },
     {
-      "host": "www.francetvinfo.fr",
-      "provider": "www.francetvinfo.fr",
+      "host": "www.franceinfo.fr",
+      "provider": "www.franceinfo.fr",
       "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
-      "attribution": "Credit www.francetvinfo.fr and link to the original feed publisher.",
+      "attribution": "Credit www.franceinfo.fr and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
           "path": "shared/news-catalog.json"
         }
       ]
+    },
+    {
+      "host": "www.francetvinfo.fr",
+      "provider": "www.francetvinfo.fr",
+      "kind": "feed",
+      "observed": false,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.francetvinfo.fr and link to the original feed publisher.",
+      "status": "excluded"
     },
     {
       "host": "www.frontex.europa.eu",
@@ -18825,6 +18926,20 @@
       ]
     },
     {
+      "host": "www.independent.co.uk",
+      "provider": "The Independent",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit The Independent and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "www.independent.ie",
       "provider": "www.independent.ie",
       "kind": "feed",
@@ -19307,6 +19422,20 @@
       ]
     },
     {
+      "host": "www.lefigaro.fr",
+      "provider": "www.lefigaro.fr",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.lefigaro.fr and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "www.lemauricien.com",
       "provider": "www.lemauricien.com",
       "kind": "feed",
@@ -19383,6 +19512,20 @@
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.letemps.ch and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.lexpress.fr",
+      "provider": "www.lexpress.fr",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.lexpress.fr and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
@@ -20002,6 +20145,20 @@
       ]
     },
     {
+      "host": "www.nexojornal.com.br",
+      "provider": "www.nexojornal.com.br",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.nexojornal.com.br and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "www.nfx.com",
       "provider": "www.nfx.com",
       "kind": "structured",
@@ -20077,6 +20234,20 @@
       "references": [
         {
           "path": "server/worldmonitor/infrastructure/v1/list-service-statuses.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.nouvelobs.com",
+      "provider": "www.nouvelobs.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.nouvelobs.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -20524,6 +20695,20 @@
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.producthunt.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.propublica.org",
+      "provider": "www.propublica.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.propublica.org and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
@@ -21640,6 +21825,20 @@
       ]
     },
     {
+      "host": "www.theatlantic.com",
+      "provider": "www.theatlantic.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.theatlantic.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "www.thecitizen.co.tz",
       "provider": "www.thecitizen.co.tz",
       "kind": "feed",
@@ -22009,6 +22208,20 @@
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.twz.com and link to the original feed publisher.",
       "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.ukrinform.net",
+      "provider": "Ukrinform",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Ukrinform and link to the original publisher item.",
+      "status": "reviewed",
       "references": [
         {
           "path": "shared/news-catalog.json"

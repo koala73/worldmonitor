@@ -1,4 +1,5 @@
 import { hmac } from '@noble/hashes/hmac';
+import { bytesToHex } from '@noble/hashes/utils';
 import { sha256 } from '@noble/hashes/sha256';
 
 /**
@@ -640,4 +641,28 @@ export function clusterTexts(texts, opts = {}) {
   return Array.from(byRoot.entries())
     .sort((a, b) => a[0] - b[0])
     .map(([, members]) => members);
+}
+
+// Delivery and cross-build coverage must agree on punctuation and attribution.
+const NORMALIZED_TITLE_SCAN = 2_000;
+export function normalizeNewsStoryTitle(title) {
+  if (typeof title !== 'string') return '';
+  const stripped = stripAttributionSuffix(title.toLowerCase(), { allowPipe: false });
+  const bounded = stripped.length > NORMALIZED_TITLE_SCAN ? stripped.slice(0, NORMALIZED_TITLE_SCAN) : stripped;
+  return bounded
+    // Story tracking drops all punctuation, which makes "1.5 million" and
+    // "15 million" one headline. Held for a day, that would silence the
+    // second, so punctuation inside a number becomes a space instead.
+    .replace(/(?<=\p{N})[^\p{L}\p{N}\s]+(?=\p{N})/gu, ' ')
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function newsPublisherCoverageKey(edition, title) {
+  if (!edition || !title) return '';
+  const normalized = normalizeNewsStoryTitle(title);
+  // Short or unsegmented headlines use the literal identity, like the relay.
+  const identity = normalized.split(' ').length >= 4 ? normalized : title;
+  return `news:publisher-coverage:v1:${edition}:${bytesToHex(sha256(encoder.encode(identity)))}`;
 }
