@@ -175,6 +175,11 @@ test('the first read of an edition\'s pool is a backlog that never alerts, and h
   assert.ok(store.has(`label:${backlog}:pool:full`));
   assert.ok(store.has(warmKey));
   assert.deepEqual(await pass(store, [backlog, fresh]), [fresh]);
+  const aged = JSON.parse(store.get(warmKey));
+  aged.recordedAt -= 7 * 3_600_000;
+  store.set(warmKey, JSON.stringify(aged));
+  store.delete(`label:${backlog}:pool:full`);
+  assert.deepEqual(await pass(store, [backlog]), [backlog], 'a backlog headline reused after the pool window alerts');
 
   const unanswered = new Map();
   assert.deepEqual(await pass(unanswered, [backlog], { classifyFetchLlm: async () => null }), []);

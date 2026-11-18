@@ -5715,6 +5715,9 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // restart does not start over.
   const poolBacklogKey = `classify:alert-pool-warm:v1:${variant}`;
   let poolBacklog = null;
+  // Every backlog headline has aged out of the pool once its window has passed
+  // since the record, so a later article with the same headline can alert.
+  let poolBacklogUntil = 0;
   if (Array.isArray(alertPool?.items) && alertPool.items.length > 0) {
     const rows = await upstashPipeline([['SMEMBERS', 'news:digest:revoked-urls:v1'], ['GET', poolBacklogKey]]);
     const urls = Array.isArray(rows?.[0]?.result) ? new Set(rows[0].result) : null;
@@ -5723,7 +5726,10 @@ async function seedClassifyForVariant(variant, seenTitles) {
     else console.warn(`[Classify] revocation set or pool backlog unreadable — skipping the alert pool for ${variant}`);
     try {
       const stored = JSON.parse(rows?.[1]?.result ?? 'null');
-      if (Array.isArray(stored?.backlog)) poolBacklog = new Set(stored.backlog);
+      if (Array.isArray(stored?.backlog)) {
+        poolBacklog = new Set(stored.backlog);
+        poolBacklogUntil = Number(stored.recordedAt) + RECENCY_GATE_MS;
+      }
     } catch { /* an unreadable record is recorded again below */ }
   }
   const allTitles = buildClassifyCandidateMap(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS, undefined, poolItems);
@@ -5737,6 +5743,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
     const written = await upstashPipeline([['SET', poolBacklogKey, JSON.stringify({ recordedAt: classifyNow, backlog })]]);
     if (written?.[0]?.result === 'OK') {
       poolBacklog = new Set(backlog);
+      poolBacklogUntil = classifyNow + RECENCY_GATE_MS;
       console.log(`[Classify] alert pool for ${variant}: recorded ${backlog.length} backlog headline(s) that will not alert`);
     } else {
       // Labelling them now would make them the backlog without a record of it.
@@ -5835,7 +5842,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
           corroborationCount: 1,
           link: '',
         };
-        if (meta.fromPool && poolBacklog?.has(classifyKeyFor(chunk[idx]))) continue;
+        if (meta.fromPool && classifyNow < poolBacklogUntil && poolBacklog?.has(classifyKeyFor(chunk[idx]))) continue;
         // Relay gates: when RELAY_GATES_READY is set the relay enforces source tier and
         // recency checks that the client path previously handled.
         // Explicit tier-4 keys only — unlisted names (including platform source
