@@ -44,8 +44,7 @@ declare global {
 const DIGEST_GLOB = '**/api/news/v1/list-feed-digest*';
 const PARTIAL_DIGEST_COVERAGE_TEXT =
   'News coverage: partial — 0 publishers, 0 stories, feeds 7/12, categories 0/6 ' +
-  '(no completed feed: politics, military, economy, climate, …) ' +
-  '(some categories had no completed feed in this cycle)';
+  '(no completed feed: politics, military, economy, climate, …)';
 
 const installLcpDebug = async (page: Page): Promise<void> => {
   await page.route(DIGEST_GLOB, (route) => route.fulfill({
