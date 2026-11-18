@@ -1424,6 +1424,7 @@ export class EventHandlerManager implements AppModule {
 
     this.applyPanelSettings();
     this.callbacks.applySavedPanelOrder?.(applied.panelOrder);
+    this.showPanelsFromTop();
     this.ctx.unifiedSettings?.refreshPanelToggles();
     this.ctx.map?.setLayers(mapLayers);
     this.applyMissionMapLayerTransitions(previousMapLayers, mapLayers);
@@ -1552,6 +1553,34 @@ export class EventHandlerManager implements AppModule {
     this.renderMissionPresetControl();
   }
 
+  /**
+   * A mission apply or reset replaces the panel layout, so the old scroll
+   * position points into a different list. Start the new layout at its first
+   * panel: the grid scrolls on desktop. On mobile the main column scrolls and
+   * the sticky category bar covers its top, so when the user is scrolled into
+   * the panels, the first panel the bar's filter shows is brought up to just
+   * below the bar (the second half of MobilePanelNav.scrollToPanels). When the
+   * bar isn't stuck yet, the user is above the panels, which a layout change
+   * doesn't move, so the view stays where it is rather than scrolling the map
+   * out of sight.
+   */
+  private showPanelsFromTop(): void {
+    const grid = document.getElementById('panelsGrid');
+    if (!grid) return;
+    grid.scrollTop = 0;
+    const first = grid.querySelector<HTMLElement>(':scope > [data-panel]:not(.hidden):not(.mobile-cat-hidden)');
+    if (!first) return;
+    const bar = document.querySelector<HTMLElement>('.mobile-panel-nav');
+    const scroller = bar?.parentElement;
+    if (!bar || !scroller) {
+      if (first.getBoundingClientRect().top < 0) first.scrollIntoView({ block: 'start' });
+      return;
+    }
+    const target = scroller.scrollTop + first.getBoundingClientRect().top
+      - scroller.getBoundingClientRect().top - bar.getBoundingClientRect().height;
+    if (scroller.scrollTop > target) scroller.scrollTop = Math.max(0, target);
+  }
+
   private resetMissionPreset(): void {
     const reset = resetMissionPresetState(
       this.ctx.panelSettings,
@@ -1571,6 +1600,7 @@ export class EventHandlerManager implements AppModule {
 
     this.applyPanelSettings();
     this.callbacks.applySavedPanelOrder?.(reset.panelOrder);
+    this.showPanelsFromTop();
     this.ctx.unifiedSettings?.refreshPanelToggles();
     this.ctx.map?.setLayers(mapLayers);
     this.applyMissionMapLayerTransitions(previousMapLayers, mapLayers);
