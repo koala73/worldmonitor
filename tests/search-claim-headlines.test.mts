@@ -6,11 +6,14 @@ import { newsHandler } from '../server/worldmonitor/news/v1/handler';
 import { __testing__ as digest } from '../server/worldmonitor/news/v1/list-feed-digest';
 import { __testing__ as claimPool } from '../server/worldmonitor/news/v1/search-claim-headlines';
 import { rssFeedCacheKey } from '../server/worldmonitor/news/v1/_rss-cache';
-import { REVOKED_URLS_KEY } from '../server/_shared/digest-revocations';
+import { REVOKED_URLS_KEY, __resetRevocationMemoForTest } from '../server/_shared/digest-revocations';
 import { drainResponseHeaders } from '../server/_shared/response-headers';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
 import { createNewsServiceRoutes, type SearchClaimHeadlinesResponse } from '../src/generated/server/worldmonitor/news/v1/service_server';
 import { validateGeneratedRequest } from '../server/request-validator';
+
+// Each test sets its own revocations; drop the previous test's memoized read.
+beforeEach(__resetRevocationMemoForTest);
 
 const route = createNewsServiceRoutes(newsHandler, { validateRequest: validateGeneratedRequest })
   .find(entry => entry.path.endsWith('/search-claim-headlines'))!;
