@@ -1,6 +1,7 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { internal } from "../_generated/api";
+import { sweepBriefEnvelopes } from "../accountDeletion/sideEffects";
 import { modules, schema } from "./companyMonitoring.helpers";
 
 const USER = "user_sweep";
@@ -42,6 +43,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
@@ -153,6 +155,42 @@ test.each([
   })).rejects.toThrow();
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(log).toHaveBeenCalledWith(expect.stringContaining("account_deletion_brief_sweep_failed"));
+  log.mockRestore();
+});
+
+test("a persistent SCAN failure retries from attempt 0 through the budget, then reports once", async () => {
+  const t = convexTest(schema, modules);
+  const deletionId = await t.run(ctx => ctx.db.insert("accountDeletions", {
+    userId: USER, userIdHash: "hash", source: "self", status: "complete", step: "complete",
+    startedAt: Date.now(), updatedAt: Date.now(),
+  }));
+  fetchMock.mockReset().mockImplementation(async () => Response.json({ error: "ERR unavailable" }));
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  await t.action(internal.accountDeletion.sideEffects.sweepBriefEnvelopes, {
+    deletionId, cursor: "0", attempt: 0,
+  });
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(fetchMock).toHaveBeenCalledTimes(5);
+  const failures = log.mock.calls.filter(([line]) => String(line).includes("account_deletion_brief_sweep_failed"));
+  expect(failures).toHaveLength(1);
+  log.mockRestore();
+});
+
+test("reports the failure with a resumable cursor when the retry cannot be scheduled", async () => {
+  fetchMock.mockReset().mockImplementation(async () => Response.json({ error: "ERR unavailable" }));
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const ctx = {
+    runQuery: async () => ({ userId: USER }),
+    scheduler: { runAfter: async () => { throw new Error("SCHEDULER_UNAVAILABLE"); } },
+  };
+  const handler = (sweepBriefEnvelopes as unknown as {
+    _handler: (ctx: unknown, args: unknown) => Promise<null>;
+  })._handler;
+  await expect(handler(ctx, { deletionId: "id", cursor: "42", attempt: 0, pages: 7 }))
+    .rejects.toThrow("SCHEDULER_UNAVAILABLE");
+  const failure = log.mock.calls.map(([line]) => String(line))
+    .find(line => line.includes("account_deletion_brief_sweep_failed"));
+  expect(JSON.parse(failure!)).toMatchObject({ deletionId: "id", cursor: "42", pages: 7 });
   log.mockRestore();
 });
 
