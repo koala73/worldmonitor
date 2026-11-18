@@ -137,6 +137,7 @@ import {
   GERMAN_RSS_SOURCES,
   BRAZIL_OPT_IN_SOURCES,
   COUNTRY_COVERAGE_OPT_IN_SOURCES,
+  PUBLISHER_DIRECT_OPT_IN_SOURCES,
   computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
   FEEDS,
@@ -247,6 +248,7 @@ import {
   migrateGermanRssSourcesV10,
   migrateBrazilOptInsV11,
   migrateCountryCoverageOptInsV12,
+  migratePublisherDirectOptInsV13,
 } from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
@@ -1386,7 +1388,13 @@ export class App {
       ? computeDefaultDisabledSources(this.currentSourceCapLanguage())
       : undefined;
     const sessionSourceEdits = new Map<string, boolean>();
-    const pendingSourceMigrationMarkers: string[] = [];
+    const pendingSourceMigrationMarkers: string[] = sessionDisabledSources
+      ? [
+        'worldmonitor-country-coverage-optin-v1',
+        'worldmonitor-brazil-optin-v1',
+        'worldmonitor-publisher-direct-optin-v1',
+      ]
+      : [];
     // One-time migration: reduce default-enabled sources (full variant only)
     if (currentVariant === 'full' && storageAvailable) {
       const baseKey = 'worldmonitor-sources-reduction-v3';
@@ -1617,6 +1625,24 @@ export class App {
         } else if (!safeStorageSetChecked(brazilOptInKey, 'done')) {
           sessionDisabledSources = updated;
           pendingSourceMigrationMarkers.push(brazilOptInKey);
+          if (current === null) safeStorageRemoveChecked(STORAGE_KEYS.disabledFeeds);
+          else saveToStorage(STORAGE_KEYS.disabledFeeds, current);
+        }
+      }
+      const publisherDirectOptInKey = 'worldmonitor-publisher-direct-optin-v1';
+      if (!safeStorageGet(publisherDirectOptInKey)) {
+        const current = sessionDisabledSources ?? loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+        const blob = { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current ?? computeDefaultDisabledSources(userLang)) };
+        const migrated = migratePublisherDirectOptInsV13(blob, PUBLISHER_DIRECT_OPT_IN_SOURCES);
+        const updated = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
+        if (sessionDisabledSources) sessionDisabledSources = updated;
+        const persisted = (current !== null && migrated === blob) || saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+        if (!persisted || sessionDisabledSources) {
+          sessionDisabledSources = updated;
+          pendingSourceMigrationMarkers.push(publisherDirectOptInKey);
+        } else if (!safeStorageSetChecked(publisherDirectOptInKey, 'done')) {
+          sessionDisabledSources = updated;
+          pendingSourceMigrationMarkers.push(publisherDirectOptInKey);
           if (current === null) safeStorageRemoveChecked(STORAGE_KEYS.disabledFeeds);
           else saveToStorage(STORAGE_KEYS.disabledFeeds, current);
         }

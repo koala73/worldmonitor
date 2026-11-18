@@ -12,7 +12,7 @@ The inventory is **generated, not hand-written**: `scripts/source-attribution.mj
 ## Observed Source Inventory
 
 {/* BEGIN GENERATED SOURCE ATTRIBUTION */}
-This generated inventory covers **1368 active source hosts** representing **1349 active providers** (**400 structured/API**, **952 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
+This generated inventory covers **1382 active source hosts** representing **1359 active providers** (**400 structured/API**, **966 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
 
 | Provider | Observed surface |
 | --- | --- |
@@ -225,7 +225,8 @@ This generated inventory covers **1368 active source hosts** representing **1349
 | cna.org.cy (cna.org.cy) | feed — shared/news-catalog.json |
 | cnas.org (cnas.org) | feed — shared/news-catalog.json |
 | cnbc.com (cnbc.com) | feed — shared/news-catalog.json |
-| cnn.com (cnn.com) | feed — shared/news-catalog.json |
+| CNN (cnn.com) | feed — shared/news-catalog.json |
+| CNN (www.cnn.com) | feed — shared/news-catalog.json |
 | cnn.gr (cnn.gr) | feed — shared/news-catalog.json |
 | co.usembassy.gov (co.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
 | Coinbase (coinbase.com) | feed — shared/news-catalog.json |
@@ -358,7 +359,6 @@ This generated inventory covers **1368 active source hosts** representing **1349
 | english.alarabiya.net (english.alarabiya.net) | feed — shared/news-catalog.json |
 | english.customs.gov.cn (english.customs.gov.cn) | structured — scripts/china-macro/source-contracts.mjs |
 | english.kyodonews.net (english.kyodonews.net) | feed — shared/news-catalog.json |
-| english.nv.ua (english.nv.ua) | feed — shared/news-catalog.json |
 | english.pnn.ps (english.pnn.ps) | feed — shared/news-catalog.json |
 | english.radio.cz (english.radio.cz) | feed — shared/news-catalog.json |
 | ENTSO-E Transparency Platform (web-api.tp.entsoe.eu) | structured — scripts/seed-electricity-prices.mjs |
@@ -514,6 +514,7 @@ This generated inventory covers **1368 active source hosts** representing **1349
 | India Meteorological Department (rsmcnewdelhi.imd.gov.in) | structured — scripts/lib/imd-cyclone-marine.mjs |
 | indianexpress.com (indianexpress.com) | feed — shared/news-catalog.json |
 | indiatodaylive.akamaized.net (indiatodaylive.akamaized.net) | feed — src/config/live-video-sources.ts |
+| information.tv5monde.com (information.tv5monde.com) | feed — shared/news-catalog.json |
 | informburo.kz (informburo.kz) | feed — shared/news-catalog.json |
 | inforpress.cv (inforpress.cv) | feed — shared/news-catalog.json |
 | inkyfada.com (inkyfada.com) | feed — shared/news-catalog.json |
@@ -573,7 +574,6 @@ This generated inventory covers **1368 active source hosts** representing **1349
 | kun.uz (kun.uz) | feed — shared/news-catalog.json |
 | kuna.net.kw (kuna.net.kw) | feed — shared/news-catalog.json |
 | kuwaittimes.com (kuwaittimes.com) | feed — shared/news-catalog.json |
-| kyivindependent.com (kyivindependent.com) | feed — shared/news-catalog.json |
 | L'Orient Today (lorientlejour.com) | feed — shared/news-catalog.json |
 | ladiaria.com.uy (ladiaria.com.uy) | feed — shared/news-catalog.json |
 | lahora.gt (lahora.gt) | feed — shared/news-catalog.json |
@@ -819,7 +819,7 @@ This generated inventory covers **1368 active source hosts** representing **1349
 | raw.githubusercontent.com (raw.githubusercontent.com) | structured — scripts/ais-relay.cjs, scripts/build-plane-alert-watchlist.mjs, scripts/fetch-country-boundary-overrides.mjs, scripts/generate-airline-codes.mjs, +4 more |
 | reasonstobecheerful.world (reasonstobecheerful.world) | feed — shared/news-catalog.json |
 | recorder.ro (recorder.ro) | feed — shared/news-catalog.json |
-| reddit.com (reddit.com) | structured — scripts/ais-relay.cjs, src/services/story-share.ts |
+| reddit.com (reddit.com) | structured — scripts/ais-relay.cjs, scripts/lib/wsb-tickers.cjs, src/services/story-share.ts |
 | registry.modelcontextprotocol.io (registry.modelcontextprotocol.io) | structured — scripts/publish-mcp-registry.mjs |
 | ReliefWeb (UN OCHA) (api.reliefweb.int) | structured — scripts/seed-climate-disasters.mjs |
 | reliefweb.int (reliefweb.int) | structured — scripts/seed-climate-news.mjs |
@@ -907,6 +907,7 @@ This generated inventory covers **1368 active source hosts** representing **1349
 | SIPRI Arms Transfers Database (atbackend.sipri.org) | structured — scripts/_defense-industrial-source.mjs |
 | sixthtone.com (sixthtone.com) | feed — shared/news-catalog.json |
 | skai-live.siliconweb.com (skai-live.siliconweb.com) | feed — src/config/live-video-sources.ts |
+| Sky News (feeds.skynews.com) | feed — shared/news-catalog.json |
 | Sky News (news.sky.com) | feed — shared/news-catalog.json |
 | slack-status.com (slack-status.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
 | slack.com (slack.com) | structured — api/channel-oauth-bind.ts, api/slack/oauth/callback.ts, api/slack/oauth/start.ts |
@@ -993,9 +994,12 @@ This generated inventory covers **1368 active source hosts** representing **1349
 | The Daily Star (thedailystar.net) | feed — shared/news-catalog.json |
 | The Economist (economist.com) | feed — shared/news-catalog.json |
 | The Guardian Post (theguardianpostcameroon.com) | feed — shared/news-catalog.json |
-| The Independent (independent.co.uk) | feed — shared/news-catalog.json |
-| The New York Times (nytimes.com) | feed — shared/news-catalog.json |
+| The Independent (www.independent.co.uk) | feed — shared/news-catalog.json |
+| The Kyiv Independent (kyivindependent.com) | feed — shared/news-catalog.json |
+| The New Voice of Ukraine (english.nv.ua) | feed — shared/news-catalog.json |
+| The New York Times (rss.nytimes.com) | feed — shared/news-catalog.json |
 | The Telegraph (www.telegraph.co.uk) | feed — shared/news-catalog.json |
+| The Washington Post (feeds.washingtonpost.com) | feed — shared/news-catalog.json |
 | The Washington Post (washingtonpost.com) | feed — shared/news-catalog.json |
 | the-star.co.ke (the-star.co.ke) | feed — shared/news-catalog.json |
 | thebetterindia.com (thebetterindia.com) | feed — shared/news-catalog.json |
@@ -1077,7 +1081,8 @@ This generated inventory covers **1368 active source hosts** representing **1349
 | ugandacoffee.go.ug (ugandacoffee.go.ug) | structured — scripts/lib/food-prices-adapters/ucda.mjs |
 | ugandaradionetwork.com (ugandaradionetwork.com) | feed — shared/news-catalog.json |
 | uis.unesco.org (uis.unesco.org) | structured — server/worldmonitor/resilience/v1/_indicator-source-policy.ts |
-| ukrinform.net (ukrinform.net) | feed — shared/news-catalog.json |
+| Ukrinform (ukrinform.net) | feed — shared/news-catalog.json |
+| Ukrinform (www.ukrinform.net) | feed — shared/news-catalog.json |
 | ukrinform.ua (ukrinform.ua) | feed — shared/news-catalog.json |
 | unchainedcrypto.com (unchainedcrypto.com) | feed — shared/news-catalog.json |
 | understandingwar.org (understandingwar.org) | feed — shared/news-catalog.json |
@@ -1194,6 +1199,7 @@ This generated inventory covers **1368 active source hosts** representing **1349
 | www.cbr.ru (www.cbr.ru) | structured — scripts/seed-cbr-rates.mjs |
 | www.cbsl.gov.lk (www.cbsl.gov.lk) | structured — scripts/lib/food-prices.mjs |
 | www.cbsnews.com (www.cbsnews.com) | feed — shared/news-catalog.json |
+| www.channel4.com (www.channel4.com) | feed — shared/news-catalog.json |
 | www.channelnewsasia.com (www.channelnewsasia.com) | feed — shared/news-catalog.json |
 | www.channelstv.com (www.channelstv.com) | feed — shared/news-catalog.json |
 | www.chinamoney.com.cn (www.chinamoney.com.cn) | structured — scripts/china-macro/calendar.mjs |
@@ -1213,6 +1219,7 @@ This generated inventory covers **1368 active source hosts** representing **1349
 | www.comcom.govt.nz (www.comcom.govt.nz) | structured — scripts/seed-fuel-prices.mjs |
 | www.contractsfinder.service.gov.uk (www.contractsfinder.service.gov.uk) | structured — scripts/seed-global-tenders.mjs |
 | www.corriere.it (www.corriere.it) | Excluded / candidate — No current fetch observed |
+| www.courrierinternational.com (www.courrierinternational.com) | feed — shared/news-catalog.json |
 | www.crisisgroup.org (www.crisisgroup.org) | feed — shared/news-catalog.json |
 | www.csis.org (www.csis.org) | feed — shared/news-catalog.json |
 | www.cumhuriyet.com.tr (www.cumhuriyet.com.tr) | feed — shared/news-catalog.json |
@@ -1259,6 +1266,7 @@ This generated inventory covers **1368 active source hosts** representing **1349
 | www.epdk.gov.tr (www.epdk.gov.tr) | structured — scripts/_epdk-crude-imports.mjs |
 | www.erb.org.zm (www.erb.org.zm) | structured — scripts/lib/regional-fuel-feeds.mjs, scripts/shared/regional-energy-feeds.json |
 | www.eskom.co.za (www.eskom.co.za) | structured — scripts/shared/regional-energy-feeds.json |
+| www.estadao.com.br (www.estadao.com.br) | feed — shared/news-catalog.json |
 | www.ethiopia-insight.com (www.ethiopia-insight.com) | feed — shared/news-catalog.json |
 | www.etilaatroz.com (www.etilaatroz.com) | feed — shared/news-catalog.json |
 | www.eu-startups.com (www.eu-startups.com) | feed — shared/news-catalog.json |
@@ -1277,7 +1285,8 @@ This generated inventory covers **1368 active source hosts** representing **1349
 | www.foreignaffairs.com (www.foreignaffairs.com) | feed — shared/news-catalog.json |
 | www.fpri.org (www.fpri.org) | Excluded / candidate — No current fetch observed |
 | www.france24.com (www.france24.com) | feed — shared/news-catalog.json |
-| www.francetvinfo.fr (www.francetvinfo.fr) | feed — shared/news-catalog.json |
+| www.franceinfo.fr (www.franceinfo.fr) | feed — shared/news-catalog.json |
+| www.francetvinfo.fr (www.francetvinfo.fr) | Excluded / candidate — No current fetch observed |
 | www.frontex.europa.eu (www.frontex.europa.eu) | structured — scripts/lib/border-route-sources.mjs, server/worldmonitor/displacement/v1/cross-border-data.ts |
 | www.ft.com (www.ft.com) | feed — shared/news-catalog.json |
 | www.fwdstart.me (www.fwdstart.me) | Excluded / candidate — No current fetch observed |
@@ -1351,12 +1360,14 @@ This generated inventory covers **1368 active source hosts** representing **1349
 | www.lasillavacia.com (www.lasillavacia.com) | feed — shared/news-catalog.json |
 | www.latercera.com (www.latercera.com) | feed — shared/news-catalog.json |
 | www.ledevoir.com (www.ledevoir.com) | feed — shared/news-catalog.json |
+| www.lefigaro.fr (www.lefigaro.fr) | feed — shared/news-catalog.json |
 | www.lemauricien.com (www.lemauricien.com) | feed — shared/news-catalog.json |
 | www.lemonde.fr (www.lemonde.fr) | feed — shared/news-catalog.json |
 | www.lennysnewsletter.com (www.lennysnewsletter.com) | feed — shared/news-catalog.json |
 | www.lepaystchad.com (www.lepaystchad.com) | feed — shared/news-catalog.json |
 | www.lesahel.org (www.lesahel.org) | feed — shared/news-catalog.json |
 | www.letemps.ch (www.letemps.ch) | feed — shared/news-catalog.json |
+| www.lexpress.fr (www.lexpress.fr) | feed — shared/news-catalog.json |
 | www.lexpress.mg (www.lexpress.mg) | feed — shared/news-catalog.json |
 | www.liberal.gr (www.liberal.gr) | Excluded / candidate — No current fetch observed |
 | www.liberation.fr (www.liberation.fr) | feed — shared/news-catalog.json |
@@ -1398,12 +1409,14 @@ This generated inventory covers **1368 active source hosts** representing **1349
 | www.netlifystatus.com (www.netlifystatus.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
 | www.newscientist.com (www.newscientist.com) | Excluded / candidate — No current fetch observed |
 | www.newyorkfed.org (www.newyorkfed.org) | structured — scripts/ais-relay.cjs |
+| www.nexojornal.com.br (www.nexojornal.com.br) | feed — shared/news-catalog.json |
 | www.nfx.com (www.nfx.com) | Excluded / candidate — No current fetch observed |
 | www.nicematin.com (www.nicematin.com) | feed — shared/news-catalog.json |
 | www.niggrid.org (www.niggrid.org) | structured — scripts/shared/regional-energy-feeds.json |
 | www.nknews.org (www.nknews.org) | feed — shared/news-catalog.json |
 | www.northernminer.com (www.northernminer.com) | feed — shared/news-catalog.json |
 | www.notion-status.com (www.notion-status.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| www.nouvelobs.com (www.nouvelobs.com) | feed — shared/news-catalog.json |
 | www.novilist.hr (www.novilist.hr) | feed — shared/news-catalog.json |
 | www.nrc.nl (www.nrc.nl) | feed — shared/news-catalog.json |
 | www.nrk.no (www.nrk.no) | feed — shared/news-catalog.json |
@@ -1436,6 +1449,7 @@ This generated inventory covers **1368 active source hosts** representing **1349
 | www.pressafrik.com (www.pressafrik.com) | feed — shared/news-catalog.json |
 | www.primicias.ec (www.primicias.ec) | feed — shared/news-catalog.json |
 | www.producthunt.com (www.producthunt.com) | feed — shared/news-catalog.json |
+| www.propublica.org (www.propublica.org) | feed — shared/news-catalog.json |
 | www.prothomalo.com (www.prothomalo.com) | feed — shared/news-catalog.json |
 | www.qatarenergy.qa (www.qatarenergy.qa) | structured — scripts/lib/regional-fuel-feeds.mjs, scripts/shared/regional-energy-feeds.json |
 | www.radiookapi.net (www.radiookapi.net) | feed — shared/news-catalog.json |
@@ -1507,6 +1521,7 @@ This generated inventory covers **1368 active source hosts** representing **1349
 | www.techstars.com (www.techstars.com) | Excluded / candidate — No current fetch observed |
 | www.telanon.info (www.telanon.info) | feed — shared/news-catalog.json |
 | www.teletica.com (www.teletica.com) | feed — shared/news-catalog.json |
+| www.theatlantic.com (www.theatlantic.com) | feed — shared/news-catalog.json |
 | www.thecitizen.co.tz (www.thecitizen.co.tz) | feed — shared/news-catalog.json |
 | www.thegazette.news (www.thegazette.news) | feed — shared/news-catalog.json |
 | www.theglobeandmail.com (www.theglobeandmail.com) | feed — shared/news-catalog.json |

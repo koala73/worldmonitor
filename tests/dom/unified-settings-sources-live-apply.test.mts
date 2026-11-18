@@ -241,6 +241,7 @@ afterEach(() => {
 
 describe('UnifiedSettings source selection live apply (#6380)', () => {
   it('refreshes an open source grid and counter before the next user toggle', () => {
+    disabledSources.add('Source from another catalog');
     settings.open('sources');
     expect(internal.overlay.querySelector('#usSourcesCounter')?.textContent).toContain('4/4');
     sourceButton(PLAIN_SOURCE).focus();

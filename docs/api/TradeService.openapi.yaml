@@ -1085,8 +1085,12 @@ paths:
             tags:
                 - TradeService
             summary: GetMonthlySitcTrade
-            description: GetMonthlySitcTrade returns a country's monthly exports and imports by SITC section from the national statistics office, with unit value and volume indices; Malaysia (DOSM) is covered.
+            description: GetMonthlySitcTrade returns a country's monthly exports and imports by SITC section from the national statistics office, with unit value and volume indices; Malaysia (DOSM) is covered. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetMonthlySitcTrade
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: country
                   in: query
@@ -1174,7 +1178,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: PRO entitlement access denied.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).

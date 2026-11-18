@@ -82,7 +82,7 @@ const PUBLISHER_FAMILY_DATA = {
   'axios': { publisher: "Axios", labels: [] },
   'bbc': {
     publisher: "BBC",
-    labels: ["BBC Africa", "BBC Afrique", "BBC Asia", "BBC Hindi", "BBC Latin America", "BBC Middle East", "BBC Mundo", "BBC Persian", "BBC Russian", "BBC Northern Ireland", "BBC Science", "BBC Turkce", "BBC UK", "BBC World", "BBC — Angola", "BBC — Barbados", "BBC — Central African Republic", "BBC — Comoros", "BBC — Côte d’Ivoire", "BBC — El Salvador", "BBC — Equatorial Guinea", "BBC — Eswatini", "BBC — Kiribati", "BBC — Laos", "BBC — Liechtenstein", "BBC — Micronesia", "BBC — Nauru", "BBC — Tonga", "BBC — Tuvalu", "BBC — Vanuatu", "BBC — Vatican City", "BBC Korean"],
+    labels: ["BBC Africa", "BBC Afrique", "BBC Asia", "BBC Hindi", "BBC Latin America", "BBC Middle East", "BBC Mundo", "BBC Persian", "BBC Russian", "BBC Northern Ireland", "BBC Science", "BBC Turkce", "BBC UK", "BBC World", "BBC — Angola", "BBC — Barbados", "BBC — Central African Republic", "BBC — Comoros", "BBC — Côte d’Ivoire", "BBC — El Salvador", "BBC — Equatorial Guinea", "BBC — Eswatini", "BBC — Kiribati", "BBC — Laos", "BBC — Liechtenstein", "BBC — Micronesia", "BBC — Nauru", "BBC — Tonga", "BBC — Tuvalu", "BBC — Vanuatu", "BBC — Vatican City", "BBC Korean", "BBC News", "BBC News Brasil"],
   },
   'bloomberg': {
     publisher: "Bloomberg",
@@ -99,10 +99,11 @@ const PUBLISHER_FAMILY_DATA = {
   'cb-insights': { publisher: "CB Insights", labels: ["CB Insights", "CB Insights Unicorn"] },
   'chatham-house': { publisher: "Chatham House", labels: ["Chatham House", "Chatham House Tech"] },
   'cnbc': { publisher: "CNBC", labels: ["CNBC", "CNBC Commodities", "CNBC Markets", "CNBC Tech"] },
+  'cnn': { publisher: "CNN", labels: ["CNN World"] },
   'csis': { publisher: "CSIS", labels: ["CSIS", "CSIS Tech"] },
   'die-zeit': { publisher: "Die Zeit", labels: [] },
   'deutschlandradio': { publisher: "Deutschlandradio", labels: ["Deutschlandfunk"] },
-  'dw': { publisher: "Deutsche Welle", labels: ["DW News", "DW Turkish"] },
+  'dw': { publisher: "Deutsche Welle", labels: ["DW News", "DW Turkish", "DW Brasil"] },
   'eia': { publisher: "US Energy Information Administration", labels: ["EIA Press Room", "EIA Reports"] },
   'el-mundo': { publisher: "El Mundo", labels: [] },
   'el-pais': { publisher: "El País", labels: [] },
@@ -111,8 +112,8 @@ const PUBLISHER_FAMILY_DATA = {
   'financial-times': { publisher: "Financial Times", labels: ["FT Energy", "Financial Times"] },
   'fox-business': { publisher: "Fox Business", labels: [] },
   'fox-news': { publisher: "Fox News", labels: [] },
-  'france-24': { publisher: "France 24", labels: ["France 24", "France 24 Africa", "France 24 Asia Pacific", "France 24 LatAm"] },
-  'grupo-globo': { publisher: "Grupo Globo", labels: ["G1 Política", "O Globo"] },
+  'france-24': { publisher: "France 24", labels: ["France 24", "France 24 Africa", "France 24 Asia Pacific", "France 24 LatAm", "France 24 Français"] },
+  'grupo-globo': { publisher: "Grupo Globo", labels: ["G1 Política", "O Globo", "g1", "g1 Mundo"] },
   'good-news-network': {
     publisher: "Good News Network",
     labels: [
@@ -127,7 +128,7 @@ const PUBLISHER_FAMILY_DATA = {
   },
   'guardian': {
     publisher: "The Guardian",
-    labels: ["Guardian Africa", "Guardian Americas", "Guardian Australia", "Guardian Brazil", "Guardian Caribbean", "Guardian ME", "Guardian Pacific", "Guardian Science", "Guardian World", "Guardian — Angola", "Guardian — Paraguay", "Guardian — Barbados", "Guardian — Bolivia", "Guardian — Kiribati", "Guardian — Laos", "Guardian — Liechtenstein", "Guardian — Marshall Islands", "Guardian — Micronesia", "Guardian — Nauru", "Guardian — Palau", "Guardian — Tuvalu"],
+    labels: ["Guardian Africa", "Guardian Americas", "Guardian Australia", "Guardian Brazil", "Guardian Caribbean", "Guardian ME", "Guardian Pacific", "Guardian Science", "Guardian World", "Guardian — Angola", "Guardian — Paraguay", "Guardian — Barbados", "Guardian — Bolivia", "Guardian — Kiribati", "Guardian — Laos", "Guardian — Liechtenstein", "Guardian — Marshall Islands", "Guardian — Micronesia", "Guardian — Nauru", "Guardian — Palau", "Guardian — Tuvalu", "Guardian UK"],
   },
   'hacker-news': { publisher: "Hacker News", labels: ["Hacker News", "Show HN", "YC News"] },
   'hromadske': { publisher: "Hromadske", labels: ["Hromadske", "Hromadske EN"] },
@@ -135,6 +136,7 @@ const PUBLISHER_FAMILY_DATA = {
   'interfax': { publisher: "Interfax", labels: ["Interfax EN", "Interfax RU"] },
   'iea': { publisher: "International Energy Agency", labels: ["IEA Critical Minerals", "IEA News"] },
   'kitco': { publisher: "Kitco", labels: ["Kitco Gold", "Kitco News"] },
+  'kyiv-independent': { publisher: "The Kyiv Independent", labels: ["Kyiv Independent"] },
   'marketwatch': { publisher: "MarketWatch", labels: ["MarketWatch", "MarketWatch Tech"] },
   'mit-technology-review': {
     publisher: "MIT Technology Review",
@@ -145,11 +147,21 @@ const PUBLISHER_FAMILY_DATA = {
   },
   'nbc-news': { publisher: "NBC News", labels: [] },
   'ndtv': { publisher: "NDTV", labels: ["NDTV", "NDTV India"] },
+  'sky-news': { publisher: "Sky News", labels: ["Sky News"] },
+  'washington-post': { publisher: "The Washington Post", labels: ["Washington Post World"] },
   'new-york-times': { publisher: "The New York Times", labels: ["Hard Fork (NYT)", "New York Times World"] },
+  'new-voice-of-ukraine': { publisher: "The New Voice of Ukraine", labels: ["NV EN"] },
+  'propublica': { publisher: "ProPublica", labels: ["ProPublica"] },
+  'the-atlantic': { publisher: "The Atlantic", labels: ["The Atlantic"] },
+  'channel-4-news': { publisher: "Channel 4 News", labels: ["Channel 4 News"] },
+  'nexo-jornal': { publisher: "Nexo Jornal", labels: ["Nexo Jornal"] },
+  'le-figaro': { publisher: "Le Figaro", labels: ["Le Figaro"] },
+  'lexpress': { publisher: "L'Express", labels: ["L'Express"] },
+  'tv5monde': { publisher: "TV5Monde", labels: ["TV5Monde Info"] },
   'news24': { publisher: "News24", labels: [] },
   'nikkei': { publisher: "Nikkei", labels: ["Nikkei Asia", "Nikkei Tech"] },
   'nos': { publisher: "NOS Nieuws", labels: [] },
-  'npr': { publisher: "NPR News", labels: [] },
+  'npr': { publisher: "NPR News", labels: ["NPR News", "NPR World"] },
   'pivot': { publisher: "Pivot (Vox Media)", labels: ["Pivot (Vox)", "Pivot Podcast"] },
   'politico': { publisher: "Politico", labels: ["Politico", "Politico Tech"] },
   'reuters': {
@@ -179,6 +191,7 @@ const PUBLISHER_FAMILY_DATA = {
     ],
   },
   'the-hacker-news': { publisher: "The Hacker News", labels: [] },
+  'the-independent': { publisher: "The Independent", labels: ["The Independent"] },
   'the-verge': {
     publisher: "The Verge",
     labels: [
@@ -189,6 +202,7 @@ const PUBLISHER_FAMILY_DATA = {
       "Verge Shows",
     ],
   },
+  'ukrinform': { publisher: "Ukrinform", labels: ["Ukrinform"] },
   'venturebeat': { publisher: "VentureBeat", labels: ["VentureBeat", "VentureBeat AI"] },
   'white-house': { publisher: "The White House", labels: ["White House", "White House Actions"] },
   // #8398: the feed URL is a Dow Jones delivery host
@@ -203,10 +217,16 @@ const PUBLISHER_FAMILY_DATA = {
   // folding; a domain table entry cannot merge two publishers' counts).
   // Exempted in tests/publisher-families.test.mjs via DOMAIN_ONLY_FAMILIES.
   'wsj': { publisher: "Wall Street Journal", labels: [] },
-  // Same shape as 'wsj': the feed host (feeds.folha.uol.com.br) is not the
-  // article host (www1.folha.uol.com.br), so the ingest gate needs the
-  // folha.uol.com.br domain. Domain-only, exempted alongside 'wsj'.
-  'folha': { publisher: "Folha de S.Paulo", labels: [] },
+  // The feed host (feeds.folha.uol.com.br) is not the article host
+  // (www1.folha.uol.com.br), so the ingest gate needs the folha.uol.com.br
+  // domain for every Folha desk.
+  'folha': { publisher: "Folha de S.Paulo", labels: ["Folha de S.Paulo", "Folha Mundo"] },
+  'estadao': { publisher: "O Estado de S. Paulo", labels: ["Estadão Política", "Estadão Internacional"] },
+  // France Médias Monde runs RFI and France 24 as separate newsrooms; RFI's
+  // French feed also lists France 24 pages (catalog linkHosts).
+  'rfi': { publisher: "RFI", labels: ["RFI", "RFI Afrique", "RFI Brasil"] },
+  // Le Monde Libre controls Le Monde, Courrier international and Le Nouvel Obs.
+  'groupe-le-monde': { publisher: "Groupe Le Monde", labels: ["Le Monde", "Le Monde à la une", "Le Monde International", "Courrier international", "Le Nouvel Obs"] },
   'y-combinator': { publisher: "Y Combinator", labels: ["YC Launches", "Y Combinator Blog"] },
   'yahoo-finance': { publisher: "Yahoo Finance", labels: ["Yahoo Finance", "Yahoo Finance Commodities"] },
   'zdf': { publisher: "ZDF", labels: ["ZDFheute"] },
@@ -280,6 +300,7 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'cb-insights': ['cbinsights.com'],
   'chatham-house': ['chathamhouse.org'],
   'cnbc': ['cnbc.com'],
+  'cnn': ['cnn.com'],
   'csis': ['csis.org'],
   'die-zeit': ['zeit.de'],
   'deutschlandradio': ['deutschlandfunk.de'],
@@ -291,6 +312,9 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'fao': ['fao.org'],
   'fast-company': ['fastcompany.com'],
   'folha': ['folha.uol.com.br'],
+  'estadao': ['estadao.com.br'],
+  'rfi': ['rfi.fr'],
+  'groupe-le-monde': ['lemonde.fr', 'courrierinternational.com', 'nouvelobs.com'],
   'financial-times': ['ft.com'],
   'fox-business': ['foxbusiness.com'],
   'fox-news': ['foxnews.com'],
@@ -303,11 +327,22 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'infoq': ['infoq.com'],
   'interfax': ['interfax.com', 'interfax.ru'],
   'kitco': ['kitco.com'],
+  'kyiv-independent': ['kyivindependent.com'],
   'marketwatch': ['marketwatch.com'],
   'mit-technology-review': ['technologyreview.com'],
   'nbc-news': ['nbcnews.com', 'today.com'],
   'ndtv': ['ndtv.com', 'ndtv.in'],
+  'sky-news': ['news.sky.com'],
+  'washington-post': ['washingtonpost.com'],
   'new-york-times': ['nytimes.com'],
+  'new-voice-of-ukraine': ['nv.ua'],
+  'propublica': ['propublica.org'],
+  'the-atlantic': ['theatlantic.com'],
+  'channel-4-news': ['channel4.com'],
+  'nexo-jornal': ['nexojornal.com.br'],
+  'le-figaro': ['lefigaro.fr'],
+  'lexpress': ['lexpress.fr'],
+  'tv5monde': ['tv5monde.com'],
   'news24': ['news24.com'],
   'nikkei': ['nikkei.com'],
   'nos': ['nos.nl'],
@@ -320,7 +355,9 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'sp-global': ['spglobal.com'],
   'techcrunch': ['techcrunch.com'],
   'the-hacker-news': ['thehackernews.com'],
+  'the-independent': ['independent.co.uk'],
   'the-verge': ['theverge.com'],
+  'ukrinform': ['ukrinform.net', 'ukrinform.ua'],
   'venturebeat': ['venturebeat.com'],
   'white-house': ['whitehouse.gov'],
   // #8398: see the 'wsj' family entry above — the Dow Jones delivery host

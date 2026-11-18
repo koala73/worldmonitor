@@ -2205,7 +2205,7 @@ export class UnifiedSettings {
 
     const disabled = this.config.getDisabledSources();
     const allSources = this.config.getAllSourceNames();
-    const enabledTotal = allSources.length - disabled.size;
+    const enabledTotal = allSources.filter(name => !disabled.has(name)).length;
 
     counter.textContent = t('header.sourcesEnabled', { enabled: String(enabledTotal), total: String(allSources.length) });
   }
