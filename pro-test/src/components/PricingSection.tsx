@@ -409,13 +409,13 @@ export function PricingSection({
             <p className="font-mono text-xs uppercase tracking-wider text-wm-muted">
               {t('pricing.axisPersonal')}
             </p>
-            <p className="text-xs text-wm-muted/70 mt-0.5">{t('pricing.axisPersonalNote')}</p>
+            <p className="text-xs text-wm-muted mt-0.5">{t('pricing.axisPersonalNote')}</p>
           </div>
           <div className="hidden xl:block xl:col-span-3 border-t border-wm-green pt-3">
             <p className="font-mono text-xs uppercase tracking-wider text-wm-green font-bold">
               {t('pricing.axisCommercial')}
             </p>
-            <p className="text-xs text-wm-muted/70 mt-0.5">{t('pricing.axisCommercialNote')}</p>
+            <p className="text-xs text-wm-muted mt-0.5">{t('pricing.axisCommercialNote')}</p>
           </div>
 
           {gridTiers.map((tier, i) => {
