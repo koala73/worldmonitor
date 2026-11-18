@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import { createDomainGateway } from '../server/gateway.ts';
 import { __resetRateLimitForTest } from '../server/_shared/rate-limit';
 import { issueSessionToken } from '../api/_session.js';
@@ -27,6 +27,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  mock.timers.reset();
   globalThis.fetch = originalFetch;
   for (const key of Object.keys(process.env)) {
     if (!(key in originalEnv)) delete process.env[key];
@@ -132,6 +133,8 @@ describe('gateway read-only cache handler / global limiter overlap', () => {
   });
 
   it('does not run the handler again for a caller this instance already denied', async () => {
+    // Both requests in one 60 s limiter window: the denial is kept until it ends.
+    mock.timers.enable({ apis: ['Date'], now: Math.floor(Date.now() / 60_000) * 60_000 + 30_000 });
     let calls = 0;
     const h = harness(SOURCE_PATH, async () => { calls += 1; return Response.json({}); });
     const limiterFetch = globalThis.fetch;
@@ -161,6 +164,36 @@ describe('gateway read-only cache handler / global limiter overlap', () => {
     assert.equal(response.status, 403);
     assert.equal(response.headers.get('X-RateLimit-Mode'), 'edge-proof');
     assert.equal(called, false);
+  });
+
+  it('does not run the handler again for a caller denied by the fixed-window fallback', async () => {
+    // A Redis that refuses Lua switches the limiter to INCR/EXPIRE/TTL, which
+    // bypasses @upstash/ratelimit's denial cache.
+    mock.timers.enable({ apis: ['Date'], now: Math.floor(Date.now() / 60_000) * 60_000 + 30_000 });
+    __resetRateLimitForTest();
+    let calls = 0;
+    const commandsSeen: string[] = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const commands = JSON.parse(String(init?.body)) as unknown[][];
+      commandsSeen.push(...commands.map(command => String(command[0]).toUpperCase()));
+      if (commands.every(command => /^eval(sha)?$/i.test(String(command[0])))) {
+        return Response.json(commands.map(() => ({ error: 'ERR Command not allowed: EVALSHA' })));
+      }
+      return Response.json([{ result: 601 }, { result: 0 }, { result: 30 }]);
+    }) as typeof fetch;
+    const gateway = createDomainGateway([{ method: 'GET', path: SOURCE_PATH, handler: async () => {
+      calls += 1;
+      return Response.json({});
+    } }]);
+    const request = () => new Request(`https://www.worldmonitor.app${SOURCE_PATH}`, {
+      headers: { Origin: 'https://www.worldmonitor.app', Cookie: `wm-session=${token}`, 'x-real-ip': '192.0.2.42' },
+    });
+    assert.equal((await gateway(request())).status, 429);
+    assert.ok(commandsSeen.includes('INCR'), 'fixture premise: the fixed-window fallback decided');
+    assert.equal(calls, 1);
+    const repeat = await gateway(request());
+    assert.equal(repeat.status, 429);
+    assert.equal(calls, 1);
   });
 
   for (const allowed of [false, true]) {

@@ -550,6 +550,10 @@ function getPrincipalRateLimitIdentifier(
   return scope === 'api_key' ? `apikey-user:${principalUserId}` : `user:${principalUserId}`;
 }
 
+function globalBlockedKey(identifier: string): string {
+  return `${GLOBAL_RATE_PREFIX}:${identifier}`;
+}
+
 function globalRateLimitIdentifier(request: Request, opts: RateLimitOptions): string {
   // Preserve the long-standing raw-IP key for anonymous traffic so an
   // in-flight 60-second bucket does not reset during rollout. Trusted
@@ -565,7 +569,7 @@ function globalRateLimitIdentifier(request: Request, opts: RateLimitOptions): st
  */
 export function isGlobalRateLimitDenialKnown(request: Request, opts: RateLimitOptions = {}): boolean {
   if (!opts.principalUserId && hasUnprovenCloudflareClientIp(request)) return true;
-  const blockedUntil = globalBlockedUntil.get(`${GLOBAL_RATE_PREFIX}:${globalRateLimitIdentifier(request, opts)}`);
+  const blockedUntil = globalBlockedUntil.get(globalBlockedKey(globalRateLimitIdentifier(request, opts)));
   return blockedUntil !== undefined && blockedUntil > Date.now();
 }
 
@@ -595,6 +599,9 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
     if (reason === 'timeout') throw new Error('rate-limit decision timed out');
 
     if (!success) {
+      // @upstash/ratelimit records Lua denials here itself; the fixed-window
+      // fallback does not, so record every denial for the gateway to read.
+      globalBlockedUntil.set(globalBlockedKey(identifier), reset);
       return tooManyRequestsResponse(limit, reset, corsHeaders, GLOBAL_RATE_WINDOW_SECONDS);
     }
 
