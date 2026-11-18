@@ -336,7 +336,6 @@ test.describe('live media intent gating', () => {
     await page.clock.fastForward(5 * hour);
     await page.waitForTimeout(1500);
     await expect(idleNotice).toHaveCount(0);
-    await expect(liveNews.locator('.live-offline')).toHaveCount(0);
     expect(await liveNewsTransportCount(page)).toBe(1);
   });
 

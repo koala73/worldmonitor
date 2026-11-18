@@ -127,16 +127,20 @@ test.describe('Mobile map native experience', () => {
       const box = await mapEl.boundingBox();
       expect(box).not.toBeNull();
       // CDP touch input does not drive native page scrolling here, so check what the browser
-      // uses to decide: a pan may scroll the page (.main-content) unless an element between the
-      // touched point and that scroller has touch-action: none.
+      // uses to decide: the touch-action values from the touched element up to the nearest
+      // scroll container, #mapContainer (overflow: hidden), inclusive. Rules above it do not apply.
       const chain = await page.evaluate(({ x, y }) => {
+        const map = document.getElementById('mapContainer');
+        const hit = document.elementFromPoint(x, y);
+        if (!map || !hit || !map.contains(hit)) return null;
         const values: string[] = [];
-        for (let el = document.elementFromPoint(x, y); el && !el.classList.contains('main-content'); el = el.parentElement) {
+        for (let el: Element | null = hit; el; el = el === map ? null : el.parentElement) {
           values.push(`${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}:${getComputedStyle(el).touchAction}`);
         }
         return values;
       }, { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 });
-      expect(chain.some((entry) => entry.endsWith(':none')), chain.join(' < ')).toBe(true);
+      expect(chain, 'the map center hits an element inside #mapContainer').not.toBeNull();
+      expect(chain!.some((entry) => entry.endsWith(':none')), chain!.join(' < ')).toBe(true);
     });
   });
 

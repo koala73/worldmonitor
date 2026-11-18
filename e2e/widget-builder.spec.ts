@@ -262,14 +262,21 @@ test.describe('AI widget builder — PRO tier', () => {
 
   test('shows the PRO builder when the tester-key session check resolves after boot', async ({ page }) => {
     // The key-session exchange can land after auth settles, and no auth or entitlement event follows.
+    // Hold every session answer until the dashboard is ready with the block hidden, then release.
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => { release = resolve; });
     await page.route('**/api/wm-session', async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 4_000));
+      await released;
       if (route.request().method() !== 'GET') return route.fulfill({ json: { exp: Date.now() + 3_600_000 } });
       await route.fulfill({ json: { widget: true, pro: true }, headers: { 'Cache-Control': 'no-store' } });
     });
     await page.goto('/');
     await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true', { timeout: 45_000 });
-    await expect(page.locator('#panelsGrid .ai-widget-block-pro')).toBeVisible({ timeout: 15_000 });
+    const block = page.locator('#panelsGrid .ai-widget-block-pro');
+    await expect(block).toHaveCount(1);
+    await expect(block).toBeHidden();
+    release();
+    await expect(block).toBeVisible({ timeout: 15_000 });
   });
 
   test('creates a PRO widget: iframe renders with allow-scripts sandbox and PRO badge visible', async ({
@@ -535,9 +542,12 @@ test.describe('AI widget builder — PRO tier', () => {
     await expect(widgetPanel.locator('iframe[sandbox="allow-scripts"]')).toBeVisible();
 
     await page.reload();
-    await expect(page.locator('.custom-widget-panel', {
+    const restoredPanel = page.locator('.custom-widget-panel', {
       has: page.locator('.panel-title', { hasText: 'Oil vs Gold' }),
-    })).toBeVisible({ timeout: 20000 });
+    });
+    await expect(restoredPanel).toBeVisible({ timeout: 20000 });
+    // A PRO record that lost its tier would restore as an inline basic widget, not this iframe.
+    await expect(restoredPanel.locator('iframe[sandbox="allow-scripts"]').contentFrame().locator('.oil-gold-widget')).toBeVisible();
 
     const storedWidgets = await page.evaluate(() => {
       return JSON.parse(localStorage.getItem('wm-custom-widgets') || '[]') as Array<{ title: string }>;
@@ -547,16 +557,17 @@ test.describe('AI widget builder — PRO tier', () => {
 
   test('a stored legacy basic widget renders contained in its panel', async ({ page }) => {
     // Basic widgets can no longer be created (#1975), but stored ones still render inline.
-    await page.addInitScript((html) => {
-      if (sessionStorage.getItem('__legacy_basic_seeded__')) return;
+    // Seed after the first load (Playwright does not order init scripts, and the describe's
+    // one clears storage on first load), then reload so boot reads the stored widget.
+    await page.goto('/');
+    await page.evaluate((html) => {
       const now = Date.now();
       localStorage.setItem('wm-custom-widgets', JSON.stringify([{
         id: 'cw-legacy-basic', title: 'Oil vs Gold', html, prompt: 'legacy',
         tier: 'basic', accentColor: null, conversationHistory: [], createdAt: now, updatedAt: now,
       }]));
-      sessionStorage.setItem('__legacy_basic_seeded__', '1');
     }, buildTallWidgetHtml('Oil vs Gold', 'oil-gold-widget'));
-    await page.goto('/');
+    await page.reload();
 
     // A stored widget boots as a deferred shell and mounts once it scrolls into view.
     const shell = page.locator('#panelsGrid [data-panel="cw-legacy-basic"]');
@@ -674,6 +685,8 @@ test.describe('AI widget builder — PRO tier', () => {
     // The app caches spans in memory; reload so it reads the ones written above.
     await page.reload();
     await expect(updatedPanel).toBeVisible({ timeout: 20000 });
+    // The panel-close listener is registered after the panels can already be visible.
+    await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true', { timeout: 45_000 });
 
     await page.evaluate(() => {
       window.confirm = () => true;
