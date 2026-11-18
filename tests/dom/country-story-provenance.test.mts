@@ -77,6 +77,14 @@ describe('Actual assessment renderer to captured story provenance', () => {
     expect(story.textContent).not.toContain('Replacement assessment'); expect(story.textContent).not.toContain('France');
   });
 
+  it('keeps each fallback signal on its own row in the summary view', () => {
+    const { panel } = fixture();
+    panel.updateBrief({ code: 'CA', fallback: true, brief: '**Instability Index: 52/100** (Elevated, Rising)\nActive protests: 1\nMilitary aircraft tracked: 3' });
+    const summary = panel.briefBody.querySelector('.cdp-assessment-text.cdp-summary-only') as HTMLElement;
+    const rows = [...summary.querySelectorAll('.brief-para, .brief-section-header')].map((row) => row.textContent?.trim());
+    expect(rows).toEqual(expect.arrayContaining(['Active protests: 1', 'Military aircraft tracked: 3']));
+  });
+
   it('preserves actual unavailable assessment state without stale footers or invented clocks', async () => {
     const { panel, failures, paper } = fixture();
     panel.updateBrief({ code: 'CA', error: 'Assessment source unavailable' });

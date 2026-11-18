@@ -87,7 +87,7 @@
     "predictionMarkets": "Ринки прогнозування",
     "loadingMarkets": "Завантаження ринків прогнозування...",
     "infrastructure": "Уразливість інфраструктури",
-    "briefUnavailable": "AI-брифінг недоступний — налаштуйте OPENROUTER_API_KEY у параметрах.",
+    "briefUnavailable": "AI-огляд недоступний зараз.",
     "cached": "Кешовано",
     "fresh": "Свіжі",
     "noMarkets": "Немає активних ринків для цієї країни.",
@@ -248,13 +248,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Індекс нестабільності: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} активних протестів виявлено",
-      "aircraftTracked": "{{count}} військових літаків відстежено",
-      "vesselsTracked": "{{count}} військових кораблів відстежено",
-      "internetOutages": "{{count}} перебоїв інтернету",
-      "recentEarthquakes": "{{count}} недавніх землетрусів",
+      "protestsDetected": "Активні протести: {{count}}",
+      "aircraftTracked": "Військові літаки під моніторингом: {{count}}",
+      "vesselsTracked": "Військові судна під моніторингом: {{count}}",
+      "internetOutages": "Перебої інтернету: {{count}}",
+      "recentEarthquakes": "Нещодавні землетруси: {{count}}",
       "stockIndex": "Фондовий індекс: {{value}}",
-      "activeStrikes": "{{count}} активних авіаударів виявлено"
+      "activeStrikes": "Активні військові удари: {{count}}"
     },
     "countryFacts": "Факти про країну",
     "loadingFacts": "Завантаження даних про країну...",
@@ -886,7 +886,7 @@
       "fresh": "Свіже",
       "noMarkets": "Ринків прогнозів не знайдено",
       "predictionMarkets": "Ринки прогнозів",
-      "unavailable": "Коротка розвідувальна справка недоступна — налаштуйте OPENROUTER_API_KEY в Параметрах."
+      "unavailable": "AI-огляд недоступний зараз."
     },
     "countryBrief": {
       "identifying": "Визначення країни...",
@@ -902,7 +902,7 @@
       "predictionMarkets": "Ринки прогнозів",
       "loadingMarkets": "Завантаження ринків прогнозів...",
       "infrastructure": "Вразливість інфраструктури",
-      "briefUnavailable": "Розвідувальний брифінг недоступний — налаштуйте OPENROUTER_API_KEY в Параметрах.",
+      "briefUnavailable": "AI-огляд недоступний зараз.",
       "cached": "Кешовано",
       "fresh": "Свіже",
       "noMarkets": "Ринків прогнозів не знайдено",

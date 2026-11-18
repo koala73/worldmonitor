@@ -16,7 +16,7 @@
     "predictionMarkets": "예측 시장",
     "loadingMarkets": "예측 시장 불러오는 중...",
     "infrastructure": "인프라 노출",
-    "briefUnavailable": "AI 브리핑 불가 — 설정에서 OPENROUTER_API_KEY를 구성하세요.",
+    "briefUnavailable": "AI 브리핑을 지금 사용할 수 없습니다.",
     "cached": "캐시됨",
     "fresh": "최신",
     "noMarkets": "예측 시장을 찾을 수 없습니다",
@@ -126,13 +126,13 @@
     },
     "fallback": {
       "instabilityIndex": "**불안정 지수: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}}건의 활성 시위 감지",
-      "aircraftTracked": "{{count}}대의 군용 항공기 추적 중",
-      "vesselsTracked": "{{count}}척의 군함 추적 중",
-      "internetOutages": "{{count}}건의 인터넷 장애",
-      "recentEarthquakes": "{{count}}건의 최근 지진",
+      "protestsDetected": "활동 중인 시위: {{count}}",
+      "aircraftTracked": "추적 중인 군용 항공기: {{count}}",
+      "vesselsTracked": "추적 중인 군용 함선: {{count}}",
+      "internetOutages": "인터넷 두절: {{count}}",
+      "recentEarthquakes": "최근 지진: {{count}}",
       "stockIndex": "주가 지수: {{value}}",
-      "activeStrikes": "{{count}}건의 활성 공습 감지"
+      "activeStrikes": "진행 중인 군사 공격: {{count}}"
     },
     "countryFacts": "국가 정보",
     "loadingFacts": "국가 정보 로딩 중...",
@@ -808,7 +808,7 @@
       "fresh": "최신",
       "noMarkets": "예측 시장을 찾을 수 없습니다",
       "predictionMarkets": "예측 시장",
-      "unavailable": "AI 브리핑 불가 — 설정에서 OPENROUTER_API_KEY를 구성하세요."
+      "unavailable": "AI 브리핑을 지금 사용할 수 없습니다."
     },
     "countryBrief": {
       "identifying": "국가 식별 중...",
@@ -824,7 +824,7 @@
       "predictionMarkets": "예측 시장",
       "loadingMarkets": "예측 시장 불러오는 중...",
       "infrastructure": "인프라 노출",
-      "briefUnavailable": "AI 브리핑 불가 — 설정에서 OPENROUTER_API_KEY를 구성하세요.",
+      "briefUnavailable": "AI 브리핑을 지금 사용할 수 없습니다.",
       "cached": "캐시됨",
       "fresh": "최신",
       "noMarkets": "예측 시장을 찾을 수 없습니다",

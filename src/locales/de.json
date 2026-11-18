@@ -16,7 +16,7 @@
     "predictionMarkets": "Prognosemärkte",
     "loadingMarkets": "Prognosemärkte werden geladen...",
     "infrastructure": "Infrastrukturexposition",
-    "briefUnavailable": "KI-Lagebericht nicht verfügbar – konfigurieren Sie OPENROUTER_API_KEY in den Einstellungen.",
+    "briefUnavailable": "KI-Briefing momentan nicht verfügbar.",
     "cached": "Zwischengespeichert",
     "fresh": "Aktuell",
     "noMarkets": "Keine aktiven Märkte für dieses Land.",
@@ -68,13 +68,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Instabilitätsindex: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} aktive Proteste erkannt",
-      "aircraftTracked": "{{count}} Militärflugzeuge verfolgt",
-      "vesselsTracked": "{{count}} Militärschiffe verfolgt",
-      "internetOutages": "{{count}} Internetausfälle",
-      "recentEarthquakes": "{{count}} jüngste Erdbeben",
+      "protestsDetected": "Aktive Proteste: {{count}}",
+      "aircraftTracked": "Militärflugzeuge überwacht: {{count}}",
+      "vesselsTracked": "Kriegsschiffe überwacht: {{count}}",
+      "internetOutages": "Internetstörungen: {{count}}",
+      "recentEarthquakes": "Jüngste Erdbeben: {{count}}",
       "stockIndex": "Aktienindex: {{value}}",
-      "activeStrikes": "{{count}} aktive Angriffe erkannt"
+      "activeStrikes": "Aktive Militärschläge: {{count}}"
     },
     "militaryActivity": "Militärische Aktivität",
     "defenseIndustrial": {
@@ -768,7 +768,7 @@
       "fresh": "Aktuell",
       "noMarkets": "Keine Prognosemärkte gefunden",
       "predictionMarkets": "Prognosemärkte",
-      "unavailable": "KI-Lagebericht nicht verfügbar – konfigurieren Sie OPENROUTER_API_KEY in den Einstellungen."
+      "unavailable": "KI-Briefing momentan nicht verfügbar."
     },
     "countryBrief": {
       "components": {
@@ -804,7 +804,7 @@
       "predictionMarkets": "Prognosemärkte",
       "loadingMarkets": "Prognosemärkte werden geladen...",
       "infrastructure": "Infrastrukturexposition",
-      "briefUnavailable": "KI-Lagebericht nicht verfügbar – konfigurieren Sie OPENROUTER_API_KEY in den Einstellungen.",
+      "briefUnavailable": "KI-Briefing momentan nicht verfügbar.",
       "cached": "Zwischengespeichert",
       "fresh": "Aktuell",
       "noMarkets": "Keine Prognosemärkte gefunden",

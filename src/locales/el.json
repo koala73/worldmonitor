@@ -16,7 +16,7 @@
     "predictionMarkets": "Αγορές Προβλέψεων",
     "loadingMarkets": "Φόρτωση αγορών προβλέψεων...",
     "infrastructure": "Έκθεση Υποδομών",
-    "briefUnavailable": "Ενημέρωση AI μη διαθέσιμη — ρυθμίστε το OPENROUTER_API_KEY στις Ρυθμίσεις.",
+    "briefUnavailable": "Η σύνοψη AI δεν είναι διαθέσιμη αυτή τη στιγμή.",
     "cached": "Αποθηκευμένο",
     "fresh": "Πρόσφατο",
     "noMarkets": "Δεν βρέθηκαν αγορές προβλέψεων",
@@ -126,13 +126,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Δείκτης Αστάθειας: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} ενεργές διαμαρτυρίες ανιχνεύθηκαν",
-      "aircraftTracked": "{{count}} στρατιωτικά αεροσκάφη παρακολουθούνται",
-      "vesselsTracked": "{{count}} στρατιωτικά πλοία παρακολουθούνται",
-      "internetOutages": "{{count}} διακοπές διαδικτύου",
-      "recentEarthquakes": "{{count}} πρόσφατοι σεισμοί",
+      "protestsDetected": "Ενεργές διαδηλώσεις: {{count}}",
+      "aircraftTracked": "Στρατιωτικά αεροσκάφη παρακολουθούμενα: {{count}}",
+      "vesselsTracked": "Στρατιωτικά πλοία παρακολουθούμενα: {{count}}",
+      "internetOutages": "Διακοπές διαδικτύου: {{count}}",
+      "recentEarthquakes": "Πρόσφατες σεισμικές δονήσεις: {{count}}",
       "stockIndex": "Χρηματιστηριακός δείκτης: {{value}}",
-      "activeStrikes": "{{count}} ενεργές απεργίες ανιχνεύθηκαν"
+      "activeStrikes": "Ενεργές στρατιωτικές επιδρομές: {{count}}"
     },
     "countryFacts": "Στοιχεία χώρας",
     "loadingFacts": "Φόρτωση στοιχείων χώρας...",
@@ -811,7 +811,7 @@
       "fresh": "Πρόσφατο",
       "noMarkets": "Δεν βρέθηκαν αγορές προβλέψεων",
       "predictionMarkets": "Αγορές Προβλέψεων",
-      "unavailable": "Ενημέρωση AI μη διαθέσιμη — ρυθμίστε το OPENROUTER_API_KEY στις Ρυθμίσεις."
+      "unavailable": "Η σύνοψη AI δεν είναι διαθέσιμη αυτή τη στιγμή."
     },
     "countryBrief": {
       "identifying": "Αναγνώριση χώρας...",
@@ -827,7 +827,7 @@
       "predictionMarkets": "Αγορές Προβλέψεων",
       "loadingMarkets": "Φόρτωση αγορών προβλέψεων...",
       "infrastructure": "Έκθεση Υποδομών",
-      "briefUnavailable": "Ενημέρωση AI μη διαθέσιμη — ρυθμίστε το OPENROUTER_API_KEY στις Ρυθμίσεις.",
+      "briefUnavailable": "Η σύνοψη AI δεν είναι διαθέσιμη αυτή τη στιγμή.",
       "cached": "Αποθηκευμένο",
       "fresh": "Πρόσφατο",
       "noMarkets": "Δεν βρέθηκαν αγορές προβλέψεων",

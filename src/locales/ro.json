@@ -16,7 +16,7 @@
     "predictionMarkets": "Piețe de predicții",
     "loadingMarkets": "Se încarcă piețele de predicții...",
     "infrastructure": "Expunerea infrastructurii",
-    "briefUnavailable": "Brief AI indisponibil — configurați OPENROUTER_API_KEY în Setări.",
+    "briefUnavailable": "Rezumat AI indisponibil momentan.",
     "cached": "În cache",
     "fresh": "Proaspăt",
     "noMarkets": "Nu există piețe active pentru această țară.",
@@ -126,13 +126,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Index de instabilitate: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} au fost detectate proteste active",
-      "aircraftTracked": "{{count}} aeronave militare urmărite",
-      "vesselsTracked": "{{count}} navele militare urmărite",
-      "internetOutages": "{{count}} întreruperi de internet",
-      "recentEarthquakes": "{{count}} cutremure recente",
+      "protestsDetected": "Proteste active: {{count}}",
+      "aircraftTracked": "Aeronave militare monitorizate: {{count}}",
+      "vesselsTracked": "Nave militare monitorizate: {{count}}",
+      "internetOutages": "Întreruperi de internet: {{count}}",
+      "recentEarthquakes": "Cutremure recente: {{count}}",
       "stockIndex": "Indice bursier: {{value}}",
-      "activeStrikes": "{{count}} avertismente active detectate"
+      "activeStrikes": "Lovituri militare active: {{count}}"
     },
     "countryFacts": "Date despre țară",
     "loadingFacts": "Se încarcă datele țării...",
@@ -814,7 +814,7 @@
       "fresh": "Proaspăt",
       "noMarkets": "Nu au fost găsite piețe de predicție",
       "predictionMarkets": "Piețe de predicții",
-      "unavailable": "Brief AI indisponibil — configurați OPENROUTER_API_KEY în Setări."
+      "unavailable": "Rezumat AI indisponibil momentan."
     },
     "countryBrief": {
       "identifying": "Se identifică țara...",
@@ -830,7 +830,7 @@
       "predictionMarkets": "Piețe de predicții",
       "loadingMarkets": "Se încarcă piețele de predicții...",
       "infrastructure": "Expunerea infrastructurii",
-      "briefUnavailable": "Brief AI indisponibil — configurați OPENROUTER_API_KEY în Setări.",
+      "briefUnavailable": "Rezumat AI indisponibil momentan.",
       "cached": "În cache",
       "fresh": "Proaspăt",
       "noMarkets": "Nu au fost găsite piețe de predicție",

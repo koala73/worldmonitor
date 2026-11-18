@@ -16,7 +16,7 @@
     "predictionMarkets": "Пазари на предвиждане",
     "loadingMarkets": "Зареждане на пазарите на предвиждане...",
     "infrastructure": "Експозиция на инфраструктура",
-    "briefUnavailable": "AI преглед недостъпен — конфигурирайте OPENROUTER_API_KEY в Settings.",
+    "briefUnavailable": "AI преглед недостъпен в момента.",
     "cached": "Кеширан",
     "fresh": "Свеж",
     "noMarkets": "Няма активни пазари за тази страна.",
@@ -126,13 +126,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Индекс на нестабилност: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} активни протести открити",
-      "aircraftTracked": "{{count}} военни летателни средства проследени",
-      "vesselsTracked": "{{count}} военни кораби проследени",
-      "internetOutages": "{{count}} прекъсвания в интернета",
-      "recentEarthquakes": "{{count}} скорошни землетресения",
+      "protestsDetected": "Активни протести: {{count}}",
+      "aircraftTracked": "Военни самолети под наблюдение: {{count}}",
+      "vesselsTracked": "Военни кораби под наблюдение: {{count}}",
+      "internetOutages": "Прекъсвания на интернета: {{count}}",
+      "recentEarthquakes": "Последни земетресения: {{count}}",
       "stockIndex": "Фондов индекс: {{value}}",
-      "activeStrikes": "{{count}} активни удари открити"
+      "activeStrikes": "Активни военни удари: {{count}}"
     },
     "countryFacts": "Факти за страната",
     "loadingFacts": "Зареждане на фактите за страната...",
@@ -811,7 +811,7 @@
       "fresh": "Свеж",
       "noMarkets": "Не са намерени пазари на предвиждане",
       "predictionMarkets": "Пазари на предвиждане",
-      "unavailable": "AI преглед недостъпен — конфигурирайте OPENROUTER_API_KEY в Settings."
+      "unavailable": "AI преглед недостъпен в момента."
     },
     "countryBrief": {
       "identifying": "Идентифициране на държава...",
@@ -827,7 +827,7 @@
       "predictionMarkets": "Пазари на предвиждане",
       "loadingMarkets": "Зареждане на пазарите на предвиждане...",
       "infrastructure": "Експозиция на инфраструктура",
-      "briefUnavailable": "AI преглед недостъпен — конфигурирайте OPENROUTER_API_KEY в Settings.",
+      "briefUnavailable": "AI преглед недостъпен в момента.",
       "cached": "Кеширан",
       "fresh": "Свеж",
       "noMarkets": "Не са намерени пазари на предвиждане",

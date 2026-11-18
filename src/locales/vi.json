@@ -16,7 +16,7 @@
     "predictionMarkets": "Thị trường Dự đoán",
     "loadingMarkets": "Đang tải thị trường dự đoán...",
     "infrastructure": "Mức độ phơi bày Hạ tầng",
-    "briefUnavailable": "Bản tin AI không khả dụng — cấu hình OPENROUTER_API_KEY trong Cài đặt.",
+    "briefUnavailable": "Tóm tắt AI không khả dụng lúc này.",
     "cached": "Đã lưu cache",
     "fresh": "Mới cập nhật",
     "noMarkets": "Không tìm thấy thị trường dự đoán",
@@ -126,13 +126,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Chỉ số Bất ổn: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "Phát hiện {{count}} cuộc biểu tình đang diễn ra",
-      "aircraftTracked": "Đang theo dõi {{count}} máy bay quân sự",
-      "vesselsTracked": "Đang theo dõi {{count}} tàu quân sự",
-      "internetOutages": "{{count}} sự cố gián đoạn internet",
-      "recentEarthquakes": "{{count}} trận động đất gần đây",
+      "protestsDetected": "Cuộc biểu tình đang hoạt động: {{count}}",
+      "aircraftTracked": "Máy bay quân sự được theo dõi: {{count}}",
+      "vesselsTracked": "Tàu quân sự được theo dõi: {{count}}",
+      "internetOutages": "Gián đoạn Internet: {{count}}",
+      "recentEarthquakes": "Các trận động đất gần đây: {{count}}",
       "stockIndex": "Chỉ số chứng khoán: {{value}}",
-      "activeStrikes": "Phát hiện {{count}} cuộc đình công đang diễn ra"
+      "activeStrikes": "Các cuộc tấn công quân sự đang diễn ra: {{count}}"
     },
     "countryFacts": "Thông tin quốc gia",
     "loadingFacts": "Đang tải thông tin quốc gia...",
@@ -808,7 +808,7 @@
       "fresh": "Mới cập nhật",
       "noMarkets": "Không tìm thấy thị trường dự đoán",
       "predictionMarkets": "Thị trường Dự đoán",
-      "unavailable": "Bản tin AI không khả dụng — cấu hình OPENROUTER_API_KEY trong Cài đặt."
+      "unavailable": "Tóm tắt AI không khả dụng lúc này."
     },
     "countryBrief": {
       "identifying": "Đang xác định quốc gia...",
@@ -824,7 +824,7 @@
       "predictionMarkets": "Thị trường Dự đoán",
       "loadingMarkets": "Đang tải thị trường dự đoán...",
       "infrastructure": "Mức độ phơi bày Hạ tầng",
-      "briefUnavailable": "Bản tin AI không khả dụng — cấu hình OPENROUTER_API_KEY trong Cài đặt.",
+      "briefUnavailable": "Tóm tắt AI không khả dụng lúc này.",
       "cached": "Đã lưu cache",
       "fresh": "Mới cập nhật",
       "noMarkets": "Không tìm thấy thị trường dự đoán",

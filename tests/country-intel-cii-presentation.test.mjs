@@ -46,6 +46,7 @@ const mlWorker = { isAvailable: false };
 const getActiveFrameworkForPanel = () => null;
 const BETA_MODE = false;
 const getCurrentLanguage = () => 'en';
+const isDesktopRuntime = () => false;
 ${managerClass.getText(ast)}
 export { CountryBriefController };
 `, loader: 'ts', resolveDir: root }, bundle: true, platform: 'node', format: 'esm', write: false,

@@ -16,7 +16,7 @@
     "predictionMarkets": "Рынки прогнозов",
     "loadingMarkets": "Загрузка рынков прогнозов...",
     "infrastructure": "Инфраструктурная уязвимость",
-    "briefUnavailable": "ИИ-сводка недоступна — настройте OPENROUTER_API_KEY в Настройках.",
+    "briefUnavailable": "AI-сводка недоступна в данный момент.",
     "cached": "Кэш",
     "fresh": "Свежие",
     "noMarkets": "Рынки прогнозов не найдены",
@@ -126,13 +126,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Индекс нестабильности: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} активных протестов обнаружено",
-      "aircraftTracked": "{{count}} военных самолётов отслеживается",
-      "vesselsTracked": "{{count}} военных кораблей отслеживается",
-      "internetOutages": "{{count}} сбоев интернета",
-      "recentEarthquakes": "{{count}} недавних землетрясений",
+      "protestsDetected": "Активные протесты: {{count}}",
+      "aircraftTracked": "Отслеживаемые военные самолёты: {{count}}",
+      "vesselsTracked": "Отслеживаемые военные корабли: {{count}}",
+      "internetOutages": "Сбои в интернете: {{count}}",
+      "recentEarthquakes": "Землетрясения за последнее время: {{count}}",
       "stockIndex": "Фондовый индекс: {{value}}",
-      "activeStrikes": "{{count}} активных забастовок обнаружено"
+      "activeStrikes": "Активные военные удары: {{count}}"
     },
     "countryFacts": "Сведения о стране",
     "loadingFacts": "Загрузка сведений о стране...",
@@ -817,7 +817,7 @@
       "fresh": "Свежие",
       "noMarkets": "Рынки прогнозов не найдены",
       "predictionMarkets": "Рынки прогнозов",
-      "unavailable": "ИИ-сводка недоступна — настройте OPENROUTER_API_KEY в Настройках."
+      "unavailable": "AI-сводка недоступна в данный момент."
     },
     "countryBrief": {
       "identifying": "Определение страны...",
@@ -833,7 +833,7 @@
       "predictionMarkets": "Рынки прогнозов",
       "loadingMarkets": "Загрузка рынков прогнозов...",
       "infrastructure": "Инфраструктурная уязвимость",
-      "briefUnavailable": "ИИ-сводка недоступна — настройте OPENROUTER_API_KEY в Настройках.",
+      "briefUnavailable": "AI-сводка недоступна в данный момент.",
       "cached": "Кэш",
       "fresh": "Свежие",
       "noMarkets": "Рынки прогнозов не найдены",

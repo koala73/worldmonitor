@@ -16,7 +16,7 @@
     "predictionMarkets": "ตลาดพยากรณ์",
     "loadingMarkets": "กำลังโหลดตลาดพยากรณ์...",
     "infrastructure": "โครงสร้างพื้นฐานที่เปิดเผย",
-    "briefUnavailable": "สรุป AI ไม่พร้อมใช้งาน — กรุณาตั้งค่า OPENROUTER_API_KEY ในการตั้งค่า",
+    "briefUnavailable": "บทวิเคราะห์ AI ไม่พร้อมใช้งานในขณะนี้",
     "cached": "แคชแล้ว",
     "fresh": "ใหม่",
     "noMarkets": "ไม่พบตลาดพยากรณ์",
@@ -126,13 +126,13 @@
     },
     "fallback": {
       "instabilityIndex": "**ดัชนีความไม่มั่นคง: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "ตรวจพบการประท้วงที่ยังดำเนินอยู่ {{count}} รายการ",
-      "aircraftTracked": "ติดตามอากาศยานทหาร {{count}} ลำ",
-      "vesselsTracked": "ติดตามเรือรบ {{count}} ลำ",
-      "internetOutages": "การหยุดชะงักอินเทอร์เน็ต {{count}} รายการ",
-      "recentEarthquakes": "แผ่นดินไหวล่าสุด {{count}} ครั้ง",
+      "protestsDetected": "การประท้วงที่กำลังเกิดขึ้น: {{count}}",
+      "aircraftTracked": "เครื่องบินทหารที่ติดตามอยู่: {{count}}",
+      "vesselsTracked": "เรือทหารที่ติดตามอยู่: {{count}}",
+      "internetOutages": "การหยุดชะงักของอินเทอร์เน็ต: {{count}}",
+      "recentEarthquakes": "แผ่นดินไหวเมื่อเร็ว ๆ นี้: {{count}}",
       "stockIndex": "ดัชนีหุ้น: {{value}}",
-      "activeStrikes": "ตรวจพบการนัดหยุดงาน {{count}} รายการ"
+      "activeStrikes": "การโจมตีทางทหารที่กำลังดำเนินการ: {{count}}"
     },
     "countryFacts": "ข้อมูลประเทศ",
     "loadingFacts": "กำลังโหลดข้อมูลประเทศ...",
@@ -808,7 +808,7 @@
       "fresh": "ใหม่",
       "noMarkets": "ไม่พบตลาดพยากรณ์",
       "predictionMarkets": "ตลาดพยากรณ์",
-      "unavailable": "สรุป AI ไม่พร้อมใช้งาน — กรุณาตั้งค่า OPENROUTER_API_KEY ในการตั้งค่า"
+      "unavailable": "บทวิเคราะห์ AI ไม่พร้อมใช้งานในขณะนี้"
     },
     "countryBrief": {
       "identifying": "กำลังระบุประเทศ...",
@@ -824,7 +824,7 @@
       "predictionMarkets": "ตลาดพยากรณ์",
       "loadingMarkets": "กำลังโหลดตลาดพยากรณ์...",
       "infrastructure": "โครงสร้างพื้นฐานที่เปิดเผย",
-      "briefUnavailable": "สรุป AI ไม่พร้อมใช้งาน — กรุณาตั้งค่า OPENROUTER_API_KEY ในการตั้งค่า",
+      "briefUnavailable": "บทวิเคราะห์ AI ไม่พร้อมใช้งานในขณะนี้",
       "cached": "แคชแล้ว",
       "fresh": "ใหม่",
       "noMarkets": "ไม่พบตลาดพยากรณ์",

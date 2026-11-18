@@ -16,7 +16,7 @@
     "predictionMarkets": "Tahmin Piyasalari",
     "loadingMarkets": "Tahmin piyasalari yukleniyor...",
     "infrastructure": "Altyapi Maruziyeti",
-    "briefUnavailable": "Yapay zeka brifingi kullanilamaz — Ayarlar'dan OPENROUTER_API_KEY yapilandiriniz.",
+    "briefUnavailable": "AI özeti şu anda kullanılamıyor.",
     "cached": "Onbellekten",
     "fresh": "Guncel",
     "noMarkets": "Tahmin piyasasi bulunamadi",
@@ -126,13 +126,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Istikrarsizlik Endeksi: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} aktif protesto tespit edildi",
-      "aircraftTracked": "{{count}} askeri ucak takip ediliyor",
-      "vesselsTracked": "{{count}} askeri gemi takip ediliyor",
-      "internetOutages": "{{count}} internet kesintisi",
-      "recentEarthquakes": "{{count}} son deprem",
+      "protestsDetected": "Etkin protestolar: {{count}}",
+      "aircraftTracked": "İzlenen askeri uçak: {{count}}",
+      "vesselsTracked": "İzlenen askeri gemi: {{count}}",
+      "internetOutages": "İnternet kesintileri: {{count}}",
+      "recentEarthquakes": "Son depremler: {{count}}",
       "stockIndex": "Borsa endeksi: {{value}}",
-      "activeStrikes": "{{count}} aktif grev tespit edildi"
+      "activeStrikes": "Etkin askeri saldırılar: {{count}}"
     },
     "countryFacts": "Ülke bilgileri",
     "loadingFacts": "Ülke bilgileri yükleniyor...",
@@ -811,7 +811,7 @@
       "fresh": "Guncel",
       "noMarkets": "Tahmin piyasasi bulunamadi",
       "predictionMarkets": "Tahmin Piyasalari",
-      "unavailable": "Yapay zeka brifingi kullanilamaz — Ayarlar'dan OPENROUTER_API_KEY yapilandiriniz."
+      "unavailable": "AI özeti şu anda kullanılamıyor."
     },
     "countryBrief": {
       "identifying": "Ulke belirleniyor...",
@@ -827,7 +827,7 @@
       "predictionMarkets": "Tahmin Piyasalari",
       "loadingMarkets": "Tahmin piyasalari yukleniyor...",
       "infrastructure": "Altyapi Maruziyeti",
-      "briefUnavailable": "Yapay zeka brifingi kullanilamaz — Ayarlar'dan OPENROUTER_API_KEY yapilandiriniz.",
+      "briefUnavailable": "AI özeti şu anda kullanılamıyor.",
       "cached": "Onbellekten",
       "fresh": "Guncel",
       "noMarkets": "Tahmin piyasasi bulunamadi",

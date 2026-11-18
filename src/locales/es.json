@@ -16,7 +16,7 @@
     "predictionMarkets": "Mercados de predicción",
     "loadingMarkets": "Cargando mercados de predicción...",
     "infrastructure": "Exposición de infraestructura",
-    "briefUnavailable": "Resumen de IA no disponible: configure OPENROUTER_API_KEY en Configuración.",
+    "briefUnavailable": "Resumen de IA no disponible en este momento.",
     "cached": "En caché",
     "fresh": "Actual",
     "noMarkets": "No se encontraron mercados de predicción",
@@ -68,13 +68,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Índice de inestabilidad: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} protestas activas detectadas",
-      "aircraftTracked": "{{count}} aeronaves militares rastreadas",
-      "vesselsTracked": "{{count}} buques militares rastreados",
-      "internetOutages": "{{count}} cortes de Internet",
-      "recentEarthquakes": "{{count}} terremotos recientes",
+      "protestsDetected": "Protestas activas: {{count}}",
+      "aircraftTracked": "Aeronaves militares monitoreadas: {{count}}",
+      "vesselsTracked": "Buques militares monitoreados: {{count}}",
+      "internetOutages": "Interrupciones de internet: {{count}}",
+      "recentEarthquakes": "Terremotos recientes: {{count}}",
       "stockIndex": "Índice bursátil: {{value}}",
-      "activeStrikes": "{{count}} huelgas activas detectadas"
+      "activeStrikes": "Ataques militares activos: {{count}}"
     },
     "militaryActivity": "Actividad militar",
     "defenseIndustrial": {
@@ -771,7 +771,7 @@
       "fresh": "Fresco",
       "noMarkets": "No se encontraron mercados de predicción",
       "predictionMarkets": "Mercados de predicción",
-      "unavailable": "Resumen de IA no disponible: configure OPENROUTER_API_KEY en Configuración."
+      "unavailable": "Resumen de IA no disponible en este momento."
     },
     "countryBrief": {
       "components": {
@@ -807,7 +807,7 @@
       "predictionMarkets": "Mercados de predicción",
       "loadingMarkets": "Cargando mercados de predicción...",
       "infrastructure": "Exposición de infraestructura",
-      "briefUnavailable": "Resumen de IA no disponible: configure OPENROUTER_API_KEY en Configuración.",
+      "briefUnavailable": "Resumen de IA no disponible en este momento.",
       "cached": "en cache",
       "fresh": "Fresco",
       "noMarkets": "No se encontraron mercados de predicción",
