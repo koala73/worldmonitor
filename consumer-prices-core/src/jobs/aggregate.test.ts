@@ -220,7 +220,9 @@ describe('index composition: products and items leaving or joining the basket', 
   it('stamps every write and the anchor lookup with the one date read at the start of the run', async () => {
     await runDay('2026-11-12', [basketRow('milk', 'dairy', 'a', 12), basketRow('bread', 'bread', 'a', 5)], baselines);
     const sqls = query.mock.calls.map(([sql]) => sql as string);
-    expect(sqls.filter((sql) => sql.includes('NOW()::date')).length).toBe(1);
+    // Read once, after the lock, on the statement's clock rather than the transaction's.
+    expect(sqls.filter((sql) => /(NOW|statement_timestamp)\(\)::date/.test(sql))).toHaveLength(1);
+    expect(sqls.find((sql) => sql.includes('has_inputs'))).toContain('statement_timestamp()::date');
     expect(sqls.find((sql) => sql.includes('metric_date < $3::date'))).toBeDefined();
     for (const args of indexWrites()) expect(args[1]).toBe('2026-11-12');
     expect(anchorArgs.map((args) => args[2])).toEqual(['2026-11-12']);
@@ -292,5 +294,7 @@ describe('index composition: products and items leaving or joining the basket', 
     });
     await expect(aggregateAll()).rejects.toThrow(/wrote no index — apply migration 013/);
     expect(query.mock.calls.some(([sql]) => (sql as string).includes('computed_index_inputs') && !(sql as string).includes('has_inputs'))).toBe(false);
+    // The day's existing indices stay: only the zero-coverage row is upserted.
+    expect(query.mock.calls.some(([sql]) => (sql as string).includes('DELETE FROM computed_indices'))).toBe(false);
   });
 });

@@ -60,7 +60,7 @@ async function getBasketRows(basketSlug: string, marketCode: string, execute: Qu
        WHERE retailer_product_id = rp.id
        ORDER BY observed_at DESC, id DESC LIMIT 1
      ) po ON po.in_stock = true
-       AND rp.last_seen_at >= NOW() - make_interval(days => $3)
+       AND rp.last_seen_at >= statement_timestamp() - make_interval(days => $3)
      WHERE b.slug = $1`,
     [basketSlug, marketCode, MAX_OBSERVATION_AGE_DAYS],
   );
@@ -334,12 +334,16 @@ async function aggregateBasketLocked(
 ): Promise<boolean> {
   await execute(`SELECT pg_advisory_xact_lock(hashtext('consumer-prices-aggregate|' || $1))`, [basketId]);
 
-  // One date for the whole run: separate NOW()::date reads would split a run
-  // that crosses midnight across two metric dates and two chain anchors.
+  // One date for the whole run: separate date reads would split a run that
+  // crosses midnight across two metric dates and two chain anchors. It is read
+  // after the lock with statement_timestamp(): NOW() is the transaction's
+  // start, so a run that waited for the lock across midnight would otherwise
+  // rewrite yesterday. The freshness cutoff in getBasketRows uses the same
+  // clock for the same reason.
   // Migrations are applied by hand, so this code can reach production before
   // 013 does; without the inputs table no index can be chained.
   const runResult = await execute<{ metric_date: string; has_inputs: boolean }>(
-    `SELECT to_char(NOW()::date, 'YYYY-MM-DD') AS metric_date,
+    `SELECT to_char(statement_timestamp()::date, 'YYYY-MM-DD') AS metric_date,
             to_regclass('computed_index_inputs') IS NOT NULL AS has_inputs`,
   );
   const metricDate = runResult.rows[0].metric_date;
@@ -354,10 +358,11 @@ async function aggregateBasketLocked(
     // show a price level for a day with no coverage.
     // The run's transaction covers both statements: a failed coverage write
     // must not leave the day's indices deleted with nothing in their place, or
-    // the overview would fall back to an older covered day.
-    await execute(`DELETE FROM computed_indices
-     WHERE basket_id = $1 AND metric_date = $2::date`, [basketId, metricDate]);
+    // the overview would fall back to an older covered day. Without migration
+    // 013 the day's existing rows are kept, as on the populated path.
     if (hasInputs) {
+      await execute(`DELETE FROM computed_indices
+       WHERE basket_id = $1 AND metric_date = $2::date`, [basketId, metricDate]);
       await execute(`DELETE FROM computed_index_inputs WHERE basket_id = $1 AND metric_date = $2::date`, [basketId, metricDate]);
     }
     await writeComputedIndex(basketId, metricDate, null, null, 'coverage_pct', 0, execute);

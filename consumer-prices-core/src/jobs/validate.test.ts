@@ -98,20 +98,23 @@ it('selects the latest observation before checking stock', async () => {
   expect(sql).not.toContain('WHERE retailer_product_id = rp.id AND in_stock = true');
   expect(sql).toContain(') po ON po.in_stock = true');
 });
+// Aggregate reads inside its per-basket transaction, after the lock wait, so
+// its cutoff is the statement's clock: NOW() would be the transaction start.
 it.each([
-  ['validate', () => validateAll(), () => query.mock.calls[0]],
+  ['validate', () => validateAll(), () => query.mock.calls[0], 'NOW()'],
   ['aggregate', async () => {
     query.mockResolvedValueOnce({ rows: [{ id: 'basket' }] });
     tx.mockResolvedValueOnce(LOCK).mockResolvedValueOnce(RUN_DATE);
     await aggregateBasket('test', 'AE');
-  }, () => tx.mock.calls[2]],
-] as const)('%s reads only products a scrape saw within the freshness window', async (_name, run, priced) => {
+  }, () => tx.mock.calls[2], 'statement_timestamp()'],
+] as const)('%s reads only products a scrape saw within the freshness window', async (_name, run, priced, clock) => {
   await run();
   const [sql, args] = priced() as [string, unknown[]];
   // last_seen_at, not observed_at: an unchanged payload reuses its old
   // observation row, so observed_at stops moving while the price stays current.
-  expect(sql).toMatch(/\) po ON po\.in_stock = true\s+AND rp\.last_seen_at >= NOW\(\) - make_interval\(days => \$3\)/);
-  expect(sql).not.toContain('po.observed_at >= NOW()');
+  expect(sql).toMatch(/\) po ON po\.in_stock = true\s+AND rp\.last_seen_at >= /);
+  expect(sql).toContain(`rp.last_seen_at >= ${clock} - make_interval(days => $3)`);
+  expect(sql).not.toContain('po.observed_at >=');
   expect(args[2]).toBe(MAX_OBSERVATION_AGE_DAYS);
 });
 it('records zero coverage when the freshness window leaves the basket empty', async () => {
