@@ -81,6 +81,21 @@ function matchCommands(
 ): SearchCommandMatch[] {
   if (query.length < 2) return [];
   const matched: SearchCommandMatch[] = [];
+  // Every country's brief command carries "brief", so for "brief china" the
+  // whole-query score ties across all of them. Break that tie on how many
+  // query words a command matches ("brief south sudan": South Sudan matches
+  // three, Sudan two), then on how well: exact beats prefix beats substring,
+  // so "brief ukraine" picks Ukraine over Russia, whose aliases mention Ukraine.
+  const words = query.split(/\s+/).filter((word) => word.length >= 2);
+  const coverage = new Map<SearchCommandMatch, { matched: number; strength: number }>();
+  const wordScore = (terms: string[], word: string): number => Math.max(0, ...terms.map((term) => (
+    term === word ? 3 : term.startsWith(word) ? 2 : term.includes(word) ? 1 : 0
+  )));
+  const wordCoverage = (terms: string[]): { matched: number; strength: number } => {
+    if (words.length < 2) return { matched: 0, strength: 0 };
+    const scores = words.map((word) => wordScore(terms, word));
+    return { matched: scores.filter((score) => score > 0).length, strength: scores.reduce((sum, score) => sum + score, 0) };
+  };
 
   for (const command of options.commands) {
     if (!commandMatchesSearchScope(options.scope, command.category)) continue;
@@ -102,17 +117,24 @@ function matchCommands(
       }
     }
     if (bestScore > 0) {
-      matched.push({
+      const match: SearchCommandMatch = {
         kind: 'command',
         command,
         score: bestScore,
         title,
         subtitle: options.resolveCommandCategoryLabel(command),
-      });
+      };
+      matched.push(match);
+      coverage.set(match, wordCoverage(terms));
     }
   }
 
-  return matched.sort((left, right) => right.score - left.score).slice(0, MAX_COMMANDS);
+  // Whole-query exact, then whole-query prefix, then matched words, then strength.
+  return matched
+    .sort((left, right) => (right.score - left.score)
+      || (coverage.get(right)!.matched - coverage.get(left)!.matched)
+      || (coverage.get(right)!.strength - coverage.get(left)!.strength))
+    .slice(0, MAX_COMMANDS);
 }
 
 // What alert channels put before a headline: the email subject prefix and the

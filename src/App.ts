@@ -1807,6 +1807,7 @@ export class App {
       loadSecurityAdvisories: () => this.dataLoader.loadSecurityAdvisories(),
       loadTelegramIntel: () => this.dataLoader.loadTelegramIntel(),
       applyMapLayerChange: (layer, enabled, source) => this.eventHandlers.applyMapLayerChange(layer, enabled, source),
+      syncUrlState: () => this.eventHandlers.syncUrlStateIfStarted(),
       isFreeTierFallbackActive: () => this.freeTierGate.authSettleDeadlineExceeded,
     });
 

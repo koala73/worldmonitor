@@ -47,7 +47,9 @@ export const COMMANDS: Command[] = [
   { id: 'nav:america', keywords: ['america', 'americas', 'us', 'usa'], label: 'Map: Americas', icon: '\u{1F5FD}', category: 'navigate' },
   { id: 'nav:africa', keywords: ['africa'], label: 'Map: Africa', icon: '\u{1F30D}', category: 'navigate' },
   { id: 'nav:latam', keywords: ['latam', 'latin america', 'south america'], label: 'Map: Latin America', icon: '\u{1F30E}', category: 'navigate' },
-  { id: 'nav:oceania', keywords: ['oceania', 'australia', 'pacific islands'], label: 'Map: Oceania', icon: '\u{1F30F}', category: 'navigate' },
+  // "australia region" keeps the English name reachable in translated views
+  // (Australia has no curated entry) as a prefix match, below Map: Australia.
+  { id: 'nav:oceania', keywords: ['oceania', 'australasia', 'australia region', 'pacific islands'], label: 'Map: Oceania', icon: '\u{1F30F}', category: 'navigate' },
 
   // Layer presets (toggle groups)
   { id: 'layers:military', keywords: ['military', 'military layers', 'show military'], label: 'Show military layers', icon: '\u{1F396}\uFE0F', category: 'layers' },
@@ -81,7 +83,9 @@ export const COMMANDS: Command[] = [
   { id: 'layer:gps', keywords: ['gps', 'gps jamming', 'jamming', 'spoofing'], label: 'Toggle GPS jamming', icon: '\u{1F4E1}', category: 'layers' },
   { id: 'layer:satellites', keywords: ['satellites', 'orbital', 'surveillance', 'space'], label: 'Toggle orbital surveillance', icon: '\u{1F6F0}\uFE0F', category: 'layers' },
   { id: 'layer:ucdp', keywords: ['ucdp', 'armed conflict', 'armed conflict events'], label: 'Toggle armed conflict events', icon: '\u2694\uFE0F', category: 'layers' },
-  { id: 'layer:iran', keywords: ['iran', 'iran attacks', 'middle east strikes', 'strikes', 'missiles', 'drones'], label: 'Toggle Middle East strikes', icon: '\u{1F3AF}', category: 'layers' },
+  // No bare country names in layer or panel keywords: an exact "iran" tied
+  // with Map: Iran and won on catalogue order (tests/dom/search-command-ranking).
+  { id: 'layer:iran', keywords: ['iran attacks', 'show iran', 'middle east strikes', 'strikes', 'missiles', 'drones'], label: 'Toggle Middle East strikes', icon: '\u{1F3AF}', category: 'layers' },
   { id: 'layer:irradiators', keywords: ['irradiators', 'gamma', 'radiation'], label: 'Toggle gamma irradiators', icon: '\u2623\uFE0F', category: 'layers' },
   { id: 'layer:radiation', keywords: ['radiation', 'radnet', 'safecast', 'anomalies'], label: 'Toggle radiation anomalies', icon: '\u2622\uFE0F', category: 'layers' },
   { id: 'layer:spaceports', keywords: ['spaceports', 'launch sites', 'rockets'], label: 'Toggle spaceports', icon: '\u{1F680}', category: 'layers' },
@@ -108,7 +112,9 @@ export const COMMANDS: Command[] = [
   { id: 'panel:toronto-safety', keywords: ['toronto safety', 'tps crime', 'calls attended', 'major crime indicators'], label: 'Panel: Toronto Safety', icon: '\u{1F6E1}\uFE0F', category: 'panels' },
   { id: 'panel:cross-source-signals', keywords: ['cross source', 'signal aggregator', 'composite escalation', 'multi signal'], label: 'Panel: Cross-Source Signals', icon: '\u{1F4E1}', category: 'panels' },
   { id: 'panel:politics', keywords: ['world news', 'politics', 'geopolitics'], label: 'Panel: World News', icon: '\u{1F30D}', category: 'panels' },
-  { id: 'panel:us', keywords: ['united states', 'us news', 'america news'], label: 'Panel: United States', icon: '\u{1F1FA}\u{1F1F8}', category: 'panels' },
+  // "united states news" keeps the English name reachable in translated views
+  // (prefix match, below Map: United States) without the exact-name tie.
+  { id: 'panel:us', keywords: ['united states news', 'us news', 'america news', 'us politics'], label: 'Panel: United States', icon: '\u{1F1FA}\u{1F1F8}', category: 'panels' },
   { id: 'panel:europe', keywords: ['europe news', 'eu news', 'europe', 'european'], label: 'Panel: Europe', icon: '\u{1F1EA}\u{1F1FA}', category: 'panels' },
   { id: 'panel:middleeast', keywords: ['middle east news', 'mideast news', 'middle east', 'gulf', 'levant'], label: 'Panel: Middle East', icon: '\u{1F54C}', category: 'panels' },
   { id: 'panel:africa', keywords: ['africa news', 'africa', 'african', 'sahel'], label: 'Panel: Africa', icon: '\u{1F30D}', category: 'panels' },
