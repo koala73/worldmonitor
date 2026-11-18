@@ -37,3 +37,6 @@ export function clusterTexts(texts: string[], opts?: { threshold?: number }): nu
 export function deriveFeatureHashSalt(value: unknown): number;
 export function setFeatureHashSalt(value: string | null | undefined): number;
 export function activeFeatureHashSalt(): number;
+
+export function normalizeNewsStoryTitle(title: string): string;
+export function newsPublisherCoverageKey(edition: string, title: string): string;
