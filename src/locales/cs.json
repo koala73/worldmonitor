@@ -16,7 +16,7 @@
     "predictionMarkets": "Predikční trhy",
     "loadingMarkets": "Načítám predikční trhy...",
     "infrastructure": "Ohrožení infrastruktury",
-    "briefUnavailable": "AI svodka není k dispozici — nastavte OPENROUTER_API_KEY v Nastavení.",
+    "briefUnavailable": "AI přehled není právě dostupný.",
     "cached": "Z mezipaměti",
     "fresh": "Aktuální",
     "noMarkets": "Nenalezeny žádné predikční trhy",
@@ -68,13 +68,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Index nestability: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "Detekováno aktivních protestů: {{count}}",
-      "aircraftTracked": "Sledováno vojenských letadel: {{count}}",
-      "vesselsTracked": "Sledováno vojenských plavidel: {{count}}",
-      "internetOutages": "Výpadky internetu: {{count}}",
+      "protestsDetected": "Aktivní protesty: {{count}}",
+      "aircraftTracked": "Monitorovaná vojenská letadla: {{count}}",
+      "vesselsTracked": "Monitorované vojenské lodě: {{count}}",
+      "internetOutages": "Přerušení internetu: {{count}}",
       "recentEarthquakes": "Nedávná zemětřesení: {{count}}",
       "stockIndex": "Akciový index: {{value}}",
-      "activeStrikes": "Detekováno aktivních útoků/stávek: {{count}}"
+      "activeStrikes": "Útoky a záchyty: {{count}}"
     },
     "militaryActivity": "Vojenská aktivita",
     "defenseIndustrial": {
@@ -817,7 +817,7 @@
       "fresh": "Aktuální",
       "noMarkets": "Nenalezeny žádné predikční trhy",
       "predictionMarkets": "Predikční trhy",
-      "unavailable": "AI svodka není k dispozici — nastavte OPENROUTER_API_KEY v Nastavení."
+      "unavailable": "AI přehled není právě dostupný."
     },
     "countryBrief": {
       "identifying": "Identifikuji zemi...",
@@ -833,7 +833,7 @@
       "predictionMarkets": "Predikční trhy",
       "loadingMarkets": "Načítám predikční trhy...",
       "infrastructure": "Ohrožení infrastruktury",
-      "briefUnavailable": "AI svodka není k dispozici — nastavte OPENROUTER_API_KEY v Nastavení.",
+      "briefUnavailable": "AI přehled není právě dostupný.",
       "cached": "Z mezipaměti",
       "fresh": "Aktuální",
       "noMarkets": "Nenalezeny žádné predikční trhy",

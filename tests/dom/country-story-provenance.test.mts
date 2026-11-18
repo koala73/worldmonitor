@@ -12,7 +12,7 @@ import { briefSectionState, summarizeCountryBrief, BRIEF_SECTIONS } from '@/comp
 const source = readFileSync(new FileURL('../../src/components/CountryDeepDivePanel.ts', import.meta.url), 'utf8');
 const syntax = ts.createSourceFile('panel.ts', source, ts.ScriptTarget.Latest, true);
 const declaration = syntax.statements.find(statement => ts.isClassDeclaration(statement) && statement.name?.text === 'CountryDeepDivePanel') as ts.ClassDeclaration;
-const methods = ['openOutput', 'restoreActionFocus', 'show', 'resetPanelContent', 'updateBrief', 'formatBrief'].map(name => declaration.members.find(member => ts.isMethodDeclaration(member) && member.name.getText(syntax) === name)!.getText(syntax));
+const methods = ['openOutput', 'restoreActionFocus', 'show', 'resetPanelContent', 'updateBrief', 'formatBrief', 'isSignalRowsBrief'].map(name => declaration.members.find(member => ts.isMethodDeclaration(member) && member.name.getText(syntax) === name)!.getText(syntax));
 const executable = ts.transpileModule(`class Harness {${methods.join('\n')}} exports.Harness=Harness;`, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 
 function element(tag: string, className = '', text = ''): HTMLElement {
@@ -75,6 +75,39 @@ describe('Actual assessment renderer to captured story provenance', () => {
     const story = createCountryBriefOutput(captured, 'story', () => {});
     expect(story.textContent).toContain('Fixture evidence observation'); expect(story.textContent).toContain('2026-10-03');
     expect(story.textContent).not.toContain('Replacement assessment'); expect(story.textContent).not.toContain('France');
+  });
+
+  it('keeps each fallback signal on its own row in the summary view', () => {
+    const { panel } = fixture();
+    panel.updateBrief({ code: 'CA', fallback: true, signalRows: true, brief: '**Instability Index: 52/100** (Elevated, Rising)\nActive protests: 1\nMilitary aircraft tracked: 3' });
+    const summary = panel.briefBody.querySelector('.cdp-assessment-text.cdp-summary-only') as HTMLElement;
+    const rows = [...summary.querySelectorAll('.brief-para, .brief-section-header')].map((row) => row.textContent?.trim());
+    expect(rows).toEqual(expect.arrayContaining(['Active protests: 1', 'Military aircraft tracked: 3']));
+  });
+
+  it('keeps a local-model prose fallback on the three-sentence summary', () => {
+    const { panel } = fixture();
+    const prose = 'One happened. Two followed. Three came next. Four was later. Five closed it. Six was extra.';
+    panel.updateBrief({ code: 'CA', fallback: true, brief: prose });
+    const summary = panel.briefBody.querySelector('.cdp-assessment-text.cdp-summary-only') as HTMLElement;
+    expect(summary.textContent).toContain('Three came next.');
+    expect(summary.textContent).not.toContain('Four was later.');
+  });
+
+  // A signal refresh rewrites only a signal-row brief; it must not replace
+  // local-model prose (and its sources), which also carries the Fallback badge.
+  it('reports signal rows only for signal-row briefs, not local-model prose', () => {
+    const { panel } = fixture();
+    panel.updateBrief({ code: 'CA', fallback: true, brief: 'One happened. Two followed.' });
+    expect(panel.isSignalRowsBrief()).toBe(false);
+    panel.updateBrief({ code: 'CA', fallback: true, signalRows: true, brief: 'Active protests: 1' });
+    expect(panel.isSignalRowsBrief()).toBe(true);
+    panel.updateBrief({ code: 'CA', brief: 'A full AI brief.' });
+    expect(panel.isSignalRowsBrief()).toBe(false);
+    // Closing the page (hide) clears the brief but leaves the flag set.
+    panel.updateBrief({ code: 'CA', fallback: true, signalRows: true, brief: 'Active protests: 1' });
+    panel.currentBrief = null;
+    expect(panel.isSignalRowsBrief()).toBe(false);
   });
 
   it('preserves actual unavailable assessment state without stale footers or invented clocks', async () => {

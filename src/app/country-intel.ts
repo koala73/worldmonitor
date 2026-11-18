@@ -66,7 +66,7 @@ import { mlWorker } from '@/services/ml-worker';
 import { isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
 import { trackCountrySelected, trackCountryBriefOpened } from '@/services/analytics';
-import { toApiUrl } from '@/services/runtime';
+import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
 import { raceWebMcpAbort, throwIfWebMcpAborted } from '@/services/webmcp';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 import type { NewsItem } from '@/types';
@@ -827,9 +827,14 @@ export class CountryIntelManager implements AppModule {
           } else {
             const lines = this.buildFallbackSignalLines(presentation.score, signals, country, context);
             if (lines.length > 0) {
-              this.ctx.countryBriefPage?.updateBrief({ brief: lines.join('\n'), country, code, fallback: true });
+              this.ctx.countryBriefPage?.updateBrief({ brief: lines.join('\n'), country, code, fallback: true, signalRows: true });
             } else {
-              this.ctx.countryBriefPage?.updateBrief({ brief: '', country, code, error: 'No AI service available. Configure OPENROUTER_API_KEY in Settings for full briefs.' });
+              // Only the desktop app has a Settings field for the key; web
+              // visitors get the page's neutral "unavailable" text.
+              this.ctx.countryBriefPage?.updateBrief({
+                brief: '', country, code,
+                error: isDesktopRuntime() ? 'No AI service available. Configure OPENROUTER_API_KEY in Settings for full briefs.' : undefined,
+              });
             }
           }
         }
@@ -921,12 +926,13 @@ export class CountryIntelManager implements AppModule {
         this.commitCountryScore(presentation, score, signals);
         presentation.signalDetailsPending = true;
         page.updateSignals?.({ ...signals, ...this.getQualifiedMilitaryCounts(code) }, this.buildMilitarySummary(code, name).coverageNotes);
-        // Fallback assessments embed temporal status inline; refresh that copy
+        // Signal-row assessments embed temporal status inline; refresh that copy
         // when chips change so unavailable/zero/global context stays consistent.
-        if (page.isFallbackBrief?.()) {
+        // Local-model prose also carries the Fallback badge but is left alone.
+        if (page.isSignalRowsBrief?.()) {
           const lines = this.buildFallbackSignalLines(score, signals, name, {});
           if (lines.length > 0) {
-            page.updateBrief({ brief: lines.join('\n'), country: name, code, fallback: true });
+            page.updateBrief({ brief: lines.join('\n'), country: name, code, fallback: true, signalRows: true });
           }
         }
         try {

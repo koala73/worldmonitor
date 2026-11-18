@@ -217,7 +217,7 @@
     "predictionMarkets": "Prediction Markets",
     "loadingMarkets": "Loading prediction markets...",
     "infrastructure": "Infrastructure Exposure",
-    "briefUnavailable": "AI brief unavailable — configure OPENROUTER_API_KEY in Settings.",
+    "briefUnavailable": "AI brief unavailable right now.",
     "cached": "Cached",
     "fresh": "Fresh",
     "noMarkets": "No active markets for this country.",
@@ -374,13 +374,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Instability Index: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} active protests detected",
-      "aircraftTracked": "{{count}} military aircraft tracked",
-      "vesselsTracked": "{{count}} military vessels tracked",
-      "internetOutages": "{{count}} internet disruptions",
-      "recentEarthquakes": "{{count}} recent earthquakes",
+      "protestsDetected": "Active protests: {{count}}",
+      "aircraftTracked": "Military aircraft tracked: {{count}}",
+      "vesselsTracked": "Military vessels tracked: {{count}}",
+      "internetOutages": "Internet disruptions: {{count}}",
+      "recentEarthquakes": "Recent earthquakes: {{count}}",
       "stockIndex": "Stock index: {{value}}",
-      "activeStrikes": "{{count}} active strikes detected"
+      "activeStrikes": "Attacks and interceptions: {{count}}"
     },
     "countryFacts": "Country Facts",
     "loadingFacts": "Loading country facts...",
@@ -926,7 +926,7 @@
       "fresh": "Fresh",
       "noMarkets": "No prediction markets found",
       "predictionMarkets": "Prediction Markets",
-      "unavailable": "AI brief unavailable — configure OPENROUTER_API_KEY in Settings."
+      "unavailable": "AI brief unavailable right now."
     },
     "countryBrief": {
       "identifying": "Identifying country...",
@@ -942,7 +942,7 @@
       "predictionMarkets": "Prediction Markets",
       "loadingMarkets": "Loading prediction markets...",
       "infrastructure": "Infrastructure Exposure",
-      "briefUnavailable": "AI brief unavailable — configure OPENROUTER_API_KEY in Settings.",
+      "briefUnavailable": "AI brief unavailable right now.",
       "cached": "Cached",
       "fresh": "Fresh",
       "noMarkets": "No prediction markets found",

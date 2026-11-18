@@ -16,7 +16,7 @@
     "predictionMarkets": "أسواق التنبؤ",
     "loadingMarkets": "جارٍ تحميل أسواق التنبؤ...",
     "infrastructure": "التعرض البنيوي",
-    "briefUnavailable": "الموجز الذكي غير متاح — قم بتهيئة OPENROUTER_API_KEY في الإعدادات.",
+    "briefUnavailable": "الملخص الذي تم إنشاؤه بالذكاء الاصطناعي غير متاح حالياً.",
     "cached": "مخزّن مؤقتاً",
     "fresh": "محدّث",
     "noMarkets": "لم يتم العثور على أسواق تنبؤ",
@@ -68,13 +68,13 @@
     },
     "fallback": {
       "instabilityIndex": "**مؤشر عدم الاستقرار: {{score}}/100** ({{level}}، {{trend}})",
-      "protestsDetected": "{{count}} احتجاج نشط مُكتشف",
-      "aircraftTracked": "{{count}} طائرة عسكرية مُتتبَّعة",
-      "vesselsTracked": "{{count}} سفينة عسكرية مُتتبَّعة",
-      "internetOutages": "{{count}} انقطاع إنترنت",
-      "recentEarthquakes": "{{count}} زلزال حديث",
+      "protestsDetected": "احتجاجات نشطة: {{count}}",
+      "aircraftTracked": "طائرات عسكرية مراقبة: {{count}}",
+      "vesselsTracked": "سفن عسكرية مراقبة: {{count}}",
+      "internetOutages": "انقطاعات الإنترنت: {{count}}",
+      "recentEarthquakes": "زلازل حديثة: {{count}}",
       "stockIndex": "مؤشر الأسهم: {{value}}",
-      "activeStrikes": "{{count}} ضربة نشطة مُكتشفة"
+      "activeStrikes": "الهجمات والاعتراضات: {{count}}"
     },
     "militaryActivity": "النشاط العسكري",
     "defenseIndustrial": {
@@ -823,7 +823,7 @@
       "fresh": "محدّث",
       "noMarkets": "لم يتم العثور على أسواق تنبؤ",
       "predictionMarkets": "أسواق التنبؤ",
-      "unavailable": "الموجز الذكي غير متاح — قم بتهيئة OPENROUTER_API_KEY في الإعدادات."
+      "unavailable": "الملخص الذي تم إنشاؤه بالذكاء الاصطناعي غير متاح حالياً."
     },
     "countryBrief": {
       "identifying": "جارٍ تحديد الدولة...",
@@ -839,7 +839,7 @@
       "predictionMarkets": "أسواق التنبؤ",
       "loadingMarkets": "جارٍ تحميل أسواق التنبؤ...",
       "infrastructure": "التعرض البنيوي",
-      "briefUnavailable": "الموجز الذكي غير متاح — قم بتهيئة OPENROUTER_API_KEY في الإعدادات.",
+      "briefUnavailable": "الملخص الذي تم إنشاؤه بالذكاء الاصطناعي غير متاح حالياً.",
       "cached": "مخزّن مؤقتاً",
       "fresh": "محدّث",
       "noMarkets": "لم يتم العثور على أسواق تنبؤ",
