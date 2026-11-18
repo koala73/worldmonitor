@@ -16,6 +16,9 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
       localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
       localStorage.setItem('wm-pro-key', 'wm-test-food-prices');
+      // Mark the full layout as applied, or the first boot resets panels to the variant defaults.
+      localStorage.setItem('worldmonitor-variant', 'full');
+      localStorage.setItem('worldmonitor-panel-layout-variant', 'full');
       localStorage.setItem('worldmonitor-panels', JSON.stringify({ 'fao-food-price-index': { name: 'Food prices', enabled: true, priority: 0 } }));
     });
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
@@ -81,6 +84,9 @@ for (const failure of ['http', 'empty']) {
       localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
       localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
       localStorage.setItem('wm-pro-key', 'wm-test-food-prices');
+      // Mark the full layout as applied, or the first boot resets panels to the variant defaults.
+      localStorage.setItem('worldmonitor-variant', 'full');
+      localStorage.setItem('worldmonitor-panel-layout-variant', 'full');
       localStorage.setItem('worldmonitor-panels', JSON.stringify({ 'fao-food-price-index': { name: 'Food prices', enabled: true, priority: 0 } }));
     });
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
@@ -109,6 +115,9 @@ for (const degraded of [{ sources: [] }, { unavailable: true, sources: fixture.s
       localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
       localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
       localStorage.setItem('wm-pro-key', 'wm-test-food-prices');
+      // Mark the full layout as applied, or the first boot resets panels to the variant defaults.
+      localStorage.setItem('worldmonitor-variant', 'full');
+      localStorage.setItem('worldmonitor-panel-layout-variant', 'full');
       localStorage.setItem('worldmonitor-panels', JSON.stringify({ 'fao-food-price-index': { name: 'Food prices', enabled: true, priority: 0 } }));
     });
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
