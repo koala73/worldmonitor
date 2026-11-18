@@ -104,6 +104,10 @@ describe('Actual assessment renderer to captured story provenance', () => {
     expect(panel.isSignalRowsBrief()).toBe(true);
     panel.updateBrief({ code: 'CA', brief: 'A full AI brief.' });
     expect(panel.isSignalRowsBrief()).toBe(false);
+    // Closing the page (hide) clears the brief but leaves the flag set.
+    panel.updateBrief({ code: 'CA', fallback: true, signalRows: true, brief: 'Active protests: 1' });
+    panel.currentBrief = null;
+    expect(panel.isSignalRowsBrief()).toBe(false);
   });
 
   it('preserves actual unavailable assessment state without stale footers or invented clocks', async () => {

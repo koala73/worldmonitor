@@ -3363,7 +3363,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   public isSignalRowsBrief(): boolean {
-    return this.currentBriefIsSignalRows;
+    // Closing the page clears currentBrief but not the flag.
+    return this.currentBriefIsSignalRows && this.currentBrief !== null;
   }
 
   public updateScore(score: CountryScore | null, _signals: CountrySignalCounts | null): void {
