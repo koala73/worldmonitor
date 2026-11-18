@@ -9,6 +9,7 @@ vi.mock('@/config/orbital-watch-flag', () => ({ ORBITAL_WATCH_ENABLED: true }));
 
 import type { AppContext } from '@/app/app-context';
 import { CountryIntelManager } from '@/app/country-intel';
+import { CountryDeepDivePanel } from '@/components/CountryDeepDivePanel';
 import { dismissMapContextMenu } from '@/components/MapContextMenu';
 import { installLongPressContextMenu } from '@/utils/long-press';
 
@@ -52,6 +53,193 @@ describe('map context menu satellite pass entry', () => {
     await vi.waitFor(() => expect(openOrbitalWatch).toHaveBeenCalledTimes(1));
     expect(openOrbitalWatch).toHaveBeenCalledWith({ lat: payload.lat, lon: payload.lon }, map, dashboardMap);
     expect(document.querySelector('[role="menu"]')).toBeNull();
+  });
+});
+
+// The brief returns focus to whatever was focused when it opened. A map click
+// leaves focus on an earlier control (a layer toggle), so closing the brief
+// with Escape sent the user there instead of back to the map.
+describe('a country brief opened from the map', () => {
+  type CountryClick = { lat: number; lon: number; code?: string; name?: string };
+  async function managerWithMap() {
+    let clickHandler!: (payload: CountryClick) => void;
+    const map = { ...dashboardMap, onCountryClicked: (cb: (payload: CountryClick) => void) => { clickHandler = cb; } };
+    const returnFocusTo = vi.fn();
+    const manager = new CountryIntelManager({ map, isDestroyed: false, countryBriefPage: { returnFocusTo } } as unknown as AppContext);
+    const focusedAtOpen: Array<Element | null> = [];
+    Reflect.set(manager, 'openCountryBriefByCode', async () => { focusedAtOpen.push(document.activeElement); });
+    await Reflect.get(manager, 'setupCountryIntel').call(manager);
+    return { click: clickHandler, menu: menuHandler, focusedAtOpen, returnFocusTo };
+  }
+  function domWithLayerToggle() {
+    const container = document.createElement('div');
+    container.id = 'mapContainer';
+    const toggle = document.createElement('button');
+    toggle.textContent = 'Conflict zones';
+    document.body.append(toggle, container);
+    toggle.focus();
+    return container;
+  }
+
+  it('moves focus to the map before a map click opens the brief', async () => {
+    const container = domWithLayerToggle();
+    const { click, focusedAtOpen, returnFocusTo } = await managerWithMap();
+    click({ lat: 61, lon: 99, code: 'RU', name: 'Russia' });
+    expect(focusedAtOpen).toEqual([container]);
+    // A brief that is already open is told directly, since it reloads in place.
+    expect(returnFocusTo).toHaveBeenCalledWith(container);
+  });
+
+  it('moves focus to the map before the context menu opens the brief', async () => {
+    const container = domWithLayerToggle();
+    const { menu, focusedAtOpen, returnFocusTo } = await managerWithMap();
+    menu({ lat: 61, lon: 99, screenX: 10, screenY: 10, countryCode: 'RU', countryName: 'Russia' });
+    menuItem('Open Country Brief')!.click();
+    expect(focusedAtOpen).toEqual([container]);
+    expect(returnFocusTo).toHaveBeenCalledWith(container);
+  });
+
+  // First open: the brief module loads before the brief exists, and focus can
+  // move meanwhile. The map's request carries the target to the opened brief.
+  it('returns to the map after a first open, even if focus moved while the brief loaded', async () => {
+    const container = domWithLayerToggle();
+    const toggle = document.querySelector('button')!;
+    let clickHandler!: (payload: CountryClick) => void;
+    const map = { ...dashboardMap, onCountryClicked: (cb: (payload: CountryClick) => void) => { clickHandler = cb; } };
+    const ctx = { map, isDestroyed: false, countryBriefPage: null } as unknown as AppContext;
+    const manager = new CountryIntelManager(ctx);
+    const calls: string[] = [];
+    const page = {
+      showLoading: () => calls.push('showLoading'),
+      returnFocusTo: (target: HTMLElement) => calls.push(target === container ? 'returnFocusTo(map)' : 'returnFocusTo(other)'),
+      isVisible: () => false,
+      getCode: () => null,
+    };
+    Reflect.set(manager, 'ensureCountryBriefPage', async () => {
+      toggle.focus();
+      ctx.countryBriefPage = page as unknown as AppContext['countryBriefPage'];
+      return true;
+    });
+    Reflect.set(manager, 'getCountrySignals', () => new Promise(() => {}));
+    await Reflect.get(manager, 'setupCountryIntel').call(manager);
+    clickHandler({ lat: 61, lon: 99, code: 'RU', name: 'Russia' });
+    await vi.waitFor(() => expect(calls).toEqual(['showLoading', 'returnFocusTo(map)']));
+  });
+
+  it('hands the map over once on a coordinate open, not again after geocoding', async () => {
+    const container = domWithLayerToggle();
+    const returnFocusTo = vi.fn();
+    const page = { showLoading: vi.fn(), returnFocusTo, isVisible: () => true, getCode: () => '__loading__' };
+    const ctx = { map: dashboardMap, isDestroyed: false, countryBriefPage: page } as unknown as AppContext;
+    const manager = new CountryIntelManager(ctx);
+    Reflect.set(manager, 'ensureCountryBriefPage', async () => true);
+    Reflect.set(manager, 'getCountrySignals', () => new Promise(() => {}));
+    const request = { token: 1, owner: 'human', returnTarget: container };
+    Reflect.set(manager, 'briefRequestToken', 1);
+    // openCountryBrief has shown the loading brief and handed the map over;
+    // this is its follow-up once the coordinates resolve to a country.
+    void Reflect.get(manager, 'openCountryBriefByCodeForRequest').call(manager, 'RU', 'Russia', undefined, request, true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(returnFocusTo).not.toHaveBeenCalled();
+  });
+
+  it('offers the map target only to the request the map starts', async () => {
+    domWithLayerToggle();
+    let clickHandler!: (payload: CountryClick) => void;
+    const map = { ...dashboardMap, onCountryClicked: (cb: (payload: CountryClick) => void) => { clickHandler = cb; } };
+    const manager = new CountryIntelManager({ map, isDestroyed: false } as unknown as AppContext);
+    const claim = (owner: 'human' | 'agent') => Reflect.get(manager, 'claimBriefRequest').call(manager, owner) as { returnTarget?: HTMLElement };
+    const claimed: Array<{ returnTarget?: HTMLElement }> = [];
+    // An open that returns before claiming, as an invalid country code does.
+    Reflect.set(manager, 'openCountryBriefByCode', async () => {});
+    await Reflect.get(manager, 'setupCountryIntel').call(manager);
+    clickHandler({ lat: 61, lon: 99, code: 'XX', name: 'Nowhere' });
+    claimed.push(claim('human'));
+    expect(claimed[0]!.returnTarget).toBeUndefined();
+  });
+});
+
+// The real brief: it captures its return target when it opens, and a map click
+// on the visible brief's country reloads it in place rather than reopening it.
+describe('closing a country brief with Escape', () => {
+  let current: CountryDeepDivePanel | null = null;
+  // A failed assertion before Escape must not leave a visible brief whose
+  // document keydown listener answers Escape in a later test.
+  afterEach(() => {
+    if (current?.isVisible()) current.hide();
+    current = null;
+    document.getElementById('country-deep-dive-panel')?.remove();
+  });
+  const pressEscape = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  function setup() {
+    const search = document.createElement('button');
+    search.textContent = 'Search';
+    const map = document.createElement('div');
+    map.tabIndex = -1;
+    document.body.append(search, map);
+    current = new CountryDeepDivePanel();
+    return { search, map, panel: current };
+  }
+
+  const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  const closeButton = () => document.getElementById('deep-dive-close');
+
+  it('returns focus to the control that opened it', async () => {
+    const { map, panel } = setup();
+    map.focus();
+    panel.show('Russia', 'RU', null, null);
+    await nextFrame();
+    expect(document.activeElement).toBe(closeButton());
+    pressEscape();
+    expect(panel.isVisible()).toBe(false);
+    expect(document.activeElement).toBe(map);
+  });
+
+  it('returns focus to the map after a map click reloads the open brief', async () => {
+    const { search, map, panel } = setup();
+    search.focus();
+    panel.show('Russia', 'RU', null, null);
+    await nextFrame();
+    expect(document.activeElement).toBe(closeButton());
+    // The map click: the map takes focus and claims the visible brief, which
+    // moves focus back into the brief before the reload lands.
+    map.focus();
+    panel.returnFocusTo(map);
+    await nextFrame();
+    expect(document.activeElement).toBe(closeButton());
+    panel.show('Russia', 'RU', null, null);
+    pressEscape();
+    expect(panel.isVisible()).toBe(false);
+    expect(document.activeElement).toBe(map);
+  });
+
+  it('keeps focus in the brief when a reload removes the focused control', async () => {
+    const { map, panel } = setup();
+    map.focus();
+    panel.show('Russia', 'RU', null, null);
+    await nextFrame();
+    const control = document.createElement('button');
+    document.getElementById('deep-dive-content')!.append(control);
+    control.focus();
+    expect(document.activeElement).toBe(control);
+    panel.show('Russia', 'RU', null, null);
+    expect(control.isConnected).toBe(false);
+    expect(document.activeElement).toBe(closeButton());
+    pressEscape();
+    expect(document.activeElement).toBe(map);
+  });
+
+  it('leaves the return target alone on a refresh that does not come from the map', async () => {
+    const { search, map, panel } = setup();
+    search.focus();
+    panel.show('Russia', 'RU', null, null);
+    await nextFrame();
+    map.focus();
+    panel.show('Russia', 'RU', null, null);
+    await nextFrame();
+    expect(document.activeElement).toBe(map);
+    pressEscape();
+    expect(document.activeElement).toBe(search);
   });
 });
 
