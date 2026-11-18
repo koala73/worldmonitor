@@ -47,13 +47,20 @@ export function buildGridClockSnapshot(regions, previous, now) {
   };
 }
 
+// A `partial` report is not a failure: MassOutage marks its whole national
+// aggregate partial whenever one contributing utility is late, about half of
+// all runs. The panel labels it and skips the comparison. Health tracks only
+// missing, stale or unreachable inputs (WORLDMONITOR-1EM).
 export function gridClockHealth(snapshot, now) {
-  const failed = snapshot.regions.filter(region => !region.current || region.current.partial
+  const failed = snapshot.regions.filter(region => !region.current
     || now - region.current.observedAt > 60 * 60_000
     || region.warningSources.some(source => source.status === 'unavailable'));
+  const codes = failed.map(region => region.code);
+  // failedDatasets is what health projects into the check and its Sentry
+  // incident; errorDetail stays in seed-meta only.
   return failed.length ? { freshnessMetaPatch: {
-    sourceState: 'degraded', errorCode: 'GRID_CLOCK_PARTIAL',
-    errorDetail: `Partial or stale coverage: ${failed.map(region => region.code).join(', ')}`,
+    sourceState: 'degraded', errorCode: 'GRID_CLOCK_PARTIAL', failedDatasets: codes,
+    errorDetail: `Missing, stale or unavailable input: ${codes.join(', ')}`,
   } } : undefined;
 }
 

@@ -137,6 +137,7 @@ import {
   GERMAN_RSS_SOURCES,
   BRAZIL_OPT_IN_SOURCES,
   COUNTRY_COVERAGE_OPT_IN_SOURCES,
+  PUBLISHER_DIRECT_OPT_IN_SOURCES,
   computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
   FEEDS,
@@ -247,6 +248,7 @@ import {
   migrateGermanRssSourcesV10,
   migrateBrazilOptInsV11,
   migrateCountryCoverageOptInsV12,
+  migratePublisherDirectOptInsV13,
 } from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
@@ -1366,6 +1368,16 @@ export class App {
     let sessionDisabledSources: string[] | undefined = currentVariant === 'full' && !storageAvailable
       ? computeDefaultDisabledSources(this.currentSourceCapLanguage())
       : undefined;
+    // Opt-in migrations that applied only to this session; their markers are
+    // written once the preferences they produced persist. Defaults already
+    // disable every opt-in pack, so a session seeded from them owes all three.
+    const pendingMigrationMarkers: string[] = sessionDisabledSources
+      ? [
+        'worldmonitor-country-coverage-optin-v1',
+        'worldmonitor-brazil-optin-v1',
+        'worldmonitor-publisher-direct-optin-v1',
+      ]
+      : [];
     // One-time migration: reduce default-enabled sources (full variant only)
     if (currentVariant === 'full' && storageAvailable) {
       const baseKey = 'worldmonitor-sources-reduction-v3';
@@ -1579,12 +1591,33 @@ export class App {
         const current = sessionDisabledSources ?? loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
         const blob = { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current ?? computeDefaultDisabledSources(userLang)) };
         const migrated = migrateBrazilOptInsV11(blob, BRAZIL_OPT_IN_SOURCES);
-        if (sessionDisabledSources) sessionDisabledSources = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
-        const persisted = (current !== null && migrated === blob) || saveToStorage(
-          STORAGE_KEYS.disabledFeeds,
-          JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[],
-        );
-        if (persisted && !safeStorageSetChecked(brazilOptInKey, 'done')) {
+        const updated = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
+        if (sessionDisabledSources) sessionDisabledSources = updated;
+        const persisted = (current !== null && migrated === blob) || saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+        const marked = persisted && safeStorageSetChecked(brazilOptInKey, 'done');
+        if (!marked) {
+          sessionDisabledSources = updated;
+          pendingMigrationMarkers.push(brazilOptInKey);
+        }
+        if (persisted && !marked) {
+          if (current === null) safeStorageRemoveChecked(STORAGE_KEYS.disabledFeeds);
+          else saveToStorage(STORAGE_KEYS.disabledFeeds, current);
+        }
+      }
+      const publisherDirectOptInKey = 'worldmonitor-publisher-direct-optin-v1';
+      if (!safeStorageGet(publisherDirectOptInKey)) {
+        const current = sessionDisabledSources ?? loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+        const blob = { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current ?? computeDefaultDisabledSources(userLang)) };
+        const migrated = migratePublisherDirectOptInsV13(blob, PUBLISHER_DIRECT_OPT_IN_SOURCES);
+        const updated = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
+        if (sessionDisabledSources) sessionDisabledSources = updated;
+        const persisted = (current !== null && migrated === blob) || saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+        const marked = persisted && safeStorageSetChecked(publisherDirectOptInKey, 'done');
+        if (!marked) {
+          sessionDisabledSources = updated;
+          pendingMigrationMarkers.push(publisherDirectOptInKey);
+        }
+        if (persisted && !marked) {
           if (current === null) safeStorageRemoveChecked(STORAGE_KEYS.disabledFeeds);
           else saveToStorage(STORAGE_KEYS.disabledFeeds, current);
         }
@@ -1637,7 +1670,7 @@ export class App {
       disabledSources,
       pendingSourcePreferences: sessionDisabledSources === undefined ? undefined : {
         gateOwned: null,
-        countryCoverageMigration: true,
+        migrationMarkers: [...new Set(['worldmonitor-country-coverage-optin-v1', ...pendingMigrationMarkers])],
       },
       currentTimeRange: '7d',
       inFlight: new Set(),
@@ -3583,12 +3616,13 @@ export class App {
     );
     const disabledPersisted = disabledChanged && persistence.preferencePersisted;
     const ownershipPersisted = ownershipChanged && persistence.ownershipPersisted;
-    const migrationPending = pending?.countryCoverageMigration === true
-      && !(persistence.preferencePersisted
-        && safeStorageSetChecked('worldmonitor-country-coverage-optin-v1', 'done'));
-    this.state.pendingSourcePreferences = persistence.complete && !migrationPending
+    const markers = pending?.migrationMarkers ?? [];
+    const markersPending = persistence.preferencePersisted
+      ? markers.filter((marker) => !safeStorageSetChecked(marker, 'done'))
+      : [...markers];
+    this.state.pendingSourcePreferences = persistence.complete && markersPending.length === 0
       ? undefined
-      : { gateOwned: nextGateOwned, countryCoverageMigration: migrationPending };
+      : { gateOwned: nextGateOwned, migrationMarkers: markersPending };
     if (!stringSetsEqual(this.state.disabledSources, nextDisabled)) {
       // The live entitlement boundary must not depend on localStorage health.
       // Durable writes remain ordered/retryable above, but free users stay

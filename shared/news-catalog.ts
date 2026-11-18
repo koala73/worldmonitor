@@ -200,6 +200,28 @@ export function buildServerIntelSources(): ServerCatalogFeed[] {
   return serverPlacedFeeds(INTEL_EDITION, INTEL_EDITION).map(toServerFeed);
 }
 
+/** Everything the server feed registry reads, in catalog order. */
+export interface ServerNewsCatalog {
+  variantFeeds: Record<string, Record<string, ServerCatalogFeed[]>>;
+  intelSources: ServerCatalogFeed[];
+  editions: string[];
+  gateExempt: Record<string, string[]>;
+}
+
+/**
+ * The server's slice. Generated into shared/news-catalog.server.generated.ts
+ * so the digest and MCP bundles ship only server fetch metadata, not the
+ * catalog's browser URLs, placements and notes.
+ */
+export function buildServerCatalog(): ServerNewsCatalog {
+  return {
+    variantFeeds: buildServerVariantFeeds(),
+    intelSources: buildServerIntelSources(),
+    editions: Object.keys(NEWS_CATALOG.layout.server),
+    gateExempt: NEWS_CATALOG.gateExempt,
+  };
+}
+
 export interface DigestWarmCell {
   edition: string;
   lang: string;

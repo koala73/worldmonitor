@@ -22,7 +22,11 @@ interface FeedsModule {
   computeDefaultDisabledSources: (locale?: string) => string[];
 }
 
-const countryAdditions = new Set<string>(JSON.parse(readFileSync('shared/country-news-opt-ins.json', 'utf8')));
+// Opt-in packs appended after this one.
+const laterAdditions = new Set<string>([
+  ...JSON.parse(readFileSync('shared/country-news-opt-ins.json', 'utf8')),
+  ...JSON.parse(readFileSync('shared/publisher-direct-opt-ins.json', 'utf8')),
+]);
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tempDir = join(repoRoot, 'tmp-major-publisher-feeds-test');
 const gn = (q: string) => `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
@@ -62,7 +66,7 @@ describe('major publisher feeds', () => {
       const names = entries.map((feed) => feed.name);
       const firstNew = names.findIndex((name) => NAMES.includes(name));
       if (firstNew < 0) continue;
-      assert.ok(names.slice(firstNew).every((name) => NAMES.includes(name) || LATER.includes(name) || countryAdditions.has(name)), `${category}: new feeds are appended`);
+      assert.ok(names.slice(firstNew).every((name) => NAMES.includes(name) || LATER.includes(name) || laterAdditions.has(name)), `${category}: new feeds are appended`);
     }
   });
 

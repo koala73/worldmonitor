@@ -7460,6 +7460,20 @@
       ]
     },
     {
+      "host": "information.tv5monde.com",
+      "provider": "information.tv5monde.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit information.tv5monde.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "informburo.kz",
       "provider": "informburo.kz",
       "kind": "feed",
@@ -16969,6 +16983,20 @@
       ]
     },
     {
+      "host": "www.channel4.com",
+      "provider": "www.channel4.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.channel4.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "www.channelnewsasia.com",
       "provider": "www.channelnewsasia.com",
       "kind": "feed",
@@ -17240,6 +17268,20 @@
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.corriere.it and link to the original feed publisher.",
       "status": "excluded"
+    },
+    {
+      "host": "www.courrierinternational.com",
+      "provider": "www.courrierinternational.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.courrierinternational.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
     },
     {
       "host": "www.crisisgroup.org",
@@ -17923,6 +17965,20 @@
       ]
     },
     {
+      "host": "www.estadao.com.br",
+      "provider": "www.estadao.com.br",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.estadao.com.br and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "www.ethiopia-insight.com",
       "provider": "www.ethiopia-insight.com",
       "kind": "feed",
@@ -18205,18 +18261,27 @@
       ]
     },
     {
-      "host": "www.francetvinfo.fr",
-      "provider": "www.francetvinfo.fr",
+      "host": "www.franceinfo.fr",
+      "provider": "www.franceinfo.fr",
       "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
-      "attribution": "Credit www.francetvinfo.fr and link to the original feed publisher.",
+      "attribution": "Credit www.franceinfo.fr and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
           "path": "shared/news-catalog.json"
         }
       ]
+    },
+    {
+      "host": "www.francetvinfo.fr",
+      "provider": "www.francetvinfo.fr",
+      "kind": "feed",
+      "observed": false,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.francetvinfo.fr and link to the original feed publisher.",
+      "status": "excluded"
     },
     {
       "host": "www.frontex.europa.eu",
@@ -19354,6 +19419,20 @@
       ]
     },
     {
+      "host": "www.lefigaro.fr",
+      "provider": "www.lefigaro.fr",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.lefigaro.fr and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "www.lemauricien.com",
       "provider": "www.lemauricien.com",
       "kind": "feed",
@@ -19430,6 +19509,20 @@
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.letemps.ch and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.lexpress.fr",
+      "provider": "www.lexpress.fr",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.lexpress.fr and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
@@ -20049,6 +20142,20 @@
       ]
     },
     {
+      "host": "www.nexojornal.com.br",
+      "provider": "www.nexojornal.com.br",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.nexojornal.com.br and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "www.nfx.com",
       "provider": "www.nfx.com",
       "kind": "structured",
@@ -20124,6 +20231,20 @@
       "references": [
         {
           "path": "server/worldmonitor/infrastructure/v1/list-service-statuses.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.nouvelobs.com",
+      "provider": "www.nouvelobs.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.nouvelobs.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -20571,6 +20692,20 @@
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.producthunt.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.propublica.org",
+      "provider": "www.propublica.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.propublica.org and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
@@ -21683,6 +21818,20 @@
       "references": [
         {
           "path": "scripts/seed-global-tenders.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.theatlantic.com",
+      "provider": "www.theatlantic.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.theatlantic.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
         }
       ]
     },

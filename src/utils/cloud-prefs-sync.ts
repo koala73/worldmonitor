@@ -31,6 +31,7 @@ import {
   GERMAN_RSS_SOURCES,
   BRAZIL_OPT_IN_SOURCES,
   COUNTRY_COVERAGE_OPT_IN_SOURCES,
+  PUBLISHER_DIRECT_OPT_IN_SOURCES,
   FEEDS,
   FRONTLINE_EUROPE_PROTECTED_SOURCES,
   getStrategicDefaultSources,
@@ -110,7 +111,7 @@ const KEY_DIRTY_KEYS = 'wm-cloud-prefs-dirty-keys';
 // the new schema version. Defaults to 1 when missing (assumes oldest).
 const KEY_LOCAL_SCHEMA_VERSION = 'wm-cloud-prefs-local-schema-version';
 
-const CURRENT_PREFS_SCHEMA_VERSION = 12;
+const CURRENT_PREFS_SCHEMA_VERSION = 13;
 const CLOUD_PREFS_REQUEST_TIMEOUT_MS = 15_000;
 
 // Migrations live in cloud-prefs-migrations.ts to keep them testable —
@@ -200,6 +201,7 @@ function getMigrations(): ReturnType<typeof buildMigrations> {
     brazil: {
       optInSources: BRAZIL_OPT_IN_SOURCES,
     },
+    publisherDirect: { optInSources: PUBLISHER_DIRECT_OPT_IN_SOURCES },
   });
   return _migrations;
 }
@@ -667,6 +669,7 @@ function applyMigrationsWithSchemaVersion(
   germanRssAlreadyApplied = false,
   brazilAlreadyApplied = false,
   countryCoverageAlreadyApplied = false,
+  publisherDirectAlreadyApplied = false,
 ): AppliedMigrations {
   if (fromVersion >= CURRENT_PREFS_SCHEMA_VERSION) {
     return { data, schemaVersion: CURRENT_PREFS_SCHEMA_VERSION, dataChanged: false };
@@ -675,6 +678,7 @@ function applyMigrationsWithSchemaVersion(
   if (germanRssAlreadyApplied) migrations[10] = (value) => value;
   if (brazilAlreadyApplied) migrations[11] = (value) => value;
   if (countryCoverageAlreadyApplied) migrations[12] = (value) => value;
+  if (publisherDirectAlreadyApplied) migrations[13] = (value) => value;
   const migrated = applyMigrationChainWithSchemaVersion(
     data,
     fromVersion,
@@ -758,7 +762,16 @@ function migrateLocalBlobIfNeeded(): PreparedCloudBlob | null {
   if (!brazilMarker.ok) return null;
   const countryCoverageMarker = safeStorageGetChecked('worldmonitor-country-coverage-optin-v1');
   if (!countryCoverageMarker.ok) return null;
-  const migrated = applyMigrationsWithSchemaVersion(blob, localSchema, germanRssMarker.value === 'done', brazilMarker.value === 'done', countryCoverageMarker.value === 'done');
+  const publisherDirectMarker = safeStorageGetChecked('worldmonitor-publisher-direct-optin-v1');
+  if (!publisherDirectMarker.ok) return null;
+  const migrated = applyMigrationsWithSchemaVersion(
+    blob,
+    localSchema,
+    germanRssMarker.value === 'done',
+    brazilMarker.value === 'done',
+    countryCoverageMarker.value === 'done',
+    publisherDirectMarker.value === 'done',
+  );
   const migratedData = migrated.data as Record<string, string>;
   if (migratedData !== blob && !applyCloudBlob(migratedData)) {
     // The migrated blob did not land, so the local state is neither the old

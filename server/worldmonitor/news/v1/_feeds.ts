@@ -1,4 +1,6 @@
-import { NEWS_CATALOG, buildServerIntelSources, buildServerVariantFeeds } from '../../../../shared/news-catalog';
+// Read the generated server slice, never shared/news-catalog: a value import
+// from it bundles the whole catalog JSON into the digest and MCP functions.
+import { SERVER_NEWS_CATALOG } from '../../../../shared/news-catalog.server.generated';
 import { hashString } from '../../../_shared/hash';
 
 export interface ServerFeed {
@@ -72,12 +74,12 @@ export function orderServerFeedEntries<T extends {
 
 // Feeds are declared once in shared/news-catalog.json; these are its server
 // view, in server order.
-export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = buildServerVariantFeeds();
+export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = SERVER_NEWS_CATALOG.variantFeeds;
 
-export const INTEL_SOURCES: ServerFeed[] = buildServerIntelSources();
+export const INTEL_SOURCES: ServerFeed[] = SERVER_NEWS_CATALOG.intelSources;
 
 /** Every edition the digest builds. Derived from the catalog layout. */
-export const SERVER_EDITIONS: readonly string[] = Object.keys(NEWS_CATALOG.layout.server);
+export const SERVER_EDITIONS: readonly string[] = SERVER_NEWS_CATALOG.editions;
 
 export interface DigestGateProfile {
   /** Categories the last-good gate leaves out of its category count. */
@@ -99,7 +101,7 @@ export function digestGateProfile(variant: string): DigestGateProfile {
   const shape = Object.entries(categories).map(([category, feeds]) => [category, feeds.map((f) => f.url)]);
   if (variant === 'full') shape.push(['intel', INTEL_SOURCES.map((f) => f.url)]);
   const profile: DigestGateProfile = {
-    exemptCategories: [...(NEWS_CATALOG.gateExempt[variant] ?? [])],
+    exemptCategories: [...(SERVER_NEWS_CATALOG.gateExempt[variant] ?? [])],
     catalogFingerprint: hashString(JSON.stringify(shape)),
   };
   gateProfiles.set(variant, profile);
