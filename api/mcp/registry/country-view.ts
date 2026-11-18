@@ -66,7 +66,7 @@ const COUNTRY_SECTION_DOCS: Record<CountryReader, { summary: string; args: Recor
   debt: { summary: 'National debt levels for every country.', args: {} },
   flows: { summary: 'UN COMTRADE trade flows reported by one country, optionally narrowed to one commodity or to anomalies.', args: { reporter_code: `Reporting ${M49.charAt(0).toLowerCase()}${M49.slice(1)}`, cmd_code: 'HS commodity code (chapter, heading or subheading) to narrow to; empty for every commodity.', anomalies_only: '"true" keeps only flows flagged as anomalous; "false" returns every flow.' } },
   tariffs: { summary: 'Applied tariff trend series for one reporting country.', args: { reporting_country: `Importing ${M49.charAt(0).toLowerCase()}${M49.slice(1)}`, product_sector: 'WITS product group to narrow to, such as "84-85_MachElec"; empty for all products.', years: 'Number of most recent years of history to return.', partner_country: 'Exporting partner as a UN M49 numeric code; empty for all partners.' } },
-  monthlyTrade: { summary: 'Malaysia\'s official monthly exports and imports by SITC section (DOSM) from January 1990, in whole MYR, with unit value and volume indices from 2015.', args: { country: 'Malaysia ("MY") only.', months: 'Months back from the newest published month; default 60, maximum 240.' } },
+  monthlyTrade: { summary: 'Malaysia\'s official monthly exports and imports by SITC section (DOSM) from January 1990, in whole MYR, with value and volume indices.', args: { country: 'Malaysia ("MY") only.', months: 'Months back from the newest published month; default 60, maximum 240.' } },
   products: { summary: 'The country\'s supply-chain product profile, optionally narrowed to one HS heading.', args: { iso2: ISO2, hs4: 'HS heading (4 digits) to narrow to one product group; omit for the full profile.' } },
   commodities: { summary: 'Commodity supply vulnerabilities for the country.', args: { iso2: ISO2 } },
   exposure: { summary: 'Chokepoint exposure index for one country and HS chapter.', args: { iso2: ISO2, hs2: HS2 } },
@@ -357,6 +357,7 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
     if (section === 'flights' && (!Array.isArray(value?.flights) || (!value.flights.length && !(parsed.data.arguments?.cursor && value.pagination?.totalCount > 0)))) return { state: 'unavailable', section, reason: 'Flight observations are unavailable or unconfirmed. An empty provider response is not evidence of zero activity.' };
     if (section === 'fleet' && !value?.report) return { state: 'unavailable', section, reason: 'The reported fleet roster is unavailable.' };
     if (section === 'vessels' && (!value?.dataAvailable || !value.snapshot?.status?.connected || !Number.isFinite(value.snapshot.snapshotAt) || value.snapshot.snapshotAt <= 0 || Date.now() - value.snapshot.snapshotAt > 3_600_000 || value.snapshot.snapshotAt > Date.now() + 300_000)) return { state: 'unavailable', section, reason: 'The live AIS snapshot is unavailable or stale.' };
+    if (section === 'monthlyTrade' && !value?.series?.length) return { state: 'unavailable', section, reason: 'No monthly trade data; this is not zero trade.' };
     return { state: 'ready', section, value, retrievedAt };
   },
 }];

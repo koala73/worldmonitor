@@ -331,6 +331,10 @@ describe('country view MCP boundary', () => {
     assert.ok(requests.length >= 1 && requests.length <= 3); assert.ok(requests.every(request => request.init.signal.aborted));
   });
   it('serves Malaysia monthly SITC trade through the existing section tool, signed and Malaysia-only', async () => {
+    globalThis.fetch = async (url, init) => {
+      requests.push({ url: String(url), init });
+      return new Response(JSON.stringify({ country: 'MY', series: [{ section: '7', label: 'Machinery', months: [{ month: '2026-09', exports: 1, imports: 2 }] }], upstreamUnavailable: false }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
     const { body } = await invoke('get_country_brief_section', { section: 'monthlyTrade', arguments: { months: 12 } });
     assert.equal(body.result.structuredContent.state, 'ready');
     const url = new URL(requests[0].url);
@@ -344,6 +348,16 @@ describe('country view MCP boundary', () => {
       assert.equal((await invoke('get_country_brief_section', { section: 'monthlyTrade', arguments: args })).body.error.code, -32602, JSON.stringify(args));
     }
     assert.equal(requests.length, 1);
+  });
+  it('reports monthlyTrade as unavailable, not as zero trade, when the seed or cache read is missing', async () => {
+    // The handler answers a missing seed or a failed Redis read with an empty
+    // series; an empty series must not read as a month of no trade.
+    for (const payload of [{ country: 'MY', series: [], upstreamUnavailable: true, unavailableReason: 'seed_missing' }, { country: 'MY', series: [], upstreamUnavailable: false }]) {
+      globalThis.fetch = async () => new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      const { body } = await invoke('get_country_brief_section', { section: 'monthlyTrade', arguments: {} });
+      assert.equal(body.result.structuredContent.state, 'unavailable', JSON.stringify(payload));
+      assert.equal(body.result.structuredContent.value, undefined);
+    }
   });
   it('keeps the largest monthlyTrade window inside the section output budget', async () => {
     // 240 months of all 11 SITC sections, every month carrying all four indices
