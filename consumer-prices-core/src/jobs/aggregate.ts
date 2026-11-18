@@ -28,8 +28,8 @@ interface BasketRow {
 }
 
 
-async function getBasketRows(basketSlug: string, marketCode: string): Promise<BasketRow[]> {
-  const result = await query<{
+async function getBasketRows(basketSlug: string, marketCode: string, execute: QueryExecutor = query): Promise<BasketRow[]> {
+  const result = await execute<{
     basket_item_id: string;
     category: string;
     weight: string;
@@ -81,8 +81,8 @@ async function getBasketRows(basketSlug: string, marketCode: string): Promise<Ba
 // Baseline per item = average price on the first day it was observed on or after
 // baseDate. A single fixed day leaves every item observed later without a
 // baseline, which is how every basket sat at a fallback 100 for seven months.
-async function getBaselinePrices(basketItemIds: string[], baseDate: string): Promise<Map<string, number>> {
-  const result = await query<{ basket_item_id: string; price: string }>(
+async function getBaselinePrices(basketItemIds: string[], baseDate: string, execute: QueryExecutor = query): Promise<Map<string, number>> {
+  const result = await execute<{ basket_item_id: string; price: string }>(
     `WITH obs AS (
        SELECT pm.basket_item_id, po.price, DATE_TRUNC('day', po.observed_at) AS day
        FROM price_observations po
@@ -184,8 +184,8 @@ function inputKey(basketItemId: string, retailerProductId: string) {
 // look at observation history, are what the next link divides by, so a scrape
 // that landed after the aggregate, or a product that was not in that day's
 // basket, cannot enter the anchor.
-async function getAnchors(basketId: string, metricDate: string) {
-  const result = await query<{
+async function getAnchors(basketId: string, metricDate: string, execute: QueryExecutor) {
+  const result = await execute<{
     kind: 'index' | 'input';
     category: string | null;
     metric_key: string | null;
@@ -317,45 +317,60 @@ export async function aggregateBasket(basketSlug: string, marketCode: string): P
   }
   const basketId = basketResult.rows[0].id;
 
+  // The whole run for a basket holds one per-basket lock, taken before the run
+  // date is read and released when its rows commit. Runs for a basket are
+  // therefore sequential: a rerun replacing yesterday's anchor finishes
+  // before today's run reads it, and two runs for the same date cannot
+  // interleave their deletes and writes.
+  return withTransaction((execute) => aggregateBasketLocked(execute, basketConfig, basketSlug, marketCode, basketId));
+}
+
+async function aggregateBasketLocked(
+  execute: QueryExecutor,
+  basketConfig: ReturnType<typeof loadAllBasketConfigs>[number],
+  basketSlug: string,
+  marketCode: string,
+  basketId: string,
+): Promise<boolean> {
+  await execute(`SELECT pg_advisory_xact_lock(hashtext('consumer-prices-aggregate|' || $1))`, [basketId]);
+
   // One date for the whole run: separate NOW()::date reads would split a run
   // that crosses midnight across two metric dates and two chain anchors.
   // Migrations are applied by hand, so this code can reach production before
   // 013 does; without the inputs table no index can be chained.
-  const runResult = await query<{ metric_date: string; has_inputs: boolean }>(
+  const runResult = await execute<{ metric_date: string; has_inputs: boolean }>(
     `SELECT to_char(NOW()::date, 'YYYY-MM-DD') AS metric_date,
             to_regclass('computed_index_inputs') IS NOT NULL AS has_inputs`,
   );
   const metricDate = runResult.rows[0].metric_date;
   const hasInputs = runResult.rows[0].has_inputs;
 
-  const rows = await getBasketRows(basketSlug, marketCode);
+  const rows = await getBasketRows(basketSlug, marketCode, execute);
   if (rows.length === 0) {
     // Record the empty basket for today. Returning without a write left the
     // last aggregated day as the newest one, and the overview republished
     // those indices as current. An earlier run today may already have written
     // indices, spreads and category rows; clear them so the series cannot
     // show a price level for a day with no coverage.
-    // One transaction: a failed coverage write must not leave the day's
-    // indices deleted with nothing in their place, or the overview would fall
-    // back to an older covered day.
-    await withTransaction(async (execute) => {
-      await execute(`SELECT pg_advisory_xact_lock(hashtext($1 || '|' || $2))`, [basketId, metricDate]);
-      await execute(`DELETE FROM computed_indices
-       WHERE basket_id = $1 AND metric_date = $2::date`, [basketId, metricDate]);
-      if (hasInputs) {
-        await execute(`DELETE FROM computed_index_inputs WHERE basket_id = $1 AND metric_date = $2::date`, [basketId, metricDate]);
-      }
-      await writeComputedIndex(basketId, metricDate, null, null, 'coverage_pct', 0, execute);
-    });
+    // The run's transaction covers both statements: a failed coverage write
+    // must not leave the day's indices deleted with nothing in their place, or
+    // the overview would fall back to an older covered day.
+    await execute(`DELETE FROM computed_indices
+     WHERE basket_id = $1 AND metric_date = $2::date`, [basketId, metricDate]);
+    if (hasInputs) {
+      await execute(`DELETE FROM computed_index_inputs WHERE basket_id = $1 AND metric_date = $2::date`, [basketId, metricDate]);
+    }
+    await writeComputedIndex(basketId, metricDate, null, null, 'coverage_pct', 0, execute);
     logger.warn(`No fresh matched products for ${basketSlug}:${marketCode} — coverage recorded as 0`);
-    return true;
+    // An unmigrated database still fails the run, empty basket or not.
+    return hasInputs;
   }
 
   const uniqueItemIds = [...new Set(rows.map((r) => r.basketItemId))];
-  const baselines = await getBaselinePrices(uniqueItemIds, basketConfig.baseDate);
+  const baselines = await getBaselinePrices(uniqueItemIds, basketConfig.baseDate, execute);
 
   const { previous, inputsByDate } = hasInputs
-    ? await getAnchors(basketId, metricDate)
+    ? await getAnchors(basketId, metricDate, execute)
     : { previous: new Map<string, PreviousIndex>(), inputsByDate: new Map<string, Map<string, number>>() };
   const chain = (series: BasketRow[], category: string | null, metricKey: string, compute: typeof computeFixedIndex) =>
     hasInputs
@@ -444,28 +459,26 @@ export async function aggregateBasket(basketSlug: string, marketCode: string): P
   // it a "continuing" product tomorrow and move the link on its first baseline.
   const inputs = rows.filter((r) => baselines.get(r.basketItemId));
 
-  // The day's rows are replaced as one set: the lock serialises overlapping
-  // runs for this basket and date, and clearing the day first removes series a
-  // rerun no longer produces (a category that dropped out), which would
-  // otherwise linger as tomorrow's anchor with no inputs behind it. Only this
-  // job writes computed_indices.
-  await withTransaction(async (execute) => {
-    await execute(`SELECT pg_advisory_xact_lock(hashtext($1 || '|' || $2))`, [basketId, metricDate]);
+  // The day's rows are replaced as one set (the run's lock keeps other runs
+  // for this basket out): clearing the day first removes series a rerun no
+  // longer produces (a category that dropped out), which would otherwise
+  // linger as tomorrow's anchor with no inputs behind it. Only this job writes
+  // computed_indices. Without the inputs table nothing is cleared: the day's
+  // existing indices stay, and only the non-index metrics are upserted.
+  if (hasInputs) {
     await execute(`DELETE FROM computed_indices WHERE basket_id = $1 AND metric_date = $2::date`, [basketId, metricDate]);
-    if (hasInputs) {
-      await execute(`DELETE FROM computed_index_inputs WHERE basket_id = $1 AND metric_date = $2::date`, [basketId, metricDate]);
-      await execute(
-        `INSERT INTO computed_index_inputs (basket_id, metric_date, basket_item_id, retailer_product_id, price)
-         SELECT $1, $2::date, i.item, i.product, i.price
-         FROM unnest($3::uuid[], $4::uuid[], $5::numeric[]) AS i(item, product, price)
-         ON CONFLICT DO NOTHING`,
-        [basketId, metricDate, inputs.map((r) => r.basketItemId), inputs.map((r) => r.retailerProductId), inputs.map((r) => r.price)],
-      );
-    }
-    for (const [retailerId, category, metricKey, metricValue] of writes) {
-      await writeComputedIndex(basketId, metricDate, retailerId, category, metricKey, metricValue, execute);
-    }
-  });
+    await execute(`DELETE FROM computed_index_inputs WHERE basket_id = $1 AND metric_date = $2::date`, [basketId, metricDate]);
+    await execute(
+      `INSERT INTO computed_index_inputs (basket_id, metric_date, basket_item_id, retailer_product_id, price)
+       SELECT $1, $2::date, i.item, i.product, i.price
+       FROM unnest($3::uuid[], $4::uuid[], $5::numeric[]) AS i(item, product, price)
+       ON CONFLICT DO NOTHING`,
+      [basketId, metricDate, inputs.map((r) => r.basketItemId), inputs.map((r) => r.retailerProductId), inputs.map((r) => r.price)],
+    );
+  }
+  for (const [retailerId, category, metricKey, metricValue] of writes) {
+    await writeComputedIndex(basketId, metricDate, retailerId, category, metricKey, metricValue, execute);
+  }
 
   logger.info(`${basketSlug}:${marketCode} essentials=${essentialsIndex?.toFixed(2) ?? 'none'} value=${valueIndex?.toFixed(2) ?? 'none'} baselines=${baselines.size}/${uniqueItemIds.length} coverage=${coveragePct.toFixed(1)}%`);
   return hasInputs;

@@ -254,13 +254,21 @@ describe('index composition: products and items leaving or joining the basket', 
     expect(indexOn('2026-11-13')).toBeCloseTo(100);
   });
 
-  it('takes the per-date lock before clearing the day', async () => {
+  it('holds one per-basket lock from before the run date is read until its rows are written', async () => {
     await runDay('2026-11-12', [basketRow('bread', 'bread', 'a', 5)], baselines);
     const sqls = query.mock.calls.map(([sql]) => sql as string);
     const lock = sqls.findIndex((sql) => sql.includes('pg_advisory_xact_lock'));
-    expect(lock).toBeGreaterThan(-1);
-    expect(lock).toBeLessThan(sqls.findIndex((sql) => sql.includes('DELETE FROM computed_indices')));
-    expect(query.mock.calls[lock][1]).toEqual(['basket', '2026-11-12']);
+    expect(sqls.filter((sql) => sql.includes('pg_advisory_xact_lock'))).toHaveLength(1);
+    expect(lock).toBeLessThan(sqls.findIndex((sql) => sql.includes('has_inputs')));
+    expect(lock).toBeLessThan(sqls.findIndex((sql) => sql.includes('WITH prev AS')));
+    expect(query.mock.calls[lock][1]).toEqual(['basket']);
+  });
+
+  it('keeps the day\'s existing indices while the inputs table is missing', async () => {
+    await runDay('2026-11-12', [basketRow('milk', 'dairy', 'a', 12)], baselines);
+    await runDay('2026-11-12', [basketRow('milk', 'dairy', 'a', 12)], baselines, false);
+    expect(query.mock.calls.some(([sql]) => (sql as string).includes('DELETE FROM computed_indices'))).toBe(false);
+    expect(indexOn('2026-11-12')).toBeCloseTo(120);
   });
 
   it('fails the run when a basket was aggregated without its indices', async () => {
@@ -273,5 +281,16 @@ describe('index composition: products and items leaving or joining the basket', 
       return { rows: [], rowCount: 1 };
     });
     await expect(aggregateAll()).rejects.toThrow(/wrote no index — apply migration 013/);
+  });
+
+  it('fails the run on an unmigrated database even when the basket is empty', async () => {
+    query.mockReset();
+    query.mockImplementation(async (sql: string) => {
+      if (sql.includes('SELECT id FROM baskets')) return { rows: [{ id: 'basket' }] };
+      if (sql.includes('has_inputs')) return runDateRow('2026-11-12', false);
+      return { rows: [], rowCount: 1 };
+    });
+    await expect(aggregateAll()).rejects.toThrow(/wrote no index — apply migration 013/);
+    expect(query.mock.calls.some(([sql]) => (sql as string).includes('computed_index_inputs') && !(sql as string).includes('has_inputs'))).toBe(false);
   });
 });
