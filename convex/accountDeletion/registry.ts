@@ -230,6 +230,12 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
       + "Sets wm:notif:sent-erased:v1:{userId} for 7 days first, which makes the relay refuse a late write for the account",
   },
   {
+    target: "redis:news-alert-anchor-recipients",
+    action: "skip",
+    notes: "news:alert-anchor-recipients:v1:{edition}:{sha256}, the user ids a deliverable news alert reached, scored by receipt time, read to skip a reworded repeat (#10916); "
+      + "keyed by headline with no per-user index, 24 h TTL",
+  },
+  {
     target: "clerk.users",
     action: "delete",
     notes: "Backend Users API; 404 is success",
