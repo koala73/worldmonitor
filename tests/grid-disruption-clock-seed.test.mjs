@@ -108,7 +108,8 @@ test('a fresh partial report is healthy; missing, stale and unavailable inputs s
 
   const missing = regions(now, 40);
   missing[2].current = null;
-  const stale = regions(now - 61 * 60_000, 40);
+  const stale = regions(now, 40);
+  stale[0].current.observedAt = now - 61 * 60_000;
   const unavailable = regions(now, 40);
   unavailable[4].warningSources[0].status = 'unavailable';
   for (const [snapshot, code] of [[missing, 'TX'], [stale, 'CA'], [unavailable, 'NY']]) {
@@ -116,7 +117,23 @@ test('a fresh partial report is healthy; missing, stale and unavailable inputs s
     assert.equal(patch.sourceState, 'degraded');
     assert.equal(patch.errorCode, 'GRID_CLOCK_PARTIAL');
     assert.match(patch.errorDetail, new RegExp(code));
+    assert.deepEqual(patch.failedDatasets, [code]);
   }
+});
+
+test('health projects the failing regions so a source incident names them', () => {
+  const name = 'gridDisruptionClock';
+  const key = health.STANDALONE_KEYS[name];
+  const now = start + tick;
+  const patch = gridClockHealth({ regions: regions(now - 61 * 60_000, 40) }, now).freshnessMetaPatch;
+  const meta = { fetchedAt: now, recordCount: 6, ...patch };
+  const entry = health.classifyKey(name, key, { allowOnDemand: true }, {
+    keyStrens: new Map([[key, 100]]),
+    keyMetaValues: new Map([[health.SEED_META[name].key, JSON.stringify(meta)]]),
+    activationStates: new Map([[name, true]]), keyErrors: new Map(), keyMetaErrors: new Map(), now,
+  });
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.deepEqual(entry.failedDatasets, Object.keys(GRID_CLOCK_REGIONS));
 });
 
 test('clock health grants pre-activation grace and enforces missing data and degraded publication afterward', () => {
