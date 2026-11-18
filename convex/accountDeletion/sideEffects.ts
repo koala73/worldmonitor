@@ -351,9 +351,11 @@ export const sweepBriefEnvelopes = internalAction({
     cursor: v.string(),
     attempt: v.number(),
     pages: v.optional(v.number()),
+    page: v.optional(v.object({ cursor: v.string(), keys: v.array(v.string()) })),
   },
   returns: v.null(),
   handler: async (ctx, args): Promise<null> => {
+    let page = args.page;
     try {
       const snapshot = await ctx.runQuery(internal.accountDeletion.erase.getExternalEraseSnapshot,
         { deletionId: args.deletionId });
@@ -364,45 +366,51 @@ export const sweepBriefEnvelopes = internalAction({
       // Redis MATCH is a glob, not a literal prefix. Escape identity characters
       // and also check returned keys before deleting anything.
       const pattern = prefix.replace(/[\\*?\[\]]/g, "\\$&") + "*";
-      const response = await redisCommand("", {
-        body: JSON.stringify(["SCAN", args.cursor, "MATCH", pattern, "COUNT", "1000"]),
-      });
-      const body = await redisResult(response, "BRIEF_SCAN") as { result?: unknown };
-      const result = body.result;
-      if (!Array.isArray(result) || result.length !== 2 ||
-          typeof result[0] !== "string" || !/^\d+$/.test(result[0]) ||
-          !Array.isArray(result[1]) || !result[1].every((key: unknown) =>
-            typeof key === "string" && key.startsWith(prefix))) {
-        throw new Error("REDIS_BRIEF_SCAN_INVALID_RESULT");
+      if (!page) {
+        const response = await redisCommand("", {
+          body: JSON.stringify(["SCAN", args.cursor, "MATCH", pattern, "COUNT", "1000"]),
+        });
+        const body = await redisResult(response, "BRIEF_SCAN") as { result?: unknown };
+        const result = body.result;
+        if (!Array.isArray(result) || result.length !== 2 ||
+            typeof result[0] !== "string" || !/^\d+$/.test(result[0]) ||
+            !Array.isArray(result[1]) || !result[1].every((key: unknown) =>
+              typeof key === "string" && key.startsWith(prefix))) {
+          throw new Error("REDIS_BRIEF_SCAN_INVALID_RESULT");
+        }
+        page = { cursor: result[0], keys: result[1] as string[] };
       }
-      const keys = result[1] as string[];
+      if (!page.keys.every(key => key.startsWith(prefix))) {
+        throw new Error("REDIS_BRIEF_PAGE_INVALID_KEYS");
+      }
+      const { keys, cursor } = page;
       // COUNT is a hint, so bound each delete request independently.
       for (let i = 0; i < keys.length; i += 100) {
         await redisRevoke(keys.slice(i, i + 100), []);
       }
-      if (result[0] !== "0" || !args.localized) {
+      if (cursor !== "0" || !args.localized) {
         const pages = (args.pages ?? 0) + 1;
-        const localized = result[0] === "0" ? true : args.localized;
+        const localized = cursor === "0" ? true : args.localized;
         if (pages >= MAX_BRIEF_SWEEP_PAGES) {
           // sentry-coverage-ok: structured console.error is forwarded by Convex.
           // Include the next cursor so an operator can continue this sweep
           // with pages: 0 after checking Redis load, without rescanning.
           console.error(JSON.stringify({ breadcrumb: "account_deletion_brief_sweep_truncated",
-            deletionId: args.deletionId, cursor: result[0], localized, pages }));
+            deletionId: args.deletionId, cursor, localized, pages }));
           return null;
         }
         await ctx.scheduler.runAfter(0, internal.accountDeletion.sideEffects.sweepBriefEnvelopes, {
-          ...args, cursor: result[0], localized, attempt: 0, pages,
+          deletionId: args.deletionId, cursor, localized, attempt: 0, pages,
         });
       }
     } catch (err) {
       if (args.attempt + 1 < MAX_EXTERNAL_ATTEMPTS) {
-        // Retry this page, never advance past a failed DEL. Repeated deletes
-        // are safe, including after a partially successful pipeline.
+        // SCAN may not return the same keys when a cursor is replayed. Keep
+        // this page until every DEL succeeds; repeated deletes are safe.
         await ctx.scheduler.runAfter(
           Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** args.attempt),
           internal.accountDeletion.sideEffects.sweepBriefEnvelopes,
-          { ...args, attempt: args.attempt + 1 },
+          { ...args, ...(page ? { page } : {}), attempt: args.attempt + 1 },
         );
       } else {
         // sentry-coverage-ok: structured console.error is forwarded by Convex.

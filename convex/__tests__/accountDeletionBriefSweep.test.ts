@@ -61,7 +61,7 @@ test("delayed sweep removes orphan envelopes written after the first index snaps
   expect([...keys]).toEqual(["brief:user_other:late"]);
 });
 
-test("continues empty SCAN pages and retries a failed DEL without losing its cursor", async () => {
+test("continues empty SCAN pages and retains failed deletes without rescanning", async () => {
   const { t } = await erase();
   keys.add(`brief:${USER}:late`);
   const normal = fetchMock.getMockImplementation()!;
@@ -72,7 +72,7 @@ test("continues empty SCAN pages and retries a failed DEL without losing its cur
     if (command[0] === "SCAN" && command[3] === `brief:${USER}:*`) {
       cursors.push(command[1]);
       return Response.json({ result: command[1] === "0"
-        ? ["17", []] : ["0", [`brief:${USER}:late`]] });
+        ? ["17", []] : ["0", cursors.length === 2 ? [`brief:${USER}:late`] : []] });
     }
     if (command[0]?.[0] === "DEL" && !failed) {
       failed = true;
@@ -81,8 +81,8 @@ test("continues empty SCAN pages and retries a failed DEL without losing its cur
     return normal(input, init);
   });
   await t.finishAllScheduledFunctions(vi.runAllTimers);
-  expect(cursors).toEqual(["0", "17", "17"]);
   expect(keys.size).toBe(0);
+  expect(cursors).toEqual(["0", "17"]);
 });
 
 test.each([
