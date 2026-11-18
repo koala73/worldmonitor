@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import { createDomainGateway } from '../server/gateway.ts';
-import { __resetRateLimitForTest } from '../server/_shared/rate-limit';
+import {
+  GLOBAL_BLOCKED_MAX_ENTRIES,
+  __globalBlockedSizeForTest,
+  __resetRateLimitForTest,
+  checkRateLimit,
+  isGlobalRateLimitDenialKnown,
+} from '../server/_shared/rate-limit';
 import { issueSessionToken } from '../api/_session.js';
 
 const SOURCE_PATH = '/api/news/v1/list-source-items';
@@ -194,6 +200,34 @@ describe('gateway read-only cache handler / global limiter overlap', () => {
     const repeat = await gateway(request());
     assert.equal(repeat.status, 429);
     assert.equal(calls, 1);
+  });
+
+  it('keeps the denied-caller memory bounded and drops expired entries', { timeout: 60_000 }, async () => {
+    const start = Math.floor(Date.now() / 60_000) * 60_000 + 30_000;
+    mock.timers.enable({ apis: ['Date'], now: start });
+    __resetRateLimitForTest();
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const commands = JSON.parse(String(init?.body)) as unknown[][];
+      if (commands.every(command => /^eval(sha)?$/i.test(String(command[0])))) {
+        return Response.json(commands.map(() => ({ error: 'ERR Command not allowed: EVALSHA' })));
+      }
+      return Response.json([{ result: 601 }, { result: 0 }, { result: 30 }]);
+    }) as typeof fetch;
+    const caller = (n: number) => new Request('https://www.worldmonitor.app/x', {
+      headers: { 'x-real-ip': `10.${(n >> 16) & 255}.${(n >> 8) & 255}.${n & 255}` },
+    });
+    const total = GLOBAL_BLOCKED_MAX_ENTRIES + 50;
+    for (let n = 0; n < total; n += 1) {
+      assert.equal((await checkRateLimit(caller(n), {}))?.status, 429);
+    }
+    assert.ok(__globalBlockedSizeForTest() <= GLOBAL_BLOCKED_MAX_ENTRIES);
+    assert.equal(isGlobalRateLimitDenialKnown(caller(total - 1)), true, 'the newest denial is kept');
+    assert.equal(isGlobalRateLimitDenialKnown(caller(0)), false, 'the oldest denial is evicted first');
+
+    mock.timers.tick(31_000);
+    const before = __globalBlockedSizeForTest();
+    assert.equal(isGlobalRateLimitDenialKnown(caller(total - 1)), false, 'expired once its window resets');
+    assert.equal(__globalBlockedSizeForTest(), before - 1, 'an expired entry is removed when read');
   });
 
   for (const allowed of [false, true]) {

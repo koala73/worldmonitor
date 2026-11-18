@@ -53,6 +53,27 @@ const GLOBAL_RATE_WINDOW_SECONDS = durationToSeconds(GLOBAL_RATE_WINDOW);
 // Keys carry the limiter prefix: `${GLOBAL_RATE_PREFIX}:${identifier}`.
 const globalBlockedUntil = new Map<string, number>();
 const GLOBAL_RATE_PREFIX = 'rl';
+/** Upper bound on remembered denials, so callers that never return cannot grow it forever. */
+export const GLOBAL_BLOCKED_MAX_ENTRIES = 10_000;
+
+function rememberGlobalDenial(key: string, blockedUntil: number): void {
+  // Re-insert so Map order stays oldest-first for eviction.
+  globalBlockedUntil.delete(key);
+  globalBlockedUntil.set(key, blockedUntil);
+  if (globalBlockedUntil.size <= GLOBAL_BLOCKED_MAX_ENTRIES) return;
+  const now = Date.now();
+  for (const [entry, until] of globalBlockedUntil) {
+    if (until <= now) globalBlockedUntil.delete(entry);
+  }
+  for (const entry of globalBlockedUntil.keys()) {
+    if (globalBlockedUntil.size <= GLOBAL_BLOCKED_MAX_ENTRIES) break;
+    globalBlockedUntil.delete(entry);
+  }
+}
+
+export function __globalBlockedSizeForTest(): number {
+  return globalBlockedUntil.size;
+}
 
 function getRatelimit(): Ratelimit | null {
   if (ratelimit) return ratelimit;
@@ -569,8 +590,12 @@ function globalRateLimitIdentifier(request: Request, opts: RateLimitOptions): st
  */
 export function isGlobalRateLimitDenialKnown(request: Request, opts: RateLimitOptions = {}): boolean {
   if (!opts.principalUserId && hasUnprovenCloudflareClientIp(request)) return true;
-  const blockedUntil = globalBlockedUntil.get(globalBlockedKey(globalRateLimitIdentifier(request, opts)));
-  return blockedUntil !== undefined && blockedUntil > Date.now();
+  const key = globalBlockedKey(globalRateLimitIdentifier(request, opts));
+  const blockedUntil = globalBlockedUntil.get(key);
+  if (blockedUntil === undefined) return false;
+  if (blockedUntil > Date.now()) return true;
+  globalBlockedUntil.delete(key);
+  return false;
 }
 
 export async function checkRateLimit(request: Request, corsHeaders: Record<string, string>, opts: RateLimitOptions = {}): Promise<Response | null> {
@@ -601,7 +626,7 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
     if (!success) {
       // @upstash/ratelimit records Lua denials here itself; the fixed-window
       // fallback does not, so record every denial for the gateway to read.
-      globalBlockedUntil.set(globalBlockedKey(identifier), reset);
+      rememberGlobalDenial(globalBlockedKey(identifier), reset);
       return tooManyRequestsResponse(limit, reset, corsHeaders, GLOBAL_RATE_WINDOW_SECONDS);
     }
 
