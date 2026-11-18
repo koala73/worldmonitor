@@ -1718,7 +1718,16 @@ command runs nothing. Either way a full pass spends about 200 calls (up to its
 the core run, which spends about 400 on the 1st of each month. Never start an
 off-schedule run on the 1st, or on a day the core run was retried: the run that
 reaches the quota last is refused and writes partial coverage until its next
-tick. The first publish sets the durable
+tick. An off-schedule run also moves the 24-day freshness gate
+(`FRESHNESS_GATE_MS`): a scheduled tick less than 24 days after it skips
+without extending the 40-day shard TTLs, so the shards can expire before the
+following tick (a run on December 2 skips December 15, expires around January
+11 and is not replaced until January 15). Start an off-schedule run only when
+the next 15th is at least 24 days away; a run on 2026-11-18 is 27 days before
+December 15 and is safe. If a run lands inside that window, re-run on the next
+15th with the gate bypassed:
+`FORCE_RESEED=true railway run --project 29419572-0b0d-437f-8e71-4fa68daf514f --environment production --service seed-comtrade-bilateral-hs4-ext -- node scripts/seed-comtrade-bilateral-hs4-ext.mjs`.
+The first publish sets the durable
 activation marker `seed-activated:comtrade:bilateral-hs4-ext`, which ends the
 health probe's soft state. The marker write is best-effort: a failure is logged
 as `Failed to write activation marker` and the run still succeeds. After the
