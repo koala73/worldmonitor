@@ -1120,6 +1120,11 @@ export function hasCredentialBearingHeader(request: Request): boolean {
   return CREDENTIAL_BEARING_HEADERS.some((header) => Boolean(request.headers.get(header)));
 }
 
+// Only handlers with bounded Redis cache reads, no upstream fetches or side effects.
+const GLOBAL_RATE_LIMIT_OVERLAP_PATHS = new Set([
+  '/api/news/v1/list-source-items',
+]);
+
 function stripTrailingSlashes(value: string): string {
   let end = value.length;
   while (end > 1 && value.charCodeAt(end - 1) === 47) end -= 1;
@@ -2403,6 +2408,8 @@ export function createDomainGateway(
     // stream), the outer wrapper releases the charge.
     pendingDailyMeterReleases.set(originalRequest, releaseDailyMeter);
 
+    let pendingGlobalRateLimit: Promise<Response | null> | null = null;
+
     // Internal-MCP verified requests skip the remaining gateway layer: the MCP edge
     // already enforced 50/day + 60/min per userId in api/mcp.ts. A second
     // limiter here would create misleading double-counting and could 429
@@ -2648,12 +2655,19 @@ export function createDomainGateway(
         // so without this a customer's own scraper drains the 600/min budget
         // and their dashboard 429s. In production on 2026-09-11 that was 598
         // scraper successes against 2 for the same person's browser.
-        const rateLimitResponse = rateLimitPrincipalUserId
-          ? await checkRateLimit(request, corsHeaders, {
+        const rateLimitCheck = rateLimitPrincipalUserId
+          ? checkRateLimit(request, corsHeaders, {
               principalUserId: rateLimitPrincipalUserId,
               principalScope: isUserApiKey ? 'api_key' : 'session',
             })
-          : await checkRateLimit(request, corsHeaders);
+          : checkRateLimit(request, corsHeaders);
+        // All remaining pre-handler gates must be inactive before speculating.
+        if (GLOBAL_RATE_LIMIT_OVERLAP_PATHS.has(pathname) && request.method === 'GET'
+          && !pendingPostToGetCompatError && !requiresDirectLlmQuota && !hasIdempotencyKey && !isCountryHistoryRpc) {
+          pendingGlobalRateLimit = rateLimitCheck;
+          void pendingGlobalRateLimit.catch(() => {});
+        }
+        const rateLimitResponse = pendingGlobalRateLimit ? null : await rateLimitCheck;
         if (rateLimitResponse) {
           await releaseDailyMeter();
           const reason = getRateLimitTelemetryReason(
@@ -2835,7 +2849,7 @@ export function createDomainGateway(
       bindCountryHistoryAccess(requestForHandler, isEnterpriseAuth ? 365 : countryHistoryDays(ent));
     }
     try {
-      response = await runWithUsageScope(
+      const handlerResult = runWithUsageScope(
         {
           ctx: ctx ?? { waitUntil: () => {} },
           requestId: deriveRequestId(originalRequest),
@@ -2845,6 +2859,18 @@ export function createDomainGateway(
         },
         () => handlerCall(requestForHandler),
       );
+      if (pendingGlobalRateLimit) {
+        // A denied request discards even a rejected handler result.
+        void handlerResult.catch(() => {});
+        const rateLimitResponse = await pendingGlobalRateLimit;
+        if (rateLimitResponse) {
+          await releaseDailyMeter();
+          const reason = getRateLimitTelemetryReason(rateLimitResponse, 'rate_limit_429_global');
+          emitRequest(rateLimitResponse.status, reason, null);
+          return rateLimitResponse;
+        }
+      }
+      response = await handlerResult;
     } catch (err) {
       console.error('[gateway] Unhandled handler error:', err);
       // A crash in our handler is not a served request; do not bill it.
