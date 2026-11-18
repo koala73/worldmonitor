@@ -95,7 +95,7 @@ import {
   listCurrentPlanLimitNotices,
   type ApiPlanLimitNotice,
 } from '@/services/api-plan-limit-notices';
-import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { isImeEnter, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { checkoutConsentHtml, legalLinksHtml, LEGAL_LINK_ATTR } from '@/utils/legal-links';
 import { dashboardSiteLinksHtml } from '@/utils/dashboard-site-links';
 import { resolveDashboardSiteOrigin } from '@/config/dashboard-reference-links';
@@ -2429,7 +2429,7 @@ export class UnifiedSettings {
     const apiKeyInput = this.overlay.querySelector<HTMLInputElement>('[data-api-keys-host] .api-keys-name-input');
     if (apiKeyInput) {
       apiKeyInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') void this.handleCreateApiKey();
+        if (e.key === 'Enter' && !isImeEnter(e)) void this.handleCreateApiKey();
       });
     }
 
@@ -2591,6 +2591,7 @@ export class UnifiedSettings {
     host.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.target as HTMLElement).matches('[data-selfhost-key-input]')) {
         e.preventDefault();
+        if (isImeEnter(e)) return;
         void this.saveSelfHostKeyFromForm();
       }
     });
@@ -2979,7 +2980,7 @@ export class UnifiedSettings {
     const input = this.overlay.querySelector<HTMLInputElement>('.embed-keys-name-input');
     if (!input) return;
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') void this.handleCreateEmbedKey();
+      if (e.key === 'Enter' && !isImeEnter(e)) void this.handleCreateEmbedKey();
     });
   }
 
