@@ -4,7 +4,7 @@
  * Drives the real processEvent with stubbed Convex, Upstash and Telegram.
  */
 
-import { describe, it, before, afterEach } from 'node:test';
+import { describe, it, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import Module, { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
@@ -17,7 +17,12 @@ process.env.UPSTASH_REDIS_REST_URL ??= 'https://stub.upstash.io';
 process.env.UPSTASH_REDIS_REST_TOKEN ??= 'stub-token';
 process.env.CONVEX_URL ??= 'https://stub.convex.cloud';
 process.env.CONVEX_NOTIFICATION_RELAY_SECRET ??= 'stub-secret';
-process.env.TELEGRAM_BOT_TOKEN ??= 'stub-bot-token';
+const savedEnv = { TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN, IMPORTANCE_SCORE_MIN: process.env.IMPORTANCE_SCORE_MIN, IMPORTANCE_SCORE_LIVE: process.env.IMPORTANCE_SCORE_LIVE };
+// The relay reads these at import: a real token so Telegram sends are counted,
+// and an ingress floor below the fixtures' scores so the per-rule gates decide.
+process.env.TELEGRAM_BOT_TOKEN = 'stub-bot-token';
+process.env.IMPORTANCE_SCORE_MIN = '40';
+delete process.env.IMPORTANCE_SCORE_LIVE;
 
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request, parent, ...rest) {
@@ -35,6 +40,12 @@ before(() => {
 afterEach(() => {
   globalThis.fetch = originalFetch;
   delete process.env.IMPORTANCE_SCORE_LIVE;
+});
+after(() => {
+  for (const [key, value] of Object.entries(savedEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
 });
 
 const base = { userId: 'user-1', digestMode: 'realtime', eventTypes: [], sensitivity: 'critical', countries: [], tickers: [], channels: ['telegram'], variant: 'full' };
@@ -89,7 +100,7 @@ describe('zero-match drop reasons', () => {
     ], adnoc(73));
     assert.equal(telegram, 0);
     assert.deepEqual(drops, { score_bar: 2, digest_mode: 1, edition: 1, event_type: 1 });
-    assert.match(line, /rss_alert severity=critical score=73 edition=full rules=5/);
+    assert.match(line, /"rss_alert" severity="critical" score=73 edition="full" rules=5/);
   });
 
   it('names severity and country scope', async () => {

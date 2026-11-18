@@ -2333,7 +2333,7 @@ async function processEventDelivery(event) {
     console.log(`[relay] Country-scope drop: ${event.eventType} attribution=${attribution} excluded ${dropReasons.delivery_scope} scoped rule(s)`);
   }
   if (matching.length === 0) {
-    console.log(`[relay] No rule matched: ${event.eventType} severity=${event.severity ?? 'high'} score=${event.payload?.importanceScore ?? 'n/a'} edition=${event.variant || 'any'} rules=${enabledRules.length} drops=${JSON.stringify(dropReasons)}`);
+    console.log(`[relay] No rule matched: ${JSON.stringify(event.eventType)} severity=${JSON.stringify(event.severity ?? 'high')} score=${JSON.stringify(event.payload?.importanceScore ?? 'n/a')} edition=${JSON.stringify(event.variant || 'any')} rules=${enabledRules.length} drops=${JSON.stringify(dropReasons)}`);
   }
 
   // Operator link suppression (#8401): consult the blocked set BEFORE any
