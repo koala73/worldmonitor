@@ -1994,6 +1994,7 @@ async function shadowLogScore(event) {
     source: event.payload?.source ?? '',
     publishedAt: event.payload?.publishedAt ?? null,
     corroborationCount: event.payload?.corroborationCount ?? null,
+    ...(Array.isArray(event.payload?.corroboratedBy) ? { corroboratedBy: event.payload.corroboratedBy.slice(0, 10) } : {}),
     variant: event.variant ?? '',
   };
   const member = JSON.stringify(record);

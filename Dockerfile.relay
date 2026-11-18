@@ -72,6 +72,14 @@ COPY scripts/lib/news-story-key.cjs ./scripts/lib/news-story-key.cjs
 # news-story-key.cjs loads this copy, not /app/shared/: it imports
 # @noble/hashes, which resolves from scripts/node_modules only.
 COPY scripts/shared/story-identity.js ./scripts/shared/story-identity.js
+# Cross-wording corroboration (#10977) and its import closure.
+COPY scripts/lib/news-corroboration.mjs ./scripts/lib/news-corroboration.mjs
+COPY scripts/lib/brief-embedding.mjs ./scripts/lib/brief-embedding.mjs
+COPY scripts/lib/brief-dedup-consts.mjs ./scripts/lib/brief-dedup-consts.mjs
+COPY scripts/lib/brief-dedup-jaccard.mjs ./scripts/lib/brief-dedup-jaccard.mjs
+COPY scripts/lib/_upstash-pipeline.mjs ./scripts/lib/_upstash-pipeline.mjs
+COPY scripts/lib/llm-chain.cjs ./scripts/lib/llm-chain.cjs
+COPY scripts/shared/publisher-families.js ./scripts/shared/publisher-families.js
 # Publisher-link relay gate required by digest-stale-gate.cjs (#8398):
 # relay-emitted rss_alert events must not carry off-publisher links.
 COPY scripts/lib/publisher-link-relay-gate.cjs ./scripts/lib/publisher-link-relay-gate.cjs
