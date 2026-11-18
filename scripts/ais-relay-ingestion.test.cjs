@@ -6,13 +6,7 @@ const http = require('node:http');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { setTimeout: sleep } = require('node:timers/promises');
-const { describe, it } = require('node:test');
-// Each test spawns its own relay against its own stub servers on port 0 and
-// mostly waits on it, so run serially the file took ~37s with the CPU idle.
-// Four tests at a time, one per vCPU on a hosted runner, took it to ~16s.
-// Tests are collected here and registered in one concurrent suite at the end.
-const cases = [];
-const test = (...args) => { cases.push(args); };
+const test = require('node:test');
 // Node 24 loads the shared TypeScript module directly (type stripping), so the
 // emergency codes have one source of truth across TS, ESM and CommonJS.
 const { EMERGENCY_CODES } = require('../shared/aircraft-emergencies.ts');
@@ -1567,8 +1561,4 @@ test('a successful Telegram poll snapshots its items to Redis', async () => {
     await stop(child);
     await upstash.close();
   }
-});
-
-describe('relay ingestion', { concurrency: 4 }, () => {
-  for (const args of cases) it(...args);
 });
