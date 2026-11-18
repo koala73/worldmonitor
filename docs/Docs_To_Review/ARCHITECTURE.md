@@ -788,7 +788,7 @@ The src/config/ml-config.ts module defines five model configurations:
 | `summarization-beta` | Xenova/flan-t5-small | 60 MB | text2text-generation | No |
 | `ner` | Xenova/bert-base-NER | 65 MB | token-classification | No |
 
-Only the embeddings model is marked as `required` — it powers semantic clustering. Other models are loaded on-demand, with a configured memory budget (`ML_THRESHOLDS.memoryBudgetMB`, default 200 MB).
+Only the embeddings model is marked as `required` — it powers semantic clustering. Other models are loaded on-demand. `ML_THRESHOLDS.memoryBudgetMB` (default 200 MB) caps the device-memory estimate used for capability detection; it does not limit model loading.
 
 ### ML Thresholds
 
@@ -799,7 +799,7 @@ const ML_THRESHOLDS = {
   maxTextsPerBatch: 20,            // batch size for embedding requests
   modelLoadTimeoutMs: 600_000,     // 10 min model download/compile timeout
   inferenceTimeoutMs: 120_000,     // 2 min per inference call
-  memoryBudgetMB: 200,             // max memory for all loaded models
+  memoryBudgetMB: 200,             // cap on the device-memory capability estimate
 };
 ```
 
