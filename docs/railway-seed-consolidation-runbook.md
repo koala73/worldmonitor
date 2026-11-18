@@ -1729,6 +1729,16 @@ leaves a day for the run itself; a run on 2026-11-18 is 27 days before
 December 15 and is safe. If a run lands inside that window, re-run on the next
 15th with the gate bypassed:
 `FORCE_RESEED=true railway run --project 29419572-0b0d-437f-8e71-4fa68daf514f --environment production --service seed-comtrade-bilateral-hs4-ext -- node scripts/seed-comtrade-bilateral-hs4-ext.mjs`.
+A failed run arms the same gate: the seeder writes seed-meta with a fresh
+`fetchedAt` even when it publishes no country (a zero-country run, or the error
+path), so a retry from either command above exits at the gate with `skipping
+(set FORCE_RESEED=true to override)` and fetches nothing, and the activation
+marker stays unwritten. To retry within 24 days, prefix the local command with
+`FORCE_RESEED=true`. Each forced retry spends another full pass of quota, so
+first read the failed run's log: if its fetches were refused with HTTP 429 (the
+breaker logs `ABORTING after ... consecutive refused fetches`), the day's quota
+is spent, and the retry must wait until the next UTC day. Comtrade exposes no
+remaining-quota endpoint, so the log and the date rules above are the check.
 The first publish sets the durable
 activation marker `seed-activated:comtrade:bilateral-hs4-ext`, which ends the
 health probe's soft state. The marker write is best-effort: a failure is logged
