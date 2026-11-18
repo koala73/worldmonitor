@@ -1704,8 +1704,10 @@ key. `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `PROXY_URL` and
 `NODE_OPTIONS` reference the shared variables. A deploy does not run a cron
 service, so the first publish comes from the first tick. To publish sooner,
 trigger an off-schedule run of the deployed image on Railway:
-`npx -y @railway/cli@latest cron run --service seed-comtrade-bilateral-hs4-ext --environment production --yes`
-(older installed CLIs lack the `cron` subcommand). Its output lands in the
+`npx -y @railway/cli@5.71.0 cron run --service seed-comtrade-bilateral-hs4-ext --environment production --yes`
+(pinned: 5.71.0 is the reviewed release that ships the `cron` subcommand, which
+older installed CLIs and the automation pin `5.30.1` lack; never float this on
+`@latest`, since it runs with your Railway token). Its output lands in the
 active deployment's log. The local alternative,
 `railway run --project 29419572-0b0d-437f-8e71-4fa68daf514f --environment production --service seed-comtrade-bilateral-hs4-ext -- node scripts/seed-comtrade-bilateral-hs4-ext.mjs`
 from the repository root, runs your checkout's code on your machine with the
