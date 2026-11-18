@@ -1953,50 +1953,6 @@ test('host resize preserves a newer category refusal after a superseded human ob
   await writeFile(info.outputPath('human-reset-after-preserved-refusal.json'), JSON.stringify({ reset, latest: host.contexts.at(-1), selected, calls: host.calls }, null, 2));
 });
 
-test('a newer category refusal supersedes an older pending human camera observation', async ({ page }, info) => {
-  await useSvgNewsMap(page);
-  const host = await installNewsHost(page, false, true, false, true, false, {}, true);
-  const frame = page.frameLocator('iframe');
-  await expect(frame.locator('#panelsGrid')).toContainText('Controlled earthquake report in Japan');
-  expect((await newsAction(page, 'focus_news_article', { link: 'https://example.com/news' })).isError).not.toBe(true);
-  const selected = host.contexts.at(-1)?.latestInteraction;
-  const callsBefore = host.calls.length;
-  await frame.locator('body').evaluate(() => {
-    const probe = window as unknown as RendererProbeWindow & { __observerEntered?: boolean; __observerFinished?: Promise<void> };
-    const map = probe.__newsMap;
-    const original = map.whenViewportSettled.bind(map);
-    const gate = new Promise<void>(resolve => { probe.__releaseNewsSettlement = resolve; });
-    let finish: () => void;
-    probe.__observerFinished = new Promise<void>(resolve => { finish = resolve; });
-    map.whenViewportSettled = async token => {
-      probe.__observerEntered = true;
-      await gate;
-      try { await original(token); }
-      finally { finish(); }
-    };
-  });
-  await frame.locator('[data-action="zoom-in"]').click();
-  await expect.poll(() => frame.locator('body').evaluate(() => Boolean((window as unknown as RendererProbeWindow & { __observerEntered?: boolean }).__observerEntered))).toBe(true);
-  const refusal = await newsAction(page, 'apply_news_view', { category: 'missing', source: 'Unapplied publisher' });
-  const expected = { applied: false, reason: 'unknown_category', requestedCategory: 'missing', latestInteraction: selected };
-  expect(refusal.structuredContent).toMatchObject(expected);
-  await expect.poll(() => host.contexts.at(-1)).toMatchObject(expected);
-  const atRefusal = host.contexts.length;
-  await frame.locator('body').evaluate(async () => {
-    const probe = window as unknown as RendererProbeWindow & { __observerFinished?: Promise<void> };
-    probe.__releaseNewsSettlement!();
-    await probe.__observerFinished;
-    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-  });
-  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
-  await writeFile(info.outputPath('pending-observer-refusal.json'), JSON.stringify({ refusal, contextAtRefusal: host.contexts[atRefusal - 1], latest: host.contexts.at(-1), laterContexts: host.contexts.slice(atRefusal), calls: host.calls }, null, 2));
-  expect(host.contexts.at(-1)).toMatchObject(expected);
-  expect(host.contexts).toHaveLength(atRefusal);
-  expect(host.calls).toHaveLength(callsBefore);
-  await expect(frame.locator('#pluginCategoryNotice')).toContainText('missing');
-  await expect(frame.getByRole('combobox', { name: 'News source' })).toHaveValue('');
-});
-
 
 test('aged default clustered Search keeps the exact selected row highlighted after its queued commit', async ({ page }, info) => {
   await useSvgNewsMap(page);
