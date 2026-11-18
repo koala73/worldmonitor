@@ -48,7 +48,7 @@ export const LiveBriefCard = () => {
   const mixed = !live && (teasers.headlines.live || teasers.chokepoints.live || teasers.quotes.live);
   const pulseLabel = t('welcome.live.pulseBadge', { date: formatSnapshotDate(teasers.capturedAt) });
   const blockTag = (isLive: boolean) => (mixed ? (
-    <span className="ml-2 font-mono text-xs uppercase tracking-wider text-gray-500">
+    <span className="ml-2 font-mono text-xs uppercase tracking-wider text-gray-400">
       {isLive ? t('welcome.live.liveBadge') : pulseLabel}
     </span>
   ) : null);
@@ -76,15 +76,15 @@ export const LiveBriefCard = () => {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline gap-2 mb-3">
               <span className="font-bold text-gray-200">World Monitor</span>
-              <span className="text-xs text-gray-500 bg-gray-800 px-1 rounded">APP</span>
-              {stamp && <span className="text-xs text-gray-500">{stamp}</span>}
+              <span className="text-xs text-gray-400 bg-gray-800 px-1 rounded">APP</span>
+              {stamp && <span className="text-xs text-gray-400">{stamp}</span>}
               {live ? (
                 <span className="inline-flex items-center gap-1 text-xs font-mono uppercase tracking-wider text-wm-green">
                   <span className="w-1.5 h-1.5 rounded-full bg-wm-green animate-pulse" aria-hidden="true" />
                   {t('welcome.live.liveBadge')}
                 </span>
               ) : mixed ? null : (
-                <span className="text-xs font-mono uppercase tracking-wider text-gray-500">
+                <span className="text-xs font-mono uppercase tracking-wider text-gray-400">
                   {pulseLabel}
                 </span>
               )}
@@ -101,7 +101,7 @@ export const LiveBriefCard = () => {
                           {h.title}
                         </a>
                       ) : h.title}
-                      <span className="block font-mono text-xs text-gray-500">
+                      <span className="block font-mono text-xs text-gray-400">
                         {h.source}{mounted && h.publishedAt ? ` · ${timeAgo(h.publishedAt)}` : ''}
                       </span>
                     </li>
