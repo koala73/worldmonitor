@@ -68,7 +68,7 @@ async function redis(command) {
 
 const parseMaybe = (v) => { if (typeof v !== 'string') return v; try { return JSON.parse(v); } catch { return null; } };
 const cacheKey = (title) =>
-  `classify:sebuf:v6:${crypto.createHash('sha256').update(normalizeNewsStoryTitle(title).split(' ').length < 4 ? title.toLowerCase() : normalizeNewsStoryTitle(title) + (/\?["'”’»]*\s*(?:[-–—|][^?]*)?$/.test(title) ? ' ?' : '')).digest('hex').slice(0, 16)}`;
+  `classify:sebuf:v6:${crypto.createHash('sha256').update(normalizeNewsStoryTitle(title.replace(/(?<=[\p{L}\p{N}])[-‐‑](?=[\p{L}\p{N}])/gu, ' ')).split(' ').length < 4 ? title.toLowerCase() : normalizeNewsStoryTitle(title.replace(/(?<=[\p{L}\p{N}])[-‐‑](?=[\p{L}\p{N}])/gu, ' ')) + (/\?["'”’»]*\s*(?:[-–—|][^?]*)?$/.test(title) ? ' ?' : '')).digest('hex').slice(0, 16)}`;
 
 async function shadowReport() {
   const rows = (await redis(['LRANGE', 'classify:jev-shadow:v1', 0, LIMIT - 1]) ?? []).map(parseMaybe).filter(Boolean);

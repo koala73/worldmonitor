@@ -5449,7 +5449,8 @@ function countriesNamedInHeadline(text) {
 // key keeps its exact-title label, as its alerts keep exact-title dedup.
 const CLASSIFY_QUESTION_RE = /\?["'”’»]*\s*(?:[-–—|][^?]*)?$/;
 function classifyCacheKey(title) {
-  const story = normalizeNewsStoryTitle(title);
+  // An in-word hyphen splits words (re-sign is not resign).
+  const story = normalizeNewsStoryTitle(title.replace(/(?<=[\p{L}\p{N}])[-‐‑](?=[\p{L}\p{N}])/gu, ' '));
   const identity = story.split(' ').length < MIN_STORY_WORDS ? title.toLowerCase()
     : story + (CLASSIFY_QUESTION_RE.test(title) ? ' ?' : '');
   const hash = crypto.createHash('sha256').update(identity).digest('hex').slice(0, 16);

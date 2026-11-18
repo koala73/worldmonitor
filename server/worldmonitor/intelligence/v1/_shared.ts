@@ -3,7 +3,7 @@
  */
 
 import { hashString, sha256Hex } from '../../../_shared/hash';
-import { normalizeNewsStoryTitle, stripAttributionSuffix } from '../../../../shared/story-identity.js';
+import { normalizeNewsStoryTitle } from '../../../../shared/story-identity.js';
 
 // ========================================================================
 // Constants
@@ -71,15 +71,15 @@ export { hashString, sha256Hex };
 
 // #10976: keyed on the story, so outlet suffixes and punctuation share one label.
 // scripts/ais-relay.cjs classifyCacheKey derives the same identity.
-// A caller-supplied title (classify-event) keys on its full text when it has an
-// attribution suffix, so an appended " - example.com" cannot write the label of
-// the story it imitates.
+// A caller-supplied title (classify-event) keys in its own namespace, so no
+// variant of a headline (suffix, punctuation, case) can write a story's label.
 export async function buildClassifyCacheKey(title: string, { callerTitle = false }: { callerTitle?: boolean } = {}): Promise<string> {
   const lower = title.toLowerCase();
-  const story = normalizeNewsStoryTitle(title);
+  // An in-word hyphen splits words (re-sign is not resign).
+  const story = normalizeNewsStoryTitle(title.replace(/(?<=[\p{L}\p{N}])[-‐‑](?=[\p{L}\p{N}])/gu, ' '));
   // Under four words there is no story key (scripts/lib/news-story-key.cjs MIN_STORY_WORDS).
-  const identity = (callerTitle && stripAttributionSuffix(lower, { allowPipe: false }) !== lower) || story.split(' ').length < 4
-    ? lower
+  const identity = callerTitle ? `caller:${lower}`
+    : story.split(' ').length < 4 ? lower
     : story + (/\?["'”’»]*\s*(?:[-–—|][^?]*)?$/.test(title) ? ' ?' : '');
   return `${CLASSIFY_CACHE_PREFIX}${(await sha256Hex(identity)).slice(0, 16)}`;
 }

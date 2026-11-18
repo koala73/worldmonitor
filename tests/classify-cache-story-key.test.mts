@@ -39,8 +39,16 @@ describe('classify cache key is the story, not the title string (#10976)', () =>
 
   it('does not let a caller-supplied suffix write another story\'s label', async () => {
     const story = await buildClassifyCacheKey('Iran closes Strait of Hormuz');
-    assert.notEqual(await buildClassifyCacheKey('Iran closes Strait of Hormuz - satire example.com', { callerTitle: true }), story);
-    assert.equal(await buildClassifyCacheKey('Iran closes Strait of Hormuz', { callerTitle: true }), story);
+    for (const variant of ['Iran closes Strait of Hormuz - satire example.com', 'Iran closes Strait of Hormuz!', 'IRAN closes Strait of Hormuz', 'Iran closes Strait of Hormuz']) {
+      assert.notEqual(await buildClassifyCacheKey(variant, { callerTitle: true }), story, variant);
+    }
+  });
+
+  it('keeps an in-word hyphen as a word break', async () => {
+    assert.notEqual(
+      await buildClassifyCacheKey('Minister will re-sign trade agreement'),
+      await buildClassifyCacheKey('Minister will resign trade agreement'),
+    );
   });
 
   it('keeps different headlines apart', async () => {
