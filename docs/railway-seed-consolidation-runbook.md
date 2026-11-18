@@ -1704,7 +1704,7 @@ key. `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `PROXY_URL` and
 `NODE_OPTIONS` reference the shared variables. A deploy does not run a cron
 service, so the first publish comes from the first tick. To publish sooner,
 trigger an off-schedule run of the deployed image on Railway:
-`npx -y @railway/cli@5.71.0 cron run --service seed-comtrade-bilateral-hs4-ext --environment production --yes`
+`npx -y @railway/cli@5.71.0 cron run --project 29419572-0b0d-437f-8e71-4fa68daf514f --environment production --service seed-comtrade-bilateral-hs4-ext --yes`
 (pinned: 5.71.0 is the reviewed release that ships the `cron` subcommand, which
 older installed CLIs and the automation pin `5.30.1` lack; never float this on
 `@latest`, since it runs with your Railway token). Its output lands in the
@@ -1722,8 +1722,10 @@ tick. An off-schedule run also moves the 24-day freshness gate
 (`FRESHNESS_GATE_MS`): a scheduled tick less than 24 days after it skips
 without extending the 40-day shard TTLs, so the shards can expire before the
 following tick (a run on December 2 skips December 15, expires around January
-11 and is not replaced until January 15). Start an off-schedule run only when
-the next 15th is at least 24 days away; a run on 2026-11-18 is 27 days before
+11 and is not replaced until January 15). The gate measures from the
+`fetchedAt` the run writes when it finishes, not from when it starts, so start
+an off-schedule run only when the next 15th is at least 25 days away, which
+leaves a day for the run itself; a run on 2026-11-18 is 27 days before
 December 15 and is safe. If a run lands inside that window, re-run on the next
 15th with the gate bypassed:
 `FORCE_RESEED=true railway run --project 29419572-0b0d-437f-8e71-4fa68daf514f --environment production --service seed-comtrade-bilateral-hs4-ext -- node scripts/seed-comtrade-bilateral-hs4-ext.mjs`.
