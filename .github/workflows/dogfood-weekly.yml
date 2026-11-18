@@ -118,12 +118,16 @@ jobs:
         run: |
           node - <<'EOF'
           const fs = require('fs');
-          const file = `${process.env.OUT_DIR}/agent-result.json`;
+          // run-agent.sh writes this outside OUT_DIR, beyond the agent's edit scope; the values are still checked.
+          const file = `${process.env.OUT_DIR}.result.json`;
           if (!fs.existsSync(file)) { console.log('No agent result file.'); process.exit(0); }
           // A killed agent can leave the file empty or cut short; that is no reason to fail the job.
           let r;
           try { r = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { console.log('Agent result file is not valid JSON.'); process.exit(0); }
-          const line = `Agent: ${r.subtype ?? 'unknown'}, ${r.num_turns ?? '?'} turns, $${Number(r.total_cost_usd ?? 0).toFixed(2)}`;
+          const subtype = ['success', 'error_max_turns', 'error_max_budget_usd', 'error_during_execution'].includes(r.subtype) ? r.subtype : 'unknown';
+          const turns = Number.isInteger(r.num_turns) ? r.num_turns : '?';
+          const cost = Number.isFinite(r.total_cost_usd) ? r.total_cost_usd.toFixed(2) : '?';
+          const line = `Agent: ${subtype}, ${turns} turns, $${cost}`;
           console.log(line);
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${line}\n`);
           EOF

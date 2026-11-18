@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Runs the weekly dogfood agent: renders prompt.md, then runs Claude Code headless with agent-browser as its
 # only shell command. Writes findings.json, screenshots and videos under OUT_DIR.
-# Usage: OUT_DIR=<dir> TARGET_URL=<url> FOCUS=<text> [MODEL=<id>] [MAX_BUDGET_USD=<n>] scripts/dogfood/run-agent.sh
+# Claude's own result (cost, turns) goes to RESULT_FILE, outside OUT_DIR, so the agent cannot edit it.
+# Usage: OUT_DIR=<dir> TARGET_URL=<url> FOCUS=<text> [RESULT_FILE=<file>] [MODEL=<id>] [MAX_BUDGET_USD=<n>] scripts/dogfood/run-agent.sh
 set -euo pipefail
 
 : "${OUT_DIR:?OUT_DIR is required}"
@@ -9,6 +10,7 @@ set -euo pipefail
 : "${FOCUS:?FOCUS is required}"
 MODEL="${MODEL:-claude-opus-5-5}"
 MAX_BUDGET_USD="${MAX_BUDGET_USD:-15}"
+RESULT_FILE="${RESULT_FILE:-${OUT_DIR%/}.result.json}"
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p "$OUT_DIR/screenshots" "$OUT_DIR/videos"
@@ -92,4 +94,4 @@ claude -p "$prompt" \
   --permission-mode dontAsk \
   --allowedTools "Bash(agent-browser *)" "Bash(sleep *)" "Read(/$OUT_DIR/**)" "Edit(/$OUT_DIR/**)" \
   --disallowedTools "WebFetch" "WebSearch" "Agent" \
-  --output-format json > "$OUT_DIR/agent-result.json"
+  --output-format json > "$RESULT_FILE"
