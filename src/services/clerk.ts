@@ -649,6 +649,10 @@ export function isClerkReady(): boolean {
 /** True when Clerk's sign-in (or other auth) modal is already on screen. */
 export function isClerkSignInOpen(): boolean {
   if (!clerkInstance || typeof document === 'undefined') return false;
+  // Between closing sign-up and opening sign-in no Clerk form is on screen,
+  // but sign-in is on its way: dismissal watchers (MCP grant) must not read
+  // that gap as a cancel.
+  if (signUpEscapeInFlight) return true;
   try {
     return Boolean(document.querySelector(
       '.cl-modalBackdrop, .cl-modal, [data-clerk-component="SignIn"]',
@@ -825,6 +829,7 @@ export function openSignUp(): void {
  * next Sign In click would resume the sign-up code card again.
  */
 let signUpEscapeHook: (() => void) | null = null;
+let signUpEscapeInFlight = false;
 
 export function registerSignUpEscapeHook(hook: (() => void) | null): void {
   signUpEscapeHook = hook;
@@ -840,13 +845,17 @@ function installSignUpEscapeToSignIn(clerk: ClerkInstance): void {
   installSignUpSignInEscape(document, () => {
     const emailAddress = clerk.client?.signUp?.emailAddress ?? null;
     signUpEscapeHook?.();
-    switchSignUpToSignIn(clerk, () => runClerkSurfaceOpen(
-      () => clerk.openSignIn({
-        appearance: getAppearance(),
-        ...(emailAddress ? { initialValues: { emailAddress } } : {}),
-      }),
-      (err) => reportClerkSurfaceFailure('open-sign-in', 'sign-up-escape', err),
-    ));
+    signUpEscapeInFlight = true;
+    switchSignUpToSignIn(clerk, () => {
+      signUpEscapeInFlight = false;
+      runClerkSurfaceOpen(
+        () => clerk.openSignIn({
+          appearance: getAppearance(),
+          ...(emailAddress ? { initialValues: { emailAddress } } : {}),
+        }),
+        (err) => reportClerkSurfaceFailure('open-sign-in', 'sign-up-escape', err),
+      );
+    });
   });
 }
 

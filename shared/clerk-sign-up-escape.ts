@@ -53,20 +53,32 @@ function buildEscape(doc: Document, onSignIn: () => void): HTMLElement {
  * Returns a disposer that stops watching and removes every added action.
  */
 export function installSignUpSignInEscape(doc: Document, onSignIn: () => void): () => void {
-  // Live collection: the dashboard mutates its DOM constantly, and an empty
-  // collection makes each mutation batch a length check.
-  const cards = doc.getElementsByClassName(SIGN_UP_CODE_CARD_CLASS);
-  const decorate = (): void => {
-    for (const card of Array.from(cards)) {
-      // Clerk also puts the class on an ancestor of the card. Only the
-      // innermost match is the card; decorating both renders a second row.
-      if (card.getElementsByClassName(SIGN_UP_CODE_CARD_CLASS).length > 0) continue;
-      if (!card.querySelector(`[${ESCAPE_ATTR}]`)) card.append(buildEscape(doc, onSignIn));
-    }
+  const decorateCard = (card: Element): void => {
+    // Clerk also puts the class on an ancestor of the card. Only the innermost
+    // match is the card; decorating both renders a second row.
+    if (card.getElementsByClassName(SIGN_UP_CODE_CARD_CLASS).length > 0) return;
+    if (!card.querySelector(`[${ESCAPE_ATTR}]`)) card.append(buildEscape(doc, onSignIn));
   };
-  const observer = new MutationObserver(decorate);
-  observer.observe(doc.documentElement, { childList: true, subtree: true });
-  decorate();
+  const decorateTree = (root: Element): void => {
+    if (root.classList.contains(SIGN_UP_CODE_CARD_CLASS)) decorateCard(root);
+    for (const card of root.getElementsByClassName(SIGN_UP_CODE_CARD_CLASS)) decorateCard(card);
+  };
+  // A card enters inside an added subtree, or by a class change on an element
+  // already present. Scanning only those keeps unrelated dashboard mutations
+  // from walking the whole document.
+  const observer = new MutationObserver((records) => {
+    for (const record of records) {
+      if (record.type === 'attributes') {
+        if (record.target instanceof Element && record.target.classList.contains(SIGN_UP_CODE_CARD_CLASS)) decorateTree(record.target);
+        continue;
+      }
+      for (const node of record.addedNodes) {
+        if (node instanceof Element) decorateTree(node);
+      }
+    }
+  });
+  observer.observe(doc.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+  decorateTree(doc.documentElement);
   return () => {
     observer.disconnect();
     for (const row of doc.querySelectorAll(`[${ESCAPE_ATTR}]`)) row.remove();

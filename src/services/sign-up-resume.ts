@@ -169,8 +169,9 @@ export interface SignUpResumeController {
   resumeOnUserIntent: (fallback: () => void, surface?: ResumeSurfaceIntent) => boolean;
   /**
    * The customer left this attempt for sign-in (they already have an account).
-   * Closes the resume card and never resumes the attempt again, so Sign In
-   * reaches Clerk's sign-in form instead of the sign-up code card.
+   * Closes the resume card and stops the automatic resume (hydration) and the
+   * Sign In click from resuming it, so Sign In reaches Clerk's sign-in form. An
+   * explicit Create account click still resumes it, as after any dismissal.
    */
   releaseAttempt: () => void;
 }
@@ -184,10 +185,13 @@ export interface SignUpResumeController {
 export type ResumeSurfaceIntent = 'sign-in' | 'sign-up';
 
 export function createSignUpResumeController(ports: SignUpResumePorts): SignUpResumeController {
+  // Released in this page even when storage rejects the persisted marker.
+  const released = new Set<SignUpAttemptId>();
+  const isDismissed = (id: SignUpAttemptId): boolean => released.has(id) || ports.markers.dismissed(id);
   const decide = (trigger: ResumeTrigger): ResumeDecision => {
     const snap = ports.readSnapshot();
     if (!snap) return { kind: 'none', reason: 'no-attempt' };
-    const dismissedAttemptId = snap.signUp.kind === 'pending' && ports.markers.dismissed(snap.signUp.id)
+    const dismissedAttemptId = snap.signUp.kind === 'pending' && isDismissed(snap.signUp.id)
       ? snap.signUp.id
       : null;
     return decideResume({ ...snap, trigger, dismissedAttemptId, clerkModalOpen: ports.clerkModalOpen() }, ports.now());
@@ -207,7 +211,11 @@ export function createSignUpResumeController(ports: SignUpResumePorts): SignUpRe
       mount();
       return;
     }
-    void ports.resendCode().then(mount, onResendFailed);
+    // The customer may leave for sign-in while the resend is in flight.
+    void ports.resendCode().then(
+      () => { if (!released.has(decision.attemptId)) mount(); },
+      () => { if (!released.has(decision.attemptId)) onResendFailed(); },
+    );
   };
 
   return {
@@ -222,13 +230,14 @@ export function createSignUpResumeController(ports: SignUpResumePorts): SignUpRe
     resumeOnUserIntent(fallback, intent = 'sign-up') {
       const decision = decide('user');
       if (decision.kind !== 'resume') return false;
-      if (intent === 'sign-in' && (decision.code !== 'live' || ports.markers.dismissed(decision.attemptId))) return false;
+      if (intent === 'sign-in' && (decision.code !== 'live' || isDismissed(decision.attemptId))) return false;
       open(decision, 'user', fallback);
       return true;
     },
     releaseAttempt() {
       const snap = ports.readSnapshot();
       if (snap?.signUp.kind !== 'pending') return;
+      released.add(snap.signUp.id);
       ports.markers.markDismissed(snap.signUp.id);
       if (ports.surface.isOpen()) ports.surface.close();
     },

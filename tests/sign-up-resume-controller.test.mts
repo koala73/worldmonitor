@@ -239,7 +239,7 @@ describe('sign-up resume controller', () => {
     assert.equal(h.resends, 0);
   });
 
-  it('releaseAttempt stops every later resume of that attempt, so Sign in reaches Clerk\'s sign-in form', () => {
+  it('releaseAttempt stops the hydration and Sign In resumes of that attempt, so Sign in reaches Clerk\'s sign-in form', () => {
     // An existing account typed into sign-up gets a code screen with no code
     // under strict enumeration protection. The escape to sign-in releases the
     // attempt; without that, the next Sign In click resumes the dead card.
@@ -254,6 +254,35 @@ describe('sign-up resume controller', () => {
     createSignUpResumeController(h.ports).onClerkEmission(true);
     assert.equal(h.surface.opened, 1, 'a reload does not resume it either');
     assert.equal(h.log.includes('dismissed'), false, 'not counted as a funnel dismissal');
+  });
+
+  it('releaseAttempt holds in this page when storage rejects the marker', () => {
+    const h = harness();
+    const c = createSignUpResumeController({
+      ...h.ports,
+      markers: { ...h.ports.markers, markDismissed: () => {}, dismissed: () => false },
+    });
+    c.releaseAttempt();
+    assert.equal(c.resumeOnUserIntent(() => {}, 'sign-in'), false);
+    assert.equal(h.surface.opened, 0);
+  });
+
+  it('a resend that settles after releaseAttempt opens nothing', async () => {
+    const expired = harness(pending(NOW - 60_000));
+    const c = createSignUpResumeController(expired.ports);
+    assert.equal(c.resumeOnUserIntent(() => {}, 'sign-up'), true);
+    c.releaseAttempt();
+    await tick();
+    assert.equal(expired.surface.opened, 0, 'no resume card over sign-in');
+
+    const failing = harness(pending(NOW - 60_000));
+    failing.state.resendResult = 'fail';
+    const c2 = createSignUpResumeController(failing.ports);
+    let fallbacks = 0;
+    assert.equal(c2.resumeOnUserIntent(() => { fallbacks += 1; }, 'sign-up'), true);
+    c2.releaseAttempt();
+    await tick();
+    assert.equal(fallbacks, 0, 'no Clerk sign-up modal over sign-in');
   });
 
   it('releaseAttempt is a no-op with no pending attempt', () => {

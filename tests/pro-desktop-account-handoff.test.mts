@@ -39,7 +39,7 @@ before(async () => {
           ? `export class SiteDataBlockedError extends Error { name = 'SiteDataBlockedError'; }
              export const SITE_DATA_BLOCKED_MESSAGE = 'site data blocked';
              export const ensureClerk = () => globalThis.__checkoutFixture.clerk();
-             export const setAuthReturnUrls = () => {};`
+             export const setAuthReturnUrls = (urls) => { globalThis.__checkoutFixture.authReturnUrls.push(urls); };`
           : 'export const captureException = () => {}; export const captureMessage = () => {};',
       }));
     } }],
@@ -75,7 +75,8 @@ async function fixture(options: {
       : null,
   };
   const navigations: string[] = [];
-  const signIns: Array<{ afterSignInUrl?: string }> = [];
+  const signIns: Array<{ afterSignInUrl?: string; afterSignUpUrl?: string }> = [];
+  const authReturnUrls: unknown[] = [];
   const signUps: Array<{ afterSignInUrl?: string }> = [];
   const bodies: Array<Record<string, unknown>> = [];
   let signOuts = 0;
@@ -105,7 +106,7 @@ async function fixture(options: {
       bodies.push(JSON.parse(String(init.body)));
       return options.responses?.shift() ?? Response.json({ checkout_url: 'https://checkout.dodopayments.com/test' });
     },
-    __checkoutFixture: { clerk: async () => ({
+    __checkoutFixture: { authReturnUrls, clerk: async () => ({
       get user() { return state.user; },
       session: { getToken: async () => { options.onGetToken?.(state); return 'synthetic-token'; } },
       openSignIn: (intent: { afterSignInUrl?: string }) => { signIns.push(intent); },
@@ -124,7 +125,7 @@ async function fixture(options: {
     Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   }
   const checkout = await import(`${moduleUrl}#${Math.random()}`);
-  return { checkout, navigations, signIns, signUps, bodies, signOuts: () => signOuts, state, replacedUrls, analyticsEvents };
+  return { checkout, navigations, signIns, signUps, bodies, signOuts: () => signOuts, state, replacedUrls, analyticsEvents, authReturnUrls };
 }
 
 const dialog = () => document.querySelector('[role="dialog"]');
@@ -168,6 +169,9 @@ it('switches to the desktop account and resumes the same checkout after sign-in'
   assert.equal(resume.searchParams.get('wm_checkout_product'), 'synthetic-product');
   assert.equal(resume.searchParams.get('wm_checkout_handoff'), 'desktop');
   assert.equal(resume.searchParams.get('wm_checkout_account'), digest(DESKTOP_USER));
+  // A sign-up escape from that sign-in still resumes this checkout.
+  const { afterSignInUrl, afterSignUpUrl } = f.signIns[0]!;
+  assert.deepEqual(f.authReturnUrls, [{ afterSignInUrl, afterSignUpUrl }]);
   assert.deepEqual(f.bodies, []);
 });
 

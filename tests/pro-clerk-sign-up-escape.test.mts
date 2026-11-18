@@ -25,10 +25,16 @@ function fakeClerk(emailAddress: string | null) {
   return { instance, calls };
 }
 
-// Clerk has already unmounted sign-up by the first frame.
+// Clerk keeps sign-up mounted for the first frame, then unmounts it.
 const frames: Array<() => void> = [];
-const switchDeps = { authSurfaceMounted: () => false, now: () => 0, nextFrame: (cb: () => void) => { frames.push(cb); } };
-const nextTask = async () => { while (frames.length) frames.shift()!(); };
+let mountedFrames = 0;
+const switchDeps = {
+  authSurfaceMounted: () => mountedFrames > 0,
+  now: () => 0,
+  nextFrame: (cb: () => void) => { frames.push(cb); },
+};
+const runFrame = () => { frames.shift()?.(); if (mountedFrames > 0) mountedFrames -= 1; };
+const nextTask = async () => { while (frames.length) runFrame(); };
 
 afterEach(() => setAuthReturnUrls(null));
 
@@ -37,9 +43,12 @@ describe('pro sign-up code card escape', () => {
     const returnUrl = 'https://www.worldmonitor.app/pro?checkout=api_starter#pricing';
     setAuthReturnUrls({ afterSignInUrl: returnUrl, afterSignUpUrl: returnUrl });
     const { instance, calls } = fakeClerk('existing-buyer@example.com');
+    mountedFrames = 1;
     openSignInInsteadOfSignUp(instance, switchDeps);
     // Clerk ignores openSignIn while the modal that hosts sign-up is mounted.
     assert.deepEqual(calls, [{ op: 'closeSignUp' }, { op: 'closeSignIn' }]);
+    runFrame();
+    assert.equal(calls.length, 2, 'still mounted: sign-in not opened yet');
     await nextTask();
     assert.deepEqual(calls, [
       { op: 'closeSignUp' },

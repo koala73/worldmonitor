@@ -79,6 +79,16 @@ describe('sign-up code card escape to sign-in', () => {
     expect(inner.lastElementChild?.hasAttribute('data-wm-sign-in-escape')).toBe(true);
   });
 
+  it('decorates an element that becomes the code card by a class change', async () => {
+    dispose = installSignUpSignInEscape(document, () => {});
+    const card = clerkCard('cl-signUp-start');
+    await flush();
+    expect(escapeButton(card)).toBeNull();
+    card.className = 'cl-card cl-signUp-emailCode';
+    await flush();
+    expect(escapeButton(card)).not.toBeNull();
+  });
+
   it('decorates a code card already on screen at install', () => {
     const card = clerkCard('cl-signUp-emailCode');
     dispose = installSignUpSignInEscape(document, () => {});
@@ -140,7 +150,11 @@ describe('switching from sign-up to sign-in', () => {
     const { switchSignUpToSignIn, SIGN_IN_REOPEN_MAX_WAIT_MS } = await import('../../shared/clerk-sign-up-escape');
     const h = harness(Number.POSITIVE_INFINITY);
     switchSignUpToSignIn(h.clerk, () => h.log.push('open'), h.deps);
-    for (let i = 0; i < SIGN_IN_REOPEN_MAX_WAIT_MS / 16 + 2 && !h.log.includes('open'); i++) h.runFrame();
+    // Frames run at 16 ms; the cap is reached on frame ceil(2000 / 16) = 125.
+    const capFrame = Math.ceil(SIGN_IN_REOPEN_MAX_WAIT_MS / 16);
+    for (let i = 0; i < capFrame - 1; i++) h.runFrame();
+    expect(h.log).not.toContain('open');
+    h.runFrame();
     expect(h.log.filter((e) => e === 'open').length).toBe(1);
     expect(h.frames.length).toBe(0);
   });

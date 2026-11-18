@@ -53,6 +53,7 @@ async function fixture(options: {
   const pageListeners = new Map<string, Set<(event: { persisted: boolean }) => void>>();
   const captures: unknown[][] = [];
   const authReturnUrls: unknown[] = [];
+  const returnUrlsAtOpen: number[] = [];
   const analyticsEvents: Array<{ event: string; data?: Record<string, unknown> }> = [];
   let requests = 0;
   const globals: Record<string, unknown> = {
@@ -85,10 +86,12 @@ async function fixture(options: {
         session: { getToken: async () => options.missingToken ? null : 'synthetic-token' },
         openSignIn: (intent: { afterSignUpUrl?: string; afterSignInUrl?: string }) => {
           if (options.signInError) throw new Error('Synthetic modal failure');
+          returnUrlsAtOpen.push(authReturnUrls.length);
           signIns.push(intent);
         },
         openSignUp: (intent: { afterSignUpUrl?: string; afterSignInUrl?: string }) => {
           if (options.signUpError) throw new Error('Synthetic modal failure');
+          returnUrlsAtOpen.push(authReturnUrls.length);
           signUps.push(intent);
         },
       };
@@ -109,7 +112,7 @@ async function fixture(options: {
   const firePageShow = (persisted: boolean) => {
     for (const fn of [...(pageListeners.get('pageshow') ?? [])]) fn({ persisted });
   };
-  return { checkout, phases, navigations, signIns, signUps, captures, authReturnUrls, analyticsEvents, requests: () => requests, options, firePageShow };
+  return { checkout, phases, navigations, signIns, signUps, captures, authReturnUrls, returnUrlsAtOpen, analyticsEvents, requests: () => requests, options, firePageShow };
 }
 
 const chooser = () => document.getElementById('wm-pro-auth-form-dialog');
@@ -216,6 +219,7 @@ for (const [label, form] of [[/create account/i, 'sign-up'], [/sign in/i, 'sign-
     assert.equal(new URL(afterSignUpUrl).searchParams.get('wm_checkout_product'), 'synthetic-product');
     // The sign-up code card's Sign in escape reopens sign-in with these URLs.
     assert.deepEqual(f.authReturnUrls, [{ afterSignInUrl, afterSignUpUrl }]);
+    assert.deepEqual(f.returnUrlsAtOpen, [1], 'recorded before the form opens');
     assert.deepEqual(f.analyticsEvents[1]?.data, { productId: 'unknown', surface: 'pro-page', form });
   });
 }
