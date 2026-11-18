@@ -130,3 +130,106 @@ test('long headlines that part only at the end keep separate keys', () => {
 test('a story is claimed for the day an exact repeat is already held for', () => {
   assert.equal(NEWS_STORY_DEDUP_TTL_SECONDS, 24 * 60 * 60);
 });
+
+test('digest sightings retain trusted families under the delivery headline across builds', async (t) => {
+  const { refreshPublisherCounts } = await import('../scripts/lib/news-alert-coverage.mjs');
+  const sets = new Map<string, Map<string, number>>();
+  const day = 86_400_000;
+  const start = Date.now() - day;
+  const apply = ([op, key, ...args]: (string | number)[]) => {
+    const members = sets.get(String(key)) ?? new Map<string, number>();
+    sets.set(String(key), members);
+    if (op === 'ZADD') {
+      assert.equal(args.shift(), 'GT');
+      for (let i = 0; i < args.length; i += 2) {
+        const family = String(args[i + 1]);
+        members.set(family, Math.max(Number(args[i]), members.get(family) ?? 0));
+      }
+    } else if (op === 'ZRANGEBYSCORE') {
+      const after = Number(String(args[0]).slice(1));
+      return { result: [...members].filter(([, seen]) => seen > after && seen <= Number(args[1])).map(([family]) => family) };
+    } else assert.equal(op, 'EXPIRE');
+    return { result: 1 };
+  };
+  t.mock.method(globalThis, 'fetch', async (_url, init) => Response.json(JSON.parse(init.body).map(apply)));
+  const saved = { ...process.env };
+  t.after(() => {
+    for (const name of ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'VERCEL_ENV']) {
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
+    }
+  });
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.invalid';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+  process.env.VERCEL_ENV = 'production';
+  const write = (edition, at, ...items) => digest.recordPublisherCoverage(items, items, edition, at, Infinity);
+  const first = { title: CNN, source: 'CNN World', originPublisherTrusted: false };
+  const later = { title: EGYPT_INDEPENDENT, source: 'Egypt Independent' };
+  await write('full', start, first, { ...first, originPublisher: 'Forged source' });
+  await write('full', start + 3_600_000, later, { ...later, source: 'Google News', originPublisher: later.source, originPublisherTrusted: true });
+  await write('full', start, later); // an earlier build finishing late
+  await write('tech', start, { ...later, source: 'Another feed' });
+  await write('full', start, { ...later, title: SUN_ONLINE, source: 'Another feed' });
+  const event = { eventType: 'rss_alert', variant: 'full', payload: { title: CNN, corroborationCount: 1 } };
+  const read = (now, transport = async commands => commands.map(apply)) => refreshPublisherCounts([event], now, transport);
+  await read(start + 4_000_000);
+  assert.equal(event.observedPublisherCount, 2);
+  assert.equal(event.payload.corroborationCount, 1);
+  // One family left in the window is no more than the producer counted, so
+  // the event keeps rendering its own count.
+  await read(start + day);
+  assert.equal(event.observedPublisherCount, undefined);
+  await read(start + day, async () => null);
+  assert.equal(event.observedPublisherCount, undefined);
+});
+
+test('coverage writes key only served headlines, two commands each, with families from below the cap', async (t) => {
+  const batches: unknown[][][] = [];
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    const commands = JSON.parse(init.body);
+    batches.push(commands);
+    return Response.json(commands.map(() => ({ result: 1 })));
+  });
+  const saved = { ...process.env };
+  t.after(() => {
+    for (const name of ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'VERCEL_ENV']) {
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
+    }
+  });
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.invalid';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+  process.env.VERCEL_ENV = 'production';
+  const served = { title: CNN, source: 'CNN World' };
+  const belowCapRepeat = { title: EGYPT_INDEPENDENT, source: 'Egypt Independent' };
+  const belowCapOnly = { title: SUN_ONLINE, source: 'SunOnline International' };
+  await digest.recordPublisherCoverage([served, belowCapRepeat, belowCapOnly], [served], 'full', Date.now(), Infinity);
+  const commands = batches.flat().filter((cmd) => cmd[0] !== 'MULTI' && cmd[0] !== 'EXEC');
+  assert.deepEqual(commands.map((cmd) => cmd[0]), ['ZADD', 'EXPIRE']);
+  const [, , gt, ...scored] = commands[0];
+  assert.equal(gt, 'GT');
+  assert.equal(scored.length / 2, 2, 'the below-cap repeat adds its publisher to the served headline');
+});
+
+test('the coverage ledger write stops waiting at its deadline when Redis stalls', async (t) => {
+  // The ledger runs after the coverage and history writes join, which may hold
+  // until the tracking deadline; a 5 s Redis wait past that loses the digest.
+  t.mock.method(globalThis, 'fetch', (_url, init) => new Promise((_, reject) => {
+    init.signal?.addEventListener('abort', () => reject(init.signal.reason));
+  }));
+  const warn = t.mock.method(console, 'warn', () => {});
+  const saved = { ...process.env };
+  t.after(() => {
+    for (const name of ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN']) {
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
+    }
+  });
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.invalid';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+  const started = Date.now();
+  await digest.writeCoverageLedger('news:coverage-ledger:v1:full:en', { v: 1 }, started + 50);
+  const waited = Date.now() - started;
+  assert.ok(waited < 1_000, `waited ${waited} ms`);
+  assert.ok(warn.mock.calls.some((call) => String(call.arguments[0]).includes('abandoned at the response deadline')));
+});

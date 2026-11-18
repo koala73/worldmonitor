@@ -88,7 +88,7 @@ import {
   isPublisherLink,
   linkHostname,
 } from '../../../../shared/publisher-link-gate.js';
-import { stripAttributionSuffix } from '../../../../shared/story-identity.js';
+import { newsPublisherCoverageKey, stripAttributionSuffix } from '../../../../shared/story-identity.js';
 // @ts-expect-error — JS module, no declaration file
 import { STORY_ALIAS_PUBLISH_SCRIPT } from '../../../../shared/story-alias-publish-script.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
@@ -2677,6 +2677,54 @@ export async function listFeedDigest(
   }
 }
 
+// Two commands per key, so 400 keys stay under Upstash's 1,000-command cap.
+const PUBLISHER_COVERAGE_BATCH_KEYS = 400;
+
+// Each exact headline owns one sorted set. GT keeps a slower build from
+// moving a family's last observation backwards; retries replace the same member.
+//
+// Only served headlines get a key: the relay alerts on the digest response, so
+// a headline below every category cap can never be an alert title. Families
+// are still collected from every accepted item that shares a served headline.
+// The reader counts only the last 24 hours by score and EXPIRE retires an idle
+// key, so stale members need no separate trim.
+async function recordPublisherCoverage(
+  items: readonly ParsedItem[],
+  servedItems: readonly ParsedItem[],
+  variant: string,
+  observedAt: number,
+  deadlineAt: number,
+): Promise<void> {
+  const groups = new Map<string, Set<string>>();
+  for (const item of servedItems) {
+    const key = newsPublisherCoverageKey(variant, item.title);
+    if (key && !groups.has(key)) groups.set(key, new Set());
+  }
+  for (const item of items) {
+    const families = groups.get(newsPublisherCoverageKey(variant, item.title));
+    if (!families) continue;
+    const family = publisherFamilyForItem(item);
+    if (family) families.add(family);
+  }
+  const entries = [...groups].filter(([, families]) => families.size > 0);
+  for (let start = 0; start < entries.length; start += PUBLISHER_COVERAGE_BATCH_KEYS) {
+    const timeout = redisTimeoutForDeadline(deadlineAt);
+    if (!timeout) {
+      console.warn(`[digest] publisher coverage write cut short: ${entries.length - start} of ${entries.length} headlines unwritten`);
+      return;
+    }
+    const commands = entries.slice(start, start + PUBLISHER_COVERAGE_BATCH_KEYS).flatMap(([key, families]) => [
+      ['ZADD', key, 'GT', ...[...families].flatMap(family => [observedAt, family])],
+      ['EXPIRE', key, 86_400],
+    ]);
+    const rows = await runRedisTransaction(commands, false, timeout);
+    if (!redisPipelineConfirmed(rows, commands.length)) {
+      console.warn('[digest] publisher coverage write unavailable');
+      return;
+    }
+  }
+}
+
 function redisPipelineConfirmed(
   results: Array<{ result?: unknown; error?: string }>,
   expectedCommands: number,
@@ -3822,6 +3870,10 @@ async function buildDigest(
     const storyTrackingDeadlineAt = digestStartedAt + ADOPTION_DEADLINE_MS;
 
     const now = Date.now();
+    // Served headlines only, with families from accepted sightings below the
+    // category cap. Runs alongside story tracking within the same deadline.
+    const publisherCoverageWrite = recordPublisherCoverage(servableItems, allSliced, variant, buildStart, storyTrackingDeadlineAt)
+      .catch((err: unknown) => console.warn('[digest] publisher coverage unavailable:', err));
 
     // Read existing story tracking BEFORE writing so we know the previous cycle's
     // mentionCount. We merge read state + this cycle's increment in memory to
@@ -3905,7 +3957,7 @@ async function buildDigest(
       };
     }
 
-    await headlineHistoryWrite;
+    await Promise.all([headlineHistoryWrite, publisherCoverageWrite]);
 
     // #4920: publish the coverage ledger — every gate's drop count plus
     // what survived — as a side key. Best-effort: ledger failures never
@@ -3928,8 +3980,10 @@ async function buildDigest(
     if (VARIANT_FEEDS[variant] && DIGEST_LANGUAGES.has(lang)) {
       // #4927 review P2: awaited — a fire-and-forget write can be killed
       // when the response finishes before the side write lands.
-      await setCachedJson(`news:coverage-ledger:v1:${variant}:${lang}`, ledger, 7200).catch((err: unknown) =>
-        console.warn('[digest] coverage-ledger write failed:', err),
+      await writeCoverageLedger(
+        `news:coverage-ledger:v1:${variant}:${lang}`,
+        ledger,
+        digestStartedAt + DIGEST_RESPONSE_TIMEOUT_MS - LEDGER_WRITE_GUARD_MS,
       );
     }
 
@@ -3976,6 +4030,22 @@ function rememberLabelCounts(response: ListFeedDigestResponse, counts: LabelCoun
  * Write the counts of a build the gate accepted. A rejected or unpublished
  * build leaves /trust describing the digest that is still served.
  */
+// The ledger write runs after the story-tracking, history and coverage writes
+// join, which may hold until the 11 s tracking deadline. Its own Redis timeout
+// is 5 s, so unbounded it could carry the build past the 14 s response timeout
+// and lose a finished digest. Stop waiting this long before that timeout.
+const LEDGER_WRITE_GUARD_MS = 1_000;
+
+/** Best-effort ledger write that never waits past `deadlineAt`. */
+async function writeCoverageLedger(key: string, ledger: unknown, deadlineAt: number): Promise<void> {
+  const write = setCachedJson(key, ledger, 7200).catch((err: unknown) => {
+    console.warn('[digest] coverage-ledger write failed:', err);
+    return false;
+  });
+  const settled = await settleBeforeDeadline(write.then(() => true), deadlineAt, false);
+  if (!settled) console.warn('[digest] coverage-ledger write abandoned at the response deadline');
+}
+
 async function publishAcceptedLabelCounts(response: ListFeedDigestResponse, deadlineAt: number): Promise<void> {
   const counts = pendingLabelCounts.get(response);
   if (!counts) return;
@@ -3988,6 +4058,8 @@ async function publishAcceptedLabelCounts(response: ListFeedDigestResponse, dead
 
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
+  recordPublisherCoverage,
+  writeCoverageLedger,
   storyCorroborationByHash,
   // #7084 serving path. Exported so the wiring can be EXECUTED in tests rather
   // than asserted against this file's own source text — a grep for
