@@ -5,8 +5,9 @@ name: Weekly Dogfood Review
 # reviews the list and files what is real.
 #
 # The dashboard renders third-party headlines, so the agent reads text anyone can write. It therefore runs in its
-# own job with read-only permissions, no checked-out credentials, agent-browser as its only shell command and file
-# access only inside its output directory. The browser runs as a separate user with an empty environment, so a
+# own job with read-only permissions, no checked-out credentials, agent-browser as its only shell command (minus
+# the options and commands that start other programs, refused by a wrapper) and file access only inside its output
+# directory. The browser runs as a separate user with an empty environment, so a
 # file:// page cannot read ANTHROPIC_API_KEY from /proc. The publish
 # job holds the issue write permission, treats the findings file as data and renders every agent-written field
 # as an inert code span.
