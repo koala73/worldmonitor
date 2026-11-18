@@ -27,24 +27,24 @@ function openFindings() {
   return { badge, dropdown };
 }
 
-const escape = () => new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+const escapeKey = () => new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
 
 it('closes the open findings dropdown on Escape and returns focus to the badge', () => {
   const { badge, dropdown } = openFindings();
 
-  document.dispatchEvent(escape());
+  document.dispatchEvent(escapeKey());
   expect(dropdown.classList.contains('open')).toBe(false);
   expect(document.activeElement).toBe(badge);
 
   // A later Escape, with the dropdown closed, is left to whoever owns it.
-  const later = escape();
+  const later = escapeKey();
   document.dispatchEvent(later);
   expect(later.defaultPrevented).toBe(false);
 });
 
 it('leaves an Escape that another control already handled, such as Search', () => {
   const { dropdown } = openFindings();
-  const handled = escape();
+  const handled = escapeKey();
   handled.preventDefault();
   document.dispatchEvent(handled);
   expect(dropdown.classList.contains('open')).toBe(true);
@@ -54,7 +54,7 @@ it('removes its Escape listener when destroyed while open', () => {
   openFindings();
   findings!.destroy();
   findings = null;
-  const later = escape();
+  const later = escapeKey();
   document.dispatchEvent(later);
   expect(later.defaultPrevented).toBe(false);
 });
