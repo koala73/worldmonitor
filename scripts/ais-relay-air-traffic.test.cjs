@@ -10,7 +10,14 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const test = require('node:test');
+const { describe, it } = require('node:test');
+// Each lane spawns its own relay against its own in-memory Upstash on port 0
+// and spends most of its time waiting on the relay's clock, so run serially
+// the file kept the CPU 16% busy and set the sidecar suite's wall at ~55s.
+// Four lanes at a time, one per vCPU on a hosted runner, took it to ~20s.
+// Tests are collected here and registered in one concurrent suite at the end.
+const cases = [];
+const test = (name, fn) => { cases.push([name, fn]); };
 const { US_HUBS } = require('./shared/air-traffic-regions.cjs');
 
 const ATL = US_HUBS.find((hub) => hub.iata === 'ATL');
@@ -680,4 +687,8 @@ test('lane 30: a UK departure collapse queues one critical alert scoped to GB, a
     assert.equal(states.US.state, 'normal');
     assert.equal(redis.points('2026-11-13')[1].markets.GB.dep, 4);
   }, { seedHashes });
+});
+
+describe('air traffic lanes', { concurrency: 4 }, () => {
+  for (const [name, fn] of cases) it(name, fn);
 });

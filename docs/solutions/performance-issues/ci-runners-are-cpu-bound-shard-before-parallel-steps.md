@@ -11,7 +11,7 @@ symptoms:
 root_cause: config_error
 resolution_type: workflow_improvement
 severity: medium
-tags: [ci-performance, sharding, parallel-steps, github-actions, playwright, cpu-bound]
+tags: [ci-performance, sharding, parallel-steps, github-actions, playwright, cpu-bound, vitest, node-test-concurrency]
 ---
 
 # CI test runners are CPU-bound: shard by measured time, and use parallel steps only for setup
@@ -151,6 +151,48 @@ serves the pro-test install inside `build:pro` (root `node_modules` comes from
 `install-root-deps`). One job pulled it at ~95 MB/s in ~6s. Two jobs pulling the
 same blob at the same moment took 12-62s on PR #9626. The job now sets
 `cache-dependency-path: pro-test/package-lock.json`.
+
+## Which steps leave a vCPU idle (November 2026)
+
+A hosted `ubuntu-latest` runner on this public repo reports `nproc` 4: an AMD
+EPYC 7763 slice with 2 cores and 2 threads per core, and 16 GB of memory. Bench
+runs 44274790851 and 44282614737 alternated each setting several times on the
+same VM and read CPU busy from `/proc/stat`:
+
+| Step | Default | Changed to | Result |
+|---|---|---|---|
+| `test:dom` (Vitest) | 3 workers: 196.5s, 74% busy | 4 workers | 176.1s, 89% busy. 6 workers: 170.5s, 95% |
+| `test:convex` (Vitest) | 3 workers: 48.8s, 81% busy | 4 workers | 45.5s, 94% busy |
+| `test:sidecar` (node:test) | 54.7s, 17% busy | air-traffic and ingestion tests 4 at a time | 41.5s, 26% busy, 0 failures in 16 runs of each |
+| ci-smoke shard 5 (Playwright) | 2 workers: 178.0s, 80% busy | 4 workers (not shipped) | 168.6s, 97% busy, 1.3 GB more memory |
+
+- **Vitest defaults to one worker fewer than the CPU count.** In a CI step
+  nothing else competes for that last vCPU. `dom-tests` sets
+  `VITEST_MAX_THREADS=4`, the config's existing override, so local runs keep
+  Vitest's default. `convex-tests` passes `--maxWorkers=4`.
+- **`--test-concurrency` did nothing for the sidecar suite** (54.1s at the
+  default, 53.8s at 4, 54.4s at 8). Its wall was one file:
+  `scripts/ais-relay-air-traffic.test.cjs` ran 33 tests one after another, each
+  spawning a relay and waiting on its clock, for 55s. node:test runs a file's
+  top-level tests serially whatever the file concurrency is, so both relay
+  files now register their tests in one `describe` with `concurrency: 4`.
+  Every test already used its own relay, stub servers and port 0.
+  `src-tauri/sidecar/local-api-server.test.mjs` (~25s) is now the floor. It
+  assigns `process.env` or the global `fetch` in 129 places, so its tests
+  cannot share a process concurrently.
+- **Playwright stays at 2 workers.** 4 workers saved 5% on the slowest smoke
+  shard and pushed the runner to 97% busy. With `retries: 0`, a contention flake
+  now fails a required check.
+- **The unit shards stay at concurrency 4.** Bench run 40083951067 found 6 and
+  8 no faster.
+- **Builds have no worker setting to raise.** `tsc` is TypeScript 7, which
+  already checks in parallel (typecheck steps take 5-6s), and `vite build`
+  (Vite 6, Rollup) is single-threaded.
+
+Under 3x the CI load on a laptop (24 relays at once), the concurrent relay
+files failed timing assertions in lanes 4 and 4b. At equal load (8 relays) the
+serial and concurrent files both passed every run. On the hosted runners
+neither failed in 16 runs.
 
 ## Prevention
 
