@@ -37,11 +37,13 @@ const MIN_STORY_WORDS = 4;
 
 // Keep exact-title delivery available if the scripts image lacks the shared module.
 let normalizeNewsStoryTitle = () => '';
+let classifyCacheIdentity = (title) => String(title ?? '').toLowerCase();
 let loadError = null;
 try {
   const identity = require('../shared/story-identity.js');
   if (typeof identity.normalizeNewsStoryTitle !== 'function') throw new Error('normalizeNewsStoryTitle is not exported');
   normalizeNewsStoryTitle = identity.normalizeNewsStoryTitle;
+  if (typeof identity.classifyCacheIdentity === 'function') classifyCacheIdentity = identity.classifyCacheIdentity;
 } catch (err) {
   loadError = err;
 }
@@ -81,6 +83,7 @@ module.exports = {
   MIN_STORY_WORDS,
   REALTIME_CRITICAL_IMPORTANCE_SCORE,
   normalizeNewsStoryTitle,
+  classifyCacheIdentity,
   newsStoryKey,
   reachesRealtimeRules,
   /** Why the normalizer is unavailable, or null. The relay logs it at boot. */

@@ -3,7 +3,7 @@
  */
 
 import { hashString, sha256Hex } from '../../../_shared/hash';
-import { normalizeNewsStoryTitle } from '../../../../shared/story-identity.js';
+import { classifyCacheIdentity } from '../../../../shared/story-identity.js';
 
 // ========================================================================
 // Constants
@@ -74,12 +74,6 @@ export { hashString, sha256Hex };
 // A caller-supplied title (classify-event) keys in its own namespace, so no
 // variant of a headline (suffix, punctuation, case) can write a story's label.
 export async function buildClassifyCacheKey(title: string, { callerTitle = false }: { callerTitle?: boolean } = {}): Promise<string> {
-  const lower = title.toLowerCase();
-  // An in-word hyphen splits words (re-sign is not resign).
-  const story = normalizeNewsStoryTitle(title.replace(/(?<=[\p{L}\p{N}])[-‐‑](?=[\p{L}\p{N}])/gu, ' '));
-  // Under four words there is no story key (scripts/lib/news-story-key.cjs MIN_STORY_WORDS).
-  const identity = callerTitle ? `caller:${lower}`
-    : story.split(' ').length < 4 ? lower
-    : story + (/\?["'”’»]*\s*(?:[-–—|][^?]*)?$/.test(title) ? ' ?' : '');
-  return `${CLASSIFY_CACHE_PREFIX}${(await sha256Hex(identity)).slice(0, 16)}`;
+  if (callerTitle) return `${CLASSIFY_CACHE_PREFIX}caller:${(await sha256Hex(title.toLowerCase())).slice(0, 16)}`;
+  return `${CLASSIFY_CACHE_PREFIX}${(await sha256Hex(classifyCacheIdentity(title))).slice(0, 16)}`;
 }

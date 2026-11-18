@@ -645,6 +645,28 @@ export function clusterTexts(texts, opts = {}) {
 
 // Delivery and cross-build coverage must agree on punctuation and attribution.
 const NORMALIZED_TITLE_SCAN = 2_000;
+const CLASSIFY_QUESTION_RE = /\?["'”’»]*\s*(?:[-–—|][^?]*)?$/;
+const IN_WORD_HYPHEN_RE = /(?<=[\p{L}\p{N}])[-‐‑](?=[\p{L}\p{N}])/gu;
+const DOMAIN_CREDIT_RE = /\.(?:com|org|net|co\.uk)\s*$/;
+
+/**
+ * The identity the AI classify cache keys a headline on (#10976): its story,
+ * so outlet suffixes, case and punctuation share one label. The exact title
+ * is kept when sharing could hand one headline's label to different text:
+ * under four words (no story key), or a stripped credit of several words
+ * ending in a domain, which is a clause rather than an outlet. A question
+ * keeps its own label, and an in-word hyphen splits words (re-sign, resign).
+ * @param {string} title
+ */
+export function classifyCacheIdentity(title) {
+  if (typeof title !== 'string') return '';
+  const lower = title.toLowerCase();
+  const credit = lower.slice(stripAttributionSuffix(lower, { allowPipe: false }).length).trim();
+  const story = normalizeNewsStoryTitle(title.replace(IN_WORD_HYPHEN_RE, ' '));
+  if (story.split(' ').length < 4 || (/\s/.test(credit.replace(/^[-–—|:]\s*/, '')) && DOMAIN_CREDIT_RE.test(credit))) return lower;
+  return story + (CLASSIFY_QUESTION_RE.test(title) ? ' ?' : '');
+}
+
 export function normalizeNewsStoryTitle(title) {
   if (typeof title !== 'string') return '';
   const stripped = stripAttributionSuffix(title.toLowerCase(), { allowPipe: false });

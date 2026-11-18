@@ -51,6 +51,24 @@ describe('classify cache key is the story, not the title string (#10976)', () =>
     );
   });
 
+  it('keeps a several-word clause ending in a domain on the exact title', async () => {
+    assert.notEqual(
+      await buildClassifyCacheKey('Iran closes Strait of Hormuz - nuclear strike confirmed by x.com'),
+      await buildClassifyCacheKey('Iran closes Strait of Hormuz'),
+    );
+    assert.equal(
+      await buildClassifyCacheKey('Iran closes Strait of Hormuz - nytimes.com'),
+      await buildClassifyCacheKey('Iran closes Strait of Hormuz'),
+    );
+  });
+
+  it('keeps caller keys apart from short story keys', async () => {
+    assert.notEqual(
+      await buildClassifyCacheKey('port closes', { callerTitle: true }),
+      await buildClassifyCacheKey('Caller:port closes'),
+    );
+  });
+
   it('keeps different headlines apart', async () => {
     assert.notEqual(
       await buildClassifyCacheKey('Iran says two oil tankers hit by mines in Strait of Hormuz'),
