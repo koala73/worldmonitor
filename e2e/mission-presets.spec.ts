@@ -132,6 +132,22 @@ async function applyMission(page: Page, missionId: string, label: string): Promi
   await expect(page.locator('#missionPresetBtn')).toContainText(label);
 }
 
+async function scrollPanelsDown(page: Page): Promise<void> {
+  await page.evaluate(() => { document.getElementById('panelsGrid')!.scrollTop = 2500; });
+  await expect.poll(() => page.evaluate(() => document.getElementById('panelsGrid')!.scrollTop)).toBeGreaterThan(0);
+}
+
+/** A new layout must start at its first panel, not at the old scroll position. */
+async function expectPanelsFromTop(page: Page): Promise<void> {
+  await expect.poll(() => page.evaluate(() => {
+    const grid = document.getElementById('panelsGrid')!;
+    const first = grid.querySelector<HTMLElement>(':scope > .panel:not(.hidden)');
+    if (!first) return 'no visible panel';
+    const top = first.getBoundingClientRect().top - grid.getBoundingClientRect().top;
+    return grid.scrollTop === 0 && top >= 0 ? 'top' : `scrollTop ${Math.round(grid.scrollTop)}, ${first.dataset.panel} at ${Math.round(top)}px`;
+  })).toBe('top');
+}
+
 async function expectFreeMissionPanelLimit(page: Page): Promise<void> {
   const settings = await readJsonLocalStorage<Record<string, { enabled: boolean }>>(page, 'worldmonitor-panels');
   expect(settings).not.toBeNull();
@@ -222,8 +238,10 @@ test.describe('mission presets', () => {
     await setupMissionPage(page, { width: 1440, height: 900 });
 
     await expect(page.locator('#missionPresetBtn')).toBeVisible({ timeout: 30_000 });
+    await scrollPanelsDown(page);
     await applyMission(page, 'macro-market-watch', 'Stocks');
     await expect(page.locator('.panel[data-panel="markets"]:not(.hidden)')).toBeVisible({ timeout: 30_000 });
+    await expectPanelsFromTop(page);
     await expect(page.locator('#regionSelect')).toHaveValue('america');
     await expect
       .poll(() => readJsonLocalStorage<string[]>(page, 'panel-order').then((order) => order?.[0]))
@@ -232,11 +250,13 @@ test.describe('mission presets', () => {
       .poll(() => readJsonLocalStorage<Record<string, boolean>>(page, 'worldmonitor-layers').then((layers) => layers?.tradeRoutes))
       .toBe(true);
 
+    await scrollPanelsDown(page);
     await openMissionPopover(page);
     await page.locator('[data-mission-reset]').click();
     await expect.poll(() => readLocalStorage(page, PRESET_KEY)).toBeNull();
     await expect(page.locator('#missionPresetBtn')).toContainText('Mission');
     await expect(page.locator('#regionSelect')).toHaveValue('global');
+    await expectPanelsFromTop(page);
     await expectFreeMissionPanelLimit(page);
     await expect
       .poll(() => readJsonLocalStorage<string[]>(page, 'panel-order').then((order) => order?.[0]))

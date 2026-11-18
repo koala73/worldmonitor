@@ -539,6 +539,7 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/map-tooltip-external-values.spec.ts',
   'e2e/mcp-webcam.spec.ts',
   'e2e/mission-preview.spec.ts',
+  'e2e/natural-event-labels.spec.ts',
   'e2e/news-context.spec.ts',
   'e2e/news-panel-resize-hit-target.spec.ts',
   'e2e/oil-price-freshness.spec.ts',

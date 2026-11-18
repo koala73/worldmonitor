@@ -55,6 +55,46 @@ describe('map context menu satellite pass entry', () => {
   });
 });
 
+// The brief returns focus to whatever was focused when it opened. A map click
+// leaves focus on an earlier control (a layer toggle), so closing the brief
+// with Escape sent the user there instead of back to the map.
+describe('a country brief opened from the map', () => {
+  type CountryClick = { lat: number; lon: number; code?: string; name?: string };
+  async function managerWithMap() {
+    let clickHandler!: (payload: CountryClick) => void;
+    const map = { ...dashboardMap, onCountryClicked: (cb: (payload: CountryClick) => void) => { clickHandler = cb; } };
+    const manager = new CountryIntelManager({ map, isDestroyed: false } as unknown as AppContext);
+    const focusedAtOpen: Array<Element | null> = [];
+    Reflect.set(manager, 'openCountryBriefByCode', async () => { focusedAtOpen.push(document.activeElement); });
+    await Reflect.get(manager, 'setupCountryIntel').call(manager);
+    return { click: clickHandler, menu: menuHandler, focusedAtOpen };
+  }
+  function domWithLayerToggle() {
+    const container = document.createElement('div');
+    container.id = 'mapContainer';
+    const toggle = document.createElement('button');
+    toggle.textContent = 'Conflict zones';
+    document.body.append(toggle, container);
+    toggle.focus();
+    return container;
+  }
+
+  it('moves focus to the map before a map click opens the brief', async () => {
+    const container = domWithLayerToggle();
+    const { click, focusedAtOpen } = await managerWithMap();
+    click({ lat: 61, lon: 99, code: 'RU', name: 'Russia' });
+    expect(focusedAtOpen).toEqual([container]);
+  });
+
+  it('moves focus to the map before the context menu opens the brief', async () => {
+    const container = domWithLayerToggle();
+    const { menu, focusedAtOpen } = await managerWithMap();
+    menu({ lat: 61, lon: 99, screenX: 10, screenY: 10, countryCode: 'RU', countryName: 'Russia' });
+    menuItem('Open Country Brief')!.click();
+    expect(focusedAtOpen).toEqual([container]);
+  });
+});
+
 describe('touch long-press', () => {
   const touch = (type: string, x: number, y: number, pointerId = 1) =>
     new PointerEvent(type, { pointerType: 'touch', pointerId, clientX: x, clientY: y, bubbles: true });

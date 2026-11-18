@@ -7486,6 +7486,17 @@ body.playback-mode .status-dot {
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
+/* The one marker in a crowd whose text is shown paints above its neighbours' icons. */
+.nat-event-marker.nat-event-texted {
+  z-index: 55;
+}
+
+.nat-event-texted .nat-event-label,
+.nat-event-texted .nat-event-magnitude {
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  border-radius: 2px;
+}
+
 .nat-event-marker:hover {
   transform: translate(-50%, -50%) scale(calc(var(--marker-scale, 1) * 1.2));
 }

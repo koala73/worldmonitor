@@ -1,4 +1,5 @@
 import { countrySignalsFromMilitary, recoverCountrySignals } from '@/services/country-signals';
+import { getPanelDisplayName } from '@/services/panel-display-name';
 import { CountrySectionError } from '@/services/country-brief-error';
 import { COUNTRY_ACTIVITY_BOUNDS, isCountryActivityCoordinate, projectCountryMilitaryActivity, projectCountryMilitarySignalCounts } from '@/services/country-military-activity';
 import { CountryBriefController, projectChinaCountrySummary } from '@/components/CountryBriefController';
@@ -324,9 +325,23 @@ export class CountryIntelManager implements AppModule {
     return request.token === this.briefRequestToken;
   }
 
+  /**
+   * The brief returns focus to whatever was focused when it opened. A map
+   * click leaves focus on an earlier control (a layer toggle, or `main`), so
+   * hand focus to the map first: closing the brief then returns to the map.
+   */
+  private focusMapForBrief(): void {
+    const container = document.getElementById('mapContainer');
+    if (!container) return;
+    if (!container.hasAttribute('tabindex')) container.tabIndex = -1;
+    if (!container.hasAttribute('aria-label')) container.setAttribute('aria-label', getPanelDisplayName('map'));
+    container.focus({ preventScroll: true });
+  }
+
   private async setupCountryIntel(): Promise<void> {
     if (!this.ctx.map) return;
     this.ctx.map.onCountryClicked((countryClick) => {
+      this.focusMapForBrief();
       if (countryClick.code && countryClick.name) {
         trackCountrySelected(countryClick.code, countryClick.name, 'map');
         void this.openCountryBriefByCode(countryClick.code, countryClick.name)
@@ -343,6 +358,7 @@ export class CountryIntelManager implements AppModule {
         items.push({
           label: t('contextMenu.openCountryBrief'),
           action: () => {
+            this.focusMapForBrief();
             void this.openCountryBriefByCode(payload.countryCode!, payload.countryName!)
               .catch((err) => this.handleCountryBriefOpenError(err));
           },
@@ -351,6 +367,7 @@ export class CountryIntelManager implements AppModule {
         items.push({
           label: t('contextMenu.openCountryBrief'),
           action: () => {
+            this.focusMapForBrief();
             void this.openCountryBrief(payload.lat, payload.lon)
               .catch((err) => this.handleCountryBriefOpenError(err));
           },
