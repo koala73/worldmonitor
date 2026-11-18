@@ -26,7 +26,7 @@ tags:
 
 ## Problem
 
-The case "always-on single webcam feed switch replaces the active stream" in `e2e/live-media-intent.spec.ts` failed intermittently in CI. Thirteen of the spec's fifteen cases loaded real YouTube streams from the CI runner. Whether they passed depended on YouTube agreeing to serve a datacenter IP and on how fast the page loaded.
+The case "always-on single webcam feed switch replaces the active stream" in `e2e/live-media-intent.spec.ts` failed intermittently in CI. Twelve of the spec's fourteen cases loaded real YouTube streams from the CI runner. Whether they passed depended on YouTube agreeing to serve a datacenter IP and on how fast the page loaded.
 
 ## Symptoms
 
@@ -37,7 +37,7 @@ The case "always-on single webcam feed switch replaces the active stream" in `e2
 ## What Didn't Work
 
 - **Calling it flaky and rerunning.** Each rerun passed, but other branches ran the same shard green on the first attempt. Rerunning did nothing to explain why this case kept failing.
-- **Blocking YouTube to reproduce it.** Aborting every YouTube request still passed. With no player response, the session waits for its verdict deadline, and the test's first poll sees the iframe long before then.
+- **Blocking YouTube to reproduce it.** Aborting every YouTube request still passed. The IFrame API script fails to load, its `onerror` resolves the loader to `null` (`src/services/live-video/youtube-iframe-api.ts`), and the session reports `unverifiable(player-api-blocked)`. That verdict keeps the iframe (`model.ts`, the `unverifiable` case), so the tile never goes offline. A blocked API is a different path from a refused stream.
 - **Firing the IFrame API's error alone.** An IFrame API stand-in that calls `onError(150)` at once also passed locally. The fast local load let the first poll count the iframe before the next observation failed the candidate.
 
 ## Solution
