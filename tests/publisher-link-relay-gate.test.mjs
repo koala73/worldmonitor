@@ -147,3 +147,22 @@ describe('publishers moved to their own feeds (#10937)', () => {
     }
   });
 });
+
+describe('publishers added with their own feeds in #10941', () => {
+  // Watchlist alerts reach the relay gate with only the feed label. A label
+  // with no family resolves to a domainless singleton, and the link is blanked.
+  it('keeps the article link for each new publisher feed label', () => {
+    for (const [label, link] of [
+      ['ProPublica', 'https://www.propublica.org/article/story'],
+      ['The Atlantic', 'https://www.theatlantic.com/politics/archive/2026/11/story/600000/'],
+      ['Channel 4 News', 'https://www.channel4.com/news/story'],
+      ['Nexo Jornal', 'https://www.nexojornal.com.br/expresso/2026/11/17/story'],
+      ['Le Figaro', 'https://www.lefigaro.fr/international/story-20261117'],
+      ["L'Express", 'https://www.lexpress.fr/monde/story-ABCDEF/'],
+      ['TV5Monde Info', 'https://information.tv5monde.com/international/story-2700000'],
+    ]) {
+      assert.equal(gateRelayStoryLink(link, label), link, label);
+      assert.equal(gateRelayStoryLink('https://evil.example/phish', label), '', `${label}: foreign host`);
+    }
+  });
+});
