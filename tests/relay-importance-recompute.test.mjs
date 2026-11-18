@@ -97,4 +97,11 @@ describe('ais-relay importanceScore publish path', () => {
     const defs = relaySrc.match(/function\s+relayComputeImportanceScore\s*\(/g) || [];
     assert.equal(defs.length, 1, `expected single definition of relayComputeImportanceScore, found ${defs.length}`);
   });
+  it('classifies the alert pools only after every edition\'s served headlines (#10978)', () => {
+    const cycle = relaySrc.slice(relaySrc.indexOf('async function seedClassify()'));
+    const served = cycle.indexOf('seedClassifyForVariant(CLASSIFY_VARIANTS[v], seenTitles)');
+    const pools = cycle.indexOf('seedClassifyForVariant(variant, new Set(), { poolOnly: true })');
+    assert.ok(served > 0 && pools > served, 'the pool pass follows the served pass');
+    assert.equal((relaySrc.match(/poolOnly: true/g) || []).length, 1, 'build-watch passes never read the pool');
+  });
 });

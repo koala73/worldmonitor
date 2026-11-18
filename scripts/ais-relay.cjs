@@ -5628,12 +5628,14 @@ function recordAlertLatency(latency, { severity, importanceScore, variant, sourc
   ]).catch(() => {});
 }
 
-async function seedClassifyForVariant(variant, seenTitles) {
+// `poolOnly` classifies the edition's alert pool alone, with no digest fetch
+// and no X candidates (#10978).
+async function seedClassifyForVariant(variant, seenTitles, { poolOnly = false } = {}) {
   const digestUrl = buildClassifyDigestUrl(variant);
   const transport = classifyDigestTransport(digestUrl) === 'http' ? http : https;
-  let digest;
+  let digest = poolOnly ? { categories: {} } : undefined;
   const maxDigestAttempts = CLASSIFY_DIGEST_RETRY_DELAYS_MS.length + 1;
-  for (let attempt = 0; attempt < maxDigestAttempts; attempt++) {
+  for (let attempt = 0; !poolOnly && attempt < maxDigestAttempts; attempt++) {
     try {
       const resp = await new Promise((resolve, reject) => {
         const req = transport.get(digestUrl, {
@@ -5694,7 +5696,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // tests without importing this boot-on-require relay.
   const RECENCY_GATE_MS = 6 * 60 * 60 * 1000;
   const classifyNow = Date.now();
-  const xCandidates = xNewsAccounts.collectXAlertCandidates(
+  const xCandidates = poolOnly ? [] : xNewsAccounts.collectXAlertCandidates(
     xState.items,
     RELAY_SOURCE_TIERS,
     classifyNow,
@@ -5702,7 +5704,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
   );
   // #10978: fresh items the digest's category cap kept off the dashboard can
   // still alert. The digest build writes them beside the served body.
-  const alertPool = staleReplay ? null : await upstashGet(`news:alert-pool:v1:${variant}`);
+  const alertPool = poolOnly ? await upstashGet(`news:alert-pool:v1:${variant}`) : null;
   // The served digest drops operator-revoked URLs when it is read; the pool
   // comes straight from Redis, so check it here. An unreadable set skips it.
   let poolItems = [];
@@ -5954,6 +5956,19 @@ async function seedClassify() {
       } catch (e) {
         variantErrors += 1;
         console.warn(`[Classify] ${CLASSIFY_VARIANTS[v]} error:`, e?.message || e);
+      }
+    }
+
+    // #10978: the alert pools go after every edition's served headlines. The
+    // classify label and story key are shared, so whichever edition reads a
+    // headline first claims it; an edition that serves it must come first.
+    // Pool labels stay out of the threat summary.
+    for (const variant of CLASSIFY_VARIANTS) {
+      try {
+        const stats = await runClassifyExclusive(() => seedClassifyForVariant(variant, new Set(), { poolOnly: true }));
+        if (stats.total > 0) console.log(`[Classify] ${variant} pool: ${stats.total} titles, ${stats.classified} classified, ${stats.skipped} skipped`);
+      } catch (e) {
+        console.warn(`[Classify] ${variant} pool error:`, e?.message || e);
       }
     }
 

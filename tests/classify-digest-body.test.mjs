@@ -84,10 +84,12 @@ test('the alert pool drops operator-revoked URLs and is skipped when the set is 
   const pools = [];
   const readable = loadVariant(url, [], { pools, upstashGet: async () => pool, upstashPipeline: async () => [{ result: ['https://example.com/revoked'] }] });
   await bounded(readable('full', new Set()));
-  assert.deepEqual(Array.from(pools[0], item => item.title), ['kept']);
+  assert.equal(pools[0].length, 0, 'the served pass leaves the pool to its own pass');
+  await bounded(readable('full', new Set(), { poolOnly: true }));
+  assert.deepEqual(Array.from(pools[1], item => item.title), ['kept']);
   const unreadable = loadVariant(url, [], { pools, upstashGet: async () => pool, upstashPipeline: async () => null });
-  await bounded(unreadable('full', new Set()));
-  assert.equal(pools[1].length, 0);
+  await bounded(unreadable('full', new Set(), { poolOnly: true }));
+  assert.equal(pools[2].length, 0);
 });
 
 test('an idle body settles when the existing request timeout destroys the stream', async t => {
