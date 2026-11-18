@@ -76,5 +76,6 @@ describe('alert replay set (#10976)', () => {
     });
   }
 
-  process.env.IMPORTANCE_SCORE_LIVE = previous;
+  if (previous === undefined) delete process.env.IMPORTANCE_SCORE_LIVE;
+  else process.env.IMPORTANCE_SCORE_LIVE = previous;
 });
