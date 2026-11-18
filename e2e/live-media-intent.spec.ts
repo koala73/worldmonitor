@@ -45,8 +45,9 @@ async function liveNewsTransportCount(page: Page): Promise<number> {
 
 /**
  * Every live video plays as a live YouTube stream: no HLS, a blank embed, and an IFrame API stand-in
- * that reports isLive and PLAYING. Cases that fast-forward past the verdict deadline then test the
- * idle timer alone, not whether a real channel happens to be live on the network.
+ * that reports isLive and PLAYING. These cases test when media may start and stop, not whether a real
+ * channel is live. From a CI runner YouTube can refuse a stream outright; a single-feed webcam then
+ * goes offline and unmounts its iframe before the first check runs.
  */
 async function stubLiveVideoProvider(page: Page): Promise<void> {
   await page.route(/\.m3u8(?:[?#]|$)/i, (route) => route.abort());
@@ -131,6 +132,10 @@ async function setPanelEnabledViaStoredSettings(page: Page, panelId: string, ena
 }
 
 test.describe('live media intent gating', () => {
+  test.beforeEach(async ({ page }) => {
+    await stubLiveVideoProvider(page);
+  });
+
   test('a first visit autoplays Live News while the webcam wall waits for a click', async ({ page }) => {
     await page.addInitScript(() => {
       for (const key of ['wm-live-streams-always-on', 'wm-live-news-autoplay', 'wm-live-media-idle-stop', 'worldmonitor-active-channel', 'worldmonitor-webcam-prefs']) {
@@ -332,7 +337,6 @@ test.describe('live media intent gating', () => {
     const minute = 60_000;
     const hour = 60 * minute;
     await installCleanLiveMediaPrefs(page);
-    await stubLiveVideoProvider(page);
     await page.clock.install();
 
     await page.goto('/dashboard?liveMediaIdle=1', { waitUntil: 'domcontentloaded' });
@@ -380,7 +384,6 @@ test.describe('live media intent gating', () => {
 
   test('a saved always-on dashboard keeps live news playing through a long idle stretch', async ({ page }) => {
     await installAlwaysOnLiveMediaPrefs(page);
-    await stubLiveVideoProvider(page);
     await page.clock.install();
 
     await page.goto('/dashboard?liveMediaIdleAlwaysOn=1', { waitUntil: 'domcontentloaded' });
