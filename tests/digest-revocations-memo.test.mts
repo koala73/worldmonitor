@@ -124,6 +124,30 @@ describe('readRevokedUrlSet per-instance memo', () => {
     assert.equal(calls, 2, 'a set read 10 s ago is not reused, however long its reply took');
   });
 
+  it('does not share a read still pending past the window, and a late old reply never replaces a newer set', { timeout: 2_000 }, async () => {
+    mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+    const oldReply = deferred<void>();
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      if (calls === 1) {
+        await oldReply.promise;
+        return Response.json([{ result: [] }]);
+      }
+      return Response.json([{ result: ['https://example.com/new'] }]);
+    }) as typeof fetch;
+    const stale = readRevokedUrlSet();
+    mock.timers.tick(REVOCATION_MEMO_TTL_MS);
+    const current = await readRevokedUrlSet();
+    assert.equal(calls, 2, 'a read started 10 s ago is not joined');
+    assert.deepEqual([...current.urls], ['https://example.com/new']);
+    oldReply.resolve();
+    await stale;
+    const after = await readRevokedUrlSet();
+    assert.equal(calls, 2);
+    assert.deepEqual([...after.urls], ['https://example.com/new']);
+  });
+
   it('reads Redis directly when the caller asks for a fresh set', async () => {
     let members = ['https://example.com/a'];
     const calls = stubRedis(() => members);

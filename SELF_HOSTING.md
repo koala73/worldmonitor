@@ -383,8 +383,10 @@ long before the item is gone everywhere.
 To lift a revocation, `SREM` the same URL. Paths that store items unfiltered
 show it again within 10 seconds. A digest built while the URL was revoked left
 the item out, so it returns to the digest only on the next rebuild. To rebuild
-now, wait 10 seconds after the `SREM`, then delete the digest keys as in step 2
-above.
+now, wait one minute after the `SREM`, then delete the digest keys as in step 2
+above. The 10-second memo is only part of that wait: a digest build that read
+the set before the `SREM` can take up to 25 seconds and still publish its
+copy without the item, so delete the keys only after any such build is done.
 
 ```bash
 curl -s -X POST "$UPSTASH_REDIS_REST_URL/pipeline" \

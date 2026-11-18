@@ -82,26 +82,28 @@ export async function readRevokedUrlSet(opts: { fresh?: boolean } = {}): Promise
   // A caller that stores what it builds from this set for longer than the
   // memo window reads Redis directly.
   if (opts.fresh) return readFromRedis();
-  if (memo && memo.expiresAt > Date.now()) return memo.read;
-  if (!pendingRead) {
-    const generation = memoGeneration;
-    // The window starts when the read starts, so a slow reply cannot stretch
-    // how old a reused set may be.
-    const startedAt = Date.now();
-    const read = readFromRedis().then((result) => {
-      // A failed read is not kept: the next request retries rather than
-      // failing closed for the whole window. A read that outlived a reset
-      // is not kept either.
-      if (result.readable && generation === memoGeneration) {
-        memo = { read: result, expiresAt: startedAt + REVOCATION_MEMO_TTL_MS };
-      }
-      return result;
-    }).finally(() => {
-      if (pendingRead === read) pendingRead = null;
-    });
-    pendingRead = read;
-  }
-  return pendingRead;
+  const now = Date.now();
+  if (memo && memo.expiresAt > now) return memo.read;
+  // Join a read only while it is younger than the window: with a long
+  // REDIS_PIPELINE_TIMEOUT_MS a read can stay pending past it.
+  if (pending && now - pending.startedAt < REVOCATION_MEMO_TTL_MS) return pending.read;
+  const generation = memoGeneration;
+  // The window starts when the read starts, so a slow reply cannot stretch
+  // how old a reused set may be.
+  const startedAt = now;
+  const read = readFromRedis().then((result) => {
+    // A failed read is not kept: the next request retries rather than
+    // failing closed for the whole window. Neither is a read that outlived a
+    // reset, nor one older than the set already kept.
+    if (result.readable && generation === memoGeneration && (!memo || memo.startedAt < startedAt)) {
+      memo = { read: result, startedAt, expiresAt: startedAt + REVOCATION_MEMO_TTL_MS };
+    }
+    return result;
+  }).finally(() => {
+    if (pending?.read === read) pending = null;
+  });
+  pending = { read, startedAt };
+  return read;
 }
 
 /**
@@ -111,14 +113,14 @@ export async function readRevokedUrlSet(opts: { fresh?: boolean } = {}): Promise
  */
 export const REVOCATION_MEMO_TTL_MS = 10_000;
 
-let memo: { read: RevocationRead; expiresAt: number } | null = null;
+let memo: { read: RevocationRead; startedAt: number; expiresAt: number } | null = null;
 // Concurrent callers on one instance share a single SMEMBERS.
-let pendingRead: Promise<RevocationRead> | null = null;
+let pending: { read: Promise<RevocationRead>; startedAt: number } | null = null;
 let memoGeneration = 0;
 
 export function __resetRevocationMemoForTest(): void {
   memo = null;
-  pendingRead = null;
+  pending = null;
   memoGeneration += 1;
 }
 
