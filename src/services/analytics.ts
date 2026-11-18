@@ -273,7 +273,6 @@ const EVENTS = {
   'sign-up-started': true,
   'sign-up-resumed': true,
   'sign-up-resume-dismissed': true,
-  'sign-out': true,
   'gate-hit': true,
   'panel-gate-click': true,
   // Free-user Pro strip call to action. Views are gate-hit feature=pro-banner;
