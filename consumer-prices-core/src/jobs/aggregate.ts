@@ -162,6 +162,89 @@ function computeValueIndex(rows: BasketRow[], baselines: Map<string, number>): n
   return 100 * (weightedSum / totalWeight);
 }
 
+interface PreviousIndex {
+  date: string;
+  value: number;
+}
+
+function seriesKey(category: string | null, metricKey: string) {
+  return `${category ?? ''}|${metricKey}`;
+}
+
+// Latest current-methodology index row before today for each series. Today's
+// own row is excluded so an hourly rerun recomputes from the same anchor
+// instead of compounding on itself.
+async function getPreviousIndices(basketId: string): Promise<Map<string, PreviousIndex>> {
+  const result = await query<{ category: string | null; metric_key: string; metric_date: string; metric_value: string }>(
+    `SELECT DISTINCT ON (category, metric_key)
+            category, metric_key, to_char(metric_date, 'YYYY-MM-DD') AS metric_date, metric_value
+     FROM computed_indices
+     WHERE basket_id = $1 AND retailer_id IS NULL
+       AND metric_key IN ('essentials_index', 'value_index')
+       AND methodology_version = $2
+       AND metric_date < NOW()::date
+     ORDER BY category, metric_key, metric_date DESC`,
+    [basketId, INDEX_METHODOLOGY_VERSION],
+  );
+  const map = new Map<string, PreviousIndex>();
+  for (const r of result.rows) {
+    map.set(seriesKey(r.category, r.metric_key), { date: r.metric_date, value: parseFloat(r.metric_value) });
+  }
+  return map;
+}
+
+// Each product's price as the index saw it at the end of each date: its latest
+// observation that day or earlier, in stock and inside the freshness window.
+async function getPricesOnDates(productIds: string[], dates: string[]): Promise<Map<string, Map<string, number>>> {
+  const map = new Map<string, Map<string, number>>();
+  if (productIds.length === 0 || dates.length === 0) return map;
+  const result = await query<{ day: string; retailer_product_id: string; price: string }>(
+    `SELECT to_char(d.day, 'YYYY-MM-DD') AS day, p.id AS retailer_product_id, po.price
+     FROM unnest($2::date[]) AS d(day)
+     CROSS JOIN unnest($1::uuid[]) AS p(id)
+     JOIN LATERAL (
+       SELECT price, in_stock, observed_at
+       FROM price_observations
+       WHERE retailer_product_id = p.id AND observed_at < d.day + 1
+       ORDER BY observed_at DESC, id DESC LIMIT 1
+     ) po ON po.in_stock = true
+       AND po.observed_at >= d.day - make_interval(days => $3)`,
+    [productIds, dates, MAX_OBSERVATION_AGE_DAYS],
+  );
+  for (const r of result.rows) {
+    if (!map.has(r.day)) map.set(r.day, new Map());
+    map.get(r.day)!.set(r.retailer_product_id, parseFloat(r.price));
+  }
+  return map;
+}
+
+// Matched-model chain link. A product entering or leaving the basket must not
+// move the index, so the day-on-day change is measured only over products
+// priced on both dates: the ratio of the index computed on that common set
+// today to the same index computed on it at the previous date. With no change
+// in composition this equals the direct index's own change.
+function chainIndex(
+  rows: BasketRow[],
+  baselines: Map<string, number>,
+  previous: PreviousIndex | undefined,
+  pricesOnDates: Map<string, Map<string, number>>,
+  compute: (rows: BasketRow[], baselines: Map<string, number>) => number | null,
+): number | null {
+  const direct = compute(rows, baselines);
+  if (!previous) return direct; // first current-methodology day seeds the chain
+  const prevPrices = pricesOnDates.get(previous.date) ?? new Map<string, number>();
+  const matched = rows.filter((r) => prevPrices.has(r.retailerProductId));
+  const now = compute(matched, baselines);
+  const then = compute(matched.map((r) => ({ ...r, price: prevPrices.get(r.retailerProductId)! })), baselines);
+  // Nothing priced on both dates (or no baselines for it): the chain cannot be
+  // continued, so it restarts from the direct index rather than freezing.
+  if (now === null || then === null || then === 0) {
+    logger.warn(`chain restarted from direct index (no products priced on ${previous.date} and today)`);
+    return direct;
+  }
+  return previous.value * (now / then);
+}
+
 async function writeComputedIndex(
   basketId: string,
   retailerId: string | null,
@@ -237,8 +320,12 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
   const uniqueItemIds = [...new Set(rows.map((r) => r.basketItemId))];
   const baselines = await getBaselinePrices(uniqueItemIds, basketConfig.baseDate);
 
-  const essentialsIndex = computeFixedIndex(rows, baselines);
-  const valueIndex = computeValueIndex(rows, baselines);
+  const previous = await getPreviousIndices(basketId);
+  const previousDates = [...new Set([...previous.values()].map((p) => p.date))];
+  const pricesOnDates = await getPricesOnDates([...new Set(rows.map((r) => r.retailerProductId))], previousDates);
+
+  const essentialsIndex = chainIndex(rows, baselines, previous.get(seriesKey(null, 'essentials_index')), pricesOnDates, computeFixedIndex);
+  const valueIndex = chainIndex(rows, baselines, previous.get(seriesKey(null, 'value_index')), pricesOnDates, computeValueIndex);
 
   const coverageCount = new Set(rows.map((r) => r.basketItemId)).size;
   const totalItems = basketConfig.items.length;
@@ -287,7 +374,7 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
   }
 
   for (const [category, catRows] of byCategory) {
-    const catEssentials = computeFixedIndex(catRows, baselines);
+    const catEssentials = chainIndex(catRows, baselines, previous.get(seriesKey(category, 'essentials_index')), pricesOnDates, computeFixedIndex);
     const catCoverage =
       (new Set(catRows.map((r) => r.basketItemId)).size /
         Math.max(1, basketConfig.items.filter((i) => i.category === category).length)) *
