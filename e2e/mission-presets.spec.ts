@@ -5,7 +5,8 @@ const PRESET_KEY = 'worldmonitor-mission-preset-v1';
 const STORAGE_READ_TIMEOUT_MS = 1_500;
 const STORAGE_READ_TIMEOUT = '__wm_storage_read_timeout__';
 const ACTIVE_VARIANT = process.env.VITE_VARIANT || 'full';
-const MISSION_CARD_COUNT = ACTIVE_VARIANT === 'finance' ? 9 : 8;
+// full adds protective-travel (#10512) and finance adds nq-day-trader; other variants offer 8.
+const MISSION_CARD_COUNT = ACTIVE_VARIANT === 'finance' || ACTIVE_VARIANT === 'full' ? 9 : 8;
 const DEFAULT_TRADE_ROUTES = ACTIVE_VARIANT === 'finance' || ACTIVE_VARIANT === 'energy' || ACTIVE_VARIANT === 'commodity';
 
 async function installLocalOnlyNetwork(page: Page): Promise<void> {

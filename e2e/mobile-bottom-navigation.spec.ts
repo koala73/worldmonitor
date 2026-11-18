@@ -47,7 +47,8 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
 
     await page.locator('[data-mobile-tab="more"]').click();
     await expect(page.locator('#mobileMenu')).toHaveClass(/open/);
-    await expect(page.locator('#mobileAuthFallback, #mobileAuthWidgetMount .auth-signin-btn').first()).toBeVisible();
+    // The account entry needs a Clerk key, which CI builds lack (#10689).
+    await expect(page.locator('#mobileMenuSettings')).toBeVisible();
     await page.evaluate(() => history.back());
     await expect(page.locator('#mobileMenu')).not.toHaveClass(/open/);
     await expect(page.locator('[data-mobile-tab="today"]')).toHaveAttribute('aria-current', 'page');
@@ -69,6 +70,18 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
 
     await expect(page.locator('#mobileMenu')).not.toHaveClass(/open/);
     await expect(headerAuth).toBeVisible();
+
+    const logoBox = await page.locator('.logo-mobile').boundingBox();
+    expect(logoBox).not.toBeNull();
+    expect(logoBox?.height).toBeLessThanOrEqual(24);
+
+    const clerkEnabled = await page.evaluate(async () => (await import('/src/services/clerk.ts')).isClerkAuthEnabled());
+    if (!clerkEnabled) {
+      // A keyless build (CI) cannot sign anyone in, so the header offers no account action (#10689).
+      await expect(signIn).toHaveCount(0);
+      await expect(headerAuth.locator('.auth-signup-link')).toHaveCount(0);
+      return;
+    }
     await expect(signIn).toBeVisible();
     await expect(signIn).toHaveAccessibleName('Sign In');
     await expect(headerAuth.locator('.auth-signup-link')).toHaveCount(0);
@@ -83,10 +96,6 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(
       (headerBox?.y ?? 0) + (headerBox?.height ?? 0),
     );
-
-    const logoBox = await page.locator('.logo-mobile').boundingBox();
-    expect(logoBox).not.toBeNull();
-    expect(logoBox?.height).toBeLessThanOrEqual(24);
   });
 
   test('uses one Back press for the More to Region sheet transition', async ({ page }) => {
