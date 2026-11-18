@@ -67,7 +67,7 @@ async function main() {
   const sent = [];
   for (let i = 0; i < keys.length; i += 200) {
     const lists = await redis(url, token, keys.slice(i, i + 200).map((key) => ['LRANGE', key, '0', '-1']));
-    for (const list of lists) sent.push(...parseRows(list).filter((r) => r.sentAt >= from && r.sentAt < to + DAY_MS));
+    for (const list of lists) sent.push(...parseRows(list).filter((r) => r.sentAt >= from - DAY_MS && r.sentAt < to + DAY_MS));
   }
 
   const { missed, wireStories, deliveredBeforeWire } = auditMisses({ queued, sent });
