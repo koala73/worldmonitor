@@ -49,6 +49,13 @@ describe('classify cache key is the story, not the title string (#10976)', () =>
       await buildClassifyCacheKey('Minister will re-sign trade agreement'),
       await buildClassifyCacheKey('Minister will resign trade agreement'),
     );
+    for (const dash of ['\u2013', '\u2014', '\u2212', '\uff0d']) {
+      assert.notEqual(
+        await buildClassifyCacheKey(`Minister will re${dash}sign trade agreement`),
+        await buildClassifyCacheKey('Minister will resign trade agreement'),
+        `U+${dash.codePointAt(0)!.toString(16)}`,
+      );
+    }
   });
 
   it('keeps a several-word clause ending in a domain on the exact title', async () => {

@@ -646,7 +646,7 @@ export function clusterTexts(texts, opts = {}) {
 // Delivery and cross-build coverage must agree on punctuation and attribution.
 const NORMALIZED_TITLE_SCAN = 2_000;
 const CLASSIFY_QUESTION_RE = /\?["'”’»]*\s*(?:[-–—|][^?]*)?$/;
-const IN_WORD_HYPHEN_RE = /(?<=[\p{L}\p{N}])[-‐‑](?=[\p{L}\p{N}])/gu;
+const IN_WORD_HYPHEN_RE = /(?<=[\p{L}\p{N}])[\p{Pd}\u2212](?=[\p{L}\p{N}])/gu;
 const DOMAIN_CREDIT_RE = /\.(?:com|org|net|co\.uk)\s*$/;
 
 /**
