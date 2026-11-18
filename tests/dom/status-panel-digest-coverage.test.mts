@@ -178,3 +178,38 @@ describe('StatusPanel digest coverage breadth and stale cause', () => {
     expect(text).not.toContain('ago');
   });
 });
+
+describe('StatusPanel digest coverage row when the build ran out of time', () => {
+  // Prod 2026-11-18 full:en footer: "partial … feeds 932/955, categories 18/18
+  // (some categories had no completed feed in this cycle)". With every category
+  // covered the server's partial comes from the build deadline alone, and the
+  // row claimed a missing category that did not exist.
+  const deadlineOnly = (): DigestCoverageSummary => ({
+    ...coverage('partial'),
+    feedsCompleted: 932,
+    feedsTotal: 955,
+    categoriesCompleted: 18,
+    categoriesTotal: 18,
+    missingCategories: [],
+  });
+
+  it('does not call the cycle partial when every category was covered', () => {
+    const text = rowText(deadlineOnly());
+    expect(text).toContain('News coverage: complete');
+    expect(text).not.toContain('partial');
+    expect(text).not.toContain('some categories had no completed feed');
+  });
+
+  it('says how many feeds did not answer in time', () => {
+    const text = rowText(deadlineOnly());
+    expect(text).toContain('feeds 932/955, categories 18/18');
+    expect(text).toContain('23 feeds did not answer in time');
+  });
+
+  it('keeps partial when a category is actually missing', () => {
+    const text = rowText({ ...deadlineOnly(), categoriesCompleted: 17, missingCategories: ['tech'] });
+    expect(text).toContain('News coverage: partial');
+    expect(text).toContain('no completed feed: tech');
+    expect(text).toContain('some categories had no completed feed');
+  });
+});

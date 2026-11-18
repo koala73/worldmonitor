@@ -147,9 +147,21 @@ export class StatusPanel extends Panel {
    * an accessible name and a short explanation, announced politely.
    */
   public updateDigestCoverage(coverage: DigestCoverageSummary): void {
-    const explanation = coverage.state === 'stale'
+    // The server also reports partial when the build hit its fetch deadline
+    // with every category covered. A reader sees the same thing as a complete
+    // build that lost a few feeds to errors, so show it as complete and say
+    // how many feeds ran out of time. Partial stays for a missing category.
+    const deadlineOnly = coverage.state === 'partial'
+      && coverage.categoriesTotal > 0
+      && coverage.categoriesCompleted === coverage.categoriesTotal
+      && coverage.missingCategories.length === 0;
+    const state = deadlineOnly ? 'complete' : coverage.state;
+    const lateFeeds = Math.max(0, coverage.feedsTotal - coverage.feedsCompleted);
+    const explanation = state === 'stale'
       ? staleExplanation(coverage)
-      : DIGEST_COVERAGE_EXPLANATIONS[coverage.state];
+      : deadlineOnly && lateFeeds > 0
+        ? `every configured category was covered; ${formatCount(lateFeeds)} ${lateFeeds === 1 ? 'feed' : 'feeds'} did not answer in time`
+        : DIGEST_COVERAGE_EXPLANATIONS[state];
     // The digest shows at most 20 stories per category, so the served slice
     // understates how many publishers fed this cycle. Report the ranked pool
     // when the server sent it.
@@ -161,7 +173,7 @@ export class StatusPanel extends Panel {
       : '';
     const text = coverage.state === 'unavailable' || coverage.state === 'unknown'
       ? `News coverage: ${coverage.state} — ${explanation}`
-      : `News coverage: ${coverage.state} — ${breadth}, feeds ${coverage.feedsCompleted}/${coverage.feedsTotal}, categories ${coverage.categoriesCompleted}/${coverage.categoriesTotal}${missing} (${explanation})`;
+      : `News coverage: ${state} — ${breadth}, feeds ${coverage.feedsCompleted}/${coverage.feedsTotal}, categories ${coverage.categoriesCompleted}/${coverage.categoriesTotal}${missing} (${explanation})`;
     if (!this.digestCoverageRow) {
       this.digestCoverageRow = h('div', {
         className: 'digest-coverage-row',
