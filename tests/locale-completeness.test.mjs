@@ -282,31 +282,4 @@ describe('locale completeness', () => {
       assert.doesNotMatch(help, /Alberta Emergency Alert only/i, `${file} canadaAlerts copy must not claim Alberta-only coverage`);
     });
   }
-
-  for (const file of ['en.json', ...localeFiles]) {
-    it(`${file} describes the shared Canada roads layer without stale province-only copy`, () => {
-      const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));
-      const values = [
-        locale.components.deckgl.layers.canadaRoads,
-        locale.components.deckgl.layerHelp.descriptions.canadaRoads,
-      ];
-      for (const value of values) {
-        assert.equal(typeof value, 'string');
-        assert.match(value, /Canad|Kanad|Kanaď|Kanadá|كند|Канад|Καναδ|カナダ|캐나다|加拿大|कनाडा|แคนาดา|کانادا/i, `${file} canadaRoads copy must identify Canadian scope`);
-        assert.doesNotMatch(value, /(Ontario|Онтарио|Онтаріо|Οντάριο|オンタリオ|온타리오|安大略|ออนแทรีโอ|ओंटारियो|أونتاريو|انتاریو)[\s\S]*(Alberta|Албер|Альбер|Άλμπερτα|アルバータ|앨버타|艾伯塔|亞伯達|อัลเบอร์ตา|अल्बर्टा|ألبرتا|آلبرتا)/i, `${file} canadaRoads copy must not claim only two provinces`);
-      }
-    });
-
-    it(`${file} discloses the provincial scope for the canadaAlerts layer in its help, not the short label`, () => {
-      const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));
-      const layer = locale.components.deckgl.layers.canadaAlerts;
-      const help = locale.components.deckgl.layerHelp.descriptions.canadaAlerts;
-      assert.equal(typeof layer, 'string');
-      assert.equal(typeof help, 'string');
-      assert.doesNotMatch(layer, /[(（]|AB \+ BC/, `${file} canadaAlerts layer label must stay short`);
-      assert.match(help, /SaskAlert/i, `${file} canadaAlerts help must name SaskAlert`);
-      assert.doesNotMatch(layer, /Alberta Emergency Alert only/i, `${file} canadaAlerts copy must not claim Alberta-only coverage`);
-      assert.doesNotMatch(help, /Alberta Emergency Alert only/i, `${file} canadaAlerts copy must not claim Alberta-only coverage`);
-    });
-  }
 });
