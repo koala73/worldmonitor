@@ -22,6 +22,8 @@ const workflows = readdirSync(workflowsDir)
 // it without a reason a reviewer can check.
 const NOT_RUN_IN_CI: Record<string, string> = {
   'e2e/china-corridor-panel.spec.ts': 'broken: 2 of 5 tests fail on main',
+  'e2e/food-prices.spec.ts':
+    'broken on Linux: at 1440px the panel scrollWidth exceeds clientWidth by 5px with no element or text past its edge (passes on macOS; CI run 44274809907)',
   'e2e/forecast-row-layout.spec.ts':
     'flaky: at 390px the VOID summary click is intercepted by .fc-sim-label, then #mobileTabBar, until the 300s test timeout (both attempts, CI run 43796987099)',
   'e2e/live-media-intent.spec.ts': 'broken: 5 of 14 tests fail on main',
