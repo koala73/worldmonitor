@@ -130,7 +130,7 @@ test('panels fit the narrowest sidebar column without scrolling sideways', async
           incidentCount7d: 557, disruptionPct: 100, riskSummary: '', riskReportAction: '', dataAvailable: true,
         },
         flowEstimate: {
-          currentMbd: -0.2, baselineMbd: 21, flowRatio: 0.01, disrupted: true, source: 'FLOW_SOURCE_UNSPECIFIED',
+          currentMbd: 0.2, baselineMbd: 21, flowRatio: 0.008, disrupted: true, source: 'FLOW_SOURCE_UNSPECIFIED',
           hazardAlertLevel: 'red', hazardAlertName: 'Hormuz-26', latestDate: '2026-11-17',
         },
         warRiskTier: 'WAR_RISK_TIER_WAR_ZONE', navigationalWarningsAvailable: true, aisSnapshotAvailable: true,
