@@ -994,10 +994,6 @@ export function isLikelyFreshSignup(
   return age >= -FRESH_SIGNUP_CLOCK_SKEW_MS && age <= FRESH_SIGNUP_WINDOW_MS;
 }
 
-export function trackSignOut(): void {
-  track('sign-out');
-}
-
 /**
  * Passkey offer funnel.
  *
