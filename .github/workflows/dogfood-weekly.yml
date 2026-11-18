@@ -15,9 +15,6 @@ name: Weekly Dogfood Review
 on:
   schedule:
     - cron: '23 6 * * 1'
-  # TEMPORARY: one verification run of the allowlist wrapper on the runner. Removed before merge.
-  pull_request:
-    paths: ['scripts/dogfood/run-agent.sh']
   workflow_dispatch:
     inputs:
       focus:
