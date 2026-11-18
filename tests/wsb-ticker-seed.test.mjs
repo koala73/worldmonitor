@@ -62,7 +62,7 @@ describe('WSB Ticker Scanner', () => {
     it('merges mentions across subreddits and keeps the highest-score post', () => {
       const { scanned, ranked } = scan({
         wallstreetbets: [post('1', 'NVDA earnings great', 100, { upvote_ratio: 0.9 })],
-        stocks: [post('2', 'NVDA calls printing', 200, { upvote_ratio: 0.95 })],
+        stocks: [post('2', 'NVDA calls printing', 200, { upvote_ratio: 0.96 })],
         investing: [post('3', 'AAPL undervalued', 50)],
       }, known);
       assert.equal(scanned, 3);
