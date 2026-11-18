@@ -1641,6 +1641,13 @@ describe('CI workflow coverage', () => {
     assert.equal(steps[testIndex]['continue-on-error'], undefined, 'publisher regression failure must fail CI');
   });
 
+  it('gives the consumer-prices tests a real Postgres for the chained-index proof', () => {
+    const job = YAML.parse(testWorkflow).jobs['consumer-prices'];
+    assert.match(job.services?.postgres?.image ?? '', /^postgres:17-alpine@sha256:[0-9a-f]{64}$/);
+    const test = job.steps.find((step: { run?: string }) => step.run === 'npm test --prefix consumer-prices-core');
+    assert.match(test.env?.CONSUMER_PRICES_TEST_DATABASE_URL ?? '', /^postgres:\/\/.+@localhost:5432\/consumer_prices_test$/);
+  });
+
   it('installs the locale font subset from a package cache in every browser job', () => {
     const action = YAML.parse(read(resolve(root, '.github/actions/install-browser-fonts/action.yml')));
     const steps = action.runs.steps;

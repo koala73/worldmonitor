@@ -799,6 +799,20 @@ jobs:
     if: needs.changes.outputs.consumer_prices == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        env:
+          POSTGRES_DB: consumer_prices_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready --username=postgres --dbname=consumer_prices_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -809,6 +823,8 @@ jobs:
       - uses: ./.github/actions/install-redis
       - run: npm ci --prefix consumer-prices-core
       - run: npm test --prefix consumer-prices-core
+        env:
+          CONSUMER_PRICES_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/consumer_prices_test
 
   umami-postgres:
     needs: changes
