@@ -59,7 +59,7 @@ export async function classifyEvent(
   // The title digest does not depend on the routing lookup, so run both together.
   const [aiRouting, baseCacheKey] = await Promise.all([
     resolveAiRouting(ctx.request),
-    buildClassifyCacheKey(title),
+    buildClassifyCacheKey(title, { callerTitle: true }),
   ]);
   const cacheKey = `${baseCacheKey}${aiRoutingCacheSuffix(aiRouting)}`;
 

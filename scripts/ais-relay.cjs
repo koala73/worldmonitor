@@ -5444,8 +5444,11 @@ function countriesNamedInHeadline(text) {
 // (tests/news-classify-cache-prefix-audit.test.mjs) cross-checks all
 // three sites.
 // #10976: keyed on the story, so outlet suffixes and punctuation share one label.
+// A question ("Iran closes Hormuz?") keeps its own label: the classifier
+// grades it lower than the report it asks about.
+const CLASSIFY_QUESTION_RE = /\?\s*(?:[-–—|][^?]*)?$/;
 function classifyCacheKey(title) {
-  const identity = normalizeNewsStoryTitle(title) || title.toLowerCase();
+  const identity = (normalizeNewsStoryTitle(title) || title.toLowerCase()) + (CLASSIFY_QUESTION_RE.test(title) ? ' ?' : '');
   const hash = crypto.createHash('sha256').update(identity).digest('hex').slice(0, 16);
   return `classify:sebuf:v6:${hash}`;
 }
@@ -5707,7 +5710,11 @@ async function seedClassifyForVariant(variant, seenTitles) {
   const titleArr = [...allTitles.keys()];
   const cacheKeys = titleArr.map((t) => classifyCacheKey(t));
 
-  const cached = await upstashMGet(cacheKeys);
+  // One read per story, so copies of it can't see the row in two states.
+  const storyKeys = [...new Set(cacheKeys)];
+  const storyRows = await upstashMGet(storyKeys);
+  const rowByKey = new Map(storyKeys.map((key, i) => [key, storyRows?.[i] ?? null]));
+  const cached = cacheKeys.map((key) => rowByKey.get(key));
   const misses = [];
   // byCountry accumulates threat counts while title+level are in scope
   const byCountry = {};
@@ -5755,8 +5762,8 @@ async function seedClassifyForVariant(variant, seenTitles) {
       },
     );
     // A cached label was published when it was written. Re-publish only a copy
-    // that reaches realtime rules; the story key stops repeats (#10976).
-    if (cached && !reachesRealtimeRules(level, importanceScore)) return;
+    // that reaches realtime rules and has a story key to stop repeats (#10976).
+    if (cached && (!reachesRealtimeRules(level, importanceScore) || !newsStoryKey(title, { severity: level, importanceScore }))) return;
     const titleCountryCodes = matchCountryNamesInText(title);
     // The one country the title names anywhere, not the affected target
     // countryCodes keeps ("Russia attacks Ukraine" names two).

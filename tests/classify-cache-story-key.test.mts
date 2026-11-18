@@ -15,6 +15,23 @@ describe('classify cache key is the story, not the title string (#10976)', () =>
     );
   });
 
+  it('keeps a question apart from the report it asks about', async () => {
+    assert.notEqual(
+      await buildClassifyCacheKey('Iran closes Strait of Hormuz?'),
+      await buildClassifyCacheKey('Iran closes Strait of Hormuz'),
+    );
+    assert.equal(
+      await buildClassifyCacheKey('Iran closes Strait of Hormuz? - Reuters'),
+      await buildClassifyCacheKey('Iran closes Strait of Hormuz?'),
+    );
+  });
+
+  it('does not let a caller-supplied suffix write another story\'s label', async () => {
+    const story = await buildClassifyCacheKey('Iran closes Strait of Hormuz');
+    assert.notEqual(await buildClassifyCacheKey('Iran closes Strait of Hormuz - satire example.com', { callerTitle: true }), story);
+    assert.equal(await buildClassifyCacheKey('Iran closes Strait of Hormuz', { callerTitle: true }), story);
+  });
+
   it('keeps different headlines apart', async () => {
     assert.notEqual(
       await buildClassifyCacheKey('Iran says two oil tankers hit by mines in Strait of Hormuz'),
