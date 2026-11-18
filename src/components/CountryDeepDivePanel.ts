@@ -156,7 +156,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private currentBrief: string | null = null;
   private currentBriefGeneratedAt: string | number | null = null;
   private currentBriefCached: boolean | null = null;
-  private currentBriefIsFallback = false;
+  private currentBriefIsSignalRows = false;
   private historyRegistered = false;
   private currentHeadlines: NewsItem[] = [];
   private isMaximizedState = false;
@@ -414,7 +414,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.currentBrief = null;
     this.currentBriefGeneratedAt = null;
     this.currentBriefCached = null;
-    this.currentBriefIsFallback = false;
+    this.currentBriefIsSignalRows = false;
     this.currentHeadlines = [];
     this.currentHeadlineCount = 0;
     this.economicIndicators = [];
@@ -3362,8 +3362,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return wrapper;
   }
 
-  public isFallbackBrief(): boolean {
-    return this.currentBriefIsFallback;
+  public isSignalRowsBrief(): boolean {
+    return this.currentBriefIsSignalRows;
   }
 
   public updateScore(score: CountryScore | null, _signals: CountrySignalCounts | null): void {
@@ -3511,7 +3511,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.currentBrief = null;
       this.currentBriefGeneratedAt = null;
       this.currentBriefCached = null;
-      this.currentBriefIsFallback = false;
+      this.currentBriefIsSignalRows = false;
       this.briefBody.append(this.makeEmpty(data.error || data.reason || t('countryBrief.assessmentUnavailable')));
       return;
     }
@@ -3519,7 +3519,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.currentBrief = data.brief;
     this.currentBriefGeneratedAt = data.generatedAt ?? null;
     this.currentBriefCached = data.cached === true;
-    this.currentBriefIsFallback = data.fallback === true;
+    this.currentBriefIsSignalRows = data.signalRows === true;
 
     const briefSources = collectBriefSources(data.sources ?? [], 6);
     // Signal rows have no sentence punctuation; summarizing them joined every

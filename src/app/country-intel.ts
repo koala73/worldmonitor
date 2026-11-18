@@ -926,9 +926,10 @@ export class CountryIntelManager implements AppModule {
         this.commitCountryScore(presentation, score, signals);
         presentation.signalDetailsPending = true;
         page.updateSignals?.({ ...signals, ...this.getQualifiedMilitaryCounts(code) }, this.buildMilitarySummary(code, name).coverageNotes);
-        // Fallback assessments embed temporal status inline; refresh that copy
+        // Signal-row assessments embed temporal status inline; refresh that copy
         // when chips change so unavailable/zero/global context stays consistent.
-        if (page.isFallbackBrief?.()) {
+        // Local-model prose also carries the Fallback badge but is left alone.
+        if (page.isSignalRowsBrief?.()) {
           const lines = this.buildFallbackSignalLines(score, signals, name, {});
           if (lines.length > 0) {
             page.updateBrief({ brief: lines.join('\n'), country: name, code, fallback: true, signalRows: true });

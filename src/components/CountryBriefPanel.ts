@@ -238,7 +238,8 @@ export interface CountryBriefPanel {
   updateInfrastructure(code: string): void;
   showGeoError?(onRetry: () => void): void;
   updateScore?(score: CountryScore | null, signals: CountrySignalCounts): void;
-  isFallbackBrief?(): boolean;
+  /** True when the shown brief is the one-signal-per-line fallback, not prose. */
+  isSignalRowsBrief?(): boolean;
   updateSignals?(signals: CountrySignalCounts, notes?: readonly string[]): void;
   getSignalCounts?(): CountrySignalCounts | null;
   updateSignalDetails?(details: CountryDeepDiveSignalDetails): void;
