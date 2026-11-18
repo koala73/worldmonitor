@@ -57,13 +57,21 @@ describe('truncateForDisplay', () => {
     assert.equal(graphemes(truncateForDisplay(flags, 2)), 3);
   });
 
-  it('falls back to a code-point slice when Intl.Segmenter is missing', () => {
+  it('falls back to an approximate grapheme cut when Intl.Segmenter is missing', () => {
     const original = Intl.Segmenter;
     try {
       // @ts-ignore
       delete Intl.Segmenter;
       assert.equal(truncateForDisplay('😀😀😀😀', 2), '😀😀…');
       assert.equal(truncateForDisplay('abc', 5), 'abc');
+      // A combining accent stays on its base letter: "é" is one cluster.
+      assert.equal(truncateForDisplay('e\u0301x', 1), 'e\u0301…');
+      assert.equal(truncateForDisplay('ab\u0301c\u0327d', 3), 'ab\u0301c\u0327…');
+      // Devanagari: a vowel sign stays with its consonant.
+      assert.equal(truncateForDisplay('\u0915\u093F\u0924\u093E\u092C', 2), '\u0915\u093F\u0924\u093E…');
+      // A ZWJ emoji sequence and a flag pair count as one.
+      assert.equal(truncateForDisplay('\u{1F469}\u200D\u{1F52C}x', 1), '\u{1F469}\u200D\u{1F52C}…');
+      assert.equal(truncateForDisplay('\u{1F1EB}\u{1F1F7}x', 1), '\u{1F1EB}\u{1F1F7}…');
     } finally {
       Intl.Segmenter = original;
     }
