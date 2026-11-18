@@ -19,14 +19,18 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // Rows queued this recently may still be on their way to subscribers.
 const SETTLE_MS = 15 * 60 * 1000;
 
+// The score log keeps 7 days; an older day would print an empty report.
+const RETENTION_DAYS = 7;
+
 function parseWindow(argv) {
-  const at = argv.indexOf('--date');
-  if (at === -1) return { from: Date.now() - SETTLE_MS - DAY_MS, to: Date.now() - SETTLE_MS };
-  const date = argv[at + 1] ?? '';
+  if (argv.length === 0) return { from: Date.now() - SETTLE_MS - DAY_MS, to: Date.now() - SETTLE_MS };
+  const date = argv.length === 1 && argv[0].startsWith('--date=') ? argv[0].slice(7) : argv.length === 2 && argv[0] === '--date' ? argv[1] : null;
+  if (date === null) throw new Error('usage: audit-alert-misses.mjs [--date YYYY-MM-DD]');
   const from = Date.parse(`${date}T00:00:00Z`);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(from) || new Date(from).toISOString().slice(0, 10) !== date) {
     throw new Error('--date needs a real YYYY-MM-DD day');
   }
+  if (from < Date.now() - RETENTION_DAYS * DAY_MS) throw new Error(`--date ${date} is older than the score log's ${RETENTION_DAYS}-day retention`);
   return { from, to: from + DAY_MS };
 }
 
@@ -72,12 +76,12 @@ async function main() {
   const sent = [];
   for (let i = 0; i < keys.length; i += 200) {
     const lists = await redis(url, token, keys.slice(i, i + 200).map((key) => ['LRANGE', key, '0', '-1']));
-    for (const list of lists) sent.push(...parseRows(list).filter((r) => r.sentAt >= from - DAY_MS && r.sentAt < to + DAY_MS));
+    for (const list of lists) sent.push(...parseRows(list).filter((r) => (r.eventType === undefined || r.eventType === 'rss_alert') && r.sentAt >= from - DAY_MS && r.sentAt < to + DAY_MS));
   }
 
   const { missed, wireStories, deliveredBeforeWire } = auditMisses({ queued, sent });
   console.log(`${new Date(from).toISOString()} to ${new Date(to).toISOString()}: ${queued.length} queued rows, ${sent.length} delivered records from ${keys.length} users`);
-  console.log(`\nCritical stories that reached nobody: ${missed.length}`);
+  console.log(`\nCritical stories with no delivery receipt: ${missed.length}`);
   for (const story of missed) {
     console.log(`  ${new Date(story.firstQueuedAt).toISOString()}  ${story.title}`);
     console.log(`    gate=${story.gate}  best=${story.bestScore}  sources=${story.sources.join(', ')}`);
