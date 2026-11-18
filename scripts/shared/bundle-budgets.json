@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 453006
+    "raw": 455196
   },
   "chunks": {
     "analytics": {
@@ -19,7 +19,7 @@
       "files": 1
     },
     "clerk": {
-      "raw": 23810,
+      "raw": 26000,
       "files": 1
     },
     "convex-client": {
