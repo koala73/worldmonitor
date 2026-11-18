@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -11,6 +11,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
 const REDIS_MODULE_URL = pathToFileURL(resolve(root, 'server/_shared/redis.ts')).href;
+const REVOCATIONS_MODULE_URL = pathToFileURL(resolve(root, 'server/_shared/digest-revocations.ts')).href;
+
+// Patched handlers can load this file as ESM or through require, which gives
+// two module instances. Each test sets its own revocations, so drop the
+// previous test's memoized read in both.
+beforeEach(async () => {
+  (await import(REVOCATIONS_MODULE_URL)).__resetRevocationMemoForTest();
+  createRequire(import.meta.url)(resolve(root, 'server/_shared/digest-revocations.ts')).__resetRevocationMemoForTest();
+});
 
 function jsonResponse(payload, ok = true) {
   return {

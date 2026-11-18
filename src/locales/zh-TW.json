@@ -16,7 +16,7 @@
     "predictionMarkets": "預測市場",
     "loadingMarkets": "正在載入預測市場...",
     "infrastructure": "基礎設施暴露",
-    "briefUnavailable": "AI簡報不可用 — 請在設定中配置OPENROUTER_API_KEY。",
+    "briefUnavailable": "AI 簡報暫時無法生成。",
     "cached": "已快取",
     "fresh": "最新",
     "noMarkets": "未找到預測市場",
@@ -126,13 +126,13 @@
     },
     "fallback": {
       "instabilityIndex": "**不穩定指數：{{score}}/100**（{{level}}，{{trend}}）",
-      "protestsDetected": "檢測到{{count}}起活躍抗議",
-      "aircraftTracked": "追蹤到{{count}}架軍用飛機",
-      "vesselsTracked": "追蹤到{{count}}艘軍用艦艇",
-      "internetOutages": "{{count}}起網際網路中斷",
-      "recentEarthquakes": "{{count}}起近期地震",
+      "protestsDetected": "活躍抗議活動：{{count}}",
+      "aircraftTracked": "被監控的軍用飛機：{{count}}",
+      "vesselsTracked": "被監控的軍用艦船：{{count}}",
+      "internetOutages": "網際網路中斷：{{count}}",
+      "recentEarthquakes": "最近的地震：{{count}}",
       "stockIndex": "股票指數：{{value}}",
-      "activeStrikes": "檢測到{{count}}起活躍罷工"
+      "activeStrikes": "攻擊和攔截：{{count}}"
     },
     "countryFacts": "國家概況",
     "loadingFacts": "正在載入國家概況...",
@@ -808,7 +808,7 @@
       "fresh": "最新",
       "noMarkets": "未找到預測市場",
       "predictionMarkets": "預測市場",
-      "unavailable": "AI簡報不可用 — 請在設定中配置OPENROUTER_API_KEY。"
+      "unavailable": "AI 簡報暫時無法生成。"
     },
     "countryBrief": {
       "identifying": "正在識別國家...",
@@ -824,7 +824,7 @@
       "predictionMarkets": "預測市場",
       "loadingMarkets": "正在載入預測市場...",
       "infrastructure": "基礎設施暴露",
-      "briefUnavailable": "AI簡報不可用 — 請在設定中配置OPENROUTER_API_KEY。",
+      "briefUnavailable": "AI 簡報暫時無法生成。",
       "cached": "已快取",
       "fresh": "最新",
       "noMarkets": "未找到預測市場",

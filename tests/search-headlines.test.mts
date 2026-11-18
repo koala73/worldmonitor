@@ -10,7 +10,7 @@ import {
   headlineHistoryBucketKey,
   writeHeadlineHistory,
 } from '../server/worldmonitor/news/v1/_headline-history';
-import { REVOKED_URLS_KEY } from '../server/_shared/digest-revocations';
+import { REVOKED_URLS_KEY, __resetRevocationMemoForTest } from '../server/_shared/digest-revocations';
 import { drainResponseHeaders } from '../server/_shared/response-headers';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
 import { createNewsServiceRoutes, type SearchHeadlinesResponse } from '../src/generated/server/worldmonitor/news/v1/service_server';
@@ -18,6 +18,12 @@ import { validateGeneratedRequest } from '../server/request-validator';
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
 import { PUBLIC_NO_AUTH_RPC_PATHS } from '../server/gateway';
 import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache';
+
+// Each test sets its own revocations; drop the previous test's memoized read.
+beforeEach(__resetRevocationMemoForTest);
+
+/** Stand-in for REVOCATION_MEMO_TTL_MS passing: the next read goes to Redis. */
+const afterRevocationMemoWindow = __resetRevocationMemoForTest;
 
 const routes = createNewsServiceRoutes(newsHandler, { validateRequest: validateGeneratedRequest });
 const freeRoute = routes.find(entry => entry.path.endsWith('/search-headlines'))!;
@@ -580,12 +586,14 @@ describe('headline search failure and revocation', () => {
 
     commands = [];
     revoked = ['https://www.reuters.com/retracted'];
+    afterRevocationMemoWindow();
     const after = await search(freeRoute, 'minister');
-    assert.deepEqual(titles(after.payload), ['Minister denies the claim'], 'revoked seconds ago, gone on the next request');
+    assert.deepEqual(titles(after.payload), ['Minister denies the claim'], 'gone on the first request after the memo window');
     assert.equal(after.payload.searchedHeadlines, 1, 'a revoked headline is not counted as searched');
     assert.deepEqual(commands.map(command => command[0]), ['SMEMBERS'], 'revocations are read again; the index is not');
 
     revoked = [];
+    afterRevocationMemoWindow();
     const lifted = await search(freeRoute, 'minister');
     assert.equal(lifted.payload.headlines.length, 2, 'lifting the revocation lists it again');
   });
@@ -596,6 +604,7 @@ describe('headline search failure and revocation', () => {
     await served(NOW, [item('Correction: minister bribe claim withdrawn', url)]);
     assert.equal((await search(freeRoute, 'minister')).payload.searchedHeadlines, 2);
     revoked = [url];
+    afterRevocationMemoWindow();
     for (const query of ['minister', 'bribes sources', 'correction']) {
       const { payload } = await search(freeRoute, query);
       assert.deepEqual(payload.headlines, [], query);
@@ -608,6 +617,7 @@ describe('headline search failure and revocation', () => {
     assert.deepEqual(titles((await search(freeRoute, 'rates')).payload), ['Rates held at 4.5%']);
 
     failRevocations = true;
+    afterRevocationMemoWindow();
     const failed = await search(freeRoute, 'rates held');
     assert.equal(failed.payload.state, 'unavailable');
     assert.deepEqual(failed.payload.headlines, []);
@@ -627,6 +637,7 @@ describe('headline search failure and revocation', () => {
     await served(NOW, [item('Port strike ends', 'https://www.apnews.com/port', 'AP News')]);
     assert.equal((await search(freeRoute, 'port strike')).payload.headlines[0]!.link, 'https://www.apnews.com/port');
     revoked = ['https://www.apnews.com/port'];
+    afterRevocationMemoWindow();
     const { payload } = await search(freeRoute, 'port strike');
     assert.deepEqual(payload.headlines.map(headline => headline.link), ['https://www.reuters.com/port']);
     assert.equal(payload.searchedHeadlines, 1);

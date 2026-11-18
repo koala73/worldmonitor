@@ -21,7 +21,7 @@ export function formatTime(date: Date): string {
   }
 }
 
-export { formatChange, formatPrice, getChangeClass, getHeatmapClass } from './market-format';
+export { formatChange, formatPrice, formatQuotePrice, getChangeClass, getHeatmapClass } from './market-format';
 
 export function debounce<T extends (...args: unknown[]) => void>(
   fn: T,

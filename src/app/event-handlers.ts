@@ -411,6 +411,7 @@ export class EventHandlerManager implements AppModule {
     try { history.replaceState(history.state, '', withUrlFragment(url, window.location.hash)); } catch { }
   };
   private readonly debouncedUrlSync = debounce(this.writeUrlState, 250);
+  private urlStateSyncReady = false;
 
   private readonly debouncedWebcamReload = debounce(() => {
     if (this.ctx.mapLayers?.webcams) {
@@ -1638,18 +1639,31 @@ export class EventHandlerManager implements AppModule {
       // and may finish before this listener is attached, so this settled write
       // is also what preserves its initial lat/lon URL state.
       void this.ctx.map.whenViewportSettled().then(() => {
+        this.urlStateSyncReady = true;
         if (!this.ctx.isDestroyed) this.debouncedUrlSync();
       }).catch(() => {
         // A superseding interaction or renderer switch owns the newer state;
         // its normal state-change listener will sync that viewport.
+        this.urlStateSyncReady = true;
       });
     } else {
       this.debouncedUrlSync();
+      this.urlStateSyncReady = true;
     }
   }
 
   syncUrlState(): void {
     this.debouncedUrlSync();
+  }
+
+  /**
+   * For map changes that also fire during boot, such as the deep link's time
+   * range. Until setupUrlStateSync() has run and any deep-link flyTo has
+   * settled, a write would record the map mid-flight; the settled write then
+   * carries the current state, time range included.
+   */
+  syncUrlStateIfStarted(): void {
+    if (this.urlStateSyncReady) this.debouncedUrlSync();
   }
 
   syncUrlStateNow(): void {

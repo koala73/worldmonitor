@@ -171,7 +171,7 @@ export const PlanComparisonTable = () => {
           <caption className="sr-only">{t('pricingTable.title')}</caption>
           <thead>
             <tr className="font-mono text-xs uppercase tracking-widest text-wm-muted bg-wm-card">
-              <th scope="col" className="sticky left-0 z-10 bg-wm-card" />
+              <td className="sticky left-0 z-10 bg-wm-card" />
               <th scope="colgroup" colSpan={PERSONAL.length} className="px-4 pt-4 pb-1 text-left font-normal">
                 {t('pricing.axisPersonal')} <span className="normal-case tracking-normal">· {t('pricing.axisPersonalNote')}</span>
               </th>

@@ -85,7 +85,7 @@
     "predictionMarkets": "पूर्वानुमान बाजार",
     "loadingMarkets": "पूर्वानुमान बाजार लोड कर रहे हैं...",
     "infrastructure": "बुनियादी ढांचे का प्रदर्शन",
-    "briefUnavailable": "AI ब्रीफ उपलब्ध नहीं — सेटिंग्स में OPENROUTER_API_KEY सेट करें।",
+    "briefUnavailable": "AI ब्रीफ़ अभी उपलब्ध नहीं है।",
     "cached": "कैश किए गए",
     "fresh": "ताजा",
     "noMarkets": "इस देश के लिए कोई सक्रिय बाजार नहीं।",
@@ -195,13 +195,13 @@
     },
     "fallback": {
       "instabilityIndex": "**अस्थिरता सूचकांक: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} सक्रिय प्रदर्शन पाए गए",
-      "aircraftTracked": "{{count}} सैनिक विमान ट्रैक किए गए",
-      "vesselsTracked": "{{count}} सैनिक जहाज ट्रैक किए गए",
-      "internetOutages": "{{count}} इंटरनेट बाधाएं",
-      "recentEarthquakes": "{{count}} हाल के भूकंप",
+      "protestsDetected": "सक्रिय प्रदर्शन: {{count}}",
+      "aircraftTracked": "ट्रैक किए गए सैन्य विमान: {{count}}",
+      "vesselsTracked": "ट्रैक किए गए सैन्य पोत: {{count}}",
+      "internetOutages": "इंटरनेट व्यवधान: {{count}}",
+      "recentEarthquakes": "हाल के भूकंप: {{count}}",
       "stockIndex": "स्टॉक इंडेक्स: {{value}}",
-      "activeStrikes": "{{count}} सक्रिय हड़तालें पाई गईं"
+      "activeStrikes": "हमले और अवरोधन: {{count}}"
     },
     "countryFacts": "देश की जानकारी",
     "loadingFacts": "देश की जानकारी लोड कर रहे हैं...",
@@ -880,7 +880,7 @@
       "fresh": "ताजा",
       "noMarkets": "कोई अनुमान बाजार नहीं मिला",
       "predictionMarkets": "अनुमान बाजार",
-      "unavailable": "AI सारांश उपलब्ध नहीं — सेटिंग्स में OPENROUTER_API_KEY सेट करें।"
+      "unavailable": "AI ब्रीफ़ अभी उपलब्ध नहीं है।"
     },
     "countryBrief": {
       "identifying": "देश पहचान रहे हैं...",
@@ -896,7 +896,7 @@
       "predictionMarkets": "अनुमान बाजार",
       "loadingMarkets": "अनुमान बाजार लोड हो रहे हैं...",
       "infrastructure": "इन्फ्रास्ट्रक्चर एक्सपोजर",
-      "briefUnavailable": "AI सारांश उपलब्ध नहीं — सेटिंग्स में OPENROUTER_API_KEY सेट करें।",
+      "briefUnavailable": "AI ब्रीफ़ अभी उपलब्ध नहीं है।",
       "cached": "कैश हुआ",
       "fresh": "ताजा",
       "noMarkets": "कोई अनुमान बाजार नहीं मिला",

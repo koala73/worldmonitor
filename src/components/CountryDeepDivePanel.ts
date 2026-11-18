@@ -156,7 +156,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private currentBrief: string | null = null;
   private currentBriefGeneratedAt: string | number | null = null;
   private currentBriefCached: boolean | null = null;
-  private currentBriefIsFallback = false;
+  private currentBriefIsSignalRows = false;
   private historyRegistered = false;
   private currentHeadlines: NewsItem[] = [];
   private isMaximizedState = false;
@@ -414,7 +414,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.currentBrief = null;
     this.currentBriefGeneratedAt = null;
     this.currentBriefCached = null;
-    this.currentBriefIsFallback = false;
+    this.currentBriefIsSignalRows = false;
     this.currentHeadlines = [];
     this.currentHeadlineCount = 0;
     this.economicIndicators = [];
@@ -3362,8 +3362,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return wrapper;
   }
 
-  public isFallbackBrief(): boolean {
-    return this.currentBriefIsFallback;
+  public isSignalRowsBrief(): boolean {
+    // Closing the page clears currentBrief but not the flag.
+    return this.currentBriefIsSignalRows && this.currentBrief !== null;
   }
 
   public updateScore(score: CountryScore | null, _signals: CountrySignalCounts | null): void {
@@ -3511,7 +3512,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.currentBrief = null;
       this.currentBriefGeneratedAt = null;
       this.currentBriefCached = null;
-      this.currentBriefIsFallback = false;
+      this.currentBriefIsSignalRows = false;
       this.briefBody.append(this.makeEmpty(data.error || data.reason || t('countryBrief.assessmentUnavailable')));
       return;
     }
@@ -3519,10 +3520,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.currentBrief = data.brief;
     this.currentBriefGeneratedAt = data.generatedAt ?? null;
     this.currentBriefCached = data.cached === true;
-    this.currentBriefIsFallback = data.fallback === true;
+    this.currentBriefIsSignalRows = data.signalRows === true;
 
     const briefSources = collectBriefSources(data.sources ?? [], 6);
-    const summaryHtml = this.formatBrief(summarizeCountryBrief(data.brief), briefSources, 0, data.evidence);
+    // Signal rows have no sentence punctuation; summarizing them joined every
+    // line into a single run-on paragraph.
+    const summary = data.signalRows ? data.brief.split('\n').slice(0, 5).join('\n') : summarizeCountryBrief(data.brief);
+    const summaryHtml = this.formatBrief(summary, briefSources, 0, data.evidence);
     const text = this.el('div', 'cdp-assessment-text cdp-summary-only');
     setTrustedHtml(text, trustedHtml(summaryHtml, "legacy direct innerHTML migration"));
 
