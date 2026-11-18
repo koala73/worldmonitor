@@ -119,7 +119,9 @@ jobs:
           const fs = require('fs');
           const file = `${process.env.OUT_DIR}/agent-result.json`;
           if (!fs.existsSync(file)) { console.log('No agent result file.'); process.exit(0); }
-          const r = JSON.parse(fs.readFileSync(file, 'utf8'));
+          // A killed agent can leave the file empty or cut short; that is no reason to fail the job.
+          let r;
+          try { r = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { console.log('Agent result file is not valid JSON.'); process.exit(0); }
           const line = `Agent: ${r.subtype ?? 'unknown'}, ${r.num_turns ?? '?'} turns, $${Number(r.total_cost_usd ?? 0).toFixed(2)}`;
           console.log(line);
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${line}\n`);
@@ -159,9 +161,16 @@ jobs:
           name: dogfood-output
           path: ${{ runner.temp }}/dogfood-output
 
+      # Listed again here: the artifact's copy sits in the directory the agent can edit, so a run steered by page
+      # text could otherwise add any issue or pull request number and have the review link it as a duplicate.
+      - name: List open issues for duplicate links
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue list -R "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title > "$RUNNER_TEMP/open-issues.json"
+
       - name: Publish the review issue
         env:
           GH_TOKEN: ${{ github.token }}
           DOGFOOD_FINDINGS: ${{ runner.temp }}/dogfood-output/findings.json
-          DOGFOOD_OPEN_ISSUES: ${{ runner.temp }}/dogfood-output/open-issues.json
+          DOGFOOD_OPEN_ISSUES: ${{ runner.temp }}/open-issues.json
         run: node scripts/report-dogfood-review.mjs

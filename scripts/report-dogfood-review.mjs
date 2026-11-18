@@ -54,7 +54,7 @@ export function readReport(raw) {
 }
 
 function findingLines(finding, index, openIssues) {
-  // A duplicate reference links only when it names an issue that was open when the run started, so the
+  // A duplicate reference links only when it names an issue the publish job itself listed as open, so the
   // agent cannot point the bot at an arbitrary issue or pull request.
   const duplicate = Number.isInteger(finding.duplicate_of) && openIssues.has(finding.duplicate_of)
     ? ` Possible duplicate of #${finding.duplicate_of}.`
