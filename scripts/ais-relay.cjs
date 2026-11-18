@@ -87,7 +87,7 @@ const {
   xPostBudgetServiceStatus,
 } = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
-const { newsStoryKey, newsStoryKeyLoadError, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
+const { newsStoryKey, newsStoryKeyLoadError, normalizeNewsStoryTitle, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
 if (newsStoryKeyLoadError()) {
   // Alerts still publish, on the exact-title identity; a repeated headline can alert twice.
   console.warn('[Notify] News story key unavailable, falling back to exact-title dedup:', newsStoryKeyLoadError().message);
@@ -5443,8 +5443,10 @@ function countriesNamedInHeadline(text) {
 // from .ts; the prefix-audit static-analysis test
 // (tests/news-classify-cache-prefix-audit.test.mjs) cross-checks all
 // three sites.
+// #10976: keyed on the story, so outlet suffixes and punctuation share one label.
 function classifyCacheKey(title) {
-  const hash = crypto.createHash('sha256').update(title.toLowerCase()).digest('hex').slice(0, 16);
+  const identity = normalizeNewsStoryTitle(title) || title.toLowerCase();
+  const hash = crypto.createHash('sha256').update(identity).digest('hex').slice(0, 16);
   return `classify:sebuf:v6:${hash}`;
 }
 

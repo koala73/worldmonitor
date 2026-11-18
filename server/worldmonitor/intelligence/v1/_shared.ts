@@ -3,6 +3,7 @@
  */
 
 import { hashString, sha256Hex } from '../../../_shared/hash';
+import { normalizeNewsStoryTitle } from '../../../../shared/story-identity.js';
 
 // ========================================================================
 // Constants
@@ -68,6 +69,9 @@ export const TIER1_COUNTRIES: Record<string, string> = {
 
 export { hashString, sha256Hex };
 
+// #10976: keyed on the story, so outlet suffixes and punctuation share one label.
+// scripts/ais-relay.cjs classifyCacheKey derives the same identity.
 export async function buildClassifyCacheKey(title: string): Promise<string> {
-  return `${CLASSIFY_CACHE_PREFIX}${(await sha256Hex(title.toLowerCase())).slice(0, 16)}`;
+  const identity = normalizeNewsStoryTitle(title) || title.toLowerCase();
+  return `${CLASSIFY_CACHE_PREFIX}${(await sha256Hex(identity)).slice(0, 16)}`;
 }
