@@ -83,7 +83,7 @@ test('the alert pool drops operator-revoked URLs and is skipped when the set is 
   const url = `http://127.0.0.1:${server.address().port}/digest`;
   const pool = { items: [{ title: 'kept', link: 'https://example.com/a' }, { title: 'revoked', link: 'https://example.com/revoked' }] };
   const pools = [];
-  const readable = loadVariant(url, [], { pools, upstashGet: async () => pool, upstashPipeline: async () => [{ result: ['https://example.com/revoked'] }] });
+  const readable = loadVariant(url, [], { pools, upstashGet: async () => pool, upstashPipeline: async () => [{ result: ['https://example.com/revoked'] }, { result: null }] });
   await bounded(readable('full', new Set()));
   assert.deepEqual(Array.from(pools[0], item => item.title), ['kept']);
   const unreadable = loadVariant(url, [], { pools, upstashGet: async () => pool, upstashPipeline: async () => null });
@@ -109,7 +109,7 @@ test('a pool headline keeps its own label per edition and stays out of the count
   };
   const read = [];
   const written = [];
-  const run = (stored) => loadVariant(url, [], { extra: {
+  const run = (stored) => loadVariant(url, [], { upstashPipeline: async commands => commands.map(() => ({ result: 'OK' })), extra: {
     buildClassifyCandidateMap: candidates,
     classifyCacheKey: title => `label:${title}`,
     upstashMGet: async keys => { read.push(...keys); return keys.map(key => stored[key] ?? null); },
@@ -130,23 +130,30 @@ test('a pool headline keeps its own label per edition and stays out of the count
   assert.equal(unansweredPass.unlabelled, 1);
 });
 
-test('the first read of an edition\'s pool labels it without alerting, and later reads alert on new items (#10978)', async t => {
+test('the first read of an edition\'s pool is a backlog that never alerts, and headlines after it do (#10978)', async t => {
   const server = http.createServer((_req, response) => response.end('{"categories":{}}'));
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => { server.closeAllConnections(); server.close(); });
   const url = `http://127.0.0.1:${server.address().port}/digest`;
   const warmKey = 'classify:alert-pool-warm:v1:full';
-  const pass = async (store, titles, classifyFetchLlm = async chunk => chunk.map((_t, i) => ({ i, l: 'critical', c: 'conflict' }))) => {
+  const critical = async chunk => chunk.map((_t, i) => ({ i, l: 'critical', c: 'conflict' }));
+  const pass = async (store, titles, { classifyFetchLlm = critical, markerWrites = true, labelWrites = true } = {}) => {
     const published = [];
     await bounded(loadVariant(url, [], {
       upstashGet: async () => ({ items: titles.map(title => ({ title })) }),
-      upstashPipeline: async commands => commands.map(([, key]) => ({ result: key === warmKey ? store.get(key) ?? null : [] })),
+      upstashPipeline: async commands => commands.map(([command, key, value]) => {
+        if (command === 'SMEMBERS') return { result: [] };
+        if (command === 'GET') return { result: store.get(key) ?? null };
+        if (!markerWrites) return { error: 'ERR write refused' };
+        store.set(key, value);
+        return { result: 'OK' };
+      }),
       extra: {
         buildClassifyCandidateMap: () => new Map(titles.map(title => [title, { source: 'Reuters', publishedAt: Date.now(), corroborationCount: 1, link: '', fromPool: true }])),
         classifyCacheKey: title => `label:${title}`,
         upstashMGet: async keys => keys.map(key => store.get(key) ?? null),
-        upstashSet: async (key, value) => { store.set(key, JSON.stringify(value)); },
+        upstashSet: async (key, value) => { if (labelWrites) store.set(key, JSON.stringify(value)); return labelWrites; },
         classifyFetchLlm,
         publishNotificationEvent: async event => { published.push(event.payload.title); },
         threatSummaryCountries: () => [], matchCountryNamesInText: () => [], countriesNamedInHeadline: () => [],
@@ -155,22 +162,34 @@ test('the first read of an edition\'s pool labels it without alerting, and later
         relayComputeImportanceScore: () => 88, newsStoryKey: () => '', NEWS_STORY_DEDUP_TTL_SECONDS: 86_400,
         recordAlertLatency() {}, alertLatency: () => ({}), observeJevShadow: async () => null,
         CLASSIFY_VALID_LEVELS: ['critical', 'high', 'medium', 'low', 'info'], CLASSIFY_VALID_CATEGORIES: ['conflict'],
-        CLASSIFY_BATCH_SIZE: 50, CLASSIFY_SKIP_TTL: 1800, CLASSIFY_CACHE_TTL: 86_400, CLASSIFY_POOL_WARM_TTL: 2_592_000,
+        CLASSIFY_BATCH_SIZE: 50, CLASSIFY_SKIP_TTL: 1800, CLASSIFY_CACHE_TTL: 86_400,
       },
     })('full', new Set()));
     return published;
   };
+  const backlog = 'Backlog strike closes strait';
+  const fresh = 'New strike closes strait';
 
   const store = new Map();
-  assert.deepEqual(await pass(store, ['Backlog strike closes strait']), []);
-  assert.ok(store.has('label:Backlog strike closes strait:pool:full'));
+  assert.deepEqual(await pass(store, [backlog]), []);
+  assert.ok(store.has(`label:${backlog}:pool:full`));
   assert.ok(store.has(warmKey));
-  assert.deepEqual(await pass(store, ['Backlog strike closes strait', 'New strike closes strait']), ['New strike closes strait']);
+  assert.deepEqual(await pass(store, [backlog, fresh]), [fresh]);
 
   const unanswered = new Map();
-  assert.deepEqual(await pass(unanswered, ['Backlog strike closes strait'], async () => null), []);
-  assert.equal(unanswered.has(warmKey), false);
-  assert.deepEqual(await pass(unanswered, ['Backlog strike closes strait']), []);
+  assert.deepEqual(await pass(unanswered, [backlog], { classifyFetchLlm: async () => null }), []);
+  unanswered.delete(`label:${backlog}:pool:full`);
+  assert.deepEqual(await pass(unanswered, [backlog, fresh]), [fresh], 'a backlog headline labelled late stays silent, a new one alerts');
+
+  const lostLabel = new Map();
+  assert.deepEqual(await pass(lostLabel, [backlog], { labelWrites: false }), []);
+  assert.deepEqual(await pass(lostLabel, [backlog, fresh]), [fresh], 'a backlog headline whose label was not stored stays silent');
+
+  const refused = new Map();
+  assert.deepEqual(await pass(refused, [backlog], { markerWrites: false }), []);
+  assert.equal(refused.size, 0, 'nothing from the pool is labelled until the backlog is recorded');
+  assert.deepEqual(await pass(refused, [backlog, fresh]), []);
+  assert.deepEqual(await pass(refused, [backlog, fresh, 'Third strike closes strait']), ['Third strike closes strait']);
 });
 
 test('the revocation read keeps a multi-byte URL whole when the network splits it (#10978)', async t => {
@@ -192,6 +211,24 @@ test('the revocation read keeps a multi-byte URL whole when the network splits i
   vm.runInContext(source.slice(from, source.indexOf('\n}\n', from) + 2), context);
   const rows = await bounded(context.upstashPipeline([['SMEMBERS', 'news:digest:revoked-urls:v1']]));
   assert.equal(rows[0].result[0], revokedUrl);
+});
+
+test('a label write settles when Redis breaks off mid-response (#10978)', async t => {
+  const server = http.createServer((_req, response) => {
+    response.writeHead(200, { 'Content-Length': 64 });
+    response.write('{"result":');
+    setTimeout(() => response.socket.destroy(), 25);
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const from = source.indexOf('function upstashSet(key, value, ttlSeconds)');
+  const context = vm.createContext({
+    URL, UPSTASH_ENABLED: true, UPSTASH_HTTP_MODULE: http, UPSTASH_REDIS_REST_TOKEN: 'fixture',
+    UPSTASH_REDIS_REST_URL: `http://127.0.0.1:${server.address().port}`,
+  });
+  vm.runInContext(source.slice(from, source.indexOf('\n}\n', from) + 2), context);
+  assert.equal(await bounded(context.upstashSet('classify:sebuf:v6:fixture', { level: 'high' }, 60)), false);
 });
 
 test('an idle body settles when the existing request timeout destroys the stream', async t => {

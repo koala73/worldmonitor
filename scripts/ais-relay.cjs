@@ -552,6 +552,8 @@ function upstashSet(key, value, ttlSeconds) {
     }, (resp) => {
       let data = '';
       resp.on('data', (chunk) => { data += chunk; });
+      resp.on('error', () => resolve(false));
+      resp.on('aborted', () => resolve(false));
       resp.on('end', () => {
         try {
           const parsed = JSON.parse(data);
@@ -5095,9 +5097,6 @@ async function startCyberThreatsSeedLoop() {
 const CLASSIFY_SEED_INTERVAL_MS = 15 * 60 * 1000;
 const CLASSIFY_CACHE_TTL = 86400;
 const CLASSIFY_SKIP_TTL = 1800;
-// Rewritten on every pass that reads a pool, so it lapses only after a month
-// without one.
-const CLASSIFY_POOL_WARM_TTL = 30 * 86400;
 const CLASSIFY_BATCH_SIZE = 50;
 // Every edition the news digest serves, generated from shared/news-catalog.json
 // (scripts/generate-browser-news-catalog.mjs), so a new edition is classified
@@ -5710,31 +5709,41 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // The served digest drops operator-revoked URLs when it is read; the pool
   // comes straight from Redis, so check it here. An unreadable set skips it.
   let poolItems = [];
-  // The first read of an edition's pool holds a backlog up to 6 h old. That
-  // pass labels it and publishes none of it; the marker outlives a restart,
-  // so later passes alert only on headlines new to the pool.
-  const poolWarmKey = `classify:alert-pool-warm:v1:${variant}`;
-  let poolWarm = false;
+  // The first read of an edition's pool is a backlog up to 6 h old. Its
+  // headlines are recorded before any is labelled and never alert from the
+  // pool, however late their labels land. The record has no expiry, so a
+  // restart does not start over.
+  const poolBacklogKey = `classify:alert-pool-warm:v1:${variant}`;
+  let poolBacklog = null;
   if (Array.isArray(alertPool?.items) && alertPool.items.length > 0) {
-    const revoked = await upstashPipeline([['SMEMBERS', 'news:digest:revoked-urls:v1'], ['GET', poolWarmKey]]);
-    const urls = Array.isArray(revoked?.[0]?.result) ? new Set(revoked[0].result) : null;
-    if (urls) poolItems = alertPool.items.filter((item) => typeof item?.link !== 'string' || !urls.has(item.link));
-    else console.warn(`[Classify] revocation set unreadable — skipping the alert pool for ${variant}`);
-    poolWarm = revoked?.[1]?.result != null;
+    const rows = await upstashPipeline([['SMEMBERS', 'news:digest:revoked-urls:v1'], ['GET', poolBacklogKey]]);
+    const urls = Array.isArray(rows?.[0]?.result) ? new Set(rows[0].result) : null;
+    const backlogRead = rows?.[1] && !rows[1].error;
+    if (urls && backlogRead) poolItems = alertPool.items.filter((item) => typeof item?.link !== 'string' || !urls.has(item.link));
+    else console.warn(`[Classify] revocation set or pool backlog unreadable — skipping the alert pool for ${variant}`);
+    try {
+      const stored = JSON.parse(rows?.[1]?.result ?? 'null');
+      if (Array.isArray(stored?.backlog)) poolBacklog = new Set(stored.backlog);
+    } catch { /* an unreadable record is recorded again below */ }
   }
-  // Pool headlines left without a label keep the edition cold: labelled on a
-  // later pass they would be the backlog again.
-  let poolUnlabelled = 0;
-  const notePoolPass = async () => {
-    if (poolItems.length === 0) return;
-    if (poolUnlabelled > 0) {
-      if (!poolWarm) console.warn(`[Classify] alert pool for ${variant} still warming: ${poolUnlabelled} headline(s) unlabelled`);
-      return;
-    }
-    if (!poolWarm) console.log(`[Classify] alert pool for ${variant} warmed without publishing`);
-    await upstashSet(poolWarmKey, { warmedAt: Date.now() }, CLASSIFY_POOL_WARM_TTL);
-  };
   const allTitles = buildClassifyCandidateMap(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS, undefined, poolItems);
+  // #10978: a pool headline keeps its own label per edition. The relay
+  // publishes only on a fresh label, so a shared one written from one
+  // edition's pool would stop an edition that serves the headline from alerting.
+  const classifyKeyFor = (t) => (allTitles.get(t)?.fromPool ? `${classifyCacheKey(t)}:pool:${variant}` : classifyCacheKey(t));
+  const poolTitles = [...allTitles.keys()].filter((t) => allTitles.get(t).fromPool);
+  if (!poolBacklog && poolTitles.length > 0) {
+    const backlog = poolTitles.map((t) => classifyKeyFor(t));
+    const written = await upstashPipeline([['SET', poolBacklogKey, JSON.stringify({ recordedAt: classifyNow, backlog })]]);
+    if (written?.[0]?.result === 'OK') {
+      poolBacklog = new Set(backlog);
+      console.log(`[Classify] alert pool for ${variant}: recorded ${backlog.length} backlog headline(s) that will not alert`);
+    } else {
+      // Labelling them now would make them the backlog without a record of it.
+      for (const t of poolTitles) allTitles.delete(t);
+      console.warn(`[Classify] pool backlog not recorded — skipping the alert pool for ${variant}`);
+    }
+  }
   // The build this pass read, returned so the caller can record it once the
   // pass has finished. A stale replay or an unavailable digest is not a build:
   // the next real one must still trigger the watch.
@@ -5742,10 +5751,6 @@ async function seedClassifyForVariant(variant, seenTitles) {
   if (allTitles.size === 0) return { total: 0, classified: 0, skipped: 0, staleReplay, digestBuildAt };
 
   const titleArr = [...allTitles.keys()];
-  // #10978: a pool headline keeps its own label per edition. The relay
-  // publishes only on a fresh label, so a shared one written from one
-  // edition's pool would stop an edition that serves the headline from alerting.
-  const classifyKeyFor = (t) => (allTitles.get(t)?.fromPool ? `${classifyCacheKey(t)}:pool:${variant}` : classifyCacheKey(t));
   const cacheKeys = titleArr.map((t) => classifyKeyFor(t));
 
   const cached = await upstashMGet(cacheKeys);
@@ -5760,10 +5765,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // Pool headlines (#10978) are not on the dashboard, so they stay out of the
   // country threat summary.
   const inSummary = (title) => !allTitles.get(title)?.fromPool;
-  const countUnlabelled = (title) => {
-    if (!inSummary(title)) poolUnlabelled++;
-    else if (threatSummaryCountries(title).length > 0) unlabelled++;
-  };
+  const countUnlabelled = (title) => { if (inSummary(title) && threatSummaryCountries(title).length > 0) unlabelled++; };
 
   for (let i = 0; i < titleArr.length; i++) {
     const hit = cached[i];
@@ -5784,10 +5786,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
     }
   }
 
-  if (misses.length === 0) {
-    await notePoolPass();
-    return { total: titleArr.length, classified: 0, skipped: 0, byCountry, staleReplay, unlabelled, digestBuildAt };
-  }
+  if (misses.length === 0) return { total: titleArr.length, classified: 0, skipped: 0, byCountry, staleReplay, unlabelled, digestBuildAt };
 
   let classified = 0;
   let skipped = 0;
@@ -5836,7 +5835,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
           corroborationCount: 1,
           link: '',
         };
-        if (meta.fromPool && !poolWarm) continue;
+        if (meta.fromPool && poolBacklog?.has(classifyKeyFor(chunk[idx]))) continue;
         // Relay gates: when RELAY_GATES_READY is set the relay enforces source tier and
         // recency checks that the client path previously handled.
         // Explicit tier-4 keys only — unlisted names (including platform source
@@ -5923,7 +5922,6 @@ async function seedClassifyForVariant(variant, seenTitles) {
   if (shadow.asked > 0) {
     console.log(`[Classify] Jev shadow ${variant}: asked ${shadow.asked}, answered ${shadow.answered}, agreed ${shadow.agreed}, alert flips ${shadow.alertFlips}`);
   }
-  await notePoolPass();
   return { total: titleArr.length, classified, skipped, byCountry, staleReplay, unlabelled, digestBuildAt };
 }
 
