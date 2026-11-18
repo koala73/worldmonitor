@@ -11,7 +11,7 @@ const source = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url)
 const start = source.indexOf('async function seedClassifyForVariant');
 const end = source.indexOf('\nasync function seedClassify()', start);
 
-function loadVariant(url, observedErrors, { timeoutMs, digests = [], pools = [], upstashGet = async () => null, upstashPipeline = async () => null } = {}) {
+function loadVariant(url, observedErrors, { timeoutMs, digests = [], pools = [], upstashGet = async () => null, upstashPipeline = async () => null, extra = {} } = {}) {
   const transport = { get(url, options, callback) {
     return http.get(url, { ...options, ...(timeoutMs ? { timeout: timeoutMs } : {}) }, response => {
       // Observe the transport error without letting the old reader crash the test process.
@@ -30,6 +30,7 @@ function loadVariant(url, observedErrors, { timeoutMs, digests = [], pools = [],
     xNewsAccounts: { collectXAlertCandidates: () => [] }, xState: { items: [] },
     upstashGet, upstashPipeline,
     RELAY_SOURCE_TIERS: {}, buildClassifyCandidateMap: (digest, _x, _v, _n, _r, _f, pool) => { digests.push(digest); pools.push(pool); return new Map(); },
+    ...extra,
   });
   vm.runInContext(source.slice(start, end), context);
   return context.seedClassifyForVariant;
@@ -88,6 +89,45 @@ test('the alert pool drops operator-revoked URLs and is skipped when the set is 
   const unreadable = loadVariant(url, [], { pools, upstashGet: async () => pool, upstashPipeline: async () => null });
   await bounded(unreadable('full', new Set()));
   assert.equal(pools[1].length, 0);
+});
+
+test('a pool headline keeps its own label per edition and stays out of the country threat summary (#10978)', async t => {
+  const server = http.createServer((_req, response) => response.end('{"categories":{}}'));
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const url = `http://127.0.0.1:${server.address().port}/digest`;
+  const candidates = () => new Map([
+    ['Strike hits Iran port', {}],
+    ['Tanker attacked off Oman', { fromPool: true }],
+    ['Blast reported in Yemen', { fromPool: true }],
+  ]);
+  const labels = {
+    'label:Strike hits Iran port': { level: 'critical', category: 'conflict' },
+    'label:Tanker attacked off Oman:pool:full': { level: 'critical', category: 'conflict' },
+    'label:Blast reported in Yemen:pool:full': { level: '_skip' },
+  };
+  const read = [];
+  const written = [];
+  const run = (stored) => loadVariant(url, [], { extra: {
+    buildClassifyCandidateMap: candidates,
+    classifyCacheKey: title => `label:${title}`,
+    upstashMGet: async keys => { read.push(...keys); return keys.map(key => stored[key] ?? null); },
+    upstashSet: async key => { written.push(key); },
+    classifyFetchLlm: async () => null,
+    threatSummaryCountries: title => [title.split(' ').at(-1)],
+    CLASSIFY_VALID_LEVELS: ['critical', 'high', 'medium', 'low', 'info'],
+    CLASSIFY_BATCH_SIZE: 50, CLASSIFY_SKIP_TTL: 1800,
+  } })('full', new Set());
+
+  const cachedPass = await bounded(run(labels));
+  assert.deepEqual(read, ['label:Strike hits Iran port', 'label:Tanker attacked off Oman:pool:full', 'label:Blast reported in Yemen:pool:full']);
+  assert.deepEqual(Object.keys(cachedPass.byCountry), ['port']);
+  assert.equal(cachedPass.unlabelled, 0);
+
+  const unansweredPass = await bounded(run({}));
+  assert.deepEqual(written, read.slice(0, 3));
+  assert.equal(unansweredPass.unlabelled, 1);
 });
 
 test('an idle body settles when the existing request timeout destroys the stream', async t => {
