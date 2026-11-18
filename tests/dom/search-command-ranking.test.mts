@@ -46,8 +46,14 @@ describe('search command ranking', () => {
   });
 
   it('ranks the map command first when the query is a country name', () => {
-    const misses = Object.entries(CURATED_COUNTRIES)
-      .map(([code, country]) => ({ code, query: country.name, top: topCommands(country.name)[0] }))
+    const countryNames = [
+      ...Object.entries(CURATED_COUNTRIES).map(([code, country]) => ({ code, query: country.name })),
+      ...getAllCommands()
+        .filter((command) => command.id.startsWith('country-map:'))
+        .map((command) => ({ code: command.id.slice('country-map:'.length), query: command.label })),
+    ];
+    const misses = countryNames
+      .map(({ code, query }) => ({ code, query, top: topCommands(query)[0] }))
       .filter(({ code, top }) => top !== `country-map:${code}`);
     expect(misses).toEqual([]);
   });
