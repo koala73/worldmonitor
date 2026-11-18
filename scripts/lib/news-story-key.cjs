@@ -19,8 +19,9 @@
 // title. It stays out of the payload, so the notification relay's per-user
 // dedup still keys on the title, as it does for the alerts a browser submits.
 //
-// It merges repeats of one headline, not rewrites of one event. Two outlets
-// that word the story differently still alert separately.
+// It merges repeats of one headline, not rewrites of one event. The
+// notification relay skips rewrites for users who already had the story
+// (lib/news-alert-coverage.mjs, #10916).
 
 /**
  * How long a story stays claimed. A day is how long an exact repeat is already
