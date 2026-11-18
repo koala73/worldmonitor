@@ -625,7 +625,7 @@ function upstashMGet(keys) {
 
 // Runs an Upstash /pipeline body. Resolves to the per-command result array, or
 // null when the request fails.
-function upstashPipeline(commands) {
+function upstashPipeline(commands, { timeoutMs = 10000 } = {}) {
   return new Promise((resolve) => {
     if (!UPSTASH_ENABLED || commands.length === 0) return resolve(null);
     const url = new URL('/pipeline', UPSTASH_REDIS_REST_URL);
@@ -635,7 +635,7 @@ function upstashPipeline(commands) {
         Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
         'Content-Type': 'application/json',
       },
-      timeout: 10000,
+      timeout: timeoutMs,
     }, (resp) => {
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         resp.resume();
@@ -5220,15 +5220,22 @@ function relayEntityCorroborationScore(count) {
 // exercised in tests/importance-score-parity.test.mjs "unknown severity" case.
 // Caller responsibility: pass defined values; relay publish site defaults
 // corroborationCount → 1 and publishedAt → Date.now() when upstream omits them.
-// Publisher families the digest saw carry this headline in the last day, over
-// every build and edition (#10977). 0 when unknown.
-async function readObservedPublisherCount(title) {
-  const key = newsPublisherCoverageKey(title);
-  if (!key) return 0;
+// Publisher families the digest saw carry each headline in the last day, over
+// every build and edition (#10977), in one short read. A title without a
+// count falls back to the build's own count.
+async function readObservedPublisherCounts(titles) {
   const now = Date.now();
-  const rows = await upstashPipeline([['ZRANGEBYSCORE', key, `(${now - NEWS_STORY_DEDUP_TTL_SECONDS * 1000}`, now]]);
-  const families = rows?.[0]?.result;
-  return Array.isArray(families) ? families.length : 0;
+  const keyed = titles.map((title) => [title, newsPublisherCoverageKey(title)]).filter(([, key]) => key);
+  const rows = await upstashPipeline(
+    keyed.map(([, key]) => ['ZRANGEBYSCORE', key, `(${now - NEWS_STORY_DEDUP_TTL_SECONDS * 1000}`, now]),
+    { timeoutMs: 1500 },
+  );
+  const counts = new Map();
+  keyed.forEach(([title], i) => {
+    const families = rows?.[i]?.result;
+    if (Array.isArray(families)) counts.set(title, families.length);
+  });
+  return counts;
 }
 
 function relayComputeImportanceScore(level, source, corroborationCount, publishedAt, context = {}) {
@@ -5765,6 +5772,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
       continue;
     }
 
+    const observedPublishers = await readObservedPublisherCounts(chunk);
     const classifiedSet = new Set();
     const labelled = [];
     for (const entry of llmResult) {
@@ -5814,7 +5822,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
         // across builds and editions. Neither contains the other.
         const corroborationCount = Math.max(
           meta.corroborationCount ?? 1,
-          meta.fromX ? 0 : await readObservedPublisherCount(chunk[idx]),
+          meta.fromX ? 0 : (observedPublishers.get(chunk[idx]) ?? 0),
         );
         const importanceScore = relayComputeImportanceScore(
           level,
