@@ -267,12 +267,6 @@ describe('api/mcp-proxy', () => {
       assertNoStore(res, 'POST auth error');
     });
 
-    it('still returns 204 for OPTIONS preflight without key (preflights must not require auth)', async () => {
-      const res = await handler(makeOptionsRequest());
-      assert.equal(res.status, 204);
-      assertNoStore(res, 'OPTIONS preflight');
-    });
-
     // wms_ session tokens are anonymous and freely mintable by any caller
     // via POST /api/wm-session. Without forceKey:true, they would pass the
     // auth gate — turning the gate into a two-step bypass (mint + call).

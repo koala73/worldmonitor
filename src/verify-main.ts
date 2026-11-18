@@ -17,7 +17,7 @@ import {
   normalizeClaim,
   type ClaimSearch,
 } from '@/services/verify-claim';
-import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { isImeEnter, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { safeStorageGet } from '@/utils/safe-storage';
 
 if (safeStorageGet('worldmonitor-theme') === 'light') document.documentElement.dataset.theme = 'light';
@@ -114,6 +114,7 @@ form.addEventListener('submit', (event) => {
 input.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault();
+    if (isImeEnter(event)) return;
     form.requestSubmit();
   }
 });
