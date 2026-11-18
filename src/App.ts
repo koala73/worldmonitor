@@ -533,6 +533,16 @@ export class App {
       this.state.pendingSourcePreferences.gateOwned = cloudGateOwned;
       this.state.pendingSourcePreferences.fallbackDisabledSources = undefined;
     }
+    // Apply the landed selection before enforcement, which can defer while
+    // entitlement is unresolved even after the preference handoff completes.
+    if (keySet.has(STORAGE_KEYS.disabledFeeds)) {
+      const disabled = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+      for (const [name, value] of this.state.pendingSourcePreferences?.edits ?? []) {
+        if (value) disabled.add(name);
+        else disabled.delete(name);
+      }
+      this.state.disabledSources = disabled;
+    }
     let freeTierLimitsInvoked = false;
     const tierReconciliationDeferred = this.shouldDeferTierPreferenceReconciliation();
     invalidatePanelStorageCacheForKeys(keys);
@@ -616,14 +626,8 @@ export class App {
       if (!tierReconciliationDeferred && !freeTierLimitsInvoked) {
         this.enforceFreeTierLimits(cloudSyncVersion);
       }
-      if (!this.state.pendingSourcePreferences
-        || (tierReconciliationDeferred && keySet.has(STORAGE_KEYS.disabledFeeds))) {
-        const disabled = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
-        for (const [name, value] of this.state.pendingSourcePreferences?.edits ?? []) {
-          if (value) disabled.add(name);
-          else disabled.delete(name);
-        }
-        this.state.disabledSources = disabled;
+      if (!this.state.pendingSourcePreferences) {
+        this.state.disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
       }
       this.state.unifiedSettings?.refreshSourceToggles();
     }

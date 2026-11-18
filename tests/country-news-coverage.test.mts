@@ -112,6 +112,12 @@ describe('optional country news coverage', () => {
       assert.ok(instance.state.disabledSources.has('deferred-cloud-choice'), 'cloud choices apply during tier handoff');
       assert.ok(instance.state.disabledSources.has('country-opt-in'), `${pro}: cloud reload`);
       instance.shouldDeferTierPreferenceReconciliation = () => false;
+      instance.enforceFreeTierLimits = () => false;
+      stored.set('disabled', ['unresolved-tier-cloud-choice']);
+      instance.cloud();
+      assert.ok(instance.state.disabledSources.has('unresolved-tier-cloud-choice'), 'cloud choices apply after handoff while entitlement remains unresolved');
+      assert.ok(instance.state.disabledSources.has('country-opt-in'), 'pending migration survives unresolved entitlement');
+      instance.enforceFreeTierLimits = () => instance.reconcileSourceLimitForTier(pro);
       instance.state.disabledSources.delete('country-opt-in');
       instance.persistSourcePreferences(['country-opt-in']);
       instance.state.disabledSources.add('session-opt-out');

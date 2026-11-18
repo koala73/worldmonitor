@@ -98,7 +98,7 @@ describe('cloud prefs panel sync guardrails', () => {
     );
     assert.match(
       cloudApplyHandler,
-      /if \(!tierReconciliationDeferred && !freeTierLimitsInvoked\) \{\s*this\.enforceFreeTierLimits\(cloudSyncVersion\);\s*\}[\s\S]*?const disabled = new Set\(loadFromStorage<string\[\]>\(STORAGE_KEYS\.disabledFeeds, \[\]\)\);[\s\S]*?this\.state\.disabledSources = disabled;/,
+      /if \(!tierReconciliationDeferred && !freeTierLimitsInvoked\) \{\s*this\.enforceFreeTierLimits\(cloudSyncVersion\);\s*\}[\s\S]*?this\.state\.disabledSources = new Set\(loadFromStorage<string\[\]>\(STORAGE_KEYS\.disabledFeeds, \[\]\)\);/,
       'a disabled-feeds-only cloud generation must defer during handoff or re-run the cap before reloading state',
     );
     // The legacy sweep must stay one-shot per browser: it cannot tell pre-marker
