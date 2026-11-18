@@ -150,17 +150,19 @@ export class StatusPanel extends Panel {
     // The server also reports partial when the build hit its fetch deadline
     // with every category covered. A reader sees the same thing as a complete
     // build that lost a few feeds to errors, so show it as complete and say
-    // how many feeds ran out of time. Partial stays for a missing category.
+    // how many feeds did not complete. That count mixes deadline aborts with
+    // feed errors, so it names neither cause. Partial stays for a missing
+    // category.
     const deadlineOnly = coverage.state === 'partial'
       && coverage.categoriesTotal > 0
       && coverage.categoriesCompleted === coverage.categoriesTotal
       && coverage.missingCategories.length === 0;
     const state = deadlineOnly ? 'complete' : coverage.state;
-    const lateFeeds = Math.max(0, coverage.feedsTotal - coverage.feedsCompleted);
+    const incompleteFeeds = Math.max(0, coverage.feedsTotal - coverage.feedsCompleted);
     const explanation = state === 'stale'
       ? staleExplanation(coverage)
-      : deadlineOnly && lateFeeds > 0
-        ? `every configured category was covered; ${formatCount(lateFeeds)} ${lateFeeds === 1 ? 'feed' : 'feeds'} did not answer in time`
+      : deadlineOnly && incompleteFeeds > 0
+        ? `every configured category was covered; ${formatCount(incompleteFeeds)} ${incompleteFeeds === 1 ? 'feed' : 'feeds'} did not complete`
         : DIGEST_COVERAGE_EXPLANATIONS[state];
     // The digest shows at most 20 stories per category, so the served slice
     // understates how many publishers fed this cycle. Report the ranked pool

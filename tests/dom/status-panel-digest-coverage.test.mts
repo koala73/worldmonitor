@@ -200,10 +200,12 @@ describe('StatusPanel digest coverage row when the build ran out of time', () =>
     expect(text).not.toContain('some categories had no completed feed');
   });
 
-  it('says how many feeds did not answer in time', () => {
+  it('says how many feeds did not complete, without blaming the deadline', () => {
     const text = rowText(deadlineOnly());
     expect(text).toContain('feeds 932/955, categories 18/18');
-    expect(text).toContain('23 feeds did not answer in time');
+    expect(text).toContain('23 feeds did not complete');
+    // The count also holds feeds that errored before the deadline.
+    expect(text).not.toContain('in time');
   });
 
   it('keeps partial when a category is actually missing', () => {
