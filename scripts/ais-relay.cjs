@@ -5095,6 +5095,9 @@ async function startCyberThreatsSeedLoop() {
 const CLASSIFY_SEED_INTERVAL_MS = 15 * 60 * 1000;
 const CLASSIFY_CACHE_TTL = 86400;
 const CLASSIFY_SKIP_TTL = 1800;
+// Rewritten on every pass that reads a pool, so it lapses only after a month
+// without one.
+const CLASSIFY_POOL_WARM_TTL = 30 * 86400;
 const CLASSIFY_BATCH_SIZE = 50;
 // Every edition the news digest serves, generated from shared/news-catalog.json
 // (scripts/generate-browser-news-catalog.mjs), so a new edition is classified
@@ -5707,12 +5710,30 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // The served digest drops operator-revoked URLs when it is read; the pool
   // comes straight from Redis, so check it here. An unreadable set skips it.
   let poolItems = [];
+  // The first read of an edition's pool holds a backlog up to 6 h old. That
+  // pass labels it and publishes none of it; the marker outlives a restart,
+  // so later passes alert only on headlines new to the pool.
+  const poolWarmKey = `classify:alert-pool-warm:v1:${variant}`;
+  let poolWarm = false;
   if (Array.isArray(alertPool?.items) && alertPool.items.length > 0) {
-    const revoked = await upstashPipeline([['SMEMBERS', 'news:digest:revoked-urls:v1']]);
+    const revoked = await upstashPipeline([['SMEMBERS', 'news:digest:revoked-urls:v1'], ['GET', poolWarmKey]]);
     const urls = Array.isArray(revoked?.[0]?.result) ? new Set(revoked[0].result) : null;
     if (urls) poolItems = alertPool.items.filter((item) => typeof item?.link !== 'string' || !urls.has(item.link));
     else console.warn(`[Classify] revocation set unreadable — skipping the alert pool for ${variant}`);
+    poolWarm = revoked?.[1]?.result != null;
   }
+  // Pool headlines left without a label keep the edition cold: labelled on a
+  // later pass they would be the backlog again.
+  let poolUnlabelled = 0;
+  const notePoolPass = async () => {
+    if (poolItems.length === 0) return;
+    if (poolUnlabelled > 0) {
+      if (!poolWarm) console.warn(`[Classify] alert pool for ${variant} still warming: ${poolUnlabelled} headline(s) unlabelled`);
+      return;
+    }
+    if (!poolWarm) console.log(`[Classify] alert pool for ${variant} warmed without publishing`);
+    await upstashSet(poolWarmKey, { warmedAt: Date.now() }, CLASSIFY_POOL_WARM_TTL);
+  };
   const allTitles = buildClassifyCandidateMap(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS, undefined, poolItems);
   // The build this pass read, returned so the caller can record it once the
   // pass has finished. A stale replay or an unavailable digest is not a build:
@@ -5739,7 +5760,10 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // Pool headlines (#10978) are not on the dashboard, so they stay out of the
   // country threat summary.
   const inSummary = (title) => !allTitles.get(title)?.fromPool;
-  const countUnlabelled = (title) => { if (inSummary(title) && threatSummaryCountries(title).length > 0) unlabelled++; };
+  const countUnlabelled = (title) => {
+    if (!inSummary(title)) poolUnlabelled++;
+    else if (threatSummaryCountries(title).length > 0) unlabelled++;
+  };
 
   for (let i = 0; i < titleArr.length; i++) {
     const hit = cached[i];
@@ -5760,7 +5784,10 @@ async function seedClassifyForVariant(variant, seenTitles) {
     }
   }
 
-  if (misses.length === 0) return { total: titleArr.length, classified: 0, skipped: 0, byCountry, staleReplay, unlabelled, digestBuildAt };
+  if (misses.length === 0) {
+    await notePoolPass();
+    return { total: titleArr.length, classified: 0, skipped: 0, byCountry, staleReplay, unlabelled, digestBuildAt };
+  }
 
   let classified = 0;
   let skipped = 0;
@@ -5809,6 +5836,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
           corroborationCount: 1,
           link: '',
         };
+        if (meta.fromPool && !poolWarm) continue;
         // Relay gates: when RELAY_GATES_READY is set the relay enforces source tier and
         // recency checks that the client path previously handled.
         // Explicit tier-4 keys only — unlisted names (including platform source
@@ -5895,6 +5923,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
   if (shadow.asked > 0) {
     console.log(`[Classify] Jev shadow ${variant}: asked ${shadow.asked}, answered ${shadow.answered}, agreed ${shadow.agreed}, alert flips ${shadow.alertFlips}`);
   }
+  await notePoolPass();
   return { total: titleArr.length, classified, skipped, byCountry, staleReplay, unlabelled, digestBuildAt };
 }
 

@@ -130,6 +130,49 @@ test('a pool headline keeps its own label per edition and stays out of the count
   assert.equal(unansweredPass.unlabelled, 1);
 });
 
+test('the first read of an edition\'s pool labels it without alerting, and later reads alert on new items (#10978)', async t => {
+  const server = http.createServer((_req, response) => response.end('{"categories":{}}'));
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const url = `http://127.0.0.1:${server.address().port}/digest`;
+  const warmKey = 'classify:alert-pool-warm:v1:full';
+  const pass = async (store, titles, classifyFetchLlm = async chunk => chunk.map((_t, i) => ({ i, l: 'critical', c: 'conflict' }))) => {
+    const published = [];
+    await bounded(loadVariant(url, [], {
+      upstashGet: async () => ({ items: titles.map(title => ({ title })) }),
+      upstashPipeline: async commands => commands.map(([, key]) => ({ result: key === warmKey ? store.get(key) ?? null : [] })),
+      extra: {
+        buildClassifyCandidateMap: () => new Map(titles.map(title => [title, { source: 'Reuters', publishedAt: Date.now(), corroborationCount: 1, link: '', fromPool: true }])),
+        classifyCacheKey: title => `label:${title}`,
+        upstashMGet: async keys => keys.map(key => store.get(key) ?? null),
+        upstashSet: async (key, value) => { store.set(key, JSON.stringify(value)); },
+        classifyFetchLlm,
+        publishNotificationEvent: async event => { published.push(event.payload.title); },
+        threatSummaryCountries: () => [], matchCountryNamesInText: () => [], countriesNamedInHeadline: () => [],
+        notifyPolicy: { primaryNewsCountryCode: () => null },
+        shouldDropRelaySourceForTier: () => false, RELAY_GATES_READY: false, RELAY_TIER4_SOURCES: new Set(), RELAY_RECENCY_MS: 900_000,
+        relayComputeImportanceScore: () => 88, newsStoryKey: () => '', NEWS_STORY_DEDUP_TTL_SECONDS: 86_400,
+        recordAlertLatency() {}, alertLatency: () => ({}), observeJevShadow: async () => null,
+        CLASSIFY_VALID_LEVELS: ['critical', 'high', 'medium', 'low', 'info'], CLASSIFY_VALID_CATEGORIES: ['conflict'],
+        CLASSIFY_BATCH_SIZE: 50, CLASSIFY_SKIP_TTL: 1800, CLASSIFY_CACHE_TTL: 86_400, CLASSIFY_POOL_WARM_TTL: 2_592_000,
+      },
+    })('full', new Set()));
+    return published;
+  };
+
+  const store = new Map();
+  assert.deepEqual(await pass(store, ['Backlog strike closes strait']), []);
+  assert.ok(store.has('label:Backlog strike closes strait:pool:full'));
+  assert.ok(store.has(warmKey));
+  assert.deepEqual(await pass(store, ['Backlog strike closes strait', 'New strike closes strait']), ['New strike closes strait']);
+
+  const unanswered = new Map();
+  assert.deepEqual(await pass(unanswered, ['Backlog strike closes strait'], async () => null), []);
+  assert.equal(unanswered.has(warmKey), false);
+  assert.deepEqual(await pass(unanswered, ['Backlog strike closes strait']), []);
+});
+
 test('the revocation read keeps a multi-byte URL whole when the network splits it (#10978)', async t => {
   const revokedUrl = 'https://example.com/caf\u00e9';
   const body = Buffer.from(JSON.stringify([{ result: [revokedUrl] }]));
