@@ -112,6 +112,21 @@ test('Pro-locked panels shrink to one grid row', async ({ page }) => {
     localStorage.setItem('worldmonitor-panels', JSON.stringify(settings));
     sessionStorage.setItem('__locked_footprint_e2e_init__', '1');
   }, LOCKED_PANELS);
+  // A shell can be replaced by its panel before the poll below sees it.
+  // Record, at removal, whether each locked panel's shell held the lock class.
+  await page.addInitScript(() => {
+    const removed: Record<string, boolean> = {};
+    (window as unknown as { __removedLockedShells: Record<string, boolean> }).__removedLockedShells = removed;
+    new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.removedNodes) {
+          if (!(node instanceof HTMLElement) || !node.classList.contains('panel-deferred-shell')) continue;
+          const id = node.dataset.panel;
+          if (id) removed[id] = node.classList.contains('panel-is-locked');
+        }
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
@@ -121,11 +136,15 @@ test('Pro-locked panels shrink to one grid row', async ({ page }) => {
   await expect
     .poll(
       () => page.evaluate((panels: string[]) => {
-        // Every panel must be measured as a shell: one that mounted first
-        // proves nothing about the footprint its shell held.
+        // Every panel needs a shell result: measured now, or recorded when the
+        // shell was replaced. A panel never seen as a shell fails.
+        const removed = (window as unknown as { __removedLockedShells: Record<string, boolean> }).__removedLockedShells;
         const shells = panels.map((id) => {
           const shell = document.querySelector<HTMLElement>(`#panelsGrid > .panel-deferred-shell[data-panel="${id}"]`);
-          if (!shell) return `${id} has no deferred shell`;
+          if (!shell) {
+            if (!(id in removed)) return `${id} has no deferred shell`;
+            return removed[id] ? 'one row' : `${id} shell was replaced without the lock footprint`;
+          }
           const rowMin = parseFloat(getComputedStyle(shell).getPropertyValue('--dashboard-panel-row-min')) || 200;
           const height = shell.getBoundingClientRect().height;
           return height > 0 && height <= rowMin + 1 ? 'one row' : `${id} shell ${Math.round(height)}px`;
