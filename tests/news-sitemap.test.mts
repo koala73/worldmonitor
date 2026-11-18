@@ -84,12 +84,15 @@ it('a fresh item at position 22 of a relevance-ordered Google News search reache
 });
 
 it('keeps feed order for undated items, after dated ones', () => {
-  const feed = serverFeed('New York Times World');
+  // A channel-dated feed keeps undated items (they take the channel date), so
+  // the order among them is observable.
+  const feed = { ...serverFeed('New York Times World'), channelDated: true };
   const dated = `<item><title>Dated</title><link>https://www.nytimes.com/2026/11/17/world/d.html</link><pubDate>${new Date().toUTCString()}</pubDate></item>`;
   const undated = (n: number) => `<item><title>Undated ${n}</title><link>https://www.nytimes.com/2026/11/17/world/u-${n}.html</link></item>`;
-  const xml = `<?xml version="1.0"?><rss version="2.0"><channel><title>NYT</title>${undated(1)}${undated(2)}${dated}</channel></rss>`;
+  const channelDate = new Date(Date.now() - 60_000).toUTCString();
+  const xml = `<?xml version="1.0"?><rss version="2.0"><channel><title>NYT</title><lastBuildDate>${channelDate}</lastBuildDate>${undated(1)}${undated(2)}${dated}${undated(3)}</channel></rss>`;
   const parsed = __testing__.parseRssXml(xml, feed, 'full')!;
-  assert.equal(parsed.items[0]?.title, 'Dated');
+  assert.deepEqual(parsed.items.map(x => x.title), ['Dated', 'Undated 1', 'Undated 2', 'Undated 3']);
 });
 
 it('keeps the Google News search as claim depth for publishers whose own feeds are shallow', () => {
