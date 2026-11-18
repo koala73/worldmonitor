@@ -87,7 +87,7 @@ const {
   xPostBudgetServiceStatus,
 } = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
-const { newsStoryKey, newsStoryKeyLoadError, normalizeNewsStoryTitle, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
+const { newsStoryKey, newsStoryKeyLoadError, normalizeNewsStoryTitle, reachesRealtimeRules, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
 if (newsStoryKeyLoadError()) {
   // Alerts still publish, on the exact-title identity; a repeated headline can alert twice.
   console.warn('[Notify] News story key unavailable, falling back to exact-title dedup:', newsStoryKeyLoadError().message);
@@ -5718,6 +5718,83 @@ async function seedClassifyForVariant(variant, seenTitles) {
   let unlabelled = 0;
   const countUnlabelled = (title) => { if (threatSummaryCountries(title).length > 0) unlabelled++; };
 
+  const publishAlert = (title, level, category, cached) => {
+    const meta = allTitles.get(title) ?? {
+      source: variant,
+      publishedAt: Date.now(),
+      corroborationCount: 1,
+      link: '',
+    };
+    // Relay gates: when RELAY_GATES_READY is set the relay enforces source tier and
+    // recency checks that the client path previously handled.
+    // Explicit tier-4 keys only — unlisted names (including platform source
+    // "telegram") are NOT in this set even though getSourceTier() defaults
+    // them to 4. Any future Telegram alert path must use the public display
+    // label from shared/telegram-channel-trust.ts (#6600). #6654 should do
+    // the same for X account labels rather than a generic "x" platform key.
+    if (shouldDropRelaySourceForTier(RELAY_GATES_READY, meta.source, RELAY_TIER4_SOURCES)) return;
+    if (RELAY_GATES_READY) {
+      const ageMs = Date.now() - (meta.publishedAt ?? 0);
+      if (meta.publishedAt && ageMs > RELAY_RECENCY_MS) return;
+    }
+    // Recompute importanceScore from the post-LLM level. Publishing the
+    // digest's pre-LLM keyword-based score would leak a stale value —
+    // see docs/internal/scoringDiagnostic.md §2.
+    const importanceScore = relayComputeImportanceScore(
+      level,
+      meta.source,
+      meta.corroborationCount ?? 1,
+      meta.publishedAt ?? Date.now(),
+      {
+        title,
+        classSource: 'llm',
+        // The relay has only exact story-merge corroboration. Entity
+        // corroboration is a separate digest-side signal computed from
+        // flashpoint+diplomacy buckets; do not proxy source count here.
+        entityCorroborationCount: 0,
+      },
+    );
+    // A cached label was published when it was written. Re-publish only a copy
+    // that reaches realtime rules; the story key stops repeats (#10976).
+    if (cached && !reachesRealtimeRules(level, importanceScore)) return;
+    const titleCountryCodes = matchCountryNamesInText(title);
+    // The one country the title names anywhere, not the affected target
+    // countryCodes keeps ("Russia attacks Ukraine" names two).
+    const primaryCountryCode = notifyPolicy.primaryNewsCountryCode(countriesNamedInHeadline(title));
+    // One alert per story per day, not per title string: a second
+    // publisher carrying an alerted headline is the same story.
+    const storyKey = newsStoryKey(title, { severity: level, importanceScore });
+    // An X post has no digest build behind it.
+    const alertBuildAt = meta.fromX ? undefined : digestBuildAt;
+    publishNotificationEvent({
+      onQueued: (queuedAt) => recordAlertLatency(
+        alertLatency({ publishedAt: meta.publishedAt, firstSeen: meta.firstSeen, buildAt: alertBuildAt, queuedAt }),
+        { severity: level, importanceScore, variant, source: meta.source },
+      ),
+      eventType: 'rss_alert',
+      payload: {
+        title,
+        source: meta.source,
+        link: meta.link,
+        publishedAt: meta.publishedAt,
+        importanceScore,
+        corroborationCount: meta.corroborationCount ?? 1,
+        // Read by API webhook subscribers (news.breaking scope). Plural on
+        // purpose: the relay scopes rules on payload.countryCode and keeps
+        // rss_alert permissive-unattributed, so a singular field here would
+        // start silencing country-scoped Slack rules.
+        category,
+        countryCodes: titleCountryCodes,
+        // The one country the headline names, read by the relay's tier
+        // gate (#10873). Deliberately not the singular field the relay scopes on (see above).
+        ...(primaryCountryCode ? { primaryCountryCode } : {}),
+      },
+      severity: level,
+      variant,
+      ...(storyKey ? { storyKey, dedupTtl: NEWS_STORY_DEDUP_TTL_SECONDS } : {}),
+    }).catch(e => console.warn('[Notify] Classify publish error:', e?.message));
+  };
+
   for (let i = 0; i < titleArr.length; i++) {
     const hit = cached[i];
     if (!hit) {
@@ -5729,6 +5806,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
     if (typeof hit === 'string') { try { parsed = JSON.parse(hit); } catch { countUnlabelled(titleArr[i]); continue; } }
     const level = parsed?.level;
     if (!CLASSIFY_VALID_LEVELS.includes(level)) { countUnlabelled(titleArr[i]); continue; }
+    if (level === 'critical' || level === 'high') publishAlert(titleArr[i], level, parsed.category ?? null, true);
     if (seenTitles.has(titleArr[i])) continue;
     seenTitles.add(titleArr[i]);
     for (const code of threatSummaryCountries(titleArr[i])) {
@@ -5743,15 +5821,24 @@ async function seedClassifyForVariant(variant, seenTitles) {
   let skipped = 0;
   const shadow = { asked: 0, answered: 0, agreed: 0, alertFlips: 0 };
 
-  for (let b = 0; b < misses.length; b += CLASSIFY_BATCH_SIZE) {
-    const chunk = misses.slice(b, b + CLASSIFY_BATCH_SIZE);
+  // One copy per story in each request, so two copies can't race on one row.
+  const missStories = new Map();
+  for (const title of misses) {
+    const key = classifyCacheKey(title);
+    missStories.set(key, [...(missStories.get(key) ?? []), title]);
+  }
+  const askTitles = [...missStories.values()].map((copies) => copies[0]);
+  const copiesOf = (title) => missStories.get(classifyCacheKey(title));
+
+  for (let b = 0; b < askTitles.length; b += CLASSIFY_BATCH_SIZE) {
+    const chunk = askTitles.slice(b, b + CLASSIFY_BATCH_SIZE);
     const llmResult = await classifyFetchLlm(chunk);
 
     if (!Array.isArray(llmResult)) {
       for (const title of chunk) {
-        await upstashSet(classifyCacheKey(title), { level: '_skip', timestamp: Date.now() }, CLASSIFY_SKIP_TTL);
+        await upstashSetNx(classifyCacheKey(title), { level: '_skip', timestamp: Date.now() }, CLASSIFY_SKIP_TTL);
         skipped++;
-        countUnlabelled(title);
+        copiesOf(title).forEach(countUnlabelled);
       }
       continue;
     }
@@ -5769,96 +5856,27 @@ async function seedClassifyForVariant(variant, seenTitles) {
       await upstashSet(classifyCacheKey(chunk[idx]), { level, category, timestamp: Date.now() }, CLASSIFY_CACHE_TTL);
       classified++;
       labelled.push({ title: chunk[idx], level });
-      // Attribute newly classified title to country stats (global dedup via seenTitles)
-      if (!seenTitles.has(chunk[idx])) {
-        seenTitles.add(chunk[idx]);
-        for (const code of threatSummaryCountries(chunk[idx])) {
-          if (!byCountry[code]) byCountry[code] = emptyLevel();
-          byCountry[code][level]++;
+      for (const title of copiesOf(chunk[idx])) {
+        // Attribute newly classified title to country stats (global dedup via seenTitles)
+        if (!seenTitles.has(title)) {
+          seenTitles.add(title);
+          for (const code of threatSummaryCountries(title)) {
+            if (!byCountry[code]) byCountry[code] = emptyLevel();
+            byCountry[code][level]++;
+          }
         }
-      }
-      // Notifications are outside seenTitles guard — each variant publishes
-      // independently, protected by the variant-scoped Redis scan-dedup key.
-      if (level === 'critical' || level === 'high') {
-        const meta = allTitles.get(chunk[idx]) ?? {
-          source: variant,
-          publishedAt: Date.now(),
-          corroborationCount: 1,
-          link: '',
-        };
-        // Relay gates: when RELAY_GATES_READY is set the relay enforces source tier and
-        // recency checks that the client path previously handled.
-        // Explicit tier-4 keys only — unlisted names (including platform source
-        // "telegram") are NOT in this set even though getSourceTier() defaults
-        // them to 4. Any future Telegram alert path must use the public display
-        // label from shared/telegram-channel-trust.ts (#6600). #6654 should do
-        // the same for X account labels rather than a generic "x" platform key.
-        if (shouldDropRelaySourceForTier(RELAY_GATES_READY, meta.source, RELAY_TIER4_SOURCES)) continue;
-        if (RELAY_GATES_READY) {
-          const ageMs = Date.now() - (meta.publishedAt ?? 0);
-          if (meta.publishedAt && ageMs > RELAY_RECENCY_MS) continue;
-        }
-        // Recompute importanceScore from the post-LLM level. Publishing the
-        // digest's pre-LLM keyword-based score would leak a stale value —
-        // see docs/internal/scoringDiagnostic.md §2.
-        const importanceScore = relayComputeImportanceScore(
-          level,
-          meta.source,
-          meta.corroborationCount ?? 1,
-          meta.publishedAt ?? Date.now(),
-          {
-            title: chunk[idx],
-            classSource: 'llm',
-            // The relay has only exact story-merge corroboration. Entity
-            // corroboration is a separate digest-side signal computed from
-            // flashpoint+diplomacy buckets; do not proxy source count here.
-            entityCorroborationCount: 0,
-          },
-        );
-        const titleCountryCodes = matchCountryNamesInText(chunk[idx]);
-        // The one country the title names anywhere, not the affected target
-        // countryCodes keeps ("Russia attacks Ukraine" names two).
-        const primaryCountryCode = notifyPolicy.primaryNewsCountryCode(countriesNamedInHeadline(chunk[idx]));
-        // One alert per story per day, not per title string: a second
-        // publisher carrying an alerted headline is the same story.
-        const storyKey = newsStoryKey(chunk[idx], { severity: level, importanceScore });
-        // An X post has no digest build behind it.
-        const alertBuildAt = meta.fromX ? undefined : digestBuildAt;
-        publishNotificationEvent({
-          onQueued: (queuedAt) => recordAlertLatency(
-            alertLatency({ publishedAt: meta.publishedAt, firstSeen: meta.firstSeen, buildAt: alertBuildAt, queuedAt }),
-            { severity: level, importanceScore, variant, source: meta.source },
-          ),
-          eventType: 'rss_alert',
-          payload: {
-            title: chunk[idx],
-            source: meta.source,
-            link: meta.link,
-            publishedAt: meta.publishedAt,
-            importanceScore,
-            corroborationCount: meta.corroborationCount ?? 1,
-            // Read by API webhook subscribers (news.breaking scope). Plural on
-            // purpose: the relay scopes rules on payload.countryCode and keeps
-            // rss_alert permissive-unattributed, so a singular field here would
-            // start silencing country-scoped Slack rules.
-            category,
-            countryCodes: titleCountryCodes,
-            // The one country the headline names, read by the relay's tier
-            // gate (#10873). Deliberately not the singular field the relay scopes on (see above).
-            ...(primaryCountryCode ? { primaryCountryCode } : {}),
-          },
-          severity: level,
-          variant,
-          ...(storyKey ? { storyKey, dedupTtl: NEWS_STORY_DEDUP_TTL_SECONDS } : {}),
-        }).catch(e => console.warn('[Notify] Classify publish error:', e?.message));
+        // Notifications are outside seenTitles guard — each variant publishes
+        // independently, protected by the variant-scoped Redis scan-dedup key.
+        if (level === 'critical' || level === 'high') publishAlert(title, level, category, false);
       }
     }
 
     for (let i = 0; i < chunk.length; i++) {
       if (!classifiedSet.has(i)) {
-        await upstashSet(classifyCacheKey(chunk[i]), { level: '_skip', timestamp: Date.now() }, CLASSIFY_SKIP_TTL);
+        // NX: a skip marker never replaces a real label another writer stored.
+        await upstashSetNx(classifyCacheKey(chunk[i]), { level: '_skip', timestamp: Date.now() }, CLASSIFY_SKIP_TTL);
         skipped++;
-        countUnlabelled(chunk[i]);
+        copiesOf(chunk[i]).forEach(countUnlabelled);
       }
     }
 

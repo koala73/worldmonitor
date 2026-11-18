@@ -216,7 +216,7 @@ describe('relay wiring: shadow mode decides nothing', () => {
   it('observes AFTER the label is cached and the alert is published, and never feeds back', () => {
     const body = main('seedClassifyForVariant');
     const write = body.indexOf('upstashSet(classifyCacheKey(chunk[idx])');
-    const publish = body.indexOf("eventType: 'rss_alert'");
+    const publish = body.indexOf('publishAlert(title', write);
     const observe = body.indexOf('observeJevShadow(');
     assert.ok(write > 0 && publish > write && observe > publish, 'order: cache write, alert publish, shadow observe');
     assert.doesNotMatch(body, /=\s*await observeJevShadow\([^)]*\);[\s\S]{0,400}upstashSet\(classifyCacheKey/, 'the tally must not reach a label write');
