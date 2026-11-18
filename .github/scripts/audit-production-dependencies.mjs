@@ -42,7 +42,7 @@ export const BASELINE_ADVISORIES_BY_LOCKFILE = {
       reason:
         'GHSA-fc5q-39xc-vjpf (picomatch extglob ReDoS) has no patched release (affects <= 4.0.7, the latest). No first-party code imports picomatch or a glob library; it only matches glob patterns written in this repo, and reaches production only through react-native/jest-util under @clerk/clerk-js, never with request input.',
       expiresAt: '2026-11-24T00:00:00Z',
-      lockfileSha256: '41e298f6e18b20f4fdb882ec6b32303afb6b229c808f436580a42fb24efd84ee',
+      lockfileSha256: 'f9c4f73ff9c8f127cff36561f34a99ee7fed321ca8dc05d25894d1e5906ac460',
     },
   ],
   'consumer-prices-core/package-lock.json': [],
