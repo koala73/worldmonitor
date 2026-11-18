@@ -585,6 +585,8 @@ export class MapPopup {
         const expanded = hidden.style.display !== 'none';
         hidden.style.display = expanded ? 'none' : '';
         toggle.textContent = expanded ? (toggle.dataset.more ?? '') : (toggle.dataset.less ?? '');
+        // Expanding grows the popup; keep its lower rows on screen.
+        this.clampPopupToViewport();
       }
     });
 

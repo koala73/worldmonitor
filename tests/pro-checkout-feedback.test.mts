@@ -19,7 +19,8 @@ before(async () => {
         contents: args.path === './clerk'
           ? `export class SiteDataBlockedError extends Error { name = 'SiteDataBlockedError'; }
              export const SITE_DATA_BLOCKED_MESSAGE = ${JSON.stringify(SITE_DATA_BLOCKED_MESSAGE)};
-             export const ensureClerk = () => globalThis.__checkoutFixture.clerk({ SiteDataBlockedError });`
+             export const ensureClerk = () => globalThis.__checkoutFixture.clerk({ SiteDataBlockedError });
+             export const setAuthReturnUrls = (urls) => { globalThis.__checkoutFixture.authReturnUrls.push(urls); };`
           : `export const captureException = (...args) => { globalThis.__checkoutFixture.captures.push(args); };
              export const captureMessage = () => {};`,
       }));
@@ -51,6 +52,8 @@ async function fixture(options: {
   const signUps: Array<{ afterSignUpUrl?: string; afterSignInUrl?: string }> = [];
   const pageListeners = new Map<string, Set<(event: { persisted: boolean }) => void>>();
   const captures: unknown[][] = [];
+  const authReturnUrls: unknown[] = [];
+  const returnUrlsAtOpen: number[] = [];
   const analyticsEvents: Array<{ event: string; data?: Record<string, unknown> }> = [];
   let requests = 0;
   const globals: Record<string, unknown> = {
@@ -75,7 +78,7 @@ async function fixture(options: {
       requests++;
       return options.response?.() ?? Response.json({ checkout_url: 'https://checkout.dodopayments.com/test' });
     },
-    __checkoutFixture: { captures, clerk: async ({ SiteDataBlockedError }: { SiteDataBlockedError: new (message: string) => Error }) => {
+    __checkoutFixture: { captures, authReturnUrls, clerk: async ({ SiteDataBlockedError }: { SiteDataBlockedError: new (message: string) => Error }) => {
       if (options.siteDataBlocked) throw new SiteDataBlockedError('localStorage is not readable');
       if (options.clerkError) throw new Error('Synthetic auth failure');
       return {
@@ -83,10 +86,12 @@ async function fixture(options: {
         session: { getToken: async () => options.missingToken ? null : 'synthetic-token' },
         openSignIn: (intent: { afterSignUpUrl?: string; afterSignInUrl?: string }) => {
           if (options.signInError) throw new Error('Synthetic modal failure');
+          returnUrlsAtOpen.push(authReturnUrls.length);
           signIns.push(intent);
         },
         openSignUp: (intent: { afterSignUpUrl?: string; afterSignInUrl?: string }) => {
           if (options.signUpError) throw new Error('Synthetic modal failure');
+          returnUrlsAtOpen.push(authReturnUrls.length);
           signUps.push(intent);
         },
       };
@@ -107,7 +112,7 @@ async function fixture(options: {
   const firePageShow = (persisted: boolean) => {
     for (const fn of [...(pageListeners.get('pageshow') ?? [])]) fn({ persisted });
   };
-  return { checkout, phases, navigations, signIns, signUps, captures, analyticsEvents, requests: () => requests, options, firePageShow };
+  return { checkout, phases, navigations, signIns, signUps, captures, authReturnUrls, returnUrlsAtOpen, analyticsEvents, requests: () => requests, options, firePageShow };
 }
 
 const chooser = () => document.getElementById('wm-pro-auth-form-dialog');
@@ -212,6 +217,9 @@ for (const [label, form] of [[/create account/i, 'sign-up'], [/sign in/i, 'sign-
     assert.ok(afterSignUpUrl);
     assert.equal(afterSignInUrl, afterSignUpUrl, 'the footer link to the other form must resume the same checkout');
     assert.equal(new URL(afterSignUpUrl).searchParams.get('wm_checkout_product'), 'synthetic-product');
+    // The sign-up code card's Sign in escape reopens sign-in with these URLs.
+    assert.deepEqual(f.authReturnUrls, [{ afterSignInUrl, afterSignUpUrl }]);
+    assert.deepEqual(f.returnUrlsAtOpen, [1], 'recorded before the form opens');
     assert.deepEqual(f.analyticsEvents[1]?.data, { productId: 'unknown', surface: 'pro-page', form });
   });
 }

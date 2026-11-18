@@ -6,5 +6,9 @@
  * every index fell back to exactly 100. '2' measures each item against its
  * first observed price on or after baseDate. Readers compare only '2' rows so
  * the old constant 100s never become a week-over-week or month-over-month base.
+ *
+ * '3' chains each day to the previous one over products priced on both dates,
+ * so a product or item leaving or joining the basket no longer moves the
+ * index. '2' rows carry those composition jumps and are not compared against.
  */
-export const INDEX_METHODOLOGY_VERSION = '2';
+export const INDEX_METHODOLOGY_VERSION = '3';

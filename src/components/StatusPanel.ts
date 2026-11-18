@@ -79,6 +79,12 @@ const DIGEST_COVERAGE_EXPLANATIONS: Record<Exclude<DigestCoverageSummary['state'
   unknown: 'the news service did not report coverage',
 };
 
+/**
+ * Least share of feeds that must finish for a deadline-cut build with every
+ * category covered to read as complete. Below it most of the pool is missing.
+ */
+const DEADLINE_COMPLETE_FEED_SHARE = 0.9;
+
 const formatCount = (n: number): string => n.toLocaleString('en-US');
 
 function formatAge(seconds: number): string {
@@ -148,20 +154,24 @@ export class StatusPanel extends Panel {
    */
   public updateDigestCoverage(coverage: DigestCoverageSummary): void {
     // The server also reports partial when the build hit its fetch deadline
-    // with every category covered. A reader sees the same thing as a complete
-    // build that lost a few feeds to errors, so show it as complete and say
-    // how many feeds did not complete. That count mixes deadline aborts with
-    // feed errors, so it names neither cause. Partial stays for a missing
-    // category.
-    const deadlineOnly = coverage.state === 'partial'
-      && coverage.categoriesTotal > 0
+    // with every category covered. When nearly every feed still finished, a
+    // reader sees the same thing as a complete build that lost a few feeds to
+    // errors, so call it complete. A deadline that left most feeds unfinished
+    // stays partial (prod 2026-11-18: 137/955 feeds at 18/18 categories).
+    const allCategoriesCovered = coverage.categoriesTotal > 0
       && coverage.categoriesCompleted === coverage.categoriesTotal
       && coverage.missingCategories.length === 0;
+    const deadlineOnly = coverage.state === 'partial'
+      && allCategoriesCovered
+      && coverage.feedsCompleted >= coverage.feedsTotal * DEADLINE_COMPLETE_FEED_SHARE;
     const state = deadlineOnly ? 'complete' : coverage.state;
     const incompleteFeeds = Math.max(0, coverage.feedsTotal - coverage.feedsCompleted);
+    // The explanation goes in the tooltip only; the footer shows the counts.
+    // The incomplete count mixes deadline aborts with feed errors, so it
+    // names neither cause.
     const explanation = state === 'stale'
       ? staleExplanation(coverage)
-      : deadlineOnly && incompleteFeeds > 0
+      : coverage.state === 'partial' && allCategoriesCovered && incompleteFeeds > 0
         ? `every configured category was covered; ${formatCount(incompleteFeeds)} ${incompleteFeeds === 1 ? 'feed' : 'feeds'} did not complete`
         : DIGEST_COVERAGE_EXPLANATIONS[state];
     // The digest shows at most 20 stories per category, so the served slice
@@ -174,8 +184,8 @@ export class StatusPanel extends Panel {
       ? ` (no completed feed: ${coverage.missingCategories.slice(0, 4).join(', ')}${coverage.missingCategories.length > 4 ? ', …' : ''})`
       : '';
     const text = coverage.state === 'unavailable' || coverage.state === 'unknown'
-      ? `News coverage: ${coverage.state} — ${explanation}`
-      : `News coverage: ${state} — ${breadth}, feeds ${coverage.feedsCompleted}/${coverage.feedsTotal}, categories ${coverage.categoriesCompleted}/${coverage.categoriesTotal}${missing} (${explanation})`;
+      ? `News coverage: ${coverage.state}`
+      : `News coverage: ${state} — ${breadth}, feeds ${coverage.feedsCompleted}/${coverage.feedsTotal}, categories ${coverage.categoriesCompleted}/${coverage.categoriesTotal}${missing}`;
     if (!this.digestCoverageRow) {
       this.digestCoverageRow = h('div', {
         className: 'digest-coverage-row',
@@ -186,10 +196,17 @@ export class StatusPanel extends Panel {
       this.element.appendChild(this.digestCoverageRow);
     }
     this.ensureCoverageRowMounted();
-    this.digestCoverageRow.textContent = text;
-    // The compact footer (#10461) ellipsizes this row on one line; keep the
-    // full text (missing categories, stale cause) readable as a tooltip.
-    this.digestCoverageRow.title = text;
+    const reason = `${explanation.charAt(0).toUpperCase()}${explanation.slice(1)}.`;
+    // The footer shows only the state and counts. The reason stays in the
+    // live region as visually hidden text, because assistive tech does not
+    // reliably expose title (PR #10988 review).
+    this.digestCoverageRow.replaceChildren(
+      h('span', { className: 'digest-coverage-text' }, text),
+      h('span', { className: 'wm-visually-hidden' }, `. ${reason}`),
+    );
+    // The compact footer (#10461) ellipsizes this row on one line; the
+    // tooltip keeps the full text plus the reason for pointer users.
+    this.digestCoverageRow.title = `${text}. ${reason}`;
   }
 
   /**
