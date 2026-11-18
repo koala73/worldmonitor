@@ -9,10 +9,13 @@ async function loadHappyDashboard(page: Page): Promise<void> {
     if (sessionStorage.getItem('__panel_drag_reorder_init_done')) return;
     localStorage.clear();
     localStorage.setItem('worldmonitor-variant', 'happy');
+    // A fresh profile opens the Mission picker over the first panels' headers.
+    localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
     sessionStorage.setItem('__panel_drag_reorder_init_done', '1');
   });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await waitForPanelCount(page, 4);
+  await waitForMountedPanels(page, 4);
 }
 
 async function waitForPanelCount(page: Page, minCount: number, gridSelector = '#panelsGrid'): Promise<void> {
@@ -27,6 +30,20 @@ async function waitForPanelCount(page: Page, minCount: number, gridSelector = '#
       { timeout: 60_000 },
     )
     .toBeGreaterThanOrEqual(minCount);
+}
+
+// Boot inserts non-draggable deferred shells that carry the panel's data-panel id; the real
+// panel replaces each one when its chunk loads. Dragging a shell does nothing.
+async function waitForMountedPanels(page: Page, count: number, gridSelector = '#panelsGrid'): Promise<void> {
+  await expect
+    .poll(
+      () => page.locator(`${gridSelector} > .panel[data-panel]:not(.hidden)`).evaluateAll(
+        (els, n) => els.slice(0, n).filter((el) => (el as HTMLElement).dataset.deferredPanel !== 'true').length,
+        count,
+      ),
+      { timeout: 60_000 },
+    )
+    .toBe(count);
 }
 
 async function panelIds(page: Page, gridSelector = '#panelsGrid'): Promise<string[]> {
@@ -51,7 +68,7 @@ async function nextAnimationFrame(page: Page): Promise<void> {
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
 }
 
-async function beginDragToPoint(page: Page, sourceId: string, x: number, y: number): Promise<void> {
+async function startDrag(page: Page, sourceId: string): Promise<void> {
   const sourceHeader = page.locator(`${panelSelector(sourceId)} > .panel-header`).first();
   await expect(sourceHeader).toBeVisible();
   const sourceBox = await boundingBoxOrThrow(sourceHeader, `source panel ${sourceId}`);
@@ -61,6 +78,12 @@ async function beginDragToPoint(page: Page, sourceId: string, x: number, y: numb
   await page.mouse.move(startX, startY);
   await page.mouse.down();
   await page.mouse.move(startX + 12, startY + 12, { steps: 3 });
+  // Without this, the "no change" cases pass even when no drag ever starts.
+  await expect.poll(() => page.evaluate(() => document.body.classList.contains('panel-drag-active'))).toBe(true);
+}
+
+async function beginDragToPoint(page: Page, sourceId: string, x: number, y: number): Promise<void> {
+  await startDrag(page, sourceId);
   await page.mouse.move(x, y, { steps: 12 });
   await nextAnimationFrame(page);
 }
@@ -162,6 +185,7 @@ test.describe('panel drag reorder semantics', () => {
 
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForPanelCount(page, 4);
+    await waitForMountedPanels(page, 4);
     await expect.poll(async () => (await panelIds(page)).slice(0, 4)).toEqual(expectedPrefix);
   });
 
@@ -197,11 +221,16 @@ test.describe('panel drag reorder semantics', () => {
     const [sourceId] = await panelIds(page);
     expect(sourceId).toBeTruthy();
 
+    // The drop zone's height transition can stall on a CPU-starved CI browser.
+    await page.addStyleTag({ content: '.map-bottom-grid, .map-bottom-grid::after { transition: none !important; }' });
+    // #4352: the empty zone is collapsed and opens only while a drag is active.
     const bottomGrid = page.locator('#mapBottomGrid');
+    await startDrag(page, sourceId!);
+    await expect.poll(async () => (await bottomGrid.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(100);
     const bottomBox = await boundingBoxOrThrow(bottomGrid, 'bottom grid');
-    expect(bottomBox.height).toBeGreaterThan(20);
-
-    await dragPanelToPoint(page, sourceId!, bottomBox.x + bottomBox.width / 2, bottomBox.y + bottomBox.height / 2);
+    await page.mouse.move(bottomBox.x + bottomBox.width / 2, bottomBox.y + bottomBox.height / 2, { steps: 12 });
+    await nextAnimationFrame(page);
+    await releaseDrag(page);
 
     await expect(page.locator(`#mapBottomGrid > ${panelSelector(sourceId!)}`)).toHaveCount(1);
     await expect(page.locator(`#panelsGrid > ${panelSelector(sourceId!)}`)).toHaveCount(0);

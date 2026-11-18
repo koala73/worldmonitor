@@ -127,10 +127,8 @@ test.describe('RAG vector store (worker-side)', () => {
   test('worker-unavailable path degrades gracefully', async () => {
     const result = await sharedPage.evaluate(async () => {
       const mod = await import('/src/services/ml-worker.ts');
-      const { mlWorker } = mod;
-
-      const fresh = Object.create(Object.getPrototypeOf(mlWorker));
-      Object.assign(fresh, { worker: null, isReady: false, pendingRequests: new Map(), loadedModels: new Set(), capabilities: null });
+      // A real instance runs every field initializer; it is never enabled, so it has no worker.
+      const fresh = new mod.MLWorkerManager();
       const ingestResult = await fresh.vectorStoreIngest([
         { text: 'test', pubDate: Date.now(), source: 'Test', url: '' },
       ]);
