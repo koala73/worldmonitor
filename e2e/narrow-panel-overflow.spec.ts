@@ -24,6 +24,7 @@ test('panels fit the narrowest sidebar column without scrolling sideways', async
     const { InvestmentsPanel } = await import('/src/components/InvestmentsPanel.ts');
     const { CommoditiesPanel } = await import('/src/components/MarketPanel.ts');
     const { RegionalIntelligenceBoard } = await import('/src/components/RegionalIntelligenceBoard.ts');
+    const { SupplyChainPanel } = await import('/src/components/SupplyChainPanel.ts');
 
     document.getElementById('runtime-harness')?.remove();
     const grid = document.createElement('div');
@@ -113,8 +114,31 @@ test('panels fit the narrowest sidebar column without scrolling sideways', async
       { symbol: 'HG=F', display: 'Copper', price: 6.33, change: -1.09, sparkline: [2, 2, 1] },
     ]);
 
-    const panels = { regional, debt, investments, commodities };
-    for (const panel of [debt, investments, commodities]) grid.appendChild(panel.getElement());
+    // Supply Chain: each metric phrase was nowrap, so the warnings line and
+    // the flow line with its hazard badge ran 3-5px past a 277px card.
+    const supplyChain = new SupplyChainPanel();
+    supplyChain.updateChokepointStatus({
+      fetchedAt: '2026-11-18T09:00:00Z',
+      upstreamUnavailable: false,
+      chokepoints: [{
+        id: 'hormuz_strait', name: 'Strait of Hormuz', lat: 26.6, lon: 56.3, disruptionScore: 90, status: 'red',
+        activeWarnings: 7, congestionLevel: 'high', affectedRoutes: ['Gulf Oil Exports', 'Qatar LNG', 'Iran Exports'],
+        description: 'Active conflict - Iran-Israel war; Iranian naval blockade risk and mines reported in Persian Gulf',
+        aisDisruptions: 1, directions: ['eastbound', 'westbound'], directionalDwt: [],
+        transitSummary: {
+          todayTotal: 0, todayTanker: 0, todayCargo: 0, todayOther: 0, wowChangePct: -40.7, history: [], riskLevel: 'critical',
+          incidentCount7d: 557, disruptionPct: 100, riskSummary: '', riskReportAction: '', dataAvailable: true,
+        },
+        flowEstimate: {
+          currentMbd: 0.2, baselineMbd: 21, flowRatio: 0.008, disrupted: true, source: 'FLOW_SOURCE_UNSPECIFIED',
+          hazardAlertLevel: 'red', hazardAlertName: 'Hormuz-26', latestDate: '2026-11-17',
+        },
+        warRiskTier: 'WAR_RISK_TIER_WAR_ZONE', navigationalWarningsAvailable: true, aisSnapshotAvailable: true,
+      }],
+    } as never);
+
+    const panels = { regional, debt, investments, commodities, supplyChain };
+    for (const panel of [debt, investments, commodities, supplyChain]) grid.appendChild(panel.getElement());
     // setSafeContent debounces panel content by 150ms.
     await new Promise((r) => setTimeout(r, 400));
 
