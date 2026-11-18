@@ -28,6 +28,7 @@ function loadVariant(url, observedErrors, { timeoutMs, digests = [] } = {}) {
     AbortSignal, setTimeout, clearTimeout,
     isStaleDigestReplay: () => false,
     xNewsAccounts: { collectXAlertCandidates: () => [] }, xState: { items: [] },
+    upstashGet: async () => null,
     RELAY_SOURCE_TIERS: {}, buildClassifyCandidateMap: digest => { digests.push(digest); return new Map(); },
   });
   vm.runInContext(source.slice(start, end), context);

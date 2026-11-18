@@ -33,6 +33,23 @@ describe('relay digest stale gate (#7084)', () => {
     assert.equal('firstSeen' in candidates.get('unset first seen'), false);
   });
 
+  it('adds fresh pool items the category cap kept off the dashboard, after served ones (#10978)', () => {
+    const now = Date.now();
+    const digest = { categories: { politics: { items: [{ title: 'served headline', source: 'CNN World', publishedAt: now - 60_000, storyMeta: { firstSeen: now - 30_000 } }] } } };
+    const pool = [
+      { title: 'served headline', source: 'Gulf News', publishedAt: now - 60_000 },
+      { title: 'ADNOC vessel attacked in Strait of Hormuz', source: 'Al Arabiya', publishedAt: now - 120_000, corroborationCount: 2 },
+      { title: 'old pool headline', source: 'Al Arabiya', publishedAt: now - 7 * 3_600_000 },
+    ];
+    const candidates = buildClassifyCandidateMap(digest, [], 'full', now, 6 * 60 * 60 * 1000, undefined, pool);
+    assert.equal(candidates.get('served headline').source, 'CNN World');
+    assert.equal(candidates.get('served headline').firstSeen, now - 30_000);
+    assert.equal(candidates.get('ADNOC vessel attacked in Strait of Hormuz').corroborationCount, 2);
+    assert.equal(candidates.has('old pool headline'), false);
+    const stale = { ...digest, coverage: { servedStale: true } };
+    assert.equal(buildClassifyCandidateMap(stale, [], 'full', now, 6 * 60 * 60 * 1000, undefined, pool).size, 0);
+  });
+
   it('skips a server-marked stale replay', () => {
     assert.equal(isStaleDigestReplay({ coverage: { servedStale: true, staleReason: 'build-error' } }), true);
     assert.equal(isStaleDigestReplay({ coverage: { servedStale: true, staleReason: 'gate-held' } }), true);

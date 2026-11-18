@@ -5695,7 +5695,10 @@ async function seedClassifyForVariant(variant, seenTitles) {
     classifyNow,
     RECENCY_GATE_MS,
   );
-  const allTitles = buildClassifyCandidateMap(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS);
+  // #10978: fresh items the digest's category cap kept off the dashboard can
+  // still alert. The digest build writes them beside the served body.
+  const alertPool = staleReplay ? null : await upstashGet(`news:alert-pool:v1:${variant}`);
+  const allTitles = buildClassifyCandidateMap(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS, undefined, alertPool?.items);
   // The build this pass read, returned so the caller can record it once the
   // pass has finished. A stale replay or an unavailable digest is not a build:
   // the next real one must still trigger the watch.
