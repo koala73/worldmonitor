@@ -65,8 +65,16 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await panel.getByLabel('Country', { exact: true }).selectOption('da');
     await panel.locator('.food-prices-card h3').scrollIntoViewIfNeeded();
     await expect(panel.getByLabel('Country', { exact: true })).toBeVisible();
-    const overflow = await panel.evaluate(element => ({ panel: element.scrollWidth - element.clientWidth, document: document.documentElement.scrollWidth - innerWidth }));
-    expect(overflow).toEqual({ panel: 0, document: 0 });
+    const overflow = await panel.evaluate(element => {
+      const right = element.getBoundingClientRect().left + element.clientLeft + element.clientWidth;
+      // Name what sticks out so a failure says which element to fix.
+      const offenders = [...element.querySelectorAll('*')]
+        .filter(node => node.getBoundingClientRect().right > right + 0.5)
+        .slice(0, 5)
+        .map(node => `${node.tagName.toLowerCase()}.${String(node.className).split(' ')[0]} +${Math.round(node.getBoundingClientRect().right - right)}px`);
+      return { panel: element.scrollWidth - element.clientWidth, document: document.documentElement.scrollWidth - innerWidth, offenders };
+    });
+    expect(overflow).toEqual({ panel: 0, document: 0, offenders: [] });
   });
 }
 
