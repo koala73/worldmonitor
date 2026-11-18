@@ -203,15 +203,29 @@ function summarizeAlertLatency(samples) {
     const values = samples.map(read).filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
     return { n: values.length, p50: percentile(values, 0.5), p90: percentile(values, 0.9), max: values.at(-1) ?? null };
   };
+  const paired = (s) => Number.isFinite(s.publishToQueueMs) && Number.isFinite(s.seenToQueueMs);
   return {
     count: samples.length,
-    publishToSeen: stage(s => Number.isFinite(s.publishToQueueMs) && Number.isFinite(s.seenToQueueMs)
-      && s.publishToQueueMs >= s.seenToQueueMs ? s.publishToQueueMs - s.seenToQueueMs : null),
+    // firstSeen is the headline's first sight in any edition (story:track is
+    // keyed by normalized title), so an identical headline from another outlet
+    // can predate this item's own timestamp. Those samples have no publish-to-
+    // seen latency for this source; seenBeforePublish counts them.
+    publishToSeen: stage(s => paired(s) && s.publishToQueueMs >= s.seenToQueueMs ? s.publishToQueueMs - s.seenToQueueMs : null),
+    seenBeforePublish: samples.filter(s => paired(s) && s.publishToQueueMs < s.seenToQueueMs).length,
     publishToQueue: stage(s => s.publishToQueueMs),
     seenToQueue: stage(s => s.seenToQueueMs),
     buildToQueue: stage(s => s.buildToQueueMs),
     overBudget: samples.filter((sample) => sample.buildToQueueMs > BUILD_TO_QUEUE_BUDGET_MS).length,
   };
+}
+
+/** Alerts per source in score-log rows, counted whether or not the row has a publisher timestamp. */
+function alertCountsBySource(rows) {
+  const counts = new Map();
+  for (const row of rows) {
+    if (row?.eventType === 'rss_alert') counts.set(row.source, (counts.get(row.source) ?? 0) + 1);
+  }
+  return counts;
 }
 
 /**
@@ -231,6 +245,7 @@ function strictLatencyVerdict(summary) {
 
 module.exports = {
   summarizeAlertLatency,
+  alertCountsBySource,
   strictLatencyVerdict,
   DIGEST_BUILD_RETRY_MS,
   DIGEST_BUILD_WATCH_INTERVAL_MS,

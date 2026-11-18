@@ -29,6 +29,7 @@ const {
   alertLatency,
   formatAlertLatency,
   summarizeAlertLatency,
+  alertCountsBySource,
   strictLatencyVerdict,
   DIGEST_BUILD_RETRY_MS,
 } = require('../scripts/lib/classify-digest-request.cjs');
@@ -223,6 +224,32 @@ describe('summarizeAlertLatency', () => {
     assert.equal(summary.buildToQueue.n, 1);
     assert.equal(summary.overBudget, 0);
     assert.deepEqual(summarizeAlertLatency([]).buildToQueue, { n: 0, p50: null, p90: null, max: null });
+  });
+});
+
+describe('headline first sight before this publication', () => {
+  // story:track firstSeen is the headline's first sight in any edition, so an
+  // identical headline from another outlet can predate this item's timestamp.
+  it('counts those samples instead of dropping them silently', () => {
+    const summary = summarizeAlertLatency([
+      { publishToQueueMs: 7 * 60_000, seenToQueueMs: 12 * 60_000, buildToQueueMs: 30_000 },
+      { publishToQueueMs: 10 * 60_000, seenToQueueMs: 4 * 60_000, buildToQueueMs: 30_000 },
+    ]);
+    assert.equal(summary.publishToSeen.n, 1);
+    assert.equal(summary.seenBeforePublish, 1);
+  });
+});
+
+describe('alertCountsBySource', () => {
+  it('counts every logged alert, with or without a publisher timestamp', () => {
+    const counts = alertCountsBySource([
+      { eventType: 'rss_alert', source: 'CNN World', publishedAt: 1_000 },
+      { eventType: 'rss_alert', source: 'CNN World', publishedAt: null },
+      { eventType: 'rss_alert', source: 'CNN World', publishedAt: 0 },
+      { eventType: 'rss_alert', source: 'Reuters World' },
+      { eventType: 'x_alert', source: 'CNN World', publishedAt: 1_000 },
+    ]);
+    assert.deepEqual([...counts], [['CNN World', 3], ['Reuters World', 1]]);
   });
 });
 

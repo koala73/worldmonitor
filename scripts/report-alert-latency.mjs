@@ -28,7 +28,7 @@ import { loadEnvFile } from './_env-file.mjs';
 import { getRedisCredentials } from './_seed-utils.mjs';
 
 const require = createRequire(import.meta.url);
-const { BUILD_TO_QUEUE_BUDGET_MS, summarizeAlertLatency, strictLatencyVerdict } = require('./lib/classify-digest-request.cjs');
+const { BUILD_TO_QUEUE_BUDGET_MS, alertCountsBySource, summarizeAlertLatency, strictLatencyVerdict } = require('./lib/classify-digest-request.cjs');
 
 const SCORE_LOG_KEY = 'shadow:score-log:v5';
 const LATENCY_KEY = 'relay:alert-latency:v1';
@@ -74,7 +74,8 @@ async function main() {
   const { url, token } = getRedisCredentials();
   const fromMs = Date.now() - hours * 60 * 60 * 1000;
 
-  const scoreLog = (await readRange(url, token, SCORE_LOG_KEY, fromMs))
+  const scoreRows = await readRange(url, token, SCORE_LOG_KEY, fromMs);
+  const scoreLog = scoreRows
     .filter((r) => r.eventType === 'rss_alert' && r.publishedAt > 0)
     .map((r) => ({ ...r, publishToQueueMs: r.ts - r.publishedAt }));
   console.log(`Publisher timestamp to queue, last ${hours}h (${SCORE_LOG_KEY})`);
@@ -93,14 +94,16 @@ async function main() {
     printStage('digest build -> queue', summary.buildToQueue);
   }
   if (bySource) {
-    console.log('\nPublisher timestamp to digest first sight by source (alerts from score log, n from paired latency samples)');
-    const counts = new Map();
-    for (const row of scoreLog) counts.set(row.source, (counts.get(row.source) ?? 0) + 1);
+    // First sight is the headline's, in any edition and from any outlet, so this
+    // is headline-level, not a per-source fetch latency. seen_earlier counts
+    // samples whose headline was seen before this item's own timestamp.
+    console.log('\nPublisher timestamp to headline first sight by source (alerts from score log, n from paired latency samples, headline-level first sight)');
+    const counts = alertCountsBySource(scoreRows);
     const byOutlet = Map.groupBy(samples, row => row.source);
     const sources = new Set([...counts.keys(), ...byOutlet.keys()]);
     for (const source of [...sources].sort((a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0))) {
       const summary = summarizeAlertLatency(byOutlet.get(source) ?? []);
-      printStage(`${source} (alerts=${counts.get(source) ?? 0})`, summary.publishToSeen);
+      printStage(`${source} (alerts=${counts.get(source) ?? 0}, seen_earlier=${summary.seenBeforePublish})`, summary.publishToSeen);
     }
   }
   if (strict) {
