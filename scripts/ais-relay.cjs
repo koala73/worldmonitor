@@ -625,7 +625,8 @@ function upstashMGet(keys) {
 
 // Runs an Upstash /pipeline body. Resolves to the per-command result array, or
 // null when the request fails.
-function upstashPipeline(commands, { timeoutMs = 10000 } = {}) {
+// `deadlineMs` bounds the whole request; `timeoutMs` only an idle socket.
+function upstashPipeline(commands, { timeoutMs = 10000, deadlineMs } = {}) {
   return new Promise((resolve) => {
     if (!UPSTASH_ENABLED || commands.length === 0) return resolve(null);
     const url = new URL('/pipeline', UPSTASH_REDIS_REST_URL);
@@ -654,6 +655,7 @@ function upstashPipeline(commands, { timeoutMs = 10000 } = {}) {
     });
     req.on('error', () => resolve(null));
     req.on('timeout', () => { req.destroy(); resolve(null); });
+    if (deadlineMs) setTimeout(() => { req.destroy(); resolve(null); }, deadlineMs).unref?.();
     req.end(JSON.stringify(commands));
   });
 }
@@ -5224,11 +5226,12 @@ function relayEntityCorroborationScore(count) {
 // every build and edition (#10977), in one short read. A title without a
 // count falls back to the build's own count.
 async function readObservedPublisherCounts(titles) {
+  if (titles.length === 0) return new Map();
   const now = Date.now();
   const keyed = titles.map((title) => [title, newsPublisherCoverageKey(title)]).filter(([, key]) => key);
   const rows = await upstashPipeline(
     keyed.map(([, key]) => ['ZRANGEBYSCORE', key, `(${now - NEWS_STORY_DEDUP_TTL_SECONDS * 1000}`, now]),
-    { timeoutMs: 1500 },
+    { deadlineMs: 1500 },
   );
   const counts = new Map();
   keyed.forEach(([title], i) => {
@@ -5772,7 +5775,10 @@ async function seedClassifyForVariant(variant, seenTitles) {
       continue;
     }
 
-    const observedPublishers = await readObservedPublisherCounts(chunk);
+    // Only titles that can alert: labelled critical or high, from a digest feed.
+    const observedPublishers = await readObservedPublisherCounts(chunk.filter((title, i) =>
+      !allTitles.get(title)?.fromX
+      && llmResult.some((entry) => entry?.i === i && (entry.l === 'critical' || entry.l === 'high'))));
     const classifiedSet = new Set();
     const labelled = [];
     for (const entry of llmResult) {
