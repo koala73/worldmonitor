@@ -2611,6 +2611,8 @@ function runMissAudit() {
 }
 
 if (require.main === module) {
+  // Also once shortly after boot, so redeploys cannot keep pushing the run out.
+  setTimeout(runMissAudit, 10 * 60_000).unref();
   setInterval(runMissAudit, MISS_AUDIT_INTERVAL_MS);
   process.on('SIGTERM', () => {
     console.log('[relay] SIGTERM received — shutting down');

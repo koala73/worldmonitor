@@ -16,12 +16,17 @@ import { BREAKING_WIRES, auditMisses } from './lib/alert-miss-audit.mjs';
 const SCORE_LOG_KEY = 'shadow:score-log:v5';
 const SENT_PREFIX = 'wm:notif:sent:v1:';
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Rows queued this recently may still be on their way to subscribers.
+const SETTLE_MS = 15 * 60 * 1000;
 
 function parseWindow(argv) {
   const at = argv.indexOf('--date');
-  if (at === -1) return { from: Date.now() - DAY_MS, to: Date.now() };
-  const from = Date.parse(`${argv[at + 1]}T00:00:00Z`);
-  if (!Number.isFinite(from)) throw new Error('--date needs YYYY-MM-DD');
+  if (at === -1) return { from: Date.now() - SETTLE_MS - DAY_MS, to: Date.now() - SETTLE_MS };
+  const date = argv[at + 1] ?? '';
+  const from = Date.parse(`${date}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(from) || new Date(from).toISOString().slice(0, 10) !== date) {
+    throw new Error('--date needs a real YYYY-MM-DD day');
+  }
   return { from, to: from + DAY_MS };
 }
 
@@ -44,14 +49,14 @@ const parseRows = (members) => (members ?? []).flatMap((m) => {
 });
 
 async function sentKeys(url, token) {
-  const keys = [];
+  const keys = new Set();
   let cursor = '0';
   do {
     const [[next, batch]] = await redis(url, token, [['SCAN', cursor, 'MATCH', `${SENT_PREFIX}*`, 'COUNT', '1000']]);
     cursor = next;
-    keys.push(...batch);
+    for (const key of batch) keys.add(key);
   } while (cursor !== '0');
-  return keys;
+  return [...keys];
 }
 
 async function main() {
@@ -61,7 +66,7 @@ async function main() {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) throw new Error('Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN');
 
-  const [scoreMembers] = await redis(url, token, [['ZRANGEBYSCORE', SCORE_LOG_KEY, String(from), String(to)]]);
+  const [scoreMembers] = await redis(url, token, [['ZRANGEBYSCORE', SCORE_LOG_KEY, String(from), `(${to}`]]);
   const queued = parseRows(scoreMembers);
   const keys = await sentKeys(url, token);
   const sent = [];
@@ -75,7 +80,7 @@ async function main() {
   console.log(`\nCritical stories that reached nobody: ${missed.length}`);
   for (const story of missed) {
     console.log(`  ${new Date(story.firstQueuedAt).toISOString()}  ${story.title}`);
-    console.log(`    gate=${story.gate}  sources=${story.sources.join(', ')}`);
+    console.log(`    gate=${story.gate}  best=${story.bestScore}  sources=${story.sources.join(', ')}`);
   }
   console.log(`\nAhead of the wires (${BREAKING_WIRES.join(', ')}): ${deliveredBeforeWire} of ${wireStories} wire-covered stories reached subscribers before the first wire copy`);
 }
