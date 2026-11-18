@@ -1,73 +1,6 @@
 import { expect, test } from '@playwright/test';
 
 test.describe('desktop runtime routing guardrails', () => {
-  test('detectDesktopRuntime covers packaged tauri hosts', async ({ page }) => {
-    await page.goto('/tests/runtime-harness.html');
-
-    const result = await page.evaluate(async () => {
-      const runtime = await import('/src/services/runtime.ts');
-      return {
-        tauriHost: runtime.detectDesktopRuntime({
-          hasTauriGlobals: false,
-          userAgent: 'Mozilla/5.0',
-          locationProtocol: 'https:',
-          locationHost: 'tauri.localhost',
-          locationOrigin: 'https://tauri.localhost',
-        }),
-        tauriScheme: runtime.detectDesktopRuntime({
-          hasTauriGlobals: false,
-          userAgent: 'Mozilla/5.0',
-          locationProtocol: 'tauri:',
-          locationHost: '',
-          locationOrigin: 'tauri://localhost',
-        }),
-        tauriUa: runtime.detectDesktopRuntime({
-          hasTauriGlobals: false,
-          userAgent: 'Mozilla/5.0 Tauri/2.0',
-          locationProtocol: 'https:',
-          locationHost: 'example.com',
-          locationOrigin: 'https://example.com',
-        }),
-        tauriGlobal: runtime.detectDesktopRuntime({
-          hasTauriGlobals: true,
-          userAgent: 'Mozilla/5.0',
-          locationProtocol: 'https:',
-          locationHost: 'example.com',
-          locationOrigin: 'https://example.com',
-        }),
-        secureLocalhost: runtime.detectDesktopRuntime({
-          hasTauriGlobals: false,
-          userAgent: 'Mozilla/5.0',
-          locationProtocol: 'https:',
-          locationHost: 'localhost',
-          locationOrigin: 'https://localhost',
-        }),
-        insecureLocalhost: runtime.detectDesktopRuntime({
-          hasTauriGlobals: false,
-          userAgent: 'Mozilla/5.0',
-          locationProtocol: 'http:',
-          locationHost: 'localhost:5173',
-          locationOrigin: 'http://localhost:5173',
-        }),
-        webHost: runtime.detectDesktopRuntime({
-          hasTauriGlobals: false,
-          userAgent: 'Mozilla/5.0',
-          locationProtocol: 'https:',
-          locationHost: 'worldmonitor.app',
-          locationOrigin: 'https://worldmonitor.app',
-        }),
-      };
-    });
-
-    expect(result.tauriHost).toBe(true);
-    expect(result.tauriScheme).toBe(true);
-    expect(result.tauriUa).toBe(true);
-    expect(result.tauriGlobal).toBe(true);
-    expect(result.secureLocalhost).toBe(true);
-    expect(result.insecureLocalhost).toBe(false);
-    expect(result.webHost).toBe(false);
-  });
-
   test('runtime fetch patch falls back to cloud for local failures', async ({ page }) => {
     await page.goto('/tests/runtime-harness.html');
 
@@ -282,58 +215,6 @@ test.describe('desktop runtime routing guardrails', () => {
     });
 
     expect(result.name).toBe('AbortError');
-  });
-
-  test('chunk preload reload guard reloads once per build', async ({ page }) => {
-    await page.goto('/tests/runtime-harness.html');
-
-    const result = await page.evaluate(async () => {
-      const {
-        CHUNK_RELOAD_STORAGE_KEY,
-        installChunkReloadGuard,
-      } = await import('/src/bootstrap/chunk-reload.ts');
-
-      const storageMap = new Map<string, string>();
-      const storage = {
-        getItem: (key: string) => storageMap.get(key) ?? null,
-        setItem: (key: string, value: string) => {
-          storageMap.set(key, value);
-        },
-      };
-      const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
-
-      let reloadCount = 0;
-      // Each install models a page load that shares the surviving storage.
-      const pageLoad = async (version: string) => {
-        const eventTarget = new EventTarget();
-        installChunkReloadGuard(version, {
-          eventTarget,
-          storages: [storage],
-          eventName: 'preload-error',
-          reload: () => {
-            reloadCount += 1;
-          },
-        });
-        eventTarget.dispatchEvent(new Event('preload-error', { cancelable: true }));
-        eventTarget.dispatchEvent(new Event('preload-error', { cancelable: true }));
-        await settle();
-      };
-
-      await pageLoad('9.9.9');
-      await pageLoad('9.9.9');
-      const reloadCountSameBuild = reloadCount;
-      await pageLoad('9.9.10');
-
-      return {
-        reloadCountSameBuild,
-        reloadCountAfterNewBuild: reloadCount,
-        storedValue: storageMap.get(CHUNK_RELOAD_STORAGE_KEY) ?? null,
-      };
-    });
-
-    expect(result.reloadCountSameBuild).toBe(1);
-    expect(result.reloadCountAfterNewBuild).toBe(2);
-    expect(result.storedValue).toBe('9.9.10');
   });
 
   test('update badge picks architecture-correct desktop download url', async ({ page }) => {

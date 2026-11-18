@@ -360,6 +360,15 @@ function isAccountBriefKey(key: string, userId: string): boolean {
   return false;
 }
 
+function reportBriefSweepFailure(
+  args: { deletionId: string; cursor: string; pages?: number },
+  error: string,
+): void {
+  // sentry-coverage-ok: structured console.error is forwarded by Convex.
+  console.error(JSON.stringify({ breadcrumb: "account_deletion_brief_sweep_failed",
+    deletionId: args.deletionId, cursor: args.cursor, pages: args.pages ?? 0, error }));
+}
+
 /**
  * Bound both each action and the total shared-keyspace scan per sweep. One
  * pass matches every brief key shape for the account, so a full sweep costs
@@ -427,15 +436,21 @@ export const sweepBriefEnvelopes = internalAction({
       if (args.attempt + 1 < MAX_EXTERNAL_ATTEMPTS) {
         // SCAN may not return the same keys when a cursor is replayed. Keep
         // this page until every DEL succeeds; repeated deletes are safe.
-        await ctx.scheduler.runAfter(
-          Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** args.attempt),
-          internal.accountDeletion.sideEffects.sweepBriefEnvelopes,
-          { ...args, ...(page ? { page } : {}), attempt: args.attempt + 1 },
-        );
+        try {
+          await ctx.scheduler.runAfter(
+            Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** args.attempt),
+            internal.accountDeletion.sideEffects.sweepBriefEnvelopes,
+            { ...args, ...(page ? { page } : {}), attempt: args.attempt + 1 },
+          );
+        } catch (scheduleErr) {
+          // Nothing retries a scheduled action, so a lost continuation must be
+          // reported. Resume from this page's own cursor: its keys may not all
+          // be deleted, so the next cursor is not safe.
+          reportBriefSweepFailure(args, `${errorMessage(err)}; retry not scheduled: ${errorMessage(scheduleErr)}`);
+          throw scheduleErr;
+        }
       } else {
-        // sentry-coverage-ok: structured console.error is forwarded by Convex.
-        console.error(JSON.stringify({ breadcrumb: "account_deletion_brief_sweep_failed",
-          deletionId: args.deletionId, error: errorMessage(err) }));
+        reportBriefSweepFailure(args, errorMessage(err));
         throw err;
       }
     }

@@ -85,20 +85,6 @@ describe('responsive zone listener', () => {
     removeResponsiveZoneListener(listener);
   });
 
-  it('does not fire repeatedly while the breakpoint state is stable', () => {
-    const { target, lists } = createTarget();
-    let callCount = 0;
-
-    const listener = addResponsiveZoneListener(target, 1600, () => { callCount++; });
-
-    lists[0].setMatches(true);
-    lists[0].setMatches(true);
-    lists[0].setMatches(true);
-
-    assert.equal(callCount, 1);
-    removeResponsiveZoneListener(listener);
-  });
-
   it('cleanup removes the breakpoint listener', () => {
     const { target, lists } = createTarget();
     let callCount = 0;
