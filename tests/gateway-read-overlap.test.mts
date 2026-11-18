@@ -131,6 +131,38 @@ describe('gateway read-only cache handler / global limiter overlap', () => {
     await setImmediate();
   });
 
+  it('does not run the handler again for a caller this instance already denied', async () => {
+    let calls = 0;
+    const h = harness(SOURCE_PATH, async () => { calls += 1; return Response.json({}); });
+    const limiterFetch = globalThis.fetch;
+    let redisCalls = 0;
+    globalThis.fetch = (async (input, init) => {
+      redisCalls += 1;
+      return limiterFetch(input, init);
+    }) as typeof fetch;
+    h.decision.resolve(false);
+    assert.equal((await h.gateway(h.request())).status, 429);
+    // The first denial is only learned from Redis, after the handler started.
+    assert.equal(calls, 1);
+    const repeat = await h.gateway(h.request());
+    assert.equal(repeat.status, 429);
+    assert.ok(repeat.headers.has('Retry-After'));
+    assert.equal(calls, 1);
+    assert.equal(redisCalls, 1);
+  });
+
+  it('does not run the handler for an unproven Cloudflare client IP', async () => {
+    let called = false;
+    process.env.CF_EDGE_PROOF_SECRET = 'overlap-edge-proof-secret';
+    const h = harness(SOURCE_PATH, async () => { called = true; return Response.json({}); });
+    const request = h.request();
+    request.headers.set('cf-connecting-ip', '192.0.2.42');
+    const response = await h.gateway(request);
+    assert.equal(response.status, 403);
+    assert.equal(response.headers.get('X-RateLimit-Mode'), 'edge-proof');
+    assert.equal(called, false);
+  });
+
   for (const allowed of [false, true]) {
     it(`keeps non-allowlisted handlers behind the ${allowed ? 'allowing' : 'denying'} limiter`, async () => {
       let called = false;

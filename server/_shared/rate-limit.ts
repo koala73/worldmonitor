@@ -47,6 +47,12 @@ let ratelimit: Ratelimit | null = null;
 const GLOBAL_RATE_LIMIT = 600;
 const GLOBAL_RATE_WINDOW: Duration = '60 s';
 const GLOBAL_RATE_WINDOW_SECONDS = durationToSeconds(GLOBAL_RATE_WINDOW);
+// identifier -> blocked-until (ms). @upstash/ratelimit records each Redis denial
+// here and answers later requests in the same window from it without Redis.
+// Owning the Map lets the gateway read the same verdict synchronously.
+// Keys carry the limiter prefix: `${GLOBAL_RATE_PREFIX}:${identifier}`.
+const globalBlockedUntil = new Map<string, number>();
+const GLOBAL_RATE_PREFIX = 'rl';
 
 function getRatelimit(): Ratelimit | null {
   if (ratelimit) return ratelimit;
@@ -57,8 +63,9 @@ function getRatelimit(): Ratelimit | null {
   ratelimit = new Ratelimit({
     redis: new Redis(upstashRedisOptions(url, token)),
     limiter: Ratelimit.slidingWindow(GLOBAL_RATE_LIMIT, GLOBAL_RATE_WINDOW),
-    prefix: 'rl',
+    prefix: GLOBAL_RATE_PREFIX,
     analytics: false,
+    ephemeralCache: globalBlockedUntil,
   });
   return ratelimit;
 }
@@ -543,6 +550,25 @@ function getPrincipalRateLimitIdentifier(
   return scope === 'api_key' ? `apikey-user:${principalUserId}` : `user:${principalUserId}`;
 }
 
+function globalRateLimitIdentifier(request: Request, opts: RateLimitOptions): string {
+  // Preserve the long-standing raw-IP key for anonymous traffic so an
+  // in-flight 60-second bucket does not reset during rollout. Trusted
+  // principals use a separate namespace.
+  return getPrincipalRateLimitIdentifier(opts.principalUserId, opts.principalScope) ??
+    getClientRateLimitKey(request);
+}
+
+/**
+ * True when this instance already knows checkRateLimit will deny the request:
+ * an unproven Cloudflare IP, or a caller the limiter denied earlier in the
+ * current window. Makes no Redis call.
+ */
+export function isGlobalRateLimitDenialKnown(request: Request, opts: RateLimitOptions = {}): boolean {
+  if (!opts.principalUserId && hasUnprovenCloudflareClientIp(request)) return true;
+  const blockedUntil = globalBlockedUntil.get(`${GLOBAL_RATE_PREFIX}:${globalRateLimitIdentifier(request, opts)}`);
+  return blockedUntil !== undefined && blockedUntil > Date.now();
+}
+
 export async function checkRateLimit(request: Request, corsHeaders: Record<string, string>, opts: RateLimitOptions = {}): Promise<Response | null> {
   const proofDenied = !opts.principalUserId && checkIpScopedEdgeProof(request, corsHeaders);
   if (proofDenied) return proofDenied;
@@ -555,12 +581,7 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
     return null;
   }
 
-  // Preserve the long-standing raw-IP key for anonymous traffic so an
-  // in-flight 60-second bucket does not reset during rollout. Trusted
-  // principals use a separate namespace.
-  const identifier =
-    getPrincipalRateLimitIdentifier(opts.principalUserId, opts.principalScope) ??
-    getClientRateLimitKey(request);
+  const identifier = globalRateLimitIdentifier(request, opts);
 
   try {
     const { success, limit, reset, reason } = await limitWithFallback(
@@ -1383,6 +1404,7 @@ export function __resetRateLimitForTest(): void {
   nativeGoogleFlightsAdmissions = [];
   nativeAviationNewsAdmissions = [];
   ratelimit = null;
+  globalBlockedUntil.clear();
   endpointLimiters.clear();
   scopedLimiters.clear();
   scopedMissingConfigStages.clear();

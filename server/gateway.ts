@@ -30,8 +30,10 @@ import {
   checkFailClosedScopedIpRateLimit,
   formatTrustedRateLimitPrincipal,
   hasEndpointRatePolicy,
+  isGlobalRateLimitDenialKnown,
   RATE_LIMIT_DEGRADED_HEADERS,
   TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER,
+  type RateLimitOptions,
 } from './_shared/rate-limit';
 import {
   drainResponseHeaders,
@@ -2655,14 +2657,19 @@ export function createDomainGateway(
         // so without this a customer's own scraper drains the 600/min budget
         // and their dashboard 429s. In production on 2026-09-11 that was 598
         // scraper successes against 2 for the same person's browser.
-        const rateLimitCheck = rateLimitPrincipalUserId
-          ? checkRateLimit(request, corsHeaders, {
+        const rateLimitOptions: RateLimitOptions = rateLimitPrincipalUserId
+          ? {
               principalUserId: rateLimitPrincipalUserId,
               principalScope: isUserApiKey ? 'api_key' : 'session',
-            })
-          : checkRateLimit(request, corsHeaders);
+            }
+          : {};
+        // Read before checkRateLimit, which may record a new denial.
+        const denialKnown = isGlobalRateLimitDenialKnown(request, rateLimitOptions);
+        const rateLimitCheck = checkRateLimit(request, corsHeaders, rateLimitOptions);
         // All remaining pre-handler gates must be inactive before speculating.
-        if (GLOBAL_RATE_LIMIT_OVERLAP_PATHS.has(pathname) && request.method === 'GET'
+        // A caller already denied in this window waits, so its handler never
+        // runs: repeat 429s cost no handler Redis reads.
+        if (GLOBAL_RATE_LIMIT_OVERLAP_PATHS.has(pathname) && request.method === 'GET' && !denialKnown
           && !pendingPostToGetCompatError && !requiresDirectLlmQuota && !hasIdempotencyKey && !isCountryHistoryRpc) {
           pendingGlobalRateLimit = rateLimitCheck;
           void pendingGlobalRateLimit.catch(() => {});
