@@ -334,6 +334,8 @@ export class CountryIntelManager implements AppModule {
     const container = document.getElementById('mapContainer');
     if (!container) return;
     if (!container.hasAttribute('tabindex')) container.tabIndex = -1;
+    // A plain div cannot carry a name; as a group it can, and -1 keeps it out of the Tab order.
+    if (!container.hasAttribute('role')) container.setAttribute('role', 'group');
     if (!container.hasAttribute('aria-label')) container.setAttribute('aria-label', getPanelDisplayName('map'));
     container.focus({ preventScroll: true });
   }

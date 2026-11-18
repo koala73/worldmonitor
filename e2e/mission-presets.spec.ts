@@ -137,6 +137,25 @@ async function scrollPanelsDown(page: Page): Promise<void> {
   await expect.poll(() => page.evaluate(() => document.getElementById('panelsGrid')!.scrollTop)).toBeGreaterThan(0);
 }
 
+async function scrollMobilePanelsDown(page: Page): Promise<void> {
+  await expect.poll(() => page.evaluate(() => {
+    const main = document.getElementById('main')!;
+    main.scrollTop = 3000;
+    return main.scrollTop;
+  }), { timeout: 30_000 }).toBeGreaterThan(1000);
+}
+
+/** On mobile the new layout's first panel must sit just under the sticky category bar, not under it or far below. */
+async function expectMobilePanelsFromTop(page: Page): Promise<void> {
+  await expect.poll(() => page.evaluate(() => {
+    const first = document.querySelector<HTMLElement>('#panelsGrid > [data-panel]:not(.hidden):not(.mobile-cat-hidden)');
+    const bar = document.querySelector<HTMLElement>('.mobile-panel-nav');
+    if (!first || !bar) return `first ${Boolean(first)}, bar ${Boolean(bar)}`;
+    const gap = Math.round(first.getBoundingClientRect().top - bar.getBoundingClientRect().bottom);
+    return gap >= 0 && gap <= 24 ? 'top' : `${first.dataset.panel} ${gap}px below the bar`;
+  })).toBe('top');
+}
+
 /** A new layout must start at its first panel, not at the old scroll position. */
 async function expectPanelsFromTop(page: Page): Promise<void> {
   await expect.poll(() => page.evaluate(() => {
@@ -271,6 +290,7 @@ test.describe('mission presets', () => {
     await setupMissionPage(page, { width: 390, height: 844 });
     const moreTab = page.locator('[data-mobile-tab="more"]');
     await expect(moreTab).toBeVisible({ timeout: 30_000 });
+    await scrollMobilePanelsDown(page);
     await moreTab.click();
     await expect(page.locator('#mobileMenu')).toHaveClass(/open/);
     await waitForMobileMenuSettled(page);
@@ -296,6 +316,7 @@ test.describe('mission presets', () => {
 
     await page.locator('[data-mission-id="energy-security"]').click();
     await expect.poll(() => readLocalStorage(page, PRESET_KEY)).toBe('energy-security');
+    await expectMobilePanelsFromTop(page);
     await expect
       .poll(() => readJsonLocalStorage<Record<string, boolean>>(page, 'worldmonitor-layers').then((layers) => layers?.pipelines ?? false))
       .toBe(true);

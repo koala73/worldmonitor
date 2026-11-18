@@ -4603,8 +4603,16 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
   /** Returns true when the panel was closed and is now open. */
   private open(): boolean {
-    if (this.panel.classList.contains('active')) return false;
-    this.lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focused = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+      ? document.activeElement
+      : null;
+    if (this.panel.classList.contains('active')) {
+      // An open request from outside the visible brief (a map click that
+      // reloads it) moves the return target there, as a first open would.
+      if (focused && !this.panel.contains(focused)) this.lastFocusedElement = focused;
+      return false;
+    }
+    this.lastFocusedElement = focused;
     this.panel.classList.add('active');
     this.panel.setAttribute('aria-hidden', 'false');
     document.addEventListener('keydown', this.handleGlobalKeydown);

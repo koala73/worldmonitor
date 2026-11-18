@@ -1556,14 +1556,25 @@ export class EventHandlerManager implements AppModule {
   /**
    * A mission apply or reset replaces the panel layout, so the old scroll
    * position points into a different list. Start the new layout at its first
-   * panel: the grid scrolls on desktop, the page's main column on mobile.
+   * panel: the grid scrolls on desktop. On mobile the main column scrolls and
+   * the sticky category bar covers its top, so the first panel the bar's
+   * filter shows is brought up to just below the bar, as MobilePanelNav does.
    */
   private showPanelsFromTop(): void {
     const grid = document.getElementById('panelsGrid');
     if (!grid) return;
     grid.scrollTop = 0;
-    const first = grid.querySelector<HTMLElement>(':scope > .panel:not(.hidden)');
-    if (first && first.getBoundingClientRect().top < 0) first.scrollIntoView({ block: 'start' });
+    const first = grid.querySelector<HTMLElement>(':scope > [data-panel]:not(.hidden):not(.mobile-cat-hidden)');
+    if (!first) return;
+    const bar = document.querySelector<HTMLElement>('.mobile-panel-nav');
+    const scroller = bar?.parentElement;
+    if (!bar || !scroller) {
+      if (first.getBoundingClientRect().top < 0) first.scrollIntoView({ block: 'start' });
+      return;
+    }
+    const target = scroller.scrollTop + first.getBoundingClientRect().top
+      - scroller.getBoundingClientRect().top - bar.getBoundingClientRect().height;
+    if (scroller.scrollTop > target) scroller.scrollTop = Math.max(0, target);
   }
 
   private resetMissionPreset(): void {

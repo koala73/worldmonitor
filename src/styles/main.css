@@ -7481,9 +7481,11 @@ body.playback-mode .status-dot {
   display: flex;
   flex-direction: column;
   align-items: center;
-  cursor: pointer;
   z-index: 54;
   transition: opacity 0.2s ease, transform 0.2s ease;
+  /* Only the icon takes taps. A labelled marker sits above its neighbours, so
+     its text rows would otherwise catch taps meant for the icons beneath. */
+  pointer-events: none;
 }
 
 /* The one marker in a crowd whose text is shown paints above its neighbours' icons. */
@@ -7504,12 +7506,16 @@ body.playback-mode .status-dot {
 .nat-event-icon {
   font-size: calc(20px * var(--wm-panel-effective-scale, 1));
   filter: drop-shadow(0 0 4px var(--shadow-color));
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 .nat-event-label {
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
   color: var(--accent);
   text-shadow: 0 0 4px var(--bg), 0 0 8px var(--bg);
+  /* Map.ts sizes the declutter boxes for this font, so it ignores the body-font setting. */
+  font-family: var(--font-mono);
   font-weight: bold;
   white-space: nowrap;
   margin-top: 2px;
@@ -7519,6 +7525,7 @@ body.playback-mode .status-dot {
 }
 
 .nat-event-magnitude {
+  font-family: var(--font-mono);
   font-size: calc(7px * var(--wm-panel-effective-scale, 1));
   color: var(--yellow-text, var(--yellow));
   text-shadow: 0 0 4px var(--bg);

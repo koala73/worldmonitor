@@ -9,6 +9,7 @@ vi.mock('@/config/orbital-watch-flag', () => ({ ORBITAL_WATCH_ENABLED: true }));
 
 import type { AppContext } from '@/app/app-context';
 import { CountryIntelManager } from '@/app/country-intel';
+import { CountryDeepDivePanel } from '@/components/CountryDeepDivePanel';
 import { dismissMapContextMenu } from '@/components/MapContextMenu';
 import { installLongPressContextMenu } from '@/utils/long-press';
 
@@ -92,6 +93,40 @@ describe('a country brief opened from the map', () => {
     menu({ lat: 61, lon: 99, screenX: 10, screenY: 10, countryCode: 'RU', countryName: 'Russia' });
     menuItem('Open Country Brief')!.click();
     expect(focusedAtOpen).toEqual([container]);
+  });
+});
+
+// The real brief: it captures its return target when it opens, and a map click
+// on the visible brief's country reloads it in place rather than reopening it.
+describe('closing a country brief with Escape', () => {
+  afterEach(() => document.getElementById('country-deep-dive-panel')?.remove());
+  const pressEscape = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  function setup() {
+    const search = document.createElement('button');
+    search.textContent = 'Search';
+    const map = document.createElement('div');
+    map.tabIndex = -1;
+    document.body.append(search, map);
+    return { search, map, panel: new CountryDeepDivePanel() };
+  }
+
+  it('returns focus to the control that opened it', () => {
+    const { map, panel } = setup();
+    map.focus();
+    panel.show('Russia', 'RU', null, null);
+    pressEscape();
+    expect(panel.isVisible()).toBe(false);
+    expect(document.activeElement).toBe(map);
+  });
+
+  it('returns focus to the map after a map click reloads the open brief', () => {
+    const { search, map, panel } = setup();
+    search.focus();
+    panel.show('Russia', 'RU', null, null);
+    map.focus();
+    panel.show('Russia', 'RU', null, null);
+    pressEscape();
+    expect(document.activeElement).toBe(map);
   });
 });
 
