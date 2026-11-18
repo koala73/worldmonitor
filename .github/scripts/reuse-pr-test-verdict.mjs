@@ -102,11 +102,11 @@ function githubApi(token) {
 }
 
 // The step entry point. Writes only the overrides; an error anywhere leaves none.
-export async function main({ env = process.env, api = githubApi(env.GH_TOKEN) } = {}) {
+export async function main({ env = process.env, api = githubApi(env.GH_TOKEN), now = Date.now() } = {}) {
   const { GITHUB_REPOSITORY, GITHUB_SHA, BEFORE, FILES_JSON, GITHUB_OUTPUT, GITHUB_STEP_SUMMARY } = env;
   let decision;
   try {
-    decision = await decideReuse({ api, repo: GITHUB_REPOSITORY, sha: GITHUB_SHA, before: BEFORE, files: JSON.parse(FILES_JSON || '[]') });
+    decision = await decideReuse({ api, repo: GITHUB_REPOSITORY, sha: GITHUB_SHA, before: BEFORE, files: JSON.parse(FILES_JSON || '[]'), now });
   } catch (error) {
     decision = { reuse: {}, reason: `lookup failed, running every selected job: ${error.message}` };
   }

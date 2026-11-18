@@ -154,7 +154,9 @@ describe('step entry point', () => {
     try {
       writeFileSync(join(dir, 'out'), '');
       writeFileSync(join(dir, 'summary'), '');
-      await main({ env: { GITHUB_REPOSITORY: 'o/r', GITHUB_SHA: 'S', BEFORE: 'P', GITHUB_OUTPUT: join(dir, 'out'), GITHUB_STEP_SUMMARY: join(dir, 'summary'), ...env }, api });
+      // Pin the clock: the fixture run is dated, and the real clock made this
+      // case fail once that run aged past the 24 h reuse window.
+      await main({ env: { GITHUB_REPOSITORY: 'o/r', GITHUB_SHA: 'S', BEFORE: 'P', GITHUB_OUTPUT: join(dir, 'out'), GITHUB_STEP_SUMMARY: join(dir, 'summary'), ...env }, api, now: NOW });
       return { out: readFileSync(join(dir, 'out'), 'utf8'), summary: readFileSync(join(dir, 'summary'), 'utf8') };
     } finally {
       rmSync(dir, { recursive: true, force: true });
