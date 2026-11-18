@@ -19,6 +19,9 @@
  * evict copies already in shared caches. See the purge note in
  * server/worldmonitor/news/v1/_lastgood.ts.
  *
+ * Each instance keeps a successful read for REVOCATION_MEMO_TTL_MS, so a new
+ * SADD reaches every serving path within that many seconds.
+ *
  * Matching is exact string equality on `item.link`; normalize the URL the way
  * the feed emits it (scheme, trailing slash, and query string all count).
  */
@@ -29,7 +32,8 @@ export const REVOKED_URLS_KEY = 'news:digest:revoked-urls:v1';
 
 /** Result of reading the revocation set: an empty set is not a failed read. */
 export interface RevocationRead {
-  urls: Set<string>;
+  /** Shared between callers on this instance: never mutate it. */
+  urls: ReadonlySet<string>;
   /** False when the set could not be read at all — suppression is fail-open but not silent. */
   readable: boolean;
 }
@@ -75,6 +79,44 @@ export async function readRevokedUrlSet(): Promise<RevocationRead> {
   if (!isRedisConfigured()) {
     return { urls: new Set(), readable: true };
   }
+  if (memo && memo.expiresAt > Date.now()) return memo.read;
+  if (!pendingRead) {
+    const generation = memoGeneration;
+    const read = readFromRedis().then((result) => {
+      // A failed read is not kept: the next request retries rather than
+      // failing closed for the whole window. A read that outlived a reset
+      // is not kept either.
+      if (result.readable && generation === memoGeneration) {
+        memo = { read: result, expiresAt: Date.now() + REVOCATION_MEMO_TTL_MS };
+      }
+      return result;
+    }).finally(() => {
+      if (pendingRead === read) pendingRead = null;
+    });
+    pendingRead = read;
+  }
+  return pendingRead;
+}
+
+/**
+ * How long one instance reuses a successful read. Every news serving path
+ * reads this set (about 8.3M SMEMBERS a week, nearly all from
+ * list-source-items), while operators SADD to it rarely.
+ */
+export const REVOCATION_MEMO_TTL_MS = 10_000;
+
+let memo: { read: RevocationRead; expiresAt: number } | null = null;
+// Concurrent callers on one instance share a single SMEMBERS.
+let pendingRead: Promise<RevocationRead> | null = null;
+let memoGeneration = 0;
+
+export function __resetRevocationMemoForTest(): void {
+  memo = null;
+  pendingRead = null;
+  memoGeneration += 1;
+}
+
+async function readFromRedis(): Promise<RevocationRead> {
   try {
     const results = await runRedisPipeline([['SMEMBERS', REVOKED_URLS_KEY]]);
     const entry = results[0];

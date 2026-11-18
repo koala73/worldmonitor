@@ -10,8 +10,11 @@ import { VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds';
 import { __testing__ as digest } from '../server/worldmonitor/news/v1/list-feed-digest';
 import { __testing__ as claimPool, searchClaimPool } from '../server/worldmonitor/news/v1/search-claim-headlines';
 import { rssFeedCacheKey } from '../server/worldmonitor/news/v1/_rss-cache';
-import { REVOKED_URLS_KEY } from '../server/_shared/digest-revocations';
+import { REVOKED_URLS_KEY, __resetRevocationMemoForTest } from '../server/_shared/digest-revocations';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
+
+// Each test sets its own revocations; drop the previous test's memoized read.
+beforeEach(__resetRevocationMemoForTest);
 
 const gn = (q: string) => `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
 const NATIVE_URL = 'https://www.aljazeera.com/xml/rss/all.xml';

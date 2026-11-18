@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { before, describe, it } from 'node:test';
+import { before, beforeEach, describe, it } from 'node:test';
 import nodePath, { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
@@ -298,7 +298,7 @@ describe('durable last-good wiring (#7084)', () => {
     ].join('\n');
     const result = await build({
       stdin: {
-        contents: "export * from './server/worldmonitor/news/v1/list-feed-digest.ts'; export { createNewsServiceRoutes } from './src/generated/server/worldmonitor/news/v1/service_server.ts';",
+        contents: "export * from './server/worldmonitor/news/v1/list-feed-digest.ts'; export { createNewsServiceRoutes } from './src/generated/server/worldmonitor/news/v1/service_server.ts'; export { __resetRevocationMemoForTest } from './server/_shared/digest-revocations.ts';",
         loader: 'ts',
         resolveDir: root,
         sourcefile: 'digest-lastgood-test-entry.ts',
@@ -349,6 +349,9 @@ describe('durable last-good wiring (#7084)', () => {
     assert.ok(source, 'esbuild must emit the digest harness');
     mod = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
   });
+
+  // Each test sets its own revocations; drop the previous test's memoized read.
+  beforeEach(() => mod.__resetRevocationMemoForTest());
 
   const reset = () => {
     stub.reads.clear();

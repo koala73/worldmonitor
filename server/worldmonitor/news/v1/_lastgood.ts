@@ -88,9 +88,11 @@ export function attemptMetaKey(variant: string, lang: string): string {
  * OPERATOR RUNBOOK — revoking a URL:
  *   1. SADD news:digest:revoked-urls:v1 <url>
  *      Suppression happens on read, so this alone removes the item from every
- *      Redis-served path immediately: fresh build, digest cache hit, durable
+ *      Redis-served path within REVOCATION_MEMO_TTL_MS (10 s), the time each
+ *      instance reuses its last read: fresh build, digest cache hit, durable
  *      snapshot, and warm-isolate replay.
- *   2. PURGE THE CDN for /api/news/v1/list-feed-digest.
+ *   2. Wait those 10 s, then PURGE THE CDN for /api/news/v1/list-feed-digest.
+ *      An earlier purge can be refilled by an instance still holding the old set.
  *      The endpoint is the gateway's `slow` tier (s-maxage=1800,
  *      CDN-Cache-Control s-maxage=3600), so copies already in shared caches
  *      survive step 1. Once a revocation is live the handler stops feeding
