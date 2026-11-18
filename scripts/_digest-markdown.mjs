@@ -12,6 +12,11 @@
 
 // ── HTML escape (email: " encoded too for attribute safety) ──────────────────
 
+// A section label at the start of a line ("Assessment:", "評価：", "التقييم:").
+// Cased scripts: a capitalised phrase. Scripts without capitals: a short run
+// of letters, so a sentence with a colon in it is not taken for a label.
+const SECTION_LABEL = String.raw`\p{Lu}[\p{L}\p{M} ]+|\p{Lo}[\p{Lo}\p{M} ]{0,15}`;
+
 export function escapeHtml(str) {
   return String(str)
     .replace(/&/g, '&amp;')
@@ -32,7 +37,7 @@ export function renderEmailInline(text) {
   out = out.replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '<em>$1</em>');
   // Section header (label at start of the block, e.g. "Assessment:", "Signals to watch:")
   out = out.replace(
-    /^(\p{Lu}[\p{L}\p{M} ]+)[:：] */u,
+    new RegExp(`^(${SECTION_LABEL})[:：] *`, 'u'),
     '<strong style="color:#4ade80;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">$1:</strong> ',
   );
   return out;
@@ -99,7 +104,7 @@ export function markdownToTelegramHtml(md) {
   // Italic: *text* (single asterisk, not part of bold)
   html = html.replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '<i>$1</i>');
   // Section headers: Assessment: / Signals to watch:
-  html = html.replace(/^(\p{Lu}[\p{L}\p{M} ]+)[:：] */gmu, '<b>$1:</b> ');
+  html = html.replace(new RegExp(`^(${SECTION_LABEL})[:：] *`, 'gmu'), '<b>$1:</b> ');
   return html;
 }
 
@@ -126,7 +131,7 @@ export function markdownToSlackMrkdwn(md) {
   // Restore bold markers
   txt = txt.replace(/\u0001/g, '*');
   // Section headers → *bold*
-  txt = txt.replace(/^(\p{Lu}[\p{L}\p{M} ]+)[:：] */gmu, '*$1:* ');
+  txt = txt.replace(new RegExp(`^(${SECTION_LABEL})[:：] *`, 'gmu'), '*$1:* ');
   return txt;
 }
 
@@ -145,7 +150,7 @@ export function escapeDiscordText(str) {
 export function markdownToDiscord(md) {
   let txt = escapeDiscordText(md);
   txt = txt.replace(/^\*\s+/gm, '- ');
-  txt = txt.replace(/^(\p{Lu}[\p{L}\p{M} ]+)[:：] */gmu, '**$1:** ');
+  txt = txt.replace(new RegExp(`^(${SECTION_LABEL})[:：] *`, 'gmu'), '**$1:** ');
   return txt;
 }
 
