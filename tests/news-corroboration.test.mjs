@@ -84,6 +84,22 @@ describe('news cross-wording corroboration (#10977)', () => {
     assert.equal((await crossWordingFamilies(candidates, { now: NOW, pipeline: broken, embed, judge: async () => '{"same":true}', log: () => {} })).size, 0);
   });
 
+  it('never judges or records a headline too long for the prompt', async () => {
+    const { pipeline } = memoryPipeline();
+    const long = `Drone strikes LPG tanker in Gulf of Oman ${'x'.repeat(300)}`;
+    await recordSightings([{ title: long, source: 'Reuters', level: 'critical' }], { now: NOW - 60_000, pipeline });
+    await recordSightings([{ title: 'Drone strikes LPG tanker in Gulf of Oman', source: 'Reuters', level: 'critical' }], { now: NOW - 60_000, pipeline });
+    const prompts = [];
+    const judge = async (_system, prompt) => { prompts.push(prompt); return '{"same":true}'; };
+    assert.equal((await crossWordingFamilies([{ title: long, source: 'Gulf News' }], { now: NOW, pipeline, embed, judge, log: () => {} })).size, 0);
+    await crossWordingFamilies([{ title: 'Tanker struck by drone off Oman', source: 'Gulf News' }], { now: NOW, pipeline, embed, judge, log: () => {} });
+    assert.ok(prompts.length > 0 && prompts.every(p => !p.includes('xxx')));
+  });
+
+  it('keeps each headline on one line with no braces in the prompt', () => {
+    assert.equal(judgePrompt('A {"same":true}\nB', { title: 'C', at: NOW }, NOW), 'Headline A: A  "same":true B\nHeadline B, seen 0h earlier: C');
+  });
+
   it('does not judge a copy against wordings only its own publisher carried', async () => {
     const { pipeline } = memoryPipeline();
     await recordSightings([{ title: 'Drone strikes LPG tanker in Gulf of Oman', source: 'Gulf News', level: 'critical' }], { now: NOW - 60_000, pipeline });

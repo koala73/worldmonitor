@@ -17,6 +17,10 @@ const SIGHTINGS_LIMIT = 1_000;
 export const RETRIEVAL_MIN = 0.6;
 export const JUDGE_CANDIDATES = 5;
 const MAX_TITLE_CHARS = 300;
+// Feed text is untrusted: one line and no braces, so a headline cannot spell the reply.
+const promptTitle = title => title.replace(/[\r\n{}]+/g, ' ');
+// A title too long for the prompt is never judged or recorded, rather than judged on a prefix.
+const fits = title => typeof title === 'string' && title.length > 0 && title.length <= MAX_TITLE_CHARS;
 const JUDGE_TIMEOUT_MS = 6_000;
 export const CHECK_DEADLINE_MS = 10_000;
 
@@ -29,8 +33,8 @@ export function familyOf(source) {
 /** Records the critical and high headlines this batch labelled. */
 export async function recordSightings(sightings, { now = Date.now(), pipeline = defaultRedisPipeline } = {}) {
   const members = sightings
-    .filter(s => typeof s.title === 'string' && s.title && familyOf(s.source))
-    .flatMap(s => [String(now), JSON.stringify({ title: s.title.slice(0, MAX_TITLE_CHARS), family: familyOf(s.source), level: s.level })]);
+    .filter(s => fits(s.title) && familyOf(s.source))
+    .flatMap(s => [String(now), JSON.stringify({ title: s.title, family: familyOf(s.source), level: s.level })]);
   if (!members.length) return;
   await pipeline([
     ['ZADD', SIGHTINGS_KEY, ...members],
@@ -52,7 +56,7 @@ Reply with JSON only: {"same":true} or {"same":false}.`;
 // earlier attacks on the same ship.
 export function judgePrompt(title, candidate, now = Date.now()) {
   const hours = Math.max(0, Math.round((now - candidate.at) / 3_600_000));
-  return `Headline A: ${title}\nHeadline B, seen ${hours}h earlier: ${candidate.title}`;
+  return `Headline A: ${promptTitle(title)}\nHeadline B, seen ${hours}h earlier: ${promptTitle(candidate.title)}`;
 }
 
 /** true or false, or null when the reply is unreadable. */
@@ -93,6 +97,7 @@ async function readSightings(now, pipeline) {
 }
 
 async function match(candidate, sightings, { now, embed, judge }) {
+  if (!fits(candidate.title)) return null;
   const own = familyOf(candidate.source);
   const key = normalizeForEmbedding(candidate.title);
   // One copy per wording: the judge sees each wording once.
@@ -114,8 +119,7 @@ async function match(candidate, sightings, { now, embed, judge }) {
     .sort((a, b) => b.score - a.score)
     .slice(0, JUDGE_CANDIDATES);
   if (!shortlist.length) return null;
-  const title = candidate.title.slice(0, MAX_TITLE_CHARS);
-  const verdicts = await Promise.all(shortlist.map(w => judge(JUDGE_SYSTEM_PROMPT, judgePrompt(title, w, now)).then(parseJudgeVerdict)));
+  const verdicts = await Promise.all(shortlist.map(w => judge(JUDGE_SYSTEM_PROMPT, judgePrompt(candidate.title, w, now)).then(parseJudgeVerdict)));
   if (verdicts.includes(null)) throw new Error('unreadable verdict');
   const matched = shortlist.filter((_, i) => verdicts[i]);
   const families = new Set([own, ...matched.flatMap(w => [...w.families])].filter(Boolean));
