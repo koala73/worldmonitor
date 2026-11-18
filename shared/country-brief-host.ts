@@ -79,7 +79,7 @@ export const COUNTRY_READERS = {
   factors: { path: '/api/scorecard/v1/get-five-factor-scorecard', args: z.object({ countryCode: z.string().regex(/^[A-Z]{2}$/) }).strict() },
   debt: { path: '/api/economic/v1/get-national-debt', args: z.object({  }).strict() },
   flows: { path: '/api/trade/v1/list-comtrade-flows', args: z.object({ reporter_code: z.string().regex(/^\d{1,3}$/), cmd_code: z.string().regex(/^\d{0,6}$/).default(''), anomalies_only: z.enum(['true', 'false']).default('false') }).strict() },
-  monthlyTrade: { path: '/api/trade/v1/get-monthly-sitc-trade', args: z.object({ country: z.literal('MY').default('MY'), months: z.coerce.number().int().min(1).max(480).default(60) }).strict() },
+  monthlyTrade: { path: '/api/trade/v1/get-monthly-sitc-trade', args: z.object({ country: z.literal('MY').default('MY'), months: z.coerce.number().int().min(1).max(240).default(60) }).strict() },
   tariffs: { path: '/api/trade/v1/get-tariff-trends', args: z.object({ reporting_country: z.string().regex(/^\d{1,3}$/), product_sector: z.string().max(20).default(''), years: z.coerce.number().int().min(1).max(10).default(10), partner_country: z.string().regex(/^\d{0,3}$/).default('') }).strict() },
   products: { path: '/api/supply-chain/v1/get-country-products', args: z.object({ iso2: z.string().regex(/^[A-Z]{2}$/), hs4: z.string().regex(/^\d{4}$/).optional() }).strict() },
   commodities: { path: '/api/supply-chain/v1/get-country-vulnerabilities', args: z.object({ iso2: z.string().regex(/^[A-Z]{2}$/) }).strict() },
