@@ -61,14 +61,6 @@ export const MODEL_CONFIGS: ModelConfig[] = [
   },
 ];
 
-export const ML_FEATURE_FLAGS = {
-  semanticClustering: true,
-  mlSentiment: true,
-  summarization: true,
-  mlNER: true,
-  insightsPanel: true,
-};
-
 export const ML_THRESHOLDS = {
   semanticClusterThreshold: 0.75,
   minClustersForML: 5,
