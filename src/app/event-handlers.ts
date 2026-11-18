@@ -1647,8 +1647,8 @@ export class EventHandlerManager implements AppModule {
         this.urlStateSyncReady = true;
       });
     } else {
-      this.urlStateSyncReady = true;
       this.debouncedUrlSync();
+      this.urlStateSyncReady = true;
     }
   }
 
