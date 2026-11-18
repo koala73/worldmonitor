@@ -5698,7 +5698,16 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // #10978: fresh items the digest's category cap kept off the dashboard can
   // still alert. The digest build writes them beside the served body.
   const alertPool = staleReplay ? null : await upstashGet(`news:alert-pool:v1:${variant}`);
-  const allTitles = buildClassifyCandidateMap(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS, undefined, alertPool?.items);
+  // The served digest drops operator-revoked URLs when it is read; the pool
+  // comes straight from Redis, so check it here. An unreadable set skips it.
+  let poolItems = [];
+  if (Array.isArray(alertPool?.items) && alertPool.items.length > 0) {
+    const revoked = await upstashPipeline([['SMEMBERS', 'news:digest:revoked-urls:v1']]);
+    const urls = Array.isArray(revoked?.[0]?.result) ? new Set(revoked[0].result) : null;
+    if (urls) poolItems = alertPool.items.filter((item) => typeof item?.link !== 'string' || !urls.has(item.link));
+    else console.warn(`[Classify] revocation set unreadable — skipping the alert pool for ${variant}`);
+  }
+  const allTitles = buildClassifyCandidateMap(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS, undefined, poolItems);
   // The build this pass read, returned so the caller can record it once the
   // pass has finished. A stale replay or an unavailable digest is not a build:
   // the next real one must still trigger the watch.

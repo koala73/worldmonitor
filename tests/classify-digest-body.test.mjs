@@ -11,7 +11,7 @@ const source = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url)
 const start = source.indexOf('async function seedClassifyForVariant');
 const end = source.indexOf('\nasync function seedClassify()', start);
 
-function loadVariant(url, observedErrors, { timeoutMs, digests = [] } = {}) {
+function loadVariant(url, observedErrors, { timeoutMs, digests = [], pools = [], upstashGet = async () => null, upstashPipeline = async () => null } = {}) {
   const transport = { get(url, options, callback) {
     return http.get(url, { ...options, ...(timeoutMs ? { timeout: timeoutMs } : {}) }, response => {
       // Observe the transport error without letting the old reader crash the test process.
@@ -28,8 +28,8 @@ function loadVariant(url, observedErrors, { timeoutMs, digests = [] } = {}) {
     AbortSignal, setTimeout, clearTimeout,
     isStaleDigestReplay: () => false,
     xNewsAccounts: { collectXAlertCandidates: () => [] }, xState: { items: [] },
-    upstashGet: async () => null,
-    RELAY_SOURCE_TIERS: {}, buildClassifyCandidateMap: digest => { digests.push(digest); return new Map(); },
+    upstashGet, upstashPipeline,
+    RELAY_SOURCE_TIERS: {}, buildClassifyCandidateMap: (digest, _x, _v, _n, _r, _f, pool) => { digests.push(digest); pools.push(pool); return new Map(); },
   });
   vm.runInContext(source.slice(start, end), context);
   return context.seedClassifyForVariant;
@@ -72,6 +72,22 @@ test('a truncated digest body settles as failure and a later invocation can succ
   assert.equal(next.total, 0);
   assert.equal(requests, 2);
   assert.equal(digests[0].title, 'Montréal');
+});
+
+test('the alert pool drops operator-revoked URLs and is skipped when the set is unreadable (#10978)', async t => {
+  const server = http.createServer((_req, response) => response.end('{"categories":{}}'));
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const url = `http://127.0.0.1:${server.address().port}/digest`;
+  const pool = { items: [{ title: 'kept', link: 'https://example.com/a' }, { title: 'revoked', link: 'https://example.com/revoked' }] };
+  const pools = [];
+  const readable = loadVariant(url, [], { pools, upstashGet: async () => pool, upstashPipeline: async () => [{ result: ['https://example.com/revoked'] }] });
+  await bounded(readable('full', new Set()));
+  assert.deepEqual(Array.from(pools[0], item => item.title), ['kept']);
+  const unreadable = loadVariant(url, [], { pools, upstashGet: async () => pool, upstashPipeline: async () => null });
+  await bounded(unreadable('full', new Set()));
+  assert.equal(pools[1].length, 0);
 });
 
 test('an idle body settles when the existing request timeout destroys the stream', async t => {

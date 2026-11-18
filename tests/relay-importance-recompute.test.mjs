@@ -31,7 +31,7 @@ describe('ais-relay importanceScore publish path', () => {
   it('carries corroborationCount into allTitles', () => {
     assert.match(
       relaySrc,
-      /buildClassifyCandidateMap\(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS, undefined, alertPool\?\.items\)/,
+      /buildClassifyCandidateMap\(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS, undefined, poolItems\)/,
       'the relay must build allTitles through the executable candidate helper',
     );
     assert.match(
