@@ -85,3 +85,18 @@ it('ships a precompiled HarfBuzz callback module for every addFunction signature
   assert.ok(used.length >= 19, `expected the hbjs addFunction calls, found ${used.length}`);
   for (const key of used) assert.ok(shipped.has(key), `no precompiled HarfBuzz callback module for ${key}`);
 });
+
+it('instantiates every shipped HarfBuzz callback module without runtime Wasm compilation', async () => {
+  const { readdir } = await import('node:fs/promises');
+  const vm = new EdgeVM({ codeGeneration: { strings: false, wasm: false } });
+  const files = (await readdir(join(packageDir, 'dist'))).filter(name => /^harfbuzz-fn-[a-z]+\.wasm$/.test(name));
+  assert.ok(files.length > 0);
+  for (const name of files) {
+    const module = new WebAssembly.Module(await readFile(join(packageDir, 'dist', name)));
+    assert.deepEqual(WebAssembly.Module.imports(module), [{ module: 'e', name: 'f', kind: 'function' }], name);
+    assert.deepEqual(WebAssembly.Module.exports(module), [{ name: 'f', kind: 'function' }], name);
+    vm.context.__callbackModule = module;
+    const result = vm.evaluate('typeof new WebAssembly.Instance(__callbackModule, { e: { f() { return 0; } } }).exports.f');
+    assert.equal(result, 'function', name);
+  }
+});
