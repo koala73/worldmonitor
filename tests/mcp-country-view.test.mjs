@@ -330,6 +330,21 @@ describe('country view MCP boundary', () => {
     assert.equal(response.status, 403); assert.equal(body.error.data.code, 'subscription_lapsed');
     assert.ok(requests.length >= 1 && requests.length <= 3); assert.ok(requests.every(request => request.init.signal.aborted));
   });
+  it('serves Malaysia monthly SITC trade through the existing section tool, signed and Malaysia-only', async () => {
+    const { body } = await invoke('get_country_brief_section', { section: 'monthlyTrade', arguments: { months: 12 } });
+    assert.equal(body.result.structuredContent.state, 'ready');
+    const url = new URL(requests[0].url);
+    assert.equal(url.pathname, '/api/trade/v1/get-monthly-sitc-trade');
+    assert.equal(url.searchParams.get('country'), 'MY');
+    assert.equal(url.searchParams.get('months'), '12');
+    assert.equal(requests[0].init.headers['X-WM-MCP-User-Id'], PRO_USER_ID);
+    // The DOSM source covers Malaysia only; another reporter or an out-of-range
+    // window is refused before any request leaves the server.
+    for (const args of [{ country: 'SG' }, { months: 481 }, { months: 0 }]) {
+      assert.equal((await invoke('get_country_brief_section', { section: 'monthlyTrade', arguments: args })).body.error.code, -32602, JSON.stringify(args));
+    }
+    assert.equal(requests.length, 1);
+  });
   it('keeps unrelated section projection shape unchanged', async () => {
     const { body } = await invoke('get_country_brief_section', { section: 'facts', arguments: { country_code: 'US' }, jmespath: 'value.countryCode' });
     assert.deepEqual(body.result.structuredContent, { projection: 'US' });
