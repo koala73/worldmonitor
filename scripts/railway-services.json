@@ -1846,7 +1846,6 @@
     "entry": "scripts/seed-comtrade-bilateral-hs4-ext.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-comtrade-bilateral-hs4-ext",
-    "lifecycle": "planned",
     "requiredEnv": [
       "COMTRADE_API_KEYS"
     ],
