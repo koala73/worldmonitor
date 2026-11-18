@@ -163,18 +163,18 @@ test('digest sightings retain trusted families under the delivery headline acros
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.invalid';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
   process.env.VERCEL_ENV = 'production';
-  const write = (edition, at, ...items) => digest.recordPublisherCoverage(items, items, edition, at, Infinity);
+  const write = (at, ...items) => digest.recordPublisherCoverage(items, items, at, Infinity);
   const first = { title: CNN, source: 'CNN World', originPublisherTrusted: false };
   const later = { title: EGYPT_INDEPENDENT, source: 'Egypt Independent' };
-  await write('full', start, first, { ...first, originPublisher: 'Forged source' });
-  await write('full', start + 3_600_000, later, { ...later, source: 'Google News', originPublisher: later.source, originPublisherTrusted: true });
-  await write('full', start, later); // an earlier build finishing late
-  await write('tech', start, { ...later, source: 'Another feed' });
-  await write('full', start, { ...later, title: SUN_ONLINE, source: 'Another feed' });
+  await write(start, first, { ...first, originPublisher: 'Forged source' });
+  await write(start + 3_600_000, later, { ...later, source: 'Google News', originPublisher: later.source, originPublisherTrusted: true });
+  await write(start, later); // an earlier build finishing late
+  await write(start, { ...later, source: 'Another feed' }); // another edition's build counts too (#10977)
+  await write(start, { ...later, title: SUN_ONLINE, source: 'Other headline feed' });
   const event = { eventType: 'rss_alert', variant: 'full', payload: { title: CNN, corroborationCount: 1 } };
   const read = (now, transport = async commands => commands.map(apply)) => refreshPublisherCounts([event], now, transport);
   await read(start + 4_000_000);
-  assert.equal(event.observedPublisherCount, 2);
+  assert.equal(event.observedPublisherCount, 3);
   assert.equal(event.payload.corroborationCount, 1);
   // One family left in the window is no more than the producer counted, so
   // the event keeps rendering its own count.
@@ -204,7 +204,7 @@ test('coverage writes key only served headlines, two commands each, with familie
   const served = { title: CNN, source: 'CNN World' };
   const belowCapRepeat = { title: EGYPT_INDEPENDENT, source: 'Egypt Independent' };
   const belowCapOnly = { title: SUN_ONLINE, source: 'SunOnline International' };
-  await digest.recordPublisherCoverage([served, belowCapRepeat, belowCapOnly], [served], 'full', Date.now(), Infinity);
+  await digest.recordPublisherCoverage([served, belowCapRepeat, belowCapOnly], [served], Date.now(), Infinity);
   const commands = batches.flat().filter((cmd) => cmd[0] !== 'MULTI' && cmd[0] !== 'EXEC');
   assert.deepEqual(commands.map((cmd) => cmd[0]), ['ZADD', 'EXPIRE']);
   const [, , gt, ...scored] = commands[0];

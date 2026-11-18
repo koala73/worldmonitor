@@ -87,7 +87,7 @@ const {
   xPostBudgetServiceStatus,
 } = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
-const { newsStoryKey, newsStoryKeyLoadError, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
+const { newsStoryKey, newsStoryKeyLoadError, newsPublisherCoverageKey, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
 if (newsStoryKeyLoadError()) {
   // Alerts still publish, on the exact-title identity; a repeated headline can alert twice.
   console.warn('[Notify] News story key unavailable, falling back to exact-title dedup:', newsStoryKeyLoadError().message);
@@ -5220,6 +5220,17 @@ function relayEntityCorroborationScore(count) {
 // exercised in tests/importance-score-parity.test.mjs "unknown severity" case.
 // Caller responsibility: pass defined values; relay publish site defaults
 // corroborationCount → 1 and publishedAt → Date.now() when upstream omits them.
+// Publisher families the digest saw carry this headline in the last day, over
+// every build and edition (#10977). 0 when unknown.
+async function readObservedPublisherCount(title) {
+  const key = newsPublisherCoverageKey(title);
+  if (!key) return 0;
+  const now = Date.now();
+  const rows = await upstashPipeline([['ZRANGEBYSCORE', key, `(${now - NEWS_STORY_DEDUP_TTL_SECONDS * 1000}`, now]]);
+  const families = rows?.[0]?.result;
+  return Array.isArray(families) ? families.length : 0;
+}
+
 function relayComputeImportanceScore(level, source, corroborationCount, publishedAt, context = {}) {
   const tier = relayGetSourceTier(source);
   const tierScore = tier === 1 ? 100 : tier === 2 ? 75 : tier === 3 ? 50 : 25;
@@ -5799,10 +5810,16 @@ async function seedClassifyForVariant(variant, seenTitles) {
         // Recompute importanceScore from the post-LLM level. Publishing the
         // digest's pre-LLM keyword-based score would leak a stale value —
         // see docs/internal/scoringDiagnostic.md §2.
+        // This build counts every wording; the history counts this headline
+        // across builds and editions. Neither contains the other.
+        const corroborationCount = Math.max(
+          meta.corroborationCount ?? 1,
+          meta.fromX ? 0 : await readObservedPublisherCount(chunk[idx]),
+        );
         const importanceScore = relayComputeImportanceScore(
           level,
           meta.source,
-          meta.corroborationCount ?? 1,
+          corroborationCount,
           meta.publishedAt ?? Date.now(),
           {
             title: chunk[idx],
@@ -5834,7 +5851,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
             link: meta.link,
             publishedAt: meta.publishedAt,
             importanceScore,
-            corroborationCount: meta.corroborationCount ?? 1,
+            corroborationCount,
             // Read by API webhook subscribers (news.breaking scope). Plural on
             // purpose: the relay scopes rules on payload.countryCode and keeps
             // rss_alert permissive-unattributed, so a singular field here would

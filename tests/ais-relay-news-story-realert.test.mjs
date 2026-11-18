@@ -16,6 +16,7 @@ import { once } from 'node:events';
 import http from 'node:http';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { newsPublisherCoverageKey } from '../scripts/shared/story-identity.js';
 
 const relayScript = fileURLToPath(new URL('../scripts/ais-relay.cjs', import.meta.url));
 const EVENT_QUEUE = 'wm:events:queue';
@@ -64,10 +65,12 @@ async function startUpstash(t) {
   const store = new Map();
   const queued = [];
   const apiFanout = [];
-  const state = { failLpush: false, failLpushCount: 0, failSetNx: false, truncateDel: false, failDel: false };
+  // `coverage` maps a publisher-coverage key to its publisher families.
+  const state = { failLpush: false, failLpushCount: 0, failSetNx: false, truncateDel: false, failDel: false, coverage: new Map() };
   const run = (command) => {
     const [name, key, value, ...rest] = command;
     if (name === 'GET') return store.has(key) ? store.get(key).value : null;
+    if (name === 'ZRANGEBYSCORE') return state.coverage.get(key) ?? [];
     if (name === 'SET') {
       if (rest.includes('NX') && state.failSetNx) return 'ERR simulated outage';
       if (rest.includes('NX') && store.has(key)) return null;
@@ -264,6 +267,17 @@ test('a critical sighting scored below the delivery bar does not use up the stor
   assert.deepEqual(titles(alerts), [AGGREGATED_TITLE, DIRECT_TITLE], output());
   assert.ok(alerts[0].payload.importanceScore < 82, `first sighting scored ${alerts[0].payload.importanceScore}`);
   assert.ok(alerts[1].payload.importanceScore >= 82, `second sighting scored ${alerts[1].payload.importanceScore}`);
+});
+
+test('publishers seen carrying the headline in earlier builds and other editions count toward its score', async (t) => {
+  const { upstash, cycle, output } = await startRelay(t);
+  // #10977: five publisher families in the digest's coverage history lift a
+  // lone tier-4 critical copy from 73 over the realtime bar.
+  upstash.state.coverage.set(newsPublisherCoverageKey(AGGREGATED_TITLE), ['a', 'b', 'c', 'd', 'e']);
+  await cycle([{ title: AGGREGATED_TITLE, source: 'An Unlisted Aggregator' }]);
+  const [alert] = upstash.alerts();
+  assert.equal(alert?.payload.corroborationCount, 5, output());
+  assert.ok(alert.payload.importanceScore >= 82, `scored ${alert.payload.importanceScore}`);
 });
 
 test('the story key stays out of the queued event', async (t) => {

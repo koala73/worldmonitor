@@ -2719,7 +2719,7 @@ export async function listFeedDigest(
 // Two commands per key, so 400 keys stay under Upstash's 1,000-command cap.
 const PUBLISHER_COVERAGE_BATCH_KEYS = 400;
 
-// Each exact headline owns one sorted set. GT keeps a slower build from
+// Each exact headline owns one sorted set, shared by every edition. GT keeps a slower build from
 // moving a family's last observation backwards; retries replace the same member.
 //
 // Only served headlines get a key: the relay alerts on the digest response, so
@@ -2730,17 +2730,16 @@ const PUBLISHER_COVERAGE_BATCH_KEYS = 400;
 async function recordPublisherCoverage(
   items: readonly ParsedItem[],
   servedItems: readonly ParsedItem[],
-  variant: string,
   observedAt: number,
   deadlineAt: number,
 ): Promise<void> {
   const groups = new Map<string, Set<string>>();
   for (const item of servedItems) {
-    const key = newsPublisherCoverageKey(variant, item.title);
+    const key = newsPublisherCoverageKey(item.title);
     if (key && !groups.has(key)) groups.set(key, new Set());
   }
   for (const item of items) {
-    const families = groups.get(newsPublisherCoverageKey(variant, item.title));
+    const families = groups.get(newsPublisherCoverageKey(item.title));
     if (!families) continue;
     const family = publisherFamilyForItem(item);
     if (family) families.add(family);
@@ -3911,7 +3910,7 @@ async function buildDigest(
     const now = Date.now();
     // Served headlines only, with families from accepted sightings below the
     // category cap. Runs alongside story tracking within the same deadline.
-    const publisherCoverageWrite = recordPublisherCoverage(servableItems, allSliced, variant, buildStart, storyTrackingDeadlineAt)
+    const publisherCoverageWrite = recordPublisherCoverage(servableItems, allSliced, buildStart, storyTrackingDeadlineAt)
       .catch((err: unknown) => console.warn('[digest] publisher coverage unavailable:', err));
 
     // Read existing story tracking BEFORE writing so we know the previous cycle's

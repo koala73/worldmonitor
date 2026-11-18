@@ -659,10 +659,14 @@ export function normalizeNewsStoryTitle(title) {
     .trim();
 }
 
-export function newsPublisherCoverageKey(edition, title) {
-  if (!edition || !title) return '';
+export const NEWS_PUBLISHER_COVERAGE_PREFIX = 'news:publisher-coverage:v2:';
+
+// One key per headline across editions (#10977): a publisher family carrying
+// the story in any edition corroborates it in every edition.
+export function newsPublisherCoverageKey(title) {
+  if (typeof title !== 'string' || !title) return '';
   const normalized = normalizeNewsStoryTitle(title);
   // Short or unsegmented headlines use the literal identity, like the relay.
   const identity = normalized.split(' ').length >= 4 ? normalized : title;
-  return `news:publisher-coverage:v1:${edition}:${bytesToHex(sha256(encoder.encode(identity)))}`;
+  return `${NEWS_PUBLISHER_COVERAGE_PREFIX}${bytesToHex(sha256(encoder.encode(identity)))}`;
 }
