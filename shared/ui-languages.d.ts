@@ -4,8 +4,6 @@ export const UI_LANGUAGE_SET: ReadonlySet<string>;
 export const RTL_UI_LANGUAGES: readonly ['ar', 'fa'];
 /** True for languages written right to left (ar, fa). */
 export function isRtlLanguage(code: string): boolean;
-/** Value for the HTML dir attribute. */
-export function htmlDirFor(code: string): 'rtl' | 'ltr';
 /** English names, used in LLM prompts. Same content as TRANSLATE_LANGUAGE_NAMES. */
 export const UI_LANGUAGE_NAMES: Readonly<Record<UiLanguage, string>>;
 export function isUiLanguage(value: unknown): value is UiLanguage;
