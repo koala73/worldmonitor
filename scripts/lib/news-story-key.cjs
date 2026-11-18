@@ -76,16 +76,16 @@ function reachesLocalRules(severity, importanceScore) {
  * The story key for a news alert, or '' to keep the exact-title identity.
  *
  * Each audience gets its own key: realtime sightings reach every realtime
- * rule, local ones (critical, 78 to 81) reach only rules scoped to the story's
- * country, and standard ones reach no realtime rule. A sighting must not use
+ * rule, local ones (critical, 78 to 81, naming one country) reach only rules
+ * scoped to that country, and standard ones reach no realtime rule. A sighting must not use
  * up the story before a later, higher-scoring one reaches a wider audience.
  * The cost is an extra queued event for such a story, never a missed alert.
  */
-function newsStoryKey(title, { severity, importanceScore } = {}) {
+function newsStoryKey(title, { severity, importanceScore, primaryCountryCode } = {}) {
   const normalized = normalizeNewsStoryTitle(title);
   if (!normalized || normalized.split(' ').length < MIN_STORY_WORDS) return '';
   const bucket = reachesRealtimeRules(severity, importanceScore) ? 'realtime'
-    : reachesLocalRules(severity, importanceScore) ? 'local'
+    : reachesLocalRules(severity, importanceScore) && primaryCountryCode ? 'local'
     : 'standard';
   return `news-story:${bucket}:${normalized}`;
 }

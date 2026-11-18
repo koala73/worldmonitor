@@ -5819,7 +5819,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
         const primaryCountryCode = notifyPolicy.primaryNewsCountryCode(countriesNamedInHeadline(chunk[idx]));
         // One alert per story per day, not per title string: a second
         // publisher carrying an alerted headline is the same story.
-        const storyKey = newsStoryKey(chunk[idx], { severity: level, importanceScore });
+        const storyKey = newsStoryKey(chunk[idx], { severity: level, importanceScore, primaryCountryCode });
         // An X post has no digest build behind it.
         const alertBuildAt = meta.fromX ? undefined : digestBuildAt;
         publishNotificationEvent({

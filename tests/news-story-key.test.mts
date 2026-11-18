@@ -239,8 +239,16 @@ test('a rejected copy cannot claim the key a local copy needs (#10977)', () => {
   // Country-scoped rules take local news from 78. An earlier copy at 77 reaches
   // nobody, so it must not claim the key of a copy at 78, and a later copy at
   // 82 or more still gets its own key for global delivery.
-  const local = newsStoryKey(CNN, { severity: 'critical', importanceScore: 78 });
-  assert.notEqual(newsStoryKey(CNN, { severity: 'critical', importanceScore: 77 }), local);
-  assert.equal(newsStoryKey(CNN, { severity: 'critical', importanceScore: 81 }), local);
+  const local = newsStoryKey(CNN, { severity: 'critical', importanceScore: 78, primaryCountryCode: 'US' });
+  assert.notEqual(newsStoryKey(CNN, { severity: 'critical', importanceScore: 77, primaryCountryCode: 'US' }), local);
+  assert.equal(newsStoryKey(CNN, { severity: 'critical', importanceScore: 81, primaryCountryCode: 'US' }), local);
   assert.notEqual(local, newsStoryKey(CNN, DELIVERABLE));
+});
+
+test('a local-band copy that names no single country cannot claim the local key (#10977)', () => {
+  const TOKYO = 'Missile strike hits Tokyo port as Japan scrambles jets';
+  const twoCountries = newsStoryKey(`${TOKYO} - France 24`, { severity: 'critical', importanceScore: 79 });
+  const local = newsStoryKey(`${TOKYO} - Reuters`, { severity: 'critical', importanceScore: 79, primaryCountryCode: 'JP' });
+  assert.ok(local.startsWith('news-story:local:'));
+  assert.notEqual(twoCountries, local);
 });
