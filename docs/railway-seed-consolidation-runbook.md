@@ -1729,25 +1729,40 @@ leaves a day for the run itself; a run on 2026-11-18 is 27 days before
 December 15 and is safe. If a run lands inside that window, re-run on the next
 15th with the gate bypassed:
 `FORCE_RESEED=true railway run --project 29419572-0b0d-437f-8e71-4fa68daf514f --environment production --service seed-comtrade-bilateral-hs4-ext -- node scripts/seed-comtrade-bilateral-hs4-ext.mjs`.
-A failed run arms the same gate: the seeder writes seed-meta with a fresh
-`fetchedAt` even when it publishes no country (a zero-country run, or the error
-path), so a retry from either command above exits at the gate with `skipping
-(set FORCE_RESEED=true to override)` and fetches nothing, and the activation
-marker stays unwritten. To retry within 24 days, prefix the local command with
-`FORCE_RESEED=true`. Each forced retry spends another full pass of quota, so
-first read the failed run's log: if its fetches were refused with HTTP 429 (the
-breaker logs `ABORTING after ... consecutive refused fetches`), the day's quota
-is spent, and the retry must wait until the next UTC day. Comtrade exposes no
-remaining-quota endpoint, so the log and the date rules above are the check.
+A failed run usually arms the same gate: the seeder writes seed-meta with a
+fresh `fetchedAt` even when it publishes no country (a zero-country run, or the
+error path), so a retry from either command above exits at the gate with
+`skipping (set FORCE_RESEED=true to override)` and fetches nothing, and the
+activation marker stays unwritten. The seed-meta write is itself best-effort
+(a failure is logged as `Failed to write seed-meta`), so a run that loses Redis
+partway can leave the old `fetchedAt` in place, and a plain retry then fetches
+again. Before any retry, read `fetchedAt` from
+`GET seed-meta:comtrade:bilateral-hs4-ext` to see whether the gate will stop it,
+and apply the quota rule below either way. To retry within 24 days, prefix the
+local command with `FORCE_RESEED=true`.
+Every retry on the same UTC day adds to the calls the failed run already made,
+whether or not that run ended in HTTP 429. Take the failed run's count from its
+log: the `seed_complete` line's `requests` field, or `Request budget reached
+(N/260)` when the run stopped at its budget, which is a full pass spent without
+any 429. If the run's fetches were refused with HTTP 429 (the breaker logs
+`ABORTING after ... consecutive refused fetches`), the day's quota is spent. A
+same-day retry needs room for another full pass of up to 260 calls, so wait
+until the next UTC day unless the failed run made fewer than 240 calls; an
+error-path run logs no `seed_complete` line, so count it as 260. Comtrade
+exposes no remaining-quota endpoint, so the log and the date rules above are
+the check.
 The first publish sets the durable
 activation marker `seed-activated:comtrade:bilateral-hs4-ext`, which ends the
 health probe's soft state. The marker write is best-effort: a failure is logged
 as `Failed to write activation marker` and the run still succeeds. After the
 first publish, confirm with `EXISTS seed-activated:comtrade:bilateral-hs4-ext`
 (it should return 1). If it is absent, every later run that writes a country
-sets it again, so the next tick recovers it; to clear the soft state sooner,
-set it once by hand with `SET seed-activated:comtrade:bilateral-hs4-ext 1` (no
-TTL), only after `comtrade:bilateral-hs4-ext:*` keys exist.
+attempts the write again, but that does not guarantee recovery: the next tick
+can exit at the freshness gate without running, and the retried write can fail
+too, so check the marker again after each run that publishes. To clear the soft
+state without waiting, set it once by hand with
+`SET seed-activated:comtrade:bilateral-hs4-ext 1` (no TTL), only after
+`comtrade:bilateral-hs4-ext:*` keys exist.
 
 The bilateral HS4 cron uses `COMTRADE_API_KEYS` and a 480-request hard budget
 under the provider's 500-call daily quota (corrected in #7990). The authenticated route requests
