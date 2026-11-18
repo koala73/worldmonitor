@@ -41,7 +41,7 @@ describe('daily miss audit', () => {
 
   it('names rule matching when a critical copy cleared the bar', () => {
     const { missed } = auditMisses({ queued: MINES, sent: [] });
-    assert.match(missed[0].gate, /^rule_match/);
+    assert.match(missed[0].gate, /^rule_match_or_delivery/);
   });
 
   it('counts stories delivered before the first wire copy', () => {
@@ -51,5 +51,14 @@ describe('daily miss audit', () => {
     });
     assert.equal(result.wireStories, 2);
     assert.equal(result.deliveredBeforeWire, 1);
+  });
+
+  it('joins two groups that a later headline links into one story', () => {
+    const rows = [
+      { title: 'Crimean Bridge span collapses after strike' },
+      { title: 'Kerch Strait traffic halted after strike' },
+      { title: 'Crimean Bridge span collapses, Kerch Strait traffic halted after strike' },
+    ];
+    assert.equal(groupStories(rows).length, 1);
   });
 });

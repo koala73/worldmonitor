@@ -15,16 +15,12 @@ const isWire = (source) => BREAKING_WIRES.some((wire) => String(source ?? '').to
 
 /** Single-link clusters of rows whose headlines match. Each row: { title, ... }. */
 export function groupStories(rows) {
-  const stories = [];
+  let stories = [];
   for (const row of rows) {
     const words = stems(row.title ?? '');
-    const story = stories.find((s) => s.words.some((w) => jaccardSimilarity(w, words) >= STORY_MATCH_MIN));
-    if (story) {
-      story.rows.push(row);
-      story.words.push(words);
-    } else {
-      stories.push({ rows: [row], words: [words] });
-    }
+    const linked = stories.filter((s) => s.words.some((w) => jaccardSimilarity(w, words) >= STORY_MATCH_MIN));
+    const merged = { rows: [...linked.flatMap((s) => s.rows), row], words: [...linked.flatMap((s) => s.words), words] };
+    stories = [...stories.filter((s) => !linked.includes(s)), merged];
   }
   return stories.map((s) => s.rows);
 }
@@ -33,7 +29,7 @@ function missGate(queued) {
   const critical = queued.filter((r) => r.severity === 'critical');
   const best = Math.max(...critical.map((r) => Number(r.importanceScore) || 0));
   if (best < REALTIME_CRITICAL_SCORE) return `score_bar (best ${best} < ${REALTIME_CRITICAL_SCORE})`;
-  return 'rule_match (see the relay "No rule matched" line)';
+  return 'rule_match_or_delivery (see the relay "No rule matched" and delivery lines)';
 }
 
 /**
