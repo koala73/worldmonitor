@@ -22,6 +22,7 @@
 //   - Plan: docs/plans/2026-04-17-003-feat-worldmonitor-brief-magazine-plan.md
 
 import { BRIEF_LOCALIZED_ENVELOPE_VERSION, SUPPORTED_ENVELOPE_VERSIONS } from '../../shared/brief-envelope.js';
+import { htmlLangFor, isRtlLanguage, isUiLanguage } from '../../shared/ui-languages.js';
 import { BRIEF_FONTS } from './brief-fonts.generated.js';
 import { briefPlural, briefT } from '../../shared/brief-strings.js';
 
@@ -251,7 +252,7 @@ export function assertBriefEnvelope(envelope) {
   if (!isFiniteNumber(env.issuedAt)) {
     throw new Error('renderBriefMagazine: envelope.issuedAt must be a finite number');
   }
-  if (isLocalized && (typeof env.lang !== 'string' || !LOCALIZED_LANG_RE.test(env.lang) || env.lang.split('-')[0] === 'en')) {
+  if (isLocalized && (typeof env.lang !== 'string' || !LOCALIZED_LANG_RE.test(env.lang) || !isUiLanguage(env.lang) || env.lang.split('-')[0] === 'en')) {
     throw new Error(
       `renderBriefMagazine: envelope.lang must be a non-English UI language code on v${BRIEF_LOCALIZED_ENVELOPE_VERSION} envelopes (got ${JSON.stringify(env.lang)})`,
     );
@@ -492,12 +493,46 @@ function logoRef({ size, color }) {
 // ── Running head (shared across digest pages) ────────────────────────────────
 
 /** @param {string} dateShort @param {string} label */
-function digestRunningHead(dateShort, label) {
+/**
+ * Keep a Latin or numeric run (dates, counters, codes) in left-to-right
+ * order inside an RTL page. Left-to-right pages get the input unchanged.
+ * @param {string} html already-escaped HTML
+ * @param {string} lang
+ */
+function ltrRun(html, lang) {
+  return isRtlLanguage(lang) ? `<span dir="ltr">${html}</span>` : html;
+}
+
+/**
+ * Isolate a value of unknown direction (source names, country codes)
+ * inside an RTL page so its punctuation does not reorder.
+ * @param {string} html already-escaped HTML
+ * @param {string} lang
+ */
+function bidiRun(html, lang) {
+  return isRtlLanguage(lang) ? `<bdi>${html}</bdi>` : html;
+}
+
+/** Plain-text left-to-right isolate (U+2066 … U+2069) for interpolated values in RTL strings. */
+function ltrText(value, lang) {
+  return isRtlLanguage(lang) ? `\u2066${value}\u2069` : value;
+}
+
+/**
+ * @param {number} pageIndex
+ * @param {number} totalPages
+ * @param {string} lang
+ */
+function pageNumber(pageIndex, totalPages, lang) {
+  return `<div class="page-number mono">${ltrRun(`${pad2(pageIndex)} / ${pad2(totalPages)}`, lang)}</div>`;
+}
+
+function digestRunningHead(dateShort, label, lang = 'en') {
   return (
     '<div class="running-head">' +
     '<span class="mono left">' +
     logoRef({ size: 22 }) +
-    ` · WorldMonitor Brief · ${escapeHtml(dateShort)} ·` +
+    ` · WorldMonitor Brief · ${ltrRun(escapeHtml(dateShort), lang)} ·` +
     '</span>' +
     `<span class="mono">${escapeHtml(label)}</span>` +
     '</div>'
@@ -531,18 +566,18 @@ function renderCover({ dateLong, issue, storyCount, pageIndex, totalPages, greet
     logoRef({ size: 48 }) +
     '<span class="mono">WorldMonitor</span>' +
     '</span>' +
-    `<span class="mono">${escapeHtml(briefT(lang, 'mag.issue', { issue }))}</span>` +
+    `<span class="mono">${escapeHtml(briefT(lang, 'mag.issue', { issue: ltrText(issue, lang) }))}</span>` +
     '</div>' +
     '<div class="hero">' +
-    `<div class="kicker">${escapeHtml(dateLong)}</div>` +
-    '<h1>WorldMonitor<br/>Brief.</h1>' +
+    `<div class="kicker">${bidiRun(escapeHtml(dateLong), lang)}</div>` +
+    `<h1>${ltrRun('WorldMonitor<br/>Brief.', lang)}</h1>` +
     `<p class="blurb">${escapeHtml(blurb)}</p>` +
     '</div>' +
     '<div class="meta-bottom">' +
     `<span class="mono">${escapeHtml(coverGreeting(greeting, lang))}</span>` +
     `<span class="mono">${escapeHtml(briefT(lang, 'mag.swipeToBegin'))}</span>` +
     '</div>' +
-    `<div class="page-number mono">${pad2(pageIndex)} / ${pad2(totalPages)}</div>` +
+    pageNumber(pageIndex, totalPages, lang) +
     '</section>'
   );
 }
@@ -562,14 +597,14 @@ function renderDigestGreeting({ greeting, lead, dateShort, pageIndex, totalPages
     : '';
   return (
     '<section class="page digest">' +
-    digestRunningHead(dateShort, briefT(lang, 'mag.digest01')) +
+    digestRunningHead(dateShort, briefT(lang, 'mag.digest01'), lang) +
     '<div class="body">' +
     `<div class="label mono">${escapeHtml(briefT(lang, 'mag.topOfHour'))}</div>` +
     `<h2>${escapeHtml(greeting)}</h2>` +
     blockquote +
     '<hr class="rule" />' +
     '</div>' +
-    `<div class="page-number mono">${pad2(pageIndex)} / ${pad2(totalPages)}</div>` +
+    pageNumber(pageIndex, totalPages, lang) +
     '</section>'
   );
 }
@@ -593,13 +628,13 @@ function renderDigestNumbers({ numbers, date, dateShort, pageIndex, totalPages, 
     .join('');
   return (
     '<section class="page digest">' +
-    digestRunningHead(dateShort, briefT(lang, 'mag.digest02')) +
+    digestRunningHead(dateShort, briefT(lang, 'mag.digest02'), lang) +
     '<div class="body">' +
     `<div class="label mono">${escapeHtml(briefT(lang, 'mag.numbersToday'))}</div>` +
     `<div class="stats">${rows}</div>` +
-    `<div class="footer-caption mono">${escapeHtml(briefT(lang, 'mag.signalWindow', { date }))}</div>` +
+    `<div class="footer-caption mono">${escapeHtml(briefT(lang, 'mag.signalWindow', { date: ltrText(date, lang) }))}</div>` +
     '</div>' +
-    `<div class="page-number mono">${pad2(pageIndex)} / ${pad2(totalPages)}</div>` +
+    pageNumber(pageIndex, totalPages, lang) +
     '</section>'
   );
 }
@@ -631,14 +666,14 @@ function renderDigestThreadsPage({
     : '';
   return (
     '<section class="page digest">' +
-    digestRunningHead(dateShort, label) +
+    digestRunningHead(dateShort, label, lang) +
     '<div class="body">' +
     `<div class="label mono">${escapeHtml(briefT(lang, 'mag.todaysThreads'))}</div>` +
     `<h2>${escapeHtml(heading)}</h2>` +
     `<div class="threads">${rows}</div>` +
     endMarker +
     '</div>' +
-    `<div class="page-number mono">${pad2(pageIndex)} / ${pad2(totalPages)}</div>` +
+    pageNumber(pageIndex, totalPages, lang) +
     '</section>'
   );
 }
@@ -652,14 +687,14 @@ function renderDigestSignals({ signals, dateShort, pageIndex, totalPages, lang =
     .join('');
   return (
     '<section class="page digest">' +
-    digestRunningHead(dateShort, briefT(lang, 'mag.digest04')) +
+    digestRunningHead(dateShort, briefT(lang, 'mag.digest04'), lang) +
     '<div class="body">' +
     `<div class="label mono">${escapeHtml(briefT(lang, 'mag.signalsToWatch'))}</div>` +
     `<h2>${escapeHtml(briefT(lang, 'mag.whatWouldChange'))}</h2>` +
     `<div class="signals">${paragraphs}</div>` +
     `<div class="end-marker"><hr /><span class="mono">${escapeHtml(briefT(lang, 'mag.endOfDigest'))}</span></div>` +
     '</div>' +
-    `<div class="page-number mono">${pad2(pageIndex)} / ${pad2(totalPages)}</div>` +
+    pageNumber(pageIndex, totalPages, lang) +
     '</section>'
   );
 }
@@ -748,12 +783,12 @@ function renderStoryPage({ story, rank, palette, pageIndex, totalPages, issueDat
     '<div class="left-content">' +
     '<div class="tag-row">' +
     `<span class="tag">${escapeHtml(story.category)}</span>` +
-    `<span class="tag">${escapeHtml(story.country)}</span>` +
+    `<span class="tag">${bidiRun(escapeHtml(story.country), lang)}</span>` +
     `<span class="tag${threatClass}">${escapeHtml(threatLabel)}</span>` +
     '</div>' +
     `<h3>${escapeHtml(story.headline)}</h3>` +
     `<p class="desc">${escapeHtml(story.description)}</p>` +
-    `<div class="source">${escapeHtml(briefT(lang, 'mag.source'))} · ${sourceBlock}</div>` +
+    `<div class="source">${escapeHtml(briefT(lang, 'mag.source'))} · ${bidiRun(sourceBlock, lang)}</div>` +
     '</div>' +
     '</div>' +
     '<div class="right">' +
@@ -766,7 +801,7 @@ function renderStoryPage({ story, rank, palette, pageIndex, totalPages, issueDat
     logoRef({ size: 28 }) +
     '<span class="mono">WorldMonitor Brief</span>' +
     '</div>' +
-    `<div class="page-number mono">${pad2(pageIndex)} / ${pad2(totalPages)}</div>` +
+    pageNumber(pageIndex, totalPages, lang) +
     '</section>'
   );
 }
@@ -795,7 +830,7 @@ function renderBackCover({ tz, pageIndex, totalPages, publicMode, refCode, lang 
     : '<span class="mono">worldmonitor.app</span>';
   const metaRight = publicMode
     ? '<span class="mono">worldmonitor.app</span>'
-    : `<span class="mono">${escapeHtml(briefT(lang, 'mag.nextBrief', { tz }))}</span>`;
+    : `<span class="mono">${escapeHtml(briefT(lang, 'mag.nextBrief', { tz: ltrText(tz, lang) }))}</span>`;
   return (
     '<section class="page cover back">' +
     '<div class="hero">' +
@@ -809,7 +844,7 @@ function renderBackCover({ tz, pageIndex, totalPages, publicMode, refCode, lang 
     metaLeft +
     metaRight +
     '</div>' +
-    `<div class="page-number mono">${pad2(pageIndex)} / ${pad2(totalPages)}</div>` +
+    pageNumber(pageIndex, totalPages, lang) +
     '</section>'
   );
 }
@@ -890,7 +925,7 @@ const STYLE_BLOCK = `<style>
   .wm-logo .wm-ekg { stroke-width: 2.4; }
   .wm-logo .wm-ekg-dot { fill: currentColor; stroke: none; }
   .logo-chrome {
-    position: absolute; bottom: 5vh; left: 6vw;
+    position: absolute; bottom: 5vh; inset-inline-start: 6vw;
     display: flex; align-items: center; gap: 0.8vw; opacity: 0.7;
   }
   .cover { background: var(--ink); color: var(--bone); }
@@ -933,8 +968,8 @@ const STYLE_BLOCK = `<style>
     border-bottom: var(--pager-band) solid transparent;
     padding-bottom: max(0px, calc(10vh - var(--pager-band)));
   }
-  /* The absolute .page-number (top 5vh, right 4vw) sits inside this row,
-     past the 6vw page gutter. Reserve its width on the right: the counter
+  /* The absolute .page-number (top 5vh, inline-end 4vw) sits inside this row,
+     past the 6vw page gutter. Reserve its width at the inline end: the counter
      is always 7 characters ("NN / NN") of the same mono face and size, at
      0.2em tracking, so 7ch + 1.4em is its width, less the 2vw it hangs
      into the gutter, plus 1em of air. ch/em resolve in that mono font. */
@@ -942,7 +977,7 @@ const STYLE_BLOCK = `<style>
     display: flex; justify-content: space-between; align-items: center;
     padding-bottom: 2vh; border-bottom: 1px solid rgba(26, 22, 18, 0.18);
     font-family: 'IBM Plex Mono', monospace; font-size: max(11px, 0.85vw);
-    padding-right: calc(7ch + 1.4em - 2vw + 1em);
+    padding-inline-end: calc(7ch + 1.4em - 2vw + 1em);
   }
   .digest .running-head .left {
     display: flex; align-items: center; gap: 0.8vw;
@@ -962,8 +997,8 @@ const STYLE_BLOCK = `<style>
   .digest blockquote {
     font-family: 'Source Serif 4', serif; font-style: italic;
     font-size: clamp(20px, 2vw, 34px); line-height: 1.38; max-width: 32ch;
-    margin-bottom: 5vh; padding-left: 2vw;
-    border-left: 3px solid var(--sienna);
+    margin-bottom: 5vh; padding-inline-start: 2vw;
+    border-inline-start: 3px solid var(--sienna);
     overflow-wrap: anywhere;
   }
   .digest .rule {
@@ -997,14 +1032,14 @@ const STYLE_BLOCK = `<style>
   }
   .digest .thread .tag {
     font-family: 'IBM Plex Mono', monospace; font-weight: 600;
-    letter-spacing: 0.2em; color: var(--sienna); margin-right: 0.6em;
+    letter-spacing: 0.2em; color: var(--sienna); margin-inline-end: 0.6em;
   }
   .digest .signals { display: flex; flex-direction: column; gap: 3.5vh; max-width: 60ch; }
   .digest .signal {
     font-family: 'Source Serif 4', serif;
     font-size: clamp(18px, 1.65vw, 30px); line-height: 1.45;
-    color: var(--cream-ink); padding-left: 2vw;
-    border-left: 2px solid var(--sienna);
+    color: var(--cream-ink); padding-inline-start: 2vw;
+    border-inline-start: 2px solid var(--sienna);
     overflow-wrap: anywhere;
   }
   .digest .end-marker {
@@ -1019,12 +1054,12 @@ const STYLE_BLOCK = `<style>
   .story.dark { background: var(--ink); color: var(--bone); }
   .story .left {
     display: flex; flex-direction: column; justify-content: center;
-    position: relative; padding-right: 2vw;
+    position: relative; padding-inline-end: 2vw;
   }
   .story .rank-ghost {
     font-family: 'Playfair Display', serif; font-weight: 900;
     font-size: 38vw; line-height: 0.8;
-    position: absolute; top: 50%; left: -1vw;
+    position: absolute; top: 50%; inset-inline-start: -1vw;
     transform: translateY(-50%); opacity: 0.07;
     pointer-events: none; letter-spacing: -0.04em;
   }
@@ -1091,12 +1126,12 @@ const STYLE_BLOCK = `<style>
   .story .right { display: flex; flex-direction: column; justify-content: center; }
   .story .callout {
     background: rgba(0, 0, 0, 0.05);
-    border-left: 4px solid currentColor;
+    border-inline-start: 4px solid currentColor;
     padding: 5vh 3vw 5vh 3vw;
   }
   .story.dark .callout {
     background: rgba(242, 237, 228, 0.06);
-    border-left-color: var(--bone);
+    border-inline-start-color: var(--bone);
   }
   .story .callout .label {
     font-family: 'IBM Plex Mono', monospace;
@@ -1133,7 +1168,7 @@ const STYLE_BLOCK = `<style>
   }
   .nav-dots button.active.digest-dot { background: var(--sienna); }
   .hint {
-    position: fixed; bottom: 3.5vh; right: 3vw;
+    position: fixed; bottom: 3.5vh; inset-inline-end: 3vw;
     font-family: 'IBM Plex Mono', monospace;
     font-size: 10px; letter-spacing: 0.2em;
     text-transform: uppercase;
@@ -1141,7 +1176,7 @@ const STYLE_BLOCK = `<style>
     z-index: 20; mix-blend-mode: difference;
   }
   .page-number {
-    position: absolute; top: 5vh; right: 4vw;
+    position: absolute; top: 5vh; inset-inline-end: 4vw;
     font-family: 'IBM Plex Mono', monospace;
     font-size: max(11px, 0.85vw);
     letter-spacing: 0.2em; opacity: 0.55;
@@ -1149,21 +1184,21 @@ const STYLE_BLOCK = `<style>
   @media (max-width: 640px) {
     .page { padding: 5vh 6vw 8vh; }
     .digest { padding-bottom: max(0px, calc(8vh - var(--pager-band))); }
-    /* padding-right must clear the absolute .page-number block on the
-       right. "09 / 12" in IBM Plex Mono at 11px is ~65-70px wide and
-       .page-number sits at right:5vw; on a 360px Android ~19px + 70px
+    /* padding-inline-end must clear the absolute .page-number block at
+       the inline end. "09 / 12" in IBM Plex Mono at 11px is ~65-70px wide and
+       .page-number sits at inset-inline-end:5vw; on a 360px Android ~19px + 70px
        = ~89px of occupied space. 22vw ≈ 79px at 360px AND ≈ 86px at
        393px — enough headroom with a one-vw safety margin. 18vw left
        ~0 clearance on iPhone SE (Greptile P2). */
     .digest .running-head {
       flex-direction: column; align-items: flex-start;
-      gap: 1vh; padding-right: 22vw;
+      gap: 1vh; padding-inline-end: 22vw;
     }
-    .page-number { top: 4vh; right: 5vw; opacity: 0.6; }
+    .page-number { top: 4vh; inset-inline-end: 5vw; opacity: 0.6; }
     .digest h2 { font-size: 10vw; max-width: 22ch; margin-bottom: 4vh; }
     .digest blockquote {
       font-size: max(17px, 4.6vw); line-height: 1.35;
-      max-width: 40ch; padding-left: 4vw;
+      max-width: 40ch; padding-inline-start: 4vw;
     }
     .digest .rule { width: 14vw; margin-top: 4vh; }
     .digest .stat-row { grid-template-columns: 1fr; gap: 1.5vh; }
@@ -1174,10 +1209,10 @@ const STYLE_BLOCK = `<style>
        at 393px so the max() picks the px floor). Greptile P2. */
     .digest .stat-label { font-size: max(17px, 4vw); }
     .digest .thread { font-size: max(17px, 4vw); line-height: 1.5; }
-    .digest .signal { font-size: max(18px, 4vw); padding-left: 4vw; }
+    .digest .signal { font-size: max(18px, 4vw); padding-inline-start: 4vw; }
     .story { display: flex; flex-direction: column; gap: 4vh; }
-    .story .left { padding-right: 0; }
-    .story .rank-ghost { font-size: 62vw; left: -4vw; top: 30%; }
+    .story .left { padding-inline-end: 0; }
+    .story .rank-ghost { font-size: 62vw; inset-inline-start: -4vw; top: 30%; }
     .story h3 { font-size: 9.5vw; max-width: none; margin-bottom: 3vh; }
     .story .desc {
       font-size: max(16px, 4.4vw); max-width: none;
@@ -1187,7 +1222,7 @@ const STYLE_BLOCK = `<style>
     .story .tag { font-size: 11px; padding: 0.4em 0.8em; }
     .story .source { font-size: 11px; }
     .story .right { justify-content: flex-start; }
-    .story .callout { padding: 3vh 4vw; border-left-width: 3px; }
+    .story .callout { padding: 3vh 4vw; border-inline-start-width: 3px; }
     .story .callout .label { font-size: 11px; margin-bottom: 1.5vh; opacity: 0.7; }
     .story .callout .note { font-size: max(16px, 4.2vw); line-height: 1.5; }
   }
@@ -1200,7 +1235,7 @@ const STYLE_BLOCK = `<style>
      authenticated /api/brief/share-url endpoint). */
   .wm-share {
     position: fixed;
-    top: 3vh; right: 3vw;
+    top: 3vh; inset-inline-end: 3vw;
     z-index: 30;
     display: inline-flex; align-items: center; gap: 0.5em;
     padding: 0.55em 1em;
@@ -1245,6 +1280,33 @@ const STYLE_BLOCK = `<style>
   }
   @media (max-width: 640px) {
     .wm-public-strip { font-size: 11px; padding: 0.7em 1em; gap: 0.6em; flex-wrap: wrap; }
+  }
+  /* Scripts outside the subsets fall back to system fonts, which have no true italics. */
+  :lang(zh) .cover .hero .blurb, :lang(ja) .cover .hero .blurb, :lang(ko) .cover .hero .blurb,
+  :lang(hi) .cover .hero .blurb, :lang(th) .cover .hero .blurb, :lang(ar) .cover .hero .blurb, :lang(fa) .cover .hero .blurb,
+  :lang(zh) .digest blockquote, :lang(ja) .digest blockquote, :lang(ko) .digest blockquote,
+  :lang(hi) .digest blockquote, :lang(th) .digest blockquote, :lang(ar) .digest blockquote, :lang(fa) .digest blockquote,
+  :lang(zh) .digest .stat-label, :lang(ja) .digest .stat-label, :lang(ko) .digest .stat-label,
+  :lang(hi) .digest .stat-label, :lang(th) .digest .stat-label, :lang(ar) .digest .stat-label, :lang(fa) .digest .stat-label {
+    font-style: normal;
+  }
+  /* Letter-spacing breaks conjuncts and joins; these scripts have no case. */
+  :lang(hi) .mono, :lang(th) .mono, :lang(ar) .mono, :lang(fa) .mono,
+  :lang(hi) .cover .hero .kicker, :lang(th) .cover .hero .kicker, :lang(ar) .cover .hero .kicker, :lang(fa) .cover .hero .kicker,
+  :lang(hi) .digest .running-head, :lang(th) .digest .running-head, :lang(ar) .digest .running-head, :lang(fa) .digest .running-head,
+  :lang(hi) .digest .thread .tag, :lang(th) .digest .thread .tag, :lang(ar) .digest .thread .tag, :lang(fa) .digest .thread .tag,
+  :lang(hi) .story .tag, :lang(th) .story .tag, :lang(ar) .story .tag, :lang(fa) .story .tag,
+  :lang(hi) .story .source, :lang(th) .story .source, :lang(ar) .story .source, :lang(fa) .story .source,
+  :lang(hi) .story .callout .label, :lang(th) .story .callout .label, :lang(ar) .story .callout .label, :lang(fa) .story .callout .label,
+  :lang(hi) .hint, :lang(th) .hint, :lang(ar) .hint, :lang(fa) .hint,
+  :lang(hi) .page-number, :lang(th) .page-number, :lang(ar) .page-number, :lang(fa) .page-number,
+  :lang(hi) .wm-share, :lang(th) .wm-share, :lang(ar) .wm-share, :lang(fa) .wm-share {
+    letter-spacing: normal;
+    text-transform: none;
+  }
+  /* Arabic script joins its letters; any tracking breaks the joins. */
+  [dir="rtl"] .digest h2, [dir="rtl"] .story h3 {
+    letter-spacing: normal;
   }
 </style>`;
 
@@ -1374,6 +1436,8 @@ const NAV_SCRIPT = `<script>
   var current = 0;
   var wheelLock = false;
   var touchStartX = 0;
+  // RTL decks run right-to-left: forward moves the deck rightwards.
+  var rtl = document.documentElement.dir === 'rtl';
   // digest-indexes attribute is a server-built JSON number array.
   var digestIndexes = new Set(JSON.parse(deck.dataset.digestIndexes || '[]'));
   for (var i = 0; i < total; i++) {
@@ -1385,7 +1449,7 @@ const NAV_SCRIPT = `<script>
   }
   var dots = dotsContainer.querySelectorAll('button');
   function render() {
-    deck.style.transform = 'translateX(-' + (current * 100) + 'vw)';
+    deck.style.transform = 'translateX(' + (rtl ? '' : '-') + (current * 100) + 'vw)';
     for (var i = 0; i < dots.length; i++) {
       if (i === current) dots[i].classList.add('active');
       else dots[i].classList.remove('active');
@@ -1401,8 +1465,8 @@ const NAV_SCRIPT = `<script>
     // page has remaining scroll in that direction, paginate only at the
     // scroll edge. Matches the wheel-handler behaviour so keyboard and
     // mouse users see the same model.
-    if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
-    else if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); if (rtl) prev(); else next(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); if (rtl) next(); else prev(); }
     else if (e.key === 'PageDown' || e.key === ' ') {
       if (pageCanScrollVertical(pages[current], 1)) return;
       e.preventDefault(); next();
@@ -1433,7 +1497,7 @@ const NAV_SCRIPT = `<script>
   window.addEventListener('wheel', function(e) {
     if (wheelLock) return;
     var isVertical = Math.abs(e.deltaY) > Math.abs(e.deltaX);
-    var delta = isVertical ? e.deltaY : e.deltaX;
+    var delta = isVertical ? e.deltaY : (rtl ? -e.deltaX : e.deltaX);
     if (Math.abs(delta) < 12) return;
     if (isVertical && pageCanScrollVertical(pages[current], e.deltaY)) {
       // Let the native scroll on .page take this wheel event.
@@ -1447,7 +1511,7 @@ const NAV_SCRIPT = `<script>
   window.addEventListener('touchend', function(e) {
     var dx = e.changedTouches[0].clientX - touchStartX;
     if (Math.abs(dx) < 50) return;
-    if (dx < 0) next(); else prev();
+    if (rtl ? dx > 0 : dx < 0) next(); else prev();
   }, { passive: true });
   render();
 })();
@@ -1757,7 +1821,7 @@ export function renderBriefMagazine(envelope, options = {}) {
   const fonts = briefFonts(options.fontPlatform);
   return (
     '<!DOCTYPE html>' +
-    '<html lang="en">' +
+    '<html lang="' + escapeHtml(htmlLangFor(lang)) + '"' + (isRtlLanguage(lang) ? ' dir="rtl"' : '') + '>' +
     '<head>' +
     '<meta charset="UTF-8" />' +
     '<meta name="viewport" content="width=device-width, initial-scale=1.0" />' +

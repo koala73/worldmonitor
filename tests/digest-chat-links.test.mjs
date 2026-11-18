@@ -29,6 +29,8 @@ import {
 import { stripSourceSuffix } from '../scripts/lib/brief-dedup-jaccard.mjs';
 import { digestCoverageText } from '../scripts/lib/digest-corroboration.mjs';
 import { briefIntlLocale, briefPlural, briefT, formatBriefDate } from '../shared/brief-strings.js';
+import { isRtlLanguage } from '../shared/ui-languages.js';
+import { truncateForDisplay } from '../shared/brief-text.js';
 
 // English dates are formatted in the host time zone; pin it so fixed-date assertions hold.
 process.env.TZ = 'UTC';
@@ -49,7 +51,7 @@ const { formatDigest, buildChannelBodies, sanitizeTelegramHtml } = runInNewConte
     DIGEST_CRITICAL_LIMIT, DIGEST_HIGH_LIMIT, DIGEST_MEDIUM_LIMIT,
     DIVIDER: '─'.repeat(40),
     stripSourceSuffix, digestCoverageText, escapeDigestText, formatDigestItemTitle,
-    briefIntlLocale, briefPlural, briefT, formatBriefDate,
+    briefIntlLocale, briefPlural, briefT, formatBriefDate, truncateForDisplay, isRtlLanguage,
     escapeTelegramHtml, escapeSlackMrkdwn, escapeDiscordText,
     markdownToTelegramHtml, markdownToSlackMrkdwn, markdownToDiscord,
   },
@@ -288,6 +290,20 @@ describe('email digest links', () => {
 });
 
 describe('localized chat chrome', () => {
+  it('wraps the bracketed source list in direction isolates for ar and fa only', () => {
+    const items = [story(1, { severity: 'critical', sources: ['AP', 'BBC'] })];
+    for (const lang of ['ar', 'fa']) {
+      for (const target of ['plain', 'telegram', 'slack', 'discord']) {
+        assert.match(formatDigest(items, NOW, target, lang), /\u2068\\?\[AP, BBC\\?\]\u2069/, `${lang} ${target}`);
+      }
+    }
+    for (const lang of ['en', 'fr']) {
+      const out = formatDigest(items, NOW, 'plain', lang);
+      assert.ok(out.includes(' [AP, BBC]'));
+      assert.doesNotMatch(out, /[\u2066-\u2069]/);
+    }
+  });
+
   it('formatDigest and buildChannelBodies use the brief language', () => {
     const items = [story(1, { severity: 'critical' }), story(2)];
     const plain = formatDigest(items, NOW, 'plain', 'fr');
@@ -297,6 +313,21 @@ describe('localized chat chrome', () => {
     assert.ok(bodies.text.startsWith(briefT('fr', 'digest.execSummaryCaps')));
     assert.ok(bodies.text.includes(briefT('fr', 'digest.openMagazine')));
     assert.ok(!bodies.slackText.includes('EXECUTIVE SUMMARY'));
+  });
+
+  it('formatDigest truncates a long Japanese description without a broken character', () => {
+    const description = '東京証券取引所は本日、半導体関連株の急落を受けて取引を一時停止したと発表した。'.repeat(8);
+    const out = formatDigest([story(1, { description })], NOW, 'plain', 'ja');
+    const line = out.split('\n').find((l) => l.startsWith('    東京'));
+    assert.ok(line && line.endsWith('…'), line);
+    assert.ok(description.startsWith(line.trim().slice(0, -1)));
+    assert.ok(Array.from(new Intl.Segmenter('ja', { granularity: 'grapheme' }).segment(line.trim())).length <= 201);
+  });
+
+  it('English truncation output is unchanged', () => {
+    const description = 'Tehran signalled that commercial shipping can keep moving through Hormuz, but tanker premiums remain elevated as insurers reprice Gulf transit risk and war-risk cover tightens across the region and beyond today.';
+    const out = formatDigest([story(1, { description })], NOW);
+    assert.ok(out.includes(`    ${description.slice(0, 200).replace(/\s+\S*$/, '')}…`));
   });
 
   it('English output is unchanged', () => {

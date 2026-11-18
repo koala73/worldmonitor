@@ -15,7 +15,7 @@ import { briefT, formatBriefDate, greetingKey } from '../../shared/brief-strings
 import { BRIEF_LLM_ALLOWED_PROVIDERS, BRIEF_LLM_MODEL_OVERRIDES } from './brief-llm.mjs';
 import { deriveThreadsFromOrderedStories } from './brief-compose.mjs';
 
-/** Refused even when allowlisted until RTL layout ships (PR 6). Defined with the shared list so Convex applies the same gate. */
+/** Languages refused even when allowlisted. Defined with the shared list so Convex applies the same gate. */
 export { BRIEF_L10N_GATED_LANGS };
 
 const SHARED_TTL_SEC = 7 * 24 * 60 * 60;
@@ -604,13 +604,13 @@ function isShortLatinPhrase(source) {
   return words.length >= 2 && lowerWordsOf(prose).some((w) => w.length >= 3 && !NAME_PARTICLES.has(w));
 }
 
-// Soft hyphen and zero-width (non-)joiners are legitimate in Indic, Persian
-// and Thai text; sanitizeForPrompt strips them, so drop them before comparing.
-const FORMAT_CHARS_RE = /[\u00AD\u200B-\u200D\uFEFF]/g;
+// Joiners, soft hyphens and BOMs are ordinary in Persian, Arabic and Indic
+// text; sanitizeForPrompt strips them, so drop them before comparing.
+const INVISIBLE_FORMAT_RE = /[\u00AD\u200B-\u200D\uFEFF]/g;
 
 function hasPromptMarker(text) {
-  const base = text.replace(FORMAT_CHARS_RE, '');
-  return sanitizeForPrompt(base) !== base.replace(/\s{2,}/g, ' ').trim();
+  const visible = text.replace(INVISIBLE_FORMAT_RE, '');
+  return sanitizeForPrompt(visible) !== visible.replace(/\s{2,}/g, ' ').trim();
 }
 
 function scriptShareOk(text, lang) {

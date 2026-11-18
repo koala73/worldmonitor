@@ -26,7 +26,8 @@
 import { ImageResponse } from '@vercel/og';
 import { BRIEF_LOCALIZED_ENVELOPE_VERSION } from '../../shared/brief-envelope.js';
 import { briefPlural, briefT, type BriefStringKey } from '../../shared/brief-strings.js';
-import { isUiLanguage } from '../../shared/ui-languages.js';
+import { truncateForDisplay } from '../../shared/brief-text.js';
+import { RTL_UI_LANGUAGES, isUiLanguage, scriptClassFor } from '../../shared/ui-languages.js';
 
 // RUNTIME DEPENDENCY on Google Fonts CDN via jsdelivr.
 //
@@ -42,6 +43,15 @@ import { isUiLanguage } from '../../shared/ui-languages.js';
 // whole carousel, and the next cron tick re-renders from a fresh
 // isolate. Swap this fetch for a bundled base64 TTF if flakiness
 // ever becomes a problem.
+//
+// RUNTIME DEPENDENCY on Google Fonts for text outside that Latin file
+// (Latin Extended, Cyrillic, Greek, CJK, Devanagari, Thai, Arabic,
+// arrows in story text). loadCarouselFonts() fetches a `text=` subset per script
+// family with a 5-second timeout and throws CarouselFontError on any
+// failure, so the route returns 503 no-store instead of a PNG with
+// missing glyphs. Because every drawn character is covered up front,
+// @vercel/og's own dynamic fallback (no timeout, errors swallowed)
+// never fetches.
 const FONT_URL = 'https://cdn.jsdelivr.net/npm/@fontsource/noto-serif/files/noto-serif-latin-400-normal.woff';
 let _fontCache: ArrayBuffer | null = null;
 
@@ -59,6 +69,199 @@ async function loadFont(): Promise<ArrayBuffer> {
     console.warn('[brief-carousel] font fetch failed:', (err as Error).message);
     throw err;
   }
+}
+
+// Code points the base Latin file draws (its cmap).
+const BASE_COVERAGE: ReadonlyArray<readonly [number, number]> = [
+  [0x0000, 0x0000], [0x000A, 0x000A], [0x000D, 0x000D], [0x0020, 0x007E], [0x00A0, 0x00FF],
+  [0x0131, 0x0131], [0x0152, 0x0153], [0x02BB, 0x02BC], [0x02C6, 0x02C6], [0x02DA, 0x02DA],
+  [0x02DC, 0x02DC], [0x0300, 0x0301], [0x0303, 0x0304], [0x0308, 0x0309], [0x0323, 0x0323],
+  [0x0329, 0x0329], [0x2002, 0x2002], [0x2009, 0x2009], [0x200B, 0x200B], [0x2013, 0x2014],
+  [0x2018, 0x201A], [0x201C, 0x201E], [0x2022, 0x2022], [0x2026, 0x2026], [0x2032, 0x2033],
+  [0x2039, 0x203A], [0x2044, 0x2044], [0x20AC, 0x20AC], [0x2122, 0x2122], [0x2212, 0x2212],
+  [0xFEFF, 0xFEFF], [0xFFFD, 0xFFFD],
+];
+
+function baseCovers(ch: string): boolean {
+  const cp = ch.codePointAt(0) ?? 0;
+  return BASE_COVERAGE.some(([lo, hi]) => cp >= lo && cp <= hi);
+}
+
+type ExtraFamily = { family: string; name: string; lang?: string };
+
+const FAMILIES = {
+  serif: { family: 'Noto+Serif', name: 'NotoSerifExt' },
+  symbols: { family: 'Noto+Sans+Symbols', name: 'NotoSansSymbols' },
+  sc: { family: 'Noto+Sans+SC', name: 'NotoSansSC', lang: 'zh-CN' },
+  tc: { family: 'Noto+Sans+TC', name: 'NotoSansTC', lang: 'zh-TW' },
+  jp: { family: 'Noto+Sans+JP', name: 'NotoSansJP', lang: 'ja-JP' },
+  kr: { family: 'Noto+Sans+KR', name: 'NotoSansKR', lang: 'ko-KR' },
+  devanagari: { family: 'Noto+Sans+Devanagari', name: 'NotoSansDevanagari' },
+  thai: { family: 'Noto+Sans+Thai', name: 'NotoSansThai', lang: 'th-TH' },
+  arabic: { family: 'Noto+Sans+Arabic', name: 'NotoSansArabic' },
+} satisfies Record<string, ExtraFamily>;
+
+function hanFamily(lang: string): ExtraFamily {
+  if (lang === 'ja') return FAMILIES.jp;
+  if (lang === 'ko') return FAMILIES.kr;
+  if (lang === 'zh-TW') return FAMILIES.tc;
+  return FAMILIES.sc;
+}
+
+/** The family that draws one character the base file cannot, or null when the base file covers it. */
+function familyForChar(ch: string, lang: string): ExtraFamily | null {
+  if (baseCovers(ch)) return null;
+  const cp = ch.codePointAt(0)!;
+  if ((cp >= 0x1100 && cp <= 0x11ff) || (cp >= 0x3130 && cp <= 0x318f) || (cp >= 0xac00 && cp <= 0xd7af)) return FAMILIES.kr;
+  if ((cp >= 0x3040 && cp <= 0x30ff) || (cp >= 0x31f0 && cp <= 0x31ff) || (cp >= 0xff65 && cp <= 0xff9f)) return FAMILIES.jp;
+  if ((cp >= 0x2e80 && cp <= 0x303f) || (cp >= 0x3400 && cp <= 0x4dbf) || (cp >= 0x4e00 && cp <= 0x9fff)
+    || (cp >= 0xf900 && cp <= 0xfaff) || (cp >= 0xfe30 && cp <= 0xfe4f) || (cp >= 0xff00 && cp <= 0xffef)
+    || (cp >= 0x20000 && cp <= 0x3ffff)) return hanFamily(lang);
+  if ((cp >= 0x0900 && cp <= 0x097f) || (cp >= 0xa8e0 && cp <= 0xa8ff)) return FAMILIES.devanagari;
+  if (cp >= 0x0e00 && cp <= 0x0e7f) return FAMILIES.thai;
+  if ((cp >= 0x0600 && cp <= 0x06ff) || (cp >= 0x0750 && cp <= 0x077f) || (cp >= 0x08a0 && cp <= 0x08ff)
+    || (cp >= 0xfb50 && cp <= 0xfdff) || (cp >= 0xfe70 && cp <= 0xfeff)) return FAMILIES.arabic;
+  if (cp >= 0x2190 && cp <= 0x21ff) return FAMILIES.symbols;
+  return FAMILIES.serif;
+}
+
+export class CarouselFontError extends Error {
+  readonly family: string;
+  constructor(family: string, message: string) {
+    super(`carousel font ${family}: ${message}`);
+    this.name = 'CarouselFontError';
+    this.family = family;
+  }
+}
+
+// Makes Google return TrueType (Satori cannot read WOFF2); same UA as @vercel/og's loader.
+const GOOGLE_FONTS_UA = 'Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_8; de-at) AppleWebKit/533.21.1 (KHTML, like Gecko) Version/5.0.5 Safari/533.21.1';
+const FONT_REQUEST_HEADERS = { 'User-Agent': GOOGLE_FONTS_UA, 'X-WM-Carousel': '1' };
+const EXTRA_FONT_CACHE_MAX = 32;
+const _extraFontCache = new Map<string, Promise<ArrayBuffer>>();
+
+async function fetchGoogleSubset(family: string, chars: string): Promise<ArrayBuffer> {
+  let css: string;
+  try {
+    const res = await fetch(`https://fonts.googleapis.com/css2?family=${family}&text=${encodeURIComponent(chars)}`, {
+      signal: AbortSignal.timeout(5_000),
+      headers: FONT_REQUEST_HEADERS,
+    });
+    if (!res.ok) throw new CarouselFontError(family, `css ${res.status}`);
+    css = await res.text();
+  } catch (err) {
+    throw err instanceof CarouselFontError ? err : new CarouselFontError(family, (err as Error).message);
+  }
+  const src = css.match(/src: url\((.+?)\) format\('(?:opentype|truetype)'\)/)?.[1];
+  if (!src) throw new CarouselFontError(family, 'no truetype src in css');
+  try {
+    const res = await fetch(src, { signal: AbortSignal.timeout(5_000), headers: FONT_REQUEST_HEADERS });
+    if (!res.ok) throw new CarouselFontError(family, `font ${res.status}`);
+    return await res.arrayBuffer();
+  } catch (err) {
+    throw err instanceof CarouselFontError ? err : new CarouselFontError(family, (err as Error).message);
+  }
+}
+
+function loadGoogleSubset(family: string, chars: string): Promise<ArrayBuffer> {
+  const key = `${family}|${chars}`;
+  const hit = _extraFontCache.get(key);
+  if (hit) return hit;
+  const pending = fetchGoogleSubset(family, chars);
+  _extraFontCache.set(key, pending);
+  if (_extraFontCache.size > EXTRA_FONT_CACHE_MAX) _extraFontCache.delete(_extraFontCache.keys().next().value!);
+  pending.catch(() => _extraFontCache.delete(key));
+  return pending;
+}
+
+/**
+ * The code points a TrueType/OpenType font maps to a glyph, read from its
+ * cmap (format 12, else format 4). Null when the data has no readable cmap.
+ */
+export function fontCodePoints(data: ArrayBuffer): ((cp: number) => boolean) | null {
+  try {
+    const v = new DataView(data);
+    const numTables = v.getUint16(4);
+    let cmap = -1;
+    for (let i = 0; i < numTables; i += 1) {
+      const rec = 12 + i * 16;
+      if (v.getUint32(rec) === 0x636d6170 /* 'cmap' */) cmap = v.getUint32(rec + 8);
+    }
+    if (cmap < 0) return null;
+    let f4 = -1;
+    let f12 = -1;
+    for (let i = 0, n = v.getUint16(cmap + 2); i < n; i += 1) {
+      const rec = cmap + 4 + i * 8;
+      const platform = v.getUint16(rec);
+      const encoding = v.getUint16(rec + 2);
+      const sub = cmap + v.getUint32(rec + 4);
+      if (platform !== 0 && !(platform === 3 && (encoding === 1 || encoding === 10))) continue;
+      const format = v.getUint16(sub);
+      if (format === 12 && f12 < 0) f12 = sub;
+      if (format === 4 && f4 < 0) f4 = sub;
+    }
+    if (f12 >= 0) {
+      const groups: Array<readonly [number, number, number]> = [];
+      for (let i = 0, n = v.getUint32(f12 + 12); i < n; i += 1) {
+        const g = f12 + 16 + i * 12;
+        groups.push([v.getUint32(g), v.getUint32(g + 4), v.getUint32(g + 8)]);
+      }
+      return (cp) => groups.some(([lo, hi, glyph]) => cp >= lo && cp <= hi && glyph + (cp - lo) !== 0);
+    }
+    if (f4 < 0) return null;
+    const segs = v.getUint16(f4 + 6) / 2;
+    const ends = f4 + 14;
+    const starts = ends + segs * 2 + 2;
+    const deltas = starts + segs * 2;
+    const offsets = deltas + segs * 2;
+    return (cp) => {
+      if (cp > 0xffff) return false;
+      for (let i = 0; i < segs; i += 1) {
+        if (cp > v.getUint16(ends + i * 2)) continue;
+        const start = v.getUint16(starts + i * 2);
+        if (cp < start) return false;
+        const delta = v.getInt16(deltas + i * 2);
+        const rangeOffset = v.getUint16(offsets + i * 2);
+        if (rangeOffset === 0) return ((cp + delta) & 0xffff) !== 0;
+        const glyph = v.getUint16(offsets + i * 2 + rangeOffset + (cp - start) * 2);
+        return glyph !== 0 && ((glyph + delta) & 0xffff) !== 0;
+      }
+      return false;
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Format and joining controls draw nothing; a subset may leave them out.
+const INVISIBLE_RE = /[\p{Cf}\s]/u;
+
+export type CarouselFont = { name: string; data: ArrayBuffer; weight: 400; style: 'normal'; lang?: string };
+
+/** Fetches text-subset fonts for everything in `text` that the base font cannot draw. Throws CarouselFontError. */
+export async function loadCarouselFonts(text: string[], lang: string): Promise<CarouselFont[]> {
+  const byFamily = new Map<ExtraFamily, Set<string>>();
+  // `text` is as drawn (carouselGlyphText): uppercased rows arrive uppercased.
+  for (const s of text) {
+    for (const ch of s) {
+      const fam = familyForChar(ch, lang);
+      if (!fam) continue;
+      if (!byFamily.has(fam)) byFamily.set(fam, new Set());
+      byFamily.get(fam)!.add(ch);
+    }
+  }
+  return Promise.all([...byFamily].map(async ([fam, chars]) => {
+    const data = await loadGoogleSubset(fam.family, [...chars].sort().join(''));
+    // Google leaves out characters the family lacks. Drawing those would hand
+    // them to @vercel/og's unbounded fallback, so fail like a failed fetch.
+    const covers = fontCodePoints(data);
+    const missing = covers ? [...chars].filter((ch) => !INVISIBLE_RE.test(ch) && !covers(ch.codePointAt(0)!)) : [];
+    if (missing.length > 0) {
+      const list = missing.slice(0, 5).map((ch) => `U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`).join(' ');
+      throw new CarouselFontError(fam.family, `subset lacks ${list}`);
+    }
+    return { name: fam.name, data, weight: 400 as const, style: 'normal' as const, ...(fam.lang ? { lang: fam.lang } : {}) };
+  }));
 }
 
 // ── Colour palette (must match magazine's aesthetic) ───────────────────────
@@ -99,34 +302,25 @@ type Envelope = {
 };
 
 /**
- * Languages the carousel draws localized. The one registered face is Noto
- * Serif's Latin subset, whose character map covers these alphabets and the
- * chrome strings and month names of these languages (the arrow aside, which
- * English also lacks). Every other brief language (Latin Extended, Cyrillic,
- * Greek, CJK, Thai, Devanagari, Arabic) would draw through @vercel/og's
- * runtime font fallback. That fallback has no timeout and swallows a failed
- * fetch, so the image ships with missing-glyph boxes and is cached; Thai and
- * Devanagari show boxes even when the fetch works. Those languages keep the
- * canonical English image until the renderer loads their fonts itself
- * (l10n PR 7, #10888), which is where a language is added to this list.
- */
-const CAROUSEL_LOCALIZED_LANGS: ReadonlySet<string> = new Set(['fr', 'de', 'es', 'it', 'pt', 'nl', 'sv', 'sw']);
-
-/**
- * True when `sibling` is a localized brief in a language the carousel cannot
- * draw yet. The route then renders the canonical English envelope.
+ * True when `sibling` is a localized brief the carousel does not draw: a
+ * right-to-left language, until right-to-left renders are proven. The route
+ * then renders the canonical English envelope. That image is the intended
+ * output, so it is cached like any other.
  */
 export function carouselKeepsEnglish(sibling: unknown): boolean {
   const lang = (sibling as { lang?: unknown } | null)?.lang;
-  // A sibling marked English is invalid, not undrawable: selection rejects it.
-  return isUiLanguage(lang) && lang !== 'en' && !CAROUSEL_LOCALIZED_LANGS.has(lang);
+  return isUiLanguage(lang) && RTL_UI_LANGUAGES.includes(lang as never);
 }
 
-/** Chrome language: only a v5 sibling in a language the carousel draws carries one. */
+/** Chrome language: only a v5 sibling carries `lang`; right-to-left languages stay English. */
 function carouselLang(env: Envelope): string {
   if (env.version !== BRIEF_LOCALIZED_ENVELOPE_VERSION || typeof env.lang !== 'string') return 'en';
-  return CAROUSEL_LOCALIZED_LANGS.has(env.lang) ? env.lang : 'en';
+  return RTL_UI_LANGUAGES.includes(env.lang as never) ? 'en' : env.lang;
 }
+
+const HEADLINE_MAX = 160;
+// Sized so the story page does not overflow at fontSize 64.
+const CJK_HEADLINE_MAX = 80;
 
 export type CarouselPage = 'cover' | 'threads' | 'story';
 
@@ -199,9 +393,29 @@ function buildCover(env: Envelope): any {
           type: 'div',
           props: {
             style: { display: 'flex', justifyContent: 'space-between', opacity: 0.6, fontSize: 16, letterSpacing: '0.2em', textTransform: 'uppercase' },
-            children: [data.digest.greeting, briefT(lang, 'carousel.openFull')],
+            children: [data.digest.greeting, openFullLabel(lang)],
           },
         },
+      ],
+    },
+  };
+}
+
+// The "open" arrow is drawn as a vector. As a glyph it is outside the base
+// Latin file, so every English cover would need an extra font request (and a
+// 503 when that request fails).
+function openFullLabel(lang: string): any {
+  const label = briefT(lang, 'carousel.openFull');
+  const m = label.match(/^(.*?)\s*([→←])$/u);
+  if (!m) return label;
+  const d = m[2] === '→' ? 'M1 7h18M13 1l6 6-6 6' : 'M21 7H3M9 1L3 7l6 6';
+  return {
+    type: 'div',
+    props: {
+      style: { display: 'flex', alignItems: 'center', gap: 12 },
+      children: [
+        m[1],
+        { type: 'svg', props: { width: 22, height: 14, viewBox: '0 0 22 14', children: { type: 'path', props: { d, stroke: 'currentColor', strokeWidth: 1.6, fill: 'none' } } } },
       ],
     },
   };
@@ -335,7 +549,7 @@ function buildStory(env: Envelope): any {
                 type: 'div',
                 props: {
                   style: { fontSize: 64, lineHeight: 1.02, fontWeight: 900, letterSpacing: '-0.02em', marginBottom: 36, maxWidth: 900 },
-                  children: story.headline.slice(0, 160),
+                  children: truncateForDisplay(story.headline, scriptClassFor(lang) === 'cjk' ? CJK_HEADLINE_MAX : HEADLINE_MAX, lang),
                 },
               },
               {
@@ -363,9 +577,74 @@ function buildStory(env: Envelope): any {
  */
 /** The Satori element tree for one carousel page. Exported for tests. */
 export function buildCarouselTree(envelope: Envelope, page: CarouselPage): any {
-  if (page === 'cover') return buildCover(envelope);
-  if (page === 'threads') return buildThreads(envelope);
-  return buildStory(envelope);
+  const tree = page === 'cover' ? buildCover(envelope) : page === 'threads' ? buildThreads(envelope) : buildStory(envelope);
+  // Tracking, forced uppercase and italic suit Latin, Cyrillic and Greek only.
+  const lang = carouselLang(envelope);
+  if (!SPACED_SCRIPTS.has(scriptClassFor(lang))) stripLatinTypography(tree);
+  mapText(tree, dropUndrawableEmoji);
+  if (scriptClassFor(lang) === 'thai') mapText(tree, (t) => markWordBreaks(t, lang));
+  return tree;
+}
+
+// An emoji sequence: a pictograph or flag letter with its modifiers, keycaps,
+// tags and ZWJ-joined followers.
+const EMOJI_RE = /(?:\p{Extended_Pictographic}|\p{Regional_Indicator})(?:[\uFE0F\u20E3\u{1F3FB}-\u{1F3FF}\u{E0020}-\u{E007F}]|\u200D(?:\p{Extended_Pictographic}|\p{Regional_Indicator}))*/gu;
+
+// No loaded face draws emoji, and a missing glyph fails the whole image, so
+// the carousel leaves them out. Pictographs the base file has (© ® ™) stay.
+function dropUndrawableEmoji(text: string): string {
+  if (!EMOJI_RE.test(text)) return text;
+  EMOJI_RE.lastIndex = 0;
+  return text.replace(EMOJI_RE, (seq) => (baseCovers(seq) && seq.length === 1 ? seq : '')).replace(/ {2,}/g, ' ').trim();
+}
+
+// Satori breaks lines only at spaces and CJK characters; Thai has neither
+// between words, so mark word boundaries with U+200B.
+function markWordBreaks(text: string, lang: string): string {
+  if (typeof Intl === 'undefined' || typeof Intl.Segmenter !== 'function') return text;
+  return Array.from(new Intl.Segmenter(lang, { granularity: 'word' }).segment(text), (s) => s.segment).join('\u200B');
+}
+
+function mapText(node: any, fn: (text: string) => string): void {
+  const children = node?.props?.children;
+  if (typeof children === 'string') node.props.children = fn(children);
+  else if (Array.isArray(children)) node.props.children = children.map((c: any) => (typeof c === 'string' ? fn(c) : (mapText(c, fn), c)));
+  else if (children && typeof children === 'object') mapText(children, fn);
+}
+
+const SPACED_SCRIPTS = new Set(['latin', 'cyrillic', 'greek']);
+
+function stripLatinTypography(node: any): void {
+  if (!node || typeof node !== 'object') return;
+  const style = node.props?.style;
+  if (style) {
+    delete style.letterSpacing;
+    delete style.textTransform;
+    if (style.fontStyle === 'italic') delete style.fontStyle;
+  }
+  const children = node.props?.children;
+  if (Array.isArray(children)) children.forEach(stripLatinTypography);
+  else stripLatinTypography(children);
+}
+
+function collectText(node: any, out: string[], asDrawn = false, upper = false): string[] {
+  if (typeof node === 'string') out.push(upper ? node.toUpperCase() : node);
+  else if (Array.isArray(node)) node.forEach((n) => collectText(n, out, asDrawn, upper));
+  else if (node && typeof node === 'object') {
+    const transform = node.props?.style?.textTransform;
+    collectText(node.props?.children, out, asDrawn, asDrawn && (transform === undefined ? upper : transform === 'uppercase'));
+  }
+  return out;
+}
+
+/** Strings the given page will draw, in draw order. Exported for tests. */
+export function carouselPageText(envelope: Envelope, page: CarouselPage): string[] {
+  return collectText(buildCarouselTree(envelope, page), []);
+}
+
+/** The same strings as drawn: uppercased where the layout uppercases them. These are the glyphs the fonts must have. */
+export function carouselGlyphText(envelope: Envelope, page: CarouselPage): string[] {
+  return collectText(buildCarouselTree(envelope, page), [], true);
 }
 
 export async function renderCarouselImageResponse(
@@ -375,9 +654,12 @@ export async function renderCarouselImageResponse(
 ): Promise<ImageResponse> {
   if (!envelope?.data) throw new Error('invalid envelope');
 
-  const fontData = await loadFont();
-
   const tree = buildCarouselTree(envelope, page);
+  const [fontData, extraFonts] = await Promise.all([
+    loadFont(),
+    loadCarouselFonts(collectText(tree, [], true), carouselLang(envelope)),
+  ]);
+  tree.props.style.fontFamily = ['NotoSerif', ...extraFonts.map((f) => f.name)].join(', ');
 
   return new ImageResponse(tree, {
     width: 1200,
@@ -388,6 +670,7 @@ export async function renderCarouselImageResponse(
       // a teaser card; a second @font-face isn't worth the bundle
       // and cold-start cost.
       { name: 'NotoSerif', data: fontData, weight: 400, style: 'normal' },
+      ...extraFonts,
     ],
     headers: extraHeaders,
   });

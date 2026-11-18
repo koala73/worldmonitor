@@ -16,6 +16,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { renderBriefMagazine } from '../server/_shared/brief-render.js';
 import { BRIEF_ENVELOPE_VERSION } from '../shared/brief-envelope.js';
 
@@ -254,10 +255,10 @@ describe('renderBriefMagazine — chrome invariants', () => {
     for (const m of html.matchAll(/<div class="page-number mono">([^<]*)<\/div>/g)) {
       assert.equal(m[1].length, 7, `counter "${m[1]}" must stay 7 characters`);
     }
-    assert.match(css, /\.page-number \{\s*position: absolute; top: 5vh; right: 4vw;[\s\S]*?letter-spacing: 0\.2em;/);
+    assert.match(css, /\.page-number \{\s*position: absolute; top: 5vh; inset-inline-end: 4vw;[\s\S]*?letter-spacing: 0\.2em;/);
     assert.match(
       css,
-      /\.digest \.running-head \{[^}]*font-family: 'IBM Plex Mono', monospace; font-size: max\(11px, 0\.85vw\);[^}]*padding-right: calc\(7ch \+ 1\.4em - 2vw \+ 1em\);/,
+      /\.digest \.running-head \{[^}]*font-family: 'IBM Plex Mono', monospace; font-size: max\(11px, 0\.85vw\);[^}]*padding-inline-end: calc\(7ch \+ 1\.4em - 2vw \+ 1em\);/,
     );
     // Digest copy stops above the fixed pager pill instead of scrolling under it.
     assert.match(css, /\.digest \{[^}]*border-bottom: var\(--pager-band\) solid transparent;/);
@@ -716,7 +717,7 @@ describe('renderBriefMagazine — v4 clusterId field (Sprint 1 canonical contrac
   });
 
   it('accepts a v5 envelope that carries a valid lang', () => {
-    for (const lang of ['fr', 'zh-TW', 'fil']) {
+    for (const lang of ['fr', 'zh-TW', 'pt']) {
       const env = /** @type {any} */ ({ ...v4Envelope(), version: 5, lang });
       const html = renderBriefMagazine(env);
       assert.ok(typeof html === 'string' && html.length > 0, lang);
@@ -760,7 +761,49 @@ describe('renderBriefMagazine — v4 clusterId field (Sprint 1 canonical contrac
     }
     assert.ok(!html.includes('The Numbers Today'));
     assert.ok(html.includes('WorldMonitor Brief'));
+    assert.ok(html.startsWith('<!DOCTYPE html><html lang="fr">'));
+  });
+
+  it('a v4 envelope renders <html lang="en">', () => {
+    assert.ok(renderBriefMagazine(v4Envelope()).startsWith('<!DOCTYPE html><html lang="en">'));
+  });
+
+  it('a v5 fr envelope renders <html lang="fr">', () => {
+    const html = renderBriefMagazine(/** @type {any} */ ({ ...v4Envelope(), version: 5, lang: 'fr' }));
+    assert.ok(html.startsWith('<!DOCTYPE html><html lang="fr">'));
+  });
+
+  it('zh renders lang="zh-CN" and zh-TW renders lang="zh-TW"', () => {
+    for (const [lang, tag] of [['zh', 'zh-CN'], ['zh-TW', 'zh-TW']]) {
+      const html = renderBriefMagazine(/** @type {any} */ ({ ...v4Envelope(), version: 5, lang }));
+      assert.ok(html.startsWith(`<!DOCTYPE html><html lang="${tag}">`), lang);
+    }
+  });
+
+  it('public mode renders lang="en" for a v5 envelope', () => {
+    const html = renderBriefMagazine(/** @type {any} */ ({ ...v4Envelope(), version: 5, lang: 'fr' }), { publicMode: true });
     assert.ok(html.startsWith('<!DOCTYPE html><html lang="en">'));
+  });
+
+  it('a v5 envelope with a lang outside the UI list is rejected', () => {
+    for (const lang of ['fil', 'xx', 'pt-BR']) {
+      const env = /** @type {any} */ ({ ...v4Envelope(), version: 5, lang });
+      assert.throws(() => renderBriefMagazine(env), /envelope\.lang must be a non-English UI language code/, lang);
+    }
+  });
+
+  it('the lang attribute value is HTML-escaped', () => {
+    const src = readFileSync(new URL('../server/_shared/brief-render.js', import.meta.url), 'utf8');
+    assert.ok(src.includes(`'<html lang="' + escapeHtml(htmlLangFor(lang)) + '"'`));
+  });
+
+  it('English CSS output is unchanged apart from the appended :lang() rules', () => {
+    const html = renderBriefMagazine(v4Envelope());
+    const firstLang = html.indexOf(':lang(');
+    assert.ok(firstLang > 0);
+    assert.ok(firstLang > html.indexOf('.wm-public-strip { font-size: 11px'), 'every :lang() rule comes after the existing rules');
+    const appended = html.slice(firstLang, html.indexOf('</style>', firstLang));
+    assert.doesNotMatch(appended, /font-family|font-weight|font-feature|font-variant|direction/);
   });
 
   it('keeps v4 chrome English', () => {

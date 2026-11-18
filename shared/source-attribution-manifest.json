@@ -6184,10 +6184,15 @@
       "host": "fonts.googleapis.com",
       "provider": "fonts.googleapis.com",
       "kind": "structured",
-      "observed": false,
+      "observed": true,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded"
+      "status": "excluded",
+      "references": [
+        {
+          "path": "server/_shared/brief-carousel-render.ts"
+        }
+      ]
     },
     {
       "host": "foreignpolicy.com",

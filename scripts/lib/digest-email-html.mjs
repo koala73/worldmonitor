@@ -10,6 +10,8 @@ import { stripSourceSuffix } from './brief-dedup-jaccard.mjs';
 import { injectEmailSummary } from './email-summary-html.mjs';
 import { digestCoverageText } from './digest-corroboration.mjs';
 import { briefPlural, briefT, formatBriefDate } from '../../shared/brief-strings.js';
+import { truncateForDisplay } from '../../shared/brief-text.js';
+import { isRtlLanguage } from '../../shared/ui-languages.js';
 
 /** Chrome string for HTML. English table values are HTML-safe and stay byte-identical. */
 function chromeHtml(lang, key, vars) {
@@ -44,7 +46,7 @@ const DASHBOARD_URL = 'https://worldmonitor.app/dashboard';
 
 function fullBriefNoticeHtml(link, lang = 'en') {
   if (!link?.url) return '';
-  return `<div style="margin: 0 0 24px; padding: 14px 16px; background: #161616; border: 1px solid #222; font-size: 13px; color: #bbb; line-height: 1.5;">${chromeHtml(lang, 'email.shortened')} <a href="${escapeHtml(link.url)}" style="color: #4ade80; font-weight: 700; text-decoration: none;">${escapeHtml(link.label)} &rarr;</a></div>`;
+  return `<div style="margin: 0 0 24px; padding: 14px 16px; background: #161616; border: 1px solid #222; font-size: 13px; color: #bbb; line-height: 1.5;">${chromeHtml(lang, 'email.shortened')} <a href="${escapeHtml(link.url)}" style="color: #4ade80; font-weight: 700; text-decoration: none;">${escapeHtml(link.label)} ${isRtlLanguage(lang) ? '&larr;' : '&rarr;'}</a></div>`;
 }
 
 /**
@@ -59,6 +61,10 @@ function fullBriefNoticeHtml(link, lang = 'en') {
 export function formatDigestHtml(stories, nowMs, options = {}) {
   if (!stories || stories.length === 0) return null;
   const lang = options.lang ?? 'en';
+  // Email clients ignore logical CSS properties, so pick physical sides per direction.
+  const rtl = isRtlLanguage(lang);
+  const startSide = rtl ? 'right' : 'left';
+  const endSide = rtl ? 'left' : 'right';
   const dateStr = lang === 'en'
     ? new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(new Date(nowMs))
     : escapeHtml(formatBriefDate(lang, nowMs, 'full'));
@@ -93,9 +99,7 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
     // between title and meta when present. Empty → section omitted (R6).
     let snippetEl = '';
     if (typeof s.description === 'string' && s.description.length > 0) {
-      const trimmed = s.description.length > 200
-        ? s.description.slice(0, 200).replace(/\s+\S*$/, '') + '…'
-        : s.description;
+      const trimmed = truncateForDisplay(s.description, 200, lang);
       snippetEl = `<div style="margin-top: 6px; font-size: 12px; color: #999; line-height: 1.45;">${escapeHtml(trimmed)}</div>`;
     }
     const meta = [
@@ -103,7 +107,7 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
       srcText ? `<span style="font-size: 11px; color: #555;">${escapeHtml(srcText)}</span>` : '',
       coverageText ? `<span style="font-size: 11px; color: #888;">${escapeHtml(coverageText)}</span>` : '',
     ].filter(Boolean).join('<span style="color: #333; margin: 0 6px;">&bull;</span>');
-    return `<div style="background: #111; border: 1px solid #1a1a1a; border-left: 3px solid ${borderColor}; padding: 12px 16px; margin-bottom: 8px;">${titleEl}${snippetEl}${meta ? `<div style="margin-top: 6px;">${meta}</div>` : ''}</div>`;
+    return `<div style="background: #111; border: 1px solid #1a1a1a; border-${startSide}: 3px solid ${borderColor}; padding: 12px 16px; margin-bottom: 8px;">${titleEl}${snippetEl}${meta ? `<div style="margin-top: 6px;">${meta}</div>` : ''}</div>`;
   }
 
   const SEVERITY_LIMITS = { ...DEFAULT_SEVERITY_LIMITS, ...(options.limits ?? {}) };
@@ -121,7 +125,7 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
     const label = SEVERITY_LABEL[severity] ?? severity.toUpperCase();
     const cards = items.slice(0, limit).map(storyCard).join('');
     const overflow = items.length > limit
-      ? `<p style="font-size: 12px; color: #555; margin: 4px 0 16px; padding-left: 4px;">${chromeHtml(lang, 'digest.andMore', { n: items.length - limit })}</p>`
+      ? `<p style="font-size: 12px; color: #555; margin: 4px 0 16px; padding-${startSide}: 4px;">${chromeHtml(lang, 'digest.andMore', { n: items.length - limit })}</p>`
       : '';
     return `<div style="margin-bottom: 24px;"><div style="font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px;">${label} (${items.length})</div>${cards}${overflow}</div>`;
   }
@@ -130,7 +134,7 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
     .map((sev) => sectionHtml(sev, buckets[sev]))
     .join('');
 
-  return `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #111; color: #e0e0e0;">
+  return `<div${rtl ? ' dir="rtl"' : ''} style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #111; color: #e0e0e0;">
   <div style="max-width: 680px; margin: 0 auto;">
     <div style="background: #4ade80; height: 3px;"></div>
     <div style="background: #0d0d0d; padding: 32px 36px 0;">
@@ -142,13 +146,13 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
                 <td style="width: 36px; height: 36px; vertical-align: middle;">
                   <img src="https://www.worldmonitor.app/favico/android-chrome-192x192.png" width="36" height="36" alt="WorldMonitor" style="border-radius: 50%; display: block;" />
                 </td>
-                <td style="padding-left: 10px;">
+                <td style="padding-${startSide}: 10px;">
                   <div style="font-size: 15px; font-weight: 800; color: #fff; letter-spacing: -0.3px;">WORLD MONITOR</div>
                 </td>
               </tr>
             </table>
           </td>
-          <td style="text-align: right; vertical-align: middle;">
+          <td style="text-align: ${endSide}; vertical-align: middle;">
             <span style="font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px;">${dateStr}</span>
           </td>
         </tr>

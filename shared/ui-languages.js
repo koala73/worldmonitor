@@ -19,6 +19,16 @@ export const UI_LANGUAGE_SET = new Set(UI_LANGUAGES);
 /** @type {readonly ['ar','fa']} */
 export const RTL_UI_LANGUAGES = Object.freeze(['ar', 'fa']);
 
+/** True for languages written right to left (ar, fa). */
+export function isRtlLanguage(code) {
+  return RTL_UI_LANGUAGES.includes(code);
+}
+
+/** Value for the HTML dir attribute. */
+export function htmlDirFor(code) {
+  return isRtlLanguage(code) ? 'rtl' : 'ltr';
+}
+
 /** English names, used in LLM prompts (a bare code like `ja` is not enough). */
 export const UI_LANGUAGE_NAMES = Object.freeze({
   en: 'English', bg: 'Bulgarian', cs: 'Czech', fr: 'French', de: 'German', el: 'Greek',
@@ -50,8 +60,32 @@ export function resolveBriefLanguage(input) {
   return 'en';
 }
 
-/** Refused even when allowlisted until right-to-left layout ships (l10n PR 6). */
-export const BRIEF_L10N_GATED_LANGS = Object.freeze(['ar', 'fa']);
+/** BCP 47 tag for the HTML lang attribute and Intl: zh → "zh-CN", zh-TW → "zh-TW", others unchanged. */
+export function htmlLangFor(code) {
+  return code === 'zh' ? 'zh-CN' : code;
+}
+
+const NO_SUBSET_LANGUAGES = new Set(['ar', 'fa', 'zh', 'zh-TW', 'ja', 'ko', 'hi', 'th']);
+
+/** Languages whose script the magazine font subsets cover. */
+export const BRIEF_SUBSET_LANGUAGES = Object.freeze(UI_LANGUAGES.filter((code) => !NO_SUBSET_LANGUAGES.has(code)));
+
+const SCRIPT_CLASSES = {
+  bg: 'cyrillic', ru: 'cyrillic', uk: 'cyrillic',
+  el: 'greek',
+  zh: 'cjk', 'zh-TW': 'cjk', ja: 'cjk', ko: 'cjk',
+  ar: 'arabic', fa: 'arabic',
+  hi: 'devanagari',
+  th: 'thai',
+};
+
+/** Script class used for typography switches. */
+export function scriptClassFor(code) {
+  return SCRIPT_CLASSES[code] ?? 'latin';
+}
+
+/** Languages refused even when allowlisted. Empty since right-to-left layout shipped; keep it to re-gate a language. */
+export const BRIEF_L10N_GATED_LANGS = Object.freeze([]);
 
 /**
  * Languages the daily brief is delivered in now. The Convex deployment's

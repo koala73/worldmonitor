@@ -298,7 +298,7 @@ export async function getConvexClient(): Promise<ConvexClient | null> {
  * because the deployed function predates it ("ArgumentValidationError:
  * Object contains extra field `signupRef` ...").
  */
-function isUnknownArgError(err: unknown, field: string): boolean {
+export function isUnknownArgError(err: unknown, field: string): boolean {
   const message = (err as Error | undefined)?.message ?? '';
   return /validat/i.test(message) && new RegExp('extra field [`\'"]?' + field + '\\b', 'i').test(message);
 }
