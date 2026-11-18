@@ -64,6 +64,9 @@ export const REWRITE_JUDGE_CANDIDATES = 3;
 const JUDGE_TIMEOUT_MS = 8_000;
 // The relay handles one event at a time, so the check must not stall the queue.
 const EMBED_WALL_CLOCK_MS = 6_000;
+// The whole check, including the embedding cache's own Redis calls. Past it the
+// alert is kept and anything still running is ignored.
+export const REWRITE_CHECK_DEADLINE_MS = 10_000;
 const defaultEmbed = titles => embedBatch(titles, { wallClockMs: EMBED_WALL_CLOCK_MS });
 const MAX_TITLE_CHARS = 300;
 
@@ -83,10 +86,17 @@ export function rewriteCheckApplies(event) {
     && storyKeys.reachesRealtimeRules(event.severity, event.payload.importanceScore);
 }
 
-// Headlines are untrusted feed text: one line, bounded, inside the user prompt.
-function promptTitle(title) {
-  return String(title).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_TITLE_CHARS);
+// Headlines are untrusted feed text: one line, no braces (so none can spell
+// the reply), inside the user prompt.
+function cleanTitle(title) {
+  return String(title).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029{}]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
+function promptTitle(title) {
+  return cleanTitle(title).slice(0, MAX_TITLE_CHARS);
+}
+// A headline the prompt would cut could hide its news in the cut part, so it
+// is never judged.
+const fitsPrompt = title => cleanTitle(title).length <= MAX_TITLE_CHARS;
 
 export const REWRITE_JUDGE_SYSTEM_PROMPT = `You check alerts for a news alerting service. Subscribers were already alerted about the EARLIER headlines. Decide whether the NEW headline is only a repeat of one of them.
 
@@ -110,13 +120,16 @@ export function rewriteJudgePrompt(title, candidates, now = Date.now()) {
   return `EARLIER:\n${earlier}\n\nNEW:\n${promptTitle(title)}`;
 }
 
-/** The candidate the judge named, or null for 0, a bad index or an unreadable reply. */
+/**
+ * The candidate the judge named, or null for 0, a bad index or any reply that
+ * is not exactly the requested object (a code fence around it is allowed).
+ */
 export function parseRewriteVerdict(text, candidateCount) {
   if (typeof text !== 'string') return null;
-  const match = text.match(/"same"\s*:\s*(\d+)/);
+  const match = text.trim().match(/^(?:```(?:json)?\s*)?\{\s*"same"\s*:\s*(\d{1,2})\s*\}(?:\s*```)?$/i);
   if (!match) return null;
   const n = Number(match[1]);
-  return Number.isInteger(n) && n >= 1 && n <= candidateCount ? n - 1 : null;
+  return n >= 1 && n <= candidateCount ? n - 1 : null;
 }
 
 async function defaultJudge(systemPrompt, userPrompt) {
@@ -133,13 +146,27 @@ async function defaultJudge(systemPrompt, userPrompt) {
  */
 export async function findRewriteAnchor(event, {
   now = Date.now(), pipeline = defaultRedisPipeline, embed = defaultEmbed, judge = defaultJudge,
+  deadlineMs = REWRITE_CHECK_DEADLINE_MS,
 } = {}) {
   const startedAt = Date.now();
-  const decision = {
+  // The check fills its own copy; a late finish past the deadline cannot change
+  // what was returned.
+  const blank = () => ({
     id: null, model: EMBED_MODEL, candidates: 0, best: null, judged: false, verdict: null, anchor: null, error: null, ms: 0,
-  };
+  });
+  const work = blank();
+  let timer;
+  const deadline = new Promise(done => { timer = setTimeout(() => done(null), deadlineMs); });
+  const finished = await Promise.race([decide(event, work, { now, pipeline, embed, judge }).then(() => work), deadline]);
+  clearTimeout(timer);
+  const decision = finished ?? { ...blank(), id: work.id, candidates: work.candidates, best: work.best, judged: work.judged, error: 'deadline' };
+  decision.ms = Date.now() - startedAt;
+  return decision;
+}
+
+async function decide(event, decision, { now, pipeline, embed, judge }) {
   try {
-    if (!rewriteCheckApplies(event)) return decision;
+    if (!rewriteCheckApplies(event)) return;
     const title = event.payload.title;
     decision.id = anchorIdFor(event.variant, title);
     const rows = await pipeline([
@@ -158,14 +185,14 @@ export async function findRewriteAnchor(event, {
       } catch { /* skip a malformed member */ }
     }
     decision.candidates = anchors.length;
-    if (!anchors.length) return decision;
+    if (!anchors.length || !fitsPrompt(title)) return;
     const vectors = await embed([title, ...anchors.map(a => a.title)].map(normalizeForEmbedding));
     const ranked = anchors
       .map((anchor, i) => ({ ...anchor, score: cosineSimilarity(vectors[0], vectors[i + 1]) }))
       .sort((a, b) => b.score - a.score);
     decision.best = { id: ranked[0].id, score: ranked[0].score };
-    const shortlist = ranked.filter(a => a.score >= REWRITE_RETRIEVAL_MIN).slice(0, REWRITE_JUDGE_CANDIDATES);
-    if (!shortlist.length) return decision;
+    const shortlist = ranked.filter(a => a.score >= REWRITE_RETRIEVAL_MIN && fitsPrompt(a.title)).slice(0, REWRITE_JUDGE_CANDIDATES);
+    if (!shortlist.length) return;
     decision.judged = true;
     const reply = await judge(REWRITE_JUDGE_SYSTEM_PROMPT, rewriteJudgePrompt(title, shortlist, now));
     if (reply == null) throw new Error('judge returned nothing');
@@ -177,21 +204,19 @@ export async function findRewriteAnchor(event, {
     decision.anchor = null;
     decision.error = err?.name === 'Error' ? err.message : (err?.name || 'error');
   }
-  decision.ms = Date.now() - startedAt;
-  return decision;
 }
 
 /**
- * Of `userIds`, those the anchor already reached. An unreadable set returns an
- * empty one, so nobody is skipped.
+ * Of `userIds`, those the anchor reached in the last 24 hours. An unreadable
+ * reply returns an empty set, so nobody is skipped.
  */
-export async function usersAlertedFor(anchorId, userIds, pipeline = defaultRedisPipeline) {
+export async function usersAlertedFor(anchorId, userIds, { now = Date.now(), pipeline = defaultRedisPipeline } = {}) {
   if (!anchorId || !userIds.length) return new Set();
   try {
-    const rows = await pipeline([['SMISMEMBER', recipientsKey(anchorId), ...userIds]], { timeoutMs: 1_000 });
-    const flags = rows?.[0]?.result;
-    if (!Array.isArray(flags) || flags.length !== userIds.length) return new Set();
-    return new Set(userIds.filter((_, i) => Number(flags[i]) === 1));
+    const rows = await pipeline([['ZMSCORE', recipientsKey(anchorId), ...userIds]], { timeoutMs: 1_000 });
+    const scores = rows?.[0]?.result;
+    if (!Array.isArray(scores) || scores.length !== userIds.length) return new Set();
+    return new Set(userIds.filter((_, i) => scores[i] != null && Number(scores[i]) > now - DAY));
   } catch {
     return new Set();
   }
@@ -234,11 +259,15 @@ export async function recordAlertAnchor(event, userIds, { now = Date.now(), pipe
   const member = JSON.stringify({ id, title: String(event.payload.title).slice(0, 2000) });
   const key = anchorsKey(event.variant);
   try {
+    // Each recipient is scored by when it last received this headline, so a
+    // receipt older than 24 hours never skips a later rewrite, even while
+    // newer deliveries keep the key alive.
     const rows = await pipeline([
       ['ZREMRANGEBYSCORE', key, '-inf', now - DAY],
       ['ZADD', key, 'NX', now, member],
       ['EXPIRE', key, DAY / 1000],
-      ['SADD', recipientsKey(id), ...userIds],
+      ['ZREMRANGEBYSCORE', recipientsKey(id), '-inf', now - DAY],
+      ['ZADD', recipientsKey(id), ...userIds.flatMap(userId => [now, userId])],
       ['EXPIRE', recipientsKey(id), DAY / 1000],
     ], { timeoutMs: 1_000 });
     return Array.isArray(rows) && rows.every(row => row && !row.error);

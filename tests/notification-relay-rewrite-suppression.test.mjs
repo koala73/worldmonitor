@@ -112,10 +112,20 @@ function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStat
       case 'ZADD': {
         const z = zsets.get(key) ?? new Map();
         zsets.set(key, z);
-        const [, score, member] = args;
-        calls.anchorWrites.push(JSON.parse(member).title);
-        if (!z.has(member)) z.set(member, Number(score));
-        return 1;
+        const nx = args[0] === 'NX';
+        const pairs = nx ? args.slice(1) : args;
+        let added = 0;
+        for (let i = 0; i + 1 < pairs.length; i += 2) {
+          const [score, member] = [Number(pairs[i]), pairs[i + 1]];
+          if (key.startsWith('news:alert-anchors:')) calls.anchorWrites.push(JSON.parse(member).title);
+          if (!z.has(member)) added += 1;
+          if (!nx || !z.has(member)) z.set(member, score);
+        }
+        return added;
+      }
+      case 'ZMSCORE': {
+        const z = zsets.get(key) ?? new Map();
+        return args.map(m => (z.has(m) ? String(z.get(m)) : null));
       }
       case 'SADD': {
         const s = sets.get(key) ?? new Set();
@@ -171,7 +181,7 @@ function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStat
   };
 
   return {
-    calls, logs, state,
+    calls, logs, state, zsets,
     sentTo: () => calls.sends.map(s => s.chat_id),
     record: () => {
       const line = logs.filter(l => l.startsWith('[news-alert-rewrite] {')).at(-1);
@@ -207,6 +217,32 @@ describe('reworded news alerts (#10916)', () => {
       await relay.processEvent(alert(SUN));
       assert.deepEqual(h.sentTo(), ['chat-user-1', 'chat-user-2']);
       assert.equal(h.record().skippedUsers, 1);
+    } finally { h.restore(); }
+  });
+
+  it('sends the rewrite to a user whose copy of the story is over 24 hours old', async () => {
+    const h = installHarness();
+    try {
+      await relay.processEvent(alert(CNN));
+      // user-1's receipt ages past the window while the anchor itself is kept
+      // alive (here: re-sent to someone else, which refreshes the key's TTL).
+      const anchorId = `full:${newsPublisherCoverageKey('full', CNN).split(':').pop()}`;
+      const receipts = h.zsets.get(`news:alert-anchor-recipients:v1:${anchorId}`);
+      assert.ok(receipts, 'receipts are kept per user with a time');
+      receipts.set('user-1', Date.now() - 25 * 3_600_000);
+      await relay.processEvent(alert(SUN));
+      assert.deepEqual(h.sentTo(), ['chat-user-1', 'chat-user-1']);
+      assert.equal(h.record().skippedUsers, 0);
+    } finally { h.restore(); }
+  });
+
+  it('does not judge a headline the prompt would cut', async () => {
+    const h = installHarness();
+    try {
+      await relay.processEvent(alert(CNN));
+      await relay.processEvent(alert(`${SUN} ${'and more detail '.repeat(20)}then Iran fires missiles at the carrier`));
+      assert.equal(h.calls.sends.length, 2);
+      assert.equal(h.calls.judge.length, 0);
     } finally { h.restore(); }
   });
 
@@ -265,6 +301,8 @@ describe('reworded news alerts (#10916)', () => {
     ['the judge fails', { judgeStatus: 500 }],
     ['the judge replies with something unreadable', { verdict: 'They look similar.' }],
     ['the judge names a headline it was not shown', { verdict: '{"same": 4}' }],
+    ['the judge adds text around its answer', { verdict: '{"same": 1} because both cover the plot' }],
+    ['the judge gives a fraction', { verdict: '{"same": 1.5}' }],
   ]) {
     it(`sends when ${name}`, async () => {
       const h = installHarness(options);

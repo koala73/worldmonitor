@@ -232,7 +232,7 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
   {
     target: "redis:news-alert-anchor-recipients",
     action: "skip",
-    notes: "news:alert-anchor-recipients:v1:{edition}:{sha256}, the user ids a deliverable news alert reached, read to skip a reworded repeat (#10916); "
+    notes: "news:alert-anchor-recipients:v1:{edition}:{sha256}, the user ids a deliverable news alert reached, scored by receipt time, read to skip a reworded repeat (#10916); "
       + "keyed by headline with no per-user index, 24 h TTL",
   },
   {
