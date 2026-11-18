@@ -123,6 +123,7 @@ describe('UnifiedSettings panel rows', () => {
     expect(row('live-news').querySelector('[data-panel-scale-summary]')!.textContent).toBe('Aa');
     expect(saves).toHaveLength(0);
 
+    settings.refreshSourceToggles();
     document.querySelector<HTMLButtonElement>('.panels-save-layout')!.click();
     expect(saves).toHaveLength(1);
     expect(saves[0]!.markets!.fontScale).toBe(0.9);
