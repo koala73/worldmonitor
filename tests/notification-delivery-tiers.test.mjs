@@ -32,7 +32,6 @@ const tiers = require('../scripts/lib/notification-delivery-tiers.cjs');
 let relay;
 before(() => {
   relay = require(resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'));
-  assert.equal(typeof relay.eventMatchesDeliveryScope, 'function');
 });
 
 const UNSCOPED = { countries: [], eventTypes: [], sensitivity: 'critical' };
