@@ -5,6 +5,8 @@ const LIVE_MEDIA_REQUEST = /(?:youtube\.com\/embed|youtube\.com\/iframe_api|goog
 /** Click-to-play everywhere: the viewer has switched Live News autoplay off in Settings. */
 async function installCleanLiveMediaPrefs(page: Page, webcamPrefs?: Record<string, unknown>): Promise<void> {
   await page.addInitScript((prefs) => {
+    // Init scripts also run in same-origin about:blank media frames; resetting prefs there would undo the test's own choices.
+    if (window !== window.top) return;
     localStorage.removeItem('wm-live-streams-always-on');
     localStorage.setItem('wm-live-news-autoplay', 'false');
     localStorage.removeItem('wm-live-media-idle-stop');
@@ -19,6 +21,8 @@ async function installCleanLiveMediaPrefs(page: Page, webcamPrefs?: Record<strin
 
 async function installAlwaysOnLiveMediaPrefs(page: Page, webcamPrefs?: Record<string, unknown>): Promise<void> {
   await page.addInitScript((prefs) => {
+    // Init scripts also run in same-origin about:blank media frames; resetting prefs there would undo the test's own choices.
+    if (window !== window.top) return;
     localStorage.setItem('wm-live-streams-always-on', 'true');
     localStorage.removeItem('wm-live-news-autoplay');
     localStorage.removeItem('wm-live-media-idle-stop');
@@ -138,7 +142,7 @@ test.describe('live media intent gating', () => {
     expect(mediaRequests, `live media request(s) before intent: ${mediaRequests.join('\n')}`).toEqual([]);
 
     // A single Play click (here, one webcam tile) cascades to the entire webcam wall AND Live News.
-    await webcams.locator('.webcam-preview-tile').first().getByRole('button', { name: /^play$/i }).click();
+    await webcams.locator('.webcam-preview-tile').first().getByRole('button', { name: /^watch live:/i }).click();
     await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBe(4);
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
   });
@@ -219,9 +223,10 @@ test.describe('live media intent gating', () => {
     await expect(liveNews).toHaveClass(/panel-collapsed/);
 
     // Fire the cascade from the webcams panel.
+    await waitForRealPanel(page, 'live-webcams');
     await webcams.scrollIntoViewIfNeeded();
     await expect(webcams.locator('.webcam-preview-tile').first()).toBeVisible({ timeout: 60_000 });
-    await webcams.locator('.webcam-preview-tile').first().getByRole('button', { name: /^play$/i }).click();
+    await webcams.locator('.webcam-preview-tile').first().getByRole('button', { name: /^watch live:/i }).click();
 
     // Webcams play, but the collapsed Live News must NOT create a hidden transport.
     await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBeGreaterThanOrEqual(1);
@@ -249,6 +254,7 @@ test.describe('live media intent gating', () => {
     await page.goto('/dashboard?liveMediaSinglePreview=1', { waitUntil: 'domcontentloaded' });
     const webcams = page.locator('.panel[data-panel="live-webcams"]');
 
+    await waitForRealPanel(page, 'live-webcams');
     await webcams.scrollIntoViewIfNeeded();
     await expect(webcams.locator('.webcam-single .webcam-preview-tile')).toBeVisible({ timeout: 60_000 });
     await page.waitForTimeout(3000);
@@ -256,7 +262,7 @@ test.describe('live media intent gating', () => {
     expect(await webcamTransportCount(page)).toBe(0);
     expect(mediaRequests, `live media request(s) before single-mode intent: ${mediaRequests.join('\n')}`).toEqual([]);
 
-    await webcams.locator('.webcam-single .webcam-preview-tile').getByRole('button', { name: /^play$/i }).click();
+    await webcams.locator('.webcam-single .webcam-preview-tile').getByRole('button', { name: /^watch live:/i }).click();
     await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBe(1);
   });
 
@@ -329,8 +335,9 @@ test.describe('live media intent gating', () => {
 
     await page.clock.fastForward(5 * hour);
     await page.waitForTimeout(1500);
-    expect(await liveNewsTransportCount(page)).toBe(1);
     await expect(idleNotice).toHaveCount(0);
+    await expect(liveNews.locator('.live-offline')).toHaveCount(0);
+    expect(await liveNewsTransportCount(page)).toBe(1);
   });
 
   test('a saved always-on dashboard keeps live news playing through a long idle stretch', async ({ page }) => {
@@ -353,15 +360,17 @@ test.describe('live media intent gating', () => {
 
     await page.goto('/dashboard?liveMediaScrollAway=1', { waitUntil: 'domcontentloaded' });
     const webcams = page.locator('.panel[data-panel="live-webcams"]');
+    await waitForRealPanel(page, 'live-webcams');
     await webcams.scrollIntoViewIfNeeded();
     await expect(webcams.locator('.webcam-preview-tile').first()).toBeVisible({ timeout: 60_000 });
 
     // One click starts the whole wall (cascade); count is the grid size, not 1.
-    await webcams.locator('.webcam-preview-tile').first().getByRole('button', { name: /^play$/i }).click();
+    await webcams.locator('.webcam-preview-tile').first().getByRole('button', { name: /^watch live:/i }).click();
     await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBeGreaterThanOrEqual(1);
 
     await page.setViewportSize({ width: 1280, height: 240 });
-    await page.evaluate(() => window.scrollTo(0, 0));
+    // html is overflow:hidden; the dashboard scrolls inside .main-content.
+    await page.locator('.main-content').evaluate((el) => { el.scrollTop = 0; });
     await expect.poll(() => webcamTransportCount(page), { timeout: 10_000 }).toBe(0);
   });
 
@@ -380,6 +389,7 @@ test.describe('live media intent gating', () => {
     await expect(liveNews).toHaveClass(/hidden/);
 
     // The Live News play click already cascaded to the webcam wall, so it's live once scrolled in.
+    await waitForRealPanel(page, 'live-webcams');
     await webcams.scrollIntoViewIfNeeded();
     await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBeGreaterThanOrEqual(1);
     await disablePanelViaStoredSettings(page, 'live-webcams');
@@ -406,6 +416,7 @@ test.describe('live media intent gating', () => {
     expect(await webcamTransportCount(page)).toBe(0);
     expect(mediaRequests, `live media request(s) before visibility: ${mediaRequests.join('\n')}`).toEqual([]);
 
+    await waitForRealPanel(page, 'live-news');
     await liveNews.scrollIntoViewIfNeeded();
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
     // Always-on grid auto-starts the whole wall, so more than one webcam can be live.
@@ -435,6 +446,7 @@ test.describe('live media intent gating', () => {
     await expect(liveNews).toBeAttached({ timeout: 60_000 });
     await waitForRealPanel(page, 'live-news');
 
+    await waitForRealPanel(page, 'live-news');
     await liveNews.scrollIntoViewIfNeeded();
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
     await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBeGreaterThanOrEqual(1);
@@ -477,6 +489,7 @@ test.describe('live media intent gating', () => {
 
     await page.goto('/dashboard?liveMediaAlwaysOnSingleSwitch=1', { waitUntil: 'domcontentloaded' });
     const webcams = page.locator('.panel[data-panel="live-webcams"]');
+    await waitForRealPanel(page, 'live-webcams');
     await webcams.scrollIntoViewIfNeeded();
     await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBe(1);
     await expect(webcams.locator('.webcam-iframe[title="Jerusalem live webcam"]')).toBeVisible();
