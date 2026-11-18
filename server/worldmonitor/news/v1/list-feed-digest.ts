@@ -1322,16 +1322,16 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
   const isAtom = !sitemap && matches.length === 0;
   if (isAtom) matches = scanTagBlocks(xml, xmlLower, 'entry');
   const excluded = feed.excludePathSegments?.length ? new Set(feed.excludePathSegments) : null;
-  if (sitemap || feed.newestFirst || excluded) {
-    // News sitemaps can be ordered by last modification, and some RSS feeds
-    // (NYT World) list items in editorial order. Rank once by publication
-    // date so older or updated items cannot crowd new ones out of the top
-    // items. Excluded paths drop out first so they never take a slot.
+  {
+    // Rank every feed once by publication date, before the per-feed cap, so
+    // a fresh item cannot sit below the cap in a relevance-ordered Google News
+    // search, an editorial-order feed (NYT World) or a sitemap ordered by last
+    // modification (#10978). Undated items keep feed order after dated ones.
+    // Excluded paths drop out first so they never take a slot.
     const ranked = matches.flatMap((block, index) => {
       const lower = asciiLower(block);
       if (sitemap && (!extractTag(block, 'news:title', lower) || !extractTag(block, 'loc', lower))) return [];
       if (excluded && hasExcludedPathSegment(feedItemLink(block, lower, sitemap, isAtom), excluded)) return [];
-      if (!sitemap && !feed.newestFirst) return [{ block, index, publishedAt: 0 }];
       const raw = sitemap ? extractTag(block, 'news:publication_date', lower) : extractFirstDateTag(block, isAtom, lower);
       return [{ block, index, publishedAt: usableFeedDateMs(raw) ?? -Infinity }];
     });

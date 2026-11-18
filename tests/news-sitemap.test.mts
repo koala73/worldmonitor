@@ -55,11 +55,10 @@ ${excluded.map((p, i) => url(p, i)).join('')}${articles.map((p, i) => url(p, 10 
   for (const path of excluded) assert.ok(!pooled.includes(`https://www.cnn.com${path}`), path);
 });
 
-it('ranks an editorial-order feed newest first when the catalog asks for it', () => {
+it('ranks every feed newest first before the per-feed cap (#10978)', () => {
   // NYT World's RSS is in editorial order: on 2026-11-18, four of its five
   // newest items sat outside the first five the digest reads.
   const feed = serverFeed('New York Times World');
-  assert.equal(feed.newestFirst, true);
   const now = Date.now();
   const ages = [5, 600, 480, 720, 360, 1, 2, 3, 4];
   const item = (age: number) => `<item><title>Story ${age}</title><link>https://www.nytimes.com/2026/11/17/world/s-${age}.html</link>
@@ -68,10 +67,29 @@ it('ranks an editorial-order feed newest first when the catalog asks for it', ()
   const ranked = __testing__.parseRssXml(xml, feed, 'full')!;
   assert.deepEqual(ranked.items.map(x => x.title), [1, 2, 3, 4, 5].map(a => `Story ${a}`));
   assert.ok(ranked.countryItems?.some(x => x.title === 'Story 720'));
+});
 
-  const { newestFirst: _flag, ...editorial } = feed;
-  const unranked = __testing__.parseRssXml(xml, editorial, 'full')!;
-  assert.deepEqual(unranked.items.map(x => x.title), [5, 600, 480, 720, 360].map(a => `Story ${a}`));
+it('a fresh item at position 22 of a relevance-ordered Google News search reaches the digest (#10978)', () => {
+  // At 10:50 UTC on 2026-11-18 Al Arabiya's ADNOC article sat at #22 of a
+  // Google News search, which lists by relevance, below the 5-item cap.
+  const feed = serverFeed('Al Arabiya');
+  const now = Date.now();
+  const item = (i: number, ageMin: number) => `<item><title>Gulf story ${i} - Al Arabiya English</title>
+    <link>https://news.google.com/rss/articles/s-${i}</link>
+    <pubDate>${new Date(now - ageMin * 60_000).toUTCString()}</pubDate><source url="https://english.alarabiya.net">Al Arabiya English</source></item>`;
+  const items = Array.from({ length: 30 }, (_, i) => item(i + 1, i + 1 === 22 ? 3 : 600 + i));
+  const xml = `<?xml version="1.0"?><rss version="2.0"><channel><title>GN</title>${items.join('')}</channel></rss>`;
+  const parsed = __testing__.parseRssXml(xml, feed, 'full')!;
+  assert.equal(parsed.items[0]?.title, 'Gulf story 22 - Al Arabiya English');
+});
+
+it('keeps feed order for undated items, after dated ones', () => {
+  const feed = serverFeed('New York Times World');
+  const dated = `<item><title>Dated</title><link>https://www.nytimes.com/2026/11/17/world/d.html</link><pubDate>${new Date().toUTCString()}</pubDate></item>`;
+  const undated = (n: number) => `<item><title>Undated ${n}</title><link>https://www.nytimes.com/2026/11/17/world/u-${n}.html</link></item>`;
+  const xml = `<?xml version="1.0"?><rss version="2.0"><channel><title>NYT</title>${undated(1)}${undated(2)}${dated}</channel></rss>`;
+  const parsed = __testing__.parseRssXml(xml, feed, 'full')!;
+  assert.equal(parsed.items[0]?.title, 'Dated');
 });
 
 it('keeps the Google News search as claim depth for publishers whose own feeds are shallow', () => {
