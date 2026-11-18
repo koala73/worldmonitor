@@ -14,9 +14,6 @@ name: Weekly Dogfood Review
 on:
   schedule:
     - cron: '23 6 * * 1'
-  # TEMPORARY: one verification run on the PR before merge. Removed before the PR is ready.
-  pull_request:
-    paths: ['.github/workflows/dogfood-weekly.yml']
   workflow_dispatch:
     inputs:
       focus:
