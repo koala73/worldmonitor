@@ -1703,12 +1703,14 @@ reference variables to `seed-comtrade-bilateral-hs4`, so both runs use the same
 key. `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `PROXY_URL` and
 `NODE_OPTIONS` reference the shared variables. A deploy does not run a cron
 service, so the first publish comes from the first tick. To publish sooner,
-run the seeder locally with the service's variables, from the repository root
-of an up-to-date `main` checkout:
-`railway run --service seed-comtrade-bilateral-hs4-ext -- node scripts/seed-comtrade-bilateral-hs4-ext.mjs`.
-`railway run` executes the given command on your machine with your checkout's
-code; without a command it runs nothing. A full pass spends about 200 of the
-500 daily Comtrade calls on the shared key. The first publish sets the durable
+trigger an off-schedule run of the deployed image on Railway:
+`npx -y @railway/cli@latest cron run --service seed-comtrade-bilateral-hs4-ext --environment production --yes`
+(older installed CLIs lack the `cron` subcommand). Its output lands in the
+active deployment's log. The local alternative,
+`railway run --service seed-comtrade-bilateral-hs4-ext -- node scripts/seed-comtrade-bilateral-hs4-ext.mjs`
+from the repository root, runs your checkout's code on your machine with the
+service's variables; `railway run` without a command runs nothing. Either way a
+full pass spends about 200 of the 500 daily Comtrade calls on the shared key. The first publish sets the durable
 activation marker `seed-activated:comtrade:bilateral-hs4-ext`, which ends the
 health probe's soft state.
 
