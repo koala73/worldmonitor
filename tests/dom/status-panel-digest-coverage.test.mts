@@ -36,7 +36,13 @@ function row(summary: DigestCoverageSummary): HTMLElement | null {
   return panel.getElement().querySelector<HTMLElement>('.digest-coverage-row');
 }
 
+/** What a sighted reader sees: the visible span only. */
 function rowText(summary: DigestCoverageSummary): string {
+  return row(summary)?.querySelector('.digest-coverage-text')?.textContent ?? '';
+}
+
+/** What a screen reader reads: the whole live region, hidden reason included. */
+function rowSpoken(summary: DigestCoverageSummary): string {
   return row(summary)?.textContent ?? '';
 }
 
@@ -71,6 +77,17 @@ describe('StatusPanel digest coverage row', () => {
       expect(text.trim().endsWith(')')).toBe(state === 'partial');
     },
   );
+
+  // PR #10988 review: title alone is not exposed reliably to assistive tech,
+  // so the reason stays in the live region as visually hidden text.
+  it('keeps the stale reason readable to screen readers without showing it', () => {
+    const summary = { ...coverage('stale'), staleCause: 'device' as const };
+    const el = row(summary);
+    const hidden = el?.querySelector<HTMLElement>('.wm-visually-hidden');
+    expect(hidden?.textContent).toContain('saved on this device');
+    expect(rowText(summary)).not.toContain('saved on this device');
+    expect(rowSpoken(summary)).toContain('saved on this device');
+  });
 });
 
 describe('StatusPanel digest coverage row truncation (#10499)', () => {
@@ -80,8 +97,10 @@ describe('StatusPanel digest coverage row truncation (#10499)', () => {
     'exposes the full %s text and its explanation as the row title',
     (state) => {
       const el = row(coverage(state));
-      expect(el?.title.startsWith(el?.textContent ?? '')).toBe(true);
-      expect(el?.title.length).toBeGreaterThan(el?.textContent?.length ?? 0);
+      const visible = el?.querySelector('.digest-coverage-text')?.textContent ?? '';
+      expect(visible.length).toBeGreaterThan(0);
+      expect(el?.title.startsWith(visible)).toBe(true);
+      expect(el?.title.length).toBeGreaterThan(visible.length);
       expect(el?.title).toContain(`News coverage: ${state}`);
     },
   );

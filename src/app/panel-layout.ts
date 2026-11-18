@@ -574,6 +574,7 @@ export class PanelLayoutManager implements AppModule {
   private unsubscribeWidgetAccess: (() => void) | null = null;
   private proBlockUnsubscribe: (() => void) | null = null;
   private proBlockEntitlementUnsubscribe: (() => void) | null = null;
+  private proBlockAccessUnsubscribe: (() => void) | null = null;
   private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
   private unsubscribeEntitlementChange: (() => void) | null = null;
   private gatingPrincipal: string | null | undefined = undefined;
@@ -989,6 +990,8 @@ export class PanelLayoutManager implements AppModule {
     this.proBlockUnsubscribe = null;
     this.proBlockEntitlementUnsubscribe?.();
     this.proBlockEntitlementUnsubscribe = null;
+    this.proBlockAccessUnsubscribe?.();
+    this.proBlockAccessUnsubscribe = null;
 
     const destroyedTargets = new Set<{ destroy?: () => void }>();
     const destroyOnce = (target: { destroy?: () => void } | null | undefined): void => {
@@ -4220,6 +4223,8 @@ export class PanelLayoutManager implements AppModule {
     reapply();
     this.proBlockUnsubscribe = subscribeAuthState(reapply);
     this.proBlockEntitlementUnsubscribe = onEntitlementChange(reapply);
+    // A tester-key session or self-host key verdict can land after both of those settle.
+    this.proBlockAccessUnsubscribe = subscribeWidgetAccess(reapply);
 
     const bottomGrid = document.getElementById('mapBottomGrid');
     if (bottomGrid) {
