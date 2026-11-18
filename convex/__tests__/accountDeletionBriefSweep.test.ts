@@ -116,7 +116,8 @@ test("one pass covers the whole account on a keyspace larger than half the page 
   expect(scans).toBe(PAGES);
   expect(keyspace[PAGES - 1]!.filter(key => key.startsWith("brief:")).sort())
     .toEqual([`brief:erased:${USER}`, "brief:user_other:late"]);
-});
+  // ~520 scheduled actions: seconds on a loaded runner, above the 5 s default.
+}, 30_000);
 
 test("continues empty SCAN pages and retains failed deletes without rescanning", async () => {
   const { t } = await erase();
@@ -192,6 +193,32 @@ test("reports the failure with a resumable cursor when the retry cannot be sched
     .find(line => line.includes("account_deletion_brief_sweep_failed"));
   expect(JSON.parse(failure!)).toMatchObject({ deletionId: "id", cursor: "42", pages: 7 });
   log.mockRestore();
+});
+
+test("logs the page's own cursor, not the next one, when a partial delete fails and the retry cannot be scheduled", async () => {
+  const envelopes = Array.from({ length: 101 }, (_, i) => `brief:${USER}:${i}`);
+  let deletes = 0;
+  fetchMock.mockReset().mockImplementation(async (_input, init) => {
+    const command = JSON.parse(String(init?.body));
+    if (command[0] === "SCAN") return Response.json({ result: ["84", envelopes] });
+    deletes++;
+    return Response.json(deletes === 1
+      ? command.map(() => ({ result: 1 })) : [{ error: "ERR unavailable" }]);
+  });
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const ctx = {
+    runQuery: async () => ({ userId: USER }),
+    scheduler: { runAfter: async () => { throw new Error("SCHEDULER_UNAVAILABLE"); } },
+  };
+  const handler = (sweepBriefEnvelopes as unknown as {
+    _handler: (ctx: unknown, args: unknown) => Promise<null>;
+  })._handler;
+  await expect(handler(ctx, { deletionId: "id", cursor: "42", attempt: 0 }))
+    .rejects.toThrow("SCHEDULER_UNAVAILABLE");
+  expect(deletes).toBe(2);
+  const failure = log.mock.calls.map(([line]) => String(line))
+    .find(line => line.includes("account_deletion_brief_sweep_failed"));
+  expect(JSON.parse(failure!)).toMatchObject({ cursor: "42" });
 });
 
 test("escapes glob characters in the account identity and bounds delete batches", async () => {
