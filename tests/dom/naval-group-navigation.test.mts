@@ -63,6 +63,25 @@ describe('naval group member navigation', () => {
     expect(document.querySelector<HTMLElement>('.cluster-vessels-hidden')?.style.display).toBe('none');
   });
 
+  it('keeps an expanded group inside the viewport', () => {
+    const element = document.querySelector<HTMLElement>('.map-popup')!;
+    // No layout engine here: the popup box is its style.top plus a fixed height once expanded.
+    const height = () => (document.querySelector<HTMLElement>('.cluster-vessels-hidden')?.style.display === 'none' ? 200 : 560);
+    element.getBoundingClientRect = () => {
+      const top = Number.parseFloat(element.style.top) || 0;
+      return { top, bottom: top + height(), left: 0, right: 360, width: 360, height: height(), x: 0, y: top, toJSON: () => ({}) } as DOMRect;
+    };
+    const innerHeight = window.innerHeight;
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 900 });
+    try {
+      element.style.top = '451px';
+      click('.cluster-toggle');
+      expect(element.getBoundingClientRect().bottom).toBeLessThanOrEqual(900);
+    } finally {
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: innerHeight });
+    }
+  });
+
   it('preserves observed AIS details and safely renders vessel names', () => {
     click('[data-vessel-index="1"]');
     expect(document.querySelector('.popup-title')?.textContent).toBe('Ship 1');

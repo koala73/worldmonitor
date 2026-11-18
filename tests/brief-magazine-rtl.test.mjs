@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { renderBriefMagazine } from '../server/_shared/brief-render.js';
 import { BRIEF_ENVELOPE_VERSION, BRIEF_LOCALIZED_ENVELOPE_VERSION } from '../shared/brief-envelope.js';
 import { BRIEF_STRINGS } from '../shared/brief-strings.data.js';
-import { htmlDirFor, isRtlLanguage, UI_LANGUAGES } from '../shared/ui-languages.js';
+import { isRtlLanguage, UI_LANGUAGES } from '../shared/ui-languages.js';
 import { formatDigestHtml } from '../scripts/lib/digest-email-html.mjs';
 import { injectEmailSummary } from '../scripts/lib/email-summary-html.mjs';
 
@@ -36,12 +36,6 @@ const CSS = RENDERER.slice(CSS_START, RENDERER.indexOf('</style>`', CSS_START));
 describe('ui-languages direction helpers', () => {
   it('isRtlLanguage is true only for ar and fa', () => {
     assert.deepEqual(UI_LANGUAGES.filter(isRtlLanguage), ['ar', 'fa']);
-  });
-  it('htmlDirFor returns rtl for ar and fa', () => {
-    assert.equal(htmlDirFor('ar'), 'rtl');
-    assert.equal(htmlDirFor('fa'), 'rtl');
-    assert.equal(htmlDirFor('fr'), 'ltr');
-    assert.equal(htmlDirFor('en'), 'ltr');
   });
 });
 

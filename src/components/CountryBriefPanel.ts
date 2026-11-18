@@ -228,6 +228,8 @@ export interface CountryBriefPanel {
   getCode(): string | null;
   getName(): string | null;
   isVisible(): boolean;
+  /** A map click or map menu is opening this brief: closing it returns focus to `target`. */
+  returnFocusTo?(target: HTMLElement): void;
   getTimelineMount(): HTMLElement | null;
   readonly signal: AbortSignal;
   onClose(cb: () => void): void;
