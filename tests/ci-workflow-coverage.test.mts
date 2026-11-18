@@ -555,6 +555,8 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/ui-design-improvements.spec.ts',
   'e2e/webcam-play-prompt.spec.ts',
   'e2e/widget-sandbox.spec.ts',
+  'e2e/naval-group-navigation.spec.ts',
+  'e2e/ukmto-incidents.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [

@@ -31,7 +31,6 @@ const NOT_RUN_IN_CI: Record<string, string> = {
   'e2e/mobile-bottom-navigation.spec.ts': 'broken: 2 of 16 tests fail on main',
   'e2e/mobile-map-native.spec.ts': 'broken: 4 of 9 tests fail on main',
   'e2e/mobile-map-popup.spec.ts': 'broken: 2 of 22 tests fail on main',
-  'e2e/naval-group-navigation.spec.ts': 'broken: 1 of 4 tests times out on main',
   'e2e/nq-day-trader-mission.spec.ts': 'every test skips unless VITE_VARIANT=finance, and no job runs the finance variant',
   'e2e/oref-subscription-lifecycle.spec.ts': 'broken: 1 of 2 tests fails on main',
   'e2e/panel-drag-reorder.spec.ts': 'broken: 2 of 9 tests fail on main',
@@ -41,7 +40,6 @@ const NOT_RUN_IN_CI: Record<string, string> = {
   'e2e/reservoir-levels.spec.ts': 'broken: 2 of 5 tests fail on main',
   'e2e/settings-diagnostics-layout.spec.ts':
     'broken on Linux: at 1.5x text the traffic log overflows its card by 27px (passes on macOS; CI run 43792167531)',
-  'e2e/ukmto-incidents.spec.ts': 'broken: 1 of 7 tests fails on main',
   'e2e/widget-builder.spec.ts': 'broken: 4 of 7 tests fail on main',
 };
 
