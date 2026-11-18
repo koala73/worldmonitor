@@ -71,7 +71,8 @@ test('loader refreshes retain one poll and translation subscriber and reject lat
       if (url.pathname.endsWith('/summarize-article')) {
         return new Promise<Response>(resolve => {
           fixture.releaseTranslation = () => resolve(new Response(JSON.stringify({
-            summary: 'ALERT[test-alert]: Translated test alert\nAREAS[test-alert]: Tel Aviv\nDESC[test-alert]: Stay safe',
+            // One plain-text request per Hebrew string since #9765; only the title is Hebrew here.
+            summary: 'Translated test alert',
             fallback: false, status: 'SUMMARIZE_STATUS_SUCCESS',
           })));
         });
