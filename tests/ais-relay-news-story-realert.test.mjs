@@ -276,7 +276,9 @@ test('publishers seen carrying the headline in earlier builds and other editions
   upstash.state.coverage.set(newsPublisherCoverageKey(AGGREGATED_TITLE), ['a', 'b', 'c', 'd', 'e']);
   await cycle([{ title: AGGREGATED_TITLE, source: 'An Unlisted Aggregator' }]);
   const [alert] = upstash.alerts();
-  assert.equal(alert?.payload.corroborationCount, 5, output());
+  assert.ok(alert, output());
+  // The payload keeps the build's own count; the history is re-read on render.
+  assert.equal(alert.payload.corroborationCount, 1);
   assert.ok(alert.payload.importanceScore >= 82, `scored ${alert.payload.importanceScore}`);
 });
 

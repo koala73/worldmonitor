@@ -5851,7 +5851,9 @@ async function seedClassifyForVariant(variant, seenTitles) {
             link: meta.link,
             publishedAt: meta.publishedAt,
             importanceScore,
-            corroborationCount,
+            // This build's count. A held alert re-reads the history when it is
+            // rendered (refreshPublisherCounts), so expired sightings drop out.
+            corroborationCount: meta.corroborationCount ?? 1,
             // Read by API webhook subscribers (news.breaking scope). Plural on
             // purpose: the relay scopes rules on payload.countryCode and keeps
             // rss_alert permissive-unattributed, so a singular field here would

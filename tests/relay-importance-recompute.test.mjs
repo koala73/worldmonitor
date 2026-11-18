@@ -72,7 +72,7 @@ describe('ais-relay importanceScore publish path', () => {
     const block = relaySrc.slice(branchStart, branchEnd);
     assert.match(
       block,
-      /^\s*corroborationCount,$/m,
+      /corroborationCount:\s*meta\.corroborationCount/,
       'published payload must include corroborationCount for shadow-log enrichment',
     );
   });
