@@ -126,10 +126,13 @@ export function rewriteJudgePrompt(title, candidates, now = Date.now()) {
  */
 export function parseRewriteVerdict(text, candidateCount) {
   if (typeof text !== 'string') return null;
-  const match = text.trim().match(/^(?:```(?:json)?\s*)?\{\s*"same"\s*:\s*(\d{1,2})\s*\}(?:\s*```)?$/i);
-  if (!match) return null;
-  const n = Number(match[1]);
-  return n >= 1 && n <= candidateCount ? n - 1 : null;
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  let reply;
+  try { reply = JSON.parse(fenced ? fenced[1] : trimmed); } catch { return null; }
+  if (!reply || typeof reply !== 'object' || Array.isArray(reply) || Object.keys(reply).join() !== 'same') return null;
+  const n = reply.same;
+  return Number.isInteger(n) && n >= 1 && n <= candidateCount ? n - 1 : null;
 }
 
 async function defaultJudge(systemPrompt, userPrompt) {
@@ -249,11 +252,16 @@ export async function mergeStoryCoverage(event, anchorId, pipeline = defaultRedi
 
 /**
  * Make a delivered (or held) headline an anchor for 24 hours and add the users
- * it reached. Best effort: a failed write means a later rewrite may alert again.
+ * it reached. A matched rewrite also shares receipts with the anchor it
+ * matched, so a later wording matched to either one skips everyone who had
+ * the story. Best effort: a failed write means a later rewrite may alert again.
  */
-export async function recordAlertAnchor(event, userIds, { now = Date.now(), pipeline = defaultRedisPipeline } = {}) {
+export async function recordAlertAnchor(event, userIds, { now = Date.now(), pipeline = defaultRedisPipeline, matchedAnchorId = null } = {}) {
   if (!rewriteCheckApplies(event) || !userIds.length) return false;
   const id = anchorIdFor(event.variant, event.payload.title);
+  const matched = typeof matchedAnchorId === 'string' && matchedAnchorId.startsWith(`${event.variant}:`) && matchedAnchorId !== id
+    ? recipientsKey(matchedAnchorId) : null;
+  const receipts = userIds.flatMap(userId => [now, userId]);
   // The member is fixed per headline, so NX keeps one entry and its first time
   // when the same headline is re-queued or reaches more users later.
   const member = JSON.stringify({ id, title: String(event.payload.title).slice(0, 2000) });
@@ -267,8 +275,17 @@ export async function recordAlertAnchor(event, userIds, { now = Date.now(), pipe
       ['ZADD', key, 'NX', now, member],
       ['EXPIRE', key, DAY / 1000],
       ['ZREMRANGEBYSCORE', recipientsKey(id), '-inf', now - DAY],
-      ['ZADD', recipientsKey(id), ...userIds.flatMap(userId => [now, userId])],
+      ['ZADD', recipientsKey(id), ...receipts],
       ['EXPIRE', recipientsKey(id), DAY / 1000],
+      // MAX keeps each user's own receipt time, so a skipped user's 24-hour
+      // window is not restarted.
+      ...(matched ? [
+        ['ZADD', matched, ...receipts],
+        ['ZUNIONSTORE', recipientsKey(id), 2, recipientsKey(id), matched, 'AGGREGATE', 'MAX'],
+        ['ZUNIONSTORE', matched, 2, recipientsKey(id), matched, 'AGGREGATE', 'MAX'],
+        ['EXPIRE', recipientsKey(id), DAY / 1000],
+        ['EXPIRE', matched, DAY / 1000],
+      ] : []),
     ], { timeoutMs: 1_000 });
     return Array.isArray(rows) && rows.every(row => row && !row.error);
   } catch {

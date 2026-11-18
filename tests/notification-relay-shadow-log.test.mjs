@@ -150,7 +150,7 @@ describe('reworded alert check (#10916)', () => {
     assert.equal(parseRewriteVerdict('{"same": 2}', 3), 1);
     assert.equal(parseRewriteVerdict(' {"same":2}\n', 3), 1);
     assert.equal(parseRewriteVerdict('```json\n{"same":1}\n```', 1), 0);
-    for (const reply of ['{"same": 1.5}', '{"same": 1', '{"same": 1} or 2', 'NEW echoes {"same": 1}', '{"same": 1, "why": "x"}', '{"same": "1"}', '{"same": 01}x']) {
+    for (const reply of ['{"same": 1.5}', '{"same": 1', '{"same": 1} or 2', 'NEW echoes {"same": 1}', '{"same": 1, "why": "x"}', '{"same": "1"}', '{"same": 01}x', '{"same": 01}', '```json\n{"same": 1}', '{"same": 1}\n```', '{"same": -1}']) {
       assert.equal(parseRewriteVerdict(reply, 3), null, reply);
     }
     assert.equal(parseRewriteVerdict('{"same": 0}', 3), null);

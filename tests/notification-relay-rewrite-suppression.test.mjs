@@ -220,6 +220,24 @@ describe('reworded news alerts (#10916)', () => {
     } finally { h.restore(); }
   });
 
+  for (const verdict of ['{"same": 1}', '{"same": 2}']) {
+    it(`a third wording skips everyone who had either earlier one (verdict ${verdict})`, async () => {
+      const h = installHarness({ users: ['user-1'] });
+      try {
+        await relay.processEvent(alert(CNN));
+        h.state.users = ['user-1', 'user-2'];
+        await relay.processEvent(alert(SUN));
+        assert.deepEqual(h.sentTo(), ['chat-user-1', 'chat-user-2']);
+        // Both earlier wordings are anchors now; whichever the judge names,
+        // each user already had the story once.
+        h.state.verdict = verdict;
+        await relay.processEvent(alert(NDTV));
+        assert.deepEqual(h.sentTo(), ['chat-user-1', 'chat-user-2']);
+        assert.equal(h.record().skippedUsers, 2);
+      } finally { h.restore(); }
+    });
+  }
+
   it('sends the rewrite to a user whose copy of the story is over 24 hours old', async () => {
     const h = installHarness();
     try {

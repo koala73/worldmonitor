@@ -2217,7 +2217,9 @@ async function checkAlertRewrite(event, matching) {
 // so a suppressed rewrite, which reached nobody new, never becomes one.
 async function finishAlertRewrite(event, rewrite, reachedUsers, skippedUsers) {
   if (!rewrite.applies) return;
-  const anchored = reachedUsers.size > 0 && await rewrite.lib.recordAlertAnchor(event, [...reachedUsers]);
+  const anchored = reachedUsers.size > 0 && await rewrite.lib.recordAlertAnchor(event, [...reachedUsers], {
+    matchedAnchorId: rewrite.decision.anchor?.id ?? null,
+  });
   const { decision } = rewrite;
   console.info('[news-alert-rewrite]', JSON.stringify({
     at: Date.now(),
