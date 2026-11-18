@@ -197,13 +197,18 @@ test("reports the failure with a resumable cursor when the retry cannot be sched
 
 test("logs the page's own cursor, not the next one, when a partial delete fails and the retry cannot be scheduled", async () => {
   const envelopes = Array.from({ length: 101 }, (_, i) => `brief:${USER}:${i}`);
-  let deletes = 0;
+  const scans: string[][] = [];
+  const pipelines: string[][][] = [];
   fetchMock.mockReset().mockImplementation(async (_input, init) => {
-    const command = JSON.parse(String(init?.body));
-    if (command[0] === "SCAN") return Response.json({ result: ["84", envelopes] });
-    deletes++;
-    return Response.json(deletes === 1
-      ? command.map(() => ({ result: 1 })) : [{ error: "ERR unavailable" }]);
+    const body = JSON.parse(String(init?.body)) as string[] | string[][];
+    if (body[0] === "SCAN") {
+      scans.push(body as string[]);
+      return Response.json({ result: ["84", envelopes] });
+    }
+    const pipeline = body as string[][];
+    pipelines.push(pipeline);
+    return Response.json(pipelines.length === 1
+      ? pipeline.map(() => ({ result: 1 })) : [{ error: "ERR unavailable" }]);
   });
   const log = vi.spyOn(console, "error").mockImplementation(() => {});
   const ctx = {
@@ -215,7 +220,11 @@ test("logs the page's own cursor, not the next one, when a partial delete fails 
   })._handler;
   await expect(handler(ctx, { deletionId: "id", cursor: "42", attempt: 0 }))
     .rejects.toThrow("SCHEDULER_UNAVAILABLE");
-  expect(deletes).toBe(2);
+  expect(scans.map(scan => scan[1])).toEqual(["42"]);
+  expect(pipelines).toEqual([
+    envelopes.slice(0, 100).map(key => ["DEL", key]),
+    [["DEL", envelopes[100]]],
+  ]);
   const failure = log.mock.calls.map(([line]) => String(line))
     .find(line => line.includes("account_deletion_brief_sweep_failed"));
   expect(JSON.parse(failure!)).toMatchObject({ cursor: "42" });
