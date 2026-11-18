@@ -234,7 +234,7 @@ test("logs the page's own cursor, not the next one, when a partial delete fails 
   expect(JSON.parse(failure!)).toMatchObject({ cursor: "42" });
   // The failed DEL schedules a retry of this page, never the next page.
   expect(scheduled).toEqual([expect.objectContaining({
-    cursor: "42", attempt: 1, page: { cursor: "84", keys: envelopes },
+    deletionId: "id", cursor: "42", attempt: 1, page: { cursor: "84", keys: envelopes },
   })]);
 });
 
