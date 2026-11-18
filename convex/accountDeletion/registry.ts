@@ -216,7 +216,7 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
   {
     target: "redis:briefs",
     action: "delete",
-    notes: "sets brief:erased:{userId} (1-day TTL; a racing digest compose removes its own brief when it sees it), then deletes brief:{userId}:{slot} and brief:l10n:{userId}:{slot} for every indexed slot and the pointer slot; then, only once those succeed, the brief:slots:{userId} index and brief:latest:{userId} pointer",
+    notes: "sets brief:erased:{userId} (1-day TTL; a racing digest compose removes its own brief when it sees it), then deletes brief:{userId}:{slot} and brief:l10n:{userId}:{slot} for every indexed slot and the pointer slot; then, only once those succeed, the brief:slots:{userId} index and brief:latest:{userId} pointer; completion atomically schedules a second sweep 15 minutes later: one escaped SCAN MATCH pass that deletes every account brief key a racing compose can write (envelopes, localized siblings, the slot index and the latest pointer, but not the erase tombstone), one cursor page per action with bounded delete batches and five attempts per page retaining failed-delete keys, even when billing cleanup reopens deletion; 1,000 pages total (COUNT 1,000), above one full keyspace scan; budget exhaustion emits account_deletion_brief_sweep_truncated with the next cursor for operator continuation, and exhausted failures emit account_deletion_brief_sweep_failed",
   },
   {
     target: "redis:brief-translation-user-cache",
@@ -228,6 +228,12 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     action: "delete",
     notes: "wm:notif:sent:v1:{userId}, the alerts delivered to the account; also expires 7 days after the last one. "
       + "Sets wm:notif:sent-erased:v1:{userId} for 7 days first, which makes the relay refuse a late write for the account",
+  },
+  {
+    target: "redis:news-alert-anchor-recipients",
+    action: "skip",
+    notes: "news:alert-anchor-recipients:v1:{edition}:{sha256}, the user ids a deliverable news alert reached, scored by receipt time, read to skip a reworded repeat (#10916); "
+      + "keyed by headline with no per-user index, 24 h TTL",
   },
   {
     target: "clerk.users",

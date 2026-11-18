@@ -265,6 +265,10 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
     this.instance?.refreshPanelToggles();
   }
 
+  refreshSourceToggles(): void {
+    this.instance?.refreshSourceToggles();
+  }
+
   close(): void {
     this.instance?.close();
   }
@@ -3156,16 +3160,24 @@ export class EventHandlerManager implements AppModule {
     );
     const pending = this.ctx.pendingSourcePreferences;
     const gateOwned = pending?.gateOwned ?? persistedGateOwned;
-    const nextGateOwned = releaseSourceGateOwnership(gateOwned, names);
-    const markers = pending?.migrationMarkers ?? [];
-    this.ctx.pendingSourcePreferences = { gateOwned: nextGateOwned, migrationMarkers: markers };
+    const edits = new Map(pending?.edits);
+    const editedNames = [...names];
+    for (const name of editedNames) edits.set(name, this.ctx.disabledSources.has(name));
+    const nextGateOwned = releaseSourceGateOwnership(gateOwned, editedNames);
+    this.ctx.pendingSourcePreferences = {
+      gateOwned: nextGateOwned,
+      baselineGateOwned: pending?.baselineGateOwned ?? persistedGateOwned,
+      fallbackDisabledSources: pending?.fallbackDisabledSources,
+      edits,
+      migrationMarkers: pending?.migrationMarkers ?? [],
+    };
     if (!stringSetsEqual(persistedGateOwned, nextGateOwned)
       && !writeStorageValue(STORAGE_KEYS.sourceGateOwnership, JSON.stringify([...nextGateOwned]))) return;
     if (!saveToStorage(STORAGE_KEYS.disabledFeeds, [...this.ctx.disabledSources])) return;
-    const unwritten = markers.filter((marker) => !writeStorageValue(marker, 'done'));
-    if (unwritten.length > 0) {
-      this.ctx.pendingSourcePreferences = { gateOwned: nextGateOwned, migrationMarkers: unwritten };
-      return;
+    this.ctx.pendingSourcePreferences.baselineGateOwned = nextGateOwned;
+    this.ctx.pendingSourcePreferences.fallbackDisabledSources = undefined;
+    for (const marker of pending?.migrationMarkers ?? []) {
+      if (!writeStorageValue(marker, 'done')) return;
     }
     this.ctx.pendingSourcePreferences = undefined;
   }

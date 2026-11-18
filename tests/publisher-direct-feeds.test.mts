@@ -121,7 +121,7 @@ describe('publisher-direct RSS feeds', () => {
     const end = app.indexOf('    // One-time migration: reduce default-enabled sources', start);
     assert.ok(start >= 0 && end > start);
     const seed = transpileModule(
-      `(function () {\n${app.slice(start, end)}\nreturn { sessionDisabledSources, pendingMigrationMarkers };\n}).call(host);`,
+      `(function () {\n${app.slice(start, end)}\nreturn { sessionDisabledSources, pendingSourceMigrationMarkers };\n}).call(host);`,
       {},
     ).outputText;
     for (const storageAvailable of [false, true]) {
@@ -129,7 +129,7 @@ describe('publisher-direct RSS feeds', () => {
         currentVariant: 'full', storageAvailable,
         computeDefaultDisabledSources: client.computeDefaultDisabledSources,
         host: { currentSourceCapLanguage: () => 'en' },
-      }) as { sessionDisabledSources?: string[]; pendingMigrationMarkers: string[] };
+      }) as { sessionDisabledSources?: string[]; pendingSourceMigrationMarkers: string[] };
       if (!storageAvailable) {
         // Defaults already disable every opt-in pack, so each migration's
         // marker must be written when these preferences first persist.
@@ -138,10 +138,10 @@ describe('publisher-direct RSS feeds', () => {
           'worldmonitor-country-coverage-optin-v1',
           'worldmonitor-brazil-optin-v1',
           'worldmonitor-publisher-direct-optin-v1',
-        ]) assert.ok(result.pendingMigrationMarkers.includes(marker), `${marker} queued`);
+        ]) assert.ok(result.pendingSourceMigrationMarkers.includes(marker), `${marker} queued`);
       } else {
         assert.equal(result.sessionDisabledSources, undefined);
-        assert.deepEqual([...result.pendingMigrationMarkers], []);
+        assert.deepEqual([...result.pendingSourceMigrationMarkers], []);
       }
     }
   });
@@ -152,7 +152,7 @@ describe('publisher-direct RSS feeds', () => {
     const end = app.indexOf('      // Locale boost:', start);
     assert.ok(start >= 0 && end > start);
     const startup = transpileModule(
-      `let sessionDisabledSources;\nconst pendingMigrationMarkers = [];\n${app.slice(start, end)}\n({ sessionDisabledSources, pendingMigrationMarkers });`,
+      `let sessionDisabledSources;\nconst pendingSourceMigrationMarkers = [];\n${app.slice(start, end)}\n({ sessionDisabledSources, pendingSourceMigrationMarkers });`,
       {},
     ).outputText;
     const key = 'worldmonitor-disabled-feeds';
@@ -174,7 +174,7 @@ describe('publisher-direct RSS feeds', () => {
           },
           safeStorageSetChecked: () => false,
           safeStorageRemoveChecked: (name: string) => { store.delete(name); return true; },
-        }) as { sessionDisabledSources?: string[]; pendingMigrationMarkers: string[] };
+        }) as { sessionDisabledSources?: string[]; pendingSourceMigrationMarkers: string[] };
         const label = `${failure} write fails, stored ${previous ?? 'nothing'}`;
         assert.equal(store.get(key), previous, `${label}: stored preferences are untouched`);
         assert.equal(store.get(marker), undefined, `${label}: migration stays retryable`);
@@ -182,7 +182,7 @@ describe('publisher-direct RSS feeds', () => {
           assert.ok(result.sessionDisabledSources?.includes(name), `${label}: ${name} stays disabled this session`);
         }
         if (previous) assert.ok(result.sessionDisabledSources?.includes('existing-choice'), `${label}: prior choice kept`);
-        assert.deepEqual([...result.pendingMigrationMarkers], [marker], `${label}: marker is written once preferences persist`);
+        assert.deepEqual([...result.pendingSourceMigrationMarkers], [marker], `${label}: marker is written once preferences persist`);
       }
     }
   });

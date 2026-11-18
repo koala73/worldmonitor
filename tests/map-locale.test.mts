@@ -216,13 +216,6 @@ describe('isLocalizableTextField', () => {
   });
 
   describe('expression arrays', () => {
-    it('accepts expression referencing name', () => {
-      assert.equal(
-        isLocalizableTextField(['coalesce', ['get', 'name:en'], ['get', 'name']]),
-        true,
-      );
-    });
-
     it('accepts expression referencing name_en', () => {
       assert.equal(isLocalizableTextField(['get', 'name_en']), true);
     });

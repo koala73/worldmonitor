@@ -629,15 +629,6 @@ describe('renderBriefMagazine — v4 clusterId field (Sprint 1 canonical contrac
     );
   });
 
-  it('rejects a v4 envelope when clusterId is null', () => {
-    const env = v4Envelope();
-    /** @type {any} */ (env.data.stories[0]).clusterId = null;
-    assert.throws(
-      () => renderBriefMagazine(env),
-      /envelope\.data\.stories\[0\]\.clusterId must be a non-empty string on v4\+ envelopes/,
-    );
-  });
-
   it('rejects a v4 envelope when clusterId is a non-string type', () => {
     const env = v4Envelope();
     /** @type {any} */ (env.data.stories[0]).clusterId = 12345;

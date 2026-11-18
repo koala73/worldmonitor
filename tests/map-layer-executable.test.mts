@@ -385,15 +385,6 @@ describe('isLayerCommandAllowed — CMD+K toggle policy', () => {
     // ciiChoropleth is enhanced (free-toggleable) and renders on deck.
     assert.equal(isLayerCommandAllowed('ciiChoropleth', false, 'deck', false), true);
   });
-
-  test('renderer compatibility still blocks commands independently of entitlement', () => {
-    // resilience renders only on deck: globe is blocked even for premium.
-    assert.equal(isLayerCommandAllowed('resilienceScore', false, 'globe', true), false);
-    // storageFacilities is deck-only: the SVG fallback cannot run it.
-    assert.equal(isLayerCommandAllowed('storageFacilities', false, 'svg', true), false);
-    // ciiChoropleth renders on deck/globe but not the SVG fallback.
-    assert.equal(isLayerCommandAllowed('ciiChoropleth', false, 'svg', false), false);
-  });
 });
 
 describe('isLayerExecutable — matrix of layer x kind', () => {

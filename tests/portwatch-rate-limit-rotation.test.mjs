@@ -56,10 +56,6 @@ describe('publication block classification (#8501)', () => {
     },
   };
 
-  it('is exported', () => {
-    assert.equal(typeof classifyPublicationBlock, 'function');
-  });
-
   it('returns null for a run that may advance the canonical list', () => {
     assert.equal(classifyPublicationBlock({
       ...stalledRotation,
@@ -485,10 +481,6 @@ describe('cold-fetch priority for publication-blocking failures (2026-11-10)', (
 // ── 3. the circuit-breaker learns the rate-limit arm ─────────────────────────
 describe('batch circuit-breaker classification (#8501)', () => {
   const { classifyBatchCircuitBreak } = portwatchSeed;
-
-  it('is exported', () => {
-    assert.equal(typeof classifyBatchCircuitBreak, 'function');
-  });
 
   it('trips on a batch that is mostly rate-limited', () => {
     // The observed batch: 5 of 6 countries back with the ArcGIS 200 body.
