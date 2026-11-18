@@ -91,6 +91,16 @@ describe('optional country news coverage', () => {
       assert.ok(!instance.state.disabledSources.has('cap-fixture'), 'Pro restores the session cap after a failed ownership write');
       instance.reconcileSourceLimitForTier(pro);
       assert.ok(instance.state.disabledSources.has('country-opt-in'), `${pro}: tier reconciliation`);
+      if (pro && sidecar && failedWrite === 'both') {
+        assert.ok(stored.get('disabled')!.includes('gate-owned'), 'restoration is still unsaved');
+        stored.set('owned', []);
+        instance.applyCloudSyncedPrefsToRuntime(['owned']);
+        assert.ok(!instance.state.disabledSources.has('gate-owned'), 'ownership-only cloud write must preserve pending Pro restoration');
+        instance.shouldDeferTierPreferenceReconciliation = () => true;
+        instance.applyCloudSyncedPrefsToRuntime(['owned']);
+        assert.ok(!instance.state.disabledSources.has('gate-owned'), 'ownership-only cloud event during handoff must preserve the live selection');
+        instance.shouldDeferTierPreferenceReconciliation = () => false;
+      }
       stored.set('disabled', ['cloud-choice']);
       stored.set('owned', []);
       instance.cloud();

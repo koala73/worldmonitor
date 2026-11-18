@@ -525,9 +525,9 @@ export class App {
     if (keys.length === 0) return;
 
     const keySet = new Set(keys);
-    if (this.state.pendingSourcePreferences && (
-      keySet.has(STORAGE_KEYS.disabledFeeds) || keySet.has(STORAGE_KEYS.sourceGateOwnership)
-    )) {
+    // An ownership-only event can mean the cloud preference write failed.
+    // Retain the ownership of that unchanged baseline until preferences land.
+    if (this.state.pendingSourcePreferences && keySet.has(STORAGE_KEYS.disabledFeeds)) {
       const cloudGateOwned = new Set(loadFromStorage<string[]>(STORAGE_KEYS.sourceGateOwnership, []));
       this.state.pendingSourcePreferences.baselineGateOwned = cloudGateOwned;
       this.state.pendingSourcePreferences.gateOwned = cloudGateOwned;
@@ -615,7 +615,8 @@ export class App {
       if (!tierReconciliationDeferred && !freeTierLimitsInvoked) {
         this.enforceFreeTierLimits(cloudSyncVersion);
       }
-      if (!this.state.pendingSourcePreferences || tierReconciliationDeferred) {
+      if (!this.state.pendingSourcePreferences
+        || (tierReconciliationDeferred && keySet.has(STORAGE_KEYS.disabledFeeds))) {
         const disabled = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
         for (const [name, value] of this.state.pendingSourcePreferences?.edits ?? []) {
           if (value) disabled.add(name);
