@@ -107,9 +107,10 @@ test('Water Levels markers follow the layer toggle and open a popup in each rend
         ? map.buildLayers().find((layer: { id: string }) => layer.id === 'reservoir-levels-layer')?.props.data.length ?? 0
         : exports.GlobeMap ? map.globe.htmlElementsData().filter((item: { _kind: string }) => item._kind === 'reservoirLevel').length
           : container.querySelectorAll('.wl-marker').length;
+      // Bounded by timer turns, not wall time: a long GPU stall must not end the wait before the
+      // renderer's own queued render timer gets to run.
       const waitFor = async (check: () => boolean, ms = 5000) => {
-        const deadline = performance.now() + ms;
-        while (!check() && performance.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+        for (let turn = 0; turn < ms / 50 && !check(); turn++) await new Promise((resolve) => setTimeout(resolve, 50));
       };
       await waitFor(() => count() > 0);
       const enabled = count();
@@ -188,9 +189,11 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await expect(panel.locator('[data-reservoir-id="mead"]')).toHaveCount(0);
     await expect(panel.locator('.panel-scope-strip')).toContainText('Showing Egypt');
     await expect(panel.locator('.panel-scope-chip')).toHaveCount(0);
-    for (const key of ['climate', 'population-exposure']) {
-      await expect(page.locator(`.panel[data-panel="${key}"] .panel-scope-chip`)).toHaveText('Not filtered');
-    }
+    await expect(page.locator('.panel[data-panel="climate"] .panel-scope-chip')).toHaveText('Not filtered');
+    // Population exposure filters by country since #10581, so it carries no "Not filtered" chip.
+    const exposure = page.locator('.panel[data-panel="population-exposure"]');
+    await expect(exposure).toHaveCount(1);
+    await expect(exposure.locator('.panel-scope-chip')).toHaveCount(0);
     await evidenceScreenshot(panel, { path: testInfo.outputPath(`focus-egypt-${viewport.width}.png`) });
     await panel.locator('[data-scope-action="show-all"]').click();
     await expect(panel.locator('.wl-row')).toHaveCount(48);

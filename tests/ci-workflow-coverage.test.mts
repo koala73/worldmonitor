@@ -555,6 +555,19 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/ui-design-improvements.spec.ts',
   'e2e/webcam-play-prompt.spec.ts',
   'e2e/widget-sandbox.spec.ts',
+  'e2e/naval-group-navigation.spec.ts',
+  'e2e/ukmto-incidents.spec.ts',
+  'e2e/live-media-intent.spec.ts',
+  'e2e/widget-builder.spec.ts',
+  'e2e/panel-drag-reorder.spec.ts',
+  'e2e/mobile-map-native.spec.ts',
+  'e2e/mission-presets.spec.ts',
+  'e2e/mobile-bottom-navigation.spec.ts',
+  'e2e/china-corridor-panel.spec.ts',
+  'e2e/mobile-map-popup.spec.ts',
+  'e2e/oref-subscription-lifecycle.spec.ts',
+  'e2e/rag-vector-store.spec.ts',
+  'e2e/reservoir-levels.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [
