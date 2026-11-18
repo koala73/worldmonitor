@@ -2,7 +2,9 @@
 
 const { createDeliveryReporter, deliveryErrorClass } = require('./lib/notification-delivery.cjs');
 const { createSentAlertLog } = require('./lib/sent-alert-history.cjs');
+const { execFile } = require('node:child_process');
 const { createHash, randomUUID } = require('node:crypto');
+const path = require('node:path');
 const { Resend } = require('resend');
 const { appendUnsubscribeText, injectUnsubscribeFooterHtml, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
 const { buildAlertEmailHtml, buildHeldAlertsEmailHtml, buildWelcomeEmailHtml } = require('./lib/notification-email-html.cjs');
@@ -2599,7 +2601,17 @@ async function subscribe() {
   }
 }
 
+// #10976: once a day, list the critical stories that reached nobody.
+const MISS_AUDIT_INTERVAL_MS = 24 * 60 * 60 * 1000;
+function runMissAudit() {
+  execFile(process.execPath, [path.join(__dirname, 'audit-alert-misses.mjs')], { timeout: 5 * 60_000 }, (err, stdout) => {
+    for (const line of String(stdout).split('\n')) if (line.trim()) console.log(`[relay][miss-audit] ${line}`);
+    if (err) console.warn(`[relay][miss-audit] failed: ${err.message}`);
+  });
+}
+
 if (require.main === module) {
+  setInterval(runMissAudit, MISS_AUDIT_INTERVAL_MS);
   process.on('SIGTERM', () => {
     console.log('[relay] SIGTERM received — shutting down');
     process.exit(0);
