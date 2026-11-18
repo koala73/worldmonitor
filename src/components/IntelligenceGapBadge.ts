@@ -521,7 +521,8 @@ export class IntelligenceFindingsBadge {
   }
 
   private readonly dropdownEscListener = (e: KeyboardEvent): void => {
-    if (e.key !== 'Escape') return;
+    // Another control (Search) already closed itself and placed focus.
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
     e.preventDefault();
     this.closeDropdown();
     this.badge.focus();
@@ -641,6 +642,7 @@ export class IntelligenceFindingsBadge {
     }
     this.dismissContextMenu();
     this.dismissFindingsModal();
+    this.closeDropdown();
     document.removeEventListener('wm:intelligence-updated', this.boundUpdate);
     document.removeEventListener('click', this.boundCloseDropdown);
     this.badge.remove();

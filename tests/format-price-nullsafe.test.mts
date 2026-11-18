@@ -143,21 +143,20 @@ describe('change formatting unavailable-state consistency', () => {
 // with a dollar sign ("$6,712" for the S&P 500, "$3,350" for Shanghai, "$3.75"
 // for the riyal rate). Only US tickers, US ETFs and dollar futures are dollars.
 describe('formatQuotePrice', () => {
+  // Expected text comes from formatPrice, so separators follow the host locale.
   it('drops the dollar sign for indices, exchange-suffixed listings and FX pairs', async () => {
-    const { formatQuotePrice } = await loadUtils();
-    assert.equal(formatQuotePrice('^GSPC', 6712.4), '6,712');
-    assert.equal(formatQuotePrice('000001.SS', 3350.2), '3,350');
-    assert.equal(formatQuotePrice('^TASI.SR', 11250), '11,250');
-    assert.equal(formatQuotePrice('7203.T', 2875.5), '2,876');
-    assert.equal(formatQuotePrice('SARUSD=X', 0.2666), '0.2666');
+    const { formatQuotePrice, formatPrice } = await loadUtils();
+    for (const [symbol, price] of [['^GSPC', 6712.4], ['000001.SS', 3350.2], ['^TASI.SR', 11250], ['7203.T', 2875.5], ['AAL.L', 2410], ['SARUSD=X', 0.2666]] as const) {
+      assert.equal(formatQuotePrice(symbol, price), formatPrice(price).replace('$', ''), symbol);
+    }
   });
 
-  it('keeps the dollar sign for US tickers, ETFs and futures', async () => {
-    const { formatQuotePrice } = await loadUtils();
-    assert.equal(formatQuotePrice('AAPL', 212.5), '$212.50');
-    assert.equal(formatQuotePrice('BRK-B', 1500), '$1,500');
-    assert.equal(formatQuotePrice('QAT', 18.2), '$18.20');
-    assert.equal(formatQuotePrice('BZ=F', 82.1), '$82.10');
+  it('keeps the dollar sign for US tickers, share classes, ETFs and futures', async () => {
+    const { formatQuotePrice, formatPrice } = await loadUtils();
+    for (const [symbol, price] of [['AAPL', 212.5], ['BRK-B', 1500], ['BRK.B', 1500], ['BF.A', 41.2], ['QAT', 18.2], ['BZ=F', 82.1]] as const) {
+      assert.equal(formatQuotePrice(symbol, price), formatPrice(price), symbol);
+      assert.match(formatQuotePrice(symbol, price), /\$/, symbol);
+    }
     assert.equal(formatQuotePrice('^GSPC', null), '--');
   });
 });
