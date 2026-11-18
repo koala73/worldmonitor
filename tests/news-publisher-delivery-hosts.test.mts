@@ -206,6 +206,19 @@ describe('the relay scores a topic feed item on its original publisher (#10977)'
     assert.equal(relaySource(served), 'Strategic Chokepoints');
   });
 
+  it('resolves the name Google News gives Al Arabiya to its tier table spelling', () => {
+    const served = toProtoItem(__testing__.parseRssXml(xml('Al Arabiya English'), feed, 'energy')!.items[0]!);
+    assert.equal(served.originPublisher, 'Al Arabiya');
+    assert.equal(relaySource(served), 'Al Arabiya');
+  });
+
+  it('reads the publisher from <source>, never from the title suffix', () => {
+    const spoofed = xml('Totally Real Wire').replace('Headline - Totally Real Wire', 'Headline - Reuters');
+    const served = toProtoItem(__testing__.parseRssXml(spoofed, feed, 'energy')!.items[0]!);
+    assert.equal(served.originPublisher, '');
+    assert.equal(relaySource(served), 'Strategic Chokepoints');
+  });
+
   it('keeps the feed name when the feed is not a trusted aggregator', () => {
     const parsed = __testing__.parseRssXml(xml('Al Arabiya'), { ...feed, url: 'https://example.com/feed' }, 'energy');
     const served = toProtoItem(parsed!.items[0]!);
