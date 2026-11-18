@@ -187,6 +187,8 @@ export type ResumeSurfaceIntent = 'sign-in' | 'sign-up';
 export function createSignUpResumeController(ports: SignUpResumePorts): SignUpResumeController {
   // Released in this page even when storage rejects the persisted marker.
   const released = new Set<SignUpAttemptId>();
+  // Bumped by each release, so only a resend that was pending across one is dropped.
+  let releaseGeneration = 0;
   const isDismissed = (id: SignUpAttemptId): boolean => released.has(id) || ports.markers.dismissed(id);
   const decide = (trigger: ResumeTrigger): ResumeDecision => {
     const snap = ports.readSnapshot();
@@ -212,9 +214,10 @@ export function createSignUpResumeController(ports: SignUpResumePorts): SignUpRe
       return;
     }
     // The customer may leave for sign-in while the resend is in flight.
+    const generation = releaseGeneration;
     void ports.resendCode().then(
-      () => { if (!released.has(decision.attemptId)) mount(); },
-      () => { if (!released.has(decision.attemptId)) onResendFailed(); },
+      () => { if (generation === releaseGeneration) mount(); },
+      () => { if (generation === releaseGeneration) onResendFailed(); },
     );
   };
 
@@ -238,6 +241,7 @@ export function createSignUpResumeController(ports: SignUpResumePorts): SignUpRe
       const snap = ports.readSnapshot();
       if (snap?.signUp.kind !== 'pending') return;
       released.add(snap.signUp.id);
+      releaseGeneration += 1;
       ports.markers.markDismissed(snap.signUp.id);
       if (ports.surface.isOpen()) ports.surface.close();
     },

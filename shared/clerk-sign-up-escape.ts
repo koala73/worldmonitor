@@ -64,14 +64,22 @@ export function installSignUpSignInEscape(doc: Document, onSignIn: () => void): 
     for (const card of root.getElementsByClassName(SIGN_UP_CODE_CARD_CLASS)) decorateCard(card);
   };
   // A card enters inside an added subtree, or by a class change on an element
-  // already present. Scanning only those keeps unrelated dashboard mutations
-  // from walking the whole document.
+  // already present. Clerk can also replace a mounted card's children, which
+  // drops the row, so the nearest card around a child-list change is checked
+  // again. Scanning only those keeps unrelated dashboard mutations from
+  // walking the whole document.
   const observer = new MutationObserver((records) => {
     for (const record of records) {
+      const target = record.target;
+      if (!(target instanceof Element)) continue;
       if (record.type === 'attributes') {
-        if (record.target instanceof Element && record.target.classList.contains(SIGN_UP_CODE_CARD_CLASS)) decorateTree(record.target);
+        if (target.classList.contains(SIGN_UP_CODE_CARD_CLASS)) decorateTree(target);
+        // It left the code step: drop its own row, not a nested card's.
+        else for (const row of target.querySelectorAll(`:scope > [${ESCAPE_ATTR}]`)) row.remove();
         continue;
       }
+      const card = target.closest(SIGN_UP_CODE_CARD_SELECTOR);
+      if (card) decorateCard(card);
       for (const node of record.addedNodes) {
         if (node instanceof Element) decorateTree(node);
       }
@@ -87,7 +95,7 @@ export function installSignUpSignInEscape(doc: Document, onSignIn: () => void): 
 
 /** Clerk's auth surfaces; reopening sign-in waits until none is mounted. */
 const CLERK_AUTH_SURFACE_SELECTOR = '.cl-signUp-root, .cl-signIn-root, .cl-modalBackdrop';
-/** Upper bound on that wait, so Sign in always opens. */
+/** Upper bound on each wait (unmount, then sign-in mount), so the switch always ends. */
 export const SIGN_IN_REOPEN_MAX_WAIT_MS = 2_000;
 
 export interface SignInSwitchDeps {
@@ -104,29 +112,56 @@ function defaultSwitchDeps(): SignInSwitchDeps {
   };
 }
 
+export interface SignUpToSignInSwitch {
+  /** Close sign-up and run `open` (which opens sign-in) once it is gone. Ignored while a switch runs. */
+  readonly run: (open: () => void) => void;
+  /**
+   * True from `run` until sign-in is on screen, or until the wait cap passes
+   * after `open`. No Clerk form is mounted in that gap, so dismissal watchers
+   * must not read it as a cancel.
+   */
+  readonly inFlight: () => boolean;
+}
+
 /**
- * Close Clerk's sign-up and run `open` (which opens sign-in) once it is gone.
- *
  * Sign-up is either its own modal or a route inside the sign-in modal (its
  * footer link), so both are closed. Clerk ignores openSignIn while that modal
  * is still mounted: on production a fixed next-task reopen failed every run
  * under 6x CPU throttling, while waiting for the unmount passed every run
  * (about 50-85 ms).
  */
-export function switchSignUpToSignIn(
+export function createSignUpToSignInSwitch(
   clerk: { closeSignUp: () => void; closeSignIn: () => void },
-  open: () => void,
   deps: SignInSwitchDeps = defaultSwitchDeps(),
-): void {
-  clerk.closeSignUp();
-  clerk.closeSignIn();
-  const startedAt = deps.now();
-  const waitThenOpen = (): void => {
-    if (deps.authSurfaceMounted() && deps.now() - startedAt < SIGN_IN_REOPEN_MAX_WAIT_MS) {
-      deps.nextFrame(waitThenOpen);
-      return;
-    }
-    open();
+): SignUpToSignInSwitch {
+  let running = false;
+  const waitFor = (done: () => boolean, then: () => void): void => {
+    const startedAt = deps.now();
+    const poll = (): void => {
+      if (!done() && deps.now() - startedAt < SIGN_IN_REOPEN_MAX_WAIT_MS) {
+        deps.nextFrame(poll);
+        return;
+      }
+      then();
+    };
+    deps.nextFrame(poll);
   };
-  deps.nextFrame(waitThenOpen);
+  return {
+    run(open) {
+      if (running) return;
+      running = true;
+      clerk.closeSignUp();
+      clerk.closeSignIn();
+      waitFor(() => !deps.authSurfaceMounted(), () => {
+        try {
+          open();
+        } catch (err) {
+          running = false;
+          throw err;
+        }
+        waitFor(deps.authSurfaceMounted, () => { running = false; });
+      });
+    },
+    inFlight: () => running,
+  };
 }

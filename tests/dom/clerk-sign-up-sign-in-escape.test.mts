@@ -89,6 +89,39 @@ describe('sign-up code card escape to sign-in', () => {
     expect(escapeButton(card)).not.toBeNull();
   });
 
+  it('removes the action when the element stops being the code card, keeping a nested card\'s action', async () => {
+    dispose = installSignUpSignInEscape(document, () => {});
+    const card = clerkCard('cl-signUp-emailCode');
+    await flush();
+    expect(escapeButton(card)).not.toBeNull();
+    card.className = 'cl-card cl-signUp-start';
+    await flush();
+    expect(escapeButton(card)).toBeNull();
+
+    const outer = document.createElement('div');
+    outer.className = 'cl-cardBox cl-signUp-emailCode';
+    const inner = document.createElement('div');
+    inner.className = 'cl-card cl-signUp-emailCode';
+    outer.append(inner);
+    document.body.append(outer);
+    await flush();
+    outer.className = 'cl-cardBox';
+    await flush();
+    expect(inner.querySelectorAll('[data-wm-sign-in-escape]').length).toBe(1);
+  });
+
+  it('restores the action when Clerk replaces the card\'s children', async () => {
+    dispose = installSignUpSignInEscape(document, () => {});
+    const card = clerkCard('cl-signUp-emailCode');
+    await flush();
+    expect(escapeButton(card)).not.toBeNull();
+    const form = document.createElement('form');
+    form.append(document.createElement('input'));
+    card.replaceChildren(form);
+    await flush();
+    expect(card.querySelectorAll('[data-wm-sign-in-escape]').length).toBe(1);
+  });
+
   it('decorates a code card already on screen at install', () => {
     const card = clerkCard('cl-signUp-emailCode');
     dispose = installSignUpSignInEscape(document, () => {});
@@ -117,45 +150,86 @@ describe('sign-up code card escape to sign-in', () => {
 });
 
 describe('switching from sign-up to sign-in', () => {
-  function harness(mountedFrames: number) {
+  // The cap is a product decision: Sign in must open within two seconds.
+  const CAP_MS = 2_000;
+  const FRAME_MS = 16;
+
+  function harness() {
     const log: string[] = [];
     const frames: Array<() => void> = [];
     let clock = 0;
-    let mounted = mountedFrames;
+    const state = { mounted: true };
     const deps = {
-      authSurfaceMounted: () => mounted > 0,
+      authSurfaceMounted: () => state.mounted,
       now: () => clock,
       nextFrame: (cb: () => void) => { frames.push(cb); },
     };
-    const runFrame = () => { clock += 16; if (mounted > 0) mounted -= 1; frames.shift()?.(); };
+    const runFrame = () => { clock += FRAME_MS; frames.shift()?.(); };
     const clerk = { closeSignUp: () => log.push('closeSignUp'), closeSignIn: () => log.push('closeSignIn') };
-    return { log, frames, deps, clerk, runFrame };
+    return { log, frames, deps, clerk, state, runFrame };
   }
 
   it('closes both forms at once and opens sign-in only after Clerk has unmounted them', async () => {
-    const { switchSignUpToSignIn } = await import('../../shared/clerk-sign-up-escape');
-    const h = harness(3);
-    switchSignUpToSignIn(h.clerk, () => h.log.push('open'), h.deps);
+    const { createSignUpToSignInSwitch } = await import('../../shared/clerk-sign-up-escape');
+    const h = harness();
+    const sw = createSignUpToSignInSwitch(h.clerk, h.deps);
+    sw.run(() => h.log.push('open'));
     expect(h.log).toEqual(['closeSignUp', 'closeSignIn']);
     h.runFrame();
     h.runFrame();
     expect(h.log).not.toContain('open');
-    h.runFrame();
+    h.state.mounted = false;
     h.runFrame();
     expect(h.log).toEqual(['closeSignUp', 'closeSignIn', 'open']);
-    expect(h.frames.length).toBe(0);
   });
 
-  it('opens sign-in anyway once the wait cap passes', async () => {
-    const { switchSignUpToSignIn, SIGN_IN_REOPEN_MAX_WAIT_MS } = await import('../../shared/clerk-sign-up-escape');
-    const h = harness(Number.POSITIVE_INFINITY);
-    switchSignUpToSignIn(h.clerk, () => h.log.push('open'), h.deps);
-    // Frames run at 16 ms; the cap is reached on frame ceil(2000 / 16) = 125.
-    const capFrame = Math.ceil(SIGN_IN_REOPEN_MAX_WAIT_MS / 16);
+  it('stays in flight until sign-in is on screen, and ignores a second click meanwhile', async () => {
+    const { createSignUpToSignInSwitch } = await import('../../shared/clerk-sign-up-escape');
+    const h = harness();
+    const sw = createSignUpToSignInSwitch(h.clerk, h.deps);
+    sw.run(() => h.log.push('open'));
+    expect(sw.inFlight()).toBe(true);
+    h.state.mounted = false;
+    h.runFrame();
+    expect(h.log).toContain('open');
+    sw.run(() => h.log.push('second'));
+    // Sign-in has not mounted yet: a dismissal watcher must not see a cancel.
+    for (let i = 0; i < 50; i++) h.runFrame();
+    expect(sw.inFlight()).toBe(true);
+    h.state.mounted = true;
+    h.runFrame();
+    expect(sw.inFlight()).toBe(false);
+    expect(h.log.filter((e) => e === 'open').length).toBe(1);
+    expect(h.log).not.toContain('second');
+    expect(h.frames.length).toBe(0);
+    sw.run(() => h.log.push('again'));
+    expect(h.log.slice(-2)).toEqual(['closeSignUp', 'closeSignIn']);
+  });
+
+  it('opens sign-in anyway at the two-second cap, then ends the switch two seconds later if sign-in never mounts', async () => {
+    const { createSignUpToSignInSwitch } = await import('../../shared/clerk-sign-up-escape');
+    const h = harness();
+    const sw = createSignUpToSignInSwitch(h.clerk, h.deps);
+    sw.run(() => { h.log.push('open'); h.state.mounted = false; });
+    const capFrame = Math.ceil(CAP_MS / FRAME_MS);
     for (let i = 0; i < capFrame - 1; i++) h.runFrame();
     expect(h.log).not.toContain('open');
     h.runFrame();
     expect(h.log.filter((e) => e === 'open').length).toBe(1);
+    for (let i = 0; i < capFrame - 1; i++) h.runFrame();
+    expect(sw.inFlight()).toBe(true);
+    h.runFrame();
+    expect(sw.inFlight()).toBe(false);
     expect(h.frames.length).toBe(0);
+  });
+
+  it('ends the switch when opening sign-in throws', async () => {
+    const { createSignUpToSignInSwitch } = await import('../../shared/clerk-sign-up-escape');
+    const h = harness();
+    const sw = createSignUpToSignInSwitch(h.clerk, h.deps);
+    sw.run(() => { throw new Error('ui components not ready'); });
+    h.state.mounted = false;
+    expect(() => h.runFrame()).toThrow('ui components not ready');
+    expect(sw.inFlight()).toBe(false);
   });
 });

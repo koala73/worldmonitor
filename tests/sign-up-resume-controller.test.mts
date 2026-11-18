@@ -285,6 +285,25 @@ describe('sign-up resume controller', () => {
     assert.equal(fallbacks, 0, 'no Clerk sign-up modal over sign-in');
   });
 
+  it('a Create account click after releaseAttempt still shows the resumed card once its resend settles', async () => {
+    const h = harness(pending(NOW - 60_000));
+    const c = createSignUpResumeController(h.ports);
+    c.releaseAttempt();
+    assert.equal(c.resumeOnUserIntent(() => {}, 'sign-up'), true);
+    await tick();
+    assert.equal(h.resends, 1);
+    assert.equal(h.surface.opened, 1, 'the click was taken, so a form must appear');
+
+    const failing = harness(pending(NOW - 60_000));
+    failing.state.resendResult = 'fail';
+    const c2 = createSignUpResumeController(failing.ports);
+    c2.releaseAttempt();
+    let fallbacks = 0;
+    assert.equal(c2.resumeOnUserIntent(() => { fallbacks += 1; }, 'sign-up'), true);
+    await tick();
+    assert.equal(fallbacks, 1, "Clerk's sign-up form opens when the resend fails");
+  });
+
   it('releaseAttempt is a no-op with no pending attempt', () => {
     const h = harness({ kind: 'none' });
     const c = createSignUpResumeController(h.ports);

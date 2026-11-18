@@ -4,7 +4,7 @@ import { EULA_PATH, PRIVACY_PATH } from '../../../shared/legal';
 import {
   SIGN_UP_CODE_SUBTITLE,
   installSignUpSignInEscape,
-  switchSignUpToSignIn,
+  createSignUpToSignInSwitch,
   type SignInSwitchDeps,
 } from '../../../shared/clerk-sign-up-escape';
 
@@ -40,14 +40,20 @@ export function setAuthReturnUrls(urls: AuthReturnUrls | null): void {
   authReturnUrls = urls;
 }
 
-/** Sign in from the sign-up code card: an existing account typed into sign-up. */
-export function openSignInInsteadOfSignUp(instance: LoadedClerk, switchDeps?: SignInSwitchDeps): void {
-  const emailAddress = instance.client?.signUp?.emailAddress ?? null;
-  const returnUrls = authReturnUrls;
-  switchSignUpToSignIn(instance, () => instance.openSignIn({
-    ...(returnUrls ?? {}),
-    ...(emailAddress ? { initialValues: { emailAddress } } : {}),
-  }), switchDeps);
+/**
+ * The Sign in action for the sign-up code card: an existing account typed into
+ * sign-up. A second click while the switch runs is ignored.
+ */
+export function createSignInEscape(instance: LoadedClerk, switchDeps?: SignInSwitchDeps): () => void {
+  const escapeSwitch = createSignUpToSignInSwitch(instance, switchDeps);
+  return () => {
+    const emailAddress = instance.client?.signUp?.emailAddress ?? null;
+    const returnUrls = authReturnUrls;
+    escapeSwitch.run(() => instance.openSignIn({
+      ...(returnUrls ?? {}),
+      ...(emailAddress ? { initialValues: { emailAddress } } : {}),
+    }));
+  };
 }
 
 export async function ensureClerk(): Promise<LoadedClerk> {
@@ -180,7 +186,7 @@ async function loadClerk(): Promise<LoadedClerk> {
   // wedge ensureClerk()'s retry path.
   clerk = instance;
   if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') {
-    installSignUpSignInEscape(document, () => openSignInInsteadOfSignUp(instance));
+    installSignUpSignInEscape(document, createSignInEscape(instance));
   }
   publishClerkLoaded(clerk);
   return clerk;

@@ -27,7 +27,8 @@ import { EULA_PATH, PRIVACY_PATH, absoluteLegalUrl } from '../../shared/legal';
 import {
   SIGN_UP_CODE_SUBTITLE,
   installSignUpSignInEscape,
-  switchSignUpToSignIn,
+  createSignUpToSignInSwitch,
+  type SignUpToSignInSwitch,
 } from '../../shared/clerk-sign-up-escape';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { isDesktopRuntime } from '@/config/desktop-runtime';
@@ -652,7 +653,7 @@ export function isClerkSignInOpen(): boolean {
   // Between closing sign-up and opening sign-in no Clerk form is on screen,
   // but sign-in is on its way: dismissal watchers (MCP grant) must not read
   // that gap as a cancel.
-  if (signUpEscapeInFlight) return true;
+  if (signUpEscapeSwitch?.inFlight()) return true;
   try {
     return Boolean(document.querySelector(
       '.cl-modalBackdrop, .cl-modal, [data-clerk-component="SignIn"]',
@@ -829,7 +830,7 @@ export function openSignUp(): void {
  * next Sign In click would resume the sign-up code card again.
  */
 let signUpEscapeHook: (() => void) | null = null;
-let signUpEscapeInFlight = false;
+let signUpEscapeSwitch: SignUpToSignInSwitch | null = null;
 
 export function registerSignUpEscapeHook(hook: (() => void) | null): void {
   signUpEscapeHook = hook;
@@ -842,12 +843,13 @@ export function registerSignUpEscapeHook(hook: (() => void) | null): void {
  */
 function installSignUpEscapeToSignIn(clerk: ClerkInstance): void {
   if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return;
+  const escapeSwitch = createSignUpToSignInSwitch(clerk);
+  signUpEscapeSwitch = escapeSwitch;
   installSignUpSignInEscape(document, () => {
+    if (escapeSwitch.inFlight()) return;
     const emailAddress = clerk.client?.signUp?.emailAddress ?? null;
     signUpEscapeHook?.();
-    signUpEscapeInFlight = true;
-    switchSignUpToSignIn(clerk, () => {
-      signUpEscapeInFlight = false;
+    escapeSwitch.run(() => {
       runClerkSurfaceOpen(
         () => clerk.openSignIn({
           appearance: getAppearance(),

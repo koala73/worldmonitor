@@ -6,10 +6,10 @@
  */
 
 import assert from 'node:assert/strict';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import {
-  openSignInInsteadOfSignUp,
+  createSignInEscape,
   setAuthReturnUrls,
   type LoadedClerk,
 } from '../pro-test/src/services/clerk.ts';
@@ -20,31 +20,53 @@ function fakeClerk(emailAddress: string | null) {
     client: { signUp: { emailAddress } },
     closeSignUp: () => calls.push({ op: 'closeSignUp' }),
     closeSignIn: () => calls.push({ op: 'closeSignIn' }),
-    openSignIn: (props?: unknown) => calls.push({ op: 'openSignIn', props }),
+    openSignIn: (props?: unknown) => {
+      calls.push({ op: 'openSignIn', props });
+      mounted = true; // the sign-in modal stays on screen
+      mountedFrames = Number.POSITIVE_INFINITY;
+    },
   } as unknown as LoadedClerk;
   return { instance, calls };
 }
 
-// Clerk keeps sign-up mounted for the first frame, then unmounts it.
+// Clerk keeps sign-up mounted for the first frame, unmounts it, then mounts
+// sign-in on the frame after openSignIn.
 const frames: Array<() => void> = [];
+let clock = 0;
+let mounted = true;
 let mountedFrames = 0;
 const switchDeps = {
-  authSurfaceMounted: () => mountedFrames > 0,
-  now: () => 0,
+  authSurfaceMounted: () => mounted,
+  now: () => clock,
   nextFrame: (cb: () => void) => { frames.push(cb); },
 };
-const runFrame = () => { frames.shift()?.(); if (mountedFrames > 0) mountedFrames -= 1; };
-const nextTask = async () => { while (frames.length) runFrame(); };
+const runFrame = () => {
+  clock += 16;
+  frames.shift()?.();
+  if (mountedFrames > 0) mountedFrames -= 1;
+  else mounted = false;
+};
+const MAX_FRAMES = 300; // past both two-second waits at 16 ms a frame
+const nextTask = async () => {
+  for (let i = 0; frames.length && i < MAX_FRAMES; i++) runFrame();
+  assert.equal(frames.length, 0, 'the switch ends within its wait caps');
+};
 
+beforeEach(() => {
+  frames.length = 0;
+  clock = 0;
+  mounted = true;
+  mountedFrames = 0;
+});
 afterEach(() => setAuthReturnUrls(null));
 
 describe('pro sign-up code card escape', () => {
-  it('closes both forms, then opens sign-in on the next task with the email and the checkout return URLs', async () => {
+  it('closes both forms, then opens sign-in once sign-up has unmounted, with the email and the checkout return URLs', async () => {
     const returnUrl = 'https://www.worldmonitor.app/pro?checkout=api_starter#pricing';
     setAuthReturnUrls({ afterSignInUrl: returnUrl, afterSignUpUrl: returnUrl });
     const { instance, calls } = fakeClerk('existing-buyer@example.com');
     mountedFrames = 1;
-    openSignInInsteadOfSignUp(instance, switchDeps);
+    createSignInEscape(instance, switchDeps)();
     // Clerk ignores openSignIn while the modal that hosts sign-up is mounted.
     assert.deepEqual(calls, [{ op: 'closeSignUp' }, { op: 'closeSignIn' }]);
     runFrame();
@@ -68,8 +90,17 @@ describe('pro sign-up code card escape', () => {
     setAuthReturnUrls({ afterSignInUrl: 'https://stale.example/', afterSignUpUrl: 'https://stale.example/' });
     setAuthReturnUrls(null);
     const { instance, calls } = fakeClerk(null);
-    openSignInInsteadOfSignUp(instance, switchDeps);
+    createSignInEscape(instance, switchDeps)();
     await nextTask();
     assert.deepEqual(calls[2], { op: 'openSignIn', props: {} });
+  });
+
+  it('ignores a second click while the switch runs', async () => {
+    const { instance, calls } = fakeClerk('existing-buyer@example.com');
+    const escape = createSignInEscape(instance, switchDeps);
+    escape();
+    escape();
+    await nextTask();
+    assert.deepEqual(calls.map((c) => c.op), ['closeSignUp', 'closeSignIn', 'openSignIn']);
   });
 });

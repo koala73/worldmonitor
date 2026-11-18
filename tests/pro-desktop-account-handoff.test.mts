@@ -165,12 +165,13 @@ it('switches to the desktop account and resumes the same checkout after sign-in'
   assert.deepEqual(f.navigations, [], 'sign-out must not navigate away from /pro before sign-in opens');
   assert.equal(f.signIns.length, 1);
   assert.deepEqual(f.signUps, [], 'switching to an existing desktop account is a sign-in, not a sign-up');
-  const resume = new URL(f.signIns[0]!.afterSignInUrl!);
+  const { afterSignInUrl, afterSignUpUrl } = f.signIns[0]!;
+  const resume = new URL(afterSignInUrl!);
   assert.equal(resume.searchParams.get('wm_checkout_product'), 'synthetic-product');
   assert.equal(resume.searchParams.get('wm_checkout_handoff'), 'desktop');
   assert.equal(resume.searchParams.get('wm_checkout_account'), digest(DESKTOP_USER));
+  assert.equal(afterSignUpUrl, afterSignInUrl, 'a sign-up from that form resumes the same desktop checkout');
   // A sign-up escape from that sign-in still resumes this checkout.
-  const { afterSignInUrl, afterSignUpUrl } = f.signIns[0]!;
   assert.deepEqual(f.authReturnUrls, [{ afterSignInUrl, afterSignUpUrl }]);
   assert.deepEqual(f.bodies, []);
 });
