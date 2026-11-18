@@ -34,6 +34,7 @@ env:
   OUT_DIR: /tmp/dogfood-output
   TARGET_URL: https://www.worldmonitor.app
   AGENT_BROWSER_USER: dogfood-browser
+  AGENT_BROWSER_EXECUTABLE_PATH: /usr/bin/google-chrome
 
 jobs:
   explore:
@@ -55,14 +56,17 @@ jobs:
         with:
           node-version: '24'
 
-      # The browser runs as its own user (see scripts/dogfood/run-agent.sh), so Chrome is installed for that user.
+      # The runner image's Google Chrome and its libraries are used as they are. `agent-browser install --with-deps`
+      # stalled for the whole step on an apt mirror (run 44384562753). npm skips install scripts unless allowed, and
+      # both packages fetch their native binary in one.
       - name: Install agent-browser and Claude Code
-        timeout-minutes: 10
+        timeout-minutes: 5
         run: |
-          npm install -g agent-browser@0.43.0 @anthropic-ai/claude-code@2.1.327
+          npm install -g --allow-scripts=@anthropic-ai/claude-code,agent-browser agent-browser@0.43.0 @anthropic-ai/claude-code@2.1.327
           sudo useradd --create-home "$AGENT_BROWSER_USER"
-          sudo env PATH="$PATH" agent-browser install --with-deps
-          sudo -n -u "$AGENT_BROWSER_USER" -H env -i PATH="$PATH" HOME="/home/$AGENT_BROWSER_USER" "$(command -v agent-browser)" install
+          "$AGENT_BROWSER_EXECUTABLE_PATH" --version
+          agent-browser --version
+          claude --version
 
       # The separation the agent step relies on: the browser user cannot read this job's process environment.
       - name: Check the browser user cannot read the runner's environment

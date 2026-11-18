@@ -27,8 +27,8 @@ prompt="${prompt//\{\{FOCUS\}\}/$FOCUS}"
 if [ -n "${AGENT_BROWSER_USER:-}" ]; then
   real="$(command -v agent-browser)"
   wrap="$(mktemp -d)"
-  printf '#!/bin/sh\nexec sudo -n -u %s -H env -i PATH=%q HOME=%q %q "$@"\n' \
-    "$AGENT_BROWSER_USER" "$PATH" "/home/$AGENT_BROWSER_USER" "$real" > "$wrap/agent-browser"
+  printf '#!/bin/sh\nexec sudo -n -u %s -H env -i PATH=%q HOME=%q AGENT_BROWSER_EXECUTABLE_PATH=%q %q "$@"\n' \
+    "$AGENT_BROWSER_USER" "$PATH" "/home/$AGENT_BROWSER_USER" "${AGENT_BROWSER_EXECUTABLE_PATH:-}" "$real" > "$wrap/agent-browser"
   chmod 755 "$wrap/agent-browser"
   export PATH="$wrap:$PATH"
   chmod 1777 "$OUT_DIR" "$OUT_DIR/screenshots" "$OUT_DIR/videos"
