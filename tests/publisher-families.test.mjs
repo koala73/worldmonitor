@@ -122,6 +122,7 @@ describe('publisher-families map data', () => {
       "guardian-media-tt": "Common publisher group across its news brands: https://guardianmedia.co.tt/about-us/",
       bbc: 'feeds.bbci.co.uk for the English editions, bbc.com for Afrique/Mundo',
       dw: 'rss.dw.com feed subdomain alongside dw.com — one Deutsche Welle newsroom',
+      ukrinform: 'ukrinform.net for the English edition, ukrinform.ua for the Ukrainian one — one national news agency',
       bloomberg: 'bloomberg.com plus tier-only "Bloomberg" and a Google News keyword feed',
       'hacker-news': 'hnrss.org plus news.ycombinator.com ("YC News" is the HN front page)',
       reuters: 'reuters.com plus tier-only "Reuters" and a Google News keyword feed',

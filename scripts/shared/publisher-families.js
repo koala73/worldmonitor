@@ -184,6 +184,7 @@ const PUBLISHER_FAMILY_DATA = {
     ],
   },
   'the-hacker-news': { publisher: "The Hacker News", labels: [] },
+  'the-independent': { publisher: "The Independent", labels: ["The Independent"] },
   'the-verge': {
     publisher: "The Verge",
     labels: [
@@ -194,6 +195,7 @@ const PUBLISHER_FAMILY_DATA = {
       "Verge Shows",
     ],
   },
+  'ukrinform': { publisher: "Ukrinform", labels: ["Ukrinform"] },
   'venturebeat': { publisher: "VentureBeat", labels: ["VentureBeat", "VentureBeat AI"] },
   'white-house': { publisher: "The White House", labels: ["White House", "White House Actions"] },
   // #8398: the feed URL is a Dow Jones delivery host
@@ -339,7 +341,9 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'sp-global': ['spglobal.com'],
   'techcrunch': ['techcrunch.com'],
   'the-hacker-news': ['thehackernews.com'],
+  'the-independent': ['independent.co.uk'],
   'the-verge': ['theverge.com'],
+  'ukrinform': ['ukrinform.net', 'ukrinform.ua'],
   'venturebeat': ['venturebeat.com'],
   'white-house': ['whitehouse.gov'],
   // #8398: see the 'wsj' family entry above — the Dow Jones delivery host
