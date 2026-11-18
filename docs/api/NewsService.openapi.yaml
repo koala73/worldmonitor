@@ -2494,6 +2494,13 @@ components:
                          trusted aggregator. A link that fails the check is served empty, so this
                          is false whenever `link` is empty. Computed by the server; never read
                          from the feed.
+                originPublisher:
+                    type: string
+                    description: |-
+                        The original publisher a trusted aggregator (Google News) names for this
+                         item, resolved to its curated source name, so consumers can score it on
+                         that publisher's tier instead of the feed's. Empty when the feed is not
+                         a trusted aggregator or names no publisher.
             required:
                 - source
                 - title

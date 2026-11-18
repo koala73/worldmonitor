@@ -2359,6 +2359,9 @@ async function readAdoptionState(
 export function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsItem {
   return {
     source: item.source,
+    originPublisher: item.originPublisherTrusted && item.originPublisher.trim()
+      ? resolveCredibilitySourceName(item)
+      : '',
     title: item.title,
     link: item.link,
     publishedAt: item.publishedAt,
