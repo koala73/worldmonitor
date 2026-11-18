@@ -335,6 +335,7 @@ export class MapComponent {
   private overlayAppendTarget: ParentNode | null = null;
   /** Text under each natural-event icon, largest event first, for declutterNaturalEventTexts. */
   private naturalEventTexts: NaturalEventText[] = [];
+  private naturalEventTextsZoom = Number.NaN;
   // #7112 overlay marker budget. `overlayMarkerCut` holds the marker objects
   // this render pass withheld; it is consulted by identity, so a feed that is
   // NOT in the plan simply never appears here and renders in full. That makes a
@@ -1511,6 +1512,7 @@ export class MapComponent {
    * counts, with no layout read.
    */
   private declutterNaturalEventTexts(zoom: number): void {
+    this.naturalEventTextsZoom = zoom;
     const placed: Array<{ left: number; right: number; top: number; bottom: number }> = [];
     for (const text of this.naturalEventTexts) {
       const rows = text.rows.filter((row) => !row.needsZoom || zoom >= NAT_EVENT_LABEL_MIN_ZOOM);
@@ -4989,8 +4991,10 @@ export class MapComponent {
       this.wrapper.style.setProperty('--label-scale', String(labelScale));
       this.wrapper.style.setProperty('--marker-scale', String(markerScale));
       this.wrapper.style.setProperty('--zoom', String(zoom));
-      this.declutterNaturalEventTexts(zoom);
     }
+    // Exact zoom, not the rounded CSS key: 1.99999 and 2 share a key but sit on
+    // either side of the title threshold.
+    if (zoom !== this.naturalEventTextsZoom) this.declutterNaturalEventTexts(zoom);
 
     // Smart label hiding based on zoom level and overlap
     if (this.shouldUpdateLabelVisibility()) this.updateLabelVisibility(zoom);

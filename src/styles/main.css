@@ -7499,15 +7499,18 @@ body.playback-mode .status-dot {
   border-radius: 2px;
 }
 
-.nat-event-marker:hover {
-  transform: translate(-50%, -50%) scale(calc(var(--marker-scale, 1) * 1.2));
+/* Only the icon grows on hover, so the text keeps the box Map.ts declutters with. */
+.nat-event-marker:hover .nat-event-icon {
+  transform: scale(1.2);
 }
 
 .nat-event-icon {
+  position: relative;
   font-size: calc(20px * var(--wm-panel-effective-scale, 1));
   filter: drop-shadow(0 0 4px var(--shadow-color));
   cursor: pointer;
   pointer-events: auto;
+  transition: transform 0.2s ease;
 }
 
 .nat-event-label {
@@ -16075,7 +16078,9 @@ button.popup-link {
   /* Expand touch targets for all map markers using ::before pseudo-element */
   /* This creates an invisible touch area around small markers */
 
-  #mapOverlays [class*='-marker']::before,
+  /* A natural-event marker takes taps on its icon only (its text sits above neighbours). */
+  #mapOverlays [class*='-marker']:not(.nat-event-marker)::before,
+  #mapOverlays .nat-event-icon::before,
   #mapOverlays .hotspot::before,
   #mapOverlays .conflict-click-area::before {
     content: '';
@@ -16104,6 +16109,10 @@ button.popup-link {
 
   .nat-event-marker:hover {
     transform: translate(-50%, -50%) scale(var(--marker-scale, 1));
+  }
+
+  .nat-event-marker:hover .nat-event-icon {
+    transform: none;
   }
 
   /* Ensure hotspot container is large enough for touch */

@@ -64,11 +64,12 @@ describe('a country brief opened from the map', () => {
   async function managerWithMap() {
     let clickHandler!: (payload: CountryClick) => void;
     const map = { ...dashboardMap, onCountryClicked: (cb: (payload: CountryClick) => void) => { clickHandler = cb; } };
-    const manager = new CountryIntelManager({ map, isDestroyed: false } as unknown as AppContext);
+    const returnFocusTo = vi.fn();
+    const manager = new CountryIntelManager({ map, isDestroyed: false, countryBriefPage: { returnFocusTo } } as unknown as AppContext);
     const focusedAtOpen: Array<Element | null> = [];
     Reflect.set(manager, 'openCountryBriefByCode', async () => { focusedAtOpen.push(document.activeElement); });
     await Reflect.get(manager, 'setupCountryIntel').call(manager);
-    return { click: clickHandler, menu: menuHandler, focusedAtOpen };
+    return { click: clickHandler, menu: menuHandler, focusedAtOpen, returnFocusTo };
   }
   function domWithLayerToggle() {
     const container = document.createElement('div');
@@ -82,17 +83,20 @@ describe('a country brief opened from the map', () => {
 
   it('moves focus to the map before a map click opens the brief', async () => {
     const container = domWithLayerToggle();
-    const { click, focusedAtOpen } = await managerWithMap();
+    const { click, focusedAtOpen, returnFocusTo } = await managerWithMap();
     click({ lat: 61, lon: 99, code: 'RU', name: 'Russia' });
     expect(focusedAtOpen).toEqual([container]);
+    // A brief that is already open is told directly, since it reloads in place.
+    expect(returnFocusTo).toHaveBeenCalledWith(container);
   });
 
   it('moves focus to the map before the context menu opens the brief', async () => {
     const container = domWithLayerToggle();
-    const { menu, focusedAtOpen } = await managerWithMap();
+    const { menu, focusedAtOpen, returnFocusTo } = await managerWithMap();
     menu({ lat: 61, lon: 99, screenX: 10, screenY: 10, countryCode: 'RU', countryName: 'Russia' });
     menuItem('Open Country Brief')!.click();
     expect(focusedAtOpen).toEqual([container]);
+    expect(returnFocusTo).toHaveBeenCalledWith(container);
   });
 });
 
@@ -110,23 +114,49 @@ describe('closing a country brief with Escape', () => {
     return { search, map, panel: new CountryDeepDivePanel() };
   }
 
-  it('returns focus to the control that opened it', () => {
+  const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  const closeButton = () => document.getElementById('deep-dive-close');
+
+  it('returns focus to the control that opened it', async () => {
     const { map, panel } = setup();
     map.focus();
+    panel.show('Russia', 'RU', null, null);
+    await nextFrame();
+    expect(document.activeElement).toBe(closeButton());
+    pressEscape();
+    expect(panel.isVisible()).toBe(false);
+    expect(document.activeElement).toBe(map);
+  });
+
+  it('returns focus to the map after a map click reloads the open brief', async () => {
+    const { search, map, panel } = setup();
+    search.focus();
+    panel.show('Russia', 'RU', null, null);
+    await nextFrame();
+    expect(document.activeElement).toBe(closeButton());
+    // The map click: the map takes focus and claims the visible brief, which
+    // moves focus back into the brief before the reload lands.
+    map.focus();
+    panel.returnFocusTo(map);
+    await nextFrame();
+    expect(document.activeElement).toBe(closeButton());
     panel.show('Russia', 'RU', null, null);
     pressEscape();
     expect(panel.isVisible()).toBe(false);
     expect(document.activeElement).toBe(map);
   });
 
-  it('returns focus to the map after a map click reloads the open brief', () => {
+  it('leaves the return target alone on a refresh that does not come from the map', async () => {
     const { search, map, panel } = setup();
     search.focus();
     panel.show('Russia', 'RU', null, null);
+    await nextFrame();
     map.focus();
     panel.show('Russia', 'RU', null, null);
-    pressEscape();
+    await nextFrame();
     expect(document.activeElement).toBe(map);
+    pressEscape();
+    expect(document.activeElement).toBe(search);
   });
 });
 

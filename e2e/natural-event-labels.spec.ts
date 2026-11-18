@@ -34,7 +34,19 @@ const visibleText = (page: Page) => page.evaluate(() => {
     .filter((b) => b.right > b.left && b.bottom > b.top);
 });
 
+/** Wait out the wrapper's zoom glide and the markers' own transitions, so one sample is one settled frame. */
+const settled = (page: Page) => page.evaluate(async () => {
+  const wrapper = document.querySelector('.map-wrapper')!;
+  // Finite ones only: pulsing markers elsewhere in the layer never finish.
+  const finite = () => wrapper.getAnimations({ subtree: true })
+    .filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity);
+  for (let running = finite(); running.length; running = finite()) {
+    await Promise.allSettled(running.map((animation) => animation.finished));
+  }
+});
+
 async function sample(page: Page) {
+  await settled(page);
   const boxes = await visibleText(page);
   const overlaps: string[] = [];
   boxes.forEach((a, i) => boxes.slice(i + 1).forEach((b) => {
@@ -44,7 +56,9 @@ async function sample(page: Page) {
   }));
   // Map.ts sizes each title box at 4.8px per character; the rendered title must match.
   const misSized = boxes.filter((b) => b.title && Math.abs(b.width - [...b.text].length * 4.8) > 1).map((b) => `${b.text} ${b.width.toFixed(1)}px`);
-  return { overlaps, misSized, titles: boxes.filter((b) => b.title).map((b) => b.text).sort() };
+  const hiddenIcons = await page.locator('#mapOverlays .nat-event-icon').evaluateAll((els) =>
+    els.filter((el) => !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })).length);
+  return { overlaps, misSized, hiddenIcons, titles: boxes.filter((b) => b.title).map((b) => b.text).sort() };
 }
 
 test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
@@ -60,25 +74,27 @@ for (const font of ['mono', 'system'] as const) {
       h[fn]!(...args);
     }, { fn, args });
 
-    // Built below the title zoom: titles must appear when zoom later crosses it.
+    // Built just below the title zoom: titles must appear when zoom crosses it,
+    // even though 1.99999 and 2 round to the same CSS zoom key.
     await harness('setOverlayViewport', -57, -42);
-    await harness('setOverlayZoom', 1.5);
+    await harness('setOverlayZoom', 1.99999);
     await harness('setNaturalEvents', ICEBERGS);
     await expect(page.locator('#mapOverlays .nat-event-marker')).toHaveCount(6);
     await expect.poll(async () => (await sample(page)).titles).toEqual([]);
 
     const shown: Record<number, number> = {};
-    // 2.7 is the phone start; zooming out pulls them together, in pulls them apart.
-    for (const zoom of [2.7, 2, 8]) {
+    // 2 crosses the title zoom; 2.7 is the phone start; back to 2 pulls them
+    // together; 8 pulls them apart.
+    for (const zoom of [2, 2.7, 2, 8]) {
       await harness('setOverlayZoom', zoom);
-      // Markers animate their scale for 0.2s after a zoom change, so wait for the settled frame.
+      // One settled frame: no overlaps, titles at their sized width, the largest
+      // iceberg's name shown and every icon visible.
+      let titles: string[] = [];
       await expect.poll(async () => {
-        const { overlaps, misSized } = await sample(page);
-        return { overlaps, misSized };
-      }, { message: `zoom ${zoom}` }).toEqual({ overlaps: [], misSized: [] });
-      const { titles } = await sample(page);
-      // The largest iceberg keeps its name; every marker keeps its icon.
-      expect(titles, `zoom ${zoom}`).toContain('Iceberg A81');
+        const frame = await sample(page);
+        titles = frame.titles;
+        return { overlaps: frame.overlaps, misSized: frame.misSized, hiddenIcons: frame.hiddenIcons, hasLargest: frame.titles.includes('Iceberg A81') };
+      }, { message: `zoom ${zoom}` }).toEqual({ overlaps: [], misSized: [], hiddenIcons: 0, hasLargest: true });
       shown[zoom] = titles.length;
       await expect(page.locator('#mapOverlays .nat-event-icon')).toHaveCount(6);
     }

@@ -1557,8 +1557,12 @@ export class EventHandlerManager implements AppModule {
    * A mission apply or reset replaces the panel layout, so the old scroll
    * position points into a different list. Start the new layout at its first
    * panel: the grid scrolls on desktop. On mobile the main column scrolls and
-   * the sticky category bar covers its top, so the first panel the bar's
-   * filter shows is brought up to just below the bar, as MobilePanelNav does.
+   * the sticky category bar covers its top, so when the user is scrolled into
+   * the panels, the first panel the bar's filter shows is brought up to just
+   * below the bar (the second half of MobilePanelNav.scrollToPanels). When the
+   * bar isn't stuck yet, the user is above the panels, which a layout change
+   * doesn't move, so the view stays where it is rather than scrolling the map
+   * out of sight.
    */
   private showPanelsFromTop(): void {
     const grid = document.getElementById('panelsGrid');

@@ -4602,17 +4602,24 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   /** Returns true when the panel was closed and is now open. */
+  /**
+   * A map click or map menu is opening this brief. A closed brief saves its
+   * return target when it opens (the map, which the caller has just focused).
+   * A visible brief reloads in place without reopening, so it takes the map
+   * as its return target now, and focus moves into the brief as on a first
+   * open. Background refreshes don't call this, so they never move focus.
+   */
+  public returnFocusTo(target: HTMLElement): void {
+    if (!this.panel.classList.contains('active')) return;
+    this.lastFocusedElement = target;
+    requestAnimationFrame(() => {
+      if (this.panel.classList.contains('active') && !this.panel.contains(document.activeElement)) this.closeButton.focus();
+    });
+  }
+
   private open(): boolean {
-    const focused = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
-      ? document.activeElement
-      : null;
-    if (this.panel.classList.contains('active')) {
-      // An open request from outside the visible brief (a map click that
-      // reloads it) moves the return target there, as a first open would.
-      if (focused && !this.panel.contains(focused)) this.lastFocusedElement = focused;
-      return false;
-    }
-    this.lastFocusedElement = focused;
+    if (this.panel.classList.contains('active')) return false;
+    this.lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.panel.classList.add('active');
     this.panel.setAttribute('aria-hidden', 'false');
     document.addEventListener('keydown', this.handleGlobalKeydown);

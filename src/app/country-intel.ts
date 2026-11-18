@@ -338,6 +338,7 @@ export class CountryIntelManager implements AppModule {
     if (!container.hasAttribute('role')) container.setAttribute('role', 'group');
     if (!container.hasAttribute('aria-label')) container.setAttribute('aria-label', getPanelDisplayName('map'));
     container.focus({ preventScroll: true });
+    this.ctx.countryBriefPage?.returnFocusTo?.(container);
   }
 
   private async setupCountryIntel(): Promise<void> {

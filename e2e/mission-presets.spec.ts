@@ -163,7 +163,8 @@ async function expectPanelsFromTop(page: Page): Promise<void> {
     const first = grid.querySelector<HTMLElement>(':scope > .panel:not(.hidden)');
     if (!first) return 'no visible panel';
     const top = first.getBoundingClientRect().top - grid.getBoundingClientRect().top;
-    return grid.scrollTop === 0 && top >= 0 ? 'top' : `scrollTop ${Math.round(grid.scrollTop)}, ${first.dataset.panel} at ${Math.round(top)}px`;
+    // Its top edge must be inside the visible grid; the whole panel need not fit.
+    return grid.scrollTop === 0 && top >= 0 && top < grid.clientHeight ? 'top' : `scrollTop ${Math.round(grid.scrollTop)}, ${first.dataset.panel} at ${Math.round(top)}px`;
   })).toBe('top');
 }
 
