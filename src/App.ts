@@ -1387,6 +1387,7 @@ export class App {
     let sessionDisabledSources: string[] | undefined = currentVariant === 'full' && !storageAvailable
       ? computeDefaultDisabledSources(this.currentSourceCapLanguage())
       : undefined;
+    let sourcePreferencesMissing = !storageAvailable;
     const sessionSourceEdits = new Map<string, boolean>();
     const pendingSourceMigrationMarkers: string[] = sessionDisabledSources
       ? [
@@ -1586,7 +1587,9 @@ export class App {
         );
         if (persisted) safeStorageSet(germanRssKey, 'done');
       }
-      const sourceMigrationBaseline = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+      const sourceMigrationBaselineValue = loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+      sourcePreferencesMissing = sourceMigrationBaselineValue === null;
+      const sourceMigrationBaseline = new Set(sourceMigrationBaselineValue ?? computeDefaultDisabledSources(userLang));
       const countryCoverageOptInKey = 'worldmonitor-country-coverage-optin-v1';
       if (!safeStorageGet(countryCoverageOptInKey)) {
         const current = loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
@@ -1671,6 +1674,19 @@ export class App {
       }
       if (sessionDisabledSources) {
         const sessionDisabled = new Set(sessionDisabledSources);
+        // Default seeding is a replaceable baseline. Only failed opt-in
+        // migrations and actual changes are replayed over incoming cloud choices.
+        const pendingPacks: Array<[string, readonly string[]]> = [
+          [countryCoverageOptInKey, COUNTRY_COVERAGE_OPT_IN_SOURCES],
+          [brazilOptInKey, BRAZIL_OPT_IN_SOURCES],
+          [publisherDirectOptInKey, PUBLISHER_DIRECT_OPT_IN_SOURCES],
+        ];
+        for (const [marker, sources] of pendingPacks) {
+          if (!pendingSourceMigrationMarkers.includes(marker)) continue;
+          for (const name of sources) {
+            if (sessionDisabled.has(name)) sessionSourceEdits.set(name, true);
+          }
+        }
         for (const name of new Set([...sourceMigrationBaseline, ...sessionDisabled])) {
           if (sourceMigrationBaseline.has(name) !== sessionDisabled.has(name)) {
             sessionSourceEdits.set(name, sessionDisabled.has(name));
@@ -1704,7 +1720,7 @@ export class App {
       pendingSourcePreferences: sessionDisabledSources === undefined ? undefined : {
         gateOwned: null,
         baselineGateOwned: null,
-        fallbackDisabledSources: storageAvailable ? undefined : new Set(sessionDisabledSources),
+        fallbackDisabledSources: sourcePreferencesMissing ? new Set(sessionDisabledSources) : undefined,
         edits: sessionSourceEdits,
         migrationMarkers: pendingSourceMigrationMarkers,
       },

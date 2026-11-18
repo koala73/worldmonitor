@@ -209,7 +209,40 @@ describe('optional country news coverage', () => {
     assert.deepEqual([...stored.get('disabled') as string[]], ['existing', 'new-cap']);
     assert.equal(stored.get('worldmonitor-country-coverage-optin-v1'), 'done');
     assert.equal(stored.get('worldmonitor-publisher-direct-optin-v1'), 'done', 'every deferred migration is acknowledged');
+    instance.ctx.disabledSources = new Set(['new-cap', 'other-toggle']);
+    instance.ctx.pendingSourcePreferences = {
+      gateOwned: new Set(['new-cap']), baselineGateOwned: new Set(),
+      edits: new Map([['new-cap', false]]), migrationMarkers: [],
+    };
+    instance.persistSourcePreferences(['other-toggle'][Symbol.iterator]());
+    const restored = restoreGateOwnedSources(new Set(stored.get('disabled') as string[]), new Set(stored.get('owned') as string[]));
+    assert.ok(!restored.has('new-cap'), 'Pro restores an earlier enabled source that was subsequently auto-capped');
+    assert.ok(restored.has('other-toggle'), 'the current explicit disable remains');
   });
+  it('keeps default seeding separate from failed migration edits with missing preferences', () => {
+    const app = readFileSync('src/App.ts', 'utf8');
+    const start = app.indexOf('      const sourceMigrationBaseline');
+    const end = app.indexOf('    const disabledSources =', start);
+    const code = transpileModule(`let sessionDisabledSources; let sourcePreferencesMissing = false;
+      const sessionSourceEdits = new Map(); const pendingSourceMigrationMarkers = [];
+      { ${app.slice(start, end)}
+      ({ sessionDisabledSources, sessionSourceEdits });`, {}).outputText;
+    const defaults = ['ordinary-default', 'country-opt-in', 'brazil-opt-in', 'publisher-opt-in'];
+    const result = runInNewContext(code, {
+      STORAGE_KEYS: { disabledFeeds: 'disabled' }, userLang: 'en',
+      COUNTRY_COVERAGE_OPT_IN_SOURCES: ['country-opt-in'],
+      BRAZIL_OPT_IN_SOURCES: ['brazil-opt-in'], PUBLISHER_DIRECT_OPT_IN_SOURCES: ['publisher-opt-in'],
+      migrateCountryCoverageOptInsV12, migrateBrazilOptInsV11, migratePublisherDirectOptInsV13,
+      computeDefaultDisabledSources: () => defaults,
+      loadFromStorage: (_name: string, fallback: unknown) => fallback,
+      safeStorageGet: () => null, saveToStorage: () => false,
+      safeStorageSetChecked: () => false,
+    });
+    assert.ok(result.sessionDisabledSources.includes('ordinary-default'), 'defaults still apply before cloud arrives');
+    assert.equal(result.sessionSourceEdits.has('ordinary-default'), false, 'default seeding must not override a cloud enable');
+    for (const name of defaults.slice(1)) assert.equal(result.sessionSourceEdits.get(name), true, `${name} migration stays pending`);
+  });
+
   it('offers four distinct feeds for all 197 reviewed countries', () => {
     assert.equal(Object.keys(audit.countries).length, 197);
     const available = new Set(Object.values(client.FULL_FEEDS).flat().map(feed => feed.name));

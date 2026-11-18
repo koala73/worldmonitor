@@ -3161,8 +3161,9 @@ export class EventHandlerManager implements AppModule {
     const pending = this.ctx.pendingSourcePreferences;
     const gateOwned = pending?.gateOwned ?? persistedGateOwned;
     const edits = new Map(pending?.edits);
-    for (const name of names) edits.set(name, this.ctx.disabledSources.has(name));
-    const nextGateOwned = releaseSourceGateOwnership(gateOwned, edits.keys());
+    const editedNames = [...names];
+    for (const name of editedNames) edits.set(name, this.ctx.disabledSources.has(name));
+    const nextGateOwned = releaseSourceGateOwnership(gateOwned, editedNames);
     this.ctx.pendingSourcePreferences = {
       gateOwned: nextGateOwned,
       baselineGateOwned: pending?.baselineGateOwned ?? persistedGateOwned,
