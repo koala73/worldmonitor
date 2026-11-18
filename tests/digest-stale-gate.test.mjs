@@ -46,6 +46,8 @@ describe('relay digest stale gate (#7084)', () => {
     assert.equal(candidates.get('served headline').firstSeen, now - 30_000);
     assert.equal(candidates.get('ADNOC vessel attacked in Strait of Hormuz').corroborationCount, 2);
     assert.equal(candidates.has('old pool headline'), false);
+    assert.equal('fromPool' in candidates.get('served headline'), false);
+    assert.equal(candidates.get('ADNOC vessel attacked in Strait of Hormuz').fromPool, true);
     const stale = { ...digest, coverage: { servedStale: true } };
     assert.equal(buildClassifyCandidateMap(stale, [], 'full', now, 6 * 60 * 60 * 1000, undefined, pool).size, 0);
   });

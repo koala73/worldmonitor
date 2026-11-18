@@ -57,7 +57,7 @@ function candidateLinkFor(item, resolveFamily) {
 
 // `poolItems` are fresh items the digest's category cap kept off the
 // dashboard (#10978). They follow the served items, so a title in both keeps
-// the served copy and its story tracking.
+// the served copy and its story tracking. Pool candidates carry `fromPool`.
 function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs, resolveFamily, poolItems = []) {
   const candidates = new Map();
   const oldestAllowedAt = now - recencyMs;
@@ -65,7 +65,8 @@ function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs,
   if (!isStaleDigestReplay(digest) && digest?.categories) {
     // Spread, so a bucket whose items are not a list still throws.
     const served = Object.values(digest.categories).flatMap(bucket => [...(bucket?.items ?? [])]);
-    for (const item of [...served, ...(Array.isArray(poolItems) ? poolItems : [])]) {
+    const pool = Array.isArray(poolItems) ? poolItems : [];
+    for (const [index, item] of [...served, ...pool].entries()) {
       if (!item?.title) continue;
       if (item.publishedAt && item.publishedAt < oldestAllowedAt) continue;
       if (!candidates.has(item.title)) {
@@ -80,6 +81,7 @@ function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs,
           // When digest story tracking first saw the headline, in any
           // edition or language. Only for the latency log.
           ...(item.storyMeta?.firstSeen > 0 ? { firstSeen: Number(item.storyMeta.firstSeen) } : {}),
+          ...(index >= served.length ? { fromPool: true } : {}),
         });
       }
     }
