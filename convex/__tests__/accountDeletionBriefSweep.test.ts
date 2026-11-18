@@ -1,6 +1,7 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { internal } from "../_generated/api";
+import { sweepBriefEnvelopes } from "../accountDeletion/sideEffects";
 import { modules, schema } from "./companyMonitoring.helpers";
 
 const USER = "user_sweep";
@@ -42,6 +43,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
@@ -114,7 +116,8 @@ test("one pass covers the whole account on a keyspace larger than half the page 
   expect(scans).toBe(PAGES);
   expect(keyspace[PAGES - 1]!.filter(key => key.startsWith("brief:")).sort())
     .toEqual([`brief:erased:${USER}`, "brief:user_other:late"]);
-});
+  // ~520 scheduled actions: seconds on a loaded runner, above the 5 s default.
+}, 30_000);
 
 test("continues empty SCAN pages and retains failed deletes without rescanning", async () => {
   const { t } = await erase();
@@ -154,6 +157,85 @@ test.each([
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(log).toHaveBeenCalledWith(expect.stringContaining("account_deletion_brief_sweep_failed"));
   log.mockRestore();
+});
+
+test("a persistent SCAN failure retries from attempt 0 through the budget, then reports once", async () => {
+  const t = convexTest(schema, modules);
+  const deletionId = await t.run(ctx => ctx.db.insert("accountDeletions", {
+    userId: USER, userIdHash: "hash", source: "self", status: "complete", step: "complete",
+    startedAt: Date.now(), updatedAt: Date.now(),
+  }));
+  fetchMock.mockReset().mockImplementation(async () => Response.json({ error: "ERR unavailable" }));
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  await t.action(internal.accountDeletion.sideEffects.sweepBriefEnvelopes, {
+    deletionId, cursor: "0", attempt: 0,
+  });
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(fetchMock).toHaveBeenCalledTimes(5);
+  const failures = log.mock.calls.filter(([line]) => String(line).includes("account_deletion_brief_sweep_failed"));
+  expect(failures).toHaveLength(1);
+  log.mockRestore();
+});
+
+test("reports the failure with a resumable cursor when the retry cannot be scheduled", async () => {
+  fetchMock.mockReset().mockImplementation(async () => Response.json({ error: "ERR unavailable" }));
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const ctx = {
+    runQuery: async () => ({ userId: USER }),
+    scheduler: { runAfter: async () => { throw new Error("SCHEDULER_UNAVAILABLE"); } },
+  };
+  const handler = (sweepBriefEnvelopes as unknown as {
+    _handler: (ctx: unknown, args: unknown) => Promise<null>;
+  })._handler;
+  await expect(handler(ctx, { deletionId: "id", cursor: "42", attempt: 0, pages: 7 }))
+    .rejects.toThrow("SCHEDULER_UNAVAILABLE");
+  const failure = log.mock.calls.map(([line]) => String(line))
+    .find(line => line.includes("account_deletion_brief_sweep_failed"));
+  expect(JSON.parse(failure!)).toMatchObject({ deletionId: "id", cursor: "42", pages: 7 });
+  log.mockRestore();
+});
+
+test("logs the page's own cursor, not the next one, when a partial delete fails and the retry cannot be scheduled", async () => {
+  const envelopes = Array.from({ length: 101 }, (_, i) => `brief:${USER}:${i}`);
+  const scans: string[][] = [];
+  const pipelines: string[][][] = [];
+  fetchMock.mockReset().mockImplementation(async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as string[] | string[][];
+    if (body[0] === "SCAN") {
+      scans.push(body as string[]);
+      return Response.json({ result: ["84", envelopes] });
+    }
+    const pipeline = body as string[][];
+    pipelines.push(pipeline);
+    return Response.json(pipelines.length === 1
+      ? pipeline.map(() => ({ result: 1 })) : [{ error: "ERR unavailable" }]);
+  });
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const scheduled: unknown[] = [];
+  const ctx = {
+    runQuery: async () => ({ userId: USER }),
+    scheduler: { runAfter: async (_delay: number, _fn: unknown, args: unknown) => {
+      scheduled.push(args);
+      throw new Error("SCHEDULER_UNAVAILABLE");
+    } },
+  };
+  const handler = (sweepBriefEnvelopes as unknown as {
+    _handler: (ctx: unknown, args: unknown) => Promise<null>;
+  })._handler;
+  await expect(handler(ctx, { deletionId: "id", cursor: "42", attempt: 0 }))
+    .rejects.toThrow("SCHEDULER_UNAVAILABLE");
+  expect(scans.map(scan => scan[1])).toEqual(["42"]);
+  expect(pipelines).toEqual([
+    envelopes.slice(0, 100).map(key => ["DEL", key]),
+    [["DEL", envelopes[100]]],
+  ]);
+  const failure = log.mock.calls.map(([line]) => String(line))
+    .find(line => line.includes("account_deletion_brief_sweep_failed"));
+  expect(JSON.parse(failure!)).toMatchObject({ cursor: "42" });
+  // The failed DEL schedules a retry of this page, never the next page.
+  expect(scheduled).toEqual([expect.objectContaining({
+    deletionId: "id", cursor: "42", attempt: 1, page: { cursor: "84", keys: envelopes },
+  })]);
 });
 
 test("escapes glob characters in the account identity and bounds delete batches", async () => {
