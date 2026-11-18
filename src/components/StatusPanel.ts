@@ -196,10 +196,17 @@ export class StatusPanel extends Panel {
       this.element.appendChild(this.digestCoverageRow);
     }
     this.ensureCoverageRowMounted();
-    this.digestCoverageRow.textContent = text;
+    const reason = `${explanation.charAt(0).toUpperCase()}${explanation.slice(1)}.`;
+    // The footer shows only the state and counts. The reason stays in the
+    // live region as visually hidden text, because assistive tech does not
+    // reliably expose title (PR #10988 review).
+    this.digestCoverageRow.replaceChildren(
+      h('span', { className: 'digest-coverage-text' }, text),
+      h('span', { className: 'wm-visually-hidden' }, `. ${reason}`),
+    );
     // The compact footer (#10461) ellipsizes this row on one line; the
-    // tooltip keeps the full text plus why coverage looks the way it does.
-    this.digestCoverageRow.title = `${text}. ${explanation.charAt(0).toUpperCase()}${explanation.slice(1)}.`;
+    // tooltip keeps the full text plus the reason for pointer users.
+    this.digestCoverageRow.title = `${text}. ${reason}`;
   }
 
   /**

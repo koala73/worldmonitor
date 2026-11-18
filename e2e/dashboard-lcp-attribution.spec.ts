@@ -189,7 +189,10 @@ const expectCoverageRowContract = async (
     coverageRow,
     'the #7085 coverage row must stay in the accessibility tree',
   ).toBeAttached({ timeout: 30000 });
-  await expect(coverageRow).toHaveText(PARTIAL_DIGEST_COVERAGE_TEXT);
+  // The row also carries a visually hidden reason for screen readers; the
+  // visible footer text is the .digest-coverage-text span alone.
+  await expect(coverageRow.locator('.digest-coverage-text')).toHaveText(PARTIAL_DIGEST_COVERAGE_TEXT);
+  await expect(coverageRow).toContainText('Some categories had no completed feed in this cycle.');
 
   const latest = await readLcpAfterCoveragePaint(page);
 
@@ -302,7 +305,7 @@ test.describe('dashboard LCP attribution debug', () => {
     coveragePublished = true;
     releasePanelModule();
     const coverageRow = page.getByRole('status', { name: 'News coverage status' });
-    await expect(coverageRow).toHaveText(PARTIAL_DIGEST_COVERAGE_TEXT, { timeout: 30000 });
+    await expect(coverageRow.locator('.digest-coverage-text')).toHaveText(PARTIAL_DIGEST_COVERAGE_TEXT, { timeout: 30000 });
     expect(panelRequestedBeforeCoverage, 'the StatusPanel module must be requested before coverage is published').toBe(true);
     await evidenceScreenshot(page.locator('.site-footer'), { path: testInfo.outputPath('coverage-row-late-status-panel.png') });
   });
