@@ -2357,11 +2357,13 @@ async function readAdoptionState(
 }
 
 export function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsItem {
+  const origin = item.originPublisherTrusted && typeof item.originPublisher === 'string' && item.originPublisher.trim()
+    ? resolveCredibilitySourceName(item)
+    : '';
   return {
     source: item.source,
-    originPublisher: item.originPublisherTrusted && item.originPublisher.trim()
-      ? resolveCredibilitySourceName(item)
-      : '',
+    // Only a publisher with a curated tier: the aggregator's text alone is not an identity.
+    originPublisher: origin && declaredSourceTier(origin) !== null ? origin : '',
     title: item.title,
     link: item.link,
     publishedAt: item.publishedAt,

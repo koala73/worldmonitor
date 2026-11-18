@@ -73,7 +73,7 @@ message NewsItem {
   // The original publisher a trusted aggregator (Google News) names for this
   // item, resolved to its curated source name, so consumers can score it on
   // that publisher's tier instead of the feed's. Empty when the feed is not
-  // a trusted aggregator or names no publisher.
+  // a trusted aggregator, or the publisher it names has no curated tier.
   string origin_publisher = 16;
 }
 

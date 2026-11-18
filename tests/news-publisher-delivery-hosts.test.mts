@@ -194,6 +194,13 @@ describe('the relay scores a topic feed item on its original publisher (#10977)'
     assert.equal(relaySource(served), 'Al Arabiya');
   });
 
+  it('keeps the feed name when the named publisher has no curated tier', () => {
+    const parsed = __testing__.parseRssXml(xml('Totally Real Wire'), feed, 'energy');
+    const served = toProtoItem(parsed!.items[0]!);
+    assert.equal(served.originPublisher, '');
+    assert.equal(relaySource(served), 'Strategic Chokepoints');
+  });
+
   it('keeps the feed name when the feed is not a trusted aggregator', () => {
     const parsed = __testing__.parseRssXml(xml('Al Arabiya'), { ...feed, url: 'https://example.com/feed' }, 'energy');
     const served = toProtoItem(parsed!.items[0]!);
