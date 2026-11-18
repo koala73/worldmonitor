@@ -411,7 +411,7 @@ export class EventHandlerManager implements AppModule {
     try { history.replaceState(history.state, '', withUrlFragment(url, window.location.hash)); } catch { }
   };
   private readonly debouncedUrlSync = debounce(this.writeUrlState, 250);
-  private urlStateSyncStarted = false;
+  private urlStateSyncReady = false;
 
   private readonly debouncedWebcamReload = debounce(() => {
     if (this.ctx.mapLayers?.webcams) {
@@ -1616,7 +1616,6 @@ export class EventHandlerManager implements AppModule {
 
   setupUrlStateSync(): void {
     if (!this.ctx.map) return;
-    this.urlStateSyncStarted = true;
 
     this.ctx.map.onStateChanged(() => {
       this.debouncedUrlSync();
@@ -1640,12 +1639,15 @@ export class EventHandlerManager implements AppModule {
       // and may finish before this listener is attached, so this settled write
       // is also what preserves its initial lat/lon URL state.
       void this.ctx.map.whenViewportSettled().then(() => {
+        this.urlStateSyncReady = true;
         if (!this.ctx.isDestroyed) this.debouncedUrlSync();
       }).catch(() => {
         // A superseding interaction or renderer switch owns the newer state;
         // its normal state-change listener will sync that viewport.
+        this.urlStateSyncReady = true;
       });
     } else {
+      this.urlStateSyncReady = true;
       this.debouncedUrlSync();
     }
   }
@@ -1656,10 +1658,12 @@ export class EventHandlerManager implements AppModule {
 
   /**
    * For map changes that also fire during boot, such as the deep link's time
-   * range. Writing before setupUrlStateSync() would record the map mid-flyTo.
+   * range. Until setupUrlStateSync() has run and any deep-link flyTo has
+   * settled, a write would record the map mid-flight; the settled write then
+   * carries the current state, time range included.
    */
   syncUrlStateIfStarted(): void {
-    if (this.urlStateSyncStarted) this.debouncedUrlSync();
+    if (this.urlStateSyncReady) this.debouncedUrlSync();
   }
 
   syncUrlStateNow(): void {

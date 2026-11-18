@@ -82,14 +82,20 @@ function matchCommands(
   if (query.length < 2) return [];
   const matched: SearchCommandMatch[] = [];
   // Every country's brief command carries "brief", so for "brief china" the
-  // single best term ties across all of them. For a multi-word query, rank
-  // first on how well each word matches: exact beats prefix beats substring,
-  // so "ukraine" picks Ukraine over Russia, whose aliases mention Ukraine.
+  // whole-query score ties across all of them. Break that tie on how many
+  // query words a command matches ("brief south sudan": South Sudan matches
+  // three, Sudan two), then on how well: exact beats prefix beats substring,
+  // so "brief ukraine" picks Ukraine over Russia, whose aliases mention Ukraine.
   const words = query.split(/\s+/).filter((word) => word.length >= 2);
   const coverage = new Map<SearchCommandMatch, number>();
   const wordScore = (terms: string[], word: string): number => Math.max(0, ...terms.map((term) => (
     term === word ? 3 : term.startsWith(word) ? 2 : term.includes(word) ? 1 : 0
   )));
+  const wordCoverage = (terms: string[]): number => {
+    const scores = words.map((word) => wordScore(terms, word));
+    // Matched-word count dominates; strength (at most 3 per word) breaks ties.
+    return scores.filter((score) => score > 0).length * 100 + scores.reduce((sum, score) => sum + score, 0);
+  };
 
   for (const command of options.commands) {
     if (!commandMatchesSearchScope(options.scope, command.category)) continue;
@@ -119,15 +125,13 @@ function matchCommands(
         subtitle: options.resolveCommandCategoryLabel(command),
       };
       matched.push(match);
-      coverage.set(match, words.length > 1 ? words.reduce((sum, word) => sum + wordScore(terms, word), 0) : 0);
+      coverage.set(match, words.length > 1 ? wordCoverage(terms) : 0);
     }
   }
 
+  // Whole-query exact, then whole-query prefix, then word coverage.
   return matched
-    // A keyword equal to the whole query still ranks first.
-    .sort((left, right) => (Number(right.score === 3) - Number(left.score === 3))
-      || (coverage.get(right)! - coverage.get(left)!)
-      || (right.score - left.score))
+    .sort((left, right) => (right.score - left.score) || (coverage.get(right)! - coverage.get(left)!))
     .slice(0, MAX_COMMANDS);
 }
 

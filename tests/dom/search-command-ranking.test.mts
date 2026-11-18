@@ -7,10 +7,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import { querySearchIndex } from '@/components/search-engine';
-import { getAllCommands } from '@/config/commands';
+import { getAllCommands, type Command } from '@/config/commands';
 import { CURATED_COUNTRIES } from '@/config/countries';
 
-function topCommands(rawInput: string): string[] {
+function topCommands(rawInput: string, translatedLabel?: (command: Command) => string): string[] {
   return querySearchIndex({
     rawInput,
     scope: 'all',
@@ -22,7 +22,7 @@ function topCommands(rawInput: string): string[] {
     isLayerCommandExecutable: () => true,
     isCommandVisible: () => true,
     isResultVisible: () => true,
-    resolveCommandLabel: (command) => command.label,
+    resolveCommandLabel: (command) => (translatedLabel && command.id.startsWith('panel:') ? translatedLabel(command) : command.label),
     resolveCommandCategoryLabel: (command) => command.category,
   }).commandMatches.map((match) => match.command.id);
 }
@@ -31,6 +31,14 @@ describe('search command ranking', () => {
   it('opens the named country for "brief <country>"', () => {
     expect(topCommands('brief china')[0]).toBe('country:CN');
     expect(topCommands('brief ukraine')[0]).toBe('country:UA');
+    // A name that contains a shorter country's name: every word must count.
+    expect(topCommands('brief south sudan')[0]).toBe('country:SS');
+    expect(topCommands('brief equatorial guinea')[0]).toBe('country:GQ');
+    expect(topCommands('brief guinea')[0]).toBe('country:GN');
+  });
+
+  it('ranks a whole-query prefix above a partial word match', () => {
+    expect(topCommands('oil ne')[0]).toBe('panel:energy');
   });
 
   it('still ranks a keyword equal to the whole query first', () => {
@@ -42,7 +50,12 @@ describe('search command ranking', () => {
     const iran = topCommands('iran');
     expect(iran[0]).toBe('country-map:IR');
     expect(iran).toContain('layer:iran');
+    expect(topCommands('show iran')[0]).toBe('layer:iran');
     expect(topCommands('united states')).toContain('panel:us');
+    expect(topCommands('united states news')[0]).toBe('panel:us');
+    // Translated views label the panel in their language ("Panel: États-Unis"),
+    // so the English query must still reach it through a keyword.
+    expect(topCommands('united states', () => 'Panel: États-Unis')).toContain('panel:us');
   });
 
   it('ranks the map command first when the query is a country name', () => {
