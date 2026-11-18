@@ -1038,7 +1038,10 @@ jobs:
         with:
           node-version: '24'
       - uses: ./.github/actions/install-root-deps
-      - run: npm run test:convex
+      # Vitest defaults to one worker fewer than the CPU count, which leaves one
+      # of the runner's 4 vCPUs idle. Four workers took the suite from 48.8s
+      # (81% CPU busy) to 45.5s (94%), alternating on one VM (bench run 44274790851).
+      - run: npm run test:convex -- --maxWorkers=4
 
   # DOM-behavioral gate tests (#5634). Kept OUT of the `unit` job's tsx glob:
   # the components under test import `@/services/i18n`, which uses
@@ -1059,7 +1062,14 @@ jobs:
       # never be type-checked — the first run of this config caught four real
       # type errors in them.
       - run: npm run typecheck:dom-tests
+      # Vitest defaults to one worker fewer than the CPU count. Four workers, one
+      # per vCPU, took the suite from 196.5s (74% CPU busy) to 176.1s (89%),
+      # alternating on one VM; six reached 170.5s at 95% (bench run 44274790851).
+      # VITEST_MAX_THREADS is the config's existing override, so local runs keep
+      # Vitest's default.
       - run: npm run test:dom
+        env:
+          VITEST_MAX_THREADS: '4'
 
   variant-smoke-shards:
     name: variant-smoke (${{ matrix.shard }})

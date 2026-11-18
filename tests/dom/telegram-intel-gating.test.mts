@@ -23,6 +23,7 @@ vi.mock('@/services/panel-gating', async () => {
 });
 import { PanelLayoutManager } from '@/app/panel-layout';
 import { TelegramIntelPanel } from '@/components/TelegramIntelPanel';
+import { Panel } from '@/components/Panel';
 import {
   enqueuePanelCall,
   clearAllPendingCalls,
@@ -57,6 +58,8 @@ function layout() {
   // Object.create skips field initializers; mirror production defaults used by updatePanelGating.
   manager.gatingPrincipal = undefined;
   manager.premiumPanelsUnlocked = new Set();
+  manager.deferredPanelMounts = new Map();
+  manager.staticallyLockedPanels = new Set();
   manager.team = new TeamDashboardsStore({ load: async () => null, onChange: () => {} });
   return manager;
 }
@@ -87,6 +90,35 @@ describe('Telegram layout gating and lazy mount', () => {
     p.destroy();
     p.unlockPanel();
     expect(load).toHaveBeenCalledTimes(1);
+  });
+  // A panel registered with lockedFeatures loads locked outside the gating
+  // pass; its shell must reserve the same one-row footprint, or the panels
+  // below it move up when it mounts.
+  it('marks the shell of a statically locked lazy panel as locked', () => {
+    const manager = layout();
+    const grid = document.createElement('div');
+    manager.ctx.panelSettings = { 'x-intel': { name: 'X Intel', enabled: true } };
+    manager.insertByOrder = (g: HTMLElement, el: HTMLElement) => g.append(el);
+    manager.observeDeferredPanelShell = () => {};
+    manager.lazyPanel('x-intel', async () => null, undefined, ['feature']);
+    manager.deferPanelMount('x-intel', null, grid, true);
+    const shell = grid.querySelector('[data-panel="x-intel"]')!;
+    expect(shell.classList.contains('panel-is-locked')).toBe(true);
+    manager.updatePanelGating({ user: null });
+    expect(shell.classList.contains('panel-is-locked')).toBe(true);
+  });
+  // x-intel is not a gated panel, so its gate verdict is NONE. A gating pass
+  // must not lift its static lock: that would unlock it for a non-premium
+  // desktop user and leave its shell and panel in different lock states.
+  it('keeps a statically locked lazy panel locked through a gating pass', async () => {
+    const manager = layout();
+    const p = new Panel({ id: 'x-intel', title: 'X Intel' });
+    manager.lazyPanel('x-intel', async () => p, undefined, ['feature']);
+    await manager.lazyPanelRegistrations.get('x-intel').load();
+    expect(p.getElement().classList.contains('panel-is-locked')).toBe(true);
+    manager.updatePanelGating({ user: null });
+    expect(p.getElement().classList.contains('panel-is-locked')).toBe(true);
+    p.destroy();
   });
   it('does not gate free web Telegram', () => {
     access.desktop = false;

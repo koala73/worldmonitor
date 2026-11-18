@@ -30,10 +30,19 @@ function coverage(state: DigestCoverageSummary['state']): DigestCoverageSummary 
   };
 }
 
-function rowText(summary: DigestCoverageSummary): string {
+function row(summary: DigestCoverageSummary): HTMLElement | null {
   const panel = new StatusPanel();
   panel.updateDigestCoverage(summary);
-  return panel.getElement().querySelector<HTMLElement>('.digest-coverage-row')?.textContent ?? '';
+  return panel.getElement().querySelector<HTMLElement>('.digest-coverage-row');
+}
+
+function rowText(summary: DigestCoverageSummary): string {
+  return row(summary)?.textContent ?? '';
+}
+
+/** The explanation lives only in the tooltip, never in the visible footer. */
+function rowTitle(summary: DigestCoverageSummary): string {
+  return row(summary)?.title ?? '';
 }
 
 describe('StatusPanel digest coverage row', () => {
@@ -49,22 +58,31 @@ describe('StatusPanel digest coverage row', () => {
       expect(row?.getAttribute('aria-live')).toBe('polite');
       expect(row?.getAttribute('aria-label')).toBe('News coverage status');
       expect(row?.textContent).toContain(`News coverage: ${state}`);
-      expect(row?.textContent?.trim().length).toBeGreaterThan(`News coverage: ${state}`.length);
+    },
+  );
+
+  it.each(['complete', 'partial', 'stale', 'unavailable'] as const)(
+    'keeps the %s explanation out of the visible footer text',
+    (state) => {
+      const text = rowText(coverage(state));
+      for (const phrase of ['every configured category', 'some categories had no completed feed', 'rebuild', 'no news content', 'did not report']) {
+        expect(text).not.toContain(phrase);
+      }
+      expect(text.trim().endsWith(')')).toBe(state === 'partial');
     },
   );
 });
 
 describe('StatusPanel digest coverage row truncation (#10499)', () => {
   // The compact footer ellipsizes this row on one 28px line, so the full text
-  // (missing categories, stale cause) must stay reachable as a tooltip.
+  // (missing categories) plus the explanation stays reachable as a tooltip.
   it.each(['complete', 'partial', 'stale', 'unavailable'] as const)(
-    'exposes the full %s text as the row title',
+    'exposes the full %s text and its explanation as the row title',
     (state) => {
-      const panel = new StatusPanel();
-      panel.updateDigestCoverage(coverage(state));
-      const row = panel.getElement().querySelector<HTMLElement>('.digest-coverage-row');
-      expect(row?.title).toBe(row?.textContent);
-      expect(row?.title).toContain(`News coverage: ${state}`);
+      const el = row(coverage(state));
+      expect(el?.title.startsWith(el?.textContent ?? '')).toBe(true);
+      expect(el?.title.length).toBeGreaterThan(el?.textContent?.length ?? 0);
+      expect(el?.title).toContain(`News coverage: ${state}`);
     },
   );
 
@@ -142,38 +160,38 @@ describe('StatusPanel digest coverage breadth and stale cause', () => {
   });
 
   it('blames the server rebuild only when the server replayed old content', () => {
-    const text = rowText(coverage('stale'));
+    const text = rowTitle(coverage('stale'));
     expect(text).toContain('from 30 min ago');
     expect(text).toContain('latest rebuild failed');
   });
 
   it('says the copy is from this device when the browser could not reach the service', () => {
-    const text = rowText({ ...coverage('stale'), staleCause: 'device', contentAgeSeconds: 7200 });
+    const text = rowTitle({ ...coverage('stale'), staleCause: 'device', contentAgeSeconds: 7200 });
     expect(text).toContain('saved on this device');
     expect(text).toContain('from 2 h ago');
     expect(text).not.toContain('rebuild');
   });
 
   it('does not call a rebuild the gate refused a failure', () => {
-    const text = rowText({ ...coverage('stale'), staleReason: 'gate-held' });
+    const text = rowTitle({ ...coverage('stale'), staleReason: 'gate-held' });
     expect(text).toContain('held back by a quality check');
     expect(text).not.toContain('failed');
   });
 
   it('names an empty rebuild as empty', () => {
-    const text = rowText({ ...coverage('stale'), staleReason: 'empty-rebuild' });
+    const text = rowTitle({ ...coverage('stale'), staleReason: 'empty-rebuild' });
     expect(text).toContain('latest rebuild came back empty');
   });
 
   it('does not blame the service while a language switch is loading', () => {
-    const text = rowText({ ...coverage('stale'), staleCause: 'switching', contentAgeSeconds: 600 });
+    const text = rowTitle({ ...coverage('stale'), staleCause: 'switching', contentAgeSeconds: 600 });
     expect(text).toContain('saved on this device');
     expect(text).toContain('while this language loads');
     expect(text).not.toContain('did not respond');
   });
 
   it('omits the age when it is unknown', () => {
-    const text = rowText({ ...coverage('stale'), staleCause: 'device', contentAgeSeconds: null });
+    const text = rowTitle({ ...coverage('stale'), staleCause: 'device', contentAgeSeconds: null });
     expect(text).toContain('saved on this device');
     expect(text).not.toContain('ago');
   });
@@ -197,21 +215,34 @@ describe('StatusPanel digest coverage row when the build ran out of time', () =>
     const text = rowText(deadlineOnly());
     expect(text).toContain('News coverage: complete');
     expect(text).not.toContain('partial');
-    expect(text).not.toContain('some categories had no completed feed');
   });
 
-  it('says how many feeds did not complete, without blaming the deadline', () => {
-    const text = rowText(deadlineOnly());
-    expect(text).toContain('feeds 932/955, categories 18/18');
-    expect(text).toContain('23 feeds did not complete');
+  it('shows only the counts in the footer and the reason in the tooltip', () => {
+    const summary = deadlineOnly();
+    expect(rowText(summary)).toBe(
+      'News coverage: complete — 4 publishers, 12 stories, feeds 932/955, categories 18/18',
+    );
+    expect(rowTitle(summary)).toContain('23 feeds did not complete');
     // The count also holds feeds that errored before the deadline.
-    expect(text).not.toContain('in time');
+    expect(rowTitle(summary)).not.toContain('in time');
+  });
+
+  // Prod 2026-11-18: "partial — 142 publishers, 593 stories reviewed, top 330
+  // shown, feeds 137/955, categories 18/18". Most feeds never finished, so
+  // the row must not call that complete.
+  it('keeps partial when most feeds did not complete', () => {
+    const text = rowText({ ...deadlineOnly(), feedsCompleted: 137 });
+    expect(text).toContain('News coverage: partial');
+    expect(text).toContain('feeds 137/955, categories 18/18');
+    expect(text).not.toContain('(');
   });
 
   it('keeps partial when a category is actually missing', () => {
-    const text = rowText({ ...deadlineOnly(), categoriesCompleted: 17, missingCategories: ['tech'] });
+    const summary = { ...deadlineOnly(), categoriesCompleted: 17, missingCategories: ['tech'] };
+    const text = rowText(summary);
     expect(text).toContain('News coverage: partial');
     expect(text).toContain('no completed feed: tech');
-    expect(text).toContain('some categories had no completed feed');
+    expect(text).not.toContain('some categories had no completed feed');
+    expect(rowTitle(summary)).toMatch(/some categories had no completed feed/i);
   });
 });
