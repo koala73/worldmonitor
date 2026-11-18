@@ -194,6 +194,11 @@ describe('the relay scores a topic feed item on its original publisher (#10977)'
     assert.equal(relaySource(served), 'Al Arabiya');
   });
 
+  it('serves the tier table spelling of the publisher', () => {
+    const served = toProtoItem(__testing__.parseRssXml(xml('al arabiya'), feed, 'energy')!.items[0]!);
+    assert.equal(served.originPublisher, 'Al Arabiya');
+  });
+
   it('keeps the feed name when the named publisher has no curated tier', () => {
     const parsed = __testing__.parseRssXml(xml('Totally Real Wire'), feed, 'energy');
     const served = toProtoItem(parsed!.items[0]!);
