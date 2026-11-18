@@ -234,3 +234,13 @@ test('the coverage ledger write stops waiting at its deadline when Redis stalls'
   assert.ok(waited < 1_000, `waited ${waited} ms`);
   assert.ok(warn.mock.calls.some((call) => String(call.arguments[0]).includes('abandoned at the response deadline')));
 });
+
+test('a rejected copy cannot claim the key a local copy needs (#10977)', () => {
+  // Country-scoped rules take local news from 78. An earlier copy at 77 reaches
+  // nobody, so it must not claim the key of a copy at 78, and a later copy at
+  // 82 or more still gets its own key for global delivery.
+  const local = newsStoryKey(CNN, { severity: 'critical', importanceScore: 78 });
+  assert.notEqual(newsStoryKey(CNN, { severity: 'critical', importanceScore: 77 }), local);
+  assert.equal(newsStoryKey(CNN, { severity: 'critical', importanceScore: 81 }), local);
+  assert.notEqual(local, newsStoryKey(CNN, DELIVERABLE));
+});

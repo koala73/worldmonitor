@@ -83,7 +83,7 @@ export function rewriteCheckApplies(event) {
   const title = event?.payload?.title;
   return !event?.userId && event?.eventType === 'rss_alert' && typeof event.variant === 'string' && !!event.variant
     && typeof title === 'string' && !!anchorIdFor(event.variant, title)
-    && storyKeys.reachesRealtimeRules(event.severity, event.payload.importanceScore);
+    && storyKeys.reachesLocalRules(event.severity, event.payload.importanceScore);
 }
 
 // Headlines are untrusted feed text: one line, no braces (so none can spell

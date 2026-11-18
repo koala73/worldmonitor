@@ -36,7 +36,7 @@ const NEWS_GLOBAL_IMPORTANCE_SCORE = 82;
 // The realtime bar for a local news story on a rule scoped to its country
 // (#10977): a single tier-1 to tier-3 critical copy (88, 83, 78) clears it,
 // a lone tier-4 copy (73) needs corroboration.
-const NEWS_LOCAL_IMPORTANCE_SCORE = 78;
+const { LOCAL_CRITICAL_IMPORTANCE_SCORE: NEWS_LOCAL_IMPORTANCE_SCORE } = require('./news-story-key.cjs');
 
 const EVENT_TIERS = Object.freeze({
   shipping_stress: TIER_GLOBAL,
