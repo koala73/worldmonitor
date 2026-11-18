@@ -171,10 +171,14 @@ function seriesKey(category: string | null, metricKey: string) {
   return `${category ?? ''}|${metricKey}`;
 }
 
-// Latest current-methodology index row before today for each series. Today's
-// own row is excluded so an hourly rerun recomputes from the same anchor
-// instead of compounding on itself.
-async function getPreviousIndices(basketId: string): Promise<Map<string, PreviousIndex>> {
+function inputKey(basketItemId: string, retailerProductId: string) {
+  return `${basketItemId}|${retailerProductId}`;
+}
+
+// Latest current-methodology index row before this run's date for each series.
+// The run's own date is excluded so an hourly rerun recomputes from the same
+// anchor instead of compounding on itself.
+async function getPreviousIndices(basketId: string, metricDate: string): Promise<Map<string, PreviousIndex>> {
   const result = await query<{ category: string | null; metric_key: string; metric_date: string; metric_value: string }>(
     `SELECT DISTINCT ON (category, metric_key)
             category, metric_key, to_char(metric_date, 'YYYY-MM-DD') AS metric_date, metric_value
@@ -182,9 +186,9 @@ async function getPreviousIndices(basketId: string): Promise<Map<string, Previou
      WHERE basket_id = $1 AND retailer_id IS NULL
        AND metric_key IN ('essentials_index', 'value_index')
        AND methodology_version = $2
-       AND metric_date < NOW()::date
+       AND metric_date < $3::date
      ORDER BY category, metric_key, metric_date DESC`,
-    [basketId, INDEX_METHODOLOGY_VERSION],
+    [basketId, INDEX_METHODOLOGY_VERSION, metricDate],
   );
   const map = new Map<string, PreviousIndex>();
   for (const r of result.rows) {
@@ -193,60 +197,62 @@ async function getPreviousIndices(basketId: string): Promise<Map<string, Previou
   return map;
 }
 
-// Each product's price as the index saw it at the end of each date: its latest
-// observation that day or earlier, in stock and inside the freshness window.
-async function getPricesOnDates(productIds: string[], dates: string[]): Promise<Map<string, Map<string, number>>> {
+// The exact (basket item, product, price) rows the index on each date was
+// computed from, as that day's last run stored them. Re-deriving them from
+// observation history would let a scrape that landed after the aggregate, or
+// a product that was not in that day's basket, into the anchor.
+async function getIndexInputs(basketId: string, dates: string[]): Promise<Map<string, Map<string, number>>> {
   const map = new Map<string, Map<string, number>>();
-  if (productIds.length === 0 || dates.length === 0) return map;
-  const result = await query<{ day: string; retailer_product_id: string; price: string }>(
-    `SELECT to_char(d.day, 'YYYY-MM-DD') AS day, p.id AS retailer_product_id, po.price
-     FROM unnest($2::date[]) AS d(day)
-     CROSS JOIN unnest($1::uuid[]) AS p(id)
-     JOIN LATERAL (
-       SELECT price, in_stock, observed_at
-       FROM price_observations
-       WHERE retailer_product_id = p.id AND observed_at < d.day + 1
-       ORDER BY observed_at DESC, id DESC LIMIT 1
-     ) po ON po.in_stock = true
-       AND po.observed_at >= d.day - make_interval(days => $3)`,
-    [productIds, dates, MAX_OBSERVATION_AGE_DAYS],
+  if (dates.length === 0) return map;
+  const result = await query<{ metric_date: string; basket_item_id: string; retailer_product_id: string; price: string }>(
+    `SELECT to_char(metric_date, 'YYYY-MM-DD') AS metric_date, basket_item_id, retailer_product_id, price
+     FROM computed_index_inputs
+     WHERE basket_id = $1 AND metric_date = ANY($2::date[])`,
+    [basketId, dates],
   );
   for (const r of result.rows) {
-    if (!map.has(r.day)) map.set(r.day, new Map());
-    map.get(r.day)!.set(r.retailer_product_id, parseFloat(r.price));
+    if (!map.has(r.metric_date)) map.set(r.metric_date, new Map());
+    map.get(r.metric_date)!.set(inputKey(r.basket_item_id, r.retailer_product_id), parseFloat(r.price));
   }
   return map;
 }
 
 // Matched-model chain link. A product entering or leaving the basket must not
-// move the index, so the day-on-day change is measured only over products
-// priced on both dates: the ratio of the index computed on that common set
-// today to the same index computed on it at the previous date. With no change
-// in composition this equals the direct index's own change.
+// move the index, so the change since the previous index row is measured only
+// over (item, product) pairs used on both dates: the ratio of the index
+// computed on that common set now to the same index computed on it with the
+// anchor's stored prices. With no change in composition this equals the direct
+// index's own change.
 function chainIndex(
   rows: BasketRow[],
   baselines: Map<string, number>,
   previous: PreviousIndex | undefined,
-  pricesOnDates: Map<string, Map<string, number>>,
+  inputsByDate: Map<string, Map<string, number>>,
   compute: (rows: BasketRow[], baselines: Map<string, number>) => number | null,
+  label: string,
 ): number | null {
-  const direct = compute(rows, baselines);
-  if (!previous) return direct; // first current-methodology day seeds the chain
-  const prevPrices = pricesOnDates.get(previous.date) ?? new Map<string, number>();
-  const matched = rows.filter((r) => prevPrices.has(r.retailerProductId));
+  if (!previous) return compute(rows, baselines); // first current-methodology day seeds the chain
+  const prevPrices = inputsByDate.get(previous.date) ?? new Map<string, number>();
+  const matched = rows.filter((r) => prevPrices.has(inputKey(r.basketItemId, r.retailerProductId)));
   const now = compute(matched, baselines);
-  const then = compute(matched.map((r) => ({ ...r, price: prevPrices.get(r.retailerProductId)! })), baselines);
-  // Nothing priced on both dates (or no baselines for it): the chain cannot be
-  // continued, so it restarts from the direct index rather than freezing.
+  const then = compute(
+    matched.map((r) => ({ ...r, price: prevPrices.get(inputKey(r.basketItemId, r.retailerProductId))! })),
+    baselines,
+  );
+  // Nothing in common with the anchor: every product was replaced. No price
+  // change can be measured, so the new products are linked in at the previous
+  // level (standard sample replacement) instead of re-seeding from the direct
+  // index, whose different level would read as a price move.
   if (now === null || then === null || then === 0) {
-    logger.warn(`chain restarted from direct index (no products priced on ${previous.date} and today)`);
-    return direct;
+    logger.warn(`${label}: no products in common with ${previous.date}; linked in at the previous level`);
+    return previous.value;
   }
   return previous.value * (now / then);
 }
 
 async function writeComputedIndex(
   basketId: string,
+  metricDate: string,
   retailerId: string | null,
   category: string | null,
   metricKey: string,
@@ -259,29 +265,31 @@ async function writeComputedIndex(
   if (retailerId === null && category === null) {
     await execute(
       `INSERT INTO computed_indices (basket_id, retailer_id, category, metric_date, metric_key, metric_value, methodology_version)
-       VALUES ($1, NULL, NULL, NOW()::date, $2, $3, $4)
+       VALUES ($1, NULL, NULL, $2::date, $3, $4, $5)
        ON CONFLICT (basket_id, metric_date, metric_key) WHERE retailer_id IS NULL AND category IS NULL
        DO UPDATE SET metric_value = EXCLUDED.metric_value, methodology_version = EXCLUDED.methodology_version`,
-      [basketId, metricKey, metricValue, INDEX_METHODOLOGY_VERSION],
+      [basketId, metricDate, metricKey, metricValue, INDEX_METHODOLOGY_VERSION],
     );
   } else if (retailerId === null) {
     await execute(
       `INSERT INTO computed_indices (basket_id, retailer_id, category, metric_date, metric_key, metric_value, methodology_version)
-       VALUES ($1, NULL, $2, NOW()::date, $3, $4, $5)
+       VALUES ($1, NULL, $3, $2::date, $4, $5, $6)
        ON CONFLICT (basket_id, category, metric_date, metric_key) WHERE retailer_id IS NULL AND category IS NOT NULL
        DO UPDATE SET metric_value = EXCLUDED.metric_value, methodology_version = EXCLUDED.methodology_version`,
-      [basketId, category, metricKey, metricValue, INDEX_METHODOLOGY_VERSION],
+      [basketId, metricDate, category, metricKey, metricValue, INDEX_METHODOLOGY_VERSION],
     );
   } else {
     await execute(
       `INSERT INTO computed_indices (basket_id, retailer_id, category, metric_date, metric_key, metric_value, methodology_version)
-       VALUES ($1, $2, $3, NOW()::date, $4, $5, $6)
+       VALUES ($1, $3, $4, $2::date, $5, $6, $7)
        ON CONFLICT (basket_id, retailer_id, category, metric_date, metric_key)
        DO UPDATE SET metric_value = EXCLUDED.metric_value, methodology_version = EXCLUDED.methodology_version`,
-      [basketId, retailerId, category, metricKey, metricValue, INDEX_METHODOLOGY_VERSION],
+      [basketId, metricDate, retailerId, category, metricKey, metricValue, INDEX_METHODOLOGY_VERSION],
     );
   }
 }
+
+type IndexWrite = [retailerId: string | null, category: string | null, metricKey: string, metricValue: number];
 
 export async function aggregateBasket(basketSlug: string, marketCode: string) {
   const configs = loadAllBasketConfigs();
@@ -298,6 +306,17 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
   }
   const basketId = basketResult.rows[0].id;
 
+  // One date for the whole run: separate NOW()::date reads would split a run
+  // that crosses midnight across two metric dates and two chain anchors.
+  // Migrations are applied by hand, so this code can reach production before
+  // 013 does; without the inputs table no index can be chained.
+  const runResult = await query<{ metric_date: string; has_inputs: boolean }>(
+    `SELECT to_char(NOW()::date, 'YYYY-MM-DD') AS metric_date,
+            to_regclass('computed_index_inputs') IS NOT NULL AS has_inputs`,
+  );
+  const metricDate = runResult.rows[0].metric_date;
+  const hasInputs = runResult.rows[0].has_inputs;
+
   const rows = await getBasketRows(basketSlug, marketCode);
   if (rows.length === 0) {
     // Record the empty basket for today. Returning without a write left the
@@ -310,8 +329,11 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
     // back to an older covered day.
     await withTransaction(async (execute) => {
       await execute(`DELETE FROM computed_indices
-       WHERE basket_id = $1 AND metric_date = NOW()::date`, [basketId]);
-      await writeComputedIndex(basketId, null, null, 'coverage_pct', 0, execute);
+       WHERE basket_id = $1 AND metric_date = $2::date`, [basketId, metricDate]);
+      if (hasInputs) {
+        await execute(`DELETE FROM computed_index_inputs WHERE basket_id = $1 AND metric_date = $2::date`, [basketId, metricDate]);
+      }
+      await writeComputedIndex(basketId, metricDate, null, null, 'coverage_pct', 0, execute);
     });
     logger.warn(`No fresh matched products for ${basketSlug}:${marketCode} — coverage recorded as 0`);
     return;
@@ -320,20 +342,27 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
   const uniqueItemIds = [...new Set(rows.map((r) => r.basketItemId))];
   const baselines = await getBaselinePrices(uniqueItemIds, basketConfig.baseDate);
 
-  const previous = await getPreviousIndices(basketId);
-  const previousDates = [...new Set([...previous.values()].map((p) => p.date))];
-  const pricesOnDates = await getPricesOnDates([...new Set(rows.map((r) => r.retailerProductId))], previousDates);
+  const previous = hasInputs ? await getPreviousIndices(basketId, metricDate) : new Map<string, PreviousIndex>();
+  const inputsByDate = hasInputs
+    ? await getIndexInputs(basketId, [...new Set([...previous.values()].map((p) => p.date))])
+    : new Map<string, Map<string, number>>();
+  const chain = (series: BasketRow[], category: string | null, metricKey: string, compute: typeof computeFixedIndex) =>
+    hasInputs
+      ? chainIndex(series, baselines, previous.get(seriesKey(category, metricKey)), inputsByDate, compute, `${basketSlug}:${category ?? 'all'}:${metricKey}`)
+      : null;
+  if (!hasInputs) logger.warn(`${basketSlug}:${marketCode}: computed_index_inputs is missing — apply migration 013; indices not written`);
 
-  const essentialsIndex = chainIndex(rows, baselines, previous.get(seriesKey(null, 'essentials_index')), pricesOnDates, computeFixedIndex);
-  const valueIndex = chainIndex(rows, baselines, previous.get(seriesKey(null, 'value_index')), pricesOnDates, computeValueIndex);
+  const writes: IndexWrite[] = [];
+  const essentialsIndex = chain(rows, null, 'essentials_index', computeFixedIndex);
+  const valueIndex = chain(rows, null, 'value_index', computeValueIndex);
 
   const coverageCount = new Set(rows.map((r) => r.basketItemId)).size;
   const totalItems = basketConfig.items.length;
   const coveragePct = (coverageCount / totalItems) * 100;
 
-  if (essentialsIndex !== null) await writeComputedIndex(basketId, null, null, 'essentials_index', essentialsIndex);
-  if (valueIndex !== null) await writeComputedIndex(basketId, null, null, 'value_index', valueIndex);
-  await writeComputedIndex(basketId, null, null, 'coverage_pct', coveragePct);
+  if (essentialsIndex !== null) writes.push([null, null, 'essentials_index', essentialsIndex]);
+  if (valueIndex !== null) writes.push([null, null, 'value_index', valueIndex]);
+  writes.push([null, null, 'coverage_pct', coveragePct]);
 
   // Retailer spread: (most expensive basket - cheapest basket) / cheapest × 100
   // Only compare retailers on the INTERSECTION of basket items they all carry.
@@ -358,10 +387,10 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
         commonItemIds.reduce((sum, id) => sum + byRetailerItem.get(slug)!.get(id)!, 0),
       );
       const spreadPct = ((Math.max(...retailerTotals) - Math.min(...retailerTotals)) / Math.min(...retailerTotals)) * 100;
-      await writeComputedIndex(basketId, null, null, 'retailer_spread_pct', Math.round(spreadPct * 10) / 10);
+      writes.push([null, null, 'retailer_spread_pct', Math.round(spreadPct * 10) / 10]);
     } else {
       // Insufficient overlap — write explicit 0 to prevent stale noisy value persisting
-      await writeComputedIndex(basketId, null, null, 'retailer_spread_pct', 0);
+      writes.push([null, null, 'retailer_spread_pct', 0]);
       logger.info(`${basketSlug}: spread suppressed (${commonItemIds.length}/${MIN_SPREAD_ITEMS} common items)`);
     }
   }
@@ -374,13 +403,13 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
   }
 
   for (const [category, catRows] of byCategory) {
-    const catEssentials = chainIndex(catRows, baselines, previous.get(seriesKey(category, 'essentials_index')), pricesOnDates, computeFixedIndex);
+    const catEssentials = chain(catRows, category, 'essentials_index', computeFixedIndex);
     const catCoverage =
       (new Set(catRows.map((r) => r.basketItemId)).size /
         Math.max(1, basketConfig.items.filter((i) => i.category === category).length)) *
       100;
-    if (catEssentials !== null) await writeComputedIndex(basketId, null, category, 'essentials_index', catEssentials);
-    await writeComputedIndex(basketId, null, category, 'coverage_pct', catCoverage);
+    if (catEssentials !== null) writes.push([null, category, 'essentials_index', catEssentials]);
+    writes.push([null, category, 'coverage_pct', catCoverage]);
   }
 
   // Absolute basket cost in USD for cross-country comparison
@@ -396,10 +425,29 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
   const currencyCode = rows[0].currencyCode;
   const fxRate = FX_RATES_TO_USD[currencyCode];
   if (fxRate !== undefined) {
-    await writeComputedIndex(basketId, null, null, 'basket_total_usd', Math.round(basketTotalLocal * fxRate * 100) / 100);
+    writes.push([null, null, 'basket_total_usd', Math.round(basketTotalLocal * fxRate * 100) / 100]);
   }
 
-  logger.info(`${basketSlug}:${marketCode} essentials=${essentialsIndex?.toFixed(2) ?? 'no-baseline'} value=${valueIndex?.toFixed(2) ?? 'no-baseline'} baselines=${baselines.size}/${uniqueItemIds.length} coverage=${coveragePct.toFixed(1)}%`);
+  // The day's index rows and the prices they were computed from are replaced
+  // together, so the next day's chain link always reads the inputs that
+  // produced its anchor.
+  await withTransaction(async (execute) => {
+    if (hasInputs) {
+      await execute(`DELETE FROM computed_index_inputs WHERE basket_id = $1 AND metric_date = $2::date`, [basketId, metricDate]);
+      await execute(
+        `INSERT INTO computed_index_inputs (basket_id, metric_date, basket_item_id, retailer_product_id, price)
+         SELECT $1, $2::date, i.item, i.product, i.price
+         FROM unnest($3::uuid[], $4::uuid[], $5::numeric[]) AS i(item, product, price)
+         ON CONFLICT DO NOTHING`,
+        [basketId, metricDate, rows.map((r) => r.basketItemId), rows.map((r) => r.retailerProductId), rows.map((r) => r.price)],
+      );
+    }
+    for (const [retailerId, category, metricKey, metricValue] of writes) {
+      await writeComputedIndex(basketId, metricDate, retailerId, category, metricKey, metricValue, execute);
+    }
+  });
+
+  logger.info(`${basketSlug}:${marketCode} essentials=${essentialsIndex?.toFixed(2) ?? 'none'} value=${valueIndex?.toFixed(2) ?? 'none'} baselines=${baselines.size}/${uniqueItemIds.length} coverage=${coveragePct.toFixed(1)}%`);
 }
 
 export async function aggregateAll() {

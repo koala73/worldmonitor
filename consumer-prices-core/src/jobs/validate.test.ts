@@ -8,6 +8,8 @@ const { validateAll } = await import('./validate.js');
 const { aggregateBasket } = await import('./aggregate.js');
 const { MAX_OBSERVATION_AGE_DAYS } = await import('../observation-freshness.js');
 const { AUTO_MATCH_THRESHOLD } = await import('../adapters/validator.js');
+// aggregateBasket reads its run date (and whether the index-inputs table exists) right after the basket id.
+const RUN_DATE = { rows: [{ metric_date: '2026-11-18', has_inputs: true }] };
 function row(id: string, price: number, status = 'auto', owner: string | null = null, admitted: boolean | null = true) {
   return { match_id: id, basket_item_id: 'item', match_status: status, retailer_slug: id,
     canonical_name: 'Milk', price: String(price), currency_code: 'AED', reviewed_by: owner,
@@ -86,15 +88,15 @@ it('recovers only its own hold on the same passing latest observation', async ()
   expect(args[2]).toBe('observation-held');
 });
 it('selects the latest observation before checking stock', async () => {
-  query.mockResolvedValueOnce({ rows: [{ id: 'basket' }] });
+  query.mockResolvedValueOnce({ rows: [{ id: 'basket' }] }).mockResolvedValueOnce(RUN_DATE);
   await aggregateBasket('test', 'AE');
-  const sql = query.mock.calls[1][0] as string;
+  const sql = query.mock.calls[2][0] as string;
   expect(sql).not.toContain('WHERE retailer_product_id = rp.id AND in_stock = true');
   expect(sql).toContain(') po ON po.in_stock = true');
 });
 it.each([
   ['validate', () => validateAll(), 0],
-  ['aggregate', async () => { query.mockResolvedValueOnce({ rows: [{ id: 'basket' }] }); await aggregateBasket('test', 'AE'); }, 1],
+  ['aggregate', async () => { query.mockResolvedValueOnce({ rows: [{ id: 'basket' }] }).mockResolvedValueOnce(RUN_DATE); await aggregateBasket('test', 'AE'); }, 2],
 ] as const)('%s reads only products a scrape saw within the freshness window', async (_name, run, callIndex) => {
   await run();
   const [sql, args] = query.mock.calls[callIndex] as [string, unknown[]];
@@ -105,7 +107,7 @@ it.each([
   expect(args[2]).toBe(MAX_OBSERVATION_AGE_DAYS);
 });
 it('records zero coverage when the freshness window leaves the basket empty', async () => {
-  query.mockResolvedValueOnce({ rows: [{ id: 'basket' }] }).mockResolvedValueOnce({ rows: [] });
+  query.mockResolvedValueOnce({ rows: [{ id: 'basket' }] }).mockResolvedValueOnce(RUN_DATE).mockResolvedValueOnce({ rows: [] });
   await aggregateBasket('test', 'AE');
   // Both statements run in one transaction: a failed coverage write must not
   // leave the day's indices deleted with nothing in their place.
@@ -115,10 +117,12 @@ it('records zero coverage when the freshness window leaves the basket empty', as
   expect(writes).toHaveLength(1);
   expect(writes[0][1]).toEqual(expect.arrayContaining(['basket', 'coverage_pct', 0]));
   // An earlier run the same day may have written indices; they must not outlive the empty basket.
-  const clear = sqls.findIndex((sql) => /DELETE FROM computed_indices\s+WHERE basket_id = \$1 AND metric_date = NOW\(\)::date/.test(sql));
+  const clear = sqls.findIndex((sql) => /DELETE FROM computed_indices\s+WHERE basket_id = \$1 AND metric_date = \$2::date/.test(sql));
   expect(clear).toBeGreaterThan(-1);
   expect(clear).toBeLessThan(sqls.findIndex((sql) => sql.includes('INSERT INTO computed_indices')));
-  expect(tx.mock.calls[clear][1]).toEqual(['basket']);
+  expect(tx.mock.calls[clear][1]).toEqual(['basket', '2026-11-18']);
+  // The day's stored index inputs go with it, so no later chain link reads them.
+  expect(sqls.some((sql) => sql.includes('DELETE FROM computed_index_inputs'))).toBe(true);
 });
 it('keeps its hold while another retailer was seen recently but is missing from the priced rows', async () => {
   // The peer's latest observation is out of stock, so the priced query drops it;
