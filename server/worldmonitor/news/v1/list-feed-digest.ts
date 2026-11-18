@@ -199,6 +199,13 @@ const ITEMS_PER_FEED = 5;
 // the whole feed grows the pool from about 4,400 to 8,300 headlines.
 const COUNTRY_ITEMS_PER_FEED = 100;
 const MAX_ITEMS_PER_CATEGORY = 20;
+const FEED_CAP_LEDGER_TOP = 20;
+
+// #10976: the feeds that lost the most items to ITEMS_PER_FEED, so a missed
+// story can be traced to the feed whose cap dropped it.
+function topFeedCapDrops(drops: Map<string, number>): Record<string, number> {
+  return Object.fromEntries([...drops].sort((a, b) => b[1] - a[1]).slice(0, FEED_CAP_LEDGER_TOP));
+}
 const FEED_TIMEOUT_MS = 8_000;
 // Vercel Edge functions have a 25s initial-response ceiling. The digest
 // must fail closed to the warmed in-isolate fallback before the platform does.
@@ -3591,6 +3598,7 @@ async function buildDigest(
   // #4920 coverage ledger: count every silent drop gate so "how much did
   // we NOT show" is a queryable number instead of a feeling.
   const ledgerDrops = { perFeedCap: 0, undated: 0, freshnessFloor: 0, perCategoryCap: 0 };
+  const feedCapDrops = new Map<string, number>();
   const categories: Record<string, CategoryBucket> = {};
   const digestStartedAt = Date.now();
 
@@ -3635,6 +3643,7 @@ async function buildDigest(
           outcome,
           value: {
             category,
+            feedName: feed.name,
             items: result.items,
             droppedUndated: result.droppedUndated,
             droppedFeedCap: result.droppedFeedCap ?? 0,
@@ -3646,12 +3655,13 @@ async function buildDigest(
     await depthWarming;
 
     for (const { value } of attempts.fulfilled) {
-      const { category, items, droppedUndated, droppedFeedCap } = value;
+      const { category, feedName, items, droppedUndated, droppedFeedCap } = value;
       const existing = results.get(category) ?? [];
       existing.push(...items);
       results.set(category, existing);
       ledgerDrops.undated += droppedUndated;
       ledgerDrops.perFeedCap += droppedFeedCap;
+      if (droppedFeedCap > 0) feedCapDrops.set(feedName, (feedCapDrops.get(feedName) ?? 0) + droppedFeedCap);
     }
 
     const deadlineAborted = deadlineController.signal.aborted;
@@ -4012,6 +4022,7 @@ async function buildDigest(
       itemsServed: allSliced.length,
       distinctSources,
       drops: { ...ledgerDrops },
+      perFeedCapTop: topFeedCapDrops(feedCapDrops),
     };
     // Key-cardinality clamp: variant/lang are request-supplied — only write
     // ledgers for known variants and well-formed 2-letter langs so a caller
@@ -4097,6 +4108,7 @@ async function publishAcceptedLabelCounts(response: ListFeedDigestResponse, dead
 
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
+  topFeedCapDrops,
   recordPublisherCoverage,
   writeCoverageLedger,
   storyCorroborationByHash,

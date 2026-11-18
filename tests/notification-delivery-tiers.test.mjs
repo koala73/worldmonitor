@@ -198,9 +198,9 @@ describe('relay wiring', () => {
   const src = readFileSync(resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'), 'utf8');
 
   it('matches rules, counts scope drops and clamps free rules through the tier gate', () => {
-    assert.equal((src.match(/eventMatchesDeliveryScope\(/g) || []).length >= 5, true);
-    const matchBlock = src.slice(src.indexOf('const matching = enabledRules.filter'), src.indexOf('const countryScopeDrops'));
-    assert.match(matchBlock, /eventMatchesDeliveryScope\(event, r\)/);
+    assert.equal((src.match(/eventMatchesDeliveryScope\(/g) || []).length >= 4, true);
+    const matchBlock = src.slice(src.indexOf('const RULE_GATES'), src.indexOf('function ruleDropReason'));
+    assert.match(matchBlock, /eventMatchesDeliveryScope\(event, rule\)/);
     assert.doesNotMatch(matchBlock, /eventMatchesCountryScope\(/);
     assert.match(src, /!eventMatchesDeliveryScope\(event, \{ \.\.\.rule, countries: scope\.countries \}\)/);
     assert.match(src, /!eventMatchesDeliveryScope\(ev, \{ countries: drainScope\.countries \}\)/);
