@@ -212,6 +212,41 @@ test('coverage writes key only served headlines, two commands each, with familie
   assert.equal(scored.length / 2, 2, 'the below-cap repeat adds its publisher to the served headline');
 });
 
+test('mastheads running one copy of a headline are written to its coverage as one publisher', async (t) => {
+  const batches: unknown[][][] = [];
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    const commands = JSON.parse(init.body);
+    batches.push(commands);
+    return Response.json(commands.map(() => ({ result: 1 })));
+  });
+  const saved = { ...process.env };
+  t.after(() => {
+    for (const name of ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'VERCEL_ENV']) {
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
+    }
+  });
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.invalid';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+  process.env.VERCEL_ENV = 'production';
+  // The relay scores on this history (#10977), so it must count as the build's
+  // own corroboration count does: one network's mastheads are one publisher.
+  const wire = 'Officials in the capital said on Tuesday that the device was found near a federal building and that an investigation involving several agencies is now under way.';
+  const own = 'Our correspondent reports from the scene where residents described hearing nothing unusual before police closed three streets and began searching nearby offices overnight.';
+  const copies = ['Valley Courier', 'Harbor Dispatch', 'Plains Ledger'].map((source) => ({ title: EGYPT_INDEPENDENT, source, description: wire }));
+  const independent = { title: EGYPT_INDEPENDENT, source: 'Egypt Independent', description: own };
+  const families = async (items) => {
+    batches.length = 0;
+    await digest.recordPublisherCoverage(items, [items[0]], Date.now(), Infinity);
+    const [, , , ...scored] = batches.flat().find((cmd) => cmd[0] === 'ZADD');
+    return scored.filter((_, i) => i % 2 === 1).sort();
+  };
+  assert.deepEqual(await families([...copies, independent]), ['label:egypt independent', 'label:harbor dispatch']);
+  // The same member whatever order a build lists the mastheads in, so builds
+  // and editions do not add one family each.
+  assert.deepEqual(await families([independent, ...copies.reverse()]), ['label:egypt independent', 'label:harbor dispatch']);
+});
+
 test('the coverage ledger write stops waiting at its deadline when Redis stalls', async (t) => {
   // The ledger runs after the coverage and history writes join, which may hold
   // until the tracking deadline; a 5 s Redis wait past that loses the digest.
