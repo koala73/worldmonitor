@@ -76,8 +76,10 @@ export { hashString, sha256Hex };
 // the story it imitates.
 export async function buildClassifyCacheKey(title: string, { callerTitle = false }: { callerTitle?: boolean } = {}): Promise<string> {
   const lower = title.toLowerCase();
-  const identity = callerTitle && stripAttributionSuffix(lower, { allowPipe: false }) !== lower
+  const story = normalizeNewsStoryTitle(title);
+  // Under four words there is no story key (scripts/lib/news-story-key.cjs MIN_STORY_WORDS).
+  const identity = (callerTitle && stripAttributionSuffix(lower, { allowPipe: false }) !== lower) || story.split(' ').length < 4
     ? lower
-    : (normalizeNewsStoryTitle(title) || lower) + (/\?\s*(?:[-–—|][^?]*)?$/.test(title) ? ' ?' : '');
+    : story + (/\?["'”’»]*\s*(?:[-–—|][^?]*)?$/.test(title) ? ' ?' : '');
   return `${CLASSIFY_CACHE_PREFIX}${(await sha256Hex(identity)).slice(0, 16)}`;
 }

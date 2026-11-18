@@ -26,6 +26,17 @@ describe('classify cache key is the story, not the title string (#10976)', () =>
     );
   });
 
+  it('sees a question mark inside closing quotes', async () => {
+    assert.notEqual(
+      await buildClassifyCacheKey('“Port closes after flooding?”'),
+      await buildClassifyCacheKey('“Port closes after flooding”'),
+    );
+  });
+
+  it('keeps an exact-title label for a title too short for a story key', async () => {
+    assert.notEqual(await buildClassifyCacheKey('Iran invades Iraq!'), await buildClassifyCacheKey('Iran invades Iraq'));
+  });
+
   it('does not let a caller-supplied suffix write another story\'s label', async () => {
     const story = await buildClassifyCacheKey('Iran closes Strait of Hormuz');
     assert.notEqual(await buildClassifyCacheKey('Iran closes Strait of Hormuz - satire example.com', { callerTitle: true }), story);

@@ -87,7 +87,7 @@ const {
   xPostBudgetServiceStatus,
 } = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
-const { newsStoryKey, newsStoryKeyLoadError, normalizeNewsStoryTitle, reachesRealtimeRules, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
+const { newsStoryKey, newsStoryKeyLoadError, normalizeNewsStoryTitle, reachesRealtimeRules, MIN_STORY_WORDS, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
 if (newsStoryKeyLoadError()) {
   // Alerts still publish, on the exact-title identity; a repeated headline can alert twice.
   console.warn('[Notify] News story key unavailable, falling back to exact-title dedup:', newsStoryKeyLoadError().message);
@@ -5445,10 +5445,13 @@ function countriesNamedInHeadline(text) {
 // three sites.
 // #10976: keyed on the story, so outlet suffixes and punctuation share one label.
 // A question ("Iran closes Hormuz?") keeps its own label: the classifier
-// grades it lower than the report it asks about.
-const CLASSIFY_QUESTION_RE = /\?\s*(?:[-–—|][^?]*)?$/;
+// grades it lower than the report it asks about. A title too short for a story
+// key keeps its exact-title label, as its alerts keep exact-title dedup.
+const CLASSIFY_QUESTION_RE = /\?["'”’»]*\s*(?:[-–—|][^?]*)?$/;
 function classifyCacheKey(title) {
-  const identity = (normalizeNewsStoryTitle(title) || title.toLowerCase()) + (CLASSIFY_QUESTION_RE.test(title) ? ' ?' : '');
+  const story = normalizeNewsStoryTitle(title);
+  const identity = story.split(' ').length < MIN_STORY_WORDS ? title.toLowerCase()
+    : story + (CLASSIFY_QUESTION_RE.test(title) ? ' ?' : '');
   const hash = crypto.createHash('sha256').update(identity).digest('hex').slice(0, 16);
   return `classify:sebuf:v6:${hash}`;
 }
