@@ -17,7 +17,7 @@ const { describe, it } = require('node:test');
 // Four lanes at a time, one per vCPU on a hosted runner, took it to ~20s.
 // Tests are collected here and registered in one concurrent suite at the end.
 const cases = [];
-const test = (name, fn) => { cases.push([name, fn]); };
+const test = (...args) => { cases.push(args); };
 const { US_HUBS } = require('./shared/air-traffic-regions.cjs');
 
 const ATL = US_HUBS.find((hub) => hub.iata === 'ATL');
@@ -690,5 +690,5 @@ test('lane 30: a UK departure collapse queues one critical alert scoped to GB, a
 });
 
 describe('air traffic lanes', { concurrency: 4 }, () => {
-  for (const [name, fn] of cases) it(name, fn);
+  for (const args of cases) it(...args);
 });

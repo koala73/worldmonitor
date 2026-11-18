@@ -12,7 +12,7 @@ const { describe, it } = require('node:test');
 // Four tests at a time, one per vCPU on a hosted runner, took it to ~16s.
 // Tests are collected here and registered in one concurrent suite at the end.
 const cases = [];
-const test = (name, fn) => { cases.push([name, fn]); };
+const test = (...args) => { cases.push(args); };
 // Node 24 loads the shared TypeScript module directly (type stripping), so the
 // emergency codes have one source of truth across TS, ESM and CommonJS.
 const { EMERGENCY_CODES } = require('../shared/aircraft-emergencies.ts');
@@ -1570,5 +1570,5 @@ test('a successful Telegram poll snapshots its items to Redis', async () => {
 });
 
 describe('relay ingestion', { concurrency: 4 }, () => {
-  for (const [name, fn] of cases) it(name, fn);
+  for (const args of cases) it(...args);
 });
