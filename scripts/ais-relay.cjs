@@ -646,6 +646,7 @@ function upstashPipeline(commands) {
         resp.resume();
         return resolve(null);
       }
+      resp.setEncoding('utf8');
       let data = '';
       resp.on('data', (chunk) => { data += chunk; });
       resp.on('error', () => resolve(null));
