@@ -514,7 +514,10 @@ export class SupplyChainPanel extends Panel {
           cp.aisSnapshotAvailable === true
             ? `${cp.aisDisruptions} ${t('components.supplyChain.aisDisruptions')}`
             : '',
-        ].filter(Boolean).join(' · ');
+        ].filter(Boolean)
+          // One flex item per metric, so the row wraps between metrics
+          // instead of one joined string running past the card edge.
+          .map((metric) => `<span>${metric}</span>`).join('');
         const ts = cp.transitSummary;
         const wowPct = ts?.wowChangePct ?? 0;
         const hasWow = ts && wowPct !== 0;
@@ -642,7 +645,7 @@ export class SupplyChainPanel extends Panel {
               <span style="color:#fca5a5;font-weight:600">\u26A0 Projected under scenario: ${scenarioResult.template.disruptionPct}% closure for ${scenarioResult.template.durationDays} days${scenarioResult.template.costShockMultiplier > 1 ? ` (+${Math.round((scenarioResult.template.costShockMultiplier - 1) * 100)}% cost)` : ''}</span>
             </div>` : ''}
             <div class="sc-metric-row"${sourceMetrics || cp.directions?.length ? '' : ' hidden'}>
-              ${sourceMetrics ? `<span>${sourceMetrics}</span>` : ''}
+              ${sourceMetrics}
               ${cp.directions?.length ? `<span>${cp.directions.map(d => escapeHtml(d)).join('/')}</span>` : ''}
             </div>
             ${ts && ts.dataAvailable === false ? `<div class="sc-metric-row" style="opacity:0.5;font-size:calc(11px * var(--wm-panel-effective-scale, 1))"><span>${t('components.supplyChain.transitDataUnavailable') || 'Transit data unavailable (upstream partial)'}</span></div>` : ''}
@@ -661,10 +664,11 @@ export class SupplyChainPanel extends Panel {
               const pct = Math.round(fe.flowRatio * 100);
               const flowColor = fe.disrupted || pct < 85 ? '#ef4444' : pct < 95 ? '#f59e0b' : 'var(--text-dim,#888)';
               const hazardBadge = fe.hazardAlertLevel && fe.hazardAlertName
-                ? ` <span style="background:#ea580c;color:#fff;font-size:calc(9px * var(--wm-panel-effective-scale, 1));padding:1px 5px;border-radius:3px;margin-left:4px">&#9888; ${escapeHtml(fe.hazardAlertName.toUpperCase())}</span>`
+                ? `<span style="background:#ea580c;color:#fff;font-size:calc(9px * var(--wm-panel-effective-scale, 1));padding:1px 5px;border-radius:3px">&#9888; ${escapeHtml(fe.hazardAlertName.toUpperCase())}</span>`
                 : '';
+              // The badge is its own flex item so it wraps below the flow figure.
               return `<div class="sc-metric-row" style="color:${flowColor}">
-                <span>~${fe.currentMbd} mb/d <span style="opacity:0.7">(${pct}% of ${fe.baselineMbd} baseline)</span>${hazardBadge}</span>
+                <span>~${fe.currentMbd} mb/d <span style="opacity:0.7">(${pct}% of ${fe.baselineMbd} baseline)</span></span>${hazardBadge}
               </div>`;
             })() : FLOW_SUPPORTED_IDS.has(cp.id) ? `<div class="sc-metric-row" style="color:var(--text-dim,#888);font-size:calc(11px * var(--wm-panel-effective-scale, 1));opacity:0.7">
                 <span>${t('components.supplyChain.flowUnavailable')}</span>
