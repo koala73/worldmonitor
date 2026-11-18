@@ -1,17 +1,153 @@
 {
-  "_doc": "Recorded alert incidents replayed by tests/alert-replay.test.mts (#10976). Each wording is one copy the pipeline saw: its source label, the classifier's label, the publisher timestamp, and when the digest first scored it (seenAt). title is null where the incident write-up did not record the headline. expected is what should happen; knownMiss names the issue that should make an expected alert pass, and the test fails once it does so the entry gets updated.",
+  "_doc": "Recorded alert incidents replayed by tests/alert-replay.test.mts (#10976). Each wording is one row of shadow:score-log:v5 as production queued it: source label (often a topic feed, not the publisher), classifier label, publisher timestamp, the time the relay queued it (seenAt), corroboration count and logged score. expected is what should happen; knownMiss names the issue that should make an expected alert pass, and the test fails once it does so the entry gets updated. scoreNow, when present, is the score today's code gives because a later change moved it (for example a source tier), with the change in scoreNowBecause.",
   "incidents": [
     {
       "id": "adnoc-hormuz-vessel-attack",
-      "summary": "ADNOC said one of its vessels was attacked in the Strait of Hormuz, 11 crew injured and one missing. About 20 outlets reported it from 06:47 UTC; no realtime subscriber was alerted.",
+      "date": "2026-11-18",
+      "summary": "ADNOC said one of its vessels was attacked in the Strait of Hormuz, 11 crew injured and one missing. No realtime subscriber was alerted.",
       "evidence": "https://github.com/koala73/worldmonitor/issues/10975",
       "expected": "alert",
       "knownMiss": "#10977",
       "wordings": [
-        { "source": "Reuters", "title": "one crew member missing after attack on its vessel in Hormuz", "label": "high", "publishedAt": "2026-11-18T07:41:00Z", "seenAt": "2026-11-18T08:51:00Z", "observedScore": null },
-        { "source": "Gulf News", "title": "ADNOC vessel hit in Hormuz", "label": "critical", "publishedAt": "2026-11-18T03:21:00Z", "seenAt": "2026-11-18T07:00:00Z", "observedScore": 81 },
-        { "source": "OilPrice.com", "title": null, "label": "critical", "publishedAt": "2026-11-18T07:00:00Z", "seenAt": "2026-11-18T07:00:00Z", "observedScore": 73 },
-        { "source": "WANA", "title": null, "label": "critical", "publishedAt": "2026-11-18T07:00:00Z", "seenAt": "2026-11-18T07:00:00Z", "observedScore": 73 }
+        {
+          "source": "Gulf News",
+          "title": "Middle East War: Iran attacks Bahrain, ADNOC vessel hit in Hormuz, Kuwait drone threats keep Gulf on high alert as US hits Iran’s Qeshm",
+          "label": "critical",
+          "publishedAt": "2026-11-18T03:21:05.000Z",
+          "seenAt": "2026-11-18T07:01:46.475Z",
+          "corroboration": 1,
+          "observedScore": 81
+        },
+        {
+          "source": "Shipping & Freight",
+          "title": "ADNOC Says One of Its Vessels Attacked in Strait of Hormuz - - WANA News Agency",
+          "label": "critical",
+          "publishedAt": "2026-11-18T08:00:25.000Z",
+          "seenAt": "2026-11-18T08:26:28.576Z",
+          "corroboration": 1,
+          "observedScore": 73
+        },
+        {
+          "source": "Tanker & Shipping",
+          "title": "UAE's ADNOC L&S says one crew member missing after attack on its vessel in Hormuz - Reuters",
+          "label": "high",
+          "publishedAt": "2026-11-18T07:41:00.000Z",
+          "seenAt": "2026-11-18T08:55:28.678Z",
+          "corroboration": 1,
+          "observedScore": 59
+        },
+        {
+          "source": "Tanker & Shipping",
+          "title": "UAE's ADNOC L&S says one crew member missing after attack on its vessel in Hormuz - Rock Hill Herald",
+          "label": "high",
+          "publishedAt": "2026-11-18T08:24:06.000Z",
+          "seenAt": "2026-11-18T09:42:08.364Z",
+          "corroboration": 2,
+          "observedScore": 62
+        },
+        {
+          "source": "OilPrice.com",
+          "title": "ADNOC Ship Attacked in Hormuz as Maritime Security Risks Rise",
+          "label": "critical",
+          "publishedAt": "2026-11-18T10:00:00.000Z",
+          "seenAt": "2026-11-18T10:02:28.652Z",
+          "corroboration": 1,
+          "observedScore": 73
+        }
+      ]
+    },
+    {
+      "id": "crimean-bridge-collapse",
+      "date": "2026-11-18",
+      "summary": "A section of the Crimean Bridge collapsed after Ukrainian strikes. The 2026-11-18 wordings all scored under the realtime bar.",
+      "evidence": "https://github.com/koala73/worldmonitor/issues/10975",
+      "expected": "alert",
+      "knownMiss": "#10977",
+      "wordings": [
+        {
+          "source": "Kyiv Independent",
+          "title": "Ukraine war latest: Entire section of Crimean Bridge collapses after 'seven-phase operation,' Zelensky reveals - The Kyiv Independent",
+          "label": "critical",
+          "publishedAt": "2026-11-17T19:20:42.000Z",
+          "seenAt": "2026-11-18T00:31:15.981Z",
+          "corroboration": 1,
+          "observedScore": 81
+        },
+        {
+          "source": "The Hindu",
+          "title": "Ukraine strikes Russia’s Crimean bridge with drones and missiles as aerial attacks escalate",
+          "label": "critical",
+          "publishedAt": "2026-11-18T03:57:22.000Z",
+          "seenAt": "2026-11-18T04:08:34.669Z",
+          "corroboration": 1,
+          "observedScore": 73
+        },
+        {
+          "source": "NDTV",
+          "title": "Ukrainian Drones, Missiles Strike Kerch Bridge That Links Russia With Crimea",
+          "label": "critical",
+          "publishedAt": "2026-11-18T03:48:49.000Z",
+          "seenAt": "2026-11-18T04:08:35.217Z",
+          "corroboration": 1,
+          "observedScore": 73
+        }
+      ]
+    },
+    {
+      "id": "us-strike-near-hormuz",
+      "date": "2026-11-12",
+      "summary": "US strikes on Iranian missile launchers near the Strait of Hormuz.",
+      "evidence": "https://github.com/koala73/worldmonitor/issues/10975",
+      "expected": "alert",
+      "knownMiss": "#10977",
+      "wordings": [
+        {
+          "source": "Strategic Chokepoints",
+          "title": "U.S. Strikes Iranian Launchers Near Strait of Hormuz, Sending Oil Prices Higher - EnergyNow.com",
+          "label": "critical",
+          "publishedAt": "2026-11-11T20:08:58.000Z",
+          "seenAt": "2026-11-12T01:58:08.336Z",
+          "corroboration": 1,
+          "observedScore": 71
+        }
+      ]
+    },
+    {
+      "id": "hormuz-mine-strikes",
+      "date": "2026-11-14",
+      "summary": "Two oil tankers hit mines and caught fire in the Strait of Hormuz. Missed at the time; CNA now resolves to tier 2, so its copy clears the bar.",
+      "evidence": "https://github.com/koala73/worldmonitor/issues/10975",
+      "expected": "alert",
+      "wordings": [
+        {
+          "source": "CNA",
+          "title": "Iran says two oil tankers hit by mines in Strait of Hormuz",
+          "label": "critical",
+          "publishedAt": "2026-11-14T04:43:50.000Z",
+          "seenAt": "2026-11-14T05:01:22.231Z",
+          "corroboration": 1,
+          "observedScore": 73,
+          "scoreNow": 83,
+          "scoreNowBecause": "#10941 read CNA as a tier-2 publisher (was unlisted, tier 4)"
+        },
+        {
+          "source": "Shipping & Freight",
+          "title": "Iran says oil tanker on fire after naval mine strike in eastern Strait of Hormuz - The Jerusalem Post",
+          "label": "critical",
+          "publishedAt": "2026-11-14T12:00:58.000Z",
+          "seenAt": "2026-11-14T12:45:32.504Z",
+          "corroboration": 1,
+          "observedScore": 73
+        },
+        {
+          "source": "Strategic Chokepoints",
+          "title": "Oil tanker on fire after hitting mine in Strait of Hormuz - The Independent",
+          "label": "critical",
+          "publishedAt": "2026-11-14T11:28:00.000Z",
+          "seenAt": "2026-11-14T13:04:30.884Z",
+          "corroboration": 1,
+          "observedScore": 72
+        }
       ]
     }
   ]

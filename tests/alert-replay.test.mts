@@ -22,11 +22,13 @@ const { shouldNotify } = require('../scripts/notification-relay.cjs');
 
 interface Wording {
   source: string;
-  title: string | null;
+  title: string;
   label: 'critical' | 'high' | 'medium' | 'low' | 'info';
   publishedAt: string;
   seenAt: string;
-  observedScore: number | null;
+  corroboration: number;
+  observedScore: number;
+  scoreNow?: number;
 }
 interface Incident { id: string; expected: 'alert' | 'none'; knownMiss?: string; wordings: Wording[] }
 
@@ -39,7 +41,7 @@ const CRITICAL_REALTIME_RULE = { sensitivity: 'critical', digestMode: 'realtime'
 function replay(wording: Wording) {
   const now = mock.method(Date, 'now', () => Date.parse(wording.seenAt));
   try {
-    const score = computeImportanceScore(wording.label, wording.source, 1, Date.parse(wording.publishedAt), { title: wording.title ?? undefined });
+    const score = computeImportanceScore(wording.label, wording.source, wording.corroboration, Date.parse(wording.publishedAt), { title: wording.title });
     const event = { eventType: 'rss_alert', severity: wording.label, payload: { title: wording.title, source: wording.source, importanceScore: score } };
     return { score, alerts: shouldNotify(CRITICAL_REALTIME_RULE, event) as boolean };
   } finally {
@@ -56,9 +58,8 @@ describe('alert replay set (#10976)', () => {
       const results = incident.wordings.map((w) => ({ wording: w, ...replay(w) }));
 
       for (const { wording, score } of results) {
-        if (wording.observedScore == null) continue;
         it(`scores the ${wording.source} copy as production did`, () => {
-          assert.equal(score, wording.observedScore);
+          assert.equal(score, wording.scoreNow ?? wording.observedScore);
         });
       }
 
