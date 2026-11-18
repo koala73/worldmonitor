@@ -211,9 +211,13 @@ test("logs the page's own cursor, not the next one, when a partial delete fails 
       ? pipeline.map(() => ({ result: 1 })) : [{ error: "ERR unavailable" }]);
   });
   const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const scheduled: unknown[] = [];
   const ctx = {
     runQuery: async () => ({ userId: USER }),
-    scheduler: { runAfter: async () => { throw new Error("SCHEDULER_UNAVAILABLE"); } },
+    scheduler: { runAfter: async (_delay: number, _fn: unknown, args: unknown) => {
+      scheduled.push(args);
+      throw new Error("SCHEDULER_UNAVAILABLE");
+    } },
   };
   const handler = (sweepBriefEnvelopes as unknown as {
     _handler: (ctx: unknown, args: unknown) => Promise<null>;
@@ -228,6 +232,10 @@ test("logs the page's own cursor, not the next one, when a partial delete fails 
   const failure = log.mock.calls.map(([line]) => String(line))
     .find(line => line.includes("account_deletion_brief_sweep_failed"));
   expect(JSON.parse(failure!)).toMatchObject({ cursor: "42" });
+  // The failed DEL schedules a retry of this page, never the next page.
+  expect(scheduled).toEqual([expect.objectContaining({
+    cursor: "42", attempt: 1, page: { cursor: "84", keys: envelopes },
+  })]);
 });
 
 test("escapes glob characters in the account identity and bounds delete batches", async () => {
