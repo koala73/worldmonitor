@@ -134,6 +134,18 @@ it('preserves a genuine PizzINT miss as a cacheable empty response', async () =>
   assert.match(response.headers.get('Cache-Control') ?? '', /^private, max-age=300(?:,|$)/);
   assert.deepEqual(await response.json(), { tensionPairs: [] });
 });
+it('serves a reading the relay kept as stale with its stale marker and real updatedAt', async () => {
+  mode = 'hit';
+  const updatedAt = Date.now() - 6 * 60 * 60_000;
+  const pizzint = { defconLevel: 4, locationsMonitored: 6, locationsOpen: 2, updatedAt, dataFreshness: 'DATA_FRESHNESS_STALE', locations: [] };
+  cache.set('intelligence:pizzint:seed:v1', {
+    _seed: { fetchedAt: updatedAt, recordCount: 2, sourceVersion: 'besttime-live', schemaVersion: 1, state: 'OK' },
+    data: { pizzint, tensionPairs: [] },
+  });
+  const body = await (await request('intelligence/v1/get-pizzint-status')).json();
+  assert.equal(body.pizzint.dataFreshness, 'DATA_FRESHNESS_STALE');
+  assert.equal(Number(body.pizzint.updatedAt), updatedAt);
+});
 it('never serves legacy PizzINT tension scores as World Monitor scores', async () => {
   mode = 'hit';
   const payload = { pizzint: { locations: [], defconLevel: 5 }, tensionPairs: [{ pair: 'usa_china' }] };

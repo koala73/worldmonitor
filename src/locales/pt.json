@@ -5898,6 +5898,13 @@
       "seasonalHint": "Alerta quando o nível medido mais recente está bem abaixo do que aquele reservatório normalmente mede nesta época do ano.",
       "quietNote": "Esses alertas chegam mesmo quando os alertas em tempo real estão configurados apenas para críticos. As horas silenciosas os silenciam.",
       "quietNoteBatch": "Esses alertas chegam mesmo quando os alertas em tempo real estão configurados apenas para críticos. As horas silenciosas os silenciam ou os mantêm retidos até o fim das horas silenciosas, se você escolher Batch."
+    },
+    "briefLanguage": {
+      "label": "Idioma do resumo",
+      "hint": "O seu resumo diário será escrito em {{language}}.",
+      "sameAsApp": "Igual ao idioma da aplicação",
+      "loadFailed": "Falha ao carregar",
+      "saveFailed": "Não foi possível salvar. Tente novamente."
     }
   }
 }

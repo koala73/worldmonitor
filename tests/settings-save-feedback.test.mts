@@ -105,7 +105,7 @@ async function loadRealChangeLanguage(): Promise<ChangeLanguage> {
     ['i18next-browser-languagedetector', 'export default class LanguageDetector { addDetector(){} }'],
     ['@/bootstrap/sentry-defer', 'export function enqueueSentryCall(){}'],
     ['@/shared/language-tags', 'export function resolveLanguageTag(value){ return value; }'],
-    ['@/utils/i18n-url', 'export function readQueryLanguage(){} export function stripQueryLanguage(value){ return value; }'],
+    ['@/utils/i18n-url', 'export const EXPLICIT_LOCALE_KEY = "wm-locale-explicit"; export function readQueryLanguage(){} export function stripQueryLanguage(value){ return value; }'],
   ]);
   const module = await loadBundledModule<{ changeLanguage: ChangeLanguage }>({
     entryPoint: resolve(root, 'src/services/i18n.ts'),

@@ -7,16 +7,20 @@ const RELAY_SECRET = process.env.CONVEX_NOTIFICATION_RELAY_SECRET ?? '';
 
 /**
  * Fetch the raw user preferences blob from Convex via the relay endpoint.
- * Returns the parsed data object, or null on failure.
+ *
+ * With `includeBriefLanguage`, the relay wraps the blob as
+ * `{ data, briefLanguage }`. An older Convex deploy ignores the flag and
+ * returns the bare blob; that reads as English.
  *
  * @param {string} userId
  * @param {string} variant
- * @returns {Promise<Record<string, unknown> | null>}
+ * @param {{ includeBriefLanguage?: boolean, timeoutMs?: number }} [opts]
+ * @returns {Promise<{ data: object|null, error: boolean, briefLanguage?: string }>}
+ *   data=null + error=false means no prefs saved; error=true means transient failure
  */
-/**
- * @returns {{ data: object|null, error: boolean }} data=null + error=false means no prefs saved; error=true means transient failure
- */
-async function fetchUserPreferences(userId, variant) {
+async function fetchUserPreferences(userId, variant, opts = {}) {
+  const includeBriefLanguage = opts.includeBriefLanguage === true;
+  const timeoutMs = Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0 ? opts.timeoutMs : 10_000;
   if (!CONVEX_SITE_URL || !RELAY_SECRET) {
     console.warn('[user-context] CONVEX_SITE_URL or CONVEX_NOTIFICATION_RELAY_SECRET not set');
     return { data: null, error: true };
@@ -29,15 +33,20 @@ async function fetchUserPreferences(userId, variant) {
         Authorization: `Bearer ${RELAY_SECRET}`,
         'User-Agent': 'worldmonitor-relay/1.0',
       },
-      body: JSON.stringify({ userId, variant }),
-      signal: AbortSignal.timeout(10_000),
+      body: JSON.stringify(includeBriefLanguage ? { userId, variant, includeBriefLanguage: true } : { userId, variant }),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) {
       console.warn(`[user-context] fetchUserPreferences: ${res.status}`);
       return { data: null, error: true };
     }
-    const data = await res.json();
-    return { data, error: false };
+    const body = await res.json();
+    if (!includeBriefLanguage) return { data: body, error: false };
+    if (body && typeof body === 'object' && !Array.isArray(body) && 'briefLanguage' in body) {
+      const briefLanguage = typeof body.briefLanguage === 'string' ? body.briefLanguage : 'en';
+      return { data: body.data ?? null, error: false, briefLanguage };
+    }
+    return { data: body, error: false, briefLanguage: 'en' };
   } catch (err) {
     console.warn(`[user-context] fetchUserPreferences failed: ${err.message}`);
     return { data: null, error: true };

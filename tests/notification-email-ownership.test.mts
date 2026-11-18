@@ -6,6 +6,9 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import notify, { __setNotifyDepsForTests } from '../api/notify.ts';
 import { DIGEST_EMAIL_MAX_HTML_BYTES, renderDigestEmailHtml } from '../scripts/lib/digest-email-html.mjs';
+import { selectDigestChannelContent } from '../scripts/lib/digest-channel-content.mjs';
+import { briefIntlLocale, briefPlural, briefT, formatBriefDate } from '../shared/brief-strings.js';
+import { truncateForDisplay } from '../shared/brief-text.js';
 
 const require = createRequire(import.meta.url);
 const { appendUnsubscribeText, injectUnsubscribeFooterHtml, listUnsubscribeHeaders, unsubscribeUrlFor } = require('../scripts/lib/email-unsubscribe.cjs');
@@ -139,9 +142,11 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
       digestWindowStartMs: () => 0, buildDigest: async () => stories,
       shouldExitOnBriefFailures: () => false,
       AI_DIGEST_ENABLED: false,
-      buildDigestDeliveryPlan: ({ rawStories }: any) => ({ formatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
+      selectDigestChannelContent,
+      buildDigestDeliveryPlan: ({ rawStories }: any) => ({ formatterStories: rawStories, canonicalFormatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
       formatDigest: () => 'Synthetic digest',
       renderDigestEmailHtml,
+      briefIntlLocale, briefPlural, briefT, formatBriefDate, truncateForDisplay,
       buildChannelBodies: (lists: { plain: string }) => ({ text: lists.plain }),
       subjectForBrief: () => 'Synthetic digest', issueSlotInTz: () => 'slot',
       emitCooldownShadowLog: () => {}, upstashRest: async () => 'OK',

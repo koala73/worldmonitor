@@ -5934,6 +5934,13 @@
       "seasonalHint": "Alert gdy ostatni zmierzony poziom jest znacznie poniżej tego, co ten zbiornik zwykle mierzy w tym czasie roku.",
       "quietNote": "Te alerty docierają nawet wtedy, gdy alerty w czasie rzeczywistym są ustawione tylko na krytyczne. Ciche godziny je wyciszają.",
       "quietNoteBatch": "Te alerty docierają nawet wtedy, gdy alerty w czasie rzeczywistym są ustawione tylko na krytyczne. Ciche godziny je wyciszają albo, jeśli wybierzesz Batch, wstrzymują do końca cichych godzin."
+    },
+    "briefLanguage": {
+      "label": "Język briefingu",
+      "hint": "Twój codzienny briefing będzie w języku: {{language}}.",
+      "sameAsApp": "Taki sam jak język aplikacji",
+      "loadFailed": "Nie udało się załadować",
+      "saveFailed": "Nie udało się zapisać. Spróbuj ponownie."
     }
   }
 }

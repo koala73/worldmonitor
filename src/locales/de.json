@@ -5862,6 +5862,13 @@
       "seasonalHint": "Warnung, wenn der zuletzt gemessene Pegel deutlich unter dem liegt, was dieser Stausee normalerweise zu dieser Jahreszeit aufweist.",
       "quietNote": "Diese Benachrichtigungen treffen ein, auch wenn Echtzeit-Benachrichtigungen nur auf kritisch eingestellt sind. Ruhezeiten stellen sie stumm.",
       "quietNoteBatch": "Diese Benachrichtigungen treffen ein, auch wenn Echtzeit-Benachrichtigungen nur auf kritisch eingestellt sind. Ruhezeiten stellen sie stumm oder halten sie bis zum Ende der Ruhezeiten zurück, wenn Sie Batch wählen."
+    },
+    "briefLanguage": {
+      "label": "Sprache des Briefings",
+      "hint": "Ihr tägliches Briefing wird auf {{language}} verfasst.",
+      "sameAsApp": "Wie die App-Sprache",
+      "loadFailed": "Fehler beim Laden",
+      "saveFailed": "Das konnte nicht gespeichert werden. Versuche es nochmal."
     }
   }
 }

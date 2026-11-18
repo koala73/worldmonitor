@@ -35,7 +35,8 @@ import {
   type EntitlementVerificationStatus,
 } from '@/services/entitlements';
 import { resolveAlertCapabilities } from '../../shared/alert-capabilities';
-import { t } from '@/services/i18n';
+import { LANGUAGES, t } from '@/services/i18n';
+import { loadBriefLanguage, saveBriefLanguage } from '@/services/brief-language';
 import { getMarketWatchlistEntries } from '@/services/market-watchlist';
 import { SITE_VARIANT } from '@/config/variant';
 import { CHOKEPOINT_REGISTRY } from '@/config/chokepoint-registry';
@@ -959,6 +960,14 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               </label>
             </div>
           </div>
+          <div id="usBriefLanguageRow">
+            <div class="ai-flow-section-label" style="margin-top:8px">${escapeHtml(t('settings.briefLanguage.label'))}</div>
+            <select class="unified-settings-select" id="usBriefLanguage" aria-label="${escapeHtml(t('settings.briefLanguage.label'))}" style="width:100%" disabled>
+              <option value="">${escapeHtml(t('settings.briefLanguage.sameAsApp'))}</option>
+              ${LANGUAGES.map((lang) => `<option value="${escapeHtml(lang.code)}">${escapeHtml(lang.label)}</option>`).join('')}
+            </select>
+            <div id="usBriefLanguageHint" class="ai-flow-toggle-desc" style="margin-top:4px" hidden></div>
+          </div>
           <div class="ai-flow-section-label" style="margin-top:8px">Country scope</div>
           <div class="ai-flow-toggle-desc" style="margin-bottom:6px">${scopeRequired
             ? `Pick 1–${caps.maxCountries} countries (ISO-3166 alpha-2) to follow for alerts — the free plan needs an explicit country scope. Worldwide alerts are available on Pro.`
@@ -998,6 +1007,90 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       let renderedWebPushState: WebPushSettingsState | null = null;
       let requestedWebPushState: WebPushSettingsState | null = null;
       let notifReloadGeneration = 0;
+
+      // Brief language (#10883). Loaded per render; the select stays disabled
+      // until the stored override is known so a save never races the read.
+      let briefLanguageSaved = '';
+      let briefUiLanguage: string | null = null;
+      // Languages the brief is delivered in now (Convex BRIEF_L10N_* env). The
+      // hint promises a language only when it is in this list.
+      let briefDeliverable: readonly string[] = [];
+      // A reload during a save reads only after the save settles, so it never
+      // shows the value from before the commit.
+      let briefLanguageSaveInFlight: Promise<unknown> | null = null;
+
+      function showBriefLanguageLoadError(): void {
+        const row = container.querySelector<HTMLElement>('#usBriefLanguageRow');
+        if (!row) return;
+        appendNotificationError(row, t('settings.briefLanguage.loadFailed'));
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'unified-settings-btn';
+        retry.textContent = t('common.retry');
+        retry.addEventListener('click', () => {
+          row.querySelector('.us-notif-error')?.remove();
+          mountBriefLanguage();
+        }, { once: true, signal });
+        row.querySelector('.us-notif-error')?.append(' ', retry);
+      }
+
+      function renderBriefLanguageHint(effective: string): void {
+        const hint = container.querySelector<HTMLElement>('#usBriefLanguageHint');
+        if (!hint) return;
+        // English is always true; any other language only once it is live.
+        if (effective !== 'en' && !briefDeliverable.includes(effective)) {
+          hint.textContent = '';
+          hint.hidden = true;
+          return;
+        }
+        const label = LANGUAGES.find((lang) => lang.code === effective)?.label ?? 'English';
+        hint.textContent = t('settings.briefLanguage.hint', { language: label });
+        hint.hidden = false;
+      }
+
+      function mountBriefLanguage(): void {
+        const select = container.querySelector<HTMLSelectElement>('#usBriefLanguage');
+        const userId = renderedUserId;
+        if (!select || !userId) return;
+        const generation = notifReloadGeneration;
+        void (briefLanguageSaveInFlight ?? Promise.resolve()).then(() => loadBriefLanguage(userId)).then((state) => {
+          if (signal.aborted || generation !== notifReloadGeneration) return;
+          if (!state) {
+            showBriefLanguageLoadError();
+            return;
+          }
+          briefLanguageSaved = state.briefLanguage ?? '';
+          briefUiLanguage = state.uiLanguage;
+          briefDeliverable = Array.isArray(state.deliverableLanguages) ? state.deliverableLanguages : [];
+          select.value = briefLanguageSaved;
+          select.disabled = false;
+          renderBriefLanguageHint(state.effective);
+        });
+      }
+
+      function saveBriefLanguageChoice(select: HTMLSelectElement): void {
+        const userId = renderedUserId;
+        const row = container.querySelector<HTMLElement>('#usBriefLanguageRow');
+        if (!userId || !row) return;
+        const previous = briefLanguageSaved;
+        const next = select.value;
+        row.querySelector('.us-notif-error')?.remove();
+        select.disabled = true;
+        const save = saveBriefLanguage(userId, next || null);
+        briefLanguageSaveInFlight = save;
+        void save.then((result) => {
+          if (briefLanguageSaveInFlight === save) briefLanguageSaveInFlight = null;
+          if (result.ok) briefLanguageSaved = next;
+          if (signal.aborted || !select.isConnected) return;
+          select.disabled = false;
+          if (result.ok) {
+            renderBriefLanguageHint(next || briefUiLanguage || 'en');
+          } else {
+            select.value = previous;
+            appendNotificationError(row, t('settings.briefLanguage.saveFailed'));
+          }
+        });
+      }
 
       // Fire-and-forget settings writes MUST NOT surface as unhandled promise
       // rejections. A debounced auto-save that 401s (expired Clerk session) or
@@ -1074,6 +1167,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           contentEl.style.display = 'block';
           mountOrbitalSitePicker();
           mountReservoirPicker();
+          mountBriefLanguage();
 
           // Tear down stale picker (if any) before mounting fresh one — the
           // innerHTML rewrite above orphans the previous root.
@@ -1534,6 +1628,10 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
 
       container.addEventListener('change', (e) => {
         const target = e.target as HTMLInputElement;
+        if (target.id === 'usBriefLanguage') {
+          saveBriefLanguageChoice(target as unknown as HTMLSelectElement);
+          return;
+        }
         if (target.id === 'usQhEnabled') {
           const details = container.querySelector<HTMLElement>('#usQhDetails');
           if (details) details.style.display = target.checked ? '' : 'none';

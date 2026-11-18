@@ -6,6 +6,9 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { renderDigestEmailHtml, DIGEST_EMAIL_MAX_HTML_BYTES } from '../scripts/lib/digest-email-html.mjs';
 import { buildBriefOnlyRules, orderBriefOnlyRulesByStaleness } from '../scripts/lib/brief-compose.mjs';
+import { selectDigestChannelContent } from '../scripts/lib/digest-channel-content.mjs';
+import { briefIntlLocale, briefPlural, briefT, formatBriefDate } from '../shared/brief-strings.js';
+import { truncateForDisplay } from '../shared/brief-text.js';
 
 // A transient Upstash timeout in one user's send path used to reach
 // main().catch and end the whole cron tick, so every user after it in the
@@ -24,9 +27,11 @@ function timeoutError() {
   return new DOMException('The operation was aborted due to timeout', 'TimeoutError');
 }
 
-function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = [], synthesizedAt = new Map(), issueSlot = '2026-11-05-0800' }: {
+function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = [], synthesizedAt = new Map(), issueSlot = '2026-11-05-0800', localizedLangByUser = new Map() }: {
   failingUsers: Set<string>;
   issueSlot?: string;
+  /** Users whose compose pass produced a localized brief, and its language. */
+  localizedLangByUser?: Map<string, string>;
   rulesResponse?: Response;
   exitError?: Error;
   briefOnlyUserIds?: string[];
@@ -40,6 +45,10 @@ function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = 
   const warnings: string[] = [];
   const lifecycle: string[] = [];
   const idempotencyKeys: string[] = [];
+  const formatLangs: string[] = [];
+  const formatLangsByUser = new Map<string, string[]>();
+  const emailHtmlByUser = new Map<string, string>();
+  let sendingUser = '';
   const stories = [{
     severity: 'critical', phase: 'developing', title: 'Synthetic alert', description: 'Synthetic details.',
     link: 'https://example.com/1', sources: ['Synthetic wire'],
@@ -72,33 +81,52 @@ function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = 
     composeBriefsForRun: async (rules: any[], _nowMs: number, opts?: { deadlineMs?: number }) => {
       composedRules.push(rules);
       lifecycle.push(opts?.deadlineMs ? 'compose:bounded' : 'compose');
-      return { briefByUser: new Map(), composeSuccess: 0, composeFailed: 0 };
+      // The entry shape composeAndStoreBriefForUser returns for a localized brief.
+      const briefByUser = new Map([...localizedLangByUser].map(([userId, lang]) => [userId, {
+        envelope: { version: 4, data: { stories: [] } },
+        magazineUrl: null,
+        synthesisLevel: 3,
+        synthesis: null,
+        lang,
+        localizedEnvelope: { version: 5, lang, data: { stories: [] } },
+        localizedSynthesis: null,
+      }]));
+      return { briefByUser, composeSuccess: briefByUser.size, composeFailed: 0 };
     },
+    selectCanonicalSendRule: (_brief: unknown, userRules: unknown[]) => userRules[0] ?? null,
     readCooldownConfig: () => ({ invalidRaw: null, mode: 'off' }),
     getLastSentAt: async () => 0, isDue: () => true, isUserPro: async () => true,
     digestWindowStartMs: () => 0,
     buildDigest: async (rule: { userId: string }) => {
       if (failingUsers.has(rule.userId)) throw timeoutError();
+      sendingUser = rule.userId;
       return stories;
     },
     shouldExitOnBriefFailures: () => false,
     flushPendingLlmEvents: async () => { lifecycle.push('flush'); },
     AI_DIGEST_ENABLED: false,
-    buildDigestDeliveryPlan: ({ rawStories }: any) => ({ formatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
-    formatDigest: () => 'Synthetic digest',
+    selectDigestChannelContent,
+    buildDigestDeliveryPlan: ({ rawStories }: any) => ({ formatterStories: rawStories, canonicalFormatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
+    formatDigest: (_stories: unknown, _nowMs: number, _target: string, lang = 'en') => {
+      formatLangs.push(lang);
+      formatLangsByUser.set(sendingUser, [...(formatLangsByUser.get(sendingUser) ?? []), lang]);
+      return 'Synthetic digest';
+    },
     renderDigestEmailHtml,
+    briefIntlLocale, briefPlural, briefT, formatBriefDate, truncateForDisplay,
     buildChannelBodies: (lists: { plain: string }) => ({ text: lists.plain }),
     subjectForBrief: () => 'Synthetic digest', issueSlotInTz: () => issueSlot,
     emitCooldownShadowLog: () => {}, upstashRest: async () => 'OK',
-    sendResendEmail: async (_client: unknown, message: { to: string }, options: { idempotencyKey?: string }) => {
+    sendResendEmail: async (_client: unknown, message: { to: string; html: string }, options: { idempotencyKey?: string }) => {
       delivered.push(message.to);
+      emailHtmlByUser.set(message.to.split('@')[0]!, message.html);
       idempotencyKeys.push(options.idempotencyKey ?? '');
       lifecycle.push('deliver');
       return { ok: true };
     },
     writeDigestLastRunMeta: async (meta: unknown) => { metadata.push(meta); lifecycle.push('metadata'); },
   });
-  return { run, delivered, metadata, exits, warnings, lifecycle, composedRules, idempotencyKeys };
+  return { run, delivered, metadata, exits, warnings, lifecycle, composedRules, idempotencyKeys, formatLangs, formatLangsByUser, emailHtmlByUser };
 }
 
 // A paid user with no digest rule got no brief, and the dashboard said
@@ -219,4 +247,62 @@ test('the Resend key separates scheduled occurrences but not retries within an h
   assert.equal(morning.length, 3);
   assert.deepEqual(morningRetry, morning);
   for (let i = 0; i < morning.length; i++) assert.notEqual(evening[i], morning[i]);
+});
+
+// l10n PR 3 (#10884): a compose miss has no brief entry, so no localized
+// copy exists and the raw English stories ship.
+test('a compose miss sends English', async () => {
+  const { run, delivered, formatLangs } = runDigest({ failingUsers: new Set() , briefOnlyUserIds: [] });
+  await run();
+  assert.ok(delivered.length > 0);
+  assert.ok(formatLangs.length > 0);
+  assert.deepEqual([...new Set(formatLangs)], ['en']);
+});
+
+// The send loop reads the language off each user's own brief entry. One
+// localized user must not change the language of the users after them.
+test('a localized brief sends in its language, and the next user still gets English', async () => {
+  const { run, delivered, formatLangsByUser, emailHtmlByUser } = runDigest({
+    failingUsers: new Set(),
+    localizedLangByUser: new Map([['second', 'fr']]),
+  });
+  await run();
+  assert.deepEqual(delivered, ['first@example.com', 'second@example.com', 'third@example.com']);
+  const langsOf = (user: string) => [...new Set(formatLangsByUser.get(user))];
+  assert.ok((formatLangsByUser.get('second') ?? []).length >= 4, 'plain, Telegram, Slack and Discord lists');
+  assert.deepEqual(langsOf('first'), ['en']);
+  assert.deepEqual(langsOf('second'), ['fr']);
+  assert.deepEqual(langsOf('third'), ['en']);
+  // The same language reaches the rendered email body.
+  const french = briefT('fr', 'email.openDashboard');
+  assert.notEqual(french, 'Open Dashboard');
+  assert.ok(emailHtmlByUser.get('second')?.includes(french), 'second gets French email chrome');
+  for (const user of ['first', 'third']) {
+    assert.ok(emailHtmlByUser.get(user)?.includes('Open Dashboard'), `${user} gets English email chrome`);
+    assert.ok(!emailHtmlByUser.get(user)?.includes(french), `${user} must not get French email chrome`);
+  }
+});
+
+test('sendWebhook is called with canonicalFormatterStories and the canonical lead', () => {
+  assert.match(mainSource, /sendWebhook\(rule\.userId, ch\.webhookEnvelope, canonicalFormatterStories, briefLead,/);
+});
+
+test('the parity block compares briefLead, not channelLead', () => {
+  assert.match(mainSource, /channelsEqual = hasChannelSynthesis \? \(briefLead === envLead\)/);
+  const parityStart = mainSource.indexOf('const hasChannelSynthesis');
+  assert.ok(parityStart > 0);
+  assert.equal(mainSource.slice(parityStart, parityStart + 600).includes('channelLead'), false);
+});
+
+test('the delivered-log loop iterates cooldownIterableStories', () => {
+  const sendIdx = mainSource.indexOf('ok = await sendWebhook(');
+  const loopIdx = mainSource.indexOf('of cooldownIterableStories', sendIdx);
+  assert.ok(sendIdx > 0 && loopIdx > sendIdx);
+});
+
+test('the l10n call site sits after deriveThreadsFromOrderedStories and before the envelope SETEX', () => {
+  const threadsIdx = source.indexOf('deriveThreadsFromOrderedStories(finalEnvelope.data.stories)');
+  const l10nIdx = source.indexOf('await localizeBrief(');
+  const setexIdx = source.indexOf("['SETEX', key, String(BRIEF_TTL_SECONDS), JSON.stringify(finalEnvelope)]");
+  assert.ok(threadsIdx > 0 && l10nIdx > threadsIdx && setexIdx > l10nIdx);
 });

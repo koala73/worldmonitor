@@ -216,7 +216,12 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
   {
     target: "redis:briefs",
     action: "delete",
-    notes: "brief:latest:{userId} and brief:{userId}:{slot} from that pointer",
+    notes: "sets brief:erased:{userId} (1-day TTL; a racing digest compose removes its own brief when it sees it), then deletes brief:{userId}:{slot} and brief:l10n:{userId}:{slot} for every indexed slot and the pointer slot; then, only once those succeed, the brief:slots:{userId} index and brief:latest:{userId} pointer",
+  },
+  {
+    target: "redis:brief-translation-user-cache",
+    action: "skip",
+    notes: "brief:llm:translate:user:v1:{model}:{userId}:{lang}:{sha256}; keyed by content hash with no index, 8 h TTL",
   },
   {
     target: "redis:sent-alerts",

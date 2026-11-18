@@ -33,7 +33,8 @@ npm run brief-fonts:subset
 
 - a `font-*`, `text-transform` or `hyphens` declaration in `brief-render.js` is added, changed,
   moved to another rule or removed (it can change which faces and weights are needed);
-- a `lang` attribute in the renderer changes (the subsets drop `locl` and assume English).
+- the page languages change (`BRIEF_SUBSET_LANGUAGES` in `shared/ui-languages.js`). The renderer
+  sets `<html lang>` only through `htmlLangFor`; the subsets keep `locl` for those languages.
 
 `run.mjs` also stops if the rendered briefs turn on a font feature, variant or variation setting
 the subsets do not keep. News text needs no rerun: each file keeps every character Google's
@@ -54,8 +55,9 @@ file has, except those another file of the same face draws first.
      declared face first, so a character in two ranges belongs to the later file. Characters that
      no file of the face has keep Google's ranges, because Chrome renders some of them (U+2011)
      differently once they leave every range;
-   - drops OpenType features the brief never turns on (`lnum`, `pnum`, `tnum`, `locl`). It keeps
-     `frac`, `numr` and `dnom`, which HarfBuzz applies by itself around the fraction slash (U+2044);
+   - drops OpenType features the brief never turns on (`lnum`, `pnum`, `tnum`). It keeps `locl`
+     for the localized page languages, and `frac`, `numr` and `dnom`, which HarfBuzz applies by
+     itself around the fraction slash (U+2044). The shaping check shapes each run in its language;
    - drops the variable axis of Source Serif 4 roman, which the brief renders only at its default
      weight. Playfair Display keeps its axis, because pinning it at 900 would round outlines;
    - renames the fonts internally to WM Brief Display, WM Brief Text and WM Brief Mono, as the SIL
