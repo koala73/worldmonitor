@@ -6625,6 +6625,9 @@
           "path": "api/health.js"
         },
         {
+          "path": "scripts/_us-restricted-sanctions.mjs"
+        },
+        {
           "path": "scripts/build-accuracy-page.mjs"
         },
         {
