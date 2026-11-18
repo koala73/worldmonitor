@@ -681,7 +681,8 @@ export function classifyCacheIdentity(title) {
   // Split in-word dashes after the credits are gone, so "Hormuz—Reuters" still strips.
   const story = normalizeNewsStoryTitle(rest.replace(IN_WORD_HYPHEN_RE, ' '));
   if (story.split(' ').length < 4) return lower;
-  return story + (CLASSIFY_QUESTION_RE.test(title) ? ' ?' : '');
+  // The question test backtracks over runs of marks, so it reads a bounded tail.
+  return story + (CLASSIFY_QUESTION_RE.test(title.slice(-NORMALIZED_TITLE_SCAN)) ? ' ?' : '');
 }
 
 export function normalizeNewsStoryTitle(title) {

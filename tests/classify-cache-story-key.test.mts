@@ -99,6 +99,18 @@ describe('classify cache key is the story, not the title string (#10976)', () =>
     assert.notEqual(await buildClassifyCacheKey(`Iran closes Strait of Hormuz${' - Reuters'.repeat(9)}`), plain);
   });
 
+  it('reads the question mark of a very long title in bounded time', async () => {
+    const long = `Iran closes Strait of Hormuz today ${'?'.repeat(60_000)}x`;
+    const started = performance.now();
+    await buildClassifyCacheKey(long);
+    const elapsed = performance.now() - started;
+    assert.ok(elapsed < 500, `took ${Math.round(elapsed)} ms`);
+    assert.notEqual(
+      await buildClassifyCacheKey(`${'Iran closes Strait of Hormuz today '.repeat(100)}?`),
+      await buildClassifyCacheKey('Iran closes Strait of Hormuz today '.repeat(100)),
+    );
+  });
+
   it('keeps a question in any script apart from the report', async () => {
     const plain = await buildClassifyCacheKey('Iran closes Strait of Hormuz');
     for (const question of ['Iran closes Strait of Hormuz\uff1f', 'Iran closes Strait of Hormuz\u061f', 'Iran closes Strait of Hormuz?)']) {
