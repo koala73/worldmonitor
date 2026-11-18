@@ -1957,6 +1957,18 @@ canvas,
   }
 }
 
+/* A Pro-locked panel holds only its lock card (about 150px), so the row
+   spans and height pins above left up to 660px of empty panel and pushed
+   the panels below it down the column. Give it one row until it unlocks.
+   The attribute selector matches the pins' specificity, and this rule comes
+   later, so it wins. A size the user set (.resized) and a collapsed panel
+   keep their own footprint. */
+#panelsGrid > .panel[data-panel].panel-is-locked:not(.resized):not(.panel-collapsed) {
+  grid-row: span 1 !important;
+  height: auto !important;
+  min-height: var(--dashboard-panel-row-min) !important;
+}
+
 /* #8276: Reserve enough grid rows for the natural wide video panels.
    Let the panels fill their grid area without overlapping the next row.
    Preserve user-resized spans and the mobile layout.
