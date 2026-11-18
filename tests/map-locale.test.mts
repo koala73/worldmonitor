@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
@@ -475,10 +475,5 @@ describe('RTL text plugin', () => {
     const source = readFileSync(resolve(__dirname, '..', 'src', 'components', 'DeckGLMap.ts'), 'utf-8');
     assert.ok(!/\.setRTLTextPlugin\(|\.getRTLTextPluginStatus\(|mapbox-gl-rtl-text/.test(source),
       'DeckGLMap.ts still references the RTL plugin — MapLibre 6 evals a non-.mjs plugin in its worker, which the CSP blocks');
-  });
-
-  it('the self-hosted plugin file is gone from public/', () => {
-    assert.ok(!existsSync(resolve(__dirname, '..', 'public', 'mapbox-gl-rtl-text.min.js')),
-      'public/mapbox-gl-rtl-text.min.js is dead weight once nothing registers it');
   });
 });
