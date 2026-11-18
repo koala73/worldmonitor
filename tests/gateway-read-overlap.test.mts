@@ -214,6 +214,20 @@ describe('gateway read-only cache handler / global limiter overlap', () => {
     assert.equal(sdkMap.has('rl:sdk-5'), true);
   });
 
+  it('never lets a late denial shorten a live one, but lets a later one extend it', () => {
+    __resetRateLimitForTest();
+    mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+    const map = __globalBlockedMapForTest();
+    map.set('rl:late', 1_060_000);
+    map.set('rl:late', 1_000_001);
+    assert.equal(map.get('rl:late'), 1_060_000, 'a stale reply cannot shorten the block');
+    map.set('rl:late', 1_120_000);
+    assert.equal(map.get('rl:late'), 1_120_000, 'a later reset extends it');
+    mock.timers.tick(200_000);
+    map.set('rl:late', 1_250_000);
+    assert.equal(map.get('rl:late'), 1_250_000, 'an expired entry is replaced');
+  });
+
   it('keeps the denied-caller memory bounded and drops expired entries', { timeout: 60_000 }, async () => {
     const start = Math.floor(Date.now() / 60_000) * 60_000 + 30_000;
     mock.timers.enable({ apis: ['Date'], now: start });

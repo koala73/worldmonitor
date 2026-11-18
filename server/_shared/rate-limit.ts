@@ -64,6 +64,9 @@ export const GLOBAL_BLOCKED_MAX_ENTRIES = 10_000;
  */
 class BoundedBlockedMap extends Map<string, number> {
   override set(key: string, blockedUntil: number): this {
+    // A late reply from an earlier window must not shorten a live block.
+    const current = super.get(key);
+    if (current !== undefined && current > blockedUntil && current >= Date.now()) return this;
     // Re-insert so iteration order stays oldest-first for eviction.
     super.delete(key);
     super.set(key, blockedUntil);
