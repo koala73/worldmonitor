@@ -122,3 +122,34 @@ test("escapes glob characters in the account identity and bounds delete batches"
   expect(requests.map(batch => batch.length)).toEqual([100, 100, 5]);
   expect(requests.flat().map(command => command[1])).toEqual(envelopes);
 });
+
+test.each(["pending", "failed"] as const)("billing cleanup reopening as %s does not abandon the scheduled sweep", async status => {
+  const { t, deletionId } = await erase();
+  keys.add(`brief:${USER}:late`);
+  keys.add(`brief:l10n:${USER}:late`);
+  await t.run(ctx => ctx.db.patch(deletionId, { status, step: "external", completedAt: undefined }));
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(keys.size).toBe(0);
+});
+
+test("stops at the total page budget and reports a resumable cursor", async () => {
+  const t = convexTest(schema, modules);
+  const deletionId = await t.run(ctx => ctx.db.insert("accountDeletions", {
+    userId: USER, userIdHash: "hash", source: "self", status: "complete", step: "complete",
+    startedAt: Date.now(), updatedAt: Date.now(),
+  }));
+  let scans = 0;
+  fetchMock.mockImplementation(async () => {
+    scans++;
+    return Response.json({ result: [String(scans), []] });
+  });
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  await t.action(internal.accountDeletion.sideEffects.sweepBriefEnvelopes, {
+    deletionId, localized: true, cursor: "100", attempt: 0, pages: 998,
+  });
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(scans).toBe(2);
+  expect(log).toHaveBeenCalledWith(expect.stringContaining('"breadcrumb":"account_deletion_brief_sweep_truncated"'));
+  expect(JSON.parse(String(log.mock.calls[0][0]))).toMatchObject({ cursor: "2", localized: true, pages: 1_000 });
+  log.mockRestore();
+});

@@ -341,26 +341,31 @@ async function deleteAccountRedisKeys(args: {
   await redisRevoke([slotsKey, `brief:latest:${args.userId}`], []);
 }
 
-/** One SCAN page per action keeps even a large Redis keyspace off the action deadline. */
+const MAX_BRIEF_SWEEP_PAGES = 1_000;
+
+/** Bound both each action and the total shared-keyspace scan per sweep. */
 export const sweepBriefEnvelopes = internalAction({
   args: {
     deletionId: v.id("accountDeletions"),
     localized: v.boolean(),
     cursor: v.string(),
     attempt: v.number(),
+    pages: v.optional(v.number()),
   },
   returns: v.null(),
   handler: async (ctx, args): Promise<null> => {
     try {
       const snapshot = await ctx.runQuery(internal.accountDeletion.erase.getExternalEraseSnapshot,
         { deletionId: args.deletionId });
-      if (!snapshot || snapshot.status !== "complete") return null;
+      // Billing events can reopen an erased account's deletion. Its personal
+      // data still needs cleanup even if cancellation is pending or failed.
+      if (!snapshot) return null;
       const prefix = `brief:${args.localized ? "l10n:" : ""}${snapshot.userId}:`;
       // Redis MATCH is a glob, not a literal prefix. Escape identity characters
       // and also check returned keys before deleting anything.
       const pattern = prefix.replace(/[\\*?\[\]]/g, "\\$&") + "*";
       const response = await redisCommand("", {
-        body: JSON.stringify(["SCAN", args.cursor, "MATCH", pattern, "COUNT", "100"]),
+        body: JSON.stringify(["SCAN", args.cursor, "MATCH", pattern, "COUNT", "1000"]),
       });
       const body = await redisResult(response, "BRIEF_SCAN") as { result?: unknown };
       const result = body.result;
@@ -376,8 +381,18 @@ export const sweepBriefEnvelopes = internalAction({
         await redisRevoke(keys.slice(i, i + 100), []);
       }
       if (result[0] !== "0" || !args.localized) {
+        const pages = (args.pages ?? 0) + 1;
+        const localized = result[0] === "0" ? true : args.localized;
+        if (pages >= MAX_BRIEF_SWEEP_PAGES) {
+          // sentry-coverage-ok: structured console.error is forwarded by Convex.
+          // Include the next cursor so an operator can continue this sweep
+          // with pages: 0 after checking Redis load, without rescanning.
+          console.error(JSON.stringify({ breadcrumb: "account_deletion_brief_sweep_truncated",
+            deletionId: args.deletionId, cursor: result[0], localized, pages }));
+          return null;
+        }
         await ctx.scheduler.runAfter(0, internal.accountDeletion.sideEffects.sweepBriefEnvelopes, {
-          ...args, cursor: result[0], localized: result[0] === "0" ? true : args.localized, attempt: 0,
+          ...args, cursor: result[0], localized, attempt: 0, pages,
         });
       }
     } catch (err) {
