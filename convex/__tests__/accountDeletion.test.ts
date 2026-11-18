@@ -109,6 +109,7 @@ async function makeT() {
       return new Response("gone", { status: 404 });
     }
     if (url.includes("upstash.test")) {
+      if (body.startsWith('["SCAN",')) return Response.json({ result: ["0", []] });
       if (url.includes("/get/")) {
         return Response.json({
           result: JSON.stringify({ issueSlot: "2026-09-21-1200" }),
