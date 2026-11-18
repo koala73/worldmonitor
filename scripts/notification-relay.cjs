@@ -42,7 +42,7 @@ const {
 const { COMPARE_AND_DELETE_SCRIPT } = require('./shared/compare-and-delete-script.cjs');
 const { ORBITAL_SITE_EVENT_TYPES } = require('./lib/orbital-site-alerts.cjs');
 const { RESERVOIR_ALERT_EVENT_TYPE, reservoirAlertDecision } = require('./lib/reservoir-level-alerts.cjs');
-const { TIER_GLOBAL, TIER_OPT_IN, resolveDeliveryTier } = require('./lib/notification-delivery-tiers.cjs');
+const { TIER_GLOBAL, TIER_LOCAL, TIER_OPT_IN, NEWS_LOCAL_IMPORTANCE_SCORE, resolveDeliveryTier } = require('./lib/notification-delivery-tiers.cjs');
 const {
   parseSuppressionEntries,
   isLinkSuppressed,
@@ -1621,6 +1621,14 @@ function webPushTagFor(event, userId) {
     : `${event.eventType}:${userId}`;
 }
 
+// A local news story reaches only rules scoped to its country
+// (eventMatchesDeliveryScope), and those rules get their own bar.
+function isLocalNewsForRule(rule, event) {
+  if (!Array.isArray(rule.countries) || rule.countries.length === 0) return false;
+  const { tier, country } = resolveDeliveryTier(event);
+  return tier === TIER_LOCAL && country != null && rule.countries.includes(country);
+}
+
 function shouldNotify(rule, event) {
   // Reservoir level alerts are scoped by the rule's own reservoir list, threshold and event-type
   // opt-in, so the realtime critical-only gate does not apply. They are not critical, so quiet
@@ -1663,7 +1671,7 @@ function shouldNotify(rule, event) {
     // Calibrated from v5 shadow-log recalibration (2026-04-20).
     // IMPORTANCE_SCORE_MIN env var controls the 'all' floor at both the
     // relay ingress gate AND per-rule sensitivity — single tuning surface.
-    const threshold = effectiveSensitivity === 'critical' ? 82
+    const threshold = effectiveSensitivity === 'critical' ? (isLocalNewsForRule(rule, event) ? NEWS_LOCAL_IMPORTANCE_SCORE : 82)
                     : effectiveSensitivity === 'high' ? 69
                     : IMPORTANCE_SCORE_MIN;
     return event.payload.importanceScore >= threshold;
