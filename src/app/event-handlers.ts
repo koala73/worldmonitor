@@ -265,6 +265,10 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
     this.instance?.refreshPanelToggles();
   }
 
+  refreshSourceToggles(): void {
+    this.instance?.refreshSourceToggles();
+  }
+
   close(): void {
     this.instance?.close();
   }
@@ -3162,6 +3166,7 @@ export class EventHandlerManager implements AppModule {
     this.ctx.pendingSourcePreferences = {
       gateOwned: nextGateOwned,
       baselineGateOwned: pending?.baselineGateOwned ?? persistedGateOwned,
+      fallbackDisabledSources: pending?.fallbackDisabledSources,
       edits,
       migrationMarkers: pending?.migrationMarkers ?? [],
     };
@@ -3169,6 +3174,7 @@ export class EventHandlerManager implements AppModule {
       && !writeStorageValue(STORAGE_KEYS.sourceGateOwnership, JSON.stringify([...nextGateOwned]))) return;
     if (!saveToStorage(STORAGE_KEYS.disabledFeeds, [...this.ctx.disabledSources])) return;
     this.ctx.pendingSourcePreferences.baselineGateOwned = nextGateOwned;
+    this.ctx.pendingSourcePreferences.fallbackDisabledSources = undefined;
     for (const marker of pending?.migrationMarkers ?? []) {
       if (!writeStorageValue(marker, 'done')) return;
     }

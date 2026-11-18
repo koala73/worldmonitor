@@ -34,6 +34,7 @@ export interface UnifiedSettingsController {
   close(): void;
   hasPendingChanges(): boolean;
   refreshPanelToggles(): void;
+  refreshSourceToggles(): void;
   getButton(): HTMLButtonElement;
   destroy(): void;
 }
@@ -100,6 +101,8 @@ export interface AppContext {
     baselineGateOwned: Set<string> | null;
     /** Session overrides; true disables a source, false enables it. */
     edits: Map<string, boolean>;
+    /** Startup defaults used until saved or replaced by an applied cloud snapshot. */
+    fallbackDisabledSources?: Set<string>;
     migrationMarkers: string[];
   };
   currentTimeRange: import('@/components').TimeRange;

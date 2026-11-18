@@ -135,6 +135,36 @@ describe('optional country news coverage', () => {
       instance.shouldDeferTierPreferenceReconciliation = () => true;
       instance.cloud();
       assert.deepEqual([...instance.state.disabledSources], ['cloud-choice'], 'cloud changes resume after durable save');
+      if (pro && sidecar && failedWrite === 'both') {
+        const initStart = app.indexOf('    let sessionDisabledSources:');
+        const initEnd = app.indexOf('    // One-time migration: reduce default-enabled sources', initStart);
+        const defaults = runInNewContext(transpileModule(`
+          function initialize() { ${app.slice(initStart, initEnd)}
+            return { sessionDisabledSources, sessionSourceEdits }; }
+          initialize.call({ currentSourceCapLanguage: () => 'en' });
+        `, {}).outputText, {
+          currentVariant: 'full', storageAvailable: false,
+          computeDefaultDisabledSources: () => ['fallback-default'],
+        });
+        assert.equal(defaults.sessionSourceEdits.size, 0, 'fallback defaults are a base, not session edits');
+        stored.set('disabled', ['old-local-choice']);
+        stored.set('owned', []);
+        instance.state.pendingSourcePreferences = {
+          gateOwned: null, baselineGateOwned: null, migrationMarkers: [],
+          edits: defaults.sessionSourceEdits,
+          fallbackDisabledSources: new Set(defaults.sessionDisabledSources),
+        };
+        instance.persistJsonStorageValue = () => false;
+        instance.shouldDeferTierPreferenceReconciliation = () => false;
+        instance.reconcileSourceLimitForTier(true);
+        assert.ok(instance.state.disabledSources.has('fallback-default'), 'defaults survive without a cloud snapshot');
+        instance.state.disabledSources.add('session-choice');
+        instance.persistSourcePreferences(['session-choice']);
+        stored.set('disabled', ['cloud-choice']);
+        instance.cloud();
+        assert.ok(!instance.state.disabledSources.has('fallback-default'), 'cloud replaces fallback defaults');
+        assert.ok(instance.state.disabledSources.has('session-choice'), 'explicit edits survive fallback replacement');
+      }
     }
   });
   it('preserves explicit ownership transfers and acknowledges migration on a recovered settings save', () => {

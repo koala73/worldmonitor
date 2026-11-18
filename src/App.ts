@@ -531,6 +531,7 @@ export class App {
       const cloudGateOwned = new Set(loadFromStorage<string[]>(STORAGE_KEYS.sourceGateOwnership, []));
       this.state.pendingSourcePreferences.baselineGateOwned = cloudGateOwned;
       this.state.pendingSourcePreferences.gateOwned = cloudGateOwned;
+      this.state.pendingSourcePreferences.fallbackDisabledSources = undefined;
     }
     let freeTierLimitsInvoked = false;
     const tierReconciliationDeferred = this.shouldDeferTierPreferenceReconciliation();
@@ -624,6 +625,7 @@ export class App {
         }
         this.state.disabledSources = disabled;
       }
+      this.state.unifiedSettings?.refreshSourceToggles();
     }
 
     if (keySet.has(STORAGE_KEYS.monitors)) {
@@ -1379,9 +1381,7 @@ export class App {
     let sessionDisabledSources: string[] | undefined = currentVariant === 'full' && !storageAvailable
       ? computeDefaultDisabledSources(this.currentSourceCapLanguage())
       : undefined;
-    const sessionSourceEdits = new Map<string, boolean>(
-      sessionDisabledSources?.map(name => [name, true]),
-    );
+    const sessionSourceEdits = new Map<string, boolean>();
     const pendingSourceMigrationMarkers: string[] = [];
     // One-time migration: reduce default-enabled sources (full variant only)
     if (currentVariant === 'full' && storageAvailable) {
@@ -1674,6 +1674,7 @@ export class App {
       pendingSourcePreferences: sessionDisabledSources === undefined ? undefined : {
         gateOwned: null,
         baselineGateOwned: null,
+        fallbackDisabledSources: storageAvailable ? undefined : new Set(sessionDisabledSources),
         edits: sessionSourceEdits,
         migrationMarkers: pendingSourceMigrationMarkers,
       },
@@ -3552,11 +3553,10 @@ export class App {
     try {
       ownershipMetadataExists = localStorage.getItem(STORAGE_KEYS.sourceGateOwnership) !== null;
     } catch { /* optional persistence */ }
-    const persistedDisabled = new Set(
-      loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []),
-    );
+    const storedDisabled = loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+    const persistedDisabled = new Set(storedDisabled ?? []);
     const pending = this.state.pendingSourcePreferences;
-    const baselineDisabled = new Set(persistedDisabled);
+    const baselineDisabled = new Set(pending?.fallbackDisabledSources ?? storedDisabled ?? []);
     for (const [name, disabled] of pending?.edits ?? []) {
       if (disabled) baselineDisabled.add(name);
       else baselineDisabled.delete(name);
@@ -3632,6 +3632,7 @@ export class App {
         gateOwned: nextGateOwned,
         // A partial write can leave the stored and live cap on different snapshots.
         baselineGateOwned: persistence.preferencePersisted ? nextGateOwned : gateOwned,
+        fallbackDisabledSources: persistence.preferencePersisted ? undefined : pending?.fallbackDisabledSources,
         edits: pending?.edits ?? new Map(),
         migrationMarkers,
       };

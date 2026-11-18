@@ -240,6 +240,21 @@ afterEach(() => {
 });
 
 describe('UnifiedSettings source selection live apply (#6380)', () => {
+  it('refreshes an open source grid and counter before the next user toggle', () => {
+    settings.open('sources');
+    expect(internal.overlay.querySelector('#usSourcesCounter')?.textContent).toContain('4/4');
+    disabledSources.add(PLAIN_SOURCE);
+    settings.refreshSourceToggles();
+    expect(sourceButton(PLAIN_SOURCE).getAttribute('aria-pressed')).toBe('false');
+    expect(internal.overlay.querySelector('#usSourcesCounter')?.textContent).toContain('3/4');
+    expect(onSourcesChanged).not.toHaveBeenCalled();
+    sourceButton(PLAIN_SOURCE).click();
+    expect(disabledSources.has(PLAIN_SOURCE)).toBe(false);
+    expect(sourceButton(PLAIN_SOURCE).getAttribute('aria-pressed')).toBe('true');
+    settings.close();
+    expect(onSourcesChanged).not.toHaveBeenCalled();
+  });
+
   it('(a) a source toggle followed by close notifies the host exactly once, after teardown', () => {
     settings.open('sources');
     expect(sourceButton(PLAIN_SOURCE).classList.contains('active')).toBe(true);

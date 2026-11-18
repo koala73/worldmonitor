@@ -219,7 +219,7 @@ test.describe('settings source live apply (#6380)', () => {
     await expect(await showSource('Guardian Brazil')).not.toHaveClass(/\bactive\b/);
     await source('Guardian Brazil').click();
     await expect(source('Guardian Brazil')).toHaveClass(/\bactive\b/);
-    await page.locator('.unified-settings-close').click();
+    await showSource('BBC World');
 
     // Emulate the existing cloud-applied boundary: a new snapshot landed, but
     // subsequent preference and migration-marker writes still fail.
@@ -231,8 +231,7 @@ test.describe('settings source live apply (#6380)', () => {
         detail: { keys: ['worldmonitor-disabled-feeds'], syncVersion: 10 },
       }));
     });
-    await openSourcesTab(page);
-    await expect(await showSource('BBC World')).toHaveClass(/\bactive\b/);
+    await expect(source('BBC World')).toHaveClass(/\bactive\b/);
     await evidenceScreenshot(page, { path: testInfo.outputPath('pending-after-cloud.png') });
     await expect(await showSource('CNN World')).not.toHaveClass(/\bactive\b/);
     await expect(await showSource('Guardian Brazil')).toHaveClass(/\bactive\b/);

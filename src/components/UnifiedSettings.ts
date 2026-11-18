@@ -970,6 +970,12 @@ export class UnifiedSettings {
     this.config.onSourcesChanged?.();
   }
 
+  public refreshSourceToggles(): void {
+    this.renderSourcesGrid();
+    this.updateSourcesCounter();
+    this.refreshSummaries();
+  }
+
   public refreshPanelToggles(): void {
     this.resetPanelDraft();
     this.renderPanelsTab();
