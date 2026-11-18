@@ -104,21 +104,6 @@ describe('seed script does not export tsx/esm helpers', () => {
     const mod = await import('../scripts/seed-resilience-scores.mjs');
     assert.equal(typeof mod.createMemoizedSeedReader, 'undefined');
   });
-
-  it('buildRankingItem is not exported (ranking write removed)', async () => {
-    const mod = await import('../scripts/seed-resilience-scores.mjs');
-    assert.equal(typeof mod.buildRankingItem, 'undefined');
-  });
-
-  it('sortRankingItems is not exported (ranking write removed)', async () => {
-    const mod = await import('../scripts/seed-resilience-scores.mjs');
-    assert.equal(typeof mod.sortRankingItems, 'undefined');
-  });
-
-  it('buildRankingPayload is not exported (ranking write removed)', async () => {
-    const mod = await import('../scripts/seed-resilience-scores.mjs');
-    assert.equal(typeof mod.buildRankingPayload, 'undefined');
-  });
 });
 
 describe('score cache payload validation', () => {

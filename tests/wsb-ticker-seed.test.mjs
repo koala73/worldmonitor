@@ -1,237 +1,102 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 
-const TICKER_REGEX = /\$([A-Z]{1,5})\b|\b([A-Z]{1,5})\b/g;
-const TICKER_BLACKLIST = new Set([
-  'I','A','ALL','FOR','THE','CEO','GDP','IPO','SEC','FDA','IMF','ETF','ATH',
-  'DD','YOLO','FOMO','FUD','HODL','WSB','USA','EU','UK','AI','EV','IT','OR',
-  'AM','PM','ON','BE','SO','GO','AT','TO','UP','NO','IF','AS','BY','AN','DO',
-  'IN','OF','IS','HAS','NEW','CFO','CTO','IRS','FBI','CIA','UN','WHO',
-  'IMO','PSA','FYI','TL','DR','OP','OC','US','ER','RE','VS',
-]);
+const require = createRequire(import.meta.url);
+const {
+  MAX_RANKED_TICKERS,
+  extractTickers,
+  accumulateTickerMentions,
+  rankTickers,
+} = require('../scripts/lib/wsb-tickers.cjs');
 
-function extractTickers(text, knownTickers) {
-  const found = new Set();
-  if (!text) return found;
-  let m;
-  TICKER_REGEX.lastIndex = 0;
-  while ((m = TICKER_REGEX.exec(text)) !== null) {
-    const sym = (m[1] || m[2] || '').toUpperCase();
-    if (!sym || sym.length < 1) continue;
-    if (TICKER_BLACKLIST.has(sym)) continue;
-    if (knownTickers.size > 0 && !knownTickers.has(sym)) continue;
-    found.add(sym);
-  }
-  return found;
-}
-
-function aggregate(posts, knownTickers) {
+// The relay calls accumulateTickerMentions once per subreddit, then rankTickers.
+function scan(postsBySub, known) {
   const tickerMap = new Map();
-  const nowSec = Date.now() / 1000;
-  for (const p of posts) {
-    const text = `${p.title || ''} ${p.selftext || ''}`;
-    const tickers = extractTickers(text, knownTickers);
-    for (const sym of tickers) {
-      let entry = tickerMap.get(sym);
-      if (!entry) {
-        entry = {
-          symbol: sym,
-          mentionCount: 0,
-          postIds: new Set(),
-          totalScore: 0,
-          upvoteRatioSum: 0,
-          topPost: null,
-          subreddits: new Set(),
-        };
-        tickerMap.set(sym, entry);
-      }
-      entry.mentionCount++;
-      entry.postIds.add(p.id);
-      entry.totalScore += (p.score || 0);
-      entry.upvoteRatioSum += (p.upvote_ratio || 0);
-      entry.subreddits.add(p._sub || 'wallstreetbets');
-      if (!entry.topPost || (p.score || 0) > entry.topPost.score) {
-        entry.topPost = {
-          title: String(p.title || '').slice(0, 300),
-          url: `https://reddit.com${p.permalink || ''}`,
-          score: p.score || 0,
-          subreddit: p._sub || 'wallstreetbets',
-        };
-      }
-    }
+  let scanned = 0;
+  for (const [sub, posts] of Object.entries(postsBySub)) {
+    scanned += accumulateTickerMentions(tickerMap, posts, sub, known);
   }
-  const results = [];
-  for (const [, entry] of tickerMap) {
-    const uniquePosts = entry.postIds.size;
-    const avgUpvoteRatio = uniquePosts > 0 ? Math.round((entry.upvoteRatioSum / entry.mentionCount) * 100) / 100 : 0;
-    const velocityScore = Math.round(Math.log1p(entry.totalScore) * entry.mentionCount * 10) / 10;
-    results.push({
-      symbol: entry.symbol,
-      mentionCount: entry.mentionCount,
-      uniquePosts,
-      totalScore: entry.totalScore,
-      avgUpvoteRatio,
-      topPost: entry.topPost,
-      subreddits: [...entry.subreddits],
-      velocityScore,
-    });
-  }
-  results.sort((a, b) => b.velocityScore - a.velocityScore);
-  return results;
+  return { scanned, ranked: rankTickers(tickerMap) };
 }
+
+const post = (id, title, score, extra = {}) => ({ id, title, selftext: '', score, upvote_ratio: 0.9, permalink: `/r/x/${id}`, ...extra });
 
 describe('WSB Ticker Scanner', () => {
-  describe('ticker extraction regex', () => {
-    const known = new Set(['NVDA', 'AAPL', 'TSLA', 'GME', 'AMC', 'PLTR', 'SPY', 'QQQ', 'MSFT', 'META']);
+  describe('ticker extraction', () => {
+    const known = new Set(['NVDA', 'AAPL', 'TSLA', 'GME', 'BRK-B']);
 
-    it('finds $TICKER patterns', () => {
-      const result = extractTickers('Just bought $NVDA and $AAPL calls', known);
-      assert.ok(result.has('NVDA'));
-      assert.ok(result.has('AAPL'));
+    it('finds $TICKER and bare known tickers', () => {
+      assert.deepEqual([...extractTickers('$NVDA is great, also look at TSLA', known)].sort(), ['NVDA', 'TSLA']);
     });
 
-    it('finds bare uppercase tickers', () => {
-      const result = extractTickers('TSLA to the moon! GME squeeze incoming', known);
-      assert.ok(result.has('TSLA'));
-      assert.ok(result.has('GME'));
+    it('accepts a lowercase $ticker but not a lowercase bare word', () => {
+      assert.deepEqual([...extractTickers('bought $nvda, tsla next', known)], ['NVDA']);
     });
 
-    it('filters blacklisted words', () => {
-      const noFilter = new Set();
-      const result = extractTickers('I think THE CEO said ALL is good FOR IPO', noFilter);
-      assert.ok(!result.has('I'));
-      assert.ok(!result.has('THE'));
-      assert.ok(!result.has('CEO'));
-      assert.ok(!result.has('ALL'));
-      assert.ok(!result.has('FOR'));
-      assert.ok(!result.has('IPO'));
+    it('normalizes a dotted share class to the Yahoo dash form', () => {
+      assert.deepEqual([...extractTickers('$BRK.B and BRK.B', known)], ['BRK-B']);
     });
 
-    it('filters WSB jargon', () => {
-      const noFilter = new Set();
-      const result = extractTickers('YOLO FOMO HODL DD FUD WSB', noFilter);
-      assert.ok(!result.has('YOLO'));
-      assert.ok(!result.has('FOMO'));
-      assert.ok(!result.has('HODL'));
-      assert.ok(!result.has('DD'));
-      assert.ok(!result.has('FUD'));
-      assert.ok(!result.has('WSB'));
+    it('keeps unknown $-prefixed tickers but drops unknown bare ones', () => {
+      assert.deepEqual([...extractTickers('$FAKEX and NVDA and FAKEY', known)].sort(), ['FAKEX', 'NVDA']);
     });
 
-    it('validates against known ticker set when non-empty', () => {
-      const result = extractTickers('NVDA and FAKEX both mentioned', known);
-      assert.ok(result.has('NVDA'));
-      assert.ok(!result.has('FAKEX'), 'Unknown ticker FAKEX should be filtered');
+    it('skips bare tickers entirely when the known set is empty', () => {
+      assert.deepEqual([...extractTickers('NVDA and $AAPL', new Set())], ['AAPL']);
     });
 
-    it('returns empty set for empty/null input', () => {
-      const result = extractTickers('', known);
-      assert.equal(result.size, 0);
-      const result2 = extractTickers(null, known);
-      assert.equal(result2.size, 0);
+    it('drops blacklisted words even with a $ prefix', () => {
+      assert.deepEqual([...extractTickers('$YOLO $CEO $WSB $GME', new Set(['CEO']))], ['GME']);
     });
 
-    it('handles mixed $TICKER and bare forms', () => {
-      const result = extractTickers('$NVDA is great, also look at TSLA', known);
-      assert.ok(result.has('NVDA'));
-      assert.ok(result.has('TSLA'));
+    it('returns an empty set for empty or null text', () => {
+      assert.equal(extractTickers('', known).size, 0);
+      assert.equal(extractTickers(null, known).size, 0);
     });
   });
 
-  describe('aggregation', () => {
+  describe('aggregation and ranking', () => {
     const known = new Set(['NVDA', 'AAPL', 'TSLA']);
 
-    it('merges multiple mentions of same ticker', () => {
-      const posts = [
-        { id: '1', title: 'NVDA earnings great', selftext: '', score: 100, upvote_ratio: 0.9, permalink: '/r/wsb/1', _sub: 'wallstreetbets' },
-        { id: '2', title: 'NVDA calls printing', selftext: '', score: 200, upvote_ratio: 0.95, permalink: '/r/wsb/2', _sub: 'stocks' },
-        { id: '3', title: 'AAPL undervalued', selftext: '', score: 50, upvote_ratio: 0.8, permalink: '/r/wsb/3', _sub: 'investing' },
-      ];
-      const results = aggregate(posts, known);
-      const nvda = results.find(t => t.symbol === 'NVDA');
-      assert.ok(nvda);
+    it('merges mentions across subreddits and keeps the highest-score post', () => {
+      const { scanned, ranked } = scan({
+        wallstreetbets: [post('1', 'NVDA earnings great', 100, { upvote_ratio: 0.9 })],
+        stocks: [post('2', 'NVDA calls printing', 200, { upvote_ratio: 0.95 })],
+        investing: [post('3', 'AAPL undervalued', 50)],
+      }, known);
+      assert.equal(scanned, 3);
+      const nvda = ranked.find((t) => t.symbol === 'NVDA');
       assert.equal(nvda.mentionCount, 2);
       assert.equal(nvda.uniquePosts, 2);
       assert.equal(nvda.totalScore, 300);
-      assert.deepEqual(nvda.subreddits.sort(), ['stocks', 'wallstreetbets']);
-      assert.equal(nvda.topPost.score, 200);
+      assert.equal(nvda.avgUpvoteRatio, 0.93);
+      assert.deepEqual(nvda.subreddits, ['wallstreetbets', 'stocks']);
+      assert.deepEqual(nvda.topPost, { title: 'NVDA calls printing', url: 'https://reddit.com/r/x/2', score: 200, subreddit: 'stocks' });
     });
 
-    it('counts multiple tickers in same post separately', () => {
-      const posts = [
-        { id: '1', title: 'NVDA and AAPL both look good', selftext: '', score: 500, upvote_ratio: 0.92, permalink: '/r/wsb/1', _sub: 'wallstreetbets' },
-      ];
-      const results = aggregate(posts, known);
-      assert.equal(results.length, 2);
-      const nvda = results.find(t => t.symbol === 'NVDA');
-      const aapl = results.find(t => t.symbol === 'AAPL');
-      assert.ok(nvda);
-      assert.ok(aapl);
-      assert.equal(nvda.totalScore, 500);
-      assert.equal(aapl.totalScore, 500);
+    it('credits every ticker in one post with that post', () => {
+      const { ranked } = scan({ wallstreetbets: [post('1', 'NVDA and AAPL both look good', 500)] }, known);
+      assert.deepEqual(ranked.map((t) => [t.symbol, t.totalScore]).sort(), [['AAPL', 500], ['NVDA', 500]]);
     });
 
-    it('picks highest-score post as topPost', () => {
-      const posts = [
-        { id: '1', title: 'TSLA low score', selftext: '', score: 10, upvote_ratio: 0.5, permalink: '/r/wsb/1', _sub: 'wallstreetbets' },
-        { id: '2', title: 'TSLA high score', selftext: '', score: 9000, upvote_ratio: 0.99, permalink: '/r/wsb/2', _sub: 'stocks' },
-      ];
-      const results = aggregate(posts, known);
-      const tsla = results.find(t => t.symbol === 'TSLA');
-      assert.equal(tsla.topPost.score, 9000);
-      assert.equal(tsla.topPost.title, 'TSLA high score');
-    });
-  });
-
-  describe('velocity scoring', () => {
-    it('higher score + more mentions = higher velocity', () => {
-      const posts = [
-        { id: '1', title: 'NVDA', selftext: '', score: 10000, upvote_ratio: 0.95, permalink: '/r/1', _sub: 'wallstreetbets' },
-        { id: '2', title: 'NVDA', selftext: '', score: 5000, upvote_ratio: 0.9, permalink: '/r/2', _sub: 'stocks' },
-        { id: '3', title: 'AAPL', selftext: '', score: 100, upvote_ratio: 0.7, permalink: '/r/3', _sub: 'investing' },
-      ];
-      const known = new Set(['NVDA', 'AAPL']);
-      const results = aggregate(posts, known);
-      const nvda = results.find(t => t.symbol === 'NVDA');
-      const aapl = results.find(t => t.symbol === 'AAPL');
-      assert.ok(nvda.velocityScore > aapl.velocityScore, `NVDA (${nvda.velocityScore}) should have higher velocity than AAPL (${aapl.velocityScore})`);
+    it('scores velocity as log1p(totalScore) x mentions, rounded to one decimal, highest first', () => {
+      const { ranked } = scan({
+        wallstreetbets: [post('1', 'NVDA', 10000), post('2', 'AAPL', 100)],
+        stocks: [post('3', 'NVDA', 5000)],
+      }, known);
+      assert.deepEqual(ranked.map((t) => [t.symbol, t.velocityScore]), [['NVDA', 19.2], ['AAPL', 4.6]]);
     });
 
-    it('velocity uses log1p of totalScore', () => {
-      const posts = [
-        { id: '1', title: 'NVDA', selftext: '', score: 100, upvote_ratio: 0.9, permalink: '/r/1', _sub: 'wallstreetbets' },
-      ];
-      const known = new Set(['NVDA']);
-      const results = aggregate(posts, known);
-      const nvda = results.find(t => t.symbol === 'NVDA');
-      const expected = Math.round(Math.log1p(100) * 1 * 10) / 10;
-      assert.equal(nvda.velocityScore, expected);
-    });
-  });
-
-  describe('top-50 cutoff', () => {
-    it('returns at most 50 tickers', () => {
-      const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-      const tickers = [];
-      for (let i = 0; i < 60; i++) {
-        const a = alphabet[Math.floor(i / 26) % 26];
-        const b = alphabet[i % 26];
-        tickers.push(`Z${a}${b}`);
-      }
-      const known = new Set(tickers);
-      const posts = tickers.map((sym, i) => ({
-        id: String(i),
-        title: `$${sym}`,
-        selftext: '',
-        score: 100 + i,
-        upvote_ratio: 0.9,
-        permalink: `/r/wsb/${i}`,
-        _sub: 'wallstreetbets',
-      }));
-      const results = aggregate(posts, known);
-      const top50 = results.slice(0, 50);
-      assert.equal(top50.length, 50);
-      assert.ok(results.length === 60, `Should have 60 total before cutoff, got ${results.length}`);
+    it('publishes at most 50 tickers, dropping the lowest velocity', () => {
+      // Scores grow by e^0.2 per ticker, so each velocity is 0.2 above the last.
+      const symbol = (i) => `Z${String.fromCharCode(65 + Math.floor(i / 26))}${String.fromCharCode(65 + (i % 26))}`;
+      const posts = Array.from({ length: 60 }, (_, i) => post(String(i), `$${symbol(i)}`, Math.round(Math.exp(i * 0.2) * 100)));
+      const { ranked } = scan({ wallstreetbets: posts }, new Set());
+      assert.equal(MAX_RANKED_TICKERS, 50);
+      assert.equal(ranked.length, 50);
+      assert.equal(ranked[0].symbol, 'ZCH');
+      assert.equal(ranked.at(-1).symbol, 'ZAK');
     });
   });
 });

@@ -11781,6 +11781,9 @@
           "path": "scripts/ais-relay.cjs"
         },
         {
+          "path": "scripts/lib/wsb-tickers.cjs"
+        },
+        {
           "path": "src/services/story-share.ts"
         }
       ]

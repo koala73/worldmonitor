@@ -62,6 +62,7 @@
       "scripts/lib/x-news-accounts.cjs",
       "scripts/lib/x-post-budget.cjs",
       "scripts/lib/x-poll-cycle.cjs",
+      "scripts/lib/wsb-tickers.cjs",
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-chokepoint-flows.mjs",
