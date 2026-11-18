@@ -21,35 +21,58 @@ prompt="${prompt//\{\{FOCUS\}\}/$FOCUS}"
 
 # The agent reads third-party page text, so it gets agent-browser and file access inside OUT_DIR only:
 # no other shell command and no web tools.
-# `Bash(agent-browser *)` permits any argument, and some arguments start other programs: --executable-path
-# and --engine run a binary the caller names, `plugin` fetches and runs third-party code, and --extension,
-# --init-script, --args and --config change what the browser loads. A wrapper earlier on PATH refuses those
-# before anything starts, so the grant stays browsing.
+# `Bash(agent-browser *)` permits any argument, and agent-browser can do more than browse: `plugin`/`plugins` and
+# --engine or --executable-path run programs the caller names, `download`, `state` and `upload` move files, and a
+# config file (~/.agent-browser/config.json or ./agent-browser.json) can load a plugin at launch. A wrapper first on
+# PATH therefore allows only the browsing commands below, refuses the global options that change what runs, forces
+# an empty read-only config (AGENT_BROWSER_CONFIG replaces both config files) and starts from /, so nothing the
+# agent writes is read as configuration. Paths given to screenshot and record must be absolute.
 #
 # The browser can also open file:// URLs, including /proc/<pid>/environ of any process its user owns, and this
 # process holds ANTHROPIC_API_KEY. With AGENT_BROWSER_USER set (the workflow sets it), the wrapper runs every
 # call as that other user with an empty environment, so neither the browser nor its daemon can read the key.
 real="$(command -v agent-browser)"
 wrap="$(mktemp -d)"
+chmod 755 "$wrap"
+echo '{}' > "$wrap/agent-browser.json"
+chmod 644 "$wrap/agent-browser.json"
 if [ -n "${AGENT_BROWSER_USER:-}" ]; then
   # shellcheck disable=SC2016 # "$@" is expanded by the wrapper, not here.
-  launch="$(printf 'exec sudo -n -u %q -H env -i PATH=%q HOME=%q AGENT_BROWSER_EXECUTABLE_PATH=%q %q "$@"' \
-    "$AGENT_BROWSER_USER" "$PATH" "/home/$AGENT_BROWSER_USER" "${AGENT_BROWSER_EXECUTABLE_PATH:-}" "$real")"
+  launch="$(printf 'exec sudo -n -u %q -H env -i PATH=%q HOME=%q AGENT_BROWSER_EXECUTABLE_PATH=%q AGENT_BROWSER_CONFIG=%q %q "$@"' \
+    "$AGENT_BROWSER_USER" "$PATH" "/home/$AGENT_BROWSER_USER" "${AGENT_BROWSER_EXECUTABLE_PATH:-}" "$wrap/agent-browser.json" "$real")"
   chmod 1777 "$OUT_DIR" "$OUT_DIR/screenshots" "$OUT_DIR/videos"
 else
   # shellcheck disable=SC2016 # "$@" is expanded by the wrapper, not here.
-  launch="$(printf 'exec %q "$@"' "$real")"
+  launch="$(printf 'AGENT_BROWSER_CONFIG=%q exec %q "$@"' "$wrap/agent-browser.json" "$real")"
 fi
 cat > "$wrap/agent-browser" <<WRAPPER
 #!/bin/sh
+refuse() { echo "dogfood: \$1 is not allowed in this run" >&2; exit 2; }
+# The command is the first word after an optional --session <name>.
+command=""
+skip=0
 for arg in "\$@"; do
+  if [ "\$skip" = 1 ]; then skip=0; continue; fi
   case "\$arg" in
-    --executable-path*|--engine*|--config*|--extension*|--init-script*|--args*|--provider*|--proxy*|--allowed-domains*|--allow-file-access*|--auto-connect*|--cdp*|--profile*|--state*)
-      echo "dogfood: agent-browser option \$arg is not allowed in this run" >&2; exit 2;;
-    plugin|auth|install|upgrade|chat|dashboard|stream|mcp|connect|doctor)
-      echo "dogfood: agent-browser command \$arg is not allowed in this run" >&2; exit 2;;
+    --session) skip=1 ;;
+    --session=*) ;;
+    --version|-V) command=--version; break ;;
+    -*) refuse "agent-browser option \$arg before the command" ;;
+    *) command="\$arg"; break ;;
   esac
 done
+case "\$command" in
+  open|goto|navigate|read|back|forward|reload|wait|snapshot|screenshot|click|dblclick|type|fill|press|keyboard|hover|focus|check|uncheck|select|drag|scroll|scrollintoview|get|is|find|eval|errors|console|network|record|set|tab|frame|mouse|dialog|skills|close|--version) ;;
+  *) refuse "agent-browser command '\$command'" ;;
+esac
+# Global options can follow the command too.
+for arg in "\$@"; do
+  case "\$arg" in
+    --executable-path*|--engine*|--config*|--extension*|--init-script*|--args*|--provider*|--proxy*|--allowed-domains*|--allow-file-access*|--auto-connect*|--cdp*|--profile*|--state*|--credential-provider*)
+      refuse "agent-browser option \$arg" ;;
+  esac
+done
+cd / || exit 2
 $launch
 WRAPPER
 chmod 755 "$wrap/agent-browser"

@@ -6,7 +6,8 @@ You are testing the live World Monitor site as an anonymous visitor, using the `
 
 - Target: {{TARGET_URL}}
 - This week's focus area: {{FOCUS}}
-- Output directory: {{OUT_DIR}}. Write every file there and nowhere else.
+- Output directory: {{OUT_DIR}}. Write every file there and nowhere else, and always give agent-browser absolute paths (`screenshot {{OUT_DIR}}/screenshots/x.png`): it runs from `/`.
+- agent-browser runs here with browsing commands only. `download`, `upload`, `state`, `plugin`, `auth`, `install`, `connect` and options such as `--executable-path`, `--engine`, `--config` and `--profile` are refused. You do not need them.
 - Open issues: `{{OUT_DIR}}/open-issues.json`, an array of `{ "number", "title" }`. Use it to mark duplicates.
 
 ## How to run
