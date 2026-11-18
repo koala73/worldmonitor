@@ -2205,7 +2205,8 @@ async function checkAlertRewrite(event, matching) {
     const decision = await lib.findRewriteAnchor(event);
     const userIds = [...new Set(matching.map(r => r.userId))];
     const alreadyAlerted = decision.anchor ? await lib.usersAlertedFor(decision.anchor.id, userIds) : new Set();
-    return { applies: true, decision, alreadyAlerted, lib };
+    const coverageMerged = decision.anchor ? await lib.mergeStoryCoverage(event, decision.anchor.id) : false;
+    return { applies: true, decision, alreadyAlerted, coverageMerged, lib };
   } catch (err) {
     console.warn('[news-alert-rewrite] unavailable:', err?.name);
     return NO_REWRITE;
@@ -2222,12 +2223,18 @@ async function finishAlertRewrite(event, rewrite, reachedUsers, skippedUsers) {
     at: Date.now(),
     edition: event.variant,
     id: decision.id,
+    // Titles let a skip be audited after the anchors expire.
+    title: formatEventTitle(event).slice(0, 300),
     model: decision.model,
     importanceScore: event.payload?.importanceScore ?? null,
     candidates: decision.candidates,
     best: decision.best,
-    anchor: decision.anchor ? { id: decision.anchor.id, score: decision.anchor.score } : null,
+    judged: decision.judged,
+    verdict: decision.verdict,
+    anchor: decision.anchor ? { id: decision.anchor.id, score: decision.anchor.score, title: String(decision.anchor.title).slice(0, 300) } : null,
     error: decision.error,
+    ms: decision.ms,
+    coverageMerged: rewrite.coverageMerged,
     skippedUsers,
     reachedUsers: reachedUsers.size,
     anchored,
@@ -2322,8 +2329,9 @@ async function processEventDelivery(event) {
   }
 
   if (matching.length === 0) return;
-  await refreshAlertCoverage([event]);
+  // Before the coverage read: a matched rewrite merges both wordings' publishers.
   const rewrite = await checkAlertRewrite(event, matching);
+  await refreshAlertCoverage([event]);
   const reachedUsers = new Set();
   let rewriteSkips = 0;
 

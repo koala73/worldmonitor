@@ -134,7 +134,10 @@ async function defaultJudge(systemPrompt, userPrompt) {
 export async function findRewriteAnchor(event, {
   now = Date.now(), pipeline = defaultRedisPipeline, embed = defaultEmbed, judge = defaultJudge,
 } = {}) {
-  const decision = { id: null, model: EMBED_MODEL, candidates: 0, best: null, anchor: null, error: null };
+  const startedAt = Date.now();
+  const decision = {
+    id: null, model: EMBED_MODEL, candidates: 0, best: null, judged: false, verdict: null, anchor: null, error: null, ms: 0,
+  };
   try {
     if (!rewriteCheckApplies(event)) return decision;
     const title = event.payload.title;
@@ -163,14 +166,18 @@ export async function findRewriteAnchor(event, {
     decision.best = { id: ranked[0].id, score: ranked[0].score };
     const shortlist = ranked.filter(a => a.score >= REWRITE_RETRIEVAL_MIN).slice(0, REWRITE_JUDGE_CANDIDATES);
     if (!shortlist.length) return decision;
+    decision.judged = true;
     const reply = await judge(REWRITE_JUDGE_SYSTEM_PROMPT, rewriteJudgePrompt(title, shortlist, now));
     if (reply == null) throw new Error('judge returned nothing');
+    // Kept for the audit log, so an unreadable reply is told apart from a "0".
+    decision.verdict = String(reply).replace(/\s+/g, ' ').trim().slice(0, 60);
     const index = parseRewriteVerdict(reply, shortlist.length);
     if (index != null) decision.anchor = { id: shortlist[index].id, title: shortlist[index].title, score: shortlist[index].score };
   } catch (err) {
     decision.anchor = null;
     decision.error = err?.name === 'Error' ? err.message : (err?.name || 'error');
   }
+  decision.ms = Date.now() - startedAt;
   return decision;
 }
 
@@ -187,6 +194,31 @@ export async function usersAlertedFor(anchorId, userIds, pipeline = defaultRedis
     return new Set(userIds.filter((_, i) => Number(flags[i]) === 1));
   } catch {
     return new Set();
+  }
+}
+
+/**
+ * One story told in two wordings: give each wording's publisher history the
+ * union of both, so the coverage line counts every outlet that carried it.
+ * Members are publisher families scored by when they were last seen (the
+ * digest writes them with ZADD GT), so MAX keeps the latest sighting and the
+ * reader's 24-hour window still applies. Best effort.
+ */
+export async function mergeStoryCoverage(event, anchorId, pipeline = defaultRedisPipeline) {
+  const own = rewriteCheckApplies(event) ? newsPublisherCoverageKey(event.variant, event.payload.title) : '';
+  if (!own || typeof anchorId !== 'string' || !anchorId.startsWith(`${event.variant}:`)) return false;
+  const anchor = `news:publisher-coverage:v1:${anchorId}`;
+  if (anchor === own) return false;
+  try {
+    const rows = await pipeline([
+      ['ZUNIONSTORE', anchor, 2, anchor, own, 'AGGREGATE', 'MAX'],
+      ['ZUNIONSTORE', own, 2, anchor, own, 'AGGREGATE', 'MAX'],
+      ['EXPIRE', anchor, DAY / 1000],
+      ['EXPIRE', own, DAY / 1000],
+    ], { timeoutMs: 1_000 });
+    return Array.isArray(rows) && rows.every(row => row && !row.error);
+  } catch {
+    return false;
   }
 }
 

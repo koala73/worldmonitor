@@ -29,6 +29,8 @@ Module._load = function patchedLoad(request, parent, ...rest) {
   return originalLoad.call(this, request, parent, ...rest);
 };
 
+const { newsPublisherCoverageKey } = require('../scripts/shared/story-identity.js');
+
 const CNN = 'Exclusive: US intel indicates Iran developing plans to potentially detonate a dirty bomb in Washington, sources say - CNN';
 const SUN = 'Iran plots dirty bomb or chemical attack on US capital —report - SunOnline International';
 const NDTV = "Iran Plans To Detonate 'Dirty Bomb' In Washington, Warns US Intel: Report";
@@ -75,8 +77,12 @@ function alert(title) {
   };
 }
 
-function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStatus = 200 } = {}) {
+function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStatus = 200, coverage = {} } = {}) {
   const zsets = new Map();
+  // Publisher history per exact headline, as the digest writes it.
+  for (const [title, families] of Object.entries(coverage)) {
+    zsets.set(newsPublisherCoverageKey('full', title), new Map(families.map(f => [f, Date.now() - 60_000])));
+  }
   const sets = new Map();
   const calls = { sends: [], judge: [], embed: 0, anchorWrites: [] };
   const state = { users, verdict, judgeStatus };
@@ -96,6 +102,13 @@ function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStat
         const hits = [...z].filter(([, s]) => s <= max && s > min).sort((a, b) => b[1] - a[1]);
         return args.includes('WITHSCORES') ? hits.flatMap(([m, s]) => [m, String(s)]) : hits.map(([m]) => m);
       }
+      case 'ZUNIONSTORE': {
+        const [, a, b] = args;
+        const merged = new Map(zsets.get(a) ?? []);
+        for (const [m, sc] of zsets.get(b) ?? []) merged.set(m, Math.max(sc, merged.get(m) ?? -Infinity));
+        zsets.set(key, merged);
+        return merged.size;
+      }
       case 'ZADD': {
         const z = zsets.get(key) ?? new Map();
         zsets.set(key, z);
@@ -114,7 +127,10 @@ function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStat
         const s = sets.get(key) ?? new Set();
         return args.map(a => (s.has(a) ? 1 : 0));
       }
-      case 'ZRANGEBYSCORE': return [];
+      case 'ZRANGEBYSCORE': {
+        const min = Number(String(args[0]).replace('(', ''));
+        return [...(zsets.get(key) ?? [])].filter(([, sc]) => sc > min && sc <= Number(args[1])).map(([m]) => m);
+      }
       case 'GET': return null;
       default: return 1;
     }
@@ -191,6 +207,24 @@ describe('reworded news alerts (#10916)', () => {
       await relay.processEvent(alert(SUN));
       assert.deepEqual(h.sentTo(), ['chat-user-1', 'chat-user-2']);
       assert.equal(h.record().skippedUsers, 1);
+    } finally { h.restore(); }
+  });
+
+  it('counts the publishers of both wordings on the rewrite a new user receives', async () => {
+    const h = installHarness({ coverage: { [CNN]: ['cnn', 'egypt-independent'], [SUN]: ['sun'] } });
+    try {
+      await relay.processEvent(alert(CNN));
+      h.state.users = ['user-1', 'user-2'];
+      await relay.processEvent(alert(SUN));
+      assert.deepEqual(h.sentTo(), ['chat-user-1', 'chat-user-2']);
+      assert.match(h.calls.sends[0].text, /Coverage: 2 independent publishers/);
+      assert.match(h.calls.sends[1].text, /Coverage: 3 independent publishers/);
+      const record = h.record();
+      assert.equal(record.coverageMerged, true);
+      assert.equal(record.judged, true);
+      assert.equal(record.verdict, '{"same": 1}');
+      assert.match(record.title, /^Iran plots dirty bomb/);
+      assert.match(record.anchor.title, /^Exclusive: US intel/);
     } finally { h.restore(); }
   });
 
