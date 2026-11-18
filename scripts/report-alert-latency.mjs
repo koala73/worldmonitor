@@ -4,6 +4,7 @@
  *
  *   node scripts/report-alert-latency.mjs              # last 24 hours
  *   node scripts/report-alert-latency.mjs --hours 168  # last 7 days
+ *   node scripts/report-alert-latency.mjs --hours 168 --by-source  # alert volume and first-sight latency by outlet
  *   node scripts/report-alert-latency.mjs --strict     # exit 1 if build-to-queue p90 is over budget,
  *                                                      # or if nothing measured that stage
  *
@@ -27,7 +28,7 @@ import { loadEnvFile } from './_env-file.mjs';
 import { getRedisCredentials } from './_seed-utils.mjs';
 
 const require = createRequire(import.meta.url);
-const { BUILD_TO_QUEUE_BUDGET_MS, summarizeAlertLatency, strictLatencyVerdict } = require('./lib/classify-digest-request.cjs');
+const { BUILD_TO_QUEUE_BUDGET_MS, alertCountsBySource, summarizeAlertLatency, strictLatencyVerdict } = require('./lib/classify-digest-request.cjs');
 
 const SCORE_LOG_KEY = 'shadow:score-log:v5';
 const LATENCY_KEY = 'relay:alert-latency:v1';
@@ -37,7 +38,7 @@ function parseArgs(argv) {
   const hoursAt = argv.indexOf('--hours');
   const hours = hoursAt === -1 ? 24 : Number(argv[hoursAt + 1]);
   if (!Number.isFinite(hours) || hours <= 0) throw new Error('--hours needs a positive number');
-  return { hours, strict: argv.includes('--strict') };
+  return { hours, bySource: argv.includes('--by-source'), strict: argv.includes('--strict') };
 }
 
 async function readRange(url, token, key, fromMs) {
@@ -68,12 +69,13 @@ const SLICES = [
 ];
 
 async function main() {
-  const { hours, strict } = parseArgs(process.argv.slice(2));
+  const { hours, bySource, strict } = parseArgs(process.argv.slice(2));
   loadEnvFile(import.meta.url);
   const { url, token } = getRedisCredentials();
   const fromMs = Date.now() - hours * 60 * 60 * 1000;
 
-  const scoreLog = (await readRange(url, token, SCORE_LOG_KEY, fromMs))
+  const scoreRows = await readRange(url, token, SCORE_LOG_KEY, fromMs);
+  const scoreLog = scoreRows
     .filter((r) => r.eventType === 'rss_alert' && r.publishedAt > 0)
     .map((r) => ({ ...r, publishToQueueMs: r.ts - r.publishedAt }));
   console.log(`Publisher timestamp to queue, last ${hours}h (${SCORE_LOG_KEY})`);
@@ -90,6 +92,19 @@ async function main() {
     printStage('publisher timestamp -> queue', summary.publishToQueue);
     printStage('story tracking first sight -> queue', summary.seenToQueue);
     printStage('digest build -> queue', summary.buildToQueue);
+  }
+  if (bySource) {
+    // First sight is the headline's, in any edition and from any outlet, so this
+    // is headline-level, not a per-source fetch latency. seen_earlier counts
+    // samples whose headline was seen before this item's own timestamp.
+    console.log('\nPublisher timestamp to headline first sight by source (alerts from score log, n from paired latency samples, headline-level first sight)');
+    const counts = alertCountsBySource(scoreRows);
+    const byOutlet = Map.groupBy(samples, row => row.source);
+    const sources = new Set([...counts.keys(), ...byOutlet.keys()]);
+    for (const source of [...sources].sort((a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0))) {
+      const summary = summarizeAlertLatency(byOutlet.get(source) ?? []);
+      printStage(`${source} (alerts=${counts.get(source) ?? 0}, seen_earlier=${summary.seenBeforePublish})`, summary.publishToSeen);
+    }
   }
   if (strict) {
     const verdict = strictLatencyVerdict(summarizeAlertLatency(samples));

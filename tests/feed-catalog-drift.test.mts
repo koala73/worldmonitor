@@ -647,9 +647,9 @@ describe('feed catalog drift', () => {
     const europe = serverFeeds.VARIANT_FEEDS.full?.europe ?? [];
     const byName = new Map(europe.map((feed) => [feed.name, feed]));
     const expectedUrls: Record<string, string> = {
-      'Kyiv Independent': 'https://news.google.com/rss/search?q=site%3Akyivindependent.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en',
+      'Kyiv Independent': 'https://kyivindependent.com/news-archive/rss/',
       'Ukrainska Pravda EN': 'https://news.google.com/rss/search?q=site%3Aeuromaidanpress.com%20when%3A2d&hl=en-US&gl=US&ceid=US:en',
-      'NV EN': 'https://news.google.com/rss/search?q=site%3Aenglish.nv.ua%20when%3A2d&hl=en-US&gl=US&ceid=US:en',
+      'NV EN': 'https://english.nv.ua/rss/all_english.xml',
       TVN24: 'https://tvn24.pl/swiat.xml',
       Rzeczpospolita: 'https://www.rp.pl/rss_main',
       Meduza: 'https://meduza.io/rss/en/all',

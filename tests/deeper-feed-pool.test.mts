@@ -12,7 +12,11 @@ import { publisherFamilyFor } from '../shared/publisher-families.js';
 import { selectSourcesUnderCap } from '../src/services/source-cap';
 import { bundleFeedsModule } from './_lib/bundle-feeds-module.mts';
 
-const countryAdditions = new Set<string>(JSON.parse(readFileSync('shared/country-news-opt-ins.json', 'utf8')));
+// Opt-in packs appended after this one.
+const laterAdditions = new Set<string>([
+  ...JSON.parse(readFileSync('shared/country-news-opt-ins.json', 'utf8')),
+  ...JSON.parse(readFileSync('shared/publisher-direct-opt-ins.json', 'utf8')),
+]);
 const { parseRssXml } = __testing__;
 
 interface FeedEntry { name: string; url: string | Record<string, string>; lang?: string }
@@ -105,7 +109,7 @@ describe('feeds added by the 2026-10-17 audit', () => {
       assert.equal(VARIANT_FEEDS.full!.europe!.find((feed) => feed.name === name)?.url, url, `${name}: server`);
       assert.equal(feeds.FULL_FEEDS.europe!.find((feed) => feed.name === name)?.url, url, `${name}: client`);
     }
-    assert.deepEqual(feeds.FULL_FEEDS.europe!.filter(feed => !countryAdditions.has(feed.name)).slice(-4).map((feed) => feed.name), ['BBC UK', 'BBC Northern Ireland', 'Deutschlandfunk', 'ZDFheute']);
+    assert.deepEqual(feeds.FULL_FEEDS.europe!.filter(feed => !laterAdditions.has(feed.name)).slice(-4).map((feed) => feed.name), ['BBC UK', 'BBC Northern Ireland', 'Deutschlandfunk', 'ZDFheute']);
   });
 
   it('enables BBC UK by default in English and leaves BBC Northern Ireland opt-in', () => {

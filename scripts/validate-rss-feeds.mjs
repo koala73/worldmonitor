@@ -164,6 +164,12 @@ function parseNewestDate(xml) {
 
   const dates = [];
 
+  const urls = doc?.urlset?.url;
+  for (const entry of Array.isArray(urls) ? urls : urls ? [urls] : []) {
+    const published = entry['news:news']?.['news:publication_date'];
+    if (published) dates.push(new Date(published));
+  }
+
   // RSS 2.0
   const channel = doc?.rss?.channel;
   if (channel) {

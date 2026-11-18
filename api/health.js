@@ -888,6 +888,8 @@ const SEED_META = {
   gridDisruptionClock: {
     key: 'seed-meta:infra:grid-disruption-clock',
     maxStaleMin: 30,
+    // The seeder lists the regions with missing, stale or unavailable inputs.
+    projectFailedDatasets: true,
     activationKey: 'seed-activated:infra:grid-disruption-clock',
     cutover: {
       mode: 'activation-marker', fromKey: null,

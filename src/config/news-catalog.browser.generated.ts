@@ -33,11 +33,11 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "New York Times World",
-          "url": "https://news.google.com/rss/search?q=site%3Anytimes.com%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
         },
         {
           "name": "Washington Post World",
-          "url": "https://news.google.com/rss/search?q=site%3Awashingtonpost.com%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://feeds.washingtonpost.com/rss/world"
         },
         {
           "name": "The Economist",
@@ -45,7 +45,11 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "The Independent",
-          "url": "https://news.google.com/rss/search?q=site%3Aindependent.co.uk%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://www.independent.co.uk/news/world/rss"
+        },
+        {
+          "name": "NPR World",
+          "url": "https://feeds.npr.org/1004/rss.xml"
         }
       ],
       "us": [
@@ -192,6 +196,14 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Montreal Gazette",
           "url": "https://news.google.com/rss/search?q=site%3Amontrealgazette.com%20when%3A1d&hl=en-CA&gl=CA&ceid=CA:en"
+        },
+        {
+          "name": "ProPublica",
+          "url": "https://www.propublica.org/feeds/propublica/main"
+        },
+        {
+          "name": "The Atlantic",
+          "url": "https://www.theatlantic.com/feed/all/"
         }
       ],
       "europe": [
@@ -679,7 +691,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "NV EN",
-          "url": "https://news.google.com/rss/search?q=site%3Aenglish.nv.ua%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://english.nv.ua/rss/all_english.xml"
         },
         {
           "name": "Hromadske EN",
@@ -757,7 +769,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Sky News",
-          "url": "https://news.google.com/rss/search?q=site%3Anews.sky.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://feeds.skynews.com/feeds/rss/home.xml"
         },
         {
           "name": "BBC UK",
@@ -1009,7 +1021,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Franceinfo",
-          "url": "https://www.francetvinfo.fr/titres.rss",
+          "url": "https://www.franceinfo.fr/titres.rss",
           "lang": "fr",
           "fetchInAllLanguages": true
         },
@@ -1635,6 +1647,72 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
           "name": "N1 Slovenia",
           "url": "https://n1info.si/feed/",
           "lang": "sl",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC News",
+          "url": "https://feeds.bbci.co.uk/news/rss.xml"
+        },
+        {
+          "name": "Guardian UK",
+          "url": "https://www.theguardian.com/uk-news/rss"
+        },
+        {
+          "name": "Channel 4 News",
+          "url": "https://www.channel4.com/news/feed"
+        },
+        {
+          "name": "Le Monde à la une",
+          "url": "https://www.lemonde.fr/rss/une.xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Le Monde International",
+          "url": "https://www.lemonde.fr/international/rss_full.xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Le Figaro",
+          "url": "https://www.lefigaro.fr/rss/figaro_actualites.xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "L'Express",
+          "url": "https://www.lexpress.fr/arc/outboundfeeds/rss/alaune.xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Le Nouvel Obs",
+          "url": "https://www.nouvelobs.com/a-la-une/rss.xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Courrier international",
+          "url": "https://www.courrierinternational.com/feed/all/rss.xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "France 24 Français",
+          "url": "https://www.france24.com/fr/rss",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "RFI",
+          "url": "https://www.rfi.fr/fr/rss",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "TV5Monde Info",
+          "url": "https://information.tv5monde.com/rss.xml",
+          "lang": "fr",
           "fetchInAllLanguages": true
         }
       ],
@@ -4410,6 +4488,60 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
           "name": "iWitness News",
           "url": "https://www.iwnsvg.com/feed/",
           "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "g1",
+          "url": "https://g1.globo.com/rss/g1/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "g1 Mundo",
+          "url": "https://g1.globo.com/rss/g1/mundo/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Folha Mundo",
+          "url": "https://feeds.folha.uol.com.br/mundo/rss091.xml",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Estadão Política",
+          "url": "https://www.estadao.com.br/arc/outboundfeeds/feeds/rss/sections/politica/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Estadão Internacional",
+          "url": "https://www.estadao.com.br/arc/outboundfeeds/feeds/rss/sections/internacional/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC News Brasil",
+          "url": "https://feeds.bbci.co.uk/portuguese/rss.xml",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Nexo Jornal",
+          "url": "https://www.nexojornal.com.br/rss.xml",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "DW Brasil",
+          "url": "https://rss.dw.com/xml/rss-br-all",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "RFI Brasil",
+          "url": "https://www.rfi.fr/br/rss",
+          "lang": "pt",
           "fetchInAllLanguages": true
         }
       ],

@@ -35,6 +35,7 @@ const stubs: Record<string, string> = {
     "export const GERMAN_RSS_SOURCES = ['Deutschlandfunk', 'ZDFheute'];",
     "export const COUNTRY_COVERAGE_OPT_IN_SOURCES = ['RTÉ News', 'ORF.at'];",
     "export const BRAZIL_OPT_IN_SOURCES = ['Guardian Brazil', 'Brazil Reports', 'G1 Política', 'Agência Brasil'];",
+    "export const PUBLISHER_DIRECT_OPT_IN_SOURCES = ['ProPublica', 'Le Figaro'];",
     'export const FEEDS = {};',
     'export const FRONTLINE_EUROPE_PROTECTED_SOURCES = [];',
     'export const INTEL_SOURCES = [];',
@@ -609,33 +610,35 @@ describe('cloud preference write serialization', () => {
     assert.equal(result.state, 'synced');
   });
 
-  it('preserves German, Brazil, and country coverage choices made after startup when sign-in uploads an older local profile', async () => {
+  it('preserves German, Brazil, country coverage and publisher choices made after startup when sign-in uploads an older local profile', async () => {
     const result = await runHarness(async (cloudPrefs) => {
       localStorage.setItem('wm-cloud-prefs-local-schema-version', '9');
       localStorage.setItem('worldmonitor-german-rss-sources-v1', 'done');
       // Startup already applied the locale default; the user then enabled both.
       localStorage.setItem('worldmonitor-brazil-optin-v1', 'done');
       localStorage.setItem('worldmonitor-country-coverage-optin-v1', 'done');
+      localStorage.setItem('worldmonitor-publisher-direct-optin-v1', 'done');
       localStorage.setItem('worldmonitor-disabled-feeds', '["user-choice"]');
       await cloudPrefs.onSignIn('user-1', 'full');
     });
-    assert.equal(result.localSchemaVersion, 12);
+    assert.equal(result.localSchemaVersion, 13);
     assert.equal(result.acceptedDataByToken['test-token']['worldmonitor-disabled-feeds'], '["user-choice"]');
   });
 
-  it('still migrates old incoming cloud settings after the local German, Brazil, and country coverage migrations', async () => {
+  it('still migrates old incoming cloud settings after the local German, Brazil, country coverage and publisher migrations', async () => {
     const result = await runHarness(async (cloudPrefs, controls) => {
       localStorage.setItem('wm-cloud-prefs-local-schema-version', '9');
       localStorage.setItem('worldmonitor-german-rss-sources-v1', 'done');
       localStorage.setItem('worldmonitor-brazil-optin-v1', 'done');
       localStorage.setItem('worldmonitor-country-coverage-optin-v1', 'done');
+      localStorage.setItem('worldmonitor-publisher-direct-optin-v1', 'done');
       controls.seedRow('test-token', { 'worldmonitor-disabled-feeds': '["cloud-choice"]' }, 3, 9);
       await cloudPrefs.onSignIn('user-1', 'full');
       cloudPrefs.install('full');
       await cloudPrefs.syncNow();
     });
-    assert.equal(result.localSchemaVersion, 12);
-    assert.deepEqual(JSON.parse(result.acceptedDataByToken['test-token']['worldmonitor-disabled-feeds']), ['cloud-choice', 'Deutschlandfunk', 'ZDFheute', 'Guardian Brazil', 'Brazil Reports', 'G1 Política', 'Agência Brasil', 'RTÉ News', 'ORF.at']);
+    assert.equal(result.localSchemaVersion, 13);
+    assert.deepEqual(JSON.parse(result.acceptedDataByToken['test-token']['worldmonitor-disabled-feeds']), ['cloud-choice', 'Deutschlandfunk', 'ZDFheute', 'Guardian Brazil', 'Brazil Reports', 'G1 Política', 'Agência Brasil', 'RTÉ News', 'ORF.at', 'ProPublica', 'Le Figaro']);
   });
 
   it('migrates the local blob before a sign-out keepalive upload', async () => {
@@ -649,8 +652,8 @@ describe('cloud preference write serialization', () => {
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
     });
 
-    assert.equal(result.localSchemaVersion, 12);
-    assert.deepEqual(result.acceptedSchemaVersionsByToken['test-token'], [12, 12]);
+    assert.equal(result.localSchemaVersion, 13);
+    assert.deepEqual(result.acceptedSchemaVersionsByToken['test-token'], [13, 13]);
     const disabled = JSON.parse(result.acceptedDataByToken['test-token']['worldmonitor-disabled-feeds']) as string[];
     assert.ok(disabled.includes('user-choice'));
     assert.ok(disabled.includes('Guardian Pacific'));
@@ -1252,8 +1255,8 @@ describe('cloud prefs account switch without an observed sign-out (SM-015)', () 
   it("keeps account B's row intact when A's failed sign-in left B's marker over A's version", async () => {
     const result = await runHarness(async (cloudPrefs, controls) => {
       // Current schemas isolate account ownership from an intentional migration upload.
-      controls.seedRow('a-token', { 'worldmonitor-theme': 'dark' }, 2, 12);
-      controls.seedRow('b-token', { 'worldmonitor-theme': 'light' }, 3, 12);
+      controls.seedRow('a-token', { 'worldmonitor-theme': 'dark' }, 2, 13);
+      controls.seedRow('b-token', { 'worldmonitor-theme': 'light' }, 3, 13);
       controls.setToken('b-token');
       await cloudPrefs.onSignIn('user-b', 'full');
       cloudPrefs.onSignOut();
