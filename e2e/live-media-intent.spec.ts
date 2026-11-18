@@ -65,11 +65,17 @@ async function stubLiveVideoProvider(page: Page): Promise<void> {
       setTimeout(function () {
         options.events.onReady({ target: player });
         options.events.onStateChange({ data: 1, target: player });
+        window.__wmStubPlayingCount = (window.__wmStubPlayingCount || 0) + 1;
       }, 0);
       return player;
     } };
     if (window.onYouTubeIframeAPIReady) window.onYouTubeIframeAPIReady();`,
   }));
+}
+
+/** The transport mounts before the routed IFrame API loads; wait for the stub's nth PLAYING report before moving the clock. */
+async function waitForStubPlaying(page: Page, count: number): Promise<void> {
+  await expect.poll(() => page.evaluate(() => (window as Window & { __wmStubPlayingCount?: number }).__wmStubPlayingCount ?? 0), { timeout: 30_000 }).toBeGreaterThanOrEqual(count);
 }
 
 /**
@@ -336,6 +342,7 @@ test.describe('live media intent gating', () => {
 
     await liveNews.getByRole('button', { name: /play live feed/i }).click();
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
+    await waitForStubPlaying(page, 1);
 
     await page.clock.fastForward(5 * minute);
     await page.waitForTimeout(1500);
@@ -356,12 +363,14 @@ test.describe('live media intent gating', () => {
 
     await idleNotice.getByRole('button', { name: 'Resume' }).click();
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
+    await waitForStubPlaying(page, 2);
 
     await page.clock.fastForward(hour);
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 10_000 }).toBe(0);
     await idleNotice.getByRole('button', { name: 'Keep playing when idle' }).click();
     await expect.poll(() => page.evaluate(() => localStorage.getItem('wm-live-media-idle-stop'))).toBe('never');
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
+    await waitForStubPlaying(page, 3);
 
     await page.clock.fastForward(5 * hour);
     await page.waitForTimeout(1500);
@@ -378,6 +387,7 @@ test.describe('live media intent gating', () => {
     const liveNews = page.locator('.panel[data-panel="live-news"]');
     await expect(liveNews).toBeVisible({ timeout: 60_000 });
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
+    await waitForStubPlaying(page, 1);
 
     await page.clock.fastForward(5 * 60 * 60_000);
     await page.waitForTimeout(1500);

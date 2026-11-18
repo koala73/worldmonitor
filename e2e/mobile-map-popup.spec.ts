@@ -238,15 +238,24 @@ for (const deviceConfig of MOBILE_DEVICE_MATRIX) {
         document.getElementById('app')!.classList.add('live-news-fullscreen');
       });
       const popup = page.locator('.map-popup.map-popup-sheet');
-      const arrivalBox = await page.locator('.cross-border-point').boundingBox();
-      const deathBox = await page.locator('.cross-border-death').boundingBox();
-      expect(arrivalBox).not.toBeNull();
-      expect(deathBox).not.toBeNull();
-      expect(deathBox!.x + deathBox!.width).toBeLessThanOrEqual(arrivalBox!.x);
-      const arrivalDot = await page.locator('.cross-border-point .cross-border-dot').boundingBox();
-      const deathDot = await page.locator('.cross-border-death .cross-border-dot').boundingBox();
-      expect(deathBox!.width).toBeGreaterThan(deathDot!.width);
-      expect(deathDot!.width).toBeLessThan(arrivalDot!.width);
+      // The overlay re-renders the markers as it settles, so read all four boxes from one DOM snapshot.
+      await expect(async () => {
+        const boxes = await page.evaluate(() => {
+          const box = (selector: string) => {
+            const rect = document.querySelector(selector)?.getBoundingClientRect();
+            return rect && rect.width > 0 ? { x: rect.x, width: rect.width } : null;
+          };
+          return {
+            arrival: box('.cross-border-point'), death: box('.cross-border-death'),
+            arrivalDot: box('.cross-border-point .cross-border-dot'), deathDot: box('.cross-border-death .cross-border-dot'),
+          };
+        });
+        const { arrival, death, arrivalDot, deathDot } = boxes;
+        expect(arrival && death && arrivalDot && deathDot, JSON.stringify(boxes)).toBeTruthy();
+        expect(death!.x + death!.width).toBeLessThanOrEqual(arrival!.x);
+        expect(death!.width).toBeGreaterThan(deathDot!.width);
+        expect(deathDot!.width).toBeLessThan(arrivalDot!.width);
+      }).toPass({ timeout: 5_000 });
       await page.locator('.cross-border-point').tap();
       await expect(popup).toContainText('2,300');
       await expect(popup).toContainText('2026-10-19');
