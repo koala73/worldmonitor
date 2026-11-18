@@ -111,18 +111,24 @@ for (const font of ['mono', 'system'] as const) {
     // Only icons take taps: label text and the marker column never do, and a
     // zoom-hidden layer takes no taps at all.
     const taps = await page.evaluate(() => {
-      const hits = (selector: string, iconMayTake: boolean) => [...document.querySelectorAll<HTMLElement>(selector)].filter((el) => {
-        const box = el.getBoundingClientRect();
-        const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-        // An icon's 44px touch area may reach under the text; the text and the
-        // marker column may not take the tap.
-        return box.width > 0 && !!hit?.closest('.nat-event-marker') && !(iconMayTake && hit.closest('.nat-event-icon'));
-      }).length;
-      const labels = hits('#mapOverlays .nat-event-texted .nat-event-label', true);
+      const at = (x: number, y: number) => document.elementFromPoint(x, y);
+      const centre = (el: Element) => { const b = el.getBoundingClientRect(); return [b.x + b.width / 2, b.y + b.height / 2] as const; };
+      // Magnitude rows sit below the icon's 44px touch area, so they also probe
+      // the bare column. An icon's touch area may reach under a title.
+      const text = [...document.querySelectorAll('#mapOverlays .nat-event-texted :is(.nat-event-label, .nat-event-magnitude)')]
+        .filter((el) => el.getBoundingClientRect().width > 0)
+        .filter((el) => { const hit = at(...centre(el)); return !!hit?.closest('.nat-event-marker') && !hit.closest('.nat-event-icon'); }).length;
+      // A point beside each icon, outside its box but inside its 44px touch area.
+      const probes = [...document.querySelectorAll<HTMLElement>('#mapOverlays .nat-event-icon')].flatMap((icon) => {
+        const b = icon.getBoundingClientRect();
+        const point = [b.x - 2, b.y + b.height / 2] as const;
+        return b.width / 2 + 2 < 22 && at(...point)?.closest('.nat-event-icon') === icon ? [point] : [];
+      });
       document.querySelector('.map-wrapper')!.setAttribute('data-layer-hidden-natural', 'true');
-      // Hidden, nothing in a marker may take the tap, the icon included.
-      return { labels, hiddenIcons: hits('#mapOverlays .nat-event-icon', false) };
+      const hidden = probes.filter((point) => at(...point)?.closest('.nat-event-marker')).length;
+      return { text, touchAreasShown: probes.length > 0, hidden };
     });
-    expect(taps).toEqual({ labels: 0, hiddenIcons: 0 });
+    // Hidden, nothing in a marker may take the tap, the icon's touch area included.
+    expect(taps).toEqual({ text: 0, touchAreasShown: true, hidden: 0 });
   });
 }

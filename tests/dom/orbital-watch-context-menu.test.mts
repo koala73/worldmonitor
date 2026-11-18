@@ -126,6 +126,23 @@ describe('a country brief opened from the map', () => {
     await vi.waitFor(() => expect(calls).toEqual(['showLoading', 'returnFocusTo(map)']));
   });
 
+  it('hands the map over once on a coordinate open, not again after geocoding', async () => {
+    const container = domWithLayerToggle();
+    const returnFocusTo = vi.fn();
+    const page = { showLoading: vi.fn(), returnFocusTo, isVisible: () => true, getCode: () => '__loading__' };
+    const ctx = { map: dashboardMap, isDestroyed: false, countryBriefPage: page } as unknown as AppContext;
+    const manager = new CountryIntelManager(ctx);
+    Reflect.set(manager, 'ensureCountryBriefPage', async () => true);
+    Reflect.set(manager, 'getCountrySignals', () => new Promise(() => {}));
+    const request = { token: 1, owner: 'human', returnTarget: container };
+    Reflect.set(manager, 'briefRequestToken', 1);
+    // openCountryBrief has shown the loading brief and handed the map over;
+    // this is its follow-up once the coordinates resolve to a country.
+    void Reflect.get(manager, 'openCountryBriefByCodeForRequest').call(manager, 'RU', 'Russia', undefined, request, true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(returnFocusTo).not.toHaveBeenCalled();
+  });
+
   it('offers the map target only to the request the map starts', async () => {
     domWithLayerToggle();
     let clickHandler!: (payload: CountryClick) => void;

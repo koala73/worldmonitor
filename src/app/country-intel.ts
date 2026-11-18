@@ -581,8 +581,10 @@ export class CountryIntelManager implements AppModule {
         showedLoading = true;
       }
       // Now that the brief is open, even on the module's first load, it takes
-      // the map as its return target, whatever took focus while it loaded.
-      if (request.returnTarget) page.returnFocusTo?.(request.returnTarget);
+      // the map as its return target, whatever took focus while it loaded. A
+      // coordinate open already handed it over with its loading brief; doing it
+      // again after geocoding would pull focus from whatever the user opened since.
+      if (request.returnTarget && !loadingAlreadyShown) page.returnFocusTo?.(request.returnTarget);
       if (opts?.trackAnalytics !== false) trackCountryBriefOpened(code);
 
       const canonicalName = TIER1_COUNTRIES[code] || CountryIntelManager.resolveCountryName(code);
