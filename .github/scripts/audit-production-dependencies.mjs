@@ -36,34 +36,10 @@ const DAY_MS = 86_400_000;
  * not grants.
  */
 export const BASELINE_ADVISORIES_BY_LOCKFILE = {
-  'package-lock.json': [
-    {
-      id: 'GHSA-fc5q-39xc-vjpf',
-      reason:
-        'GHSA-fc5q-39xc-vjpf (picomatch extglob ReDoS) has no patched release (affects <= 4.0.7, the latest). No first-party code imports picomatch or a glob library; it only matches glob patterns written in this repo, and reaches production only through react-native/jest-util under @clerk/clerk-js, never with request input.',
-      expiresAt: '2026-11-24T00:00:00Z',
-      lockfileSha256: 'f9c4f73ff9c8f127cff36561f34a99ee7fed321ca8dc05d25894d1e5906ac460',
-    },
-  ],
+  'package-lock.json': [],
   'consumer-prices-core/package-lock.json': [],
-  'blog-site/package-lock.json': [
-    {
-      id: 'GHSA-fc5q-39xc-vjpf',
-      reason:
-        'GHSA-fc5q-39xc-vjpf (picomatch extglob ReDoS) has no patched release (affects <= 4.0.7, the latest). No first-party code imports picomatch or a glob library; it only matches glob patterns written in this repo, via Astro/Vite at static build time; the deployed blog is prebuilt HTML.',
-      expiresAt: '2026-11-24T00:00:00Z',
-      lockfileSha256: '39ae81713d58b82810cd825b1bce9e0e09a0105fa00c8ffcbb9ceb15b1fc9836',
-    },
-  ],
-  'pro-test/package-lock.json': [
-    {
-      id: 'GHSA-fc5q-39xc-vjpf',
-      reason:
-        'GHSA-fc5q-39xc-vjpf (picomatch extglob ReDoS) has no patched release (affects <= 4.0.7, the latest). No first-party code imports picomatch or a glob library; it only matches glob patterns written in this repo, via Vite at build time; the deployed /pro app is a prebuilt bundle.',
-      expiresAt: '2026-11-24T00:00:00Z',
-      lockfileSha256: '1f70429117dccf9bd0668e5e3d39b12f5cc608729f49ebde1f40e937beea2486',
-    },
-  ],
+  'blog-site/package-lock.json': [],
+  'pro-test/package-lock.json': [],
   'scripts/package-lock.json': [],
   'docker/runtime-package-lock.json': [],
 };
