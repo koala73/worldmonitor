@@ -1087,13 +1087,6 @@ describe('computeTrends', () => {
     assert.equal(pred.priorProbability, 0.5);
   });
 
-  it('falling: delta < -0.05', () => {
-    const pred = makePrediction('conflict', 'Iran', 'Test', 0.3, 0.5, '7d', []);
-    const prior = { predictions: [{ id: pred.id, probability: 0.5 }] };
-    computeTrends([pred], prior);
-    assert.equal(pred.trend, 'falling');
-  });
-
   it('stable: delta within +/- 0.05', () => {
     const pred = makePrediction('conflict', 'Iran', 'Test', 0.52, 0.5, '7d', []);
     const prior = { predictions: [{ id: pred.id, probability: 0.5 }] };
@@ -1129,9 +1122,17 @@ describe('computeTrends', () => {
     assert.equal(pred.trend, 'falling');
   });
 
-  it('delta exactly at boundary: uses strict comparison (> 0.05)', () => {
-    const pred = makePrediction('conflict', 'Iran', 'Test', 0.549, 0.5, '7d', []);
-    const prior = { predictions: [{ id: pred.id, probability: 0.5 }] };
+  // 0.1 - 0.05 is exactly 0.05 in floating point; 0.55 - 0.5 is not.
+  it('delta exactly at +0.05: stable (strict > 0.05)', () => {
+    const pred = makePrediction('conflict', 'Iran', 'Test', 0.1, 0.5, '7d', []);
+    const prior = { predictions: [{ id: pred.id, probability: 0.05 }] };
+    computeTrends([pred], prior);
+    assert.equal(pred.trend, 'stable');
+  });
+
+  it('delta exactly at -0.05: stable (strict < -0.05)', () => {
+    const pred = makePrediction('conflict', 'Iran', 'Test', 0.05, 0.5, '7d', []);
+    const prior = { predictions: [{ id: pred.id, probability: 0.1 }] };
     computeTrends([pred], prior);
     assert.equal(pred.trend, 'stable');
   });

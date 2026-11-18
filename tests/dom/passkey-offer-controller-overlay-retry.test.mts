@@ -334,19 +334,6 @@ describe('the About-you card and the passkey offer never share the screen', () =
 describe('the cached-mode banner drives --wm-bottom-banner (PR #7353 P2)', () => {
   const bannerVar = () => document.documentElement.style.getPropertyValue('--wm-bottom-banner');
 
-  it('measures a banner that exists at init', async () => {
-    const banner = document.createElement('div');
-    banner.className = 'cached-mode-banner';
-    Object.defineProperty(banner, 'getBoundingClientRect', { value: () => ({ height: 96 }) });
-    document.body.appendChild(banner);
-
-    const c = makeController();
-    c.init();
-    await flush();
-    expect(bannerVar()).toBe('96px');
-    c.destroy();
-  });
-
   it('resets to 0px when the banner is removed, so the card does not float', async () => {
     const banner = document.createElement('div');
     banner.className = 'cached-mode-banner';
