@@ -87,14 +87,14 @@ function matchCommands(
   // three, Sudan two), then on how well: exact beats prefix beats substring,
   // so "brief ukraine" picks Ukraine over Russia, whose aliases mention Ukraine.
   const words = query.split(/\s+/).filter((word) => word.length >= 2);
-  const coverage = new Map<SearchCommandMatch, number>();
+  const coverage = new Map<SearchCommandMatch, { matched: number; strength: number }>();
   const wordScore = (terms: string[], word: string): number => Math.max(0, ...terms.map((term) => (
     term === word ? 3 : term.startsWith(word) ? 2 : term.includes(word) ? 1 : 0
   )));
-  const wordCoverage = (terms: string[]): number => {
+  const wordCoverage = (terms: string[]): { matched: number; strength: number } => {
+    if (words.length < 2) return { matched: 0, strength: 0 };
     const scores = words.map((word) => wordScore(terms, word));
-    // Matched-word count dominates; strength (at most 3 per word) breaks ties.
-    return scores.filter((score) => score > 0).length * 100 + scores.reduce((sum, score) => sum + score, 0);
+    return { matched: scores.filter((score) => score > 0).length, strength: scores.reduce((sum, score) => sum + score, 0) };
   };
 
   for (const command of options.commands) {
@@ -125,13 +125,15 @@ function matchCommands(
         subtitle: options.resolveCommandCategoryLabel(command),
       };
       matched.push(match);
-      coverage.set(match, words.length > 1 ? wordCoverage(terms) : 0);
+      coverage.set(match, wordCoverage(terms));
     }
   }
 
-  // Whole-query exact, then whole-query prefix, then word coverage.
+  // Whole-query exact, then whole-query prefix, then matched words, then strength.
   return matched
-    .sort((left, right) => (right.score - left.score) || (coverage.get(right)! - coverage.get(left)!))
+    .sort((left, right) => (right.score - left.score)
+      || (coverage.get(right)!.matched - coverage.get(left)!.matched)
+      || (coverage.get(right)!.strength - coverage.get(left)!.strength))
     .slice(0, MAX_COMMANDS);
 }
 
