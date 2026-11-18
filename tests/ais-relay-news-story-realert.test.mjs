@@ -65,12 +65,18 @@ async function startUpstash(t) {
   const store = new Map();
   const queued = [];
   const apiFanout = [];
-  // `coverage` maps a publisher-coverage key to its publisher families.
+  // `coverage` maps a publisher-coverage key to [family, last seen] pairs.
   const state = { failLpush: false, failLpushCount: 0, failSetNx: false, truncateDel: false, failDel: false, coverage: new Map() };
   const run = (command) => {
     const [name, key, value, ...rest] = command;
     if (name === 'GET') return store.has(key) ? store.get(key).value : null;
-    if (name === 'ZRANGEBYSCORE') return state.coverage.get(key) ?? [];
+    if (name === 'ZRANGEBYSCORE') {
+      const exclusive = String(value).startsWith('(');
+      const min = value === '-inf' ? -Infinity : Number(exclusive ? String(value).slice(1) : value);
+      return (state.coverage.get(key) ?? [])
+        .filter(([, at]) => (exclusive ? at > min : at >= min) && at <= Number(rest[0]))
+        .map(([family]) => family);
+    }
     if (name === 'SET') {
       if (rest.includes('NX') && state.failSetNx) return 'ERR simulated outage';
       if (rest.includes('NX') && store.has(key)) return null;
@@ -273,13 +279,22 @@ test('publishers seen carrying the headline in earlier builds and other editions
   const { upstash, cycle, output } = await startRelay(t);
   // #10977: five publisher families in the digest's coverage history lift a
   // lone tier-4 critical copy from 73 over the realtime bar.
-  upstash.state.coverage.set(newsPublisherCoverageKey(AGGREGATED_TITLE), ['a', 'b', 'c', 'd', 'e']);
+  upstash.state.coverage.set(newsPublisherCoverageKey(AGGREGATED_TITLE), ['a', 'b', 'c', 'd', 'e'].map((family) => [family, Date.now() - 23 * 3_600_000]));
   await cycle([{ title: AGGREGATED_TITLE, source: 'An Unlisted Aggregator' }]);
   const [alert] = upstash.alerts();
   assert.ok(alert, output());
   // The payload keeps the build's own count; the history is re-read on render.
   assert.equal(alert.payload.corroborationCount, 1);
   assert.ok(alert.payload.importanceScore >= 82, `scored ${alert.payload.importanceScore}`);
+});
+
+test('publishers last seen over a day ago do not count toward the score', async (t) => {
+  const { upstash, cycle, output } = await startRelay(t);
+  upstash.state.coverage.set(newsPublisherCoverageKey(AGGREGATED_TITLE), ['a', 'b', 'c', 'd', 'e'].map((family) => [family, Date.now() - 25 * 3_600_000]));
+  await cycle([{ title: AGGREGATED_TITLE, source: 'An Unlisted Aggregator' }]);
+  const [alert] = upstash.alerts();
+  assert.ok(alert, output());
+  assert.ok(alert.payload.importanceScore < 82, `scored ${alert.payload.importanceScore}`);
 });
 
 test('the story key stays out of the queued event', async (t) => {
