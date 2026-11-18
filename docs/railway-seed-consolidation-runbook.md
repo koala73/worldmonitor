@@ -1668,7 +1668,7 @@ fetch('https://backboard.railway.com/graphql/v2',{method:'POST',
 | seed-market-breadth | `node scripts/seed-market-breadth.mjs` | daily (30d history window) | S&P 500 breadth (% above 20/50/200-day, computed from the TradingView constituent scan) |
 | seed-weather-alerts | `node scripts/seed-weather-alerts.mjs` | **planned — not provisioned** | NWS active weather alerts |
 | seed-fx-yoy | `node scripts/seed-fx-yoy.mjs` | daily (25h TTL) | Wide-coverage FX YoY + 24m drawdown (resilience FX-stress inputs) |
-| seed-comtrade-bilateral-hs4 | `node scripts/seed-comtrade-bilateral-hs4.mjs` | **`0 6 1 * *` (monthly, verified 2026-07-27)** | UN Comtrade bilateral HS4 trade flows — only scheduled consumer of the keyed 500/mo Comtrade quota |
+| seed-comtrade-bilateral-hs4 | `node scripts/seed-comtrade-bilateral-hs4.mjs` | **`0 6 1 * *` (monthly, verified 2026-07-27)** | UN Comtrade bilateral HS4 trade flows — scheduled consumer of the keyed 500-call daily Comtrade quota, which it shares with seed-comtrade-bilateral-hs4-ext on the 15th |
 | seed-comtrade-bilateral-hs4-ext | `node scripts/seed-comtrade-bilateral-hs4-ext.mjs` | **`0 6 15 * *` (monthly, provisioned 2026-11-18, service `0d46fcc7-19ec-484f-ab8e-506510205704`)** | UN Comtrade bilateral HS4 for 16 extended headings (rubber, cocoa, coconut and palm kernel oil, fruit, fish and seafood, processed food, oleochemicals), one request per reporter (~197 calls) into `comtrade:bilateral-hs4-ext:*`; mid-month so it does not share a day of the 500/day quota with the core run |
 | seed-hs2-chokepoint-exposure | `node scripts/seed-hs2-chokepoint-exposure.mjs` | periodic (TTL-extended) | HS2 chokepoint trade-exposure (derived) |
 | seed-service-statuses | `node scripts/seed-service-statuses.mjs` | **planned — not provisioned** | Service-status warm-ping; primary seeder is the AIS relay loop |
@@ -1707,15 +1707,27 @@ trigger an off-schedule run of the deployed image on Railway:
 `npx -y @railway/cli@latest cron run --service seed-comtrade-bilateral-hs4-ext --environment production --yes`
 (older installed CLIs lack the `cron` subcommand). Its output lands in the
 active deployment's log. The local alternative,
-`railway run --service seed-comtrade-bilateral-hs4-ext -- node scripts/seed-comtrade-bilateral-hs4-ext.mjs`
+`railway run --project 29419572-0b0d-437f-8e71-4fa68daf514f --environment production --service seed-comtrade-bilateral-hs4-ext -- node scripts/seed-comtrade-bilateral-hs4-ext.mjs`
 from the repository root, runs your checkout's code on your machine with the
-service's variables; `railway run` without a command runs nothing. Either way a
-full pass spends about 200 of the 500 daily Comtrade calls on the shared key. The first publish sets the durable
+production service's variables; name the project and environment so a checkout
+linked elsewhere cannot publish outside production. `railway run` without a
+command runs nothing. Either way a full pass spends about 200 calls (up to its
+260-call budget) of the 500-call daily Comtrade quota on the key it shares with
+the core run, which spends about 400 on the 1st of each month. Never start an
+off-schedule run on the 1st, or on a day the core run was retried: the run that
+reaches the quota last is refused and writes partial coverage until its next
+tick. The first publish sets the durable
 activation marker `seed-activated:comtrade:bilateral-hs4-ext`, which ends the
-health probe's soft state.
+health probe's soft state. The marker write is best-effort: a failure is logged
+as `Failed to write activation marker` and the run still succeeds. After the
+first publish, confirm with `EXISTS seed-activated:comtrade:bilateral-hs4-ext`
+(it should return 1). If it is absent, every later run that writes a country
+sets it again, so the next tick recovers it; to clear the soft state sooner,
+set it once by hand with `SET seed-activated:comtrade:bilateral-hs4-ext 1` (no
+TTL), only after `comtrade:bilateral-hs4-ext:*` keys exist.
 
 The bilateral HS4 cron uses `COMTRADE_API_KEYS` and a 480-request hard budget
-under the provider's 500-call monthly quota. The authenticated route requests
+under the provider's 500-call daily quota (corrected in #7990). The authenticated route requests
 one four-year window (`Y-2` through `Y-5`) in each of two HS4 batches and keeps
 the newest row per product/partner. The public-preview fallback cannot accept
 that period list and tries `Y-2`, then `Y-3`. A 24-day freshness gate prevents
