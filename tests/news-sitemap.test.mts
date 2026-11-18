@@ -95,6 +95,26 @@ it('keeps feed order for undated items, after dated ones', () => {
   assert.deepEqual(parsed.items.map(x => x.title), ['Dated', 'Undated 1', 'Undated 2', 'Undated 3']);
 });
 
+it('ranks future-dated and unparseable items with the undated ones, so a bad feed clock cannot pin an item on top', () => {
+  const feed = serverFeed('New York Times World');
+  const now = Date.now();
+  const item = (title: string, date: string) => `<item><title>${title}</title><link>https://www.nytimes.com/2026/11/17/world/${title.replace(/ /g, '-')}.html</link><pubDate>${date}</pubDate></item>`;
+  const old = Array.from({ length: 5 }, (_, i) => item(`Old ${i}`, new Date(now - (60 + i) * 60_000).toUTCString()));
+  const xml = `<?xml version="1.0"?><rss version="2.0"><channel><title>NYT</title>${item('Future', new Date(now + 3 * 3600_000).toUTCString())}${item('Garbled', 'not a date')}${old.join('')}${item('Fresh', new Date(now - 60_000).toUTCString())}</channel></rss>`;
+  const parsed = __testing__.parseRssXml(xml, feed, 'full')!;
+  assert.deepEqual(parsed.items.map(x => x.title), ['Fresh', 'Old 0', 'Old 1', 'Old 2', 'Old 3']);
+  assert.ok(!parsed.countryItems?.some(x => x.title === 'Future' || x.title === 'Garbled'));
+});
+
+it('ranks Atom entries by <published> before the per-feed cap', () => {
+  const feed = serverFeed('New York Times World');
+  const now = Date.now();
+  const entry = (n: number, ageMin: number) => `<entry><title>Entry ${n}</title><link href="https://www.nytimes.com/2026/11/17/world/e-${n}.html"/><published>${new Date(now - ageMin * 60_000).toISOString()}</published><updated>${new Date(now).toISOString()}</updated></entry>`;
+  const xml = `<feed xmlns="http://www.w3.org/2005/Atom"><title>A</title>${[600, 500, 400, 300, 200, 100, 2].map((age, i) => entry(i, age)).join('')}</feed>`;
+  const parsed = __testing__.parseRssXml(xml, feed, 'full')!;
+  assert.deepEqual(parsed.items.map(x => x.title), [6, 5, 4, 3, 2].map(n => `Entry ${n}`));
+});
+
 it('keeps the Google News search as claim depth for publishers whose own feeds are shallow', () => {
   // Direct feeds held 6 (Sky) to 40 (NV EN) items on 2026-11-18; the Google
   // News searches they replaced held up to 100 for /verify and verify_claim.
