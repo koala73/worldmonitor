@@ -1702,10 +1702,15 @@ asia-southeast1-eqsg3a, 0.5 vCPU and 500 MB, source `main` with
 reference variables to `seed-comtrade-bilateral-hs4`, so both runs use the same
 key. `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `PROXY_URL` and
 `NODE_OPTIONS` reference the shared variables. A deploy does not run a cron
-service, so the first publish comes from the first tick or a manual
-`railway run --service seed-comtrade-bilateral-hs4-ext`. That publish sets the
-durable activation marker `seed-activated:comtrade:bilateral-hs4-ext`, which
-ends the health probe's soft state.
+service, so the first publish comes from the first tick. To publish sooner,
+run the seeder locally with the service's variables, from the repository root
+of an up-to-date `main` checkout:
+`railway run --service seed-comtrade-bilateral-hs4-ext -- node scripts/seed-comtrade-bilateral-hs4-ext.mjs`.
+`railway run` executes the given command on your machine with your checkout's
+code; without a command it runs nothing. A full pass spends about 200 of the
+500 daily Comtrade calls on the shared key. The first publish sets the durable
+activation marker `seed-activated:comtrade:bilateral-hs4-ext`, which ends the
+health probe's soft state.
 
 The bilateral HS4 cron uses `COMTRADE_API_KEYS` and a 480-request hard budget
 under the provider's 500-call monthly quota. The authenticated route requests
