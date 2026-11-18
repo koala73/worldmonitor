@@ -471,6 +471,12 @@ export const markExternalComplete = internalMutation({
       return { status: "pending", userIdHash: row.userIdHash };
     }
     const now = Date.now();
+    // Schedule atomically with completion, once. A compose can write envelopes
+    // after our index snapshot and fail to clean them up itself.
+    await ctx.scheduler.runAfter(15 * 60_000,
+      internal.accountDeletion.sideEffects.sweepBriefEnvelopes,
+      { deletionId: row._id, localized: false, cursor: "0", attempt: 0 },
+    );
     await ctx.db.patch(args.deletionId, {
       step: "complete",
       status: "complete",

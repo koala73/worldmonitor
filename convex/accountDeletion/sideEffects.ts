@@ -341,6 +341,65 @@ async function deleteAccountRedisKeys(args: {
   await redisRevoke([slotsKey, `brief:latest:${args.userId}`], []);
 }
 
+/** One SCAN page per action keeps even a large Redis keyspace off the action deadline. */
+export const sweepBriefEnvelopes = internalAction({
+  args: {
+    deletionId: v.id("accountDeletions"),
+    localized: v.boolean(),
+    cursor: v.string(),
+    attempt: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    try {
+      const snapshot = await ctx.runQuery(internal.accountDeletion.erase.getExternalEraseSnapshot,
+        { deletionId: args.deletionId });
+      if (!snapshot || snapshot.status !== "complete") return null;
+      const prefix = `brief:${args.localized ? "l10n:" : ""}${snapshot.userId}:`;
+      // Redis MATCH is a glob, not a literal prefix. Escape identity characters
+      // and also check returned keys before deleting anything.
+      const pattern = prefix.replace(/[\\*?\[\]]/g, "\\$&") + "*";
+      const response = await redisCommand("", {
+        body: JSON.stringify(["SCAN", args.cursor, "MATCH", pattern, "COUNT", "100"]),
+      });
+      const body = await redisResult(response, "BRIEF_SCAN") as { result?: unknown };
+      const result = body.result;
+      if (!Array.isArray(result) || result.length !== 2 ||
+          typeof result[0] !== "string" || !/^\d+$/.test(result[0]) ||
+          !Array.isArray(result[1]) || !result[1].every((key: unknown) =>
+            typeof key === "string" && key.startsWith(prefix))) {
+        throw new Error("REDIS_BRIEF_SCAN_INVALID_RESULT");
+      }
+      const keys = result[1] as string[];
+      // COUNT is a hint, so bound each delete request independently.
+      for (let i = 0; i < keys.length; i += 100) {
+        await redisRevoke(keys.slice(i, i + 100), []);
+      }
+      if (result[0] !== "0" || !args.localized) {
+        await ctx.scheduler.runAfter(0, internal.accountDeletion.sideEffects.sweepBriefEnvelopes, {
+          ...args, cursor: result[0], localized: result[0] === "0" ? true : args.localized, attempt: 0,
+        });
+      }
+    } catch (err) {
+      if (args.attempt + 1 < MAX_EXTERNAL_ATTEMPTS) {
+        // Retry this page, never advance past a failed DEL. Repeated deletes
+        // are safe, including after a partially successful pipeline.
+        await ctx.scheduler.runAfter(
+          Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** args.attempt),
+          internal.accountDeletion.sideEffects.sweepBriefEnvelopes,
+          { ...args, attempt: args.attempt + 1 },
+        );
+      } else {
+        // sentry-coverage-ok: structured console.error is forwarded by Convex.
+        console.error(JSON.stringify({ breadcrumb: "account_deletion_brief_sweep_failed",
+          deletionId: args.deletionId, error: errorMessage(err) }));
+        throw err;
+      }
+    }
+    return null;
+  },
+});
+
 async function deleteClerkUser(userId: string): Promise<"deleted" | "missing"> {
   const secret = process.env.CLERK_SECRET_KEY;
   if (!secret) {
