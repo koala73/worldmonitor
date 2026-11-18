@@ -57,6 +57,7 @@ function layout() {
   // Object.create skips field initializers; mirror production defaults used by updatePanelGating.
   manager.gatingPrincipal = undefined;
   manager.premiumPanelsUnlocked = new Set();
+  manager.deferredPanelMounts = new Map();
   manager.team = new TeamDashboardsStore({ load: async () => null, onChange: () => {} });
   return manager;
 }
