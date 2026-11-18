@@ -397,6 +397,20 @@ describe('publisher-families resolution', () => {
   });
 });
 
+it('counts a direct publisher feed and its Google News origin as one publisher (#10937)', () => {
+  // These feeds left Google News, whose trusted <source> named the outlet.
+  // A Google News query elsewhere can still carry the same article under that
+  // origin name, so the direct label must resolve to the same family.
+  for (const [label, origin] of [
+    ['CNN World', 'CNN'],
+    ['Kyiv Independent', 'The Kyiv Independent'],
+    ['NV EN', 'The New Voice of Ukraine'],
+  ]) {
+    assert.equal(publisherFamilyFor(label), publisherFamilyFor(origin), label);
+    assert.equal(countPublisherFamilies([label, origin]), 1, label);
+  }
+});
+
 it('counts Matichon and Khaosod English as one publisher', () => {
   assert.equal(publisherFamilyFor('Matichon'), publisherFamilyFor('Khaosod English'));
   assert.equal(countPublisherFamilies(['Matichon', 'Khaosod English']), 1);
