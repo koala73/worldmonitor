@@ -647,7 +647,6 @@ export function clusterTexts(texts, opts = {}) {
 const NORMALIZED_TITLE_SCAN = 2_000;
 const CLASSIFY_QUESTION_RE = /\?["'”’»]*\s*(?:[-–—|][^?]*)?$/;
 const IN_WORD_HYPHEN_RE = /(?<=[\p{L}\p{N}])[\p{Pd}\u2212](?=[\p{L}\p{N}])/gu;
-const DOMAIN_CREDIT_RE = /\.(?:com|org|net|co\.uk)\s*$/;
 
 /**
  * The identity the AI classify cache keys a headline on (#10976): its story,
@@ -661,11 +660,19 @@ const DOMAIN_CREDIT_RE = /\.(?:com|org|net|co\.uk)\s*$/;
 export function classifyCacheIdentity(title) {
   if (typeof title !== 'string') return '';
   const lower = title.toLowerCase();
-  const stripped = stripAttributionSuffix(lower, { allowPipe: false });
-  const credit = lower.slice(stripped.length).trim();
-  // Split in-word dashes after the credit is gone, so "Hormuz—Reuters" still strips.
-  const story = normalizeNewsStoryTitle(stripped.replace(IN_WORD_HYPHEN_RE, ' '));
-  if (story.split(' ').length < 4 || (/\s/.test(credit.replace(/^[-–—|:]\s*/, '')) && DOMAIN_CREDIT_RE.test(credit))) return lower;
+  // Strip credits one at a time, as normalizeNewsStoryTitle would, so a clause
+  // ending in a domain is caught behind any number of outlet credits.
+  let rest = lower;
+  for (let i = 0; i < 8; i += 1) {
+    const domainless = stripOneAttribution(rest, 'domain', false);
+    if (/\s/.test(rest.slice(domainless.length).trim().replace(/^[-–—|]\s*/, ''))) return lower;
+    const next = stripOneAttribution(domainless, 'publisher', false);
+    if (next === rest) break;
+    rest = next;
+  }
+  // Split in-word dashes after the credits are gone, so "Hormuz—Reuters" still strips.
+  const story = normalizeNewsStoryTitle(rest.replace(IN_WORD_HYPHEN_RE, ' '));
+  if (story.split(' ').length < 4) return lower;
   return story + (CLASSIFY_QUESTION_RE.test(title) ? ' ?' : '');
 }
 

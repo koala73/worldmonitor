@@ -70,6 +70,10 @@ describe('classify cache key is the story, not the title string (#10976)', () =>
       await buildClassifyCacheKey('Iran closes Strait of Hormuz - nuclear strike confirmed by x.com'),
       await buildClassifyCacheKey('Iran closes Strait of Hormuz'),
     );
+    assert.notEqual(
+      await buildClassifyCacheKey('Iran closes Strait of Hormuz - nuclear strike confirmed by x.com - Reuters'),
+      await buildClassifyCacheKey('Iran closes Strait of Hormuz'),
+    );
     assert.equal(
       await buildClassifyCacheKey('Iran closes Strait of Hormuz - nytimes.com'),
       await buildClassifyCacheKey('Iran closes Strait of Hormuz'),
