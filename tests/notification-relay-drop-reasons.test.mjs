@@ -85,7 +85,7 @@ async function run(rules, event) {
     [console.log, console.warn, console.error, console.info] = silence;
   }
   const line = logs.find((l) => l.startsWith('[relay] No rule matched:'));
-  return { telegram, line, drops: line ? JSON.parse(line.slice(line.indexOf('drops=') + 6)) : null };
+  return { telegram, logs, line, drops: line ? JSON.parse(line.slice(line.indexOf('drops=') + 6)) : null };
 }
 
 describe('zero-match drop reasons', () => {
@@ -116,5 +116,13 @@ describe('zero-match drop reasons', () => {
     const { telegram, line } = await run([{}, { userId: 'user-2', variant: 'finance' }], adnoc(85));
     assert.equal(telegram, 1);
     assert.equal(line, undefined);
+  });
+
+  it('counts country-scope drops when another rule matches', async () => {
+    const event = { eventType: 'weather_alert', severity: 'critical', payload: { title: `Wind warning #${++seq}`, countryCode: 'KZ' } };
+    const { telegram, logs, line } = await run([{ countries: ['KZ'] }, { userId: 'user-2', countries: ['US'] }], event);
+    assert.equal(telegram, 1);
+    assert.equal(line, undefined);
+    assert.deepEqual(logs.filter((l) => l.startsWith('[relay] Country-scope drop:')), ['[relay] Country-scope drop: weather_alert attribution=KZ excluded 1 scoped rule(s)']);
   });
 });
