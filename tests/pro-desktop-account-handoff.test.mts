@@ -38,7 +38,8 @@ before(async () => {
         contents: args.path === './clerk'
           ? `export class SiteDataBlockedError extends Error { name = 'SiteDataBlockedError'; }
              export const SITE_DATA_BLOCKED_MESSAGE = 'site data blocked';
-             export const ensureClerk = () => globalThis.__checkoutFixture.clerk();`
+             export const ensureClerk = () => globalThis.__checkoutFixture.clerk();
+             export const setAuthReturnUrls = () => {};`
           : 'export const captureException = () => {}; export const captureMessage = () => {};',
       }));
     } }],

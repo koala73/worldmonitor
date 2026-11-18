@@ -239,6 +239,31 @@ describe('sign-up resume controller', () => {
     assert.equal(h.resends, 0);
   });
 
+  it('releaseAttempt stops every later resume of that attempt, so Sign in reaches Clerk\'s sign-in form', () => {
+    // An existing account typed into sign-up gets a code screen with no code
+    // under strict enumeration protection. The escape to sign-in releases the
+    // attempt; without that, the next Sign In click resumes the dead card.
+    const h = harness();
+    const c = createSignUpResumeController(h.ports);
+    c.onClerkEmission(true);
+    assert.equal(h.surface.opened, 1);
+    c.releaseAttempt();
+    assert.equal(h.surface.isOpen(), false, 'resume card closed');
+    assert.equal(c.resumeOnUserIntent(() => {}, 'sign-in'), false, 'Sign In opens Clerk sign-in');
+    assert.equal(h.surface.opened, 1);
+    createSignUpResumeController(h.ports).onClerkEmission(true);
+    assert.equal(h.surface.opened, 1, 'a reload does not resume it either');
+    assert.equal(h.log.includes('dismissed'), false, 'not counted as a funnel dismissal');
+  });
+
+  it('releaseAttempt is a no-op with no pending attempt', () => {
+    const h = harness({ kind: 'none' });
+    const c = createSignUpResumeController(h.ports);
+    c.releaseAttempt();
+    assert.equal(h.surface.closed, 0);
+    assert.equal(h.markers.size, 0);
+  });
+
   it('tracks started once per attempt id across reloads and emissions', () => {
     const h = harness();
     createSignUpResumeController(h.ports).onClerkEmission(true);

@@ -19,6 +19,7 @@ import type { Clerk } from '@clerk/clerk-js';
 import {
   getClerk,
   isClerkSignInOpen,
+  registerSignUpEscapeHook,
   registerSignUpResumeHook,
   subscribeClerk,
 } from '@/services/clerk';
@@ -166,6 +167,12 @@ export interface SignUpResumeController {
    * after the click was taken.
    */
   resumeOnUserIntent: (fallback: () => void, surface?: ResumeSurfaceIntent) => boolean;
+  /**
+   * The customer left this attempt for sign-in (they already have an account).
+   * Closes the resume card and never resumes the attempt again, so Sign In
+   * reaches Clerk's sign-in form instead of the sign-up code card.
+   */
+  releaseAttempt: () => void;
 }
 
 /**
@@ -219,6 +226,12 @@ export function createSignUpResumeController(ports: SignUpResumePorts): SignUpRe
       open(decision, 'user', fallback);
       return true;
     },
+    releaseAttempt() {
+      const snap = ports.readSnapshot();
+      if (snap?.signUp.kind !== 'pending') return;
+      ports.markers.markDismissed(snap.signUp.id);
+      if (ports.surface.isOpen()) ports.surface.close();
+    },
   };
 }
 
@@ -270,5 +283,7 @@ export function installSignUpResume(surface: ResumeSurface): SignUpResumeControl
     first = false;
   });
   registerSignUpResumeHook(controller.resumeOnUserIntent);
+  // Sign in on the sign-up code card leaves this attempt for good.
+  registerSignUpEscapeHook(controller.releaseAttempt);
   return controller;
 }

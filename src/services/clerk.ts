@@ -24,6 +24,11 @@
 import type { Clerk } from '@clerk/clerk-js';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { EULA_PATH, PRIVACY_PATH, absoluteLegalUrl } from '../../shared/legal';
+import {
+  SIGN_UP_CODE_SUBTITLE,
+  installSignUpSignInEscape,
+  switchSignUpToSignIn,
+} from '../../shared/clerk-sign-up-escape';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { isDesktopRuntime } from '@/config/desktop-runtime';
 import { showToast } from '@/utils/toast';
@@ -346,12 +351,16 @@ export async function initClerk(): Promise<void> {
           userButton: {
             action__manageAccount: 'Profile & security',
           },
+          signUp: {
+            emailCode: { subtitle: SIGN_UP_CODE_SUBTITLE },
+          },
         },
         afterSignOutUrl: getAfterSignOutUrl(),
         ...clerkRuntimeLoadOptions(desktopRelay),
       } as Parameters<typeof clerk.load>[0]);
       clerkInstance = clerk;
       installClerkVirtualLinkGuard(window);
+      installSignUpEscapeToSignIn(clerk);
       attachPendingSubscribers();
     } catch (e) {
       loadPromise = null; // allow retry on next call
@@ -808,6 +817,37 @@ export async function openSignInAndWait(signal?: AbortSignal): Promise<boolean> 
  */
 export function openSignUp(): void {
   openClerkSurface('open-sign-up');
+}
+
+/**
+ * Runs when the customer leaves sign-up for sign-in from the sign-up code card,
+ * before sign-in opens. The resume controller releases its attempt here, or the
+ * next Sign In click would resume the sign-up code card again.
+ */
+let signUpEscapeHook: (() => void) | null = null;
+
+export function registerSignUpEscapeHook(hook: (() => void) | null): void {
+  signUpEscapeHook = hook;
+}
+
+/**
+ * Add "Already have an account? Sign in" to Clerk's sign-up code card on every
+ * page that loads Clerk. Under strict enumeration protection an existing
+ * account typed into sign-up reaches that card and never gets a code.
+ */
+function installSignUpEscapeToSignIn(clerk: ClerkInstance): void {
+  if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return;
+  installSignUpSignInEscape(document, () => {
+    const emailAddress = clerk.client?.signUp?.emailAddress ?? null;
+    signUpEscapeHook?.();
+    switchSignUpToSignIn(clerk, () => runClerkSurfaceOpen(
+      () => clerk.openSignIn({
+        appearance: getAppearance(),
+        ...(emailAddress ? { initialValues: { emailAddress } } : {}),
+      }),
+      (err) => reportClerkSurfaceFailure('open-sign-in', 'sign-up-escape', err),
+    ));
+  });
 }
 
 /**
