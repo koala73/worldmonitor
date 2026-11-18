@@ -1,0 +1,18 @@
+{
+  "_doc": "Recorded alert incidents replayed by tests/alert-replay.test.mts (#10976). Each wording is one copy the pipeline saw: its source label, the classifier's label, the publisher timestamp, and when the digest first scored it (seenAt). title is null where the incident write-up did not record the headline. expected is what should happen; knownMiss names the issue that should make an expected alert pass, and the test fails once it does so the entry gets updated.",
+  "incidents": [
+    {
+      "id": "adnoc-hormuz-vessel-attack",
+      "summary": "ADNOC said one of its vessels was attacked in the Strait of Hormuz, 11 crew injured and one missing. About 20 outlets reported it from 06:47 UTC; no realtime subscriber was alerted.",
+      "evidence": "https://github.com/koala73/worldmonitor/issues/10975",
+      "expected": "alert",
+      "knownMiss": "#10977",
+      "wordings": [
+        { "source": "Reuters", "title": "one crew member missing after attack on its vessel in Hormuz", "label": "high", "publishedAt": "2026-11-18T07:41:00Z", "seenAt": "2026-11-18T08:51:00Z", "observedScore": null },
+        { "source": "Gulf News", "title": "ADNOC vessel hit in Hormuz", "label": "critical", "publishedAt": "2026-11-18T03:21:00Z", "seenAt": "2026-11-18T07:00:00Z", "observedScore": 81 },
+        { "source": "OilPrice.com", "title": null, "label": "critical", "publishedAt": "2026-11-18T07:00:00Z", "seenAt": "2026-11-18T07:00:00Z", "observedScore": 73 },
+        { "source": "WANA", "title": null, "label": "critical", "publishedAt": "2026-11-18T07:00:00Z", "seenAt": "2026-11-18T07:00:00Z", "observedScore": 73 }
+      ]
+    }
+  ]
+}
