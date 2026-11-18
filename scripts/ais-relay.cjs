@@ -6071,7 +6071,6 @@ let digestBuildWatchInFlight = false;
 async function checkDigestBuilds() {
   if (digestBuildWatchInFlight) return [];
   digestBuildWatchInFlight = true;
-  crossWordingChecksLeft = CROSS_WORDING_MAX_CHECKS;
   try {
     if (!CLASSIFY_LLM_PROVIDERS.some((p) => !!process.env[p.envKey])) return [];
     const rows = await upstashPipeline([['MGET', ...CLASSIFY_VARIANTS.map(digestBuildStampKey)]]);
@@ -6085,6 +6084,8 @@ async function checkDigestBuilds() {
       now,
       retryAt: digestBuildRetryAt,
     });
+    // A build pass is its own cycle, unless it runs between a classify cycle's editions.
+    if (!classifyInFlight) crossWordingChecksLeft = CROSS_WORDING_MAX_CHECKS;
     const editions = [];
     const summary = [];
     for (const variant of buildPassEditions(CLASSIFY_VARIANTS, rebuilt, { now, retryAt: digestBuildRetryAt })) {
