@@ -2,7 +2,7 @@ import { fetchFlightStatus, fetchAirportOpsSummary, fetchFlightPrices, fetchAvia
 import { safeStorageSet } from '@/utils/safe-storage';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { MONITORED_AIRPORTS } from '@/config/airports';
-import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { isImeEnter, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import { declareOverlay } from '@/utils/open-modal';
 
@@ -359,7 +359,7 @@ export class AviationCommandBar {
         const input = this.overlay.querySelector('#aviation-cmd-input') as HTMLInputElement;
         input?.addEventListener('keydown', async (e) => {
             if (e.key === 'Escape') { this.close(); return; }
-            if (e.key === 'Enter') {
+            if (e.key === 'Enter' && !isImeEnter(e)) {
                 const val = input.value.trim();
                 if (!val) return;
                 this.addToHistory(val);
