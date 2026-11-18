@@ -201,6 +201,8 @@ describe('the relay scores a topic feed item on its original publisher (#10977)'
 
   it('keeps the feed name when the named publisher has no curated tier', () => {
     const parsed = __testing__.parseRssXml(xml('Totally Real Wire'), feed, 'energy');
+    assert.equal(parsed!.items[0]!.originPublisher, 'Totally Real Wire');
+    assert.equal(parsed!.items[0]!.originPublisherTrusted, true);
     const served = toProtoItem(parsed!.items[0]!);
     assert.equal(served.originPublisher, '');
     assert.equal(relaySource(served), 'Strategic Chokepoints');
@@ -210,6 +212,8 @@ describe('the relay scores a topic feed item on its original publisher (#10977)'
     const served = toProtoItem(__testing__.parseRssXml(xml('Al Arabiya English'), feed, 'energy')!.items[0]!);
     assert.equal(served.originPublisher, 'Al Arabiya');
     assert.equal(relaySource(served), 'Al Arabiya');
+    const relayTiers = { ...require('../shared/source-tiers.json'), ...require('../shared/x-account-source-tiers.json') };
+    assert.equal(relayTiers[relaySource(served)], 2);
   });
 
   it('reads the publisher from <source>, never from the title suffix', () => {
