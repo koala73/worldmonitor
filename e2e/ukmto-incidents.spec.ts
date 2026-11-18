@@ -89,9 +89,10 @@ test('UKMTO markers follow the Ships toggle in each renderer', async ({ page }) 
         ? map.buildLayers().find((layer: { id: string }) => layer.id === 'ukmto-incidents-layer')?.props.data.length ?? 0
         : exports.GlobeMap ? map.globe.htmlElementsData().filter((item: { _kind: string }) => item._kind === 'ukmtoIncident').length
           : container.querySelectorAll('.ukmto-marker').length;
+      // Bounded by timer turns, not wall time: a long GPU stall must not end the wait before the
+      // renderer's own debounced flush timer (queued earlier) gets to run.
       const waitForCount = async (expected: number) => {
-        const deadline = performance.now() + 5000;
-        while (count() !== expected && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+        for (let turn = 0; turn < 100 && count() !== expected; turn++) await new Promise(resolve => setTimeout(resolve, 50));
       };
       await waitForCount(1);
       const enabled = count();

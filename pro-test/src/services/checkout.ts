@@ -14,7 +14,7 @@
 
 import * as Sentry from '@sentry/react';
 import { viewportAnalyticsFields } from '../../../shared/analytics-viewport';
-import { ensureClerk, SITE_DATA_BLOCKED_MESSAGE, SiteDataBlockedError, type LoadedClerk } from './clerk';
+import { ensureClerk, setAuthReturnUrls, SITE_DATA_BLOCKED_MESSAGE, SiteDataBlockedError, type LoadedClerk } from './clerk';
 export { ensureClerk } from './clerk';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
@@ -338,6 +338,7 @@ async function startCheckoutInner(
     const form = await askCheckoutAuthForm(trigger);
     if (form === 'cancel') return false;
     const returnUrl = buildCheckoutReturnUrl(window.location.href, productId, options);
+    setAuthReturnUrls({ afterSignInUrl: returnUrl, afterSignUpUrl: returnUrl });
     try {
       if (form === 'sign-up') c.openSignUp({ afterSignUpUrl: returnUrl, afterSignInUrl: returnUrl });
       else c.openSignIn({ afterSignInUrl: returnUrl, afterSignUpUrl: returnUrl });
@@ -424,6 +425,7 @@ async function confirmDesktopAccount(
     try {
       // The callback replaces Clerk's after-sign-out navigation, which would
       // leave /pro before sign-in opens.
+      setAuthReturnUrls({ afterSignInUrl: returnUrl, afterSignUpUrl: returnUrl });
       await c.signOut(() => c.openSignIn({ afterSignInUrl: returnUrl, afterSignUpUrl: returnUrl }));
     } catch (err) {
       console.error('[checkout] Failed to switch account:', err);

@@ -539,6 +539,7 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/map-tooltip-external-values.spec.ts',
   'e2e/mcp-webcam.spec.ts',
   'e2e/mission-preview.spec.ts',
+  'e2e/natural-event-labels.spec.ts',
   'e2e/news-context.spec.ts',
   'e2e/news-panel-resize-hit-target.spec.ts',
   'e2e/oil-price-freshness.spec.ts',
@@ -555,6 +556,19 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/ui-design-improvements.spec.ts',
   'e2e/webcam-play-prompt.spec.ts',
   'e2e/widget-sandbox.spec.ts',
+  'e2e/naval-group-navigation.spec.ts',
+  'e2e/ukmto-incidents.spec.ts',
+  'e2e/live-media-intent.spec.ts',
+  'e2e/widget-builder.spec.ts',
+  'e2e/panel-drag-reorder.spec.ts',
+  'e2e/mobile-map-native.spec.ts',
+  'e2e/mission-presets.spec.ts',
+  'e2e/mobile-bottom-navigation.spec.ts',
+  'e2e/china-corridor-panel.spec.ts',
+  'e2e/mobile-map-popup.spec.ts',
+  'e2e/oref-subscription-lifecycle.spec.ts',
+  'e2e/rag-vector-store.spec.ts',
+  'e2e/reservoir-levels.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [
@@ -1626,6 +1640,13 @@ describe('CI workflow coverage', () => {
     assert.equal(steps[installIndex].if, undefined, 'Redis must be installed on every consumer-prices run');
     assert.equal(steps[installIndex]['continue-on-error'], undefined, 'Redis installation failure must fail CI');
     assert.equal(steps[testIndex]['continue-on-error'], undefined, 'publisher regression failure must fail CI');
+  });
+
+  it('gives the consumer-prices tests a real Postgres for the chained-index proof', () => {
+    const job = YAML.parse(testWorkflow).jobs['consumer-prices'];
+    assert.match(job.services?.postgres?.image ?? '', /^postgres:17-alpine@sha256:[0-9a-f]{64}$/);
+    const test = job.steps.find((step: { run?: string }) => step.run === 'npm test --prefix consumer-prices-core');
+    assert.match(test.env?.CONSUMER_PRICES_TEST_DATABASE_URL ?? '', /^postgres:\/\/.+@localhost:5432\/consumer_prices_test$/);
   });
 
   it('installs the locale font subset from a package cache in every browser job', () => {

@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { t } from './i18n';
 import { ensureClerk, showCheckoutErrorToast, tryResumeCheckoutFromUrl } from './services/checkout';
-import { scheduleClerkLoad, SITE_DATA_BLOCKED_MESSAGE, SiteDataBlockedError, subscribeClerkLoaded } from './services/clerk';
+import { scheduleClerkLoad, setAuthReturnUrls, SITE_DATA_BLOCKED_MESSAGE, SiteDataBlockedError, subscribeClerkLoaded } from './services/clerk';
 import { startClerkUserStateSync, type ClerkUserState } from './services/clerk-user-state';
 import { hasLiveClientSession } from './services/clerk-session';
 import { createTimeoutSignal, isTimeoutOrAbortError } from './services/timeout-signal';
@@ -153,7 +153,11 @@ function appendRefToUrl(url: string, refCode: string | undefined): string {
 }
 
 function openSignIn(): void {
-  ensureClerk().then(c => c.openSignIn()).catch((err) => {
+  ensureClerk().then((c) => {
+    // Nav sign-in: no checkout to resume, so drop any earlier checkout's URLs.
+    setAuthReturnUrls(null);
+    c.openSignIn();
+  }).catch((err) => {
     if (err instanceof SiteDataBlockedError) {
       showCheckoutErrorToast(SITE_DATA_BLOCKED_MESSAGE);
       return;
