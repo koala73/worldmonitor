@@ -58,6 +58,7 @@ function layout() {
   manager.gatingPrincipal = undefined;
   manager.premiumPanelsUnlocked = new Set();
   manager.deferredPanelMounts = new Map();
+  manager.staticallyLockedPanels = new Set();
   manager.team = new TeamDashboardsStore({ load: async () => null, onChange: () => {} });
   return manager;
 }
@@ -88,6 +89,22 @@ describe('Telegram layout gating and lazy mount', () => {
     p.destroy();
     p.unlockPanel();
     expect(load).toHaveBeenCalledTimes(1);
+  });
+  // A panel registered with lockedFeatures loads locked outside the gating
+  // pass; its shell must reserve the same one-row footprint, or the panels
+  // below it move up when it mounts.
+  it('marks the shell of a statically locked lazy panel as locked', () => {
+    const manager = layout();
+    const grid = document.createElement('div');
+    manager.ctx.panelSettings = { 'x-intel': { name: 'X Intel', enabled: true } };
+    manager.insertByOrder = (g: HTMLElement, el: HTMLElement) => g.append(el);
+    manager.observeDeferredPanelShell = () => {};
+    manager.lazyPanel('x-intel', async () => null, undefined, ['feature']);
+    manager.deferPanelMount('x-intel', null, grid, true);
+    const shell = grid.querySelector('[data-panel="x-intel"]')!;
+    expect(shell.classList.contains('panel-is-locked')).toBe(true);
+    manager.updatePanelGating({ user: null });
+    expect(shell.classList.contains('panel-is-locked')).toBe(true);
   });
   it('does not gate free web Telegram', () => {
     access.desktop = false;

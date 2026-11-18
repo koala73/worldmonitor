@@ -586,6 +586,8 @@ export class PanelLayoutManager implements AppModule {
   });
   private teamBusy = false;
   private premiumPanelsUnlocked = new Set<string>();
+  /** Lazy panels registered with lockedFeatures: they load locked, outside the gating pass. */
+  private staticallyLockedPanels = new Set<string>();
   private unsubscribeSubscriptionChange: (() => void) | null = null;
   private unsubscribePaymentFailureBanner: (() => void) | null = null;
   private scheduledLoadAllRaf: number | null = null;
@@ -1156,7 +1158,7 @@ export class PanelLayoutManager implements AppModule {
     for (const [key, deferred] of this.deferredPanelMounts) {
       if (!deferred.placeholder) continue;
       const { reason } = this.gateReasonFor(key, state, billingAwareFreeTier);
-      deferred.placeholder.classList.toggle('panel-is-locked', reason !== PanelGateReason.NONE);
+      deferred.placeholder.classList.toggle('panel-is-locked', this.staticallyLockedPanels.has(key) || reason !== PanelGateReason.NONE);
     }
     this.gatingPrincipal = state.user?.id ?? null;
     // Also retries a failed team load for the same user.
@@ -3220,8 +3222,11 @@ export class PanelLayoutManager implements AppModule {
       ? createDeferredPanelShell(key, this.ctx.panelSettings[key]?.name ?? key, this.getDeferredPanelShellFootprint(key))
       : null;
     if (placeholder && grid) {
-      // Match the lock footprint the last gating pass gave mounted panels.
-      if (this.gatingPrincipal !== undefined) {
+      // Match the lock footprint the panel will mount with: a static lock, or
+      // the verdict of the last gating pass.
+      if (this.staticallyLockedPanels.has(key)) {
+        placeholder.classList.add('panel-is-locked');
+      } else if (this.gatingPrincipal !== undefined) {
         const { reason } = this.gateReasonFor(key, getAuthState(), resolveBillingAwareGateReason(PanelGateReason.FREE_TIER));
         placeholder.classList.toggle('panel-is-locked', reason !== PanelGateReason.NONE);
       }
@@ -4822,6 +4827,7 @@ export class PanelLayoutManager implements AppModule {
   ): boolean {
     if (!this.shouldCreatePanel(key)) return false;
     if (this.ctx.panels[key] || this.lazyPanelRegistrations.has(key)) return false;
+    if (lockedFeatures) this.staticallyLockedPanels.add(key);
     this.lazyPanelRegistrations.set(key, {
       loading: null,
       load: async () => {

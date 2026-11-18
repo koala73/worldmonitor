@@ -121,14 +121,15 @@ test('Pro-locked panels shrink to one grid row', async ({ page }) => {
   await expect
     .poll(
       () => page.evaluate((panels: string[]) => {
-        const shells = panels.flatMap((id) => {
+        // Every panel must be measured as a shell: one that mounted first
+        // proves nothing about the footprint its shell held.
+        const shells = panels.map((id) => {
           const shell = document.querySelector<HTMLElement>(`#panelsGrid > .panel-deferred-shell[data-panel="${id}"]`);
-          if (!shell) return [];
+          if (!shell) return `${id} has no deferred shell`;
           const rowMin = parseFloat(getComputedStyle(shell).getPropertyValue('--dashboard-panel-row-min')) || 200;
           const height = shell.getBoundingClientRect().height;
-          return [height > 0 && height <= rowMin + 1 ? 'one row' : `${id} shell ${Math.round(height)}px`];
+          return height > 0 && height <= rowMin + 1 ? 'one row' : `${id} shell ${Math.round(height)}px`;
         });
-        if (shells.length === 0) return 'no deferred shell';
         return shells.find((s) => s !== 'one row') ?? 'one row';
       }, LOCKED_PANELS),
       { message: 'locked panel shells reserve one row', timeout: 30_000 },
