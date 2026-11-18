@@ -69,7 +69,3 @@ export const ML_THRESHOLDS = {
   inferenceTimeoutMs: 120_000,
   memoryBudgetMB: 200,
 };
-
-export function getModelConfig(modelId: string): ModelConfig | undefined {
-  return MODEL_CONFIGS.find(m => m.id === modelId);
-}
