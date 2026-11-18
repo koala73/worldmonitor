@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import { createDomainGateway } from '../server/gateway.ts';
 import {
   GLOBAL_BLOCKED_MAX_ENTRIES,
+  __globalBlockedMapForTest,
   __globalBlockedSizeForTest,
   __resetRateLimitForTest,
   checkRateLimit,
@@ -202,6 +203,17 @@ describe('gateway read-only cache handler / global limiter overlap', () => {
     assert.equal(calls, 1);
   });
 
+  it('bounds the memory when the SDK itself writes a denial', () => {
+    __resetRateLimitForTest();
+    mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+    // Reach the Map the way @upstash/ratelimit does: through ephemeralCache.
+    const sdkMap = __globalBlockedMapForTest();
+    for (let n = 0; n < GLOBAL_BLOCKED_MAX_ENTRIES + 5; n += 1) sdkMap.set(`rl:sdk-${n}`, 2_000_000);
+    assert.equal(__globalBlockedSizeForTest(), GLOBAL_BLOCKED_MAX_ENTRIES);
+    assert.equal(sdkMap.has('rl:sdk-4'), false);
+    assert.equal(sdkMap.has('rl:sdk-5'), true);
+  });
+
   it('keeps the denied-caller memory bounded and drops expired entries', { timeout: 60_000 }, async () => {
     const start = Math.floor(Date.now() / 60_000) * 60_000 + 30_000;
     mock.timers.enable({ apis: ['Date'], now: start });
@@ -220,11 +232,15 @@ describe('gateway read-only cache handler / global limiter overlap', () => {
     for (let n = 0; n < total; n += 1) {
       assert.equal((await checkRateLimit(caller(n), {}))?.status, 429);
     }
-    assert.ok(__globalBlockedSizeForTest() <= GLOBAL_BLOCKED_MAX_ENTRIES);
+    // The clock is frozen, so nothing expired: exactly the oldest 50 were evicted.
+    assert.equal(__globalBlockedSizeForTest(), GLOBAL_BLOCKED_MAX_ENTRIES);
     assert.equal(isGlobalRateLimitDenialKnown(caller(total - 1)), true, 'the newest denial is kept');
-    assert.equal(isGlobalRateLimitDenialKnown(caller(0)), false, 'the oldest denial is evicted first');
+    assert.equal(isGlobalRateLimitDenialKnown(caller(49)), false, 'the 50 oldest denials are evicted');
+    assert.equal(isGlobalRateLimitDenialKnown(caller(50)), true, 'the 51st oldest is kept');
 
-    mock.timers.tick(31_000);
+    mock.timers.tick(30_000);
+    assert.equal(isGlobalRateLimitDenialKnown(caller(total - 1)), true, 'still live at its reset, as the SDK treats it');
+    mock.timers.tick(1);
     const before = __globalBlockedSizeForTest();
     assert.equal(isGlobalRateLimitDenialKnown(caller(total - 1)), false, 'expired once its window resets');
     assert.equal(__globalBlockedSizeForTest(), before - 1, 'an expired entry is removed when read');

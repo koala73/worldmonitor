@@ -47,32 +47,50 @@ let ratelimit: Ratelimit | null = null;
 const GLOBAL_RATE_LIMIT = 600;
 const GLOBAL_RATE_WINDOW: Duration = '60 s';
 const GLOBAL_RATE_WINDOW_SECONDS = durationToSeconds(GLOBAL_RATE_WINDOW);
-// identifier -> blocked-until (ms). @upstash/ratelimit records each Redis denial
-// here and answers later requests in the same window from it without Redis.
-// Owning the Map lets the gateway read the same verdict synchronously.
-// Keys carry the limiter prefix: `${GLOBAL_RATE_PREFIX}:${identifier}`.
-const globalBlockedUntil = new Map<string, number>();
-const GLOBAL_RATE_PREFIX = 'rl';
 /** Upper bound on remembered denials, so callers that never return cannot grow it forever. */
 export const GLOBAL_BLOCKED_MAX_ENTRIES = 10_000;
 
-function rememberGlobalDenial(key: string, blockedUntil: number): void {
-  // Re-insert so Map order stays oldest-first for eviction.
-  globalBlockedUntil.delete(key);
-  globalBlockedUntil.set(key, blockedUntil);
-  if (globalBlockedUntil.size <= GLOBAL_BLOCKED_MAX_ENTRIES) return;
-  const now = Date.now();
-  for (const [entry, until] of globalBlockedUntil) {
-    if (until <= now) globalBlockedUntil.delete(entry);
-  }
-  for (const entry of globalBlockedUntil.keys()) {
-    if (globalBlockedUntil.size <= GLOBAL_BLOCKED_MAX_ENTRIES) break;
-    globalBlockedUntil.delete(entry);
+/**
+ * identifier -> blocked-until (ms). @upstash/ratelimit records each Redis
+ * denial here and answers later requests in the same window from it without
+ * Redis. Owning the Map lets the gateway read the same verdict synchronously.
+ * Keys carry the limiter prefix: `${GLOBAL_RATE_PREFIX}:${identifier}`.
+ *
+ * The cap is enforced on every write, the SDK's included. Past it, expired
+ * entries go first, then the oldest. An evicted caller is decided by Redis
+ * again, whose sliding window may admit it before the evicted reset; the
+ * entry only ever made the verdict stricter than Redis's. Eviction needs more
+ * than GLOBAL_BLOCKED_MAX_ENTRIES callers denied at once on one instance.
+ */
+class BoundedBlockedMap extends Map<string, number> {
+  override set(key: string, blockedUntil: number): this {
+    // Re-insert so iteration order stays oldest-first for eviction.
+    super.delete(key);
+    super.set(key, blockedUntil);
+    if (this.size <= GLOBAL_BLOCKED_MAX_ENTRIES) return this;
+    const now = Date.now();
+    // Same boundary as the SDK: an entry is live while now <= blockedUntil.
+    for (const [entry, until] of this) {
+      if (until < now) super.delete(entry);
+    }
+    for (const entry of this.keys()) {
+      if (this.size <= GLOBAL_BLOCKED_MAX_ENTRIES) break;
+      super.delete(entry);
+    }
+    return this;
   }
 }
 
+const globalBlockedUntil = new BoundedBlockedMap();
+const GLOBAL_RATE_PREFIX = 'rl';
+
 export function __globalBlockedSizeForTest(): number {
   return globalBlockedUntil.size;
+}
+
+/** The Map handed to @upstash/ratelimit as ephemeralCache, for tests that write to it as the SDK does. */
+export function __globalBlockedMapForTest(): Map<string, number> {
+  return globalBlockedUntil;
 }
 
 function getRatelimit(): Ratelimit | null {
@@ -593,7 +611,8 @@ export function isGlobalRateLimitDenialKnown(request: Request, opts: RateLimitOp
   const key = globalBlockedKey(globalRateLimitIdentifier(request, opts));
   const blockedUntil = globalBlockedUntil.get(key);
   if (blockedUntil === undefined) return false;
-  if (blockedUntil > Date.now()) return true;
+  // Same boundary as the SDK: live while now <= blockedUntil.
+  if (blockedUntil >= Date.now()) return true;
   globalBlockedUntil.delete(key);
   return false;
 }
@@ -626,7 +645,7 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
     if (!success) {
       // @upstash/ratelimit records Lua denials here itself; the fixed-window
       // fallback does not, so record every denial for the gateway to read.
-      rememberGlobalDenial(globalBlockedKey(identifier), reset);
+      globalBlockedUntil.set(globalBlockedKey(identifier), reset);
       return tooManyRequestsResponse(limit, reset, corsHeaders, GLOBAL_RATE_WINDOW_SECONDS);
     }
 
