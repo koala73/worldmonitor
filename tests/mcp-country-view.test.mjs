@@ -330,6 +330,50 @@ describe('country view MCP boundary', () => {
     assert.equal(response.status, 403); assert.equal(body.error.data.code, 'subscription_lapsed');
     assert.ok(requests.length >= 1 && requests.length <= 3); assert.ok(requests.every(request => request.init.signal.aborted));
   });
+  it('serves Malaysia monthly SITC trade through the existing section tool, signed and Malaysia-only', async () => {
+    globalThis.fetch = async (url, init) => {
+      requests.push({ url: String(url), init });
+      return new Response(JSON.stringify({ country: 'MY', series: [{ section: '7', label: 'Machinery', months: [{ month: '2026-09', exports: 1, imports: 2 }] }], upstreamUnavailable: false }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    const { body } = await invoke('get_country_brief_section', { section: 'monthlyTrade', arguments: { months: 12 } });
+    assert.equal(body.result.structuredContent.state, 'ready');
+    const url = new URL(requests[0].url);
+    assert.equal(url.pathname, '/api/trade/v1/get-monthly-sitc-trade');
+    assert.equal(url.searchParams.get('country'), 'MY');
+    assert.equal(url.searchParams.get('months'), '12');
+    assert.equal(requests[0].init.headers['X-WM-MCP-User-Id'], PRO_USER_ID);
+    // The DOSM source covers Malaysia only; another reporter or an out-of-range
+    // window is refused before any request leaves the server.
+    for (const args of [{ country: 'SG' }, { months: 241 }, { months: 0 }]) {
+      assert.equal((await invoke('get_country_brief_section', { section: 'monthlyTrade', arguments: args })).body.error.code, -32602, JSON.stringify(args));
+    }
+    assert.equal(requests.length, 1);
+  });
+  it('reports monthlyTrade as unavailable, not as zero trade, when the seed or cache read is missing', async () => {
+    // The handler answers a missing seed or a failed Redis read with an empty
+    // series; an empty series must not read as a month of no trade.
+    for (const payload of [{ country: 'MY', series: [], upstreamUnavailable: true, unavailableReason: 'seed_missing' }, { country: 'MY', series: [], upstreamUnavailable: false }]) {
+      globalThis.fetch = async () => new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      const { body } = await invoke('get_country_brief_section', { section: 'monthlyTrade', arguments: {} });
+      assert.equal(body.result.structuredContent.state, 'unavailable', JSON.stringify(payload));
+      assert.equal(body.result.structuredContent.value, undefined);
+    }
+  });
+  it('keeps the largest monthlyTrade window inside the section output budget', async () => {
+    // 240 months of all 11 SITC sections, every month carrying all four indices
+    // (the worst case; the indices start in 2015), at full-width values.
+    const month = { month: '2026-09', exports: 4834780427.12, imports: 3834780427.55, exportsUnitValueIndex: 123.4, exportsVolumeIndex: 101.2, importsUnitValueIndex: 110.5, importsVolumeIndex: 99.8 };
+    const series = Array.from({ length: 11 }, (_, i) => ({ section: String(i), label: 'Machinery and transport equipment', months: Array.from({ length: 240 }, () => month) }));
+    globalThis.fetch = async (url, init) => {
+      requests.push({ url: String(url), init });
+      return new Response(JSON.stringify({ country: 'MY', currency: 'MYR', source: 'DOSM Monthly Trade by SITC Section', sourceUrl: 'https://open.dosm.gov.my/data-catalogue/trade_sitc_1d', indexBase: '2010=100', latestMonth: '2026-09', latestIndexMonth: '2026-08', fetchedAt: 1763400000000, series }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    const { body } = await invoke('get_country_brief_section', { section: 'monthlyTrade', arguments: { months: 240 } });
+    const result = body.result.structuredContent;
+    assert.equal(result._budget_exceeded, undefined);
+    assert.equal(result.state, 'ready');
+    assert.equal(result.value.series.length, 11);
+  });
   it('keeps unrelated section projection shape unchanged', async () => {
     const { body } = await invoke('get_country_brief_section', { section: 'facts', arguments: { country_code: 'US' }, jmespath: 'value.countryCode' });
     assert.deepEqual(body.result.structuredContent, { projection: 'US' });

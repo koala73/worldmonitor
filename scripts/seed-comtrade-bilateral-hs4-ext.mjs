@@ -18,7 +18,9 @@
 
 import {
   acquireLockSafely,
+  CHROME_UA,
   extendExistingTtl,
+  getRedisCredentials,
   loadEnvFile,
   logSeedResult,
   releaseLock,
@@ -28,8 +30,6 @@ import { EXT_HS4_BATCH, EXT_HS4_CODES, groupExtByProduct, toCanonicalProduct, to
 import {
   COMTRADE_ROUTE,
   MAX_CONSECUTIVE_RATE_LIMITED_FETCHES,
-  MAX_PIPELINE_BYTES,
-  MAX_PIPELINE_COMMANDS,
   MAX_PRESERVE_RUNS,
   fetchBilateral,
   orderCountriesForRun,
@@ -87,6 +87,33 @@ async function readMeta() {
   }
 }
 
+/**
+ * Publish one country's canonical and partners payloads as one generation.
+ *
+ * The pair goes through Upstash's transactional `multi-exec` route, so a write
+ * Redis refuses (an exhausted memory limit, an oversized value) aborts the
+ * whole transaction and leaves the previous pair exactly as it was, instead of
+ * overwriting one key and keeping the other. The pair counts as published only
+ * when the request succeeds and both SETs answer OK; anything else is treated
+ * as not written, so the preservation pass keeps the last good pair alive.
+ *
+ * @param {Array<string[]>} commands
+ * @returns {Promise<boolean>}
+ */
+export async function publishPair(commands) {
+  const { url, token } = getRedisCredentials();
+  const resp = await fetch(`${url}/multi-exec`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+    body: JSON.stringify(commands),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!resp.ok) return false;
+  const results = await resp.json().catch(() => null);
+  return Array.isArray(results) && results.length === commands.length
+    && results.every(entry => entry && !entry.error && entry.result === 'OK');
+}
+
 const isRecord = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 
 /**
@@ -136,9 +163,9 @@ export async function main({ requestBudget = REQUEST_BUDGET, now = Date.now() } 
 
   try {
     console.log(`[bilateral-hs4-ext] Fetching ${EXT_HS4_CODES.length} extended headings for ${countries.length} countries [${COMTRADE_ROUTE.source}]...`);
-    const commands = [];
     const writtenKeys = new Set();
-    let pendingBytes = 0;
+    /** @type {Set<string>} countries whose pair was published */
+    const savedCountries = new Set();
     let failedCount = 0;
     let requestCount = 0;
     let budgetExhausted = false;
@@ -148,45 +175,6 @@ export async function main({ requestBudget = REQUEST_BUDGET, now = Date.now() } 
         throw new Error(`Comtrade request budget reached (${requestCount}/${budget})`);
       }
       requestCount++;
-    };
-    // The country each queued command belongs to, so a rejected write can be
-    // traced back to it.
-    const commandCountries = [];
-    const queueWrite = (iso2, key, payload) => {
-      commands.push(['SET', key, payload, 'EX', String(TTL_SECONDS)]);
-      commandCountries.push(iso2);
-      pendingBytes += payload.length;
-      writtenKeys.add(key);
-    };
-    /** @type {Set<string>} countries whose writes all landed */
-    const savedCountries = new Set();
-    // Upstash answers a pipeline with HTTP 200 even when a single command is
-    // rejected, carrying `{ error }` in that command's slot. A country counts as
-    // saved only when every one of its writes succeeded; otherwise its keys are
-    // treated as not rewritten, so the preservation pass below can keep the last
-    // good pair and the coverage verdict does not count it.
-    const flush = async () => {
-      if (commands.length === 0) return;
-      const batch = commands.splice(0);
-      const owners = commandCountries.splice(0);
-      pendingBytes = 0;
-      const results = await redisPipeline(batch);
-      const rejected = new Set();
-      batch.forEach((_, index) => {
-        const entry = Array.isArray(results) ? results[index] : null;
-        if (!entry || entry.error || entry.result !== 'OK') rejected.add(owners[index]);
-      });
-      for (const iso2 of new Set(owners)) {
-        if (!rejected.has(iso2)) {
-          savedCountries.add(iso2);
-          continue;
-        }
-        writtenKeys.delete(canonicalKey(iso2));
-        writtenKeys.delete(partnersKey(iso2));
-        countryCoverage[iso2] = { ...countryCoverage[iso2], state: 'cache_write_failed' };
-        failedCount++;
-        console.warn(`  [bilateral-hs4-ext] ${iso2}: Redis rejected a write, preserving existing data`);
-      }
     };
 
     for (let i = 0; i < countries.length; i++) {
@@ -225,9 +213,22 @@ export async function main({ requestBudget = REQUEST_BUDGET, now = Date.now() } 
         if (products.length > 0) {
           const fetchedAt = new Date().toISOString();
           const base = { iso2, fetchedAt, source: COMTRADE_ROUTE.source, requestedHs4s: EXT_HS4_CODES };
-          queueWrite(iso2, canonicalKey(iso2), JSON.stringify({ ...base, products: products.map(toCanonicalProduct) }));
-          queueWrite(iso2, partnersKey(iso2), JSON.stringify({ ...base, products: products.map(toPartnersProduct) }));
-          console.log(`    ${iso2}: ${products.length} products, ${records.length} records`);
+          const published = await publishPair([
+            ['SET', canonicalKey(iso2), JSON.stringify({ ...base, products: products.map(toCanonicalProduct) }), 'EX', String(TTL_SECONDS)],
+            ['SET', partnersKey(iso2), JSON.stringify({ ...base, products: products.map(toPartnersProduct) }), 'EX', String(TTL_SECONDS)],
+          ]).catch(err => {
+            console.warn(`  [bilateral-hs4-ext] ${iso2}: Redis publish failed: ${err.message}`);
+            return false;
+          });
+          if (published) {
+            savedCountries.add(iso2);
+            writtenKeys.add(canonicalKey(iso2));
+            console.log(`    ${iso2}: ${products.length} products, ${records.length} records`);
+          } else {
+            countryCoverage[iso2] = { ...countryCoverage[iso2], state: 'cache_write_failed' };
+            failedCount++;
+            console.warn(`  [bilateral-hs4-ext] ${iso2}: Redis refused the pair, preserving existing data`);
+          }
         }
       } catch (err) {
         console.warn(`  [bilateral-hs4-ext] ${iso2}: fetch failed, preserving existing data: ${err.message}`);
@@ -235,7 +236,6 @@ export async function main({ requestBudget = REQUEST_BUDGET, now = Date.now() } 
         failedCount++;
       }
 
-      if (commands.length >= MAX_PIPELINE_COMMANDS || pendingBytes >= MAX_PIPELINE_BYTES) await flush();
       if (rateLimitStreak() >= MAX_CONSECUTIVE_RATE_LIMITED_FETCHES) {
         console.warn(`[bilateral-hs4-ext] ABORTING after ${rateLimitStreak()} consecutive refused fetches (HTTP 429/401/403); writing the partial result.`);
         break;
@@ -243,7 +243,6 @@ export async function main({ requestBudget = REQUEST_BUDGET, now = Date.now() } 
       if (budgetExhausted) break;
     }
 
-    await flush();
     const writtenCount = savedCountries.size;
 
     // Countries not rewritten keep their last good pair for at most

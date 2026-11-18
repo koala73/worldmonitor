@@ -92,6 +92,9 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   // authenticated. Listed here so premiumFetch attaches the Clerk bearer.
   '/api/news/v1/list-sent-alerts',
   '/api/trade/v1/list-comtrade-flows',
+  // DOSM monthly trade by SITC section: Pro in the app, API key for REST, and
+  // the country-view MCP tool's monthlyTrade section.
+  '/api/trade/v1/get-monthly-sitc-trade',
   '/api/trade/v1/get-tariff-trends',
   '/api/trade/v1/get-bilateral-tariff',
   '/api/trade/v1/get-us-import-duty',
