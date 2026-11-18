@@ -113,19 +113,32 @@ test('Pro-locked panels shrink to one grid row', async ({ page }) => {
     sessionStorage.setItem('__locked_footprint_e2e_init__', '1');
   }, LOCKED_PANELS);
   // A shell can be replaced by its panel before the poll below sees it.
-  // Record, at removal, whether each locked panel's shell held the lock class.
+  // Measure each shell while it is attached: when it is inserted and each
+  // time its class changes (the gating pass adds the lock class). A replaced
+  // shell is then judged on its last measurement, with the same bounds as a
+  // live one.
   await page.addInitScript(() => {
-    const removed: Record<string, boolean> = {};
-    (window as unknown as { __removedLockedShells: Record<string, boolean> }).__removedLockedShells = removed;
+    type Shell = { height: number; rowMin: number; removed: boolean };
+    const shells: Record<string, Shell> = {};
+    (window as unknown as { __lockedShells: Record<string, Shell> }).__lockedShells = shells;
+    const measure = (el: Element) => {
+      if (!(el instanceof HTMLElement) || !el.classList.contains('panel-deferred-shell') || !el.isConnected) return;
+      const id = el.dataset.panel;
+      if (!id) return;
+      const rowMin = parseFloat(getComputedStyle(el).getPropertyValue('--dashboard-panel-row-min')) || 200;
+      shells[id] = { height: el.getBoundingClientRect().height, rowMin, removed: false };
+    };
     new MutationObserver((records) => {
       for (const record of records) {
+        if (record.type === 'attributes') measure(record.target as Element);
+        for (const node of record.addedNodes) measure(node as Element);
         for (const node of record.removedNodes) {
           if (!(node instanceof HTMLElement) || !node.classList.contains('panel-deferred-shell')) continue;
-          const id = node.dataset.panel;
-          if (id) removed[id] = node.classList.contains('panel-is-locked');
+          const entry = node.dataset.panel ? shells[node.dataset.panel] : undefined;
+          if (entry) entry.removed = true;
         }
       }
-    }).observe(document, { childList: true, subtree: true });
+    }).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
   });
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -136,18 +149,20 @@ test('Pro-locked panels shrink to one grid row', async ({ page }) => {
   await expect
     .poll(
       () => page.evaluate((panels: string[]) => {
-        // Every panel needs a shell result: measured now, or recorded when the
-        // shell was replaced. A panel never seen as a shell fails.
-        const removed = (window as unknown as { __removedLockedShells: Record<string, boolean> }).__removedLockedShells;
+        // Every panel needs a shell measurement: live, or the last one taken
+        // before its shell was replaced. A panel never seen as a shell fails.
+        const recorded = (window as unknown as { __lockedShells: Record<string, { height: number; rowMin: number; removed: boolean }> }).__lockedShells;
+        const judge = (id: string, height: number, rowMin: number) =>
+          height > 0 && height <= rowMin + 1 ? 'one row' : `${id} shell ${Math.round(height)}px`;
         const shells = panels.map((id) => {
           const shell = document.querySelector<HTMLElement>(`#panelsGrid > .panel-deferred-shell[data-panel="${id}"]`);
-          if (!shell) {
-            if (!(id in removed)) return `${id} has no deferred shell`;
-            return removed[id] ? 'one row' : `${id} shell was replaced without the lock footprint`;
+          if (shell) {
+            const rowMin = parseFloat(getComputedStyle(shell).getPropertyValue('--dashboard-panel-row-min')) || 200;
+            return judge(id, shell.getBoundingClientRect().height, rowMin);
           }
-          const rowMin = parseFloat(getComputedStyle(shell).getPropertyValue('--dashboard-panel-row-min')) || 200;
-          const height = shell.getBoundingClientRect().height;
-          return height > 0 && height <= rowMin + 1 ? 'one row' : `${id} shell ${Math.round(height)}px`;
+          const last = recorded[id];
+          if (!last?.removed) return `${id} has no deferred shell`;
+          return judge(id, last.height, last.rowMin);
         });
         return shells.find((s) => s !== 'one row') ?? 'one row';
       }, LOCKED_PANELS),

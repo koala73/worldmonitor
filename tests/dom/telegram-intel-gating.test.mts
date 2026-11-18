@@ -23,6 +23,7 @@ vi.mock('@/services/panel-gating', async () => {
 });
 import { PanelLayoutManager } from '@/app/panel-layout';
 import { TelegramIntelPanel } from '@/components/TelegramIntelPanel';
+import { Panel } from '@/components/Panel';
 import {
   enqueuePanelCall,
   clearAllPendingCalls,
@@ -105,6 +106,19 @@ describe('Telegram layout gating and lazy mount', () => {
     expect(shell.classList.contains('panel-is-locked')).toBe(true);
     manager.updatePanelGating({ user: null });
     expect(shell.classList.contains('panel-is-locked')).toBe(true);
+  });
+  // x-intel is not a gated panel, so its gate verdict is NONE. A gating pass
+  // must not lift its static lock: that would unlock it for a non-premium
+  // desktop user and leave its shell and panel in different lock states.
+  it('keeps a statically locked lazy panel locked through a gating pass', async () => {
+    const manager = layout();
+    const p = new Panel({ id: 'x-intel', title: 'X Intel' });
+    manager.lazyPanel('x-intel', async () => p, undefined, ['feature']);
+    await manager.lazyPanelRegistrations.get('x-intel').load();
+    expect(p.getElement().classList.contains('panel-is-locked')).toBe(true);
+    manager.updatePanelGating({ user: null });
+    expect(p.getElement().classList.contains('panel-is-locked')).toBe(true);
+    p.destroy();
   });
   it('does not gate free web Telegram', () => {
     access.desktop = false;

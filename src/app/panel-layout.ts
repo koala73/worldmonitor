@@ -1126,6 +1126,10 @@ export class PanelLayoutManager implements AppModule {
     // the same verdict at a period-end boundary.
     const billingAwareFreeTier = resolveBillingAwareGateReason(PanelGateReason.FREE_TIER);
     for (const [key, panel] of Object.entries(this.ctx.panels)) {
+      // A static lock (lazyPanel lockedFeatures) is decided at boot and holds
+      // until reload. These panels are not gated, so their verdict is NONE and
+      // unlocking them here would open a locked panel whose setup never ran.
+      if (this.staticallyLockedPanels.has(key)) continue;
       const { isPremium, reason } = this.gateReasonFor(key, state, billingAwareFreeTier);
 
       const gatedPanel = panel as Panel;
