@@ -1717,7 +1717,12 @@ canvas,
   min-width: 0;
   order: 0;
 }
+/* position: relative makes the row the containing block for its visually
+   hidden reason span, so overflow: hidden clips it. Without it the absolute
+   span escaped to the end of the unclipped text and widened the page at
+   800px (PR #10989). */
 .digest-coverage-row {
+  position: relative;
   font-family: var(--font-mono, monospace);
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
