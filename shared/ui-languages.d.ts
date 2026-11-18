@@ -2,6 +2,10 @@ export const UI_LANGUAGES: readonly ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', '
 export type UiLanguage = typeof UI_LANGUAGES[number];
 export const UI_LANGUAGE_SET: ReadonlySet<string>;
 export const RTL_UI_LANGUAGES: readonly ['ar', 'fa'];
+/** True for languages written right to left (ar, fa). */
+export function isRtlLanguage(code: string): boolean;
+/** Value for the HTML dir attribute. */
+export function htmlDirFor(code: string): 'rtl' | 'ltr';
 /** English names, used in LLM prompts. Same content as TRANSLATE_LANGUAGE_NAMES. */
 export const UI_LANGUAGE_NAMES: Readonly<Record<UiLanguage, string>>;
 export function isUiLanguage(value: unknown): value is UiLanguage;
@@ -13,7 +17,7 @@ export function htmlLangFor(code: string): string;
 export const BRIEF_SUBSET_LANGUAGES: readonly string[];
 /** Script class used for typography switches. */
 export function scriptClassFor(code: string): 'latin' | 'cyrillic' | 'greek' | 'cjk' | 'arabic' | 'devanagari' | 'thai';
-/** Brief languages refused until right-to-left layout ships. */
+/** Languages refused even when allowlisted (empty since right-to-left layout shipped). */
 export const BRIEF_L10N_GATED_LANGS: readonly string[];
 /** Languages the brief is delivered in now, from the Convex BRIEF_L10N_ENABLED / BRIEF_L10N_LANGS env. */
 export function briefL10nDeliverableLanguages(env: { BRIEF_L10N_ENABLED?: string; BRIEF_L10N_LANGS?: string } | undefined): UiLanguage[];

@@ -18,12 +18,13 @@ export function literalLangAttrs(text) {
 }
 
 // The rule's selector, so moving a declaration to another rule also asks for a rerun.
+// Comments are blanked to the same length first: a ';' or '}' inside one is not a rule boundary.
 function selector(text, index) {
-  const before = text.slice(0, index);
+  const before = text.slice(0, index).replace(/\/\*[\s\S]*?\*\//g, (c) => ' '.repeat(c.length));
   const open = before.lastIndexOf('{');
   if (open < 0 || open < before.lastIndexOf('}')) return '';
   const start = Math.max(before.lastIndexOf('}', open), before.lastIndexOf(';', open)) + 1;
-  return before.slice(start, open).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ').trim().slice(-160);
+  return before.slice(start, open).replace(/\s+/g, ' ').trim();
 }
 
 export function briefFontInputs(root) {

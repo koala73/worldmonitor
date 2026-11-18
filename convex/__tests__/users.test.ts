@@ -544,7 +544,7 @@ describe("users — brief language (#10883)", () => {
       const asA = t.withIdentity(USER_A);
       await asA.mutation(api.users.ensureRecord, { ...base, uiLanguage: "fr" });
       expect(await asA.query(api.users.getBriefLanguage, {})).toEqual({
-        uiLanguage: "fr", briefLanguage: null, effective: "fr", deliverableLanguages: ["fr", "de"],
+        uiLanguage: "fr", briefLanguage: null, effective: "fr", deliverableLanguages: ["fr", "de", "fa"],
       });
     } finally {
       vi.unstubAllEnvs();

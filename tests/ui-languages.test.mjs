@@ -30,10 +30,11 @@ describe('briefL10nDeliverableLanguages', () => {
     assert.deepEqual(briefL10nDeliverableLanguages({ BRIEF_L10N_ENABLED: 'true', BRIEF_L10N_LANGS: 'fr' }), []);
   });
 
-  it('keeps allowlisted UI languages in list order, dropping en, unknown codes and gated languages', () => {
+  it('keeps allowlisted UI languages in list order, dropping en and unknown codes', () => {
     const env = { BRIEF_L10N_ENABLED: '1', BRIEF_L10N_LANGS: ' de, xx ,en,fr,fa,ar,fr,' };
-    assert.deepEqual(briefL10nDeliverableLanguages(env), ['fr', 'de']);
-    assert.deepEqual([...BRIEF_L10N_GATED_LANGS], ['ar', 'fa']);
+    // No language is gated since right-to-left layout shipped.
+    assert.deepEqual([...BRIEF_L10N_GATED_LANGS], []);
+    assert.deepEqual(briefL10nDeliverableLanguages(env), ['fr', 'de', 'ar', 'fa']);
   });
 });
 

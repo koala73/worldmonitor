@@ -136,6 +136,7 @@ import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
 import { buildDigestDeliveryPlan } from './lib/digest-delivery-plan.mjs';
 import { selectDigestChannelContent } from './lib/digest-channel-content.mjs';
 import { briefL10nEnvOverrideWarning, briefL10nTarget, briefPipelineErrors, briefSlotIndexCommands, fetchBriefL10nConfig, localizeBrief, readBriefL10nConfig, undoBriefWriteIfErased, writeBriefSlotIndex } from './lib/brief-l10n.mjs';
+import { isRtlLanguage } from '../shared/ui-languages.js';
 import { briefLocalizedKey, briefSlotsKey } from '../shared/brief-envelope.js';
 import { briefIntlLocale, briefPlural, briefT, formatBriefDate } from '../shared/brief-strings.js';
 import { truncateForDisplay } from '../shared/brief-text.js';
@@ -1121,6 +1122,8 @@ function formatDigest(stories, nowMs, target = 'plain', lang = 'en') {
     ? level.toUpperCase()
     : briefT(lang, `threat.${level}`).toLocaleUpperCase(briefIntlLocale(lang)));
 
+  // RTL channels: keep the Latin source list's brackets and commas in order (U+2068 FSI … U+2069 PDI).
+  const isolate = (text) => (isRtlLanguage(lang) ? `\u2068${text}\u2069` : text);
   const lines = [esc(briefT(lang, 'digest.header', { date: dateStr })), ''];
 
   const buckets = { critical: [], high: [], medium: [] };
@@ -1137,7 +1140,7 @@ function formatDigest(stories, nowMs, target = 'plain', lang = 'en') {
     lines.push(esc(briefPlural(lang, 'digest.levelLine', items.length, { level: levelName(level) })));
     for (const item of items.slice(0, limit)) {
       const src = item.sources.length > 0
-        ? ` [${item.sources.slice(0, 3).join(', ')}${item.sources.length > 3 ? ` +${item.sources.length - 3}` : ''}]`
+        ? ` ${isolate(`[${item.sources.slice(0, 3).join(', ')}${item.sources.length > 3 ? ` +${item.sources.length - 3}` : ''}]`)}`
         : '';
       const coverage = digestCoverageText(item, lang);
       lines.push(`  \u2022 ${formatDigestItemTitle(stripSourceSuffix(item.title), item.link, target)}${esc(src)}${coverage ? esc(` \u00b7 ${coverage}`) : ''}`);

@@ -49,6 +49,19 @@ describe('brief magazine fonts', () => {
     assert.deepEqual({ added, removed }, { added: [], removed: [] }, `Font-related CSS in brief-render.js changed. ${RERUN}`);
   });
 
+  it('records whole selectors, not a cut tail', () => {
+    // A long selector list was cut to its last 160 characters, so an entry could start
+    // mid-name ("mber, :lang(th) .page-number") and two rules could share one tail.
+    const css = fs.readFileSync(path.join(root, BRIEF_RENDERER), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ');
+    for (const entry of current.declarations) {
+      const sel = entry.slice(0, entry.indexOf(' | '));
+      if (!sel) continue;
+      const at = css.indexOf(sel);
+      assert.notEqual(at, -1, `selector not in the renderer: ${entry}`);
+      assert.match(css.slice(Math.max(0, at - 2), at), /(^|[{};'"`] ?)$/, `selector starts mid-rule: ${entry}`);
+    }
+  });
+
   it('were cut for the current page languages', () => {
     assert.deepEqual(current.langs, manifest.inputs.langs, `The page languages changed; the subsets keep locl for these languages. ${RERUN}`);
   });
@@ -56,7 +69,7 @@ describe('brief magazine fonts', () => {
   it('the renderer has no literal lang attribute outside htmlLangFor', () => {
     const text = fs.readFileSync(path.join(root, BRIEF_RENDERER), 'utf8');
     assert.deepEqual(literalLangAttrs(text), []);
-    assert.match(text, /'<html lang="' \+ escapeHtml\(htmlLangFor\(lang\)\) \+ '">'/);
+    assert.match(text, /'<html lang="' \+ escapeHtml\(htmlLangFor\(lang\)\) \+ '"'/);
   });
 
   it('were checked against the Google-served files', () => {

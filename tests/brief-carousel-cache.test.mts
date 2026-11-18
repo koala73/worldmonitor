@@ -152,6 +152,10 @@ describe('api/brief/carousel cache policy', () => {
     const stale = await render({ ...sibling, issuedAt: canonical.issuedAt + 1 });
     assert.notDeepEqual(localized, english, 'a valid sibling must change the rendered image');
     assert.deepEqual(stale, english, 'a stale sibling must render the canonical image');
+    for (const lang of ['ar', 'fa']) {
+      const rtl = await render({ ...sibling, lang, data: { ...sibling.data, digest: { ...sibling.data.digest, greeting: 'مساء الخير' } } });
+      assert.deepEqual(rtl, english, `a ${lang} sibling must render the canonical English image`);
+    }
 
     const fallback = await respond(READ_FAILS);
     assert.deepEqual(new Uint8Array(await fallback.arrayBuffer()), english, 'a failed sibling read renders canonical');

@@ -236,7 +236,7 @@ describe("preference HTTP variant boundaries", () => {
     vi.stubEnv("BRIEF_L10N_ENABLED", "1");
     vi.stubEnv("BRIEF_L10N_LANGS", "es,ar,fr");
     const on = await t.fetch("/relay/brief-l10n-config", auth);
-    expect(await on.json()).toEqual({ enabled: true, langs: ["fr", "es"] });
+    expect(await on.json()).toEqual({ enabled: true, langs: ["fr", "es", "ar"] });
   });
 
   test("briefLanguage is \"en\" for a user with no users row", async () => {

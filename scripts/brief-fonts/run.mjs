@@ -15,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { briefFontFixtures } from './fixtures.mjs';
 import { briefFontInputs } from './inputs.mjs';
+import { BRIEF_SUBSET_LANGUAGES, UI_LANGUAGES, htmlLangFor } from '../../shared/ui-languages.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../..');
@@ -61,6 +62,8 @@ function collectRuns(families) {
 }
 
 const subsetLangs = new Set(briefFontInputs(root).langs);
+// Pages in these languages set their script in system fonts (Arabic, CJK, Devanagari, Thai); their runs are not subset inputs.
+const systemFontLangs = new Set(UI_LANGUAGES.filter((code) => !BRIEF_SUBSET_LANGUAGES.includes(code)).map(htmlLangFor));
 const browser = await chromium.launch();
 const faces = new Map();
 const unexpected = new Set();
@@ -75,6 +78,7 @@ try {
         const key = `${run.family}|${run.style}|${run.weight}`;
         const face = faces.get(key) ?? { family: run.family, style: run.style, weight: run.weight, runs: new Set(), langRuns: new Map(), on_first_page: false };
         const lang = run.lang || 'en';
+        if (systemFontLangs.has(lang)) continue;
         if (lang === 'en') face.runs.add(run.text);
         else face.langRuns.set(lang, (face.langRuns.get(lang) ?? new Set()).add(run.text));
         face.on_first_page ||= run.onFirstPage;
