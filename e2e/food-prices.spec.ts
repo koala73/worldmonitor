@@ -68,10 +68,18 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     const overflow = await panel.evaluate(element => {
       const right = element.getBoundingClientRect().left + element.clientLeft + element.clientWidth;
       // Name what sticks out so a failure says which element to fix.
-      const offenders = [...element.querySelectorAll('*')]
-        .filter(node => node.getBoundingClientRect().right > right + 0.5)
-        .slice(0, 5)
-        .map(node => `${node.tagName.toLowerCase()}.${String(node.className).split(' ')[0]} +${Math.round(node.getBoundingClientRect().right - right)}px`);
+      // Text can overflow its element without widening the element's box, so check text ranges too.
+      const offenders: string[] = [];
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node && offenders.length < 5; node = walker.nextNode()) {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const edge = node.nodeType === Node.TEXT_NODE ? range.getBoundingClientRect().right : (node as Element).getBoundingClientRect().right;
+        if (edge <= right + 0.5) continue;
+        const owner = node.nodeType === Node.TEXT_NODE ? node.parentElement! : node as Element;
+        const label = node.nodeType === Node.TEXT_NODE ? `text "${node.textContent!.trim().slice(0, 30)}" in ` : '';
+        offenders.push(`${label}${owner.tagName.toLowerCase()}.${String(owner.className).split(' ')[0]} +${Math.round(edge - right)}px`);
+      }
       return { panel: element.scrollWidth - element.clientWidth, document: document.documentElement.scrollWidth - innerWidth, offenders };
     });
     expect(overflow).toEqual({ panel: 0, document: 0, offenders: [] });
