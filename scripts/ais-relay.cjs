@@ -5735,7 +5735,10 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // entry, or one the LLM skipped below), so an empty byCountry cannot be read
   // as a quiet cycle. A title that names no country cannot change byCountry.
   let unlabelled = 0;
-  const countUnlabelled = (title) => { if (threatSummaryCountries(title).length > 0) unlabelled++; };
+  // Pool headlines (#10978) are not on the dashboard, so they stay out of the
+  // country threat summary.
+  const inSummary = (title) => !allTitles.get(title)?.fromPool;
+  const countUnlabelled = (title) => { if (inSummary(title) && threatSummaryCountries(title).length > 0) unlabelled++; };
 
   for (let i = 0; i < titleArr.length; i++) {
     const hit = cached[i];
@@ -5748,7 +5751,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
     if (typeof hit === 'string') { try { parsed = JSON.parse(hit); } catch { countUnlabelled(titleArr[i]); continue; } }
     const level = parsed?.level;
     if (!CLASSIFY_VALID_LEVELS.includes(level)) { countUnlabelled(titleArr[i]); continue; }
-    if (seenTitles.has(titleArr[i])) continue;
+    if (!inSummary(titleArr[i]) || seenTitles.has(titleArr[i])) continue;
     seenTitles.add(titleArr[i]);
     for (const code of threatSummaryCountries(titleArr[i])) {
       if (!byCountry[code]) byCountry[code] = emptyLevel();
@@ -5789,7 +5792,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
       classified++;
       labelled.push({ title: chunk[idx], level });
       // Attribute newly classified title to country stats (global dedup via seenTitles)
-      if (!seenTitles.has(chunk[idx])) {
+      if (inSummary(chunk[idx]) && !seenTitles.has(chunk[idx])) {
         seenTitles.add(chunk[idx]);
         for (const code of threatSummaryCountries(chunk[idx])) {
           if (!byCountry[code]) byCountry[code] = emptyLevel();
