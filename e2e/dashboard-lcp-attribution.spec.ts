@@ -283,6 +283,18 @@ test.describe('dashboard LCP attribution debug', () => {
     expect(latest!.url).not.toContain('token=');
   });
 
+  // PR #10989: the coverage row's visually hidden reason is absolutely
+  // positioned. Without a positioned row it escaped overflow: hidden and
+  // widened the page at 800px (settings-home-list caught it in CI).
+  test('the coverage row adds no sideways scroll at 800px', async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 700 });
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    const coverageRow = page.getByRole('status', { name: 'News coverage status' });
+    await expect(coverageRow.locator('.digest-coverage-text')).toHaveText(PARTIAL_DIGEST_COVERAGE_TEXT, { timeout: 30000 });
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow).toBe(0);
+  });
+
   // StatusPanel is a lazy chunk. When the first digest landed before it
   // loaded, its coverage report went to nobody and the row never mounted
   // (CI runs 43792956961 and 43794135730, retried by Playwright).
