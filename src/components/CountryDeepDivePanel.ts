@@ -370,9 +370,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   public showLoading(): void {
+    const focusWasInside = this.panel.contains(document.activeElement);
     this.currentCode = '__loading__';
     this.currentName = null;
     this.renderLoading();
+    this.keepFocusInside(focusWasInside);
     this.open();
   }
 
@@ -403,6 +405,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   public show(country: string, code: string, score: CountryScore | null, signals: CountrySignalCounts | null): void {
+    const focusWasInside = this.panel.contains(document.activeElement);
     this.qualifiedCountrySignals = null;
     this.abortController.abort();
     this.abortController = new AbortController();
@@ -427,6 +430,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
     if (this.source?.mode === 'host') this.renderAtlasExposure(true);
     this.content.scrollTop = 0;
+    this.keepFocusInside(focusWasInside);
     // open() reports only a closed-to-open change. Opened by showLoading(),
     // the panel now has its real country, so report that too.
     if (!this.open()) this.onStateChangeCallback?.({ visible: true, maximized: this.isMaximizedState });
@@ -4601,7 +4605,16 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.map.flashAssets(type, assets.map((asset) => asset.id));
   }
 
-  /** Returns true when the panel was closed and is now open. */
+  /**
+   * A rebuild of a visible brief removes its controls. If one of them had
+   * focus, focus would drop to the page, so it moves to the close button.
+   * Focus on a control that survives, or outside the brief, stays put.
+   */
+  private keepFocusInside(focusWasInside: boolean): void {
+    if (!focusWasInside || !this.panel.classList.contains('active')) return;
+    if (!this.panel.contains(document.activeElement)) this.closeButton.focus();
+  }
+
   /**
    * A map click or map menu is opening this brief. A closed brief saves its
    * return target when it opens (the map, which the caller has just focused).
@@ -4617,6 +4630,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     });
   }
 
+  /** Returns true when the panel was closed and is now open. */
   private open(): boolean {
     if (this.panel.classList.contains('active')) return false;
     this.lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;

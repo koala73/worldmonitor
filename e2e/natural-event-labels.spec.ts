@@ -68,7 +68,11 @@ for (const font of ['mono', 'system'] as const) {
     await page.goto('/tests/mobile-map-integration-harness.html?mobile=1');
     await page.waitForFunction(() => (window as unknown as { __mobileMapIntegrationHarness: Harness }).__mobileMapIntegrationHarness?.ready);
     // The settings font choice; labels must keep the font their boxes were sized for.
-    if (font === 'system') await page.evaluate(() => { document.documentElement.dataset.font = 'system'; });
+    // The system run also raises the text-size setting, which must not reach map labels.
+    if (font === 'system') await page.evaluate(() => {
+      document.documentElement.dataset.font = 'system';
+      document.documentElement.style.setProperty('--wm-font-scale', '1.5');
+    });
     const harness = (fn: string, ...args: unknown[]) => page.evaluate(({ fn, args }) => {
       const h = (window as unknown as { __mobileMapIntegrationHarness: Record<string, (...a: unknown[]) => void> }).__mobileMapIntegrationHarness;
       h[fn]!(...args);
@@ -82,7 +86,7 @@ for (const font of ['mono', 'system'] as const) {
     await expect(page.locator('#mapOverlays .nat-event-marker')).toHaveCount(6);
     await expect.poll(async () => (await sample(page)).titles).toEqual([]);
 
-    const shown: Record<number, number> = {};
+    const visits: Array<{ zoom: number; titles: string[] }> = [];
     // 2 crosses the title zoom; 2.7 is the phone start; back to 2 pulls them
     // together; 8 pulls them apart.
     for (const zoom of [2, 2.7, 2, 8]) {
@@ -95,10 +99,29 @@ for (const font of ['mono', 'system'] as const) {
         titles = frame.titles;
         return { overlaps: frame.overlaps, misSized: frame.misSized, hiddenIcons: frame.hiddenIcons, hasLargest: frame.titles.includes('Iceberg A81') };
       }, { message: `zoom ${zoom}` }).toEqual({ overlaps: [], misSized: [], hiddenIcons: 0, hasLargest: true });
-      shown[zoom] = titles.length;
+      visits.push({ zoom, titles });
       await expect(page.locator('#mapOverlays .nat-event-icon')).toHaveCount(6);
     }
+    const [first2, at27, second2, at8] = visits.map((visit) => visit.titles);
+    // Zooming back out restores the same selection as the first visit to 2.
+    expect(second2).toEqual(first2);
     // Names hidden in a crowd come back once zooming in separates the icebergs.
-    expect(shown[8]).toBeGreaterThan(shown[2.7]!);
+    expect(at8!.length).toBeGreaterThan(at27!.length);
+
+    // Only icons take taps: label text and the marker column never do, and a
+    // zoom-hidden layer takes no taps at all.
+    const taps = await page.evaluate(() => {
+      const hits = (selector: string) => [...document.querySelectorAll<HTMLElement>(selector)].filter((el) => {
+        const box = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+        // An icon's 44px touch area may reach under the text; the text and the
+        // marker column may not take the tap.
+        return box.width > 0 && !!hit?.closest('.nat-event-marker') && !hit.closest('.nat-event-icon');
+      }).length;
+      const labels = hits('#mapOverlays .nat-event-texted .nat-event-label');
+      document.querySelector('.map-wrapper')!.setAttribute('data-layer-hidden-natural', 'true');
+      return { labels, hiddenIcons: hits('#mapOverlays .nat-event-icon') };
+    });
+    expect(taps).toEqual({ labels: 0, hiddenIcons: 0 });
   });
 }

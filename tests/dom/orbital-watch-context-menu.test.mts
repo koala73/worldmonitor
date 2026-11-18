@@ -103,7 +103,14 @@ describe('a country brief opened from the map', () => {
 // The real brief: it captures its return target when it opens, and a map click
 // on the visible brief's country reloads it in place rather than reopening it.
 describe('closing a country brief with Escape', () => {
-  afterEach(() => document.getElementById('country-deep-dive-panel')?.remove());
+  let current: CountryDeepDivePanel | null = null;
+  // A failed assertion before Escape must not leave a visible brief whose
+  // document keydown listener answers Escape in a later test.
+  afterEach(() => {
+    if (current?.isVisible()) current.hide();
+    current = null;
+    document.getElementById('country-deep-dive-panel')?.remove();
+  });
   const pressEscape = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   function setup() {
     const search = document.createElement('button');
@@ -111,7 +118,8 @@ describe('closing a country brief with Escape', () => {
     const map = document.createElement('div');
     map.tabIndex = -1;
     document.body.append(search, map);
-    return { search, map, panel: new CountryDeepDivePanel() };
+    current = new CountryDeepDivePanel();
+    return { search, map, panel: current };
   }
 
   const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -143,6 +151,21 @@ describe('closing a country brief with Escape', () => {
     panel.show('Russia', 'RU', null, null);
     pressEscape();
     expect(panel.isVisible()).toBe(false);
+    expect(document.activeElement).toBe(map);
+  });
+
+  it('keeps focus in the brief when a reload removes the focused control', async () => {
+    const { map, panel } = setup();
+    map.focus();
+    panel.show('Russia', 'RU', null, null);
+    await nextFrame();
+    const control = document.createElement('button');
+    document.getElementById('deep-dive-content')!.append(control);
+    control.focus();
+    panel.show('Russia', 'RU', null, null);
+    expect(control.isConnected).toBe(false);
+    expect(document.activeElement).toBe(closeButton());
+    pressEscape();
     expect(document.activeElement).toBe(map);
   });
 

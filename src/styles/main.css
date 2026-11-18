@@ -7483,8 +7483,12 @@ body.playback-mode .status-dot {
   align-items: center;
   z-index: 54;
   transition: opacity 0.2s ease, transform 0.2s ease;
-  /* Only the icon takes taps. A labelled marker sits above its neighbours, so
-     its text rows would otherwise catch taps meant for the icons beneath. */
+}
+
+/* Only the icon takes taps. A labelled marker sits above its neighbours, so
+   its text rows would otherwise catch taps meant for the icons beneath. The ID
+   outranks `#mapOverlays > *`, which turns taps on for every overlay child. */
+#mapOverlays > .nat-event-marker {
   pointer-events: none;
 }
 
@@ -11621,6 +11625,7 @@ button.popup-link {
 .map-wrapper[data-layer-hidden-nuclear="true"] .nuclear-marker,
 .map-wrapper[data-layer-hidden-natural="true"] .earthquake-marker,
 .map-wrapper[data-layer-hidden-natural="true"] .nat-event-marker,
+.map-wrapper[data-layer-hidden-natural="true"] .nat-event-icon,
 .map-wrapper[data-layer-hidden-economic="true"] .economic-marker,
 .map-wrapper[data-layer-hidden-conflicts="true"] .conflicts,
 .map-wrapper[data-layer-hidden-conflicts="true"] .conflict-label-overlay,
@@ -16095,6 +16100,11 @@ button.popup-link {
     border-radius: 50%;
     pointer-events: auto;
     /* Uncomment to debug: background: rgba(255, 0, 0, 0.2); */
+  }
+
+  /* A zoom-hidden natural layer takes no taps, on the icon's touch area either. */
+  .map-wrapper[data-layer-hidden-natural='true'] #mapOverlays .nat-event-icon::before {
+    pointer-events: none;
   }
 
   .conflict-click-area {
