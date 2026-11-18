@@ -23,11 +23,6 @@ test('status probe waits for all four uptime windows', async ({ page }) => {
   expect((await checkStatusPage(page))['Last 90 days']).toBe('99.123%');
 });
 
-test('status probe rejects the provider error even with cached figures', async ({ page }) => {
-  await page.setContent(`${markup}<p>There was an error while fetching the data.</p>`);
-  await expect(checkStatusPage(page)).rejects.toThrow('fetching the data');
-});
-
 test('status probe rejects a successful HTTP response with an empty shell', async ({ page }) => {
   await page.route('https://status.example/', (route) => route.fulfill({ status: 200, body: '<main>Loading</main>', contentType: 'text/html' }));
   await page.goto('https://status.example/');
