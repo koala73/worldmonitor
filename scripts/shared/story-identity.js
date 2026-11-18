@@ -645,16 +645,21 @@ export function clusterTexts(texts, opts = {}) {
 
 // Delivery and cross-build coverage must agree on punctuation and attribution.
 const NORMALIZED_TITLE_SCAN = 2_000;
-const CLASSIFY_QUESTION_RE = /\?["'”’»]*\s*(?:[-–—|][^?]*)?$/;
-const IN_WORD_HYPHEN_RE = /(?<=[\p{L}\p{N}])[\p{Pd}\u2212](?=[\p{L}\p{N}])/gu;
+const CLASSIFY_QUESTION_RE = /[\u003F\u061F\uFF1F\u2E2E\u2047\u2048\u2049\u2753\uFE16\uFE56][^\p{L}\p{N}]*(?:[-–—|][^?\u061F\uFF1F]*)?$/u;
+// Anything drawn as a dash or an invisible word break between letters.
+const IN_WORD_HYPHEN_RE = /(?<=[\p{L}\p{N}])[\p{Pd}\p{Cf}\u2212\u02D7\u2043\u2044\u30FB\u2796\u268A](?=[\p{L}\p{N}])/gu;
+// A credit is a bare outlet host of at most three labels (reuters.com,
+// bbc.co.uk); dots or underscores joining clause words are headline text.
+const BARE_HOST_RE = /^(?:[\p{L}\p{N}-]+\.){1,2}[\p{L}\p{N}-]+$/u;
 
 /**
  * The identity the AI classify cache keys a headline on (#10976): its story,
  * so outlet suffixes, case and punctuation share one label. The exact title
  * is kept when sharing could hand one headline's label to different text:
- * under four words (no story key), or a stripped credit of several words
- * ending in a domain, which is a clause rather than an outlet. A question
- * keeps its own label, and an in-word hyphen splits words (re-sign, resign).
+ * under four words (no story key), or a stripped credit that is not a bare
+ * host (several words, or clause words joined by dots or underscores). A
+ * question in any script keeps its own label, and an in-word dash or
+ * invisible break splits words (re-sign, resign).
  * @param {string} title
  */
 export function classifyCacheIdentity(title) {
@@ -665,7 +670,8 @@ export function classifyCacheIdentity(title) {
   let rest = lower;
   for (let i = 0; i < 8; i += 1) {
     const domainless = stripOneAttribution(rest, 'domain', false);
-    if (/\s/.test(rest.slice(domainless.length).trim().replace(/^[-–—|]\s*/, ''))) return lower;
+    const credit = rest.slice(domainless.length).trim().replace(/^[-–—|]\s*/, '');
+    if (credit && !BARE_HOST_RE.test(credit)) return lower;
     const next = stripOneAttribution(domainless, 'publisher', false);
     if (next === rest) break;
     rest = next;

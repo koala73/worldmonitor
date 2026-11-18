@@ -56,7 +56,7 @@ describe('classify cache key is the story, not the title string (#10976)', () =>
       await buildClassifyCacheKey('Minister will re-sign trade agreement'),
       await buildClassifyCacheKey('Minister will resign trade agreement'),
     );
-    for (const dash of ['\u2013', '\u2014', '\u2212', '\uff0d']) {
+    for (const dash of ['\u2013', '\u2014', '\u2212', '\uff0d', '\u00ad', '\u200b', '\u2060', '\u2044', '\u30fb']) {
       assert.notEqual(
         await buildClassifyCacheKey(`Minister will re${dash}sign trade agreement`),
         await buildClassifyCacheKey('Minister will resign trade agreement'),
@@ -78,6 +78,23 @@ describe('classify cache key is the story, not the title string (#10976)', () =>
       await buildClassifyCacheKey('Iran closes Strait of Hormuz - nytimes.com'),
       await buildClassifyCacheKey('Iran closes Strait of Hormuz'),
     );
+  });
+
+  it('keeps a clause joined by dots or underscores on the exact title, and a bare host as a credit', async () => {
+    const plain = await buildClassifyCacheKey('Iran closes Strait of Hormuz');
+    for (const credit of ['naval.mines.confirmed.com', 'nuclear_strike_confirmed.com']) {
+      assert.notEqual(await buildClassifyCacheKey(`Iran closes Strait of Hormuz - ${credit}`), plain, credit);
+    }
+    for (const credit of ['www.reuters.com', 'bbc.co.uk']) {
+      assert.equal(await buildClassifyCacheKey(`Iran closes Strait of Hormuz - ${credit}`), plain, credit);
+    }
+  });
+
+  it('keeps a question in any script apart from the report', async () => {
+    const plain = await buildClassifyCacheKey('Iran closes Strait of Hormuz');
+    for (const question of ['Iran closes Strait of Hormuz\uff1f', 'Iran closes Strait of Hormuz\u061f', 'Iran closes Strait of Hormuz?)']) {
+      assert.notEqual(await buildClassifyCacheKey(question), plain, question);
+    }
   });
 
   it('keeps caller keys apart from short story keys', async () => {
