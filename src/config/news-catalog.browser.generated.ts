@@ -33,11 +33,11 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "New York Times World",
-          "url": "https://news.google.com/rss/search?q=site%3Anytimes.com%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
         },
         {
           "name": "Washington Post World",
-          "url": "https://news.google.com/rss/search?q=site%3Awashingtonpost.com%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://feeds.washingtonpost.com/rss/world"
         },
         {
           "name": "The Economist",
@@ -45,7 +45,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "The Independent",
-          "url": "https://news.google.com/rss/search?q=site%3Aindependent.co.uk%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://www.independent.co.uk/news/world/rss"
         },
         {
           "name": "NPR World",
@@ -691,7 +691,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "NV EN",
-          "url": "https://news.google.com/rss/search?q=site%3Aenglish.nv.ua%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://english.nv.ua/rss/all_english.xml"
         },
         {
           "name": "Hromadske EN",
@@ -769,7 +769,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Sky News",
-          "url": "https://news.google.com/rss/search?q=site%3Anews.sky.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://feeds.skynews.com/feeds/rss/home.xml"
         },
         {
           "name": "BBC UK",

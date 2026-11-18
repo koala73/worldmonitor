@@ -3314,12 +3314,12 @@
     },
     {
       "host": "cnn.com",
-      "provider": "cnn.com",
+      "provider": "CNN",
       "kind": "feed",
       "observed": true,
-      "license": "Provider terms for this feed publisher; verify before redistribution",
-      "attribution": "Credit cnn.com and link to the original feed publisher.",
-      "status": "terms-review",
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit CNN and link to the original publisher item.",
+      "status": "reviewed",
       "references": [
         {
           "path": "shared/news-catalog.json"
@@ -5339,12 +5339,12 @@
     },
     {
       "host": "english.nv.ua",
-      "provider": "english.nv.ua",
+      "provider": "The New Voice of Ukraine",
       "kind": "feed",
       "observed": true,
-      "license": "Provider terms for this feed publisher; verify before redistribution",
-      "attribution": "Credit english.nv.ua and link to the original feed publisher.",
-      "status": "terms-review",
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit The New Voice of Ukraine and link to the original publisher item.",
+      "status": "reviewed",
       "references": [
         {
           "path": "shared/news-catalog.json"
@@ -5978,6 +5978,34 @@
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit feeds.npr.org and link to the original feed publisher.",
       "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "feeds.skynews.com",
+      "provider": "Sky News",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Sky News and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "feeds.washingtonpost.com",
+      "provider": "The Washington Post",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit The Washington Post and link to the original publisher item.",
+      "status": "reviewed",
       "references": [
         {
           "path": "shared/news-catalog.json"
@@ -7390,20 +7418,6 @@
       ]
     },
     {
-      "host": "independent.co.uk",
-      "provider": "The Independent",
-      "kind": "feed",
-      "observed": true,
-      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
-      "attribution": "Credit The Independent and link to the original publisher item.",
-      "status": "reviewed",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        }
-      ]
-    },
-    {
       "host": "index.hu",
       "provider": "index.hu",
       "kind": "feed",
@@ -8236,12 +8250,12 @@
     },
     {
       "host": "kyivindependent.com",
-      "provider": "kyivindependent.com",
+      "provider": "The Kyiv Independent",
       "kind": "feed",
       "observed": true,
-      "license": "Provider terms for this feed publisher; verify before redistribution",
-      "attribution": "Credit kyivindependent.com and link to the original feed publisher.",
-      "status": "terms-review",
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit The Kyiv Independent and link to the original publisher item.",
+      "status": "reviewed",
       "references": [
         {
           "path": "shared/news-catalog.json"
@@ -10433,20 +10447,6 @@
       ]
     },
     {
-      "host": "nytimes.com",
-      "provider": "The New York Times",
-      "kind": "feed",
-      "observed": true,
-      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
-      "attribution": "Credit The New York Times and link to the original publisher item.",
-      "status": "reviewed",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        }
-      ]
-    },
-    {
       "host": "nzherald.co.nz",
       "provider": "nzherald.co.nz",
       "kind": "feed",
@@ -12035,6 +12035,20 @@
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit rss.libsyn.com and link to the original feed publisher.",
       "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "rss.nytimes.com",
+      "provider": "The New York Times",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit The New York Times and link to the original publisher item.",
+      "status": "reviewed",
       "references": [
         {
           "path": "shared/news-catalog.json"
@@ -15174,12 +15188,12 @@
     },
     {
       "host": "ukrinform.net",
-      "provider": "ukrinform.net",
+      "provider": "Ukrinform",
       "kind": "feed",
       "observed": true,
-      "license": "Provider terms for this feed publisher; verify before redistribution",
-      "attribution": "Credit ukrinform.net and link to the original feed publisher.",
-      "status": "terms-review",
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Ukrinform and link to the original publisher item.",
+      "status": "reviewed",
       "references": [
         {
           "path": "shared/news-catalog.json"
@@ -17151,6 +17165,20 @@
       ]
     },
     {
+      "host": "www.cnn.com",
+      "provider": "CNN",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit CNN and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "www.cnn.gr",
       "provider": "www.cnn.gr",
       "kind": "feed",
@@ -18888,6 +18916,20 @@
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.independent.co.ug and link to the original feed publisher.",
       "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.independent.co.uk",
+      "provider": "The Independent",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit The Independent and link to the original publisher item.",
+      "status": "reviewed",
       "references": [
         {
           "path": "shared/news-catalog.json"
@@ -22163,6 +22205,20 @@
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.twz.com and link to the original feed publisher.",
       "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.ukrinform.net",
+      "provider": "Ukrinform",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Ukrinform and link to the original publisher item.",
+      "status": "reviewed",
       "references": [
         {
           "path": "shared/news-catalog.json"

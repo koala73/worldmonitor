@@ -273,7 +273,12 @@
     },
     {
       "name": "CNN World",
-      "url": "https://news.google.com/rss/search?q=site%3Acnn.com%20world%20news%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://www.cnn.com/sitemap/news.xml",
+      "excludePathSegments": [
+        "video",
+        "cnn-underscored",
+        "brandstories"
+      ],
       "placements": [
         {
           "edition": "full",
@@ -281,7 +286,10 @@
           "serverOrder": 4,
           "browserOrder": 4
         }
-      ]
+      ],
+      "browser": {
+        "url": "https://news.google.com/rss/search?q=site%3Acnn.com%20world%20news%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+      }
     },
     {
       "name": "Trump - Truth Social",
@@ -297,9 +305,10 @@
     },
     {
       "name": "New York Times World",
-      "url": "https://news.google.com/rss/search?q=site%3Anytimes.com%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+      "newestFirst": true,
       "notes": [
-        "Major publishers Google News World leads with and no feed carried (2026-10-16 audit). Google News site: queries, like AP and Reuters.",
+        "Major publishers Google News World leads with and no feed carried (2026-10-16 audit). Publisher RSS since issue #10937; it previously used a Google News site: query.",
         "Major publishers Google News World leads with and no feed carried (2026-10-16 audit). Last in the category, so the free-tier cap's declaration-order pick keeps every earlier source."
       ],
       "placements": [
@@ -313,7 +322,8 @@
     },
     {
       "name": "Washington Post World",
-      "url": "https://news.google.com/rss/search?q=site%3Awashingtonpost.com%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://feeds.washingtonpost.com/rss/world",
+      "depthUrl": "https://news.google.com/rss/search?q=site%3Awashingtonpost.com%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
       "placements": [
         {
           "edition": "full",
@@ -337,7 +347,7 @@
     },
     {
       "name": "The Independent",
-      "url": "https://news.google.com/rss/search?q=site%3Aindependent.co.uk%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://www.independent.co.uk/news/world/rss",
       "placements": [
         {
           "edition": "full",
@@ -1290,7 +1300,11 @@
     },
     {
       "name": "Kyiv Independent",
-      "url": "https://news.google.com/rss/search?q=site%3Akyivindependent.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://kyivindependent.com/news-archive/rss/",
+      "depthUrl": "https://news.google.com/rss/search?q=site%3Akyivindependent.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en",
+      "browser": {
+        "url": "https://news.google.com/rss/search?q=site%3Akyivindependent.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en"
+      },
       "notes": [
         "Ukraine war frontline for EN digests (#5949). Names must match client DEFAULT_ENABLED_SOURCES.europe. Ordinary non-en `lang` tags are filtered from EN digests; strategic defaults explicitly bypass that filter.",
         "English-language (no lang tag) — always EN-digest-reachable"
@@ -1306,7 +1320,8 @@
     },
     {
       "name": "Ukrinform",
-      "url": "https://news.google.com/rss/search?q=site%3Aukrinform.net%20when%3A3d&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://www.ukrinform.net/rss/block-lastnews",
+      "depthUrl": "https://news.google.com/rss/search?q=site%3Aukrinform.net%20when%3A3d&hl=en-US&gl=US&ceid=US:en",
       "browser": {
         "url": {
           "en": "https://news.google.com/rss/search?q=site:ukrinform.net+when:3d&hl=en-US&gl=US&ceid=US:en",
@@ -1358,7 +1373,8 @@
     },
     {
       "name": "NV EN",
-      "url": "https://news.google.com/rss/search?q=site%3Aenglish.nv.ua%20when%3A2d&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://english.nv.ua/rss/all_english.xml",
+      "depthUrl": "https://news.google.com/rss/search?q=site%3Aenglish.nv.ua%20when%3A2d&hl=en-US&gl=US&ceid=US:en",
       "placements": [
         {
           "edition": "full",
@@ -1940,7 +1956,8 @@
     },
     {
       "name": "Sky News",
-      "url": "https://news.google.com/rss/search?q=site%3Anews.sky.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://feeds.skynews.com/feeds/rss/home.xml",
+      "depthUrl": "https://news.google.com/rss/search?q=site%3Anews.sky.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
       "placements": [
         {
           "edition": "full",
@@ -5727,7 +5744,7 @@
         "url": "https://news.google.com/rss/search?q=site:kitco.com+(gold+OR+silver+OR+metals)+when:1d&hl=en-US&gl=US&ceid=US:en"
       },
       "notes": [
-        "Kitco shut down their public RSS feeds in 2025 (every /rss/*, /news/feed, /news/category/*/feed path now returns an HTML SPA page, not XML). Fall back to Google News scoped to site:kitco.com, matching the pattern used by TASS / Kyiv Independent / Telegraaf elsewhere in this file."
+        "Kitco shut down their public RSS feeds in 2025 (every /rss/*, /news/feed, /news/category/*/feed path now returns an HTML SPA page, not XML). Fall back to Google News scoped to site:kitco.com, matching the pattern used by TASS / Telegraaf elsewhere in this file."
       ],
       "placements": [
         {

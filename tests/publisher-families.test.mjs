@@ -122,6 +122,7 @@ describe('publisher-families map data', () => {
       "guardian-media-tt": "Common publisher group across its news brands: https://guardianmedia.co.tt/about-us/",
       bbc: 'feeds.bbci.co.uk for the English editions, bbc.com for Afrique/Mundo',
       dw: 'rss.dw.com feed subdomain alongside dw.com — one Deutsche Welle newsroom',
+      ukrinform: 'ukrinform.net for the English edition, ukrinform.ua for the Ukrainian one — one national news agency',
       bloomberg: 'bloomberg.com plus tier-only "Bloomberg" and a Google News keyword feed',
       'hacker-news': 'hnrss.org plus news.ycombinator.com ("YC News" is the HN front page)',
       reuters: 'reuters.com plus tier-only "Reuters" and a Google News keyword feed',
@@ -394,6 +395,20 @@ describe('publisher-families resolution', () => {
     assert.equal(countPublisherFamilies('Reuters World'), 0);
     assert.deepEqual([...publisherFamiliesFor(undefined)], []);
   });
+});
+
+it('counts a direct publisher feed and its Google News origin as one publisher (#10937)', () => {
+  // These feeds left Google News, whose trusted <source> named the outlet.
+  // A Google News query elsewhere can still carry the same article under that
+  // origin name, so the direct label must resolve to the same family.
+  for (const [label, origin] of [
+    ['CNN World', 'CNN'],
+    ['Kyiv Independent', 'The Kyiv Independent'],
+    ['NV EN', 'The New Voice of Ukraine'],
+  ]) {
+    assert.equal(publisherFamilyFor(label), publisherFamilyFor(origin), label);
+    assert.equal(countPublisherFamilies([label, origin]), 1, label);
+  }
 });
 
 it('counts Matichon and Khaosod English as one publisher', () => {
