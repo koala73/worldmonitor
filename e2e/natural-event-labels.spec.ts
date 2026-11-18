@@ -111,16 +111,17 @@ for (const font of ['mono', 'system'] as const) {
     // Only icons take taps: label text and the marker column never do, and a
     // zoom-hidden layer takes no taps at all.
     const taps = await page.evaluate(() => {
-      const hits = (selector: string) => [...document.querySelectorAll<HTMLElement>(selector)].filter((el) => {
+      const hits = (selector: string, iconMayTake: boolean) => [...document.querySelectorAll<HTMLElement>(selector)].filter((el) => {
         const box = el.getBoundingClientRect();
         const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
         // An icon's 44px touch area may reach under the text; the text and the
         // marker column may not take the tap.
-        return box.width > 0 && !!hit?.closest('.nat-event-marker') && !hit.closest('.nat-event-icon');
+        return box.width > 0 && !!hit?.closest('.nat-event-marker') && !(iconMayTake && hit.closest('.nat-event-icon'));
       }).length;
-      const labels = hits('#mapOverlays .nat-event-texted .nat-event-label');
+      const labels = hits('#mapOverlays .nat-event-texted .nat-event-label', true);
       document.querySelector('.map-wrapper')!.setAttribute('data-layer-hidden-natural', 'true');
-      return { labels, hiddenIcons: hits('#mapOverlays .nat-event-icon') };
+      // Hidden, nothing in a marker may take the tap, the icon included.
+      return { labels, hiddenIcons: hits('#mapOverlays .nat-event-icon', false) };
     });
     expect(taps).toEqual({ labels: 0, hiddenIcons: 0 });
   });

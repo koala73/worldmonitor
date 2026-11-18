@@ -126,6 +126,8 @@ type CountryIntelBriefResult = {
 type PendingCountryBriefRequest = {
   token: number;
   owner: 'human' | 'agent';
+  /** Set by a map click or map menu: closing the brief returns focus here. */
+  returnTarget?: HTMLElement;
 };
 
 type CountryBriefOpenOptions = {
@@ -165,6 +167,7 @@ export class CountryIntelManager implements AppModule {
   private ctx: AppContext;
   private briefRequestToken = 0;
   private pendingBriefRequest: PendingCountryBriefRequest | null = null;
+  private mapReturnTarget: HTMLElement | null = null;
   private visibleBriefOwner: PendingCountryBriefRequest['owner'] | null = null;
   private briefStateListener: ((state: { visible: boolean; maximized: boolean }) => void) | null = null;
   private frameworkUnsubscribe: (() => void) | null = null;
@@ -299,7 +302,10 @@ export class CountryIntelManager implements AppModule {
     ) {
       return null;
     }
-    const request = { token: ++this.briefRequestToken, owner };
+    const request: PendingCountryBriefRequest = { token: ++this.briefRequestToken, owner };
+    // The map hands its focus target to the request it starts, so the target
+    // survives the brief module's first load and dies with the request.
+    if (owner === 'human' && this.mapReturnTarget) request.returnTarget = this.mapReturnTarget;
     this.abortCountryCoverage();
     this.pendingBriefRequest = request;
     return request;
@@ -330,28 +336,40 @@ export class CountryIntelManager implements AppModule {
    * click leaves focus on an earlier control (a layer toggle, or `main`), so
    * hand focus to the map first: closing the brief then returns to the map.
    */
-  private focusMapForBrief(): void {
+  private focusMapForBrief(): HTMLElement | null {
     const container = document.getElementById('mapContainer');
-    if (!container) return;
+    if (!container) return null;
     if (!container.hasAttribute('tabindex')) container.tabIndex = -1;
     // A plain div cannot carry a name; as a group it can, and -1 keeps it out of the Tab order.
     if (!container.hasAttribute('role')) container.setAttribute('role', 'group');
     if (!container.hasAttribute('aria-label')) container.setAttribute('aria-label', getPanelDisplayName('map'));
     container.focus({ preventScroll: true });
     this.ctx.countryBriefPage?.returnFocusTo?.(container);
+    return container;
+  }
+
+  /**
+   * Opens a brief from the map. The open claims its request before its first
+   * await, so the map target is offered only to that claim and never to a
+   * later request from another entry point.
+   */
+  private openFromMap(open: () => Promise<void>): void {
+    this.mapReturnTarget = this.focusMapForBrief();
+    try {
+      void open().catch((err) => this.handleCountryBriefOpenError(err));
+    } finally {
+      this.mapReturnTarget = null;
+    }
   }
 
   private async setupCountryIntel(): Promise<void> {
     if (!this.ctx.map) return;
     this.ctx.map.onCountryClicked((countryClick) => {
-      this.focusMapForBrief();
       if (countryClick.code && countryClick.name) {
         trackCountrySelected(countryClick.code, countryClick.name, 'map');
-        void this.openCountryBriefByCode(countryClick.code, countryClick.name)
-          .catch((err) => this.handleCountryBriefOpenError(err));
+        this.openFromMap(() => this.openCountryBriefByCode(countryClick.code!, countryClick.name!));
       } else {
-        void this.openCountryBrief(countryClick.lat, countryClick.lon)
-          .catch((err) => this.handleCountryBriefOpenError(err));
+        this.openFromMap(() => this.openCountryBrief(countryClick.lat, countryClick.lon));
       }
     });
 
@@ -360,20 +378,12 @@ export class CountryIntelManager implements AppModule {
       if (payload.countryCode && payload.countryName) {
         items.push({
           label: t('contextMenu.openCountryBrief'),
-          action: () => {
-            this.focusMapForBrief();
-            void this.openCountryBriefByCode(payload.countryCode!, payload.countryName!)
-              .catch((err) => this.handleCountryBriefOpenError(err));
-          },
+          action: () => this.openFromMap(() => this.openCountryBriefByCode(payload.countryCode!, payload.countryName!)),
         });
       } else {
         items.push({
           label: t('contextMenu.openCountryBrief'),
-          action: () => {
-            this.focusMapForBrief();
-            void this.openCountryBrief(payload.lat, payload.lon)
-              .catch((err) => this.handleCountryBriefOpenError(err));
-          },
+          action: () => this.openFromMap(() => this.openCountryBrief(payload.lat, payload.lon)),
         });
       }
       if (ORBITAL_WATCH_ENABLED) items.push({
@@ -500,6 +510,7 @@ export class CountryIntelManager implements AppModule {
       const page = this.ctx.countryBriefPage;
       if (!page) return;
       page.showLoading();
+      if (request.returnTarget) page.returnFocusTo?.(request.returnTarget);
 
       const localGeo = getCountryAtCoordinates(lat, lon);
       if (localGeo) {
@@ -569,6 +580,9 @@ export class CountryIntelManager implements AppModule {
         if (!showedLoading) page.showLoading();
         showedLoading = true;
       }
+      // Now that the brief is open, even on the module's first load, it takes
+      // the map as its return target, whatever took focus while it loaded.
+      if (request.returnTarget) page.returnFocusTo?.(request.returnTarget);
       if (opts?.trackAnalytics !== false) trackCountryBriefOpened(code);
 
       const canonicalName = TIER1_COUNTRIES[code] || CountryIntelManager.resolveCountryName(code);

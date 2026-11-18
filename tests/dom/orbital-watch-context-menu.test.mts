@@ -98,6 +98,48 @@ describe('a country brief opened from the map', () => {
     expect(focusedAtOpen).toEqual([container]);
     expect(returnFocusTo).toHaveBeenCalledWith(container);
   });
+
+  // First open: the brief module loads before the brief exists, and focus can
+  // move meanwhile. The map's request carries the target to the opened brief.
+  it('returns to the map after a first open, even if focus moved while the brief loaded', async () => {
+    const container = domWithLayerToggle();
+    const toggle = document.querySelector('button')!;
+    let clickHandler!: (payload: CountryClick) => void;
+    const map = { ...dashboardMap, onCountryClicked: (cb: (payload: CountryClick) => void) => { clickHandler = cb; } };
+    const ctx = { map, isDestroyed: false, countryBriefPage: null } as unknown as AppContext;
+    const manager = new CountryIntelManager(ctx);
+    const calls: string[] = [];
+    const page = {
+      showLoading: () => calls.push('showLoading'),
+      returnFocusTo: (target: HTMLElement) => calls.push(target === container ? 'returnFocusTo(map)' : 'returnFocusTo(other)'),
+      isVisible: () => false,
+      getCode: () => null,
+    };
+    Reflect.set(manager, 'ensureCountryBriefPage', async () => {
+      toggle.focus();
+      ctx.countryBriefPage = page as unknown as AppContext['countryBriefPage'];
+      return true;
+    });
+    Reflect.set(manager, 'getCountrySignals', () => new Promise(() => {}));
+    await Reflect.get(manager, 'setupCountryIntel').call(manager);
+    clickHandler({ lat: 61, lon: 99, code: 'RU', name: 'Russia' });
+    await vi.waitFor(() => expect(calls).toEqual(['showLoading', 'returnFocusTo(map)']));
+  });
+
+  it('offers the map target only to the request the map starts', async () => {
+    domWithLayerToggle();
+    let clickHandler!: (payload: CountryClick) => void;
+    const map = { ...dashboardMap, onCountryClicked: (cb: (payload: CountryClick) => void) => { clickHandler = cb; } };
+    const manager = new CountryIntelManager({ map, isDestroyed: false } as unknown as AppContext);
+    const claim = (owner: 'human' | 'agent') => Reflect.get(manager, 'claimBriefRequest').call(manager, owner) as { returnTarget?: HTMLElement };
+    const claimed: Array<{ returnTarget?: HTMLElement }> = [];
+    // An open that returns before claiming, as an invalid country code does.
+    Reflect.set(manager, 'openCountryBriefByCode', async () => {});
+    await Reflect.get(manager, 'setupCountryIntel').call(manager);
+    clickHandler({ lat: 61, lon: 99, code: 'XX', name: 'Nowhere' });
+    claimed.push(claim('human'));
+    expect(claimed[0]!.returnTarget).toBeUndefined();
+  });
 });
 
 // The real brief: it captures its return target when it opens, and a map click
@@ -162,6 +204,7 @@ describe('closing a country brief with Escape', () => {
     const control = document.createElement('button');
     document.getElementById('deep-dive-content')!.append(control);
     control.focus();
+    expect(document.activeElement).toBe(control);
     panel.show('Russia', 'RU', null, null);
     expect(control.isConnected).toBe(false);
     expect(document.activeElement).toBe(closeButton());
