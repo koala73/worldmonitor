@@ -46,6 +46,10 @@ describe('search command ranking', () => {
     expect(topCommands(`${'brief '.repeat(104)}china`, undefined, commands)[0]).toBe('panel:more');
   });
 
+  it.each(['Ivory Coast', "Côte d'Ivoire", "Cote d'Ivoire", 'Côte d’Ivoire'])('finds both Côte d’Ivoire commands for %s', (query) => {
+    expect(topCommands(query).slice(0, 2)).toEqual(['country-map:CI', 'country:CI']);
+  });
+
   it('ranks a whole-query prefix above a partial word match', () => {
     expect(topCommands('oil ne')[0]).toBe('panel:energy');
   });
