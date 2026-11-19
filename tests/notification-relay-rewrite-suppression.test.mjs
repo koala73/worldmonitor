@@ -81,7 +81,7 @@ function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStat
   const zsets = new Map();
   // Publisher history per exact headline, as the digest writes it.
   for (const [title, families] of Object.entries(coverage)) {
-    zsets.set(newsPublisherCoverageKey('full', title), new Map(families.map(f => [f, Date.now() - 60_000])));
+    zsets.set(newsPublisherCoverageKey(title), new Map(families.map(f => [f, Date.now() - 60_000])));
   }
   const sets = new Map();
   const calls = { sends: [], judge: [], embed: 0, anchorWrites: [] };
@@ -244,7 +244,7 @@ describe('reworded news alerts (#10916)', () => {
       await relay.processEvent(alert(CNN));
       // user-1's receipt ages past the window while the anchor itself is kept
       // alive (here: re-sent to someone else, which refreshes the key's TTL).
-      const anchorId = `full:${newsPublisherCoverageKey('full', CNN).split(':').pop()}`;
+      const anchorId = `full:${newsPublisherCoverageKey(CNN).split(':').pop()}`;
       const receipts = h.zsets.get(`news:alert-anchor-recipients:v1:${anchorId}`);
       assert.ok(receipts, 'receipts are kept per user with a time');
       receipts.set('user-1', Date.now() - 25 * 3_600_000);

@@ -71,7 +71,8 @@ function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs,
       if (item.publishedAt && item.publishedAt < oldestAllowedAt) continue;
       if (!candidates.has(item.title)) {
         candidates.set(item.title, {
-          source: item.source ?? variant,
+          // #10977: score on the publisher a topic feed carries, not the feed.
+          source: item.originPublisher || item.source || variant,
           publishedAt: item.publishedAt ?? now,
           corroborationCount: item.corroborationCount ?? 1,
           // #8398: relay-emitted rss_alert events must not carry a link

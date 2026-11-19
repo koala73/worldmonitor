@@ -136,6 +136,7 @@ describe('publisher-families map data', () => {
       pivot: 'one show across a tier-only label and a megaphone.fm feed',
       'sightline-media': 'defensenews.com and militarytimes.com — two Sightline Media Group titles, one owner',
       aljazeera: 'Arabic and English services of the Al Jazeera Media Network',
+      'al-arabiya': 'alarabiya.net Arabic feed and english.alarabiya.net English edition — one Al Arabiya newsroom',
       rferl: 'Language services of Radio Free Europe/Radio Liberty',
       'grupo-globo': 'g1.globo.com and oglobo.globo.com are Grupo Globo titles under one owner',
       'groupe-le-monde': 'Le Monde Libre controls Le Monde, Courrier international and Le Nouvel Obs: https://en.wikipedia.org/wiki/Groupe_Le_Monde',

@@ -29,6 +29,7 @@ function loadVariant(url, observedErrors, { timeoutMs, digests = [], pools = [],
     isStaleDigestReplay: () => false,
     xNewsAccounts: { collectXAlertCandidates: () => [] }, xState: { items: [] },
     upstashGet, upstashPipeline,
+    readObservedPublisherCounts: async () => new Map(),
     RELAY_SOURCE_TIERS: {}, buildClassifyCandidateMap: (digest, _x, _v, _n, _r, _f, pool) => { digests.push(digest); pools.push(pool); return new Map(); },
     ...extra,
   });
@@ -208,9 +209,9 @@ test('the revocation read keeps a multi-byte URL whole when the network splits i
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => { server.closeAllConnections(); server.close(); });
-  const from = source.indexOf('function upstashPipeline(commands)');
+  const from = source.indexOf('function upstashPipeline(commands');
   const context = vm.createContext({
-    URL, UPSTASH_ENABLED: true, UPSTASH_HTTP_MODULE: http, UPSTASH_REDIS_REST_TOKEN: 'fixture',
+    URL, setTimeout, clearTimeout, UPSTASH_ENABLED: true, UPSTASH_HTTP_MODULE: http, UPSTASH_REDIS_REST_TOKEN: 'fixture',
     UPSTASH_REDIS_REST_URL: `http://127.0.0.1:${server.address().port}`,
   });
   vm.runInContext(source.slice(from, source.indexOf('\n}\n', from) + 2), context);
@@ -229,7 +230,7 @@ test('a label write settles when Redis breaks off mid-response (#10978)', async 
   t.after(() => { server.closeAllConnections(); server.close(); });
   const from = source.indexOf('function upstashSet(key, value, ttlSeconds)');
   const context = vm.createContext({
-    URL, UPSTASH_ENABLED: true, UPSTASH_HTTP_MODULE: http, UPSTASH_REDIS_REST_TOKEN: 'fixture',
+    URL, setTimeout, clearTimeout, UPSTASH_ENABLED: true, UPSTASH_HTTP_MODULE: http, UPSTASH_REDIS_REST_TOKEN: 'fixture',
     UPSTASH_REDIS_REST_URL: `http://127.0.0.1:${server.address().port}`,
   });
   vm.runInContext(source.slice(from, source.indexOf('\n}\n', from) + 2), context);
