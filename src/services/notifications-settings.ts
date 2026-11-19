@@ -2142,6 +2142,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           return;
         }
         if (target.closest('#usWebhookSecretDone')) {
+          dismissSecretCopyFallback();
           reloadNotifSection();
           return;
         }

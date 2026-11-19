@@ -283,6 +283,29 @@ describe('notification settings webhook signing', () => {
     });
   });
 
+  it('removes the revealed signing secret when Done is clicked', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async () => { throw new Error('denied'); } },
+    });
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: () => false });
+    const container = await mount({ channels: [], alertRules: [] });
+    container.querySelector<HTMLButtonElement>('#usConnectWebhook')!.click();
+    container.querySelector<HTMLInputElement>('#usWebhookUrl')!.value = 'https://hooks.example.com/in';
+    container.querySelector<HTMLButtonElement>('#usWebhookSave')!.click();
+    await vi.waitFor(() => {
+      expect(container.querySelector('#usWebhookSecret')?.textContent).toBe(SECRET);
+    });
+    container.querySelector<HTMLButtonElement>('.us-notif-tg-copy-btn')!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector<HTMLTextAreaElement>('.wm-copy-fallback-input')?.value).toBe(SECRET);
+    });
+
+    channelMocks.getChannelsData.mockResolvedValue(webhookChannel(true));
+    container.querySelector<HTMLButtonElement>('#usWebhookSecretDone')!.click();
+    expect(document.querySelector('.wm-copy-fallback')).toBeNull();
+  });
+
   it('tells Telegram users to confirm in the bot', async () => {
     const container = await mount({ channels: [], alertRules: [] });
     container.querySelector<HTMLButtonElement>('#usConnectTelegram')!.click();
