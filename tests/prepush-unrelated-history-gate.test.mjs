@@ -128,6 +128,30 @@ describe('prepush-unrelated-history-gate.sh', () => {
     assert.equal(status, 0, out);
   });
 
+  it('does not call a related branch unrelated when a shallow clone hides the ancestor', () => {
+    const upstream = makeRepo({ withOriginMain: false });
+    for (const n of [1, 2, 3]) {
+      writeFileSync(join(upstream, 'main.txt'), `${n}\n`);
+      git(upstream, ['add', 'main.txt']);
+      git(upstream, ['commit', '--quiet', '-m', `main ${n}`]);
+    }
+    git(upstream, ['checkout', '--quiet', '-b', 'feature', 'HEAD~3']);
+    for (const n of [1, 2, 3]) {
+      writeFileSync(join(upstream, 'feature.txt'), `${n}\n`);
+      git(upstream, ['add', 'feature.txt']);
+      git(upstream, ['commit', '--quiet', '-m', `feature ${n}`]);
+    }
+    const clone = mkdtempSync(join(tmpdir(), 'wm-unrelated-gate-shallow-'));
+    fixtures.push(clone);
+    git(clone, ['clone', '--quiet', '--depth=1', '--no-single-branch', `file://${upstream}`, '.']);
+    const sha = git(clone, ['rev-parse', 'refs/remotes/origin/feature']);
+    assert.equal(git(clone, ['rev-parse', '--is-shallow-repository']), 'true');
+    const { status, out } = runGate(clone, [`refs/heads/feature ${sha} refs/heads/feature ${ZERO}`]);
+    assert.equal(status, 0, out);
+    assert.doesNotMatch(out, /shares no history/);
+    assert.match(out, /shallow/);
+  });
+
   it('honours WM_ALLOW_UNRELATED_PUSH=1', () => {
     const root = makeRepo();
     const sha = orphanCommit(root);

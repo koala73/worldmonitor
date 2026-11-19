@@ -13,8 +13,8 @@
 #
 # Input: the pre-push stdin, one line per ref:
 #   <local ref> <local sha> <remote ref> <remote sha>
-# Deletions and tags are skipped. When origin/main is not known locally the
-# gate cannot judge, so it passes. Escape hatch: WM_ALLOW_UNRELATED_PUSH=1.
+# Deletions and tags are skipped. When origin/main is not known locally, or a
+# shallow clone hides the shared ancestor, the gate cannot judge, so it passes. Escape hatch: WM_ALLOW_UNRELATED_PUSH=1.
 set -uo pipefail
 
 [ -n "${WM_ALLOW_UNRELATED_PUSH:-}" ] && exit 0
@@ -29,6 +29,12 @@ while read -r local_ref local_sha remote_ref _remote_sha; do
   case "$remote_ref" in refs/heads/*) ;; *) continue ;; esac
   git cat-file -e "${local_sha}^{commit}" 2>/dev/null || continue
   if ! git merge-base "$local_sha" "$BASE" >/dev/null 2>&1; then
+    # A shallow boundary acts as a root, so a related branch can look
+    # unrelated. Incomplete history cannot prove anything: warn and pass.
+    if [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
+      echo "UNRELATED-HISTORY GATE: shallow clone, cannot check $remote_ref against origin/main (run: git fetch --unshallow origin)."
+      continue
+    fi
     echo "UNRELATED-HISTORY GATE: refusing to push $local_ref -> $remote_ref"
     echo "  $local_sha shares no history with origin/main."
     fail=1
