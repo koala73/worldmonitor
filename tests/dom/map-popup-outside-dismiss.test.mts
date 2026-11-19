@@ -22,10 +22,14 @@ const setViewportWidth = (width: number) => {
   Object.defineProperty(window, 'innerWidth', { value: width, configurable: true, writable: true });
 };
 
+// Every popup a case opens, so its document listeners never leak into the next case.
+const openedPopups: MapPopup[] = [];
+
 beforeEach(() => {
   vi.useFakeTimers();
 });
 afterEach(() => {
+  openedPopups.splice(0).forEach((popup) => popup.hide());
   vi.restoreAllMocks();
   vi.useRealTimers();
   setViewportWidth(realInnerWidth);
@@ -55,6 +59,7 @@ function mountMarkerAndPopup(opener: Opener = 'click'): { popup: MapPopup; marke
   container.append(marker, outside);
   document.body.appendChild(container);
   const popup = new MapPopup(container);
+  openedPopups.push(popup);
   marker.addEventListener(opener, () => popup.show({ type: 'hotspot', data: HOTSPOT, x: 10, y: 10 }));
   return { popup, marker, outside };
 }
@@ -171,6 +176,7 @@ describe('route breakdown popup', () => {
     container.append(marker, outside);
     document.body.appendChild(container);
     const popup = new MapPopup(container);
+    openedPopups.push(popup);
     // deck.gl opens it from a pointerup on the route; the native click trails.
     marker.addEventListener('pointerup', () => popup.showRouteBreakdown({ id: 'r1', name: 'Test Route' } as never, [], 10, 10));
     return { outside, marker };
