@@ -41,6 +41,7 @@
       "scripts/lib/jev-classify-relay.cjs",
       "scripts/lib/llm-model-policy.cjs",
       "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/news-corroboration.mjs",
       "scripts/lib/news-story-key.cjs",
       "scripts/lib/notification-webhook-ssrf.cjs",
       "scripts/lib/occurrence-events.cjs",
@@ -153,7 +154,13 @@
       "shared/stablecoin-classifier.cjs",
       "shared/stablecoins.json",
       "shared/stocks.json",
-      "scripts/shared/pizzint-location.cjs"
+      "scripts/shared/pizzint-location.cjs",
+      "scripts/lib/brief-embedding.mjs",
+      "scripts/lib/brief-dedup-consts.mjs",
+      "scripts/lib/brief-dedup-jaccard.mjs",
+      "scripts/lib/_upstash-pipeline.mjs",
+      "scripts/lib/llm-chain.cjs",
+      "scripts/shared/publisher-families.js"
     ],
     "documentedAt": "Dockerfile.relay"
   },
