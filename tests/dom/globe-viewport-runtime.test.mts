@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('globe.gl', () => ({ default: vi.fn() }));
 vi.mock('@/services/country-geometry', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/country-geometry')>(),
-  getCountryBbox: () => [10, 20, 30, 40],
+  getCountryMapBbox: () => [10, 20, 30, 40],
 }));
 import { GlobeMap } from '@/components/GlobeMap';
 
