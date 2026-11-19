@@ -305,7 +305,10 @@ export class CountryIntelManager implements AppModule {
       || !this.isCurrentPresentation(presentation)) return;
 
     const { page, code } = presentation;
-    void this.openCountryBriefByCode(code, page.getName() ?? code, { trackAnalytics: false })
+    void this.openCountryBriefByCode(code, page.getName() ?? code, {
+      owner: this.visibleBriefOwner ?? 'human',
+      trackAnalytics: false,
+    })
       .catch(err => this.handleCountryBriefOpenError(err));
   }
 

@@ -231,7 +231,7 @@ describe('CountryIntelManager lazy coverage headlines', () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
   });
 
-  it('rechecks an open AI brief when the visitor signs in or upgrades', async () => {
+  it.each(['human', 'agent'] as const)('rechecks an open AI brief owned by %s without changing ownership', async (owner) => {
     let session: auth.AuthSession = { user: null, isPending: false };
     let notify = () => {};
     const authState = vi.spyOn(auth, 'getAuthState').mockImplementation(() => session);
@@ -246,11 +246,11 @@ describe('CountryIntelManager lazy coverage headlines', () => {
       if (session.user?.role === 'pro') return Response.json({ brief: 'AI assessment for this account.' });
       return Response.json({ error: session.user ? 'Upgrade required' : 'Authentication required' }, { status: session.user ? 403 : 401 });
     });
-    const { manager, open, briefUpdates } = createBriefHarness([], { realBriefFetch: true });
+    const { manager, briefUpdates } = createBriefHarness([], { realBriefFetch: true });
     Reflect.set(manager, 'setupCountryIntel', async () => {});
     try {
       await manager.init();
-      await open();
+      await manager.openCountryBriefByCode('US', 'United States', { owner, trackAnalytics: false });
       expect(briefUpdates.some(update => update.accessNotice === 'sign-in')).toBe(true);
 
       session = { user: { id: 'fixture-user', name: 'Test Account', email: 'test@example.test', role: 'free' }, isPending: false };
@@ -261,6 +261,9 @@ describe('CountryIntelManager lazy coverage headlines', () => {
       notify();
       await vi.waitFor(() => expect(briefUpdates[briefUpdates.length - 1]).toMatchObject({ brief: 'AI assessment for this account.' }));
       expect(briefUpdates[briefUpdates.length - 1]?.accessNotice).toBeUndefined();
+
+      await manager.openCountryBriefByCode('CA', 'Canada', { owner: 'agent', trackAnalytics: false });
+      expect(briefUpdates[briefUpdates.length - 1]?.code).toBe(owner === 'agent' ? 'CA' : 'US');
     } finally {
       manager.destroy();
       authState.mockRestore();
