@@ -315,7 +315,7 @@ export class MapPopup {
   private sheetTouchStartY: number | null = null;
   private sheetCurrentOffset = 0;
   private readonly mobileDismissThreshold = 96;
-  private outsideListenerTimeoutId: number | null = null;
+  private outsideDismissArmed = false;
   private mapPopupHistoryOpen: OverlayOpenHandle | null = null;
 
   constructor(container: HTMLElement) {
@@ -607,16 +607,7 @@ export class MapPopup {
       });
     }
 
-    // Click outside to close
-    if (this.outsideListenerTimeoutId !== null) {
-      window.clearTimeout(this.outsideListenerTimeoutId);
-    }
-    this.outsideListenerTimeoutId = window.setTimeout(() => {
-      document.addEventListener('click', this.handleOutsideClick);
-      document.addEventListener('touchstart', this.handleOutsideClick);
-      document.addEventListener('keydown', this.handleEscapeKey);
-      this.outsideListenerTimeoutId = null;
-    }, 0);
+    this.listenForOutsideDismiss();
   }
 
   public showRouteBreakdown(
@@ -692,12 +683,7 @@ export class MapPopup {
       if ((e.target as HTMLElement).closest('.popup-close')) this.hide();
     });
 
-    if (this.outsideListenerTimeoutId !== null) clearTimeout(this.outsideListenerTimeoutId);
-    this.outsideListenerTimeoutId = window.setTimeout(() => {
-      this.outsideListenerTimeoutId = null;
-      document.addEventListener('click', this.handleOutsideClick);
-      document.addEventListener('keydown', this.handleEscapeKey);
-    }, 200);
+    this.listenForOutsideDismiss();
   }
 
   /**
@@ -834,7 +820,45 @@ export class MapPopup {
     }
   }
 
+  /**
+   * Close on a tap, click or Escape outside the popup (#11022).
+   *
+   * The listeners go on now, not after a timer: Chromium runs queued input
+   * ahead of timers on a busy main thread, so a quick outside tap could arrive
+   * before a deferred listener existed and leave the popup open.
+   *
+   * The gesture that opened the popup can still be dispatching (show() runs in
+   * a marker's click handler) or have a trailing click to come (deck.gl opens
+   * on pointerup). Its press began before the popup opened, so an outside
+   * event counts only after a new press or key starts: the capture listeners
+   * arm the dismissal before the bubbling handler sees that event.
+   */
+  private listenForOutsideDismiss(): void {
+    this.outsideDismissArmed = false;
+    document.addEventListener('pointerdown', this.armOutsideDismiss, true);
+    document.addEventListener('touchstart', this.armOutsideDismiss, true);
+    document.addEventListener('keydown', this.armOutsideDismiss, true);
+    document.addEventListener('click', this.handleOutsideClick);
+    document.addEventListener('touchstart', this.handleOutsideClick);
+    document.addEventListener('keydown', this.handleEscapeKey);
+  }
+
+  private removeOutsideDismissListeners(): void {
+    this.outsideDismissArmed = false;
+    document.removeEventListener('pointerdown', this.armOutsideDismiss, true);
+    document.removeEventListener('touchstart', this.armOutsideDismiss, true);
+    document.removeEventListener('keydown', this.armOutsideDismiss, true);
+    document.removeEventListener('click', this.handleOutsideClick);
+    document.removeEventListener('touchstart', this.handleOutsideClick);
+    document.removeEventListener('keydown', this.handleEscapeKey);
+  }
+
+  private armOutsideDismiss = (): void => {
+    this.outsideDismissArmed = true;
+  };
+
   private handleOutsideClick = (e: Event) => {
+    if (!this.outsideDismissArmed) return;
     if (this.popup && !this.popup.contains(e.target as Node)) {
       this.hide();
     }
@@ -904,10 +928,7 @@ export class MapPopup {
     this.mapPopupHistoryOpen?.cancel();
     this.mapPopupHistoryOpen = null;
 
-    if (this.outsideListenerTimeoutId !== null) {
-      window.clearTimeout(this.outsideListenerTimeoutId);
-      this.outsideListenerTimeoutId = null;
-    }
+    this.removeOutsideDismissListeners();
 
     if (this.popup) {
       if (this.isMobileSheet && origin === 'control') overlayHistory.close('map-popup');
@@ -920,9 +941,6 @@ export class MapPopup {
       this.isMobileSheet = false;
       this.sheetTouchStartY = null;
       this.sheetCurrentOffset = 0;
-      document.removeEventListener('click', this.handleOutsideClick);
-      document.removeEventListener('touchstart', this.handleOutsideClick);
-      document.removeEventListener('keydown', this.handleEscapeKey);
       this.onClose?.();
     }
   }
