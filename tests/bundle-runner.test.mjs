@@ -2008,6 +2008,7 @@ test('an unreadable failure record leaves the stall cause unknown', async () => 
   );
   assert.equal(code, 1);
   assert.match(stderr, /\[VICTIM\] .* The cause is unknown: its failure record could not be read/);
+  assert.match(stderr, /0 failing at the source, 0 starved by the budget, 1 with an unknown cause\. Exiting non-zero\./);
   assert.doesNotMatch(stderr, /failing source, not starvation|starvation, not pressure/);
 });
 
@@ -2022,7 +2023,7 @@ test('an unreadable deferral record does not let a stall be blamed on the source
   assert.equal(code, 1);
   assert.match(stdout, /stalled:1/);
   assert.match(stderr, /\[VICTIM\] .* This may be starvation: its last admitted run at \S+ ended GRACEFUL_FAIL .*, but its deferral record could not be read/);
-  assert.match(stderr, /older than 2x their interval — starvation while the bundle reported progress/);
+  assert.match(stderr, /older than 2x their interval — 0 failing at the source, 0 starved by the budget, 1 with an unknown cause\. Exiting non-zero\./);
   assert.doesNotMatch(stderr, /failing source/);
 });
 

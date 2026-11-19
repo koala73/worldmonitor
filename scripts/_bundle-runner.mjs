@@ -878,7 +878,7 @@ export async function runBundle(label, sections, opts = {}) {
     return { failure, deferredAfter, deferralUnknown: false };
   }));
   await writeSectionOutcomes(label, outcomeWrites);
-  let failingAtSource = 0;
+  let failingAtSource = 0, unknownCause = 0;
   for (const [i, { section, ageMs }] of stalledSections.entries()) {
     const ageMin = Math.round(ageMs / 60_000);
     const intervalMin = Math.round(section.intervalMs / 60_000);
@@ -888,11 +888,13 @@ export async function runBundle(label, sections, opts = {}) {
       ? `its last admitted run at ${new Date(cause.failure.at).toISOString()} ended ${cause.failure.status} (${cause.failure.reason})`
       : '';
     if (cause?.historyUnread) {
+      unknownCause++;
       console.error(
         `${head}The cause is unknown: its failure record could not be read, so a failing source cannot be ruled out. `
         + 'Check both the upstream and the budget.',
       );
     } else if (cause?.deferralUnknown) {
+      unknownCause++;
       console.error(
         `${head}This may be starvation: ${lastRun}, but its deferral record could not be read, `
         + 'so a later budget loss cannot be ruled out. Check both the upstream and the budget.',
@@ -961,10 +963,11 @@ export async function runBundle(label, sections, opts = {}) {
     // exemption does not soften this: a 2x-interval-old deferral cannot be
     // produced by a single transient blip, so exiting non-zero here pages on
     // a genuinely stalled member, not on alert fatigue.
-    console.error(failingAtSource === 0
+    const unknownField = unknownCause > 0 ? `, ${unknownCause} with an unknown cause` : '';
+    console.error(failingAtSource === 0 && unknownCause === 0
       ? `[Bundle:${label}] ${stalled} deferred section(s) are older than ${STALL_AGE_INTERVAL_MULTIPLE}x their interval — starvation while the bundle reported progress. Exiting non-zero.`
       : `[Bundle:${label}] ${stalled} deferred section(s) are older than ${STALL_AGE_INTERVAL_MULTIPLE}x their interval — `
-        + `${failingAtSource} failing at the source, ${stalled - failingAtSource} starved by the budget. Exiting non-zero.`);
+        + `${failingAtSource} failing at the source, ${stalled - failingAtSource - unknownCause} starved by the budget${unknownField}. Exiting non-zero.`);
   } else if (failed === 0 && gracefulFailed > 0) {
     // Graceful-only run (transient skips, no hard failures): exit 0 so Railway
     // does not paint CRASHED and fire a spurious alert. Real staleness is caught
