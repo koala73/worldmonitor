@@ -89,11 +89,13 @@ curl -s https://worldmonitor.app/mcp \
 
 读取 OFAC SDN、OFAC Consolidated、加拿大 SEMA 制裁和国家压力评分，并可筛查美国综合筛查清单（CSL）中的六个出口管制清单：BIS 实体清单、拒绝人员清单、未核实清单、军事最终用户清单，以及国务院 ITAR 禁止清单和防扩散制裁清单。压力评分只统计 OFAC 和 SEMA；CSL 条目的 `et` 为 `unspecified`，其变更事件带有 `notice`（《联邦公报》引用）和 `url`。`screen` 支持名称、每个实体最多 10 个保留别名和精确 IMO 编号，返回 `score`、`matched_on`、`matched_text`；不要同时提供 `screen` 和 `changes_since_days`。`changes_since_days` 选择仅变更历史模式，返回指定天数内观测到的新增、移除和制裁项目变更。匹配结果仅供进一步向发布机构核实，不构成法律意见。每次调用权重为 1，不在请求时获取外部来源。
 
+筛查还涵盖国防部第 1260H 条清单、第 889 条涵盖的企业、FCC 涵盖清单及国土安全部 UFLPA 实体清单。省略 `country` 可匹配这些条目。默认列表上限为 30 条。在非历史模式下，可设定 `limit: 0` 取消该上限。响应大小限制仍然适用。
+
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `country` | string | 按 ISO 3166-1 alpha-2 或 alpha-3 代码或国家名称筛选制裁实体和压力评分。无法识别的输入返回 Invalid params。省略此筛选条件可包含没有国家代码的条目，包括四个美国受限方清单中的所有条目。 |
+| `country` | string | 按 ISO 3166-1 alpha-2 或 alpha-3 代码或国家名称筛选制裁实体和压力评分。无法识别的输入返回 Invalid params。省略此筛选条件可匹配没有国家代码的条目，包括四个美国受限方清单中的条目。 |
 | `entity_type` | string | 筛选为一种实体类型（不区分大小写的子串，例如 "vessel"、"aircraft"、"individual"、"entity"；CSL 行为 "unspecified"）。 |
 | `query` | string | 仅保留名称包含此文本的制裁实体（不区分大小写）。 |
 | `screen` | string | 按名称、别名或 IMO 编号筛选，长度 2-200 字符；实体筛选时不要提供 `changes_since_days`。 |

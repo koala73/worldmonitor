@@ -17,13 +17,16 @@ const now = Date.UTC(2026, 10, 18, 12);
 // Serves the fixture release the way GitHub does: latest/download lands on the asset host.
 function release({ files = {}, status = {} } = {}) {
   const seen = [];
+  const assetOrigin = 'https://release-assets.githubusercontent.com/';
   const fetchFn = async (url, init) => {
     seen.push({ url, init });
-    const name = url.slice(URP_RELEASE_URL.length);
+    if (url.startsWith(URP_RELEASE_URL)) {
+      return Response.redirect(assetOrigin + url.slice(URP_RELEASE_URL.length), 302);
+    }
+    assert.ok(url.startsWith(assetOrigin));
+    const name = url.slice(assetOrigin.length);
     if (status[name]) return new Response('unavailable', { status: status[name] });
-    const response = new Response(files[name] ?? file(name));
-    Object.defineProperty(response, 'url', { value: `https://release-assets.githubusercontent.com/${name}` });
-    return response;
+    return new Response(files[name] ?? file(name));
   };
   return { fetchFn, seen };
 }
@@ -94,7 +97,8 @@ describe('US restricted-party list ingest', () => {
     assert.ok(Object.values(lists).every(list => list.error === null && list.records.length > 0));
     assert.equal(seen[0].url, URP_MANIFEST_URL);
     assert.ok(!seen.some(({ url }) => url.includes('biosecure')));
-    assert.ok(seen.every(({ init }) => init.redirect === 'follow' && init.headers['User-Agent']));
+    assert.equal(seen.length, 10);
+    assert.ok(seen.every(({ init }) => init.redirect === 'manual' && init.headers['User-Agent'] && init.signal === seen[0].init.signal));
   });
 
   it('fails only the list whose file is unavailable or altered', async () => {
@@ -141,11 +145,31 @@ describe('US restricted-party list ingest', () => {
     }
   });
 
-  it('fails every list when the manifest is unavailable or served from another host, and never throws', async () => {
+  it('fails every list when the manifest is unavailable', async () => {
     const { fetchFn } = release({ status: { 'manifest.json': 503 } });
     assert.deepEqual(await ingestUsRestrictedEntries({ fetchFn, now }), { lists: {}, error: 'HTTP 503' });
-    const offHost = async () => Object.defineProperty(new Response('{}'), 'url', { value: 'https://example.com/manifest.json' });
-    assert.deepEqual(await ingestUsRestrictedEntries({ fetchFn: offHost, now }), { lists: {}, error: 'URP_UNEXPECTED_HOST' });
+  });
+
+  it('rejects off-host and non-HTTPS redirects before making another request', async () => {
+    for (const location of ['https://example.com/manifest.json', 'http://github.com/manifest.json']) {
+      const seen = [];
+      const fetchFn = async url => {
+        seen.push(url);
+        return Response.redirect(location, 302);
+      };
+      assert.deepEqual(await ingestUsRestrictedEntries({ fetchFn, now }), { lists: {}, error: 'URP_UNEXPECTED_HOST' });
+      assert.deepEqual(seen, [URP_MANIFEST_URL]);
+    }
+  });
+
+  it('caps redirects even when they stay on an allowed host', async () => {
+    let requests = 0;
+    const fetchFn = async () => {
+      requests += 1;
+      return new Response(null, { status: 302, headers: { Location: './manifest.json' } });
+    };
+    assert.deepEqual(await ingestUsRestrictedEntries({ fetchFn, now }), { lists: {}, error: 'URP_INVALID_REDIRECT' });
+    assert.equal(requests, 4);
   });
 
   it('skips the download when the deadline leaves too little time', async () => {

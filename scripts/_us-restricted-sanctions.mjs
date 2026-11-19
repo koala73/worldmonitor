@@ -33,6 +33,8 @@ const URP_HOSTS = new Set([
   new URL(URP_ASSET_ORIGIN).hostname,
   'objects.githubusercontent.com',
 ]);
+const URP_REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const URP_MAX_REDIRECTS = 3;
 const NOTICE_MAX = 200;
 const ALIAS_MAX = 10;
 
@@ -128,15 +130,21 @@ export function urpFetchBudget(deadlineAt, nowMs, timeoutMs = URP_TIMEOUT_MS) {
 }
 
 async function download(fetchFn, url, { accept, signal, maxBytes, observe = () => {} }) {
-  const response = await fetchFn(url, { headers: { Accept: accept, 'User-Agent': CHROME_UA }, redirect: 'follow', signal });
-  observe(response);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  if (response.url) {
-    const landed = new URL(response.url);
-    if (landed.protocol !== 'https:' || !URP_HOSTS.has(landed.hostname)) throw new Error('URP_UNEXPECTED_HOST');
+  let target = new URL(url);
+  for (let hop = 0; ; hop += 1) {
+    if (target.protocol !== 'https:' || !URP_HOSTS.has(target.hostname)) throw new Error('URP_UNEXPECTED_HOST');
+    const response = await fetchFn(target.href, { headers: { Accept: accept, 'User-Agent': CHROME_UA }, redirect: 'manual', signal });
+    observe(response);
+    if (response.ok) {
+      const { text: body } = await readResponseLimited(response, maxBytes);
+      return Buffer.from(body, 'utf8');
+    }
+    await response.body?.cancel();
+    if (!URP_REDIRECT_STATUSES.has(response.status)) throw new Error(`HTTP ${response.status}`);
+    const location = response.headers.get('Location');
+    if (!location || hop === URP_MAX_REDIRECTS) throw new Error('URP_INVALID_REDIRECT');
+    target = new URL(location, target);
   }
-  const { text: body } = await readResponseLimited(response, maxBytes);
-  return Buffer.from(body, 'utf8');
 }
 
 /**
