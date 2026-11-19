@@ -5,10 +5,11 @@
  * instead of moving the map. Ties fall back to catalogue order, so every query
  * a user is told to type must win on score.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { querySearchIndex } from '@/components/search-engine';
 import { getAllCommands, type Command } from '@/config/commands';
 import { CURATED_COUNTRIES } from '@/config/countries';
+import * as i18n from '@/services/i18n';
 
 function topCommands(rawInput: string, translatedLabel?: (command: Command) => string, commands = getAllCommands()): string[] {
   return querySearchIndex({
@@ -70,11 +71,19 @@ describe('search command ranking', () => {
     expect(topCommands('australia', undefined, translatedAustralia)).toContain('nav:oceania');
   });
 
-  it('ranks the United Kingdom and Ukraine above aliases for other countries when searching uk', () => {
-    const commands = topCommands('uk');
-    expect(commands.slice(0, 4)).toEqual(['country-map:GB', 'country:GB', 'country-map:UA', 'country:UA']);
-    expect(commands).not.toContain('country-map:RU');
-    expect(commands).not.toContain('country:RU');
+  it.each(['en', 'zh'])('ranks the United Kingdom and Ukraine above aliases for other countries in %s', (language) => {
+    const mock = vi.spyOn(i18n, 'getCurrentLanguageTag').mockReturnValue(language);
+    try {
+      const catalogue = getAllCommands();
+      const ukraine = catalogue.find(command => command.id === 'country-map:UA');
+      expect(ukraine?.label).toBe(language === 'zh' ? '乌克兰' : 'Ukraine');
+      const commands = topCommands('uk', undefined, catalogue);
+      expect(commands.slice(0, 4)).toEqual(['country-map:GB', 'country:GB', 'country-map:UA', 'country:UA']);
+      expect(commands).not.toContain('country-map:RU');
+      expect(commands).not.toContain('country:RU');
+    } finally {
+      mock.mockRestore();
+    }
   });
 
   it('ranks the map command first when the query is a country name', () => {

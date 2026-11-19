@@ -125,8 +125,10 @@ function matchCommands(
         subtitle: options.resolveCommandCategoryLabel(command),
       };
       matched.push(match);
-      const isCountry = command.category === 'country' || command.id.startsWith('country-map:');
-      const countryNamePrefix = Number(isCountry && command.label.toLowerCase().startsWith(query));
+      const { canonicalCountryName } = command;
+      const countryNamePrefix = Number(canonicalCountryName !== undefined && (
+        command.label.toLowerCase().startsWith(query) || canonicalCountryName.toLowerCase().startsWith(query)
+      ));
       coverage.set(match, { ...wordCoverage(terms), countryNamePrefix });
     }
   }
