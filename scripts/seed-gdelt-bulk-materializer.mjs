@@ -238,6 +238,8 @@ async function fetchBoundedBuffer(fetchImpl, url, maxBytes, { expectedStatus, di
       chunks.push(Buffer.from(chunk));
     }
   } catch (error) {
+    // Leaving the loop cancels the stream; a failed cancel must not hide the size error.
+    if (oversized) throw new Error(`GDELT bulk response exceeds ${maxBytes} bytes`);
     // A body that stops arriving (stalled socket, reset, the request timeout
     // firing mid-read) is the same outage as no answer at all.
     throw markPreservableFetchFailure(error);

@@ -1544,6 +1544,15 @@ describe('one unreachable GDELT tick rides on last-good data', () => {
       (error) => error.preservableFetchFailure !== true && /exceeds/.test(error.message));
   });
 
+  it('keeps a body over its size cap alarming when cancelling the stream fails', async () => {
+    const oversizedUncancellable = async () => new Response(new ReadableStream({
+      pull(controller) { controller.enqueue(new Uint8Array(70_000)); },
+      cancel() { return Promise.reject(new Error('cancel failed')); },
+    }), { status: 206 });
+    await assert.rejects(fetchGdeltBulkFiles({ fetchImpl: oversizedUncancellable }),
+      (error) => error.preservableFetchFailure !== true && /exceeds/.test(error.message));
+  });
+
   it('keeps an HTTP error that GDELT did answer alarming', async () => {
     const notFound = async () => new Response('missing', { status: 404 });
     await assert.rejects(fetchGdeltBulkFiles({ fetchImpl: notFound }),
