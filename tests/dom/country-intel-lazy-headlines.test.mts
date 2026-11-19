@@ -4,6 +4,7 @@ import type { AppContext } from '@/app/app-context';
 import type { CountryBriefSignals, NewsItem } from '@/types';
 import * as auth from '@/services/auth-state';
 import * as panelGating from '@/services/panel-gating';
+import * as entitlements from '@/services/entitlements';
 
 const coverageMocks = vi.hoisted(() => ({
   fetchCountryCoverage: vi.fn(),
@@ -269,6 +270,59 @@ describe('CountryIntelManager lazy coverage headlines', () => {
       authState.mockRestore();
       authSubscription.mockRestore();
       premiumAccess.mockRestore();
+    }
+  });
+
+  it.each(['role', 'tier'] as const)('rechecks an upgrade when the account %s changes under a local premium override', async (change) => {
+    let session: auth.AuthSession = {
+      user: { id: 'fixture-user', name: 'Test Account', email: 'test@example.test', role: 'free' },
+      isPending: false,
+    };
+    let tier = 0;
+    let notifyAuth = () => {};
+    let notifyEntitlement = () => {};
+    const authState = vi.spyOn(auth, 'getAuthState').mockImplementation(() => session);
+    const premiumAccess = vi.spyOn(panelGating, 'hasPremiumAccess').mockReturnValue(true);
+    const belief = vi.spyOn(panelGating, 'readClientEntitlementBelief').mockImplementation(() => ({
+      authRole: session.user?.role ?? null,
+      entitlementTier: tier,
+    }));
+    const authSubscription = vi.spyOn(auth, 'subscribeAuthState').mockImplementation(callback => {
+      notifyAuth = () => callback(session);
+      return () => {};
+    });
+    const entitlementSubscription = vi.spyOn(entitlements, 'onEntitlementChange').mockImplementation(callback => {
+      notifyEntitlement = () => callback(entitlements.getEntitlementState());
+      return () => {};
+    });
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
+    coverageMocks.premiumFetch.mockImplementation(async (url: string) => {
+      if (!url.includes('get-country-intel-brief')) throw new Error('offline');
+      if (tier > 0 || session.user?.role === 'pro') return Response.json({ brief: 'Assessment after upgrade.' });
+      return Response.json({ error: 'Upgrade required' }, { status: 403 });
+    });
+    const { manager, open, briefUpdates } = createBriefHarness([], { realBriefFetch: true });
+    Reflect.set(manager, 'setupCountryIntel', async () => {});
+    try {
+      await manager.init();
+      await open();
+      expect(briefUpdates[briefUpdates.length - 1]?.accessNotice).toBe('pro');
+
+      if (change === 'tier') {
+        tier = 1;
+        notifyEntitlement();
+      } else {
+        session = { ...session, user: { ...session.user!, role: 'pro' } };
+        notifyAuth();
+      }
+      await vi.waitFor(() => expect(briefUpdates[briefUpdates.length - 1]).toMatchObject({ brief: 'Assessment after upgrade.' }));
+    } finally {
+      manager.destroy();
+      authState.mockRestore();
+      authSubscription.mockRestore();
+      entitlementSubscription.mockRestore();
+      premiumAccess.mockRestore();
+      belief.mockRestore();
     }
   });
 

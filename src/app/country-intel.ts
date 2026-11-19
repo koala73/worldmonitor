@@ -225,13 +225,17 @@ export class CountryIntelManager implements AppModule {
       this.orbitalEvidenceUnsubscribe = watchOrbitalEvidence(() => this.ctx.map);
     }
     let previousAuth = getAuthState();
+    let previousBelief = readClientEntitlementBelief(previousAuth);
     this.lastHadPremium = hasPremiumAccess(previousAuth);
     const syncPremiumAccess = () => {
       const auth = getAuthState();
+      const belief = readClientEntitlementBelief(auth);
       const premium = hasPremiumAccess(auth);
       const accessChanged = auth.user?.id !== previousAuth.user?.id
-        || auth.isPending !== previousAuth.isPending || premium !== this.lastHadPremium;
+        || auth.isPending !== previousAuth.isPending || premium !== this.lastHadPremium
+        || belief.authRole !== previousBelief.authRole || belief.entitlementTier !== previousBelief.entitlementTier;
       previousAuth = auth;
+      previousBelief = belief;
       this.handlePremiumAccessTransition(premium);
 
       if (accessChanged) {
