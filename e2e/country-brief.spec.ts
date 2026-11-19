@@ -188,6 +188,36 @@ function marketsCard(page: Page) {
   });
 }
 
+for (const status of [401, 403]) {
+  test(`explains AI brief access after a ${status} response`, async ({ page, countryBrief }, testInfo) => {
+    void countryBrief;
+    await page.route('**/api/intelligence/v1/get-country-intel-brief?*', route => route.fulfill({
+      status, json: { error: status === 403 ? 'Upgrade required' : 'Authentication required' },
+    }));
+    await page.goto('/dashboard?country=UA');
+    await expectCountry(page);
+
+    const panel = page.locator('#country-deep-dive-panel');
+    const overview = panel.getByRole('button', { name: 'Overview', exact: true });
+    await panel.getByRole('button', { name: 'Summary', exact: true }).click();
+    await overview.click();
+    const brief = panel.locator('#cdp-section-assessment');
+    const action = status === 401
+      ? brief.getByRole('button', { name: 'Sign In', exact: true })
+      : brief.getByRole('link', { name: 'Upgrade to Pro', exact: true });
+    await expect(action).toBeVisible();
+    if (status === 403) await expect(action).toHaveAttribute('href', '/pro#pricing');
+    await expect(brief.locator('.cdp-summary-only.cdp-assessment-text')).toBeVisible();
+    await expect(brief).not.toContainText('Fallback');
+    await expect(brief.getByText('Read the full brief and sources', { exact: false })).toHaveCount(0);
+    await evidenceScreenshot(brief, { path: testInfo.outputPath(`ai-brief-access-${status}.png`) });
+
+    await panel.getByRole('button', { name: 'Full brief', exact: true }).click();
+    await overview.click();
+    await expect(action).toBeVisible();
+  });
+}
+
 async function expectCountry(page: Page) {
   const panel = page.locator('#country-deep-dive-panel');
   await expect(panel).toHaveAttribute('aria-hidden', 'false');

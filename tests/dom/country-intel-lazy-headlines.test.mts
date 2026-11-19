@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppContext } from '@/app/app-context';
 import type { CountryBriefSignals, NewsItem } from '@/types';
+import * as auth from '@/services/auth-state';
+import * as panelGating from '@/services/panel-gating';
+import * as entitlements from '@/services/entitlements';
 
 const coverageMocks = vi.hoisted(() => ({
   fetchCountryCoverage: vi.fn(),
@@ -150,6 +153,7 @@ function createBriefHarness(eagerNews: NewsItem[], options: { realBriefFetch?: b
   const page = {
     onClose: (callback: () => void) => { close = callback; },
     getCode: () => activeCode,
+    getName: () => 'United States',
     isVisible: () => visible,
     hide: () => {
       visible = false;
@@ -208,6 +212,7 @@ function createBriefHarness(eagerNews: NewsItem[], options: { realBriefFetch?: b
   Reflect.set(manager, 'fetchCommodityVulnerability', () => {});
   Reflect.set(manager, 'mountCountryTimeline', () => {});
   return {
+    manager,
     newsUpdates,
     briefUpdates,
     bindClose: () => Reflect.get(manager, 'createCountryBriefPage').call(manager),
@@ -225,6 +230,158 @@ describe('CountryIntelManager lazy coverage headlines', () => {
     coverageMocks.localSummaryAvailable = false;
     coverageMocks.summarize.mockReset();
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+  });
+
+  it.each(['human', 'agent'] as const)('rechecks an open AI brief owned by %s without changing ownership', async (owner) => {
+    let session: auth.AuthSession = { user: null, isPending: false };
+    let notify = () => {};
+    const authState = vi.spyOn(auth, 'getAuthState').mockImplementation(() => session);
+    const premiumAccess = vi.spyOn(panelGating, 'hasPremiumAccess').mockImplementation(() => session.user?.role === 'pro');
+    const authSubscription = vi.spyOn(auth, 'subscribeAuthState').mockImplementation(callback => {
+      notify = () => callback(session);
+      return () => {};
+    });
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
+    coverageMocks.premiumFetch.mockImplementation(async (url: string) => {
+      if (!url.includes('get-country-intel-brief')) throw new Error('offline');
+      if (session.user?.role === 'pro') return Response.json({ brief: 'AI assessment for this account.' });
+      return Response.json({ error: session.user ? 'Upgrade required' : 'Authentication required' }, { status: session.user ? 403 : 401 });
+    });
+    const { manager, briefUpdates } = createBriefHarness([], { realBriefFetch: true });
+    Reflect.set(manager, 'setupCountryIntel', async () => {});
+    try {
+      await manager.init();
+      await manager.openCountryBriefByCode('US', 'United States', { owner, trackAnalytics: false });
+      expect(briefUpdates.some(update => update.accessNotice === 'sign-in')).toBe(true);
+
+      session = { user: { id: 'fixture-user', name: 'Test Account', email: 'test@example.test', role: 'free' }, isPending: false };
+      notify();
+      await vi.waitFor(() => expect(briefUpdates[briefUpdates.length - 1]?.accessNotice).toBe('pro'));
+
+      session = { user: { ...session.user!, role: 'pro' }, isPending: false };
+      notify();
+      await vi.waitFor(() => expect(briefUpdates[briefUpdates.length - 1]).toMatchObject({ brief: 'AI assessment for this account.' }));
+      expect(briefUpdates[briefUpdates.length - 1]?.accessNotice).toBeUndefined();
+
+      await manager.openCountryBriefByCode('CA', 'Canada', { owner: 'agent', trackAnalytics: false });
+      expect(briefUpdates[briefUpdates.length - 1]?.code).toBe(owner === 'agent' ? 'CA' : 'US');
+    } finally {
+      manager.destroy();
+      authState.mockRestore();
+      authSubscription.mockRestore();
+      premiumAccess.mockRestore();
+    }
+  });
+
+  it.each(['role', 'tier'] as const)('rechecks an upgrade when the account %s changes under a local premium override', async (change) => {
+    let session: auth.AuthSession = {
+      user: { id: 'fixture-user', name: 'Test Account', email: 'test@example.test', role: 'free' },
+      isPending: false,
+    };
+    let tier = 0;
+    let notifyAuth = () => {};
+    let notifyEntitlement = () => {};
+    const authState = vi.spyOn(auth, 'getAuthState').mockImplementation(() => session);
+    const premiumAccess = vi.spyOn(panelGating, 'hasPremiumAccess').mockReturnValue(true);
+    const belief = vi.spyOn(panelGating, 'readClientEntitlementBelief').mockImplementation(() => ({
+      authRole: session.user?.role ?? null,
+      entitlementTier: tier,
+    }));
+    const authSubscription = vi.spyOn(auth, 'subscribeAuthState').mockImplementation(callback => {
+      notifyAuth = () => callback(session);
+      return () => {};
+    });
+    const entitlementSubscription = vi.spyOn(entitlements, 'onEntitlementChange').mockImplementation(callback => {
+      notifyEntitlement = () => callback(entitlements.getEntitlementState());
+      return () => {};
+    });
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
+    coverageMocks.premiumFetch.mockImplementation(async (url: string) => {
+      if (!url.includes('get-country-intel-brief')) throw new Error('offline');
+      if (tier > 0 || session.user?.role === 'pro') return Response.json({ brief: 'Assessment after upgrade.' });
+      return Response.json({ error: 'Upgrade required' }, { status: 403 });
+    });
+    const { manager, open, briefUpdates } = createBriefHarness([], { realBriefFetch: true });
+    Reflect.set(manager, 'setupCountryIntel', async () => {});
+    try {
+      await manager.init();
+      await open();
+      expect(briefUpdates[briefUpdates.length - 1]?.accessNotice).toBe('pro');
+
+      if (change === 'tier') {
+        tier = 1;
+        notifyEntitlement();
+      } else {
+        session = { ...session, user: { ...session.user!, role: 'pro' } };
+        notifyAuth();
+      }
+      await vi.waitFor(() => expect(briefUpdates[briefUpdates.length - 1]).toMatchObject({ brief: 'Assessment after upgrade.' }));
+    } finally {
+      manager.destroy();
+      authState.mockRestore();
+      authSubscription.mockRestore();
+      entitlementSubscription.mockRestore();
+      premiumAccess.mockRestore();
+      belief.mockRestore();
+    }
+  });
+
+  it('rechecks a denial when the visitor signed in during the brief request', async () => {
+    let session: auth.AuthSession = { user: null, isPending: false };
+    let notify = () => {};
+    const authState = vi.spyOn(auth, 'getAuthState').mockImplementation(() => session);
+    const premiumAccess = vi.spyOn(panelGating, 'hasPremiumAccess').mockImplementation(() => session.user?.role === 'pro');
+    const authSubscription = vi.spyOn(auth, 'subscribeAuthState').mockImplementation(callback => {
+      notify = () => callback(session);
+      return () => {};
+    });
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
+    let denyRequest = (_response: Response) => {};
+    const denied = new Promise<Response>(resolve => { denyRequest = resolve; });
+    coverageMocks.premiumFetch.mockImplementation(async (url: string) => {
+      if (!url.includes('get-country-intel-brief')) throw new Error('offline');
+      return session.user ? Response.json({ brief: 'Assessment after sign-in.' }) : denied;
+    });
+    const { manager, open, briefUpdates } = createBriefHarness([], { realBriefFetch: true });
+    Reflect.set(manager, 'setupCountryIntel', async () => {});
+    try {
+      await manager.init();
+      const pendingOpen = open();
+      const briefRequests = () => coverageMocks.premiumFetch.mock.calls.filter(
+        ([url]) => String(url).includes('get-country-intel-brief'),
+      );
+      await vi.waitFor(() => expect(briefRequests()).toHaveLength(1));
+
+      session = { user: { id: 'fixture-user', name: 'Test Account', email: 'test@example.test', role: 'pro' }, isPending: false };
+      notify();
+      denyRequest(Response.json({ error: 'Authentication required' }, { status: 401 }));
+      await pendingOpen;
+
+      await vi.waitFor(() => expect(briefUpdates[briefUpdates.length - 1]).toMatchObject({ brief: 'Assessment after sign-in.' }));
+      expect(briefRequests()).toHaveLength(2);
+    } finally {
+      manager.destroy();
+      authState.mockRestore();
+      authSubscription.mockRestore();
+      premiumAccess.mockRestore();
+    }
+  });
+
+  it('uses a neutral unavailable notice after a signed-in session receives a 401', async () => {
+    const authState = vi.spyOn(auth, 'getAuthState').mockReturnValue({
+      user: { id: 'fixture-user', name: 'Test Account', email: 'test@example.test', role: 'pro' }, isPending: false,
+    });
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
+    coverageMocks.premiumFetch.mockImplementation(async () => Response.json({}, { status: 401 }));
+    const harness = createBriefHarness([], { realBriefFetch: true });
+    try {
+      await harness.open();
+      expect(harness.briefUpdates.some(update => update.accessNotice === 'unavailable')).toBe(true);
+      expect(harness.briefUpdates.some(update => update.accessNotice === 'sign-in')).toBe(false);
+    } finally {
+      harness.manager.destroy();
+      authState.mockRestore();
+    }
   });
 
   it('uses the shared default assessment without browser grounding and preserves its accepted timestamp', async () => {
@@ -281,6 +438,41 @@ describe('CountryIntelManager lazy coverage headlines', () => {
       brief: 'Local summary of the two United States headlines.', fallback: true,
       sources: headlines.map(item => expect.objectContaining({ url: item.link })),
     })));
+  });
+
+  it.each(['fetch', 'summary'])('ignores a superseded brief when its %s rejects', async (phase) => {
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
+    coverageMocks.localSummaryAvailable = true;
+    let rejectOldRequest = (_reason: Error) => {};
+    const oldRequest = new Promise<never>((_resolve, reject) => { rejectOldRequest = reject; });
+    const beforeReopen = vi.fn();
+    let requestCount = 0;
+    coverageMocks.premiumFetch.mockImplementation(async (input: unknown) => {
+      if (!String(input).includes('/get-country-intel-brief?')) throw new Error('offline');
+      if (++requestCount > 1) return Response.json({ brief: 'Current assessment.' });
+      if (phase === 'summary') return Response.json({}, { status: 401 });
+      beforeReopen();
+      return oldRequest;
+    });
+    coverageMocks.summarize.mockImplementation(async () => {
+      beforeReopen();
+      return oldRequest;
+    });
+    const headlines = [newsItem('United States energy policy'), newsItem('United States trade policy')];
+    const harness = createBriefHarness(headlines, { realBriefFetch: true });
+    try {
+      const staleOpen = harness.open();
+      await vi.waitFor(() => expect(beforeReopen).toHaveBeenCalledOnce());
+      await harness.open();
+      const updateCount = harness.briefUpdates.length;
+      expect(harness.briefUpdates[updateCount - 1]).toMatchObject({ brief: 'Current assessment.' });
+
+      rejectOldRequest(new Error('old request failed'));
+      await staleOpen;
+      expect(harness.briefUpdates).toHaveLength(updateCount);
+    } finally {
+      harness.manager.destroy();
+    }
   });
 
   it('keeps coverage alive on close but aborts it when another brief opens', async () => {
