@@ -140,9 +140,25 @@ describe('classify cache key is the story, not the title string (#10976)', () =>
 
   it('keeps a question in any script apart from the report', async () => {
     const plain = await buildClassifyCacheKey('Iran closes Strait of Hormuz');
-    for (const question of ['Iran closes Strait of Hormuz\uff1f', 'Iran closes Strait of Hormuz\u061f', 'Iran closes Strait of Hormuz?)']) {
+    for (const question of ['Iran closes Strait of Hormuz\uff1f', 'Iran closes Strait of Hormuz\u061f', 'Iran closes Strait of Hormuz?)', 'Iran closes Strait of Hormuz\u203d']) {
       assert.notEqual(await buildClassifyCacheKey(question), plain, question);
     }
+    // Greek asks with the erotimatiko, written ';' or U+037E.
+    const greek = '\u03a4\u03bf \u0399\u03c1\u03ac\u03bd \u03b5\u03c0\u03b9\u03c4\u03ad\u03b8\u03b7\u03ba\u03b5 \u03c3\u03c4\u03bf \u03b4\u03b5\u03be\u03b1\u03bc\u03b5\u03bd\u03cc\u03c0\u03bb\u03bf\u03b9\u03bf';
+    for (const mark of [';', '\u037e']) {
+      assert.notEqual(await buildClassifyCacheKey(greek + mark), await buildClassifyCacheKey(greek), mark);
+    }
+  });
+
+  it('reads a dotted abbreviation as one word', async () => {
+    assert.equal(
+      await buildClassifyCacheKey('U.S. says Iran closes Strait of Hormuz'),
+      await buildClassifyCacheKey('US says Iran closes Strait of Hormuz'),
+    );
+    assert.equal(
+      await buildClassifyCacheKey('U.S.-Iran talks collapse over Strait of Hormuz'),
+      await buildClassifyCacheKey('US-Iran talks collapse over Strait of Hormuz'),
+    );
   });
 
   it('keeps caller keys apart from short story keys', async () => {

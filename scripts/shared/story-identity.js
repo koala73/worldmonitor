@@ -645,7 +645,11 @@ export function clusterTexts(texts, opts = {}) {
 
 // Delivery and cross-build coverage must agree on punctuation and attribution.
 const NORMALIZED_TITLE_SCAN = 2_000;
-const CLASSIFY_QUESTION_RE = /[\u003F\u061F\uFF1F\u2E2E\u2047\u2048\u2049\u2753\uFE16\uFE56][^\p{L}\p{N}]*(?:[-–—|][^?\u061F\uFF1F]*)?$/u;
+// Question marks across scripts, Greek ';' (U+037E) included. A false match
+// only gives a headline its own label; a miss merges a question into the report.
+const CLASSIFY_QUESTION_RE = /[\u003F\u003B\u037E\u055E\u061F\u0705\u1367\u203D\u2047\u2048\u2049\u2753\u2E2E\uA60F\uFE16\uFE56\uFF1F][^\p{L}\p{N}]*(?:[-–—|][^?\u061F\uFF1F]*)?$/u;
+// U.S. and U.K. are one word, as US and UK are.
+const DOTTED_ABBREVIATION_RE = /(?<![\p{L}\p{N}])(?:\p{L}\.){2,}/gu;
 // Anything between letters that is not a letter, number, space or apostrophe
 // is a word break (re-sign, re\u00adsign, re/sign are not resign). Enumerating
 // separators always misses one; an apostrophe stays inside its word (UAE's).
@@ -695,7 +699,8 @@ export function classifyCacheIdentity(title) {
   const rest = stripOutletCredits(lower);
   if (rest === null) return lower;
   // Split in-word dashes after the credits are gone, so "Hormuz—Reuters" still strips.
-  const story = normalizeNewsStoryTitle(rest.replace(IN_WORD_HYPHEN_RE, ' '));
+  const words = rest.replace(DOTTED_ABBREVIATION_RE, (run) => run.replaceAll('.', ''));
+  const story = normalizeNewsStoryTitle(words.replace(IN_WORD_HYPHEN_RE, ' '));
   if (story.split(' ').length < 4) return lower;
   // The question test backtracks over runs of marks, so it reads a bounded tail.
   return story + (CLASSIFY_QUESTION_RE.test(title.slice(-NORMALIZED_TITLE_SCAN)) ? ' ?' : '');
