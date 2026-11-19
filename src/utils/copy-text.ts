@@ -8,13 +8,25 @@ export interface CopyTextOptions {
   writeText?: ((text: string) => Promise<void>) | null;
   /** Mark the manual field so settings can remove a revealed API or embed key. */
   secret?: boolean;
+  /** When this returns false, a failed copy does not open the manual field. */
+  retain?: () => boolean;
 }
 
 export async function copyText(text: string, options: CopyTextOptions = {}): Promise<boolean> {
   const write = options.writeText === null ? null : readWrite(options);
   if (write && await invokeWrite(write, text)) return true;
   if (copyWithExecCommand(text)) return true;
+  if (!mayReveal(options)) return false;
   return presentManualCopy(text, options);
+}
+
+function mayReveal(options: CopyTextOptions): boolean {
+  if (!options.retain) return true;
+  try {
+    return options.retain();
+  } catch {
+    return false;
+  }
 }
 
 function readWrite(options: CopyTextOptions): ((text: string) => Promise<void>) | null {

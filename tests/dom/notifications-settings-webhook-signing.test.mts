@@ -306,6 +306,30 @@ describe('notification settings webhook signing', () => {
     expect(document.querySelector('.wm-copy-fallback')).toBeNull();
   });
 
+  it('does not reveal the signing secret when copy fails after Done', async () => {
+    let rejectWrite: (error: Error) => void = () => {};
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: () => new Promise<void>((_resolve, reject) => { rejectWrite = reject; }) },
+    });
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: () => false });
+    const container = await mount({ channels: [], alertRules: [] });
+    container.querySelector<HTMLButtonElement>('#usConnectWebhook')!.click();
+    container.querySelector<HTMLInputElement>('#usWebhookUrl')!.value = 'https://hooks.example.com/in';
+    container.querySelector<HTMLButtonElement>('#usWebhookSave')!.click();
+    await vi.waitFor(() => {
+      expect(container.querySelector('.us-notif-tg-copy-btn')).not.toBeNull();
+    });
+
+    container.querySelector<HTMLButtonElement>('.us-notif-tg-copy-btn')!.click();
+    channelMocks.getChannelsData.mockResolvedValue(webhookChannel(true));
+    container.querySelector<HTMLButtonElement>('#usWebhookSecretDone')!.click();
+    rejectWrite(new Error('denied'));
+    await vi.waitFor(() => {
+      expect(document.querySelector('.wm-copy-fallback')).toBeNull();
+    });
+  });
+
   it('tells Telegram users to confirm in the bot', async () => {
     const container = await mount({ channels: [], alertRules: [] });
     container.querySelector<HTMLButtonElement>('#usConnectTelegram')!.click();

@@ -354,6 +354,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // until the conversion's digest write SUCCEEDS, so a failed rule save or
       // digest write leaves it for a later rule save to retry; the in-flight
       // flag keeps concurrent rule saves from double-sending the conversion.
+      let secretCopyGeneration = 0;
       let legacyDigestPending = false;
       let legacyDigestConversionInFlight = false;
 
@@ -1855,11 +1856,16 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             btn.textContent = 'Copied!';
             setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
           };
-          void copyText(cmd, { secret: true }).then((copied) => {
+          const generation = secretCopyGeneration;
+          void copyText(cmd, {
+            secret: true,
+            retain: () => !signal.aborted && generation === secretCopyGeneration,
+          }).then((copied) => {
             if (signal.aborted) {
               dismissSecretCopyFallback();
               return;
             }
+            if (generation !== secretCopyGeneration) return;
             if (copied) markCopied();
           });
           return;
@@ -2142,6 +2148,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           return;
         }
         if (target.closest('#usWebhookSecretDone')) {
+          secretCopyGeneration += 1;
           dismissSecretCopyFallback();
           reloadNotifSection();
           return;

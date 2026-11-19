@@ -534,7 +534,7 @@ export class UnifiedSettings {
         if (key) {
           this.copyOwnedSecret(
             key,
-            () => this.overlay.classList.contains('active') && this.newlyCreatedKey === key,
+            () => this.overlay.isConnected && this.overlay.classList.contains('active') && this.newlyCreatedKey === key,
             '.api-keys-copy-btn',
           );
         }
@@ -557,7 +557,7 @@ export class UnifiedSettings {
         if (key) {
           this.copyOwnedSecret(
             key,
-            () => this.overlay.classList.contains('active') && this.newlyCreatedEmbedKey === key,
+            () => this.overlay.isConnected && this.overlay.classList.contains('active') && this.newlyCreatedEmbedKey === key,
             '.embed-keys-copy-btn',
           );
         }

@@ -145,6 +145,15 @@ describe('copyText', () => {
     assert.equal(fallbackValue(), undefined);
   });
 
+  it('skips the manual field when retain returns false', async () => {
+    install('missing', 'missing');
+
+    const copied = await copyText(SHARE_URL, { retain: () => false });
+
+    assert.equal(copied, false);
+    assert.equal(fallbackValue(), undefined);
+  });
+
   it('keeps line breaks in the manual copy field', async () => {
     install('missing', 'missing');
     const text = 'Use the tool.\nCountries: Ukraine (UA).';
