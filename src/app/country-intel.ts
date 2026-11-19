@@ -159,6 +159,7 @@ type CountryPresentation = {
   refreshGeneration: number;
   signalDetailsPending: boolean;
   briefAccessNotice?: CountryIntelData['accessNotice'];
+  briefAccessRevision?: number;
 };
 
 const AVIATION_SIGNAL_TIMEOUT_MS = 2500;
@@ -189,6 +190,7 @@ export class CountryIntelManager implements AppModule {
   private orbitalMapFocusUnsubscribe: (() => void) | null = null;
   private entitlementUnsubscribe: (() => void) | null = null;
   private lastHadPremium = false;
+  private briefAccessRevision = 0;
   private currentCountryPresentation: CountryPresentation | null = null;
   private countryController: CountryBriefController | null = null;
   private qualifiedSource = createWebsiteCountryBriefSource();
@@ -233,11 +235,9 @@ export class CountryIntelManager implements AppModule {
       previousAuth = auth;
       this.handlePremiumAccessTransition(premium);
 
-      const presentation = this.currentCountryPresentation;
-      if (accessChanged && presentation?.briefAccessNotice && !this.pendingBriefRequest && this.isCurrentPresentation(presentation)) {
-        const { page, code } = presentation;
-        void this.openCountryBriefByCode(code, page.getName() ?? code, { trackAnalytics: false })
-          .catch(err => this.handleCountryBriefOpenError(err));
+      if (accessChanged) {
+        this.briefAccessRevision++;
+        this.refreshBriefForAccessChange();
       }
     };
     this.authUnsubscribe = subscribeAuthState(syncPremiumAccess);
@@ -297,6 +297,17 @@ export class CountryIntelManager implements AppModule {
     }
     this.getCountryController(page).refreshPremium();
     this.refreshOpenBrief();
+  }
+
+  private refreshBriefForAccessChange(): void {
+    const presentation = this.currentCountryPresentation;
+    if (!presentation?.briefAccessNotice || this.pendingBriefRequest
+      || presentation.briefAccessRevision === this.briefAccessRevision
+      || !this.isCurrentPresentation(presentation)) return;
+
+    const { page, code } = presentation;
+    void this.openCountryBriefByCode(code, page.getName() ?? code, { trackAnalytics: false })
+      .catch(err => this.handleCountryBriefOpenError(err));
   }
 
   private handleCountryBriefOpenError(err: unknown): void {
@@ -846,6 +857,8 @@ export class CountryIntelManager implements AppModule {
           }
 
           const countryFw = getActiveFrameworkForPanel('country-brief');
+          // A denial can arrive after a sign-in or an entitlement change.
+          presentation.briefAccessRevision = this.briefAccessRevision;
           briefResult = await this.fetchCountryIntelBrief(code, contextSnapshot, countryFw?.systemPromptAppend ?? '');
           if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
           briefText = briefResult.brief;
@@ -937,6 +950,7 @@ export class CountryIntelManager implements AppModule {
       }
     } finally {
       this.clearBriefRequest(request);
+      if (this.isCurrentBriefRequest(request) && !opts?.signal?.aborted) this.refreshBriefForAccessChange();
     }
   }
 

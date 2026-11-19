@@ -269,6 +269,47 @@ describe('CountryIntelManager lazy coverage headlines', () => {
     }
   });
 
+  it('rechecks a denial when the visitor signed in during the brief request', async () => {
+    let session: auth.AuthSession = { user: null, isPending: false };
+    let notify = () => {};
+    const authState = vi.spyOn(auth, 'getAuthState').mockImplementation(() => session);
+    const premiumAccess = vi.spyOn(panelGating, 'hasPremiumAccess').mockImplementation(() => session.user?.role === 'pro');
+    const authSubscription = vi.spyOn(auth, 'subscribeAuthState').mockImplementation(callback => {
+      notify = () => callback(session);
+      return () => {};
+    });
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
+    let denyRequest = (_response: Response) => {};
+    const denied = new Promise<Response>(resolve => { denyRequest = resolve; });
+    coverageMocks.premiumFetch.mockImplementation(async (url: string) => {
+      if (!url.includes('get-country-intel-brief')) throw new Error('offline');
+      return session.user ? Response.json({ brief: 'Assessment after sign-in.' }) : denied;
+    });
+    const { manager, open, briefUpdates } = createBriefHarness([], { realBriefFetch: true });
+    Reflect.set(manager, 'setupCountryIntel', async () => {});
+    try {
+      await manager.init();
+      const pendingOpen = open();
+      const briefRequests = () => coverageMocks.premiumFetch.mock.calls.filter(
+        ([url]) => String(url).includes('get-country-intel-brief'),
+      );
+      await vi.waitFor(() => expect(briefRequests()).toHaveLength(1));
+
+      session = { user: { id: 'fixture-user', name: 'Test Account', email: 'test@example.test', role: 'pro' }, isPending: false };
+      notify();
+      denyRequest(Response.json({ error: 'Authentication required' }, { status: 401 }));
+      await pendingOpen;
+
+      await vi.waitFor(() => expect(briefUpdates[briefUpdates.length - 1]).toMatchObject({ brief: 'Assessment after sign-in.' }));
+      expect(briefRequests()).toHaveLength(2);
+    } finally {
+      manager.destroy();
+      authState.mockRestore();
+      authSubscription.mockRestore();
+      premiumAccess.mockRestore();
+    }
+  });
+
   it('uses a neutral unavailable notice after a signed-in session receives a 401', async () => {
     const authState = vi.spyOn(auth, 'getAuthState').mockReturnValue({
       user: { id: 'fixture-user', name: 'Test Account', email: 'test@example.test', role: 'pro' }, isPending: false,
