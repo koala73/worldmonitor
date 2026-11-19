@@ -51,6 +51,8 @@ try {
 // NEWS_GLOBAL_IMPORTANCE_SCORE in notification-delivery-tiers.cjs, which
 // tests/news-story-key.test.mts holds this to).
 const REALTIME_CRITICAL_IMPORTANCE_SCORE = 82;
+// The bar for a local news story on a rule scoped to its country (#10977).
+const LOCAL_CRITICAL_IMPORTANCE_SCORE = 78;
 
 /**
  * Whether a realtime rule can deliver the sighting: critical, and at or above
@@ -62,27 +64,41 @@ function reachesRealtimeRules(severity, importanceScore) {
 }
 
 /**
+ * Whether a country-scoped rule can deliver the sighting as local news:
+ * critical, and at or above the local bar. Every realtime sighting passes.
+ */
+function reachesLocalRules(severity, importanceScore) {
+  if (severity !== 'critical') return false;
+  return importanceScore == null || !(Number(importanceScore) < LOCAL_CRITICAL_IMPORTANCE_SCORE);
+}
+
+/**
  * The story key for a news alert, or '' to keep the exact-title identity.
  *
- * Sightings a realtime rule can deliver claim one key, and the rest another.
- * A sighting graded high, or critical below the score realtime rules require,
- * reaches nobody, so it must not use up the story before a later sighting can
- * be delivered. The cost is a second queued event for such a story, never a
- * missed alert.
+ * Each audience gets its own key: realtime sightings reach every realtime
+ * rule, local ones (critical, 78 to 81, naming one country) reach only rules
+ * scoped to that country, and standard ones reach no realtime rule. A sighting must not use
+ * up the story before a later, higher-scoring one reaches a wider audience.
+ * The cost is an extra queued event for such a story, never a missed alert.
  */
-function newsStoryKey(title, { severity, importanceScore } = {}) {
+function newsStoryKey(title, { severity, importanceScore, primaryCountryCode } = {}) {
   const normalized = normalizeNewsStoryTitle(title);
   if (!normalized || normalized.split(' ').length < MIN_STORY_WORDS) return '';
-  return `news-story:${reachesRealtimeRules(severity, importanceScore) ? 'realtime' : 'standard'}:${normalized}`;
+  const bucket = reachesRealtimeRules(severity, importanceScore) ? 'realtime'
+    : reachesLocalRules(severity, importanceScore) && primaryCountryCode ? 'local'
+    : 'standard';
+  return `news-story:${bucket}:${normalized}`;
 }
 
 module.exports = {
   NEWS_STORY_DEDUP_TTL_SECONDS,
   MIN_STORY_WORDS,
   REALTIME_CRITICAL_IMPORTANCE_SCORE,
+  LOCAL_CRITICAL_IMPORTANCE_SCORE,
   normalizeNewsStoryTitle,
   newsStoryKey,
   reachesRealtimeRules,
+  reachesLocalRules,
   /** Why the normalizer is unavailable, or null. The relay logs it at boot. */
   newsStoryKeyLoadError: () => loadError,
 };
