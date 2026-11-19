@@ -648,9 +648,10 @@ const NORMALIZED_TITLE_SCAN = 2_000;
 const CLASSIFY_QUESTION_RE = /[\u003F\u061F\uFF1F\u2E2E\u2047\u2048\u2049\u2753\uFE16\uFE56][^\p{L}\p{N}]*(?:[-–—|][^?\u061F\uFF1F]*)?$/u;
 // Anything drawn as a dash or an invisible word break between letters.
 const IN_WORD_HYPHEN_RE = /(?<=[\p{L}\p{N}])[\p{Pd}\p{Cf}\u2212\u02D7\u2043\u2044\u30FB\u2796\u268A](?=[\p{L}\p{N}])/gu;
-// A credit is a bare outlet host of at most three labels (reuters.com,
-// bbc.co.uk); dots or underscores joining clause words are headline text.
-const BARE_HOST_RE = /^(?:[\p{L}\p{N}-]+\.){1,2}[\p{L}\p{N}-]+$/u;
+// A credit is a bare outlet host: name.tld, www.name.tld, or name under a
+// country second level (bbc.co.uk). Any other dotted or underscored run
+// (mines.confirmed.com) is headline text.
+const BARE_HOST_RE = /^(?:www\.)?[\p{L}\p{N}-]+\.(?:(?:co|com|net|org|gov|ac|edu)\.[a-z]{2}|[\p{L}\p{N}-]+)$/u;
 
 /**
  * The identity the AI classify cache keys a headline on (#10976): its story,
@@ -664,7 +665,11 @@ const BARE_HOST_RE = /^(?:[\p{L}\p{N}-]+\.){1,2}[\p{L}\p{N}-]+$/u;
  */
 export function classifyCacheIdentity(title) {
   if (typeof title !== 'string') return '';
-  const lower = title.toLowerCase();
+  // NFC first: a decomposed accent is the precomposed letter. Marks that
+  // remain are vowels or meaning in Arabic, Hebrew and Indic scripts, which
+  // the story normalizer deletes, so such a headline keeps its exact title.
+  const lower = title.normalize('NFC').toLowerCase();
+  if (/\p{M}/u.test(lower)) return lower;
   // Strip credits one at a time, as normalizeNewsStoryTitle would, so a clause
   // ending in a domain is caught behind any number of outlet credits. A chain
   // too long to finish keeps the exact title.

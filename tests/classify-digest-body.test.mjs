@@ -147,7 +147,7 @@ test('the first read of an edition\'s pool is a backlog that never alerts, and h
   await once(server, 'listening');
   t.after(() => { server.closeAllConnections(); server.close(); });
   const url = `http://127.0.0.1:${server.address().port}/digest`;
-  const warmKey = 'classify:alert-pool-warm:v1:full';
+  const warmKey = 'classify:alert-pool-warm:v2:full';
   const critical = async chunk => chunk.map((_t, i) => ({ i, l: 'critical', c: 'conflict' }));
   const pass = async (store, titles, { classifyFetchLlm = critical, markerWrites = true, labelWrites = true } = {}) => {
     const published = [];

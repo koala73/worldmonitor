@@ -82,12 +82,24 @@ describe('classify cache key is the story, not the title string (#10976)', () =>
 
   it('keeps a clause joined by dots or underscores on the exact title, and a bare host as a credit', async () => {
     const plain = await buildClassifyCacheKey('Iran closes Strait of Hormuz');
-    for (const credit of ['naval.mines.confirmed.com', 'nuclear_strike_confirmed.com']) {
+    for (const credit of ['naval.mines.confirmed.com', 'mines.confirmed.com', 'nuclear_strike_confirmed.com']) {
       assert.notEqual(await buildClassifyCacheKey(`Iran closes Strait of Hormuz - ${credit}`), plain, credit);
     }
-    for (const credit of ['www.reuters.com', 'bbc.co.uk']) {
+    for (const credit of ['reuters.com', 'www.reuters.com', 'bbc.co.uk']) {
       assert.equal(await buildClassifyCacheKey(`Iran closes Strait of Hormuz - ${credit}`), plain, credit);
     }
+  });
+
+  it('keeps a headline whose marks carry meaning on its exact title, and composes a decomposed accent', async () => {
+    // Shadda: "teacher" and "school" differ only by the mark.
+    assert.notEqual(
+      await buildClassifyCacheKey('قصف مدرّسة في غزة اليوم صباحا'),
+      await buildClassifyCacheKey('قصف مدرسة في غزة اليوم صباحا'),
+    );
+    // NFD and NFC spell the same word, which is not the unaccented one.
+    const nfc = 'Protesters storm Bogotá city hall overnight';
+    assert.equal(await buildClassifyCacheKey(nfc.normalize('NFD')), await buildClassifyCacheKey(nfc));
+    assert.notEqual(await buildClassifyCacheKey(nfc), await buildClassifyCacheKey('Protesters storm Bogota city hall overnight'));
   });
 
   it('keeps the exact title when a chain of credits is too long to check', async () => {

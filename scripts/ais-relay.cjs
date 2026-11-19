@@ -1078,7 +1078,7 @@ async function settleNotificationPublishes() {
   while (dedupKeyPublishes.size > 0) await Promise.all(dedupKeyPublishes.values());
 }
 
-async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800, storyKey, onQueued }) {
+async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800, storyKey, onQueued, onlyIfUnclaimed = false }) {
   try {
     // Include variant in dedup key so each variant can independently publish the same title
     // (e.g. finance and world users both receive an alert for the same headline).
@@ -1129,7 +1129,7 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
         // by its own importance floor, severity and keywords, so the sighting
         // that claimed the story may be one a subscriber rejected, and this one
         // the first it accepts.
-        if (storyKey && fanout) {
+        if (storyKey && fanout && !onlyIfUnclaimed) {
           const titleKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(dedupMaterial)}`;
           const titleClaim = await upstashSetNx(titleKey, '1', 1800);
           if (titleClaim !== 'duplicate' && titleClaim !== 'disabled') teeApiFanout(eventType, msg);
@@ -5780,7 +5780,9 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // headlines are recorded before any is labelled and never alert from the
   // pool, however late their labels land. The record has no expiry, so a
   // restart does not start over.
-  const poolBacklogKey = `classify:alert-pool-warm:v1:${variant}`;
+  // v2: the backlog is recorded under story keys (#10976). A v1 record holds
+  // exact-title keys, which the lookup no longer produces.
+  const poolBacklogKey = `classify:alert-pool-warm:v2:${variant}`;
   let poolBacklog = null;
   // Every backlog headline has aged out of the pool once its window has passed
   // since the record, so a later article with the same headline can alert.
@@ -5919,7 +5921,12 @@ async function seedClassifyForVariant(variant, seenTitles) {
     // (#10976). Its score can have risen since: more publishers carried it.
     const deliverable = reachesRealtimeRules(level, importanceScore)
       || (reachesLocalRules(level, importanceScore) && !!primaryCountryCode);
-    if (cached && (!deliverable || !storyKey)) return;
+    if (cached && !storyKey) return;
+    // A copy no realtime or local rule can deliver still alerts other rules
+    // when no copy has claimed the story: the copy that wrote the label may
+    // have been dropped by the tier or recency gate. It never re-sends a
+    // claimed story to webhook subscribers.
+    const onlyIfUnclaimed = cached && !deliverable;
     // An X post has no digest build behind it.
     const alertBuildAt = meta.fromX ? undefined : digestBuildAt;
     publishNotificationEvent({
@@ -5952,6 +5959,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
       severity: level,
       variant,
       ...(storyKey ? { storyKey, dedupTtl: NEWS_STORY_DEDUP_TTL_SECONDS } : {}),
+      ...(onlyIfUnclaimed ? { onlyIfUnclaimed } : {}),
     }).catch(e => console.warn('[Notify] Classify publish error:', e?.message));
   };
 
@@ -5994,7 +6002,10 @@ async function seedClassifyForVariant(variant, seenTitles) {
     const key = classifyKeyFor(title);
     missStories.set(key, [...(missStories.get(key) ?? []), title]);
   }
-  const askTitles = [...missStories.values()].map((copies) => copies[0]);
+  // The newest copy is asked, so the cross-wording check runs on a copy the
+  // recency gate keeps; its matches count for every copy.
+  const newestFirst = (a, b) => (allTitles.get(b)?.publishedAt ?? 0) - (allTitles.get(a)?.publishedAt ?? 0);
+  const askTitles = [...missStories.values()].map((copies) => [...copies].sort(newestFirst)[0]);
   const copiesOf = (title) => missStories.get(classifyKeyFor(title));
 
   for (let b = 0; b < askTitles.length; b += CLASSIFY_BATCH_SIZE) {

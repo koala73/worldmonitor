@@ -167,7 +167,7 @@ async function startLlm(t) {
   return { url: `http://127.0.0.1:${port}`, state };
 }
 
-async function startRelay(t) {
+async function startRelay(t, { env = {} } = {}) {
   const upstash = await startUpstash(t);
   const digest = await startDigestApi(t);
   const llm = await startLlm(t);
@@ -189,6 +189,7 @@ async function startRelay(t) {
       UPSTASH_ALLOW_INSECURE_HTTP: 'true',
       API_BASE_URL: digest.url,
       OLLAMA_API_URL: llm.url,
+      ...env,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -335,6 +336,28 @@ test('a cached headline too short for a story key never alerts again', async (t)
   for (const key of [...upstash.store.keys()]) if (key.startsWith('wm:notif:scan-dedup:')) upstash.store.delete(key);
   await cycle([{ title: short, source: 'Reuters' }]);
   assert.deepEqual(titles(upstash.alerts()), [short], output());
+});
+
+test('a trusted copy alerts when the copy that wrote its label was dropped by the tier gate', async (t) => {
+  const { upstash, llm, cycle, output } = await startRelay(t, { env: { RELAY_GATES_READY: '1' } });
+  llm.state.levels = { [EGYPT_INDEPENDENT_TITLE]: 'high', [CNN_TITLE]: 'high' };
+  // An explicit tier-4 source: labelled, then dropped before any alert.
+  await cycle([{ title: EGYPT_INDEPENDENT_TITLE, source: 'Agriculture' }]);
+  assert.deepEqual(upstash.alerts(), [], output());
+  await cycle([{ title: CNN_TITLE, source: 'CNN World' }]);
+  await cycle([{ title: CNN_TITLE, source: 'CNN World' }]);
+  assert.equal(llm.state.asked.length, 1, output());
+  assert.deepEqual(titles(upstash.alerts()), [CNN_TITLE], output());
+  assert.deepEqual(titles(upstash.apiEvents()), [CNN_TITLE], output());
+});
+
+test('the newest copy of a story is the one asked, so the recency gate keeps it', async (t) => {
+  const { llm, cycle, output } = await startRelay(t, { env: { RELAY_GATES_READY: '1' } });
+  await cycle([
+    { title: EGYPT_INDEPENDENT_TITLE, source: 'Reuters', publishedAt: Date.now() - 60 * 60_000 },
+    { title: CNN_TITLE, source: 'CNN World' },
+  ]);
+  assert.deepEqual(llm.state.asked, [CNN_TITLE], output());
 });
 
 test('a headline served again every cycle alerts once', async (t) => {
