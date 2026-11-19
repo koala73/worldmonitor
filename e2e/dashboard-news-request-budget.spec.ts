@@ -773,15 +773,9 @@ test.describe('dashboard news request budget (#5376)', () => {
     const panel = page.locator(`[data-panel="${EMPTY_CATEGORY_PANEL}"]`);
     await panel.scrollIntoViewIfNeeded();
     await expect(panel).toBeVisible();
-    // Give the deferred mount + backfill a moment after it enters the viewport.
-    await page.waitForTimeout(3_000);
-
-    await expect(
-      panel.locator('.panel-loading'),
-      `"${EMPTY_CATEGORY_PANEL}" resolved to an empty category, so its panel must show ` +
-        `the empty state rather than spin — the backfill skips a cached [] and nothing ` +
-        `re-renders it now that the news load runs once per work-list`,
-    ).toHaveCount(0);
+    const empty = panel.getByText('No news available', { exact: true });
+    await expect(empty).toBeVisible();
+    await expect(panel.locator('.panel-loading')).toHaveCount(0);
   });
 
   // The gate must not turn a transient digest outage into a stuck-empty dashboard.
