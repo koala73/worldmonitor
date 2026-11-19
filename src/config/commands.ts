@@ -10,6 +10,7 @@ export interface Command {
   id: string;
   keywords: string[];
   label: string;
+  canonicalCountryName?: string;
   icon: string;
   category: 'navigate' | 'layers' | 'panels' | 'view' | 'actions' | 'country';
 }
@@ -332,6 +333,10 @@ const ISO_CODES = [
   'YE', 'ZA', 'ZM', 'ZW',
 ];
 
+const COUNTRY_COMMAND_ALIASES: Partial<Record<string, string[]>> = {
+  CI: ['ivory coast', 'côte d’ivoire', "côte d'ivoire", "cote d'ivoire"],
+};
+
 let _cachedLang = '';
 let _cachedCountryCommands: Command[] = [];
 let _cachedAllCommands: Command[] = [];
@@ -386,14 +391,17 @@ function buildCountryCommands(): Command[] {
   const result = ISO_CODES.flatMap(code => {
     const curated = CURATED_COUNTRIES[code];
     const name = displayNames.of(code) || curated?.name || code;
-    const keywords = curated
-      ? [name.toLowerCase(), curated.name.toLowerCase(), ...curated.searchAliases].filter(Boolean)
-      : [name.toLowerCase()];
+    const keywords = [
+      name.toLowerCase(),
+      ...(curated ? [curated.name.toLowerCase(), ...curated.searchAliases] : []),
+      ...(COUNTRY_COMMAND_ALIASES[code] ?? []),
+    ].filter(Boolean);
     return [
       {
         id: `country-map:${code}`,
         keywords: [...keywords, 'map'],
         label: name,
+        canonicalCountryName: curated?.name ?? name,
         icon: toFlagEmoji(code),
         category: 'navigate' as const,
       },
@@ -401,6 +409,7 @@ function buildCountryCommands(): Command[] {
         id: `country:${code}`,
         keywords: [...keywords, 'brief'],
         label: name,
+        canonicalCountryName: curated?.name ?? name,
         icon: toFlagEmoji(code),
         category: 'country' as const,
       },
