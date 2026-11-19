@@ -19,6 +19,7 @@ import type {
   CountryDeepDiveMilitarySummary,
   CountryDeepDiveSignalDetails,
   ChinaCountrySummaryData,
+  CountryIntelData,
 } from '@/components/CountryBriefPanel';
 import { reverseGeocode } from '@/utils/reverse-geocode';
 import { yieldToMain } from '@/utils/after-paint';
@@ -121,6 +122,7 @@ type CountryIntelBriefResult = {
   evidence: IntelBriefEvidence[];
   generatedAt?: string | number;
   cached?: boolean;
+  accessNotice?: CountryIntelData['accessNotice'];
 };
 
 type PendingCountryBriefRequest = {
@@ -155,6 +157,7 @@ type CountryPresentation = {
   imf: ImfCountryBundle | null;
   refreshGeneration: number;
   signalDetailsPending: boolean;
+  briefAccessNotice?: CountryIntelData['accessNotice'];
 };
 
 const AVIATION_SIGNAL_TIMEOUT_MS = 2500;
@@ -832,6 +835,8 @@ export class CountryIntelManager implements AppModule {
           briefText = briefResult.brief;
         } catch { /* server unreachable */ }
 
+        const accessNotice = briefResult?.accessNotice;
+        presentation.briefAccessNotice = accessNotice;
         if (briefText) {
           this.ctx.countryBriefPage?.updateBrief({
             brief: briefText,
@@ -859,16 +864,16 @@ export class CountryIntelManager implements AppModule {
           }
 
           if (fallbackBrief) {
-            this.ctx.countryBriefPage?.updateBrief({ brief: fallbackBrief, country, code, fallback: true, sources: briefSources });
+            this.ctx.countryBriefPage?.updateBrief({ brief: fallbackBrief, country, code, fallback: true, accessNotice, sources: briefSources });
           } else {
             const lines = this.buildFallbackSignalLines(presentation.score, signals, country, context);
             if (lines.length > 0) {
-              this.ctx.countryBriefPage?.updateBrief({ brief: lines.join('\n'), country, code, fallback: true, signalRows: true });
+              this.ctx.countryBriefPage?.updateBrief({ brief: lines.join('\n'), country, code, fallback: true, signalRows: true, accessNotice });
             } else {
               // Only the desktop app has a Settings field for the key; web
               // visitors get the page's neutral "unavailable" text.
               this.ctx.countryBriefPage?.updateBrief({
-                brief: '', country, code,
+                brief: '', country, code, accessNotice,
                 error: isDesktopRuntime() ? 'No AI service available. Configure OPENROUTER_API_KEY in Settings for full briefs.' : undefined,
               });
             }
@@ -968,7 +973,7 @@ export class CountryIntelManager implements AppModule {
         if (page.isSignalRowsBrief?.()) {
           const lines = this.buildFallbackSignalLines(score, signals, name, {});
           if (lines.length > 0) {
-            page.updateBrief({ brief: lines.join('\n'), country: name, code, fallback: true, signalRows: true });
+            page.updateBrief({ brief: lines.join('\n'), country: name, code, fallback: true, signalRows: true, accessNotice: presentation.briefAccessNotice });
           }
         }
         try {
@@ -1030,7 +1035,14 @@ export class CountryIntelManager implements AppModule {
       headers: { Accept: 'application/json' },
       signal: this.ctx.countryBriefPage?.signal,
     });
-    if (!resp.ok) return { brief: '', sources: [], evidence: [] };
+    if (!resp.ok) {
+      let accessNotice: CountryIntelBriefResult['accessNotice'];
+      if (!isDesktopRuntime()) {
+        if (resp.status === 401) accessNotice = 'sign-in';
+        else if (resp.status === 403 && !hasPremiumAccess(getAuthState())) accessNotice = 'pro';
+      }
+      return { brief: '', sources: [], evidence: [], accessNotice };
+    }
 
     const body = (await resp.json()) as {
       brief?: string;

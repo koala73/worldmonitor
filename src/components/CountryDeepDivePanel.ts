@@ -3511,13 +3511,33 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   public updateBrief(data: CountryIntelData): void {
     if (!this.briefBody || data.code !== this.currentCode) return;
     this.briefBody.replaceChildren();
+    if (data.accessNotice) {
+      const signIn = data.accessNotice === 'sign-in';
+      const notice = this.el('div', 'cdp-assessment-meta');
+      notice.append(this.el('p', 'panel-locked-desc', t(signIn ? 'premium.signInToUnlock' : 'premium.upgradeDesc')));
+      if (signIn) {
+        const button = this.el('button', 'panel-locked-cta', t('auth.signIn'));
+        button.type = 'button';
+        button.addEventListener('click', () => {
+          void import('@/services/clerk')
+            .then(({ openSignIn }) => openSignIn())
+            .catch(() => showToast(t('countryBrief.briefUnavailable')));
+        });
+        notice.append(button);
+      } else {
+        const link = this.el('a', 'panel-locked-cta', t('premium.upgradeToPro'));
+        link.href = '/pro#pricing';
+        notice.append(link);
+      }
+      this.briefBody.append(notice);
+    }
 
     if (data.error || data.skipped || !data.brief) {
       this.currentBrief = null;
       this.currentBriefGeneratedAt = null;
       this.currentBriefCached = null;
       this.currentBriefIsSignalRows = false;
-      this.briefBody.append(this.makeEmpty(data.error || data.reason || t('countryBrief.assessmentUnavailable')));
+      if (!data.accessNotice) this.briefBody.append(this.makeEmpty(data.error || data.reason || t('countryBrief.assessmentUnavailable')));
       return;
     }
 
@@ -3529,14 +3549,15 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const briefSources = collectBriefSources(data.sources ?? [], 6);
     // Signal rows have no sentence punctuation; summarizing them joined every
     // line into a single run-on paragraph.
-    const summary = data.signalRows ? data.brief.split('\n').slice(0, 5).join('\n') : summarizeCountryBrief(data.brief);
+    const signalRows = data.signalRows ? data.brief.split('\n') : null;
+    const summary = signalRows ? signalRows.slice(0, 5).join('\n') : summarizeCountryBrief(data.brief);
     const summaryHtml = this.formatBrief(summary, briefSources, 0, data.evidence);
     const text = this.el('div', 'cdp-assessment-text cdp-summary-only');
     setTrustedHtml(text, trustedHtml(summaryHtml, "legacy direct innerHTML migration"));
 
     const metaTokens: string[] = [];
     if (data.cached) metaTokens.push('Cached');
-    if (data.fallback) metaTokens.push('Fallback');
+    if (data.fallback && !data.accessNotice) metaTokens.push('Fallback');
     if (data.generatedAt) metaTokens.push(`Updated ${new Date(data.generatedAt).toLocaleTimeString()}`);
     const meta = this.el('div', 'cdp-assessment-meta', metaTokens.join(' • '));
     this.briefBody.append(text, meta);
@@ -3558,10 +3579,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       expandedBrief.append(sources);
     }
     this.briefBody.append(expandedBrief);
-    const readFull = this.el('button', 'cdp-inline-action cdp-summary-only', 'Read the full brief and sources ↗');
-    readFull.type = 'button';
-    readFull.addEventListener('click', () => this.presentation?.selectTopic('sources'));
-    this.briefBody.append(readFull);
+    if (!data.accessNotice || !signalRows || signalRows.length > 5 || sourcesFooter) {
+      const readFull = this.el('button', 'cdp-inline-action cdp-summary-only', 'Read the full brief and sources ↗');
+      readFull.type = 'button';
+      readFull.addEventListener('click', () => this.presentation?.selectTopic('sources'));
+      this.briefBody.append(readFull);
+    }
   }
 
   /**
