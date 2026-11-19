@@ -1,7 +1,7 @@
 // Read by the notification worker only. The coverage history changes the
 // coverage line and nothing else; the rewrite check below can skip users who
 // already had an alert for the same development. Neither changes scoring or rules.
-import { newsPublisherCoverageKey } from '../shared/story-identity.js';
+import { NEWS_PUBLISHER_COVERAGE_PREFIX, newsPublisherCoverageKey } from '../shared/story-identity.js';
 import storyKeys from './news-story-key.cjs';
 import { defaultRedisPipeline } from './_upstash-pipeline.mjs';
 import { EMBED_MODEL } from './brief-dedup-consts.mjs';
@@ -16,7 +16,7 @@ export async function refreshPublisherCounts(events, now = Date.now(), pipeline 
     // A held notification may have an earlier snapshot. On failure render
     // the producer's original per-build count, never that expired snapshot.
     delete event.observedPublisherCount;
-    const key = newsPublisherCoverageKey(event.variant, event.payload?.title);
+    const key = newsPublisherCoverageKey(event.payload?.title);
     if (!key) continue;
     if (!reads.has(key)) reads.set(key, []);
     reads.get(key).push(event);
@@ -74,8 +74,8 @@ const anchorsKey = variant => `news:alert-anchors:v1:${variant}`;
 const recipientsKey = id => `news:alert-anchor-recipients:v1:${id}`;
 // The exact-headline identity the coverage history uses, as `<edition>:<sha256>`.
 const anchorIdFor = (variant, title) => {
-  const key = newsPublisherCoverageKey(variant, title);
-  return key ? `${variant}:${key.split(':').pop()}` : '';
+  const key = newsPublisherCoverageKey(title);
+  return variant && key ? `${variant}:${key.split(':').pop()}` : '';
 };
 
 /** Whether the event can be checked against earlier alerts at all. */
@@ -83,7 +83,7 @@ export function rewriteCheckApplies(event) {
   const title = event?.payload?.title;
   return !event?.userId && event?.eventType === 'rss_alert' && typeof event.variant === 'string' && !!event.variant
     && typeof title === 'string' && !!anchorIdFor(event.variant, title)
-    && storyKeys.reachesRealtimeRules(event.severity, event.payload.importanceScore);
+    && storyKeys.reachesLocalRules(event.severity, event.payload.importanceScore);
 }
 
 // Headlines are untrusted feed text: one line, no braces (so none can spell
@@ -233,9 +233,9 @@ export async function usersAlertedFor(anchorId, userIds, { now = Date.now(), pip
  * reader's 24-hour window still applies. Best effort.
  */
 export async function mergeStoryCoverage(event, anchorId, pipeline = defaultRedisPipeline) {
-  const own = rewriteCheckApplies(event) ? newsPublisherCoverageKey(event.variant, event.payload.title) : '';
+  const own = rewriteCheckApplies(event) ? newsPublisherCoverageKey(event.payload.title) : '';
   if (!own || typeof anchorId !== 'string' || !anchorId.startsWith(`${event.variant}:`)) return false;
-  const anchor = `news:publisher-coverage:v1:${anchorId}`;
+  const anchor = `${NEWS_PUBLISHER_COVERAGE_PREFIX}${anchorId.slice(event.variant.length + 1)}`;
   if (anchor === own) return false;
   try {
     const rows = await pipeline([

@@ -41,7 +41,6 @@ export interface CatalogFeed {
   depthUrl?: string;
   channelDated?: boolean;
   linkHosts?: string[];
-  newestFirst?: boolean;
   excludePathSegments?: string[];
   browser?: {
     url?: CatalogUrl;
@@ -87,7 +86,6 @@ export interface ServerCatalogFeed {
   depthUrl?: string;
   channelDated?: boolean;
   linkHosts?: string[];
-  newestFirst?: boolean;
   excludePathSegments?: string[];
 }
 
@@ -130,7 +128,6 @@ function toServerFeed(feed: CatalogFeed): ServerCatalogFeed {
   if (feed.depthUrl !== undefined) entry.depthUrl = feed.depthUrl;
   if (feed.channelDated !== undefined) entry.channelDated = feed.channelDated;
   if (feed.linkHosts !== undefined) entry.linkHosts = feed.linkHosts;
-  if (feed.newestFirst !== undefined) entry.newestFirst = feed.newestFirst;
   if (feed.excludePathSegments !== undefined) entry.excludePathSegments = feed.excludePathSegments;
   return entry;
 }

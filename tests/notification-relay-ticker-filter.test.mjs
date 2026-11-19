@@ -29,7 +29,7 @@ Module._load = function patchedLoad(request, parent, ...rest) {
 // changes. The relay only starts its poll loop when require.main === module, so
 // requiring it here is side-effect free (same technique as
 // tests/notification-relay-country-scope-5359.test.mjs).
-const { eventMatchesTickerScope, ruleMatchesEventType } = require(
+const { eventMatchesTickerScope, ruleDropReason, ruleMatchesEventType } = require(
   resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'),
 );
 
@@ -102,12 +102,11 @@ describe('notification-relay watchlist ticker filter — source-grep contract', 
       'ruleMatchesEventType must exclude the watchlist opt-in when evaluating the broadcast wildcard');
   });
 
-  it('filter is wired into the per-rule matching loop alongside shouldNotify + country scope', () => {
-    assert.match(
-      relaySrc,
-      /ruleMatchesEventType\(r,\s*event\)\s*&&\s*\n?\s*shouldNotify\(r,\s*event\)\s*&&\s*\n?\s*eventMatchesDeliveryScope\(event,\s*r\)\s*&&\s*\n?\s*eventMatchesTickerScope\(event,\s*r\)/,
-      'eventMatchesTickerScope must be in the matching filter alongside shouldNotify/eventMatchesDeliveryScope (#10873)',
-    );
+  it('the matching loop drops a watchlist story for a rule without its ticker', () => {
+    const story = { eventType: 'watchlist_story_alert', severity: 'critical', payload: { tickers: ['AAPL'] } };
+    const rule = { digestMode: 'realtime', sensitivity: 'critical', eventTypes: ['watchlist_story_alert'], countries: [] };
+    assert.equal(ruleDropReason({ ...rule, tickers: ['MSFT'] }, story), 'ticker_scope');
+    assert.equal(ruleDropReason({ ...rule, tickers: ['aapl'] }, story), null);
   });
 
   it('layer-3 tier gate still guards delivery for every matched rule (fail-closed getUserTier)', () => {

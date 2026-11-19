@@ -71,6 +71,7 @@ const PUBLISHER_FAMILY_DATA = {
   'biobio': { publisher: "BioBioChile", labels: ["BioBioChile"] },
   'rferl': { publisher: "Radio Free Europe/Radio Liberty", labels: ["RFE/RL Central Asia", "Azadliq Radiosu (RFE/RL - Azerbaijan)", "Radio Azattyk", "Radio Azattyq", "Radio Ozodi", "Radio Azatlyk"] },
   'aljazeera': { publisher: "Al Jazeera", labels: ["Al Jazeera", "Al Jazeera — Micronesia"] },
+  'al-arabiya': { publisher: "Al Arabiya English", labels: ["Al Arabiya"] },
   'miit': { publisher: "MIIT (China)", labels: [] },
   'a16z': { publisher: "Andreessen Horowitz", labels: ["a16z Blog", "a16z Insights", "a16z Podcast"] },
   'abc-news': { publisher: "ABC News", labels: [] },
@@ -285,6 +286,7 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'rferl': ['rferl.org', 'azadliq.org', 'azattyk.org', 'azattyq.org', 'ozodi.org', 'azathabar.com'],
 
   'aljazeera': ['aljazeera.com'],
+  'al-arabiya': ['alarabiya.net'],
 
   'miit': ['miit.gov.cn'],
   'a16z': ['a16z.com'],

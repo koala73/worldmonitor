@@ -104,7 +104,7 @@ describe('ais-relay importanceScore publish path', () => {
   it('scores recency from the later of publishedAt and the headline\'s first sighting (#10978)', () => {
     assert.match(
       relaySrc,
-      /relayComputeImportanceScore\(\s*level,\s*meta\.source,\s*meta\.corroborationCount \?\? 1,[\s\S]*?Math\.max\(meta\.publishedAt \?\? Date\.now\(\), meta\.firstSeen \?\? 0\),/,
+      /relayComputeImportanceScore\(\s*level,\s*meta\.source,\s*corroborationCount,[\s\S]*?Math\.max\(meta\.publishedAt \?\? Date\.now\(\), meta\.firstSeen \?\? 0\),/,
     );
   });
 });

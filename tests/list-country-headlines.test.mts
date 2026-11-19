@@ -131,14 +131,13 @@ describe('country headlines from existing curated RSS caches', () => {
     assert.equal(briefGroundingGap(rows), 'thin-grounding', 'retention cannot invent an independent publisher');
   });
 
-  it('retains a dated Atom headline when the first five entries have no titles', async () => {
+  it('serves a dated Atom headline ranked above five untitled entries', async () => {
     const source = feed('Guardian Pacific');
     const xml = `<feed>${'<entry></entry>'.repeat(5)}<entry><title>Vanuatu ferry search continues</title><link href="https://www.theguardian.com/world/vanuatu-search"/><published>${new Date(Date.now() - 3600_000).toISOString()}</published><source><title>Invented Publisher</title></source></entry></feed>`;
     const parsed = digest.parseRssXml(xml, source, 'full');
     assert.ok(parsed);
-    assert.deepEqual(parsed.items, []);
-    assert.equal(parsed.parsedTotal, 0);
-    assert.equal(parsed.droppedFeedCap, undefined, 'preserve the empty digest result counters');
+    assert.deepEqual(parsed.items.map(item => item.title), ['Vanuatu ferry search continues'], 'undated entries rank after dated ones');
+    assert.equal(parsed.parsedTotal, 1);
     cache.set(rssFeedCacheKey('full', source.url), parsed);
     const { payload } = await request(['VU']);
     assert.equal(payload.countries.VU.items[0].source, source.name);
