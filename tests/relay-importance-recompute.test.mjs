@@ -43,7 +43,7 @@ describe('ais-relay importanceScore publish path', () => {
 
   it('publishes a recomputed importanceScore using the post-LLM level', () => {
     // Anchor: the classify publish site is inside the LLM-classified critical/high branch.
-    const branchStart = relaySrc.indexOf("if (level === 'critical' || level === 'high')");
+    const branchStart = relaySrc.indexOf('const publishAlert = (');
     assert.ok(branchStart !== -1, 'classify critical/high branch not found');
     // The end of the publishNotificationEvent call.
     const branchEnd = relaySrc.indexOf('[Notify] Classify publish error', branchStart);
@@ -57,7 +57,7 @@ describe('ais-relay importanceScore publish path', () => {
   });
 
   it('does NOT publish meta.importanceScore (the stale pre-LLM value)', () => {
-    const branchStart = relaySrc.indexOf("if (level === 'critical' || level === 'high')");
+    const branchStart = relaySrc.indexOf('const publishAlert = (');
     const branchEnd = relaySrc.indexOf('[Notify] Classify publish error', branchStart);
     const block = relaySrc.slice(branchStart, branchEnd);
     assert.ok(
@@ -67,7 +67,7 @@ describe('ais-relay importanceScore publish path', () => {
   });
 
   it('includes corroborationCount on the published payload', () => {
-    const branchStart = relaySrc.indexOf("if (level === 'critical' || level === 'high')");
+    const branchStart = relaySrc.indexOf('const publishAlert = (');
     const branchEnd = relaySrc.indexOf('[Notify] Classify publish error', branchStart);
     const block = relaySrc.slice(branchStart, branchEnd);
     assert.match(
@@ -78,7 +78,7 @@ describe('ais-relay importanceScore publish path', () => {
   });
 
   it('does not proxy exact-story corroboration into entityCorroborationCount', () => {
-    const branchStart = relaySrc.indexOf("if (level === 'critical' || level === 'high')");
+    const branchStart = relaySrc.indexOf('const publishAlert = (');
     const branchEnd = relaySrc.indexOf('[Notify] Classify publish error', branchStart);
     const block = relaySrc.slice(branchStart, branchEnd);
     assert.match(

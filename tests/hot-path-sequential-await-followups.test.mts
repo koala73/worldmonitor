@@ -245,7 +245,7 @@ describe('request handlers', () => {
   it('classify-event hashes the title alongside the routing lookup', () => {
     const source = read('server/worldmonitor/intelligence/v1/classify-event.ts');
     assert.doesNotMatch(source, /const aiRouting = await resolveAiRouting\(ctx\.request\);\s*\n\s*const cacheKey = `\$\{await buildClassifyCacheKey/);
-    assert.match(source, /Promise\.all\(\[\s*resolveAiRouting\(ctx\.request\),\s*buildClassifyCacheKey\(title\)/);
+    assert.match(source, /Promise\.all\(\[\s*resolveAiRouting\(ctx\.request\),\s*buildClassifyCacheKey\(title, \{ callerTitle: true \}\)/);
   });
 
   it('get-risk-scores reads its auxiliary fallbacks together', () => {
