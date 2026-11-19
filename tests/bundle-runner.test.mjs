@@ -14,7 +14,7 @@ import { lua, lauxlib, lualib, to_luastring, to_jsstring } from 'fengari';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GRACEFUL_FETCH_FAILURE_EXIT_CODE, PUBLISH_BLOCKED_EXIT_CODE } from '../scripts/_seed-utils.mjs';
-import { DAY, readSectionFreshness, bundleHeartbeatKey, BUNDLE_HEARTBEAT_TTL_SECONDS } from '../scripts/_bundle-runner.mjs';
+import { DAY, readSectionFreshness, bundleHeartbeatKey, BUNDLE_HEARTBEAT_TTL_SECONDS, sectionFailureKey } from '../scripts/_bundle-runner.mjs';
 import { OWID_SOURCE_VERSION } from '../scripts/seed-owid-energy-mix.mjs';
 import { JODI_OIL_SOURCE_VERSION } from '../scripts/seed-jodi-oil.mjs';
 import {
@@ -1921,6 +1921,95 @@ test('a deferred section older than 2x its interval fails the tick even when sib
     assert.match(stderr, /starvation, not pressure/, `expected the per-section stall line; stderr:\n${stderr}`);
     assert.match(stderr, /older than 2x their interval — starvation while the bundle reported progress/);
     assert.doesNotMatch(stdout, /ran:0 while/);
+  } finally {
+    cleanup();
+    await redis.close();
+  }
+});
+
+async function runStalledVictim(prefix, failureRecord) {
+  // Same budget shape as the stall test above: ten slow freshness reads leave
+  // VICTIM too little budget, and its 3h-old seed-meta (3x a 1h interval)
+  // makes the deferral a stall.
+  const HOUR = 60 * 60 * 1000;
+  const script = `_bundle-fixture-${prefix}-run.mjs`;
+  const cleanup = writeFixture(script, `console.log('${prefix}-ran');\n`);
+  const fetchedAt = Date.now() - 3 * HOUR;
+  const freshKeys = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
+  const strings = new Map([
+    ...freshKeys.map((key) => [`seed-meta:${prefix}:${key}`, JSON.stringify({ fetchedAt: Date.now(), recordCount: 1 })]),
+    [`seed-meta:${prefix}:victim`, JSON.stringify({ fetchedAt, recordCount: 1 })],
+  ]);
+  if (failureRecord) strings.set(sectionFailureKey('test', 'VICTIM'), JSON.stringify(failureRecord(fetchedAt)));
+  const redis = await startFakeUpstash({ getDelayMs: 2_000 / STARVE_TIME_SCALE, strings });
+  try {
+    return await runBundleWith(
+      [
+        ...freshKeys.map((k) => ({
+          label: `FRESH_${k.toUpperCase()}`, script, seedMetaKey: `${prefix}:${k}`, intervalMs: DAY, timeoutMs: 5_000,
+        })),
+        { label: 'RUNS', script, intervalMs: 1, timeoutMs: 5_000 },
+        { label: 'VICTIM', script, seedMetaKey: `${prefix}:victim`, intervalMs: HOUR, timeoutMs: 35_000 },
+      ],
+      { maxBundleMs: 60_000 },
+      { UPSTASH_REDIS_REST_URL: redis.url, UPSTASH_REDIS_REST_TOKEN: redis.token },
+      { compressTime: { clock: STARVE_TIME_SCALE } },
+    );
+  } finally {
+    cleanup();
+    await redis.close();
+  }
+}
+
+test('a stalled section that failed at the source since its last good fetch is reported as failing, not starved', async () => {
+  // seed-bundle-macro, 2026-11-19: Food-MIT was admitted on three ticks and
+  // got HTTP 500 from viwanda.go.tz each time, then lost the next budget race.
+  // The stall line called that starvation, which sends the operator to budget
+  // and order instead of the dead upstream. The tick still fails.
+  const { code, stdout, stderr } = await runStalledVictim('failing', (fetchedAt) => ({
+    at: fetchedAt + 60_000, status: 'GRACEFUL_FAIL', reason: 'graceful fetch failure (exit 75)',
+  }));
+  assert.equal(code, 1, 'a stale section stays loud whatever the cause');
+  assert.match(stdout, /\[Bundle:test\] Finished .* ran:1 skipped:10 deferred:1 failed:0 graceful:0 stalled:1/);
+  assert.match(stderr, /\[VICTIM\] Deferred, but its data is \d+min old .* This is a failing source, not starvation: its last admitted run at \S+ ended GRACEFUL_FAIL \(graceful fetch failure \(exit 75\)\)/);
+  assert.match(stderr, /older than 2x their interval — 1 failing at the source, 0 starved by the budget\. Exiting non-zero\./);
+  assert.doesNotMatch(stderr, /starvation, not pressure/);
+});
+
+test('a failure record older than the last good fetch does not excuse a stall', async () => {
+  // The section succeeded after that failure, so its data has aged since then
+  // only because it kept losing the budget race.
+  const { code, stderr } = await runStalledVictim('healed', (fetchedAt) => ({
+    at: fetchedAt - 60_000, status: 'GRACEFUL_FAIL', reason: 'graceful fetch failure (exit 75)',
+  }));
+  assert.equal(code, 1);
+  assert.match(stderr, /starvation, not pressure/);
+  assert.match(stderr, /older than 2x their interval — starvation while the bundle reported progress/);
+  assert.doesNotMatch(stderr, /failing source/);
+});
+
+test('a failed section run records its status and reason for the stall guard', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-failure-record.mjs',
+    `console.log('=== Failed gracefully ===');\nprocess.exit(${GRACEFUL_FETCH_FAILURE_EXIT_CODE});\n`,
+  );
+  const redis = await startFakeUpstash();
+  try {
+    const before = Date.now();
+    const { code } = await runBundleWith(
+      [{ label: 'FLAKY', script: '_bundle-fixture-failure-record.mjs', intervalMs: 7 * DAY, timeoutMs: 5_000 }],
+      {},
+      { UPSTASH_REDIS_REST_URL: redis.url, UPSTASH_REDIS_REST_TOKEN: redis.token },
+    );
+    assert.equal(code, 0, 'recording the failure does not change the graceful exit');
+    const set = redis.commands.find((command) => command[0] === 'SET' && command[1] === sectionFailureKey('test', 'FLAKY'));
+    assert.ok(set, `expected SET ${sectionFailureKey('test', 'FLAKY')}; commands=${JSON.stringify(redis.commands)}`);
+    const record = JSON.parse(set[2]);
+    assert.equal(record.status, 'GRACEFUL_FAIL');
+    assert.equal(record.reason, `graceful fetch failure (exit ${GRACEFUL_FETCH_FAILURE_EXIT_CODE})`);
+    assert.ok(record.at >= before);
+    // Outlives the 2x-interval stall threshold: 3 x 7 days.
+    assert.deepEqual(set.slice(3), ['EX', 21 * 24 * 60 * 60]);
   } finally {
     cleanup();
     await redis.close();

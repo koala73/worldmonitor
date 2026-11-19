@@ -163,6 +163,41 @@ async function writeBundleHeartbeat(label) {
   }
 }
 
+export function sectionFailureKey(label, sectionLabel) {
+  return `bundle:section-failure:${label}:${sectionLabel}`;
+}
+
+/**
+ * Record a section's failed run so a later stall can name its cause.
+ *
+ * The stall guard below sees only seed-meta age, and the age looks the same
+ * whether the section lost every budget race or was admitted and failed at the
+ * source on every tick. Both produced the same "starvation" line on
+ * seed-bundle-macro: Amman on 2026-11-16 (#10833) and Food-MIT on 2026-11-19,
+ * when viwanda.go.tz returned HTTP 500 site-wide. Only failures are written; a
+ * later success advances seed-meta past this record, which retires it. The
+ * TTL outlives the 2x-interval stall threshold with a full interval to spare.
+ */
+async function writeSectionFailure(label, section, record) {
+  if (!REDIS_URL || !REDIS_TOKEN) return;
+  const ttlSeconds = Math.ceil(Math.max(DAY, section.intervalMs * (STALL_AGE_INTERVAL_MULTIPLE + 1)) / 1000);
+  try {
+    const resp = await fetch(REDIS_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${REDIS_TOKEN}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-bundle-runner/1.0',
+      },
+      body: JSON.stringify(['SET', sectionFailureKey(label, section.label), JSON.stringify(record), 'EX', ttlSeconds]),
+      signal: AbortSignal.timeout(REDIS_READ_TIMEOUT_MS),
+    });
+    if (!resp.ok) console.warn(`  [${section.label}] failure record write failed: HTTP ${resp.status}`);
+  } catch (err) {
+    console.warn(`  [${section.label}] failure record write failed: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
 /**
  * Read section freshness for the interval gate.
  *
@@ -662,6 +697,9 @@ export async function runBundle(label, sections, opts = {}) {
     : null;
 
   let ran = 0, skipped = 0, deferred = 0, failed = 0, gracefulFailed = 0, stalled = 0, publishBlocked = 0;
+  // Written in the background so a slow Redis never eats section budget.
+  const failureWrites = [];
+  const stalledSections = [];
 
   let disabled = 0;
   for (const section of sections) {
@@ -724,13 +762,11 @@ export async function runBundle(label, sections, opts = {}) {
       // exceeds STALL_AGE_INTERVAL_MULTIPLE of its own interval, it has been
       // losing the budget race across whole intervals — a stall, and it must
       // be loud regardless of what else ran (see the exit gate below).
+      // The explanation is printed after the loop, once the section's failure
+      // record has been read: a stale section that was admitted and failed at
+      // the source is not starved, and budget or order changes cannot fix it.
       if (freshness?.fetchedAt != null && Date.now() - freshness.fetchedAt > section.intervalMs * STALL_AGE_INTERVAL_MULTIPLE) {
-        const ageMin = Math.round((Date.now() - freshness.fetchedAt) / 60_000);
-        const intervalMin = Math.round(section.intervalMs / 60_000);
-        console.error(
-          `  [${section.label}] Deferred, but its data is ${ageMin}min old — over ${STALL_AGE_INTERVAL_MULTIPLE}x its ${intervalMin}min interval. `
-          + 'This is starvation, not pressure: the section keeps losing the budget race while the bundle stays green.',
-        );
+        stalledSections.push({ section, fetchedAt: freshness.fetchedAt, ageMs: Date.now() - freshness.fetchedAt });
         stalled++;
       }
       continue;
@@ -784,6 +820,35 @@ export async function runBundle(label, sections, opts = {}) {
       if (status === 'GRACEFUL_FAIL') gracefulFailed++;
       else if (status === 'PUBLISH_BLOCKED') publishBlocked++;
       else failed++;
+      failureWrites.push(writeSectionFailure(label, section, {
+        at: Date.now(),
+        status,
+        reason: (result.reason || 'unknown').replace(/\s+/g, ' '),
+      }));
+    }
+  }
+
+  await Promise.all(failureWrites);
+  const stallCauses = await Promise.all(stalledSections.map(async (stall) => {
+    const record = await readRedisKey(sectionFailureKey(label, stall.section.label));
+    // Only a failure after the last good fetch explains the age. An older one
+    // was followed by a success, so the section has been starved since.
+    return Number.isFinite(record?.at) && record.at > stall.fetchedAt ? record : null;
+  }));
+  let failingAtSource = 0;
+  for (const [i, { section, ageMs }] of stalledSections.entries()) {
+    const ageMin = Math.round(ageMs / 60_000);
+    const intervalMin = Math.round(section.intervalMs / 60_000);
+    const head = `  [${section.label}] Deferred, but its data is ${ageMin}min old — over ${STALL_AGE_INTERVAL_MULTIPLE}x its ${intervalMin}min interval. `;
+    const cause = stallCauses[i];
+    if (cause) {
+      failingAtSource++;
+      console.error(
+        `${head}This is a failing source, not starvation: its last admitted run at ${new Date(cause.at).toISOString()} `
+        + `ended ${cause.status} (${cause.reason}). Check the upstream before changing budget or order.`,
+      );
+    } else {
+      console.error(`${head}This is starvation, not pressure: the section keeps losing the budget race while the bundle stays green.`);
     }
   }
 
@@ -835,9 +900,10 @@ export async function runBundle(label, sections, opts = {}) {
     // exemption does not soften this: a 2x-interval-old deferral cannot be
     // produced by a single transient blip, so exiting non-zero here pages on
     // a genuinely stalled member, not on alert fatigue.
-    console.error(
-      `[Bundle:${label}] ${stalled} deferred section(s) are older than ${STALL_AGE_INTERVAL_MULTIPLE}x their interval — starvation while the bundle reported progress. Exiting non-zero.`,
-    );
+    console.error(failingAtSource === 0
+      ? `[Bundle:${label}] ${stalled} deferred section(s) are older than ${STALL_AGE_INTERVAL_MULTIPLE}x their interval — starvation while the bundle reported progress. Exiting non-zero.`
+      : `[Bundle:${label}] ${stalled} deferred section(s) are older than ${STALL_AGE_INTERVAL_MULTIPLE}x their interval — `
+        + `${failingAtSource} failing at the source, ${stalled - failingAtSource} starved by the budget. Exiting non-zero.`);
   } else if (failed === 0 && gracefulFailed > 0) {
     // Graceful-only run (transient skips, no hard failures): exit 0 so Railway
     // does not paint CRASHED and fire a spurious alert. Real staleness is caught
