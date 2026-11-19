@@ -63,8 +63,8 @@ describe('classify cache key is the story, not the title string (#10976)', () =>
         `U+${dash.codePointAt(0)!.toString(16)}`,
       );
     }
-    // A stacked run of breaks is one break.
-    for (const run of ['\u00ad\u200b', '--', '\u2060\u2013']) {
+    // A stacked run of breaks is one break, and so is any other joiner.
+    for (const run of ['\u00ad\u200b', '--', '\u2060\u2013', '/', '\u00b7', '\u2027', '+', '_', '\u2022']) {
       assert.notEqual(
         await buildClassifyCacheKey(`Minister will re${run}sign trade agreement`),
         await buildClassifyCacheKey('Minister will resign trade agreement'),
@@ -96,6 +96,13 @@ describe('classify cache key is the story, not the title string (#10976)', () =>
     for (const credit of ['reuters.com', 'www.reuters.com', 'bbc.co.uk']) {
       assert.equal(await buildClassifyCacheKey(`Iran closes Strait of Hormuz - ${credit}`), plain, credit);
     }
+  });
+
+  it('keeps an apostrophe inside its word', async () => {
+    assert.equal(
+      await buildClassifyCacheKey("UAE's ADNOC says crew member missing after attack"),
+      await buildClassifyCacheKey('UAE\u2019s ADNOC says crew member missing after attack - Reuters'),
+    );
   });
 
   it('keeps a headline whose marks carry meaning on its exact title, and composes a decomposed accent', async () => {

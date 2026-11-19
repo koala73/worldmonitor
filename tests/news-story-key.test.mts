@@ -14,6 +14,7 @@ const require = createRequire(import.meta.url);
 const {
   NEWS_STORY_DEDUP_TTL_SECONDS,
   newsAlertClaimKey,
+  newsPublisherCoverageKey,
   REALTIME_CRITICAL_IMPORTANCE_SCORE,
   newsStoryKey,
   newsStoryKeyLoadError,
@@ -70,6 +71,14 @@ test('a critical sighting without a score counts as delivered, as the relay trea
 
 test('the score bar is the one realtime delivery uses', () => {
   assert.equal(REALTIME_CRITICAL_IMPORTANCE_SCORE, NEWS_GLOBAL_IMPORTANCE_SCORE);
+});
+
+test('a clause ending in a domain does not take another headline\'s publisher count', () => {
+  const plain = 'Iran closes Strait of Hormuz to all shipping';
+  assert.equal(newsPublisherCoverageKey(`${plain} - Reuters`), newsPublisherCoverageKey(plain));
+  assert.equal(newsPublisherCoverageKey(`${plain} - reuters.com`), newsPublisherCoverageKey(plain));
+  assert.notEqual(newsPublisherCoverageKey(`${plain} - nuclear strike confirmed.com`), newsPublisherCoverageKey(plain));
+  assert.notEqual(newsPublisherCoverageKey(`${plain} - mines.confirmed.com`), newsPublisherCoverageKey(plain));
 });
 
 test('a headline too short for a story key claims its exact title, per audience', () => {
