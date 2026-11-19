@@ -46,7 +46,7 @@ const {
   countryNameToIso2,
 } = require('../scripts/shared/country-name-to-iso2.cjs');
 
-const { eventMatchesCountryScope } = require(
+const { eventMatchesCountryScope, ruleDropReason } = require(
   resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'),
 );
 const { publishSaudiCivilDefenseAlerts } = require('../scripts/lib/saudi-civil-defense-alerts.cjs');
@@ -158,14 +158,11 @@ describe('notification-relay eventMatchesCountryScope — source-grep contract',
     );
   });
 
-  it('filter is wired into the per-rule matching loop alongside shouldNotify', () => {
-    // The filter must be in the .filter() arrow that builds `matching`.
-    // Without this wiring, the filter exists but is never consulted.
-    assert.match(
-      relaySrc,
-      /shouldNotify\(r,\s*event\)\s*&&\s*\n?\s*eventMatchesDeliveryScope\(event,\s*r\)/,
-      'the tier gate (eventMatchesDeliveryScope, #10873) must be in the matching filter alongside shouldNotify',
-    );
+  it('the matching loop drops a country-attributed event for a rule scoped elsewhere', () => {
+    const event = { eventType: 'weather_alert', severity: 'critical', payload: { countryCode: 'KZ' } };
+    const rule = { digestMode: 'realtime', sensitivity: 'critical', eventTypes: [], tickers: [] };
+    assert.equal(ruleDropReason({ ...rule, countries: ['US'] }, event), 'delivery_scope');
+    assert.equal(ruleDropReason({ ...rule, countries: ['KZ'] }, event), null);
   });
 });
 
