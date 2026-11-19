@@ -181,7 +181,7 @@ import {
   canonicalizeCountryCode,
   getCountriesGeoJson,
   getCountryAtCoordinates,
-  getCountryBbox,
+  getCountryMapBbox,
   getCountryCentroid,
 } from '@/services/country-geometry';
 import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
@@ -7028,7 +7028,7 @@ export class DeckGLMap {
   }
 
   public fitCountry(code: string): void {
-    const bbox = getCountryBbox(code);
+    const bbox = getCountryMapBbox(code);
     if (!bbox || !this.maplibreMap) return;
     const [minLon, minLat, maxLon, maxLat] = bbox;
     this.maplibreMap.fitBounds([[minLon, minLat], [maxLon, maxLat]], {
