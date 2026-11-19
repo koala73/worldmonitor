@@ -25,59 +25,20 @@ test.describe('Mobile map native experience', () => {
   const { defaultBrowserType: _bt, ...mobileContext } = MOBILE_VIEWPORT;
 
   test.describe('timezone-based startup region', () => {
-    test('America/New_York → america view', async ({ browser }) => {
-      const context = await browser.newContext({
-        ...mobileContext,
-        timezoneId: 'America/New_York',
-        locale: 'en-US',
-      });
-      const page = await context.newPage();
-      await page.addInitScript(() => {
-        (window as any).__testResolvedLocation = true;
-      });
-      await page.goto('/');
-      await page.waitForTimeout(3000);
-      const region = await page.evaluate(() => {
-        const select = document.getElementById('regionSelect') as HTMLSelectElement | null;
-        return select?.value ?? null;
-      });
-      expect(region).toBe('america');
-      await context.close();
-    });
+    for (const [timezoneId, locale, region] of [
+      ['America/New_York', 'en-US', 'america'],
+      ['Europe/London', 'en-GB', 'eu'],
+      ['Asia/Tokyo', 'ja-JP', 'asia'],
+    ]) {
+      test.describe(timezoneId, () => {
+        test.use({ ...mobileContext, timezoneId, locale });
 
-    test('Europe/London → eu view', async ({ browser }) => {
-      const context = await browser.newContext({
-        ...mobileContext,
-        timezoneId: 'Europe/London',
-        locale: 'en-GB',
+        test(`starts in the ${region} view`, async ({ page }) => {
+          await page.goto('/');
+          await expect(page.locator('#regionSelect')).toHaveValue(region);
+        });
       });
-      const page = await context.newPage();
-      await page.goto('/');
-      await page.waitForTimeout(3000);
-      const region = await page.evaluate(() => {
-        const select = document.getElementById('regionSelect') as HTMLSelectElement | null;
-        return select?.value ?? null;
-      });
-      expect(region).toBe('eu');
-      await context.close();
-    });
-
-    test('Asia/Tokyo → asia view', async ({ browser }) => {
-      const context = await browser.newContext({
-        ...mobileContext,
-        timezoneId: 'Asia/Tokyo',
-        locale: 'ja-JP',
-      });
-      const page = await context.newPage();
-      await page.goto('/');
-      await page.waitForTimeout(3000);
-      const region = await page.evaluate(() => {
-        const select = document.getElementById('regionSelect') as HTMLSelectElement | null;
-        return select?.value ?? null;
-      });
-      expect(region).toBe('asia');
-      await context.close();
-    });
+    }
   });
 
   test.describe('URL restore', () => {
