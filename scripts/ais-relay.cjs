@@ -5899,7 +5899,10 @@ async function seedClassifyForVariant(variant, seenTitles) {
       level,
       meta.source,
       corroborationCount,
-      meta.publishedAt ?? Date.now(),
+      // #10978: a live blog rewrites its headline and keeps its first
+      // pubDate. Recency runs from when story tracking first saw this
+      // headline, if that is later.
+      Math.max(meta.publishedAt ?? Date.now(), meta.firstSeen ?? 0),
       {
         title,
         classSource: 'llm',
