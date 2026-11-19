@@ -2164,6 +2164,7 @@ async function connectTelegramClient() {
           const delayMs = readTelegramNumberEnv('RELAY_TEST_TELEGRAM_DISCONNECT_DELAY_MS', 0);
           if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs));
           if (process.env.RELAY_TEST_TELEGRAM_DISCONNECT_REJECT === 'true') {
+            console.log('[Relay][TestTelegram] disconnect rejected');
             throw new Error('TEST_TELEGRAM_DISCONNECT_FAILED');
           }
         },
