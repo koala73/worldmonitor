@@ -100,3 +100,23 @@ The browser import direction is `types -> config -> services -> components -> ap
 Run the smallest meaningful proof first. Preserve useful regression coverage. Run heavy checks sequentially. Report failures honestly. Keep locally verified, PR ready, merged, deployed, observed in production, and acceptance complete as separate claims.
 
 A green pre-push hook proves only its local checks. After pushing, monitor required CI on the exact PR head. Repair relevant failures on the existing branch and verify the new head. Do not report CI success while required checks are failed or pending. Inspect the failed job's first actionable error before retrying or changing code.
+
+## Wait for PR events instead of polling
+
+With GitHub CLI 2.105 or newer, `gh event listen` blocks until a pull request event arrives. Run it in the background and act when it exits. Never wrap `gh pr checks`, `gh pr view`, or `gh api` in a sleep loop.
+
+```bash
+gh event listen --resource https://github.com/koala73/worldmonitor/pull/<number> \
+  --event com.github.pull_request.check_suite.status.changed.v1,com.github.pull_request.review.submitted.v1,com.github.pull_request.head.changed.v1,com.github.pull_request.state.changed.v1 \
+  --timeout 45m
+```
+
+- Read the state with `gh pr view <number> --json headRefOid,statusCheckRollup`. It shows the head SHA, which `gh pr checks` does not.
+- The command exits after the first event. Events are not replayed. The listener prints a status line on stderr each time the stream attaches, including after it reconnects from a dropped stream. Read the state after each status line and after each event.
+- A push before the listener attaches sends no `head.changed` event. On each read, compare `headRefOid` with the pinned head SHA. If it differs, or a `head.changed` event arrives, pin the new SHA before acting on earlier findings or check results.
+- Each check suite sends its own event. While required checks are pending, start the listener again. When a suite fails, inspect that job instead of waiting for the rest.
+- `gate` is a commit status that Deploy Gate posts after the other workflows finish, so it sends no event. When only `gate` is pending, wait for it with one bounded watch, such as `timeout 30m gh pr checks <number> --watch`. If `gate` is still pending on an unchanged head after that, Deploy Gate may have used up the head's status capacity. Report that the head is blocked until it gets a new commit.
+- Exit status 8 means the timeout passed with no event. Read the state once, then decide whether to listen again.
+- Exit status 1 with `Event subscriptions are not enabled for this account` means the account lacks the Event Streams preview. Use one background `gh pr checks <number> --watch` instead. The owner account returned this error on 2026-11-19.
+- Neither command's exit status proves CI passed. `gh pr checks --watch` can exit 0 while it prints jobs as `skipping` after a failure. Before reporting success, read `statusCheckRollup` for the pinned head and confirm that `gate` is `SUCCESS`, no check is still queued or in progress, and no check concluded `FAILURE`. A rerun can leave an earlier `SUCCESS` gate visible until it finishes. `gate` already accepts required jobs that path selection skipped.
+- Subscriptions expire after 24 hours, and each account has a limited number. Delete a subscription you no longer need with `gh event subscription delete <id>`.
