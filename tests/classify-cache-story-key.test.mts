@@ -138,6 +138,15 @@ describe('classify cache key is the story, not the title string (#10976)', () =>
     );
   });
 
+  it('keeps a padded question apart from the padded report', async () => {
+    // Past the story scan the key drops the tail, where the question mark sits.
+    const pad = `${' '.repeat(2_500)}more`;
+    assert.notEqual(
+      await buildClassifyCacheKey(`Iran closes Strait of Hormuz?${pad}`),
+      await buildClassifyCacheKey(`Iran closes Strait of Hormuz${pad}`),
+    );
+  });
+
   it('keeps a question in any script apart from the report', async () => {
     const plain = await buildClassifyCacheKey('Iran closes Strait of Hormuz');
     for (const question of ['Iran closes Strait of Hormuz\uff1f', 'Iran closes Strait of Hormuz\u061f', 'Iran closes Strait of Hormuz?)', 'Iran closes Strait of Hormuz\u203d']) {

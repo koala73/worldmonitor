@@ -698,6 +698,9 @@ export function classifyCacheIdentity(title) {
   if (/\p{M}/u.test(lower)) return lower;
   const rest = stripOutletCredits(lower);
   if (rest === null) return lower;
+  // Past the story scan the key is a prefix and the question test reads the
+  // tail, so a padded question would take the report's label: keep the title.
+  if (rest.length > NORMALIZED_TITLE_SCAN) return lower;
   // Split in-word dashes after the credits are gone, so "Hormuz—Reuters" still strips.
   const words = rest.replace(DOTTED_ABBREVIATION_RE, (run) => run.replaceAll('.', ''));
   const story = normalizeNewsStoryTitle(words.replace(IN_WORD_HYPHEN_RE, ' '));
