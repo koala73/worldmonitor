@@ -79,6 +79,7 @@ const PUBLISHER_LINK_DOMAINS = {
   'rferl': ['rferl.org', 'azadliq.org', 'azattyk.org', 'azattyq.org', 'ozodi.org', 'azathabar.com'],
 
   'aljazeera': ['aljazeera.com'],
+  'al-arabiya': ['alarabiya.net'],
 
   'miit': ['miit.gov.cn'],
   'a16z': ['a16z.com'],
@@ -271,6 +272,8 @@ const PUBLISHER_LINK_LABELS = {
   "rfe/rl central asia": "rferl",
   "radio free europe/radio liberty": "rferl",
   "al jazeera": "aljazeera",
+  "al arabiya": "al-arabiya",
+  "al arabiya english": "al-arabiya",
   "reuters — zimbabwe": "reuters",
   "reuters — zambia": "reuters",
   "reuters — yemen": "reuters",
