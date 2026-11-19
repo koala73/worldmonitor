@@ -279,6 +279,13 @@ export const FALLBACK_PRICES = ${JSON.stringify(fallbackPrices, null, 2)};
 `;
 emit('api/_product-catalog.generated.js', edgeModule);
 
+// Annual catalog entries carry no marketing copy of their own; their Offer
+// describes the same plan as the monthly entry of the same tier group.
+function offerDescription(plan) {
+  if (plan.description) return plan.description;
+  return plans.find((other) => other.tierGroup === plan.tierGroup && other.description)?.description ?? '';
+}
+
 function offerFor(plan) {
   const offer = {
     '@type': 'Offer',
@@ -287,7 +294,7 @@ function offerFor(plan) {
     priceCurrency: plan.priceCurrency,
     availability: plan.availability,
     url: plan.url,
-    description: plan.description,
+    description: offerDescription(plan),
   };
   if (plan.billingDuration) {
     offer.priceSpecification = {
