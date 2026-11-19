@@ -1035,20 +1035,21 @@ const CACHE_TTL_COUNTRY_S = CACHE_TTL_HEALTHY_S * 2;
  * what a cache hit returns.
  */
 async function writeFeedParse(feed: ServerFeed, variant: string, result: ParseResult, ttlSeconds: number): Promise<ParseResult> {
-  const { countryItems, ...entry } = result;
   const feedKey = rssFeedCacheKey(variant, feed.url);
+  // The desktop sidecar cache is an in-process map, so the split saves no
+  // bandwidth there. Two keys would also let its LRU evict a pool while the
+  // feed entry stays. Keep the country rows inline (readers accept both forms).
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    await setCachedJson(feedKey, result, ttlSeconds);
+    return result;
+  }
+  const { countryItems, ...entry } = result;
   if (!countryItems || countryItems.length === 0 || typeof entry.parsedAt !== 'number') {
     await setCachedJson(feedKey, entry, ttlSeconds);
     return entry;
   }
   const pool = { parsedAt: entry.parsedAt, items: countryItems };
   const countryKey = rssFeedCountryCacheKey(variant, feed.url);
-  // The desktop sidecar cache is one in-process map with no transaction endpoint.
-  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
-    await setCachedJson(countryKey, pool, CACHE_TTL_COUNTRY_S);
-    await setCachedJson(feedKey, entry, ttlSeconds);
-    return entry;
-  }
   const commands = [
     ['SET', countryKey, JSON.stringify(pool), 'EX', CACHE_TTL_COUNTRY_S],
     ['SET', feedKey, JSON.stringify(entry), 'EX', ttlSeconds],

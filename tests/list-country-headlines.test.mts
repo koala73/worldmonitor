@@ -147,6 +147,26 @@ describe('country headlines from existing curated RSS caches', () => {
     assert.equal(briefGroundingGap(rows), 'thin-grounding', 'retention cannot invent an independent publisher');
   });
 
+  it('keeps country rows inline in the desktop sidecar, so LRU eviction cannot split them from their feed entry', async () => {
+    process.env.LOCAL_API_MODE = 'tauri-sidecar';
+    const { sidecarCacheGet } = await import('../server/_shared/sidecar-cache');
+    const source = feed('Guardian Africa');
+    const date = new Date(Date.now() - 3600_000).toUTCString();
+    const xml = `<rss><channel>${Array.from({ length: 7 }, (_, index) => {
+      const country = index === 6 ? 'Cameroon' : 'Kenya';
+      return `<item><title>${country} announces cabinet changes</title><link>https://www.theguardian.com/world/item-${index}</link><pubDate>${date}</pubDate></item>`;
+    }).join('')}</channel></rss>`;
+    globalThis.fetch = async (url) => {
+      assert.equal(String(url), source.url, 'the sidecar never calls Redis');
+      return new Response(xml);
+    };
+    const cold = await fetchAndParseRss(source, 'full', new AbortController().signal);
+    const stored = sidecarCacheGet(rssFeedCacheKey('full', source.url)) as { countryItems?: Array<{ title: string }> };
+    assert.ok(stored.countryItems?.some(item => item.title === 'Cameroon announces cabinet changes'), 'the retained row is stored with its feed entry');
+    assert.equal(sidecarCacheGet(rssFeedCountryCacheKey('full', source.url)), null, 'no second key to evict on its own');
+    assert.deepEqual(cold, stored);
+  });
+
   it('reads the country pool from its own key only when it came from the same parse', async () => {
     const source = feed('Guardian Africa');
     const parsedAt = Date.now() - 600_000;
