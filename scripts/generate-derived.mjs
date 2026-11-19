@@ -47,6 +47,7 @@ export const STEPS = [
   ['agent skills index', [NODE, 'scripts/build-agent-skills-index.mjs']],
   ['source attribution', [NODE, 'scripts/source-attribution.mjs'], '--write'],
   ['MCP source providers', [NODE, 'scripts/generate-mcp-source-providers.mjs']],
+  ['MCP discovery documents', [NODE, 'scripts/generate-mcp-discovery-documents.mjs']],
   ['locale keys', [NODE, 'scripts/sync-locale-keys.mjs']],
   ['zh-TW locales', ['python3', 'scripts/convert-zh-tw.py']],
   ['bootstrap tier keys', [NODE, 'scripts/sync-bootstrap-tier-keys.mjs']],
