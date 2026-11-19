@@ -32,6 +32,7 @@ Merge, auto-merge, and deployment require explicit authorization in the current 
 - Every PR that adds or changes UI must include screenshots of the changed UI in its GitHub description before it is ready for review. This applies to new PRs and updates to existing PRs.
 - Capture and inspect the rendered change. Include desktop and mobile views when responsive behavior is affected, and before/after or error/recovery states when they help show the change. Use test data, label the state and tested commit, and refresh screenshots after further UI changes.
 - Upload images with GitHub CLI 2.99 or newer: `gh pr edit <number> --attach '/absolute/path/screenshot.png#Description of the changed UI'`. Repeat `--attach` for multiple images. Preserve the existing PR description and verify that the uploaded images appear in it; local file paths alone are not GitHub evidence.
+- Never push screenshots to a branch (`pr-assets`, `assets/*`, `dogfood/*-screenshots`, or any orphan or image-only ref), and never link them through `raw.githubusercontent.com`. An image-only branch has no `vercel.json`, so Vercel builds it and fails with `Could not read package.json`. The pre-push hook refuses a branch that shares no history with `origin/main`. Do not bypass it with `--no-verify`.
 - When creating or updating a PR is authorized, uploading its UI screenshots is part of that delivery. If upload is blocked, report the blocker and do not claim the screenshot requirement is complete.
 
 ## Find the code and its checks
