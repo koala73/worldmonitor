@@ -419,6 +419,22 @@ describe('review round 4 (#10865, #10866)', () => {
     assert.deepEqual(found(entries), [['raan', dayIso(19)]]);
   });
 
+  it('extends the neighbouring line by actual epoch spacing: a three-day gap before the newest epoch', () => {
+    // As above, but daily epochs through day 19 and then day 22: projecting as if evenly spaced would
+    // smooth day 22 to 64 deg instead of 64.4 and leave the day-19 node step unjudged.
+    const meanMotion = meanMotionFor(7000);
+    const at = (d) => ({ noradId: 7, epoch: T0 + d * DAY_MS, meanMotion, eccentricity: 0.001, bstar: 0, inclination: 60 + 0.2 * d });
+    const days = [...Array.from({ length: 20 }, (_, d) => d), 22];
+    let node = 0;
+    const entries = days.map((d, k) => {
+      if (k > 0) node += ((j2RaanRateDegPerDay(at(days[k - 1])) + j2RaanRateDegPerDay(at(d))) / 2) * (d - days[k - 1]);
+      return { ...at(d), raan: node + (d >= 19 ? -0.021 : 0) };
+    });
+    const result = run(entries);
+    assert.deepEqual(result.candidates.map((c) => [c.element, c.toEpoch]), [['raan', dayIso(19)]]);
+    assert.ok(!result.unjudgedElements?.includes('raan'));
+  });
+
   it('does not let a real inclination change on the newest epoch confirm a node refit', () => {
     // Day 19 is a node refit; day 20 is a real 1 deg inclination change, propagated with its J2 rate.
     const entries = history({ aKm: 7000, eccentricity: 0.001, inclination: 60, noise: quiet, events: [{ day: 19, dRaan: 0.04, once: true }, { day: 20, dInc: 1 }] });
