@@ -111,9 +111,11 @@ gh event listen --resource https://github.com/koala73/worldmonitor/pull/<number>
   --timeout 45m
 ```
 
-- The command exits after the first event. Events are not replayed, so read the current state once with `gh pr checks <number>` after the listener attaches, and again after each event.
-- Each check suite sends its own event. When `gh pr checks` still shows pending required checks, start the listener again. When a suite fails, inspect that job instead of waiting for the rest.
-- A `head.changed` event means a new push. Pin the new head SHA before acting on earlier findings or check results.
+- Read the state with `gh pr view <number> --json headRefOid,statusCheckRollup`. It shows the head SHA, which `gh pr checks` does not.
+- The command exits after the first event. Events are not replayed. The listener prints a status line on stderr each time the stream attaches, including after it reconnects from a dropped stream. Read the state after each status line and after each event.
+- A push before the listener attaches sends no `head.changed` event. On each read, compare `headRefOid` with the pinned head SHA. If it differs, or a `head.changed` event arrives, pin the new SHA before acting on earlier findings or check results.
+- Each check suite sends its own event. While required checks are pending, start the listener again. When a suite fails, inspect that job instead of waiting for the rest.
 - Exit status 8 means the timeout passed with no event. Read the state once, then decide whether to listen again.
 - Exit status 1 with `Event subscriptions are not enabled for this account` means the account lacks the Event Streams preview. Use one background `gh pr checks <number> --watch` instead. The owner account returned this error on 2026-11-19.
+- Neither command's exit status proves CI passed. `gh pr checks --watch` can exit 0 while it prints jobs as `skipping` after a failure. Before reporting success, read `statusCheckRollup` for the pinned head and confirm that `gate` and every other required check concluded `SUCCESS` and no expected job was skipped.
 - Subscriptions expire after 24 hours, and each account has a limited number. Delete a subscription you no longer need with `gh event subscription delete <id>`.
