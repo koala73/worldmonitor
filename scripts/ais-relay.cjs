@@ -5866,6 +5866,8 @@ async function seedClassifyForVariant(variant, seenTitles) {
     };
     // #10978: the first pool an edition reads is a backlog that never alerts.
     if (meta.fromPool && classifyNow < poolBacklogUntil && poolBacklog?.has(classifyKeyFor(title))) return;
+    // A feed in another language is labelled for the dashboard, never alerted.
+    if (meta.otherLanguage) return;
     // Relay gates: when RELAY_GATES_READY is set the relay enforces source tier and
     // recency checks that the client path previously handled.
     // Explicit tier-4 keys only — unlisted names (including platform source

@@ -210,6 +210,32 @@ test('the first read of an edition\'s pool is a backlog that never alerts, and h
   assert.deepEqual(await pass(refused, [backlog, fresh, 'Third strike closes strait']), ['Third strike closes strait']);
 });
 
+test('a critical headline from a feed in another language is labelled but not alerted', async t => {
+  const server = http.createServer((_req, response) => response.end('{"categories":{}}'));
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const url = `http://127.0.0.1:${server.address().port}/digest`;
+  const published = [];
+  const written = [];
+  const meta = { source: 'Reuters', publishedAt: Date.now(), corroborationCount: 1, link: '' };
+  await bounded(loadVariant(url, [], { upstashPipeline: async commands => commands.map(() => ({ result: 'OK' })), extra: {
+    buildClassifyCandidateMap: () => new Map([['Strike closes strait', meta], ['Serangan menutup selat', { ...meta, source: 'ANTARA News', otherLanguage: true }]]),
+    classifyCacheKey: title => `label:${title}`,
+    upstashMGet: async keys => keys.map(() => null),
+    upstashSet: async key => { written.push(key); return true; },
+    classifyFetchLlm: async chunk => chunk.map((_t, i) => ({ i, l: 'critical', c: 'conflict' })),
+    publishNotificationEvent: async event => { published.push(event.payload.title); },
+    threatSummaryCountries: () => [],
+    relayComputeImportanceScore: () => 88, newsAlertClaimKey: () => 'news-story:realtime:x',
+    RELAY_RECENCY_MS: 900_000, recordAlertLatency() {}, alertLatency: () => ({}), observeJevShadow: async () => null,
+    CLASSIFY_VALID_LEVELS: ['critical', 'high', 'medium', 'low', 'info'], CLASSIFY_VALID_CATEGORIES: ['conflict'],
+    CLASSIFY_BATCH_SIZE: 50, CLASSIFY_SKIP_TTL: 1800, CLASSIFY_CACHE_TTL: 86_400,
+  } })('full', new Set()));
+  assert.deepEqual(written, ['label:Strike closes strait', 'label:Serangan menutup selat']);
+  assert.deepEqual(published, ['Strike closes strait']);
+});
+
 test('the revocation read keeps a multi-byte URL whole when the network splits it (#10978)', async t => {
   const revokedUrl = 'https://example.com/caf\u00e9';
   const body = Buffer.from(JSON.stringify([{ result: [revokedUrl] }]));

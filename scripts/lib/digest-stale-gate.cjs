@@ -1,6 +1,20 @@
 'use strict';
 
 const { gateRelayStoryLink } = require('./publisher-link-relay-gate.cjs');
+const NEWS_CATALOG = require('../../shared/news-catalog.json');
+
+// The relay classifies the English digest, which also carries local-language
+// outlets (fetchInAllLanguages). Their headlines are labelled for the
+// dashboard but must not alert: subscribers got each story once per language.
+// A Google News query in English returns English headlines whatever `lang`
+// routes the feed to, so those keep alerting.
+const OTHER_LANGUAGE_FEEDS = (() => {
+  const english = new Set();
+  const other = new Set();
+  const inEnglish = feed => !feed.lang || feed.lang === 'en' || /^https:\/\/news\.google\.com\/.*[?&]hl=en\b/.test(feed.url);
+  for (const feed of NEWS_CATALOG.feeds) (inEnglish(feed) ? english : other).add(feed.name);
+  return new Set([...other].filter(name => !english.has(name)));
+})();
 
 // #7084: should the relay's digest-derived candidates participate in this
 // classification pass?
@@ -83,6 +97,7 @@ function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs,
           // edition or language. Only for the latency log.
           ...(item.storyMeta?.firstSeen > 0 ? { firstSeen: Number(item.storyMeta.firstSeen) } : {}),
           ...(index >= served.length ? { fromPool: true } : {}),
+          ...(OTHER_LANGUAGE_FEEDS.has(item.source) ? { otherLanguage: true } : {}),
         });
       }
     }

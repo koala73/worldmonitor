@@ -52,6 +52,23 @@ describe('relay digest stale gate (#7084)', () => {
     assert.equal(buildClassifyCandidateMap(stale, [], 'full', now, 6 * 60 * 60 * 1000, undefined, pool).size, 0);
   });
 
+  it('marks a headline from a feed in another language, served or pooled, so it is labelled but never alerts', () => {
+    const now = Date.now();
+    const digest = { categories: { europe: { items: [
+      { title: 'Es war Völkermord', source: 'Neue Zürcher Zeitung', publishedAt: now - 60_000 },
+      { title: 'Court rules on genocide', source: 'BBC World', publishedAt: now - 60_000 },
+      // lang ko, but an English Google News query.
+      { title: 'Supreme Court overturns jail term', source: 'Hankyoreh', publishedAt: now - 60_000 },
+    ] } } };
+    const pool = [
+      { title: 'Xi, Trump, dan Putin akhiri pertemuan', source: 'ANTARA News', publishedAt: now - 60_000 },
+      { title: 'Tanker hit in Hormuz', source: 'Strategic Chokepoints', originPublisher: 'Reuters', publishedAt: now - 60_000 },
+      { title: 'Unlisted feed headline', source: 'Not In The Catalog', publishedAt: now - 60_000 },
+    ];
+    const candidates = buildClassifyCandidateMap(digest, [], 'full', now, 6 * 60 * 60 * 1000, undefined, pool);
+    assert.deepEqual([...candidates].filter(([, c]) => c.otherLanguage).map(([title]) => title), ['Es war Völkermord', 'Xi, Trump, dan Putin akhiri pertemuan']);
+  });
+
   it('skips a server-marked stale replay', () => {
     assert.equal(isStaleDigestReplay({ coverage: { servedStale: true, staleReason: 'build-error' } }), true);
     assert.equal(isStaleDigestReplay({ coverage: { servedStale: true, staleReason: 'gate-held' } }), true);
