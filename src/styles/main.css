@@ -4988,12 +4988,70 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   transform: translateX(-50%) translateY(0);
 }
 
+.wm-copy {
+  position: fixed;
+  /* Above the trip assessment and embed dialogs (10020) and the trip toast
+     (10021). Confirm and account-deletion dialogs stay above this at 10050. */
+  z-index: 10022;
+  left: 50%;
+  bottom: 32px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  width: min(560px, calc(100vw - 24px));
+  box-sizing: border-box;
+  padding: 10px;
+  background: var(--surface-active);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.wm-copy-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.wm-copy-input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  resize: none;
+  min-height: 32px;
+  max-height: 9em;
+  overflow: auto;
+}
+
+.wm-copy-close {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  cursor: pointer;
+}
+
 /* The phone tab bar (z 10003, 58px) sits over a toast at the desktop offset
    and hides half of its message; lift the toast clear of the bar. */
 @media (max-width: 768px) {
   .toast-notification {
     bottom: calc(58px + 12px + env(safe-area-inset-bottom, 0px));
     max-width: calc(100vw - 32px);
+  }
+
+  .wm-copy {
+    bottom: calc(58px + 12px + env(safe-area-inset-bottom, 0px));
   }
 }
 

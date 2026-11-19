@@ -3,6 +3,9 @@ import { isWebPushConfigured } from '@/config/push';
 import { needsIosInstall, openIosInstallSheet } from '@/services/pwa-install';
 import { openExternalUrl } from '@/services/external-navigation';
 import { escapeHtml } from '@/utils/sanitize';
+import { copyText, dismissSecretCopyFallback } from '@/utils/copy-text';
+
+const NOTIFICATION_SECRET_COPY_OWNER = 'notifications';
 import { renderSVG } from 'uqr';
 import {
   getChannelsData,
@@ -344,11 +347,16 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
     attach(container: HTMLElement): () => void {
       const ac = new AbortController();
       const { signal } = ac;
+      const release = (): void => {
+        dismissSecretCopyFallback(NOTIFICATION_SECRET_COPY_OWNER);
+        ac.abort();
+      };
       // Set by renderNotifContent, read by afterRuleSave (#4273). Declared here so
       // a synchronous first content render can never hit its TDZ. Stays true
       // until the conversion's digest write SUCCEEDS, so a failed rule save or
       // digest write leaves it for a later rule save to retry; the in-flight
       // flag keeps concurrent rule saves from double-sending the conversion.
+      let secretCopyGeneration = 0;
       let legacyDigestPending = false;
       let legacyDigestConversionInFlight = false;
 
@@ -361,7 +369,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             });
           }, { signal });
         }
-        return () => ac.abort();
+        return release;
       }
 
       // #4273: the snapshot is still hydrating, so which ladder to render is
@@ -381,7 +389,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           // same status is a no-op, so 'unavailable' cannot loop.
           if (status === verificationStatus || replacementCleanup !== null || signal.aborted) return;
           offVerification?.();
-          ac.abort();
+          release();
           const next = renderNotificationsSettings(host);
           setTrustedHtml(container, trustedHtml(next.html, 'entitlement verification settled re-render (#4273)'));
           replacementCleanup = next.attach(container);
@@ -393,7 +401,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           signal.addEventListener('abort', offVerification);
         }
         return () => {
-          ac.abort();
+          release();
           if (replacementCleanup) replacementCleanup();
         };
       }
@@ -416,7 +424,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         if (replacementCleanup !== null || signal.aborted) return;
         if ((signedIn && hasTier(1)) === isPro) return;
         offEntitlement?.();
-        ac.abort();
+        release();
         const next = renderNotificationsSettings(host);
         setTrustedHtml(container, trustedHtml(next.html, 'entitlement flip re-render (#4273)'));
         replacementCleanup = next.attach(container);
@@ -1149,6 +1157,8 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
 
       function reloadNotifSection(): void {
         const generation = ++notifReloadGeneration;
+        secretCopyGeneration += 1;
+        dismissSecretCopyFallback(NOTIFICATION_SECRET_COPY_OWNER);
         const loadingEl = container.querySelector<HTMLElement>('#usNotifLoading');
         const contentEl = container.querySelector<HTMLElement>('#usNotifContent');
         if (!loadingEl || !contentEl) return;
@@ -1850,20 +1860,15 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             btn.textContent = 'Copied!';
             setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
           };
-          const execFallback = () => {
-            const ta = document.createElement('textarea');
-            ta.value = cmd;
-            ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
-            document.body.appendChild(ta);
-            ta.select();
-            try { document.execCommand('copy'); markCopied(); } catch { /* ignore */ }
-            document.body.removeChild(ta);
-          };
-          if (navigator.clipboard?.writeText) {
-            navigator.clipboard.writeText(cmd).then(markCopied).catch(execFallback);
-          } else {
-            execFallback();
-          }
+          const generation = secretCopyGeneration;
+          void copyText(cmd, {
+            secret: true,
+            owner: NOTIFICATION_SECRET_COPY_OWNER,
+            retain: () => !signal.aborted && generation === secretCopyGeneration,
+          }).then((copied) => {
+            if (signal.aborted || generation !== secretCopyGeneration || !copied) return;
+            markCopied();
+          });
           return;
         }
 
@@ -2144,6 +2149,8 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           return;
         }
         if (target.closest('#usWebhookSecretDone')) {
+          secretCopyGeneration += 1;
+          dismissSecretCopyFallback(NOTIFICATION_SECRET_COPY_OWNER);
           reloadNotifSection();
           return;
         }
@@ -2273,7 +2280,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       window.addEventListener('message', onMessage, { signal });
 
       return () => {
-        ac.abort();
+        release();
         if (replacementCleanup) replacementCleanup();
       };
     },

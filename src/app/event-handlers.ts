@@ -127,6 +127,7 @@ import { evaluatePlaybackGate } from '@/services/gates/playback';
 import { resolveGateAction, type PanelGateReason } from '@/services/panel-gating';
 import { ExportGateControl } from '@/components/ExportGateControl';
 import { h, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { copyText } from '@/utils/copy-text';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import { declareOverlay, isModalOpen } from '@/utils/open-modal';
 import {
@@ -1949,18 +1950,8 @@ export class EventHandlerManager implements AppModule {
   }
 
   private async copyToClipboard(text: string): Promise<void> {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return;
-    }
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
-    document.body.appendChild(textarea);
-    textarea.select();
-    document.execCommand('copy');
-    document.body.removeChild(textarea);
+    const copied = await copyText(text);
+    if (!copied) throw new Error('Copy failed');
   }
 
   private platformLabel(p: Platform): string {

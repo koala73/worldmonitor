@@ -103,6 +103,7 @@ import type { ComputeEnergyShockScenarioResponse, CrudeShareBaseline, ImageryCha
 import { IMAGERY_CONTEXT_EXCLUSION, IMAGERY_CONTEXT_METHODOLOGY_HREF, imageryChangeSummary } from './_risk-imagery-context';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { confirmShareLinkCopied, createShareLinkButton } from './share-link-button';
+import { copyText } from '@/utils/copy-text';
 import { overlayHistory, type OverlayCloseOrigin } from '@/utils/overlay-history';
 import type { GetDefenseIndustrialBaseResponse } from '@/generated/client/worldmonitor/military/v1/service_client';
 import { regionalFeedStatusNote, regionalFeedTitle, regionalLatestPeriod, regionalSeriesRows } from './regional-energy-presentation';
@@ -3676,7 +3677,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     shareBtn.addEventListener('click', () => {
       if (!this.currentCode || !this.currentName) return;
       const url = `${this.source?.mode === 'host' ? 'https://www.worldmonitor.app' : window.location.origin}/dashboard?c=${encodeURIComponent(this.currentCode)}`;
-      navigator.clipboard.writeText(url).then(() => confirmShareLinkCopied(shareBtn)).catch(() => {});
+      void copyText(url).then((copied) => {
+        if (copied) confirmShareLinkCopied(shareBtn);
+      });
     });
 
     const storyButton = this.el('button', 'cdp-action-btn', 'Create story') as HTMLButtonElement;
