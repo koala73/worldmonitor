@@ -26,8 +26,9 @@ import { getCompleteLayerCatalogKeys } from '../src/config/map-layer-definitions
 import { INTEL_HOTSPOTS } from '../shared/geo-data.ts';
 import { PIPELINES } from '../shared/pipelines-data.ts';
 import { ORBITAL_WATCH_PLAN_LINES, orbitalWatchAccess } from '../shared/orbital-watch-pricing.ts';
-import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
-import { MCP_DOMAIN_SUMMARY, MCP_TAGS, MCP_TOOL_CATEGORIES, TOOL_CATEGORY_BY_NAME } from '../api/mcp/domains.ts';
+import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { MCP_DOMAIN_SUMMARY, MCP_TAGS, MCP_TOOL_CATEGORIES } from '../api/mcp/domains.ts';
+import { serverCardTools } from '../api/mcp/server-card-tools.ts';
 import { UI_RESOURCE_LIST_RESPONSE } from '../api/mcp/ui/registry.ts';
 import { FREE_ACCOUNT_CALLS_PER_DAY } from '../api/mcp/upgrade-constants.ts';
 import { publishedRankedCountries } from './build-crawlable-corpus.mjs';
@@ -479,19 +480,7 @@ transform('public/.well-known/mcp/server-card.json', (source) => {
   // authenticate still sees which tools render an app.
   card.toolCategories = MCP_TOOL_CATEGORIES.map((category) => category.id);
   card.tags = [...MCP_TAGS];
-  card.tools = TOOL_REGISTRY.map((tool) => {
-    const category = TOOL_CATEGORY_BY_NAME[tool.name];
-    if (!category) throw new Error(`${tool.name} has no category in api/mcp/domains.ts`);
-    return {
-      name: tool.name,
-      description: tool.description,
-      _meta: {
-        ...(tool._uiResourceUri ? { ui: { resourceUri: tool._uiResourceUri } } : {}),
-        'worldmonitor/access': toolAccess(tool),
-        'worldmonitor/category': category,
-      },
-    };
-  });
+  card.tools = serverCardTools();
   return renderJsonDomainSurface(json(card), SERVER_CARD_DOMAIN_SURFACE, MCP_DOMAIN_SUMMARY);
 });
 
