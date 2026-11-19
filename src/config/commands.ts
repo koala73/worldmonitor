@@ -10,6 +10,7 @@ export interface Command {
   id: string;
   keywords: string[];
   label: string;
+  canonicalCountryName?: string;
   icon: string;
   category: 'navigate' | 'layers' | 'panels' | 'view' | 'actions' | 'country';
 }
@@ -400,6 +401,7 @@ function buildCountryCommands(): Command[] {
         id: `country-map:${code}`,
         keywords: [...keywords, 'map'],
         label: name,
+        canonicalCountryName: curated?.name ?? name,
         icon: toFlagEmoji(code),
         category: 'navigate' as const,
       },
@@ -407,6 +409,7 @@ function buildCountryCommands(): Command[] {
         id: `country:${code}`,
         keywords: [...keywords, 'brief'],
         label: name,
+        canonicalCountryName: curated?.name ?? name,
         icon: toFlagEmoji(code),
         category: 'country' as const,
       },
