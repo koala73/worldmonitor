@@ -1113,10 +1113,14 @@ describe('MCP live smoke — the production detection net', () => {
         writeFileSync(resolve(dir, 'scripts/vercel-ignore.sh'), `exit ${vercelBuilds ? 1 : 0}\n`);
         writeFileSync(resolve(bin, 'git'), '#!/bin/bash\nexit 0\n', { mode: 0o755 });
         const ghLog = resolve(dir, 'gh.log');
+        // The list call yields a statuses URL; only the status call yields a state.
+        const listReply = deployment === 'none' ? '' : 'echo https://api.github.test/statuses/1';
+        const statusReply = deployment === 'none' ? '' : `echo ${deployment}`;
         writeFileSync(
           resolve(bin, 'gh'),
           `#!/bin/bash\necho "$*" >> ${JSON.stringify(ghLog)}\n`
-            + (deployment === 'none' ? 'exit 0\n' : deployment === 'hang' ? 'exec sleep 600\n' : `echo ${deployment}\n`),
+            + (deployment === 'hang' ? 'exec sleep 600\n' : '')
+            + `case "$2" in\n  repos/*/deployments\\?*) ${listReply || ':'} ;;\n  */statuses/*) ${statusReply || ':'} ;;\n esac\n`,
           { mode: 0o755 },
         );
         const output = resolve(dir, 'output');
@@ -1166,8 +1170,21 @@ describe('MCP live smoke — the production detection net', () => {
       assert.deepEqual(runGate({ vercelBuilds: false, deployment: 'none' }), { pending: 'false', ghCalls: [] });
     });
 
+    // Skipping is safe only for a vercel[bot] Production deployment of THIS
+    // SHA, so the query must keep all three identity checks.
     it('skips the probe once Vercel deploys this SHA to production', () => {
-      assert.equal(runGate({ vercelBuilds: true, deployment: 'success' }).pending, 'true');
+      const { pending, ghCalls } = runGate({ vercelBuilds: true, deployment: 'success' });
+      assert.equal(pending, 'true');
+      assert.equal(ghCalls.length, 2, 'one deployment lookup, then one status lookup');
+      assert.ok(
+        ghCalls[0].includes(`api repos/koala73/worldmonitor/deployments?sha=${'c'.repeat(40)}&environment=Production`),
+        `deployment lookup must filter by this SHA and Production; got: ${ghCalls[0]}`,
+      );
+      assert.ok(
+        ghCalls[0].includes('select(.creator.login == "vercel[bot]")'),
+        `deployment lookup must keep only vercel[bot] deployments; got: ${ghCalls[0]}`,
+      );
+      assert.match(ghCalls[1], /^api https:\/\/api\.github\.test\/statuses\/1 /);
     });
 
     it('probes when the production deploy of this SHA fails', () => {
