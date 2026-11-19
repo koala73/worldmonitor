@@ -523,6 +523,17 @@ describe('CountryIntelManager lazy coverage headlines', () => {
     expect(newsUpdates[newsUpdates.length - 1]?.map((item: NewsItem) => item.title)).toEqual([eagerHeadline.title]);
   });
 
+  it('keeps the dashboard headlines when reviewed country coverage arrives', async () => {
+    const eagerHeadline = newsItem('US announces new sanctions package');
+    const supplementalHeadline = newsItem('US releases new retail sales figures');
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [supplementalHeadline], timelineEvents: [] });
+    const { newsUpdates, open } = createBriefHarness([eagerHeadline]);
+
+    await open();
+
+    await vi.waitFor(() => expect(newsUpdates[newsUpdates.length - 1]).toEqual([eagerHeadline, supplementalHeadline]));
+  });
+
   it('passes only well-formed evidence items from the brief response to the page', async () => {
     coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
     const validItem = {
