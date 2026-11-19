@@ -3512,10 +3512,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!this.briefBody || data.code !== this.currentCode) return;
     this.briefBody.replaceChildren();
     if (data.accessNotice) {
-      const signIn = data.accessNotice === 'sign-in';
-      const notice = this.el('div', 'cdp-assessment-meta');
-      notice.append(this.el('p', 'panel-locked-desc', t(signIn ? 'premium.signInToUnlock' : 'premium.upgradeDesc')));
-      if (signIn) {
+      const notice = this.el('div', 'cdp-brief-access');
+      const message = data.accessNotice === 'sign-in' ? 'premium.signInToUnlock'
+        : data.accessNotice === 'pro' ? 'premium.upgradeDesc' : 'countryBrief.briefUnavailable';
+      notice.append(this.el('p', 'panel-locked-desc', t(message)));
+      if (data.accessNotice === 'sign-in') {
         const button = this.el('button', 'panel-locked-cta', t('auth.signIn'));
         button.type = 'button';
         button.addEventListener('click', () => {
@@ -3524,7 +3525,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
             .catch(() => showToast(t('countryBrief.briefUnavailable')));
         });
         notice.append(button);
-      } else {
+      } else if (data.accessNotice === 'pro') {
         const link = this.el('a', 'panel-locked-cta', t('premium.upgradeToPro'));
         link.href = '/pro#pricing';
         notice.append(link);

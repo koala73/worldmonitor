@@ -186,7 +186,9 @@ function marketsCard(page: Page) {
 for (const status of [401, 403]) {
   test(`explains AI brief access after a ${status} response`, async ({ page, countryBrief }, testInfo) => {
     void countryBrief;
-    await page.route('**/api/intelligence/v1/get-country-intel-brief?*', route => route.fulfill({ status, json: {} }));
+    await page.route('**/api/intelligence/v1/get-country-intel-brief?*', route => route.fulfill({
+      status, json: { error: status === 403 ? 'Upgrade required' : 'Authentication required' },
+    }));
     await page.goto('/dashboard?country=UA');
     await expectCountry(page);
 

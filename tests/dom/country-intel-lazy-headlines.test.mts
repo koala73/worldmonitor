@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppContext } from '@/app/app-context';
 import type { CountryBriefSignals, NewsItem } from '@/types';
+import * as auth from '@/services/auth-state';
+import * as panelGating from '@/services/panel-gating';
 
 const coverageMocks = vi.hoisted(() => ({
   fetchCountryCoverage: vi.fn(),
@@ -150,6 +152,7 @@ function createBriefHarness(eagerNews: NewsItem[], options: { realBriefFetch?: b
   const page = {
     onClose: (callback: () => void) => { close = callback; },
     getCode: () => activeCode,
+    getName: () => 'United States',
     isVisible: () => visible,
     hide: () => {
       visible = false;
@@ -208,6 +211,7 @@ function createBriefHarness(eagerNews: NewsItem[], options: { realBriefFetch?: b
   Reflect.set(manager, 'fetchCommodityVulnerability', () => {});
   Reflect.set(manager, 'mountCountryTimeline', () => {});
   return {
+    manager,
     newsUpdates,
     briefUpdates,
     bindClose: () => Reflect.get(manager, 'createCountryBriefPage').call(manager),
@@ -225,6 +229,61 @@ describe('CountryIntelManager lazy coverage headlines', () => {
     coverageMocks.localSummaryAvailable = false;
     coverageMocks.summarize.mockReset();
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+  });
+
+  it('rechecks an open AI brief when the visitor signs in or upgrades', async () => {
+    let session: auth.AuthSession = { user: null, isPending: false };
+    let notify = () => {};
+    const authState = vi.spyOn(auth, 'getAuthState').mockImplementation(() => session);
+    const premiumAccess = vi.spyOn(panelGating, 'hasPremiumAccess').mockImplementation(() => session.user?.role === 'pro');
+    const authSubscription = vi.spyOn(auth, 'subscribeAuthState').mockImplementation(callback => {
+      notify = () => callback(session);
+      return () => {};
+    });
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
+    coverageMocks.premiumFetch.mockImplementation(async (url: string) => {
+      if (!url.includes('get-country-intel-brief')) throw new Error('offline');
+      if (session.user?.role === 'pro') return Response.json({ brief: 'AI assessment for this account.' });
+      return Response.json({ error: session.user ? 'Upgrade required' : 'Authentication required' }, { status: session.user ? 403 : 401 });
+    });
+    const { manager, open, briefUpdates } = createBriefHarness([], { realBriefFetch: true });
+    Reflect.set(manager, 'setupCountryIntel', async () => {});
+    try {
+      await manager.init();
+      await open();
+      expect(briefUpdates.some(update => update.accessNotice === 'sign-in')).toBe(true);
+
+      session = { user: { id: 'fixture-user', name: 'Test Account', email: 'test@example.test', role: 'free' }, isPending: false };
+      notify();
+      await vi.waitFor(() => expect(briefUpdates[briefUpdates.length - 1]?.accessNotice).toBe('pro'));
+
+      session = { user: { ...session.user!, role: 'pro' }, isPending: false };
+      notify();
+      await vi.waitFor(() => expect(briefUpdates[briefUpdates.length - 1]).toMatchObject({ brief: 'AI assessment for this account.' }));
+      expect(briefUpdates[briefUpdates.length - 1]?.accessNotice).toBeUndefined();
+    } finally {
+      manager.destroy();
+      authState.mockRestore();
+      authSubscription.mockRestore();
+      premiumAccess.mockRestore();
+    }
+  });
+
+  it('uses a neutral unavailable notice after a signed-in session receives a 401', async () => {
+    const authState = vi.spyOn(auth, 'getAuthState').mockReturnValue({
+      user: { id: 'fixture-user', name: 'Test Account', email: 'test@example.test', role: 'pro' }, isPending: false,
+    });
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
+    coverageMocks.premiumFetch.mockImplementation(async () => Response.json({}, { status: 401 }));
+    const harness = createBriefHarness([], { realBriefFetch: true });
+    try {
+      await harness.open();
+      expect(harness.briefUpdates.some(update => update.accessNotice === 'unavailable')).toBe(true);
+      expect(harness.briefUpdates.some(update => update.accessNotice === 'sign-in')).toBe(false);
+    } finally {
+      harness.manager.destroy();
+      authState.mockRestore();
+    }
   });
 
   it('uses the shared default assessment without browser grounding and preserves its accepted timestamp', async () => {

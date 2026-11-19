@@ -57,7 +57,8 @@ import { collectStoryData } from '@/services/story-data';
 // remaining StoryModal eager edge. The modal opens on user interaction
 // (post-paint), so the import() latency is hidden.
 
-import { hasPremiumAccess } from '@/services/panel-gating';
+import { hasPremiumAccess, readClientEntitlementBelief } from '@/services/panel-gating';
+import { classifyDenialResponse, reconcileSessionDenial } from '@/services/premium-denial';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
 import { showMapContextMenu, type MapContextMenuItem } from '@/components/MapContextMenu';
@@ -222,8 +223,23 @@ export class CountryIntelManager implements AppModule {
       this.orbitalRouteUnsubscribe = watchOrbitalRoute(() => this.ctx.map);
       this.orbitalEvidenceUnsubscribe = watchOrbitalEvidence(() => this.ctx.map);
     }
-    this.lastHadPremium = hasPremiumAccess(getAuthState());
-    const syncPremiumAccess = () => this.handlePremiumAccessTransition(hasPremiumAccess(getAuthState()));
+    let previousAuth = getAuthState();
+    this.lastHadPremium = hasPremiumAccess(previousAuth);
+    const syncPremiumAccess = () => {
+      const auth = getAuthState();
+      const premium = hasPremiumAccess(auth);
+      const accessChanged = auth.user?.id !== previousAuth.user?.id
+        || auth.isPending !== previousAuth.isPending || premium !== this.lastHadPremium;
+      previousAuth = auth;
+      this.handlePremiumAccessTransition(premium);
+
+      const presentation = this.currentCountryPresentation;
+      if (accessChanged && presentation?.briefAccessNotice && !this.pendingBriefRequest && this.isCurrentPresentation(presentation)) {
+        const { page, code } = presentation;
+        void this.openCountryBriefByCode(code, page.getName() ?? code, { trackAnalytics: false })
+          .catch(err => this.handleCountryBriefOpenError(err));
+      }
+    };
     this.authUnsubscribe = subscribeAuthState(syncPremiumAccess);
     this.entitlementUnsubscribe = onEntitlementChange(syncPremiumAccess);
   }
@@ -1038,8 +1054,13 @@ export class CountryIntelManager implements AppModule {
     if (!resp.ok) {
       let accessNotice: CountryIntelBriefResult['accessNotice'];
       if (!isDesktopRuntime()) {
-        if (resp.status === 401) accessNotice = 'sign-in';
-        else if (resp.status === 403 && !hasPremiumAccess(getAuthState())) accessNotice = 'pro';
+        const denial = await classifyDenialResponse(resp, readClientEntitlementBelief(getAuthState()));
+        if (denial) {
+          const auth = getAuthState();
+          const verdict = reconcileSessionDenial(denial, auth.user !== null || auth.isPending);
+          accessNotice = verdict === 'sign_in_required' ? 'sign-in'
+            : verdict === 'upgrade_required' ? 'pro' : 'unavailable';
+        }
       }
       return { brief: '', sources: [], evidence: [], accessNotice };
     }
