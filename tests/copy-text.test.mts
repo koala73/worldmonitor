@@ -206,4 +206,15 @@ describe('copyText', () => {
 
     assert.equal(document.querySelector('.wm-copy-fallback'), null);
   });
+
+  it('dismisses a secret field only for the surface that opened it', async () => {
+    install('missing', 'missing');
+    await copyText('wm_live_secret', { secret: true, owner: 'settings' });
+
+    dismissSecretCopyFallback('notifications');
+
+    assert.equal(fallbackValue(), 'wm_live_secret');
+    dismissSecretCopyFallback('settings');
+    assert.equal(document.querySelector('.wm-copy-fallback'), null);
+  });
 });

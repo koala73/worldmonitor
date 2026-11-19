@@ -4,6 +4,8 @@ import { needsIosInstall, openIosInstallSheet } from '@/services/pwa-install';
 import { openExternalUrl } from '@/services/external-navigation';
 import { escapeHtml } from '@/utils/sanitize';
 import { copyText, dismissSecretCopyFallback } from '@/utils/copy-text';
+
+const NOTIFICATION_SECRET_COPY_OWNER = 'notifications';
 import { renderSVG } from 'uqr';
 import {
   getChannelsData,
@@ -346,7 +348,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       const ac = new AbortController();
       const { signal } = ac;
       const release = (): void => {
-        dismissSecretCopyFallback();
+        dismissSecretCopyFallback(NOTIFICATION_SECRET_COPY_OWNER);
         ac.abort();
       };
       // Set by renderNotifContent, read by afterRuleSave (#4273). Declared here so
@@ -1156,7 +1158,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       function reloadNotifSection(): void {
         const generation = ++notifReloadGeneration;
         secretCopyGeneration += 1;
-        dismissSecretCopyFallback();
+        dismissSecretCopyFallback(NOTIFICATION_SECRET_COPY_OWNER);
         const loadingEl = container.querySelector<HTMLElement>('#usNotifLoading');
         const contentEl = container.querySelector<HTMLElement>('#usNotifContent');
         if (!loadingEl || !contentEl) return;
@@ -1861,6 +1863,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           const generation = secretCopyGeneration;
           void copyText(cmd, {
             secret: true,
+            owner: NOTIFICATION_SECRET_COPY_OWNER,
             retain: () => !signal.aborted && generation === secretCopyGeneration,
           }).then((copied) => {
             if (signal.aborted || generation !== secretCopyGeneration || !copied) return;
@@ -2147,7 +2150,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         }
         if (target.closest('#usWebhookSecretDone')) {
           secretCopyGeneration += 1;
-          dismissSecretCopyFallback();
+          dismissSecretCopyFallback(NOTIFICATION_SECRET_COPY_OWNER);
           reloadNotifSection();
           return;
         }

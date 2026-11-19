@@ -241,6 +241,8 @@ export class UnifiedSettings {
   private apiKeysLoading = false;
   private apiKeysError = '';
   private newlyCreatedKey: string | null = null;
+  /** Bumped when settings closes so a pending copy cannot reveal into the next open. */
+  private secretCopySession = 0;
   // ---- Embeds tab (partner-embed `wme_` keys) ----
   private embedKeys: EmbedKeyInfo[] = [];
   private embedKeysLoading = false;
@@ -690,8 +692,10 @@ export class UnifiedSettings {
   }
 
   private copyOwnedSecret(secret: string, stillHeld: () => boolean, buttonSelector: string): void {
-    void copyText(secret, { secret: true, retain: stillHeld }).then((copied) => {
-      if (!stillHeld() || !copied) return;
+    const session = this.secretCopySession;
+    const held = () => stillHeld() && this.secretCopySession === session;
+    void copyText(secret, { secret: true, owner: 'settings', retain: held }).then((copied) => {
+      if (!held() || !copied) return;
       const btn = this.overlay.querySelector<HTMLElement>(buttonSelector);
       if (btn) {
         btn.textContent = 'Copied!';
@@ -703,6 +707,7 @@ export class UnifiedSettings {
   private handleAccountIdentityChange(nextUserId: string | null): void {
     if (nextUserId === this.accountUserId) return;
 
+    this.secretCopySession += 1;
     dismissSecretCopyFallback();
     this.closeDeletionDialog();
     this.accountUserId = nextUserId;
@@ -923,6 +928,7 @@ export class UnifiedSettings {
   }
 
   private teardownSettings(origin: OverlayCloseOrigin = 'control'): void {
+    this.secretCopySession += 1;
     dismissSecretCopyFallback();
     this.releasePageEntry();
     if (origin === 'control' && this.historyRegistered) {
@@ -1011,6 +1017,7 @@ export class UnifiedSettings {
   }
 
   public destroy(): void {
+    this.secretCopySession += 1;
     dismissSecretCopyFallback();
     this.releasePageEntry();
     if (this.historyRegistered) overlayHistory.close('settings');

@@ -8,6 +8,8 @@ export interface CopyTextOptions {
   writeText?: ((text: string) => Promise<void>) | null;
   /** Mark the manual field so settings can remove a revealed API or embed key. */
   secret?: boolean;
+  /** Limits a secret-field dismissal to the surface that opened it. */
+  owner?: string;
   /** When this returns false, a failed copy does not open the manual field. */
   retain?: () => boolean;
 }
@@ -49,7 +51,7 @@ async function invokeWrite(write: (text: string) => Promise<void>, text: string)
 function presentManualCopy(text: string, options: CopyTextOptions): boolean {
   try {
     if (options.reveal) options.reveal(text);
-    else revealCopyText(text, options.label ?? COPY_MANUALLY_LABEL, options.closeLabel ?? COPY_MANUALLY_CLOSE, options.secret === true);
+    else revealCopyText(text, options.label ?? COPY_MANUALLY_LABEL, options.closeLabel ?? COPY_MANUALLY_CLOSE, options.secret === true, options.owner);
   } catch {
     return false;
   }
@@ -96,12 +98,15 @@ function restoreFocus(previous: Element | null): void {
   }
 }
 
-export function dismissSecretCopyFallback(): void {
+export function dismissSecretCopyFallback(owner?: string): void {
   if (typeof document === 'undefined') return;
-  document.querySelector('.wm-copy-fallback[data-copy-secret]')?.remove();
+  const field = document.querySelector('.wm-copy-fallback[data-copy-secret]');
+  if (!field) return;
+  if (owner !== undefined && field.getAttribute('data-copy-owner') !== owner) return;
+  field.remove();
 }
 
-function revealCopyText(text: string, label: string, closeLabel: string, secret: boolean): void {
+function revealCopyText(text: string, label: string, closeLabel: string, secret: boolean, owner?: string): void {
   if (typeof document === 'undefined' || !document.body) {
     if (typeof window !== 'undefined' && typeof window.prompt === 'function') window.prompt(label, text);
     return;
@@ -112,6 +117,7 @@ function revealCopyText(text: string, label: string, closeLabel: string, secret:
   root.className = 'wm-copy-fallback';
   root.setAttribute('role', 'status');
   if (secret) root.setAttribute('data-copy-secret', '');
+  if (secret && owner) root.setAttribute('data-copy-owner', owner);
   const labelEl = document.createElement('label');
   labelEl.className = 'wm-copy-fallback-label';
   labelEl.textContent = label;
