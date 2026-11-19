@@ -266,6 +266,12 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
 });
 
 const PROVIDER_OVERRIDES = {
+  'release-assets.githubusercontent.com': {
+    provider: 'US Restricted Parties feed (Tensorust LLC)',
+    license: 'CC BY 4.0 (Creative Commons Attribution 4.0 International)',
+    attribution: 'US Restricted Parties feed by Tensorust LLC (https://github.com/Mattbusel/us-restricted-parties), CC BY 4.0.',
+    status: 'reviewed',
+  },
   'massoutage.com': {
     license: 'MassOutage API and compilations CC BY 4.0. Upstream terms continue to apply.',
     attribution: 'Credit MassOutage (massoutage.com), link to the source and license, and identify the calculated change in state totals.',
@@ -1218,8 +1224,9 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: 'a9b5c780262aae891fcb13d9316ef43215251c20ce3381ba80309a8ee58ac412',
+  // PR #10998: identify the restricted-party feed on its release asset host.
   // Serply Search MCP is an excluded user-configured connector (PR #7089).
+  sha256: '80010ba7fb296ff55e22152b0280ebf95eb3db55a0c91059237196afaf514e32',
   // 2026-11-18 (#10937): name The Kyiv Independent and The New Voice of
   // Ukraine on their direct feeds. Group Sky News and The Washington Post with
   // the hosts their Google News claim-depth searches fetch again. Drop the

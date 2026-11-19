@@ -21,6 +21,7 @@ export interface CountryIntelData {
   skipped?: boolean;
   reason?: string;
   fallback?: boolean;
+  accessNotice?: 'sign-in' | 'pro' | 'unavailable';
   /** The brief is one signal per line (no sentences), not prose. */
   signalRows?: boolean;
   sources?: BriefSource[];

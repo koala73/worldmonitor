@@ -1009,12 +1009,13 @@ describe('freeze crawlable live pulse coverage gates', () => {
     const { snapshot } = await runFreeze({ serviceKey: 'test-key' });
     const mcp = requests.filter(({ href }) => href.endsWith('/mcp'));
     assert.equal(mcp.length, 1);
-    // Every MCP alias, the www API_BASE the weekly workflow sets included,
-    // answers 410 before auth; only the canonical host serves the tool.
+    // The tool call targets the canonical endpoint, never the API_BASE the
+    // weekly workflow sets: retired aliases answer 410 before auth, and the
+    // published endpoint is the one contract this capture should exercise.
     const mcpUrl = new URL(mcp[0].href);
     assert.equal(mcp[0].href, MCP_CANONICAL_ENDPOINT);
     assert.equal(isMcpAliasRequest(mcpUrl.host, mcpUrl.pathname), false);
-    assert.equal(isMcpAliasRequest('www.worldmonitor.app', '/mcp'), true, 'the guard can fail');
+    assert.equal(isMcpAliasRequest('tech.worldmonitor.app', '/mcp'), true, 'the guard can fail');
     assert.notEqual(mcpUrl.origin, new URL(STAGING_BASE).origin, 'never the REST API base');
     assert.equal(mcp[0].options.headers.Origin, 'https://worldmonitor.app');
     assert.equal(mcp[0].options.method, 'POST');

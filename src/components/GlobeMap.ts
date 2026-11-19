@@ -45,7 +45,7 @@ import { getAuthState } from '@/services/auth-state';
 import { resolveTradeRouteSegments, type TradeRouteSegment } from '@/config/trade-routes';
 import { GAMMA_IRRADIATORS } from '@/config/irradiators';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
-import { getCountryBbox, getCountriesGeoJson, getCountryAtCoordinates, getCountryNameByCode } from '@/services/country-geometry';
+import { getCountryMapBbox, getCountriesGeoJson, getCountryAtCoordinates, getCountryNameByCode } from '@/services/country-geometry';
 import { escapeHtml } from '@/utils/sanitize';
 import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 import { trackedSatelliteType } from '@/services/orbital/yaogan-class';
@@ -3874,7 +3874,7 @@ export class GlobeMap {
   }
   public fitCountry(code: string): void {
     if (!this.globe) return;
-    const bbox = getCountryBbox(code);
+    const bbox = getCountryMapBbox(code);
     if (!bbox) return;
     const [minLon, minLat, maxLon, maxLat] = bbox;
     const lat = (minLat + maxLat) / 2;

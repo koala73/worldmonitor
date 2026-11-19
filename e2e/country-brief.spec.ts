@@ -54,7 +54,11 @@ for (const width of [1280, 390]) {
         points: [17, 18, 19].map((day, index) => ({
           date: `2026-10-${day}`, capturedAt: Date.UTC(2026, 9, day, 0, 30),
           cii: { score: 50 + index * 6, version: index === 2 ? 'v11' : 'v10', observedAt: Date.UTC(2026, 9, day) },
-          resilience: { score: 45 + index, version: 'v29:pc', observedAt: Date.UTC(2026, 9, day) },
+          resilience: {
+            score: 45 + index,
+            version: 'pc:schema-2.0:energy-v2:education-active:financial-system-active',
+            observedAt: Date.UTC(2026, 9, day),
+          },
           topEvents: [{ title: `Controlled Ukraine reporting for October ${day}`, link: `https://example.com/ukraine-${day}`, source: 'Controlled publisher', category: 'politics' }],
           keySignals: [], ciiVersionBreak: index === 2, resilienceVersionBreak: false,
         })),
@@ -85,6 +89,7 @@ for (const width of [1280, 390]) {
     await expect(history.locator('a[href="https://example.com/ukraine-17"]')).toHaveAttribute('rel', 'noopener noreferrer');
     expect(await history.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     await history.locator('[data-history-date="2026-10-19"]').click();
+    await expect(history.locator('.country-history-detail p').first()).toHaveText('CII 62 · v11 / Resilience 47');
     await captureHistory('recovered');
     expect(reads).toBe(2);
     await page.reload();
@@ -180,6 +185,36 @@ test.use({ trace: recording, video: recording, serviceWorkers: 'block' });
 function marketsCard(page: Page) {
   return page.locator('#country-deep-dive-panel .cdp-card').filter({
     has: page.getByRole('heading', { name: 'Prediction Markets', exact: true }),
+  });
+}
+
+for (const status of [401, 403]) {
+  test(`explains AI brief access after a ${status} response`, async ({ page, countryBrief }, testInfo) => {
+    void countryBrief;
+    await page.route('**/api/intelligence/v1/get-country-intel-brief?*', route => route.fulfill({
+      status, json: { error: status === 403 ? 'Upgrade required' : 'Authentication required' },
+    }));
+    await page.goto('/dashboard?country=UA');
+    await expectCountry(page);
+
+    const panel = page.locator('#country-deep-dive-panel');
+    const overview = panel.getByRole('button', { name: 'Overview', exact: true });
+    await panel.getByRole('button', { name: 'Summary', exact: true }).click();
+    await overview.click();
+    const brief = panel.locator('#cdp-section-assessment');
+    const action = status === 401
+      ? brief.getByRole('button', { name: 'Sign In', exact: true })
+      : brief.getByRole('link', { name: 'Upgrade to Pro', exact: true });
+    await expect(action).toBeVisible();
+    if (status === 403) await expect(action).toHaveAttribute('href', '/pro#pricing');
+    await expect(brief.locator('.cdp-summary-only.cdp-assessment-text')).toBeVisible();
+    await expect(brief).not.toContainText('Fallback');
+    await expect(brief.getByText('Read the full brief and sources', { exact: false })).toHaveCount(0);
+    await evidenceScreenshot(brief, { path: testInfo.outputPath(`ai-brief-access-${status}.png`) });
+
+    await panel.getByRole('button', { name: 'Full brief', exact: true }).click();
+    await overview.click();
+    await expect(action).toBeVisible();
   });
 }
 

@@ -56,7 +56,7 @@ import {
   digestGateProfile,
   type ServerFeed,
 } from './_feeds';
-import { FUTURE_DATE_TOLERANCE_MS, resolveMaxAgeMs, rssFeedCacheKey } from './_rss-cache';
+import { FUTURE_DATE_TOLERANCE_MS, resolveMaxAgeMs, rssFeedCacheKey, rssFeedCountryCacheKey } from './_rss-cache';
 import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
 import {
   buildDigestCoverage,
@@ -91,6 +91,7 @@ import {
 import { newsPublisherCoverageKey, stripAttributionSuffix } from '../../../../shared/story-identity.js';
 // @ts-expect-error — JS module, no declaration file
 import { STORY_ALIAS_PUBLISH_SCRIPT } from '../../../../shared/story-alias-publish-script.mjs';
+import { RSS_FEED_RENEW_SCRIPT } from '../../../../shared/rss-feed-renew-script.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../../../_shared/feelgood-classifier.js';
 import { classifyEphemeralLiveCoverage } from '../../../../shared/ephemeral-live-classifier.js';
@@ -1020,6 +1021,46 @@ export interface ParseResult {
 // upstream bounded while still recovering quickly when upstream heals.
 const CACHE_TTL_HEALTHY_S = 3600;
 const CACHE_TTL_EMPTY_S = 300;
+// A 304 renews the feed entry without reparsing, but only within an hour of
+// the last full parse, so a feed entry outlives its parse by at most two
+// hours. The country pool, written only by a full parse, must last as long.
+const CACHE_TTL_COUNTRY_S = CACHE_TTL_HEALTHY_S * 2;
+
+/**
+ * Stores a parse: digest rows under the feed key, the full variant's
+ * retained country rows under their own key (see rssFeedCountryCacheKey).
+ * Both keys go in one MULTI/EXEC: two separate writes from concurrent parses
+ * could interleave into a feed entry and a pool from different parses, and
+ * readers would then drop the pool. Returns the feed entry as stored, which is
+ * what a cache hit returns.
+ */
+async function writeFeedParse(feed: ServerFeed, variant: string, result: ParseResult, ttlSeconds: number): Promise<ParseResult> {
+  const feedKey = rssFeedCacheKey(variant, feed.url);
+  // The desktop sidecar cache is an in-process map, so the split saves no
+  // bandwidth there. Two keys would also let its LRU evict a pool while the
+  // feed entry stays. Keep the country rows inline (readers accept both forms).
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    await setCachedJson(feedKey, result, ttlSeconds);
+    return result;
+  }
+  const { countryItems, ...entry } = result;
+  if (!countryItems || countryItems.length === 0 || typeof entry.parsedAt !== 'number') {
+    await setCachedJson(feedKey, entry, ttlSeconds);
+    return entry;
+  }
+  const pool = { parsedAt: entry.parsedAt, items: countryItems };
+  const countryKey = rssFeedCountryCacheKey(variant, feed.url);
+  const commands = [
+    ['SET', countryKey, JSON.stringify(pool), 'EX', CACHE_TTL_COUNTRY_S],
+    ['SET', feedKey, JSON.stringify(entry), 'EX', ttlSeconds],
+  ];
+  const results = await runRedisTransaction(commands);
+  if (results.length !== commands.length || results.some(item => item?.error)) {
+    // Nothing is cached, so the next build fetches the feed again.
+    console.warn(`[feed-cache] parse write unconfirmed variant=${variant} feed=${feed.name}`);
+  }
+  return entry;
+}
 
 /**
  * Fetch one feed and parse it: direct, then the relay when direct is blocked,
@@ -1137,8 +1178,7 @@ export async function fetchAndParseRss(
     // Long cache only for healthy parses; short cache for zero-from-zero so
     // transient upstream issues don't sticky-fail for an hour.
     const ttl = result.parsedTotal > 0 ? CACHE_TTL_HEALTHY_S : CACHE_TTL_EMPTY_S;
-    await setCachedJson(cacheKey, result, ttl);
-    return result;
+    return await writeFeedParse(feed, variant, result, ttl);
   } catch {
     return {
       items: [],
@@ -1160,6 +1200,39 @@ const FEED_REFRESH_LOCK_S = 120;
 const FEED_REFRESH_CONCURRENCY = 20;
 
 export type FeedRefreshOutcome = 'locked' | 'not-modified' | 'updated' | 'failed';
+
+/**
+ * Re-dates the entry a refresh read, only while Redis still holds that parse
+ * (shared/rss-feed-renew-script.mjs). If the entry expired during the request
+ * and a foreground fetch stored a newer parse and country pool, a blind
+ * rewrite would restore the older entry and orphan the newer pool. An entry
+ * from before the split still carries its pool inline and is renewed as it is.
+ */
+async function renewFeedEntry(cacheKey: string, renewed: ParseResult): Promise<void> {
+  const parsedAt = renewed.parsedAt;
+  if (typeof parsedAt !== 'number') {
+    await setCachedJson(cacheKey, renewed, CACHE_TTL_HEALTHY_S);
+    return;
+  }
+  // The conditional request starts inside the hour but its 304 can land
+  // later; never keep the entry past the pool its parse wrote. The expiry is
+  // absolute, so a write that reaches Redis late cannot extend it.
+  const now = Date.now();
+  const expiresAtMs = Math.min(now + CACHE_TTL_HEALTHY_S * 1000, parsedAt + CACHE_TTL_COUNTRY_S * 1000);
+  const ttlSeconds = Math.floor((expiresAtMs - now) / 1000);
+  if (ttlSeconds <= 0) return;
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    // The sidecar cache is synchronous, so this compare and set cannot interleave.
+    const { sidecarCacheGet, sidecarCacheSet } = await import('../../../_shared/sidecar-cache');
+    const current = sidecarCacheGet(cacheKey) as { parsedAt?: unknown } | null;
+    if (current?.parsedAt === parsedAt) sidecarCacheSet(cacheKey, renewed, ttlSeconds);
+    return;
+  }
+  await runRedisPipeline([[
+    'EVAL', RSS_FEED_RENEW_SCRIPT, 1, cacheKey,
+    String(parsedAt), JSON.stringify(renewed), String(expiresAtMs),
+  ]]);
+}
 
 export function isDueForRefresh(cached: ParseResult, now: number): boolean {
   return cached.parsedTotal > 0
@@ -1189,7 +1262,7 @@ export async function refreshFeedCache(
   const conditional = Date.now() - lastFullParse < CACHE_TTL_HEALTHY_S * 1000;
   const direct = await fetchRssText(feed.url, signal, conditional ? cached.validators : undefined);
   if (direct.notModified) {
-    await setCachedJson(cacheKey, { ...cached, fetchedAt: Date.now() }, CACHE_TTL_HEALTHY_S);
+    await renewFeedEntry(cacheKey, { ...cached, fetchedAt: Date.now() });
     return 'not-modified';
   }
   let text = direct.text;
@@ -1212,7 +1285,7 @@ export async function refreshFeedCache(
     parsedAt: now,
   };
   if (source === 'direct' && direct.validators) result.validators = direct.validators;
-  await setCachedJson(cacheKey, result, CACHE_TTL_HEALTHY_S);
+  await writeFeedParse(feed, variant, result, CACHE_TTL_HEALTHY_S);
   return 'updated';
 }
 

@@ -4979,6 +4979,17 @@ describe('get_sanctions_data screening contract', () => {
     assert.equal(envelope.data.entities[0].score, 100);
     assert.equal(envelope.stale, false);
     assert.ok(requests.length >= 4);
+    Object.assign(cache['seed-meta:sanctions:entities'], {
+      sourceState: 'error', errorCode: 'URP_INGEST_FAILED', failedSources: ['US-FCC'],
+    });
+    const partial = await mcpHandler(proReq('POST', callBody('get_sanctions_data', {
+      screen: 'Northern Star', min_score: 100,
+    }, 100)), deps);
+    const partialBody = await partial.json();
+    assert.equal(partialBody.error, undefined, JSON.stringify(partialBody));
+    const partialEnvelope = JSON.parse(partialBody.result.content[0].text);
+    assert.equal(partialEnvelope.stale, true);
+    assert.equal(partialEnvelope.data.entities[0].matched_on, 'alias');
     const invalid = await mcpHandler(proReq('POST', callBody('get_sanctions_data', { screen: 'x' }, 101)), deps);
     assert.equal((await invalid.json()).error.code, -32602);
   });

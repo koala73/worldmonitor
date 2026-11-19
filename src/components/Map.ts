@@ -65,7 +65,7 @@ import {
 } from '@/services/hotspot-escalation';
 import { getCachedCountryScoreValue } from '@/services/cached-risk-scores';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
-import { getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
+import { getCountryAtCoordinates, getCountryMapBbox } from '@/services/country-geometry';
 import { installLongPressContextMenu } from '@/utils/long-press';
 
 import type { CountryClickPayload } from './DeckGLMap';
@@ -5481,7 +5481,7 @@ export class MapComponent {
   }
 
   public fitCountry(code: string): void {
-    const bbox = getCountryBbox(code);
+    const bbox = getCountryMapBbox(code);
     if (!bbox) return;
     const [minLon, minLat, maxLon, maxLat] = bbox;
     const midLon = (minLon + maxLon) / 2;

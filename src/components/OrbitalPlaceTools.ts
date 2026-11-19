@@ -4,6 +4,7 @@ import { t } from '@/services/i18n';
 import { requestDevicePosition } from '@/utils/user-location';
 import { roundShareCoordinate } from '@/utils/urlState';
 import { h, replaceChildren } from '@/utils/dom-utils';
+import { copyText } from '@/utils/copy-text';
 
 export interface OrbitalPlaceToolsCallbacks {
   /** `name` is the searched place, or null for coordinates and the device location; `located` marks the device location. */
@@ -154,17 +155,17 @@ export class OrbitalPlaceTools {
   async share(): Promise<boolean> {
     const link = this.callbacks.shareLink();
     if (!link) return false;
-    try {
-      await navigator.clipboard.writeText(link);
-      this.shareField.hidden = true;
-      this.shareStatus.textContent = t('orbitalWatch.share.copied');
-      return true;
-    } catch {
-      this.shareField.value = link;
-      this.shareField.hidden = false;
-      this.shareField.select();
-      this.shareStatus.textContent = t('orbitalWatch.share.copyManually');
-      return false;
-    }
+    const copied = await copyText(link, {
+      reveal: (value) => {
+        this.shareField.value = value;
+        this.shareField.hidden = false;
+        this.shareField.select();
+        this.shareStatus.textContent = t('orbitalWatch.share.copyManually');
+      },
+    });
+    if (!copied) return false;
+    this.shareField.hidden = true;
+    this.shareStatus.textContent = t('orbitalWatch.share.copied');
+    return true;
   }
 }

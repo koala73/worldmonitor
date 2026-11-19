@@ -37,12 +37,14 @@ const MIN_STORY_WORDS = 4;
 
 // Keep exact-title delivery available if the scripts image lacks the shared module.
 let normalizeNewsStoryTitle = () => '';
+let classifyCacheIdentity = (title) => String(title ?? '').toLowerCase();
 let newsPublisherCoverageKey = () => '';
 let loadError = null;
 try {
   const identity = require('../shared/story-identity.js');
   if (typeof identity.normalizeNewsStoryTitle !== 'function') throw new Error('normalizeNewsStoryTitle is not exported');
   normalizeNewsStoryTitle = identity.normalizeNewsStoryTitle;
+  if (typeof identity.classifyCacheIdentity === 'function') classifyCacheIdentity = identity.classifyCacheIdentity;
   if (typeof identity.newsPublisherCoverageKey === 'function') newsPublisherCoverageKey = identity.newsPublisherCoverageKey;
 } catch (err) {
   loadError = err;
@@ -83,13 +85,29 @@ function reachesLocalRules(severity, importanceScore) {
  * up the story before a later, higher-scoring one reaches a wider audience.
  * The cost is an extra queued event for such a story, never a missed alert.
  */
+function audienceBucket(severity, importanceScore, primaryCountryCode) {
+  return reachesRealtimeRules(severity, importanceScore) ? 'realtime'
+    : reachesLocalRules(severity, importanceScore) && primaryCountryCode ? 'local'
+    : 'standard';
+}
+
 function newsStoryKey(title, { severity, importanceScore, primaryCountryCode } = {}) {
   const normalized = normalizeNewsStoryTitle(title);
   if (!normalized || normalized.split(' ').length < MIN_STORY_WORDS) return '';
-  const bucket = reachesRealtimeRules(severity, importanceScore) ? 'realtime'
-    : reachesLocalRules(severity, importanceScore) && primaryCountryCode ? 'local'
-    : 'standard';
-  return `news-story:${bucket}:${normalized}`;
+  return `news-story:${audienceBucket(severity, importanceScore, primaryCountryCode)}:${normalized}`;
+}
+
+/**
+ * The day-long claim a relay news alert takes: the story key, or for a
+ * headline too short for one, its exact title (#10976). Without it a cached
+ * label could never tell whether an earlier copy of a short headline alerted.
+ */
+function newsAlertClaimKey(title, opts = {}) {
+  const storyKey = newsStoryKey(title, opts);
+  if (storyKey) return storyKey;
+  const exact = typeof title === 'string' ? title.normalize('NFC').trim().toLowerCase() : '';
+  if (!exact) return '';
+  return `news-title:${audienceBucket(opts.severity, opts.importanceScore, opts.primaryCountryCode)}:${exact}`;
 }
 
 module.exports = {
@@ -98,8 +116,10 @@ module.exports = {
   REALTIME_CRITICAL_IMPORTANCE_SCORE,
   LOCAL_CRITICAL_IMPORTANCE_SCORE,
   normalizeNewsStoryTitle,
+  classifyCacheIdentity,
   newsPublisherCoverageKey,
   newsStoryKey,
+  newsAlertClaimKey,
   reachesRealtimeRules,
   reachesLocalRules,
   /** Why the normalizer is unavailable, or null. The relay logs it at boot. */

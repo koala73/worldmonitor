@@ -11,6 +11,7 @@ import { createTimeoutSignal } from '@/services/timeout-signal';
 // transition as defence in depth.
 
 import { getClerkToken } from '@/services/clerk';
+import { copyText } from '@/utils/copy-text';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 
 export interface ReferralProfile {
@@ -122,15 +123,7 @@ export async function shareReferral(profile: ReferralProfile): Promise<ShareResu
       // Fallthrough to clipboard.
     }
   }
-  // Clipboard — desktop primary path.
-  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(url);
-      return 'copied';
-    } catch {
-      return 'error';
-    }
-  }
+  if (await copyText(url)) return 'copied';
   return 'error';
 }
 

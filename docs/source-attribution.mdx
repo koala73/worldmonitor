@@ -12,7 +12,7 @@ The inventory is **generated, not hand-written**: `scripts/source-attribution.mj
 ## Observed Source Inventory
 
 {/* BEGIN GENERATED SOURCE ATTRIBUTION */}
-This generated inventory covers **1382 active source hosts** representing **1359 active providers** (**400 structured/API**, **966 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
+This generated inventory covers **1383 active source hosts** representing **1360 active providers** (**401 structured/API**, **966 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
 
 | Provider | Observed surface |
 | --- | --- |
@@ -449,7 +449,7 @@ This generated inventory covers **1382 active source hosts** representing **1359
 | ghoapi.azureedge.net (ghoapi.azureedge.net) | structured — scripts/seed-resilience-static.mjs |
 | giornalesm.com (giornalesm.com) | feed — shared/news-catalog.json |
 | github.blog (github.blog) | feed — shared/news-catalog.json |
-| github.com (github.com) | structured — api/download.js, api/health.js, scripts/build-accuracy-page.mjs, scripts/build-crawlable-corpus.mjs, +9 more |
+| github.com (github.com) | structured — api/download.js, api/health.js, scripts/_us-restricted-sanctions.mjs, scripts/build-accuracy-page.mjs, +11 more |
 | Global Affairs Canada (SEMA consolidated sanctions) (www.international.gc.ca) | structured — scripts/_sema-sanctions.mjs |
 | Global Energy Monitor (globalenergymonitor.org) | structured — scripts/import-gem-pipelines.mjs, src/components/PipelineStatusPanel.ts, src/components/StorageFacilityMapPanel.ts |
 | globalinitiative.net (globalinitiative.net) | feed — shared/news-catalog.json |
@@ -1093,6 +1093,7 @@ This generated inventory covers **1382 active source hosts** representing **1359
 | United Nations Population Division (population.un.org) | structured — scripts/_demographics-capability-source.mjs |
 | unstats.un.org (unstats.un.org) | structured — scripts/build-un-m49-regions.mjs |
 | urlhaus-api.abuse.ch (urlhaus-api.abuse.ch) | structured — scripts/ais-relay.cjs, scripts/seed-cyber-threats.mjs |
+| US Restricted Parties feed (Tensorust LLC) (release-assets.githubusercontent.com) | structured — scripts/_us-restricted-sanctions.mjs |
 | USDA FAS PSD (api.fas.usda.gov) | structured — scripts/seed-food-stocks.mjs |
 | USDA FAS PSD (apps.fas.usda.gov) | Excluded / candidate — No current fetch observed |
 | USGS ScienceBase (Mineral Commodity Summaries) (www.sciencebase.gov) | structured — scripts/seed-mineral-production.mjs, scripts/seed-supply-vulnerability.mjs |
