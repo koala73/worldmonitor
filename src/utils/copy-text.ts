@@ -11,13 +11,26 @@ export interface CopyTextOptions {
 }
 
 export async function copyText(text: string, options: CopyTextOptions = {}): Promise<boolean> {
+  const write = options.writeText === null ? null : readWrite(options);
+  if (write && await invokeWrite(write, text)) return true;
+  if (copyWithExecCommand(text)) return true;
+  return presentManualCopy(text, options);
+}
+
+function readWrite(options: CopyTextOptions): ((text: string) => Promise<void>) | null {
   try {
-    const write = options.writeText === null ? null : (options.writeText ?? readNavigatorWrite());
-    const wrote = write ? await write(text).then(() => true, () => false) : false;
-    if (wrote || copyWithExecCommand(text)) return true;
-    return presentManualCopy(text, options);
+    return options.writeText ?? readNavigatorWrite();
   } catch {
-    return presentManualCopy(text, options);
+    return null;
+  }
+}
+
+async function invokeWrite(write: (text: string) => Promise<void>, text: string): Promise<boolean> {
+  try {
+    await write(text);
+    return true;
+  } catch {
+    return false;
   }
 }
 

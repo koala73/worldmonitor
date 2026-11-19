@@ -4990,7 +4990,9 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 
 .wm-copy-fallback {
   position: fixed;
-  z-index: 10004;
+  /* Above the trip assessment and embed dialogs (10020) and the trip toast
+     (10021). Confirm and account-deletion dialogs stay above this at 10050. */
+  z-index: 10022;
   left: 50%;
   bottom: 32px;
   transform: translateX(-50%);

@@ -119,6 +119,19 @@ describe('copyText', () => {
     assert.equal(fallbackValue(), SHARE_URL);
   });
 
+  it('uses execCommand when writeText throws synchronously', async () => {
+    const harness = install('present', 'success');
+    harness.writeText = () => {
+      throw new Error('sync');
+    };
+
+    const copied = await copyText(SHARE_URL);
+
+    assert.equal(copied, true);
+    assert.deepEqual(harness.commands, ['copy']);
+    assert.equal(fallbackValue(), undefined);
+  });
+
   it('uses execCommand when writeText rejects', async () => {
     const harness = install('present', 'success');
     harness.writeText = async () => {

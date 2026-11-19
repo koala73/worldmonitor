@@ -3,7 +3,7 @@ import { isWebPushConfigured } from '@/config/push';
 import { needsIosInstall, openIosInstallSheet } from '@/services/pwa-install';
 import { openExternalUrl } from '@/services/external-navigation';
 import { escapeHtml } from '@/utils/sanitize';
-import { copyText } from '@/utils/copy-text';
+import { copyText, dismissSecretCopyFallback } from '@/utils/copy-text';
 import { renderSVG } from 'uqr';
 import {
   getChannelsData,
@@ -1851,7 +1851,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             btn.textContent = 'Copied!';
             setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
           };
-          void copyText(cmd).then((copied) => {
+          void copyText(cmd, { secret: true }).then((copied) => {
+            if (signal.aborted) {
+              dismissSecretCopyFallback();
+              return;
+            }
             if (copied) markCopied();
           });
           return;
