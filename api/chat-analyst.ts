@@ -307,7 +307,7 @@ export default async function handler(req: Request): Promise<Response> {
     // reads only the caller, so it runs alongside the context reads instead of
     // adding its round trip before the first streamed token.
     const [context, routingDecision] = await Promise.all([
-      assembleAnalystContext(geoContext, domainFocus, retrievalQuery),
+      assembleAnalystContext(geoContext, domainFocus, retrievalQuery, query),
       getAiRoutingDecisionForUser(premiumIdentity.userId),
     ]);
     // Instructions in the system prompt, feed-derived context in the final user

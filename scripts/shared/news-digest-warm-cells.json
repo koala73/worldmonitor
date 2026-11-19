@@ -9,7 +9,39 @@
   },
   {
     "edition": "full",
+    "lang": "az"
+  },
+  {
+    "edition": "full",
+    "lang": "be"
+  },
+  {
+    "edition": "full",
     "lang": "bg"
+  },
+  {
+    "edition": "full",
+    "lang": "bi"
+  },
+  {
+    "edition": "full",
+    "lang": "bn"
+  },
+  {
+    "edition": "full",
+    "lang": "bs"
+  },
+  {
+    "edition": "full",
+    "lang": "ca"
+  },
+  {
+    "edition": "full",
+    "lang": "cnr"
+  },
+  {
+    "edition": "full",
+    "lang": "crs"
   },
   {
     "edition": "full",
@@ -17,7 +49,15 @@
   },
   {
     "edition": "full",
+    "lang": "da"
+  },
+  {
+    "edition": "full",
     "lang": "de"
+  },
+  {
+    "edition": "full",
+    "lang": "dv"
   },
   {
     "edition": "full",
@@ -29,7 +69,15 @@
   },
   {
     "edition": "full",
+    "lang": "et"
+  },
+  {
+    "edition": "full",
     "lang": "fa"
+  },
+  {
+    "edition": "full",
+    "lang": "fi"
   },
   {
     "edition": "full",
@@ -49,6 +97,18 @@
   },
   {
     "edition": "full",
+    "lang": "hy"
+  },
+  {
+    "edition": "full",
+    "lang": "id"
+  },
+  {
+    "edition": "full",
+    "lang": "is"
+  },
+  {
+    "edition": "full",
     "lang": "it"
   },
   {
@@ -57,11 +117,55 @@
   },
   {
     "edition": "full",
+    "lang": "ka"
+  },
+  {
+    "edition": "full",
+    "lang": "kk"
+  },
+  {
+    "edition": "full",
+    "lang": "km"
+  },
+  {
+    "edition": "full",
     "lang": "ko"
   },
   {
     "edition": "full",
+    "lang": "ky"
+  },
+  {
+    "edition": "full",
+    "lang": "lt"
+  },
+  {
+    "edition": "full",
+    "lang": "lv"
+  },
+  {
+    "edition": "full",
+    "lang": "mk"
+  },
+  {
+    "edition": "full",
+    "lang": "mn"
+  },
+  {
+    "edition": "full",
+    "lang": "mt"
+  },
+  {
+    "edition": "full",
+    "lang": "ne"
+  },
+  {
+    "edition": "full",
     "lang": "nl"
+  },
+  {
+    "edition": "full",
+    "lang": "no"
   },
   {
     "edition": "full",
@@ -81,11 +185,47 @@
   },
   {
     "edition": "full",
+    "lang": "sk"
+  },
+  {
+    "edition": "full",
+    "lang": "sl"
+  },
+  {
+    "edition": "full",
+    "lang": "so"
+  },
+  {
+    "edition": "full",
+    "lang": "sq"
+  },
+  {
+    "edition": "full",
+    "lang": "sr"
+  },
+  {
+    "edition": "full",
     "lang": "sv"
   },
   {
     "edition": "full",
+    "lang": "sw"
+  },
+  {
+    "edition": "full",
+    "lang": "tet"
+  },
+  {
+    "edition": "full",
+    "lang": "tg"
+  },
+  {
+    "edition": "full",
     "lang": "th"
+  },
+  {
+    "edition": "full",
+    "lang": "tk"
   },
   {
     "edition": "full",
@@ -94,6 +234,10 @@
   {
     "edition": "full",
     "lang": "uk"
+  },
+  {
+    "edition": "full",
+    "lang": "uz"
   },
   {
     "edition": "full",

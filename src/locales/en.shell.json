@@ -413,13 +413,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Instability Index: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} active protests detected",
-      "aircraftTracked": "{{count}} military aircraft tracked",
-      "vesselsTracked": "{{count}} military vessels tracked",
-      "internetOutages": "{{count}} internet disruptions",
-      "recentEarthquakes": "{{count}} recent earthquakes",
+      "protestsDetected": "Active protests: {{count}}",
+      "aircraftTracked": "Military aircraft tracked: {{count}}",
+      "vesselsTracked": "Military vessels tracked: {{count}}",
+      "internetOutages": "Internet disruptions: {{count}}",
+      "recentEarthquakes": "Recent earthquakes: {{count}}",
       "stockIndex": "Stock index: {{value}}",
-      "activeStrikes": "{{count}} active strikes detected"
+      "activeStrikes": "Attacks and interceptions: {{count}}"
     },
     "china": {
       "title": "China Country Snapshot",

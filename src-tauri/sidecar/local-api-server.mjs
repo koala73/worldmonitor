@@ -1492,6 +1492,8 @@ const cloudPreferredExact = new Set([
   '/api/military/v1/get-usni-fleet-report',
   '/api/military/v1/list-defense-patents',
   '/api/news/v1/list-news-pool',
+  // Alert history is written by the cloud relay; the desktop holds none.
+  '/api/news/v1/list-sent-alerts',
   '/api/news/v1/list-source-items',
   '/api/news/v1/summarize-article-cache',
   '/api/research/v1/list-arxiv-papers',
@@ -1518,6 +1520,7 @@ const cloudPreferredExact = new Set([
   '/api/supply-chain/v1/list-storage-facilities',
   '/api/supply-chain/v1/list-vulnerability-rankings',
   '/api/trade/v1/get-customs-revenue',
+  '/api/trade/v1/get-monthly-sitc-trade',
   '/api/trade/v1/get-tariff-trends',
   '/api/trade/v1/get-trade-barriers',
   '/api/trade/v1/get-trade-flows',

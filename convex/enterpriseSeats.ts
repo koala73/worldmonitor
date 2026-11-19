@@ -28,6 +28,7 @@ import type { Doc } from "./_generated/dataModel";
 import { assertAccountWritable } from "./accountDeletion/guard";
 import { USER_AGENT } from "./broadcast/_resendContacts";
 import { requireUserId, resolveUserIdentity } from "./lib/auth";
+import { emailButton, emailCard, emailFrame, emailHeading, emailNote, emailParagraph, escapeEmailHtml } from "../shared/email-frame";
 import { isCorporateDomain } from "./lib/emailDomain";
 import {
   signEnterpriseInviteToken,
@@ -52,15 +53,6 @@ const RESEND_FETCH_TIMEOUT_MS = 10_000;
  */
 const INVITE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MIN_INVITES_PER_WINDOW = 20;
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 type ReadCtx = Pick<QueryCtx, "db">;
 
@@ -332,6 +324,25 @@ export const acceptInvite = mutation({
   },
 });
 
+/** The enterprise invite email body. Exported for tests. */
+export function enterpriseInviteEmailHtml(args: {
+  adminEmail: string;
+  accountName: string;
+  inviteeEmail: string;
+  acceptUrl: string;
+}): string {
+  return emailFrame({
+    preheader: `${args.adminEmail} invited you to ${args.accountName} on World Monitor Enterprise.`,
+    kicker: "Team invite",
+    bodyHtml: `${emailHeading("You're invited to World Monitor Enterprise")}
+      ${emailCard(`${emailParagraph(`${escapeEmailHtml(args.adminEmail)} has invited you to the <strong style="color: #fff;">${escapeEmailHtml(args.accountName)}</strong> World Monitor Enterprise account.`)}
+        ${emailParagraph(`Accept the invite while signed in as <strong style="color: #fff;">${escapeEmailHtml(args.inviteeEmail)}</strong>. If you don't have an account yet, you can create one from the same link.`)}`)}
+      ${emailButton(args.acceptUrl, "Accept invite")}
+      ${emailNote("This invite expires in 14 days. If you didn't expect this email, you can ignore it.")}`,
+    footerNote: "You're receiving this because a World Monitor Enterprise admin invited this address.",
+  });
+}
+
 /** Sends the invite email. Scheduled from inviteMembers so delivery never blocks the mutation. */
 export const sendEnterpriseInviteEmail = internalAction({
   args: {
@@ -349,23 +360,12 @@ export const sendEnterpriseInviteEmail = internalAction({
       return;
     }
     const acceptUrl = `https://www.worldmonitor.app/dashboard?accept-enterprise-invite=${encodeURIComponent(args.memberId)}&token=${encodeURIComponent(args.token)}`;
-    const html = `
-<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
-  <div style="background: #4ade80; height: 4px;"></div>
-  <div style="padding: 40px 32px;">
-    <p style="font-size: 22px; font-weight: 700; color: #fff; margin: 0 0 12px;">You're invited to World Monitor Enterprise</p>
-    <p style="font-size: 14px; color: #999; line-height: 1.5; margin: 0 0 24px;">
-      ${escapeHtml(args.adminEmail)} has invited you to the ${escapeHtml(args.accountName)} World Monitor Enterprise account.
-      Accept the invite while signed in as ${escapeHtml(args.inviteeEmail)}. If you don't have an account yet, you can create one from the same link.
-    </p>
-    <div style="text-align: center;">
-      <a href="${acceptUrl}" style="display: inline-block; background: #4ade80; color: #0a0a0a; padding: 14px 36px; text-decoration: none; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 2px;">Accept Invite</a>
-    </div>
-    <p style="font-size: 11px; color: #666; text-align: center; margin: 24px 0 0;">
-      This invite expires in 14 days. If you didn't expect this email, you can ignore it.
-    </p>
-  </div>
-</div>`;
+    const html = enterpriseInviteEmailHtml({
+      adminEmail: args.adminEmail,
+      accountName: args.accountName,
+      inviteeEmail: args.inviteeEmail,
+      acceptUrl,
+    });
     let result;
     try {
       result = await sendResendEmail(ctx, {

@@ -172,7 +172,7 @@ describe('root dependency cache (#8710)', () => {
   // first group.
   for (const [workflowText, jobIds, setupCache] of [
     [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'resilience-validation-smoke', 'unit-shards', 'unit-built-output'], undefined],
-    [testWorkflow, ['variant-smoke-pro-webmcp'], 'npm'],
+    [testWorkflow, ['variant-smoke-pro-webmcp'], "${{ !startsWith(matrix.part, 'plugin-') && 'npm' || '' }}"],
     [read(resolve(workflowsDir, 'perf-style-layout-budget.yml')), ['measure'], undefined],
     [lintCodeWorkflow, ['biome', 'markdown'], undefined],
     [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck'], 'npm'],
@@ -188,7 +188,10 @@ describe('root dependency cache (#8710)', () => {
         assert.ok(install, `${jobId} must use the shared root dependency action`);
         assert.equal(setup.with['node-version'], '24');
         assert.equal(setup.with.cache, setupCache);
-        assert.equal(install.with?.['npm-cache'], setupCache === 'npm' ? 'false' : undefined);
+        const expectedNpmCache = setupCache === undefined ? undefined
+          // Exactly one of setup-node and the action restores ~/.npm in each part.
+          : setupCache === 'npm' ? 'false' : "${{ startsWith(matrix.part, 'plugin-') && 'true' || 'false' }}";
+        assert.equal(install.with?.['npm-cache'], expectedNpmCache);
         assert.ok(steps.indexOf(setup) < steps.indexOf(install));
         assert.equal(steps.some((step) => step.run === 'npm ci'), false);
       });
@@ -536,6 +539,7 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/map-tooltip-external-values.spec.ts',
   'e2e/mcp-webcam.spec.ts',
   'e2e/mission-preview.spec.ts',
+  'e2e/natural-event-labels.spec.ts',
   'e2e/news-context.spec.ts',
   'e2e/news-panel-resize-hit-target.spec.ts',
   'e2e/oil-price-freshness.spec.ts',
@@ -552,6 +556,20 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/ui-design-improvements.spec.ts',
   'e2e/webcam-play-prompt.spec.ts',
   'e2e/widget-sandbox.spec.ts',
+  'e2e/naval-group-navigation.spec.ts',
+  'e2e/ukmto-incidents.spec.ts',
+  'e2e/live-media-intent.spec.ts',
+  'e2e/widget-builder.spec.ts',
+  'e2e/panel-drag-reorder.spec.ts',
+  'e2e/mobile-map-native.spec.ts',
+  'e2e/mission-presets.spec.ts',
+  'e2e/mobile-bottom-navigation.spec.ts',
+  'e2e/china-corridor-panel.spec.ts',
+  'e2e/mobile-map-popup.spec.ts',
+  'e2e/oref-subscription-lifecycle.spec.ts',
+  'e2e/rag-vector-store.spec.ts',
+  'e2e/reservoir-levels.spec.ts',
+  'e2e/zoom-hidden-marker-hits.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [
@@ -1625,6 +1643,13 @@ describe('CI workflow coverage', () => {
     assert.equal(steps[testIndex]['continue-on-error'], undefined, 'publisher regression failure must fail CI');
   });
 
+  it('gives the consumer-prices tests a real Postgres for the chained-index proof', () => {
+    const job = YAML.parse(testWorkflow).jobs['consumer-prices'];
+    assert.match(job.services?.postgres?.image ?? '', /^postgres:17-alpine@sha256:[0-9a-f]{64}$/);
+    const test = job.steps.find((step: { run?: string }) => step.run === 'npm test --prefix consumer-prices-core');
+    assert.match(test.env?.CONSUMER_PRICES_TEST_DATABASE_URL ?? '', /^postgres:\/\/.+@localhost:5432\/consumer_prices_test$/);
+  });
+
   it('installs the locale font subset from a package cache in every browser job', () => {
     const action = YAML.parse(read(resolve(root, '.github/actions/install-browser-fonts/action.yml')));
     const steps = action.runs.steps;
@@ -2188,7 +2213,9 @@ describe('CI workflow coverage', () => {
 
   it('keeps resilience validation bundle inputs in the CI change filter', () => {
     assert.ok(
-      testWorkflow.includes('validation: ${{ steps.diff.outputs.validation }}'),
+      // The reuse step may only switch it off on a push whose tree unit already
+      // passed (tests/ci-reuse-pr-test-verdict.test.mjs).
+      testWorkflow.includes('validation: ${{ steps.reuse.outputs.validation || steps.diff.outputs.validation }}'),
       'test.yml must expose a validation change output',
     );
     for (const input of REQUIRED_RESILIENCE_VALIDATION_INPUTS) {
@@ -3469,7 +3496,7 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
 
   it('splits the job into webmcp, pro-gates and the two MCP Apps view parts', () => {
     // webmcp first: it is the longer part, so it should take a runner first.
-    assert.deepEqual(job.strategy.matrix.part, ['webmcp', 'pro-gates', 'plugin-news', 'plugin-country']);
+    assert.deepEqual(job.strategy.matrix.part, ['webmcp', 'pro-gates', 'plugin-news', 'plugin-views']);
     assert.equal(job.strategy['fail-fast'], false, 'a red half must not cancel the other half\'s evidence');
   });
 
@@ -3512,7 +3539,8 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
     // that blob at the same moment took 12-62s instead of ~6s (PR #9626).
     const setup = flat.find((step) => (step as { uses?: string }).uses?.startsWith('actions/setup-node@')) as
       { with: Record<string, string> } | undefined;
-    assert.equal(setup?.with.cache, 'npm');
+    // The plugin parts never build /pro, so they restore nothing.
+    assert.equal(setup?.with.cache, "${{ !startsWith(matrix.part, 'plugin-') && 'npm' || '' }}");
     assert.equal(setup?.with['cache-dependency-path'], 'pro-test/package-lock.json');
   });
 

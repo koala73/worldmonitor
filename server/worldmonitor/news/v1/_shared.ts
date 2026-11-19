@@ -17,17 +17,19 @@ export {
   selectUniqueHeadlinePairs,
 } from '../../../../src/utils/summary-cache-key';
 import { MAX_BODY_LEN } from '../../../../src/utils/summary-cache-key';
-import { NEWS_LANGUAGES } from '../../../../src/shared/public-rpc-cache';
 
 // ========================================================================
 // Output languages: the dashboard UI languages (src/services/i18n.ts
 // SUPPORTED_LANGUAGES, pinned by tests/summarize-output-lang.test.mts): the
-// digest set plus Traditional Chinese, which the digest folds into `zh`.
+// summary targets stay separate from publisher content languages.
 // `lang` (brief/analysis) and the translate target are interpolated into the
 // prompt, so both are this closed set.
 // ========================================================================
 
-export const SUMMARY_OUTPUT_LANGUAGES: ReadonlySet<string> = new Set([...NEWS_LANGUAGES, 'zh-TW']);
+export const SUMMARY_OUTPUT_LANGUAGES: ReadonlySet<string> = new Set([
+  'en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl',
+  'sv', 'sw', 'ru', 'uk', 'ar', 'fa', 'zh', 'zh-TW', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi',
+]);
 
 /**
  * Maps a BCP 47 tag to a supported output language: exact codes in any case,

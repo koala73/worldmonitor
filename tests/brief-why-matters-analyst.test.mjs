@@ -11,7 +11,7 @@
  * Run: node --test tests/brief-why-matters-analyst.test.mjs
  */
 
-import { describe, it } from 'node:test';
+import { before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { generateWhyMatters } from '../scripts/lib/brief-llm.mjs';
@@ -125,33 +125,8 @@ function story(overrides = {}) {
 
 describe('normalizeCountryToIso2', () => {
   let normalize;
-  it('loads from server/_shared/country-normalize.ts via tsx or compiled', async () => {
-    // The module is .ts; in the repo's test setup, node 22 can load .ts
-    // via tsx. If direct import fails under the test runner, fall back
-    // to running the logic inline by importing the JSON and a mirror
-    // function. The logic is trivial so this isn't a flaky compromise.
-    try {
-      const mod = await import('../server/_shared/country-normalize.ts');
-      normalize = mod.normalizeCountryToIso2;
-    } catch {
-      const { default: COUNTRY_NAMES } = await import('../shared/country-names.json', {
-        with: { type: 'json' },
-      });
-      const ISO2_SET = new Set(Object.values(COUNTRY_NAMES));
-      normalize = (raw) => {
-        if (typeof raw !== 'string') return null;
-        const trimmed = raw.trim();
-        if (trimmed === '') return null;
-        if (trimmed.toLowerCase() === 'global') return null;
-        if (/^[A-Za-z]{2}$/.test(trimmed)) {
-          const upper = trimmed.toUpperCase();
-          return ISO2_SET.has(upper) ? upper : null;
-        }
-        const lookup = COUNTRY_NAMES[trimmed.toLowerCase()];
-        return typeof lookup === 'string' ? lookup : null;
-      };
-    }
-    assert.ok(typeof normalize === 'function');
+  before(async () => {
+    ({ normalizeCountryToIso2: normalize } = await import('../server/_shared/country-normalize.ts'));
   });
 
   it('passes through valid ISO2 case-insensitively', () => {
@@ -785,10 +760,9 @@ describe('endpoint validation contract', () => {
 
 describe('buildAnalystWhyMattersPrompt — shape and budget', () => {
   let builder;
-  it('loads', async () => {
+  before(async () => {
     const mod = await import('../server/worldmonitor/intelligence/v1/brief-why-matters-prompt.ts');
     builder = mod.buildAnalystWhyMattersPrompt;
-    assert.ok(typeof builder === 'function');
   });
 
   it('uses the analyst v2 system prompt (multi-sentence, grounded, varied) + date-grounding line', async () => {
@@ -915,11 +889,10 @@ describe('buildAnalystWhyMattersPrompt — shape and budget', () => {
 describe('sectionsForCategory — structural relevance gating', () => {
   let sectionsForCategory;
   let builder;
-  it('loads', async () => {
+  before(async () => {
     const mod = await import('../server/worldmonitor/intelligence/v1/brief-why-matters-prompt.ts');
     sectionsForCategory = mod.sectionsForCategory;
     builder = mod.buildAnalystWhyMattersPrompt;
-    assert.ok(typeof sectionsForCategory === 'function');
   });
 
   it('market/commodity/finance → includes marketData + forecasts, excludes riskScores', () => {

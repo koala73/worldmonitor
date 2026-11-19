@@ -85,7 +85,7 @@
     "predictionMarkets": "Jósló piacok",
     "loadingMarkets": "Jósló piacok betöltése...",
     "infrastructure": "Infrastruktúra expozíció",
-    "briefUnavailable": "AI összefoglaló nem érhető el — konfiguráljon OPENROUTER_API_KEY értéket a Beállítások között.",
+    "briefUnavailable": "AI összefoglaló jelenleg nem érhető el.",
     "cached": "Gyorsítótárban",
     "fresh": "Friss",
     "noMarkets": "Nincsenek aktív piacok ehhez az országhoz.",
@@ -195,13 +195,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Instabilitási index: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} aktív tüntetés észlelve",
-      "aircraftTracked": "{{count}} katonai repülőgép követve",
-      "vesselsTracked": "{{count}} katonai hajó követve",
-      "internetOutages": "{{count}} internet-szünet",
-      "recentEarthquakes": "{{count}} közelmúltbeli földrengés",
+      "protestsDetected": "Aktív tüntetések: {{count}}",
+      "aircraftTracked": "Nyomon követett katonai repülőgépek: {{count}}",
+      "vesselsTracked": "Nyomon követett katonai hajók: {{count}}",
+      "internetOutages": "Internetkimaradások: {{count}}",
+      "recentEarthquakes": "Közelmúltbeli földrengések: {{count}}",
       "stockIndex": "Tőzsdeindex: {{value}}",
-      "activeStrikes": "{{count}} aktív sztrájk észlelve"
+      "activeStrikes": "Támadások és elfogások: {{count}}"
     },
     "countryFacts": "Ország adatai",
     "loadingFacts": "Ország adatai betöltődnek...",
@@ -701,7 +701,8 @@
         "techevent": "Technológiai Esemény",
         "techhq": "Technológiai Központ",
         "accelerator": "Akcelerátor",
-        "flight": "Járat"
+        "flight": "Járat",
+        "alert": "Értesítés"
       },
       "flightOnGround": "Földön",
       "flightAirborne": "FL{{fl}} · {{kts}} csomó",
@@ -709,7 +710,9 @@
       "flightMilitaryOnGround": "Katonai · {{type}} · földön",
       "flightSearchHint": "Nyomj Enter-t vagy kattints az élő pozíció megjelenítéséhez",
       "flightNotFound": "Nincs elérhető élő pozíció a {{callsign}} járathoz",
-      "addPanel": "Hozzáadás"
+      "addPanel": "Hozzáadás",
+      "sentAlerts": "Önnek küldött értesítések",
+      "sentAlertTime": "Elküldve: {{time}}"
     },
     "signal": {
       "title": "INTELLIGENCIA TALÁLAT",
@@ -877,7 +880,7 @@
       "fresh": "Friss",
       "noMarkets": "Nem található jóslatpiac",
       "predictionMarkets": "Jóslatpiacok",
-      "unavailable": "AI-összefoglaló nem elérhető — állítsd be a OPENROUTER_API_KEY-t a Beállításoknál."
+      "unavailable": "AI összefoglaló jelenleg nem érhető el."
     },
     "countryBrief": {
       "identifying": "Ország azonosítása...",
@@ -893,7 +896,7 @@
       "predictionMarkets": "Jóslatpiacok",
       "loadingMarkets": "Jóslatpiacok betöltése...",
       "infrastructure": "Infrastruktúra Expo",
-      "briefUnavailable": "AI-összefoglaló nem elérhető — állítsd be a OPENROUTER_API_KEY-t a Beállításoknál.",
+      "briefUnavailable": "AI összefoglaló jelenleg nem érhető el.",
       "cached": "Gyorsítótárazott",
       "fresh": "Friss",
       "noMarkets": "Nem található jóslatpiac",
@@ -5859,6 +5862,13 @@
       "seasonalHint": "Riasztás, ha a legutóbb mért szint jelentősen alacsonyabb az adott tározó szokásos értékénél az év ezen időszakában.",
       "quietNote": "Ezek a riasztások akkor is megérkeznek, ha a valós idejű riasztások csak kritikusra vannak állítva. A csendes órák elnémítják őket.",
       "quietNoteBatch": "Ezek a riasztások akkor is megérkeznek, ha a valós idejű riasztások csak kritikusra vannak állítva. A csendes órák elnémítják őket, vagy ha a Batch módot választja, a csendes órák végéig visszatartják őket."
+    },
+    "briefLanguage": {
+      "label": "Az összefoglaló nyelve",
+      "hint": "A napi összefoglaló nyelve: {{language}}.",
+      "sameAsApp": "Megegyezik az alkalmazás nyelvével",
+      "loadFailed": "Betöltés sikertelen",
+      "saveFailed": "Nem sikerült elmenteni. Próbáld újra."
     }
   }
 }

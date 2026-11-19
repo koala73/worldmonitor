@@ -1714,6 +1714,403 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/news/v1/search-headlines:
+        get:
+            tags:
+                - NewsService
+            summary: SearchHeadlines
+            description: SearchHeadlines finds headlines an edition served in the last 24 hours, including ones no longer on the dashboard. No paid plan needed.
+            operationId: SearchHeadlines
+            parameters:
+                - name: query
+                  in: query
+                  description: Words to find in headline titles, 2 to 120 characters. Every word must appear; order does not matter.
+                  required: true
+                  example: "hormuz tanker"
+                  schema:
+                    type: string
+                - name: variant
+                  in: query
+                  description: 'Digest edition: full, tech, finance, happy, commodity or energy. Empty means full.'
+                  required: false
+                  example: "full"
+                  schema:
+                    type: string
+                - name: lang
+                  in: query
+                  description: Digest language, a lowercase two-letter code. Empty means en.
+                  required: false
+                  example: "en"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "headlines":
+                                    - "lastServedAt": 1717200000000
+                                      "link": "https://example.com/worldmonitor"
+                                      "publishedAt": 1717200000000
+                                      "source": "Reuters World"
+                                      "title": "Strait of Hormuz tanker seized by patrol boats"
+                                "newestServedAt": 1717200000000
+                                "searchedHeadlines": 1
+                                "state": "complete"
+                                "windowHours": 24
+                            schema:
+                                $ref: '#/components/schemas/SearchHeadlinesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/news/v1/search-headline-archive:
+        get:
+            tags:
+                - NewsService
+            summary: SearchHeadlineArchive
+            description: SearchHeadlineArchive finds headlines an edition served in the last 7 days in English, 3 days in 17 common languages and 1 day in the rest; window_hours says which. Requires a Pro plan. PRO-gated. Requires entitlement tier >= 1.
+            operationId: SearchHeadlineArchive
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: query
+                  in: query
+                  description: Words to find in headline titles, 2 to 120 characters. Every word must appear; order does not matter.
+                  required: true
+                  example: "hormuz tanker"
+                  schema:
+                    type: string
+                - name: variant
+                  in: query
+                  description: 'Digest edition: full, tech, finance, happy, commodity or energy. Empty means full.'
+                  required: false
+                  example: "full"
+                  schema:
+                    type: string
+                - name: lang
+                  in: query
+                  description: Digest language, a lowercase two-letter code. Empty means en.
+                  required: false
+                  example: "en"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "headlines":
+                                    - "lastServedAt": 1717200000000
+                                      "link": "https://example.com/worldmonitor"
+                                      "publishedAt": 1717200000000
+                                      "source": "Reuters World"
+                                      "title": "Strait of Hormuz tanker seized by patrol boats"
+                                "newestServedAt": 1717200000000
+                                "searchedHeadlines": 1
+                                "state": "complete"
+                                "windowHours": 168
+                            schema:
+                                $ref: '#/components/schemas/SearchHeadlinesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/news/v1/list-sent-alerts:
+        get:
+            tags:
+                - NewsService
+            summary: ListSentAlerts
+            description: ListSentAlerts returns the realtime alerts sent to the caller in the last seven days. PRO-gated. Requires entitlement tier >= 1.
+            operationId: ListSentAlerts
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "alerts":
+                                    - "link": "https://example.com/worldmonitor"
+                                      "sentAt": 1717200000000
+                                      "source": "example"
+                                      "title": "example"
+                                "state": "example"
+                            schema:
+                                $ref: '#/components/schemas/ListSentAlertsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
     securitySchemes:
         WorldMonitorKey:
@@ -2088,6 +2485,22 @@ components:
                          media) are capped at 40 so a highly newsworthy RT/TASS story still
                          scores low. Third-party bias/factuality ratings are reserved and not
                          currently applied. See docs/methodology/news-credibility.mdx.
+                linkVerified:
+                    type: boolean
+                    description: |-
+                        True when `link` passed the publisher check at ingest: its host is the
+                         feed's own host, a host the feed's catalog entry lists, a domain of the
+                         source's publisher family, or a domain of the origin publisher named by a
+                         trusted aggregator. A link that fails the check is served empty, so this
+                         is false whenever `link` is empty. Computed by the server; never read
+                         from the feed.
+                originPublisher:
+                    type: string
+                    description: |-
+                        The original publisher a trusted aggregator (Google News) names for this
+                         item, resolved to its curated source name, so consumers can score it on
+                         that publisher's tier instead of the feed's. Empty when the feed is not
+                         a trusted aggregator, or the publisher it names has no curated tier.
             required:
                 - source
                 - title
@@ -2948,3 +3361,94 @@ components:
                     format: int64
                     description: 'Publication time in Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: ClaimHeadline is one fresh headline from a configured feed.
+        SearchHeadlinesRequest:
+            type: object
+            properties:
+                query:
+                    type: string
+                    maxLength: 120
+                    minLength: 2
+                    description: Words to find in headline titles, 2 to 120 characters. Every word must appear; order does not matter.
+                variant:
+                    type: string
+                    maxLength: 16
+                    description: 'Digest edition: full, tech, finance, happy, commodity or energy. Empty means full.'
+                lang:
+                    type: string
+                    maxLength: 8
+                    description: Digest language, a lowercase two-letter code. Empty means en.
+            required:
+                - query
+            description: SearchHeadlinesRequest names the words to find in headlines an edition served.
+        SearchHeadlinesResponse:
+            type: object
+            properties:
+                headlines:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/HeadlineMatch'
+                searchedHeadlines:
+                    type: integer
+                    format: int32
+                    description: Headlines searched inside the window.
+                windowHours:
+                    type: integer
+                    format: int32
+                    description: 'Hours searched back from when a headline was last served: up to 168 for en, 72 for the 3-day languages, 24 otherwise.'
+                state:
+                    type: string
+                    description: complete | unavailable. Unavailable searched nothing.
+                newestServedAt:
+                    type: integer
+                    format: int64
+                    description: 'Newest serve time in the window, in Unix epoch milliseconds; 0 when the window is empty.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: SearchHeadlinesResponse holds the matching headlines and how much was searched.
+        HeadlineMatch:
+            type: object
+            properties:
+                source:
+                    type: string
+                    description: Registered feed name.
+                title:
+                    type: string
+                link:
+                    type: string
+                    description: Article URL.
+                publishedAt:
+                    type: integer
+                    format: int64
+                    description: 'Publication time in Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                lastServedAt:
+                    type: integer
+                    format: int64
+                    description: 'Last time the edition served this headline, in Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: HeadlineMatch is one headline the edition served inside the search window.
+        ListSentAlertsRequest:
+            type: object
+        ListSentAlertsResponse:
+            type: object
+            properties:
+                alerts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SentAlert'
+                state:
+                    type: string
+                    description: ok | unavailable (record unreadable, not zero alerts).
+        SentAlert:
+            type: object
+            properties:
+                title:
+                    type: string
+                    description: Alert headline.
+                source:
+                    type: string
+                    description: Publisher; may be empty.
+                link:
+                    type: string
+                    description: Article URL, or empty.
+                sentAt:
+                    type: integer
+                    format: int64
+                    description: 'Delivery time, Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: One realtime alert delivered to the caller.

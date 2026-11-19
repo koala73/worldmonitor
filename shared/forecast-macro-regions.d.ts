@@ -11,3 +11,5 @@ export type ForecastMacroRegionId =
 export function getForecastMacroRegion(
   region: string | null | undefined,
 ): ForecastMacroRegionId | null;
+
+export function getForecastMacroRegionMembers(regionId: ForecastMacroRegionId): string[];

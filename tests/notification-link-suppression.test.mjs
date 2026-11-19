@@ -25,7 +25,7 @@ const {
   parseSuppressionEntries,
   isLinkSuppressed,
 } = require(resolve(__dirname, '..', 'scripts', 'shared', 'notification-link-suppression.cjs'));
-const { classifyNotificationLink } = require(resolve(__dirname, '..', 'scripts', 'shared', 'notify-fields.cjs'));
+const { classifyNotificationLink, withAlertReferrer, NOTIFY_ALERT_CHANNELS } = require(resolve(__dirname, '..', 'scripts', 'shared', 'notify-fields.cjs'));
 
 const EVIL = 'https://evil.example/phish?x=1';
 
@@ -147,5 +147,46 @@ describe('notification link suppression matcher (#8401)', () => {
       assert.equal(new URL(normalized).hostname, classified.host.replace(/\.+$/, ''), v);
       assert.equal(isLinkSuppressed(v, parsed(`${HOST_ENTRY_PREFIX}${classified.host.replace(/\.+$/, '')}`)), true, v);
     }
+  });
+});
+
+// Alerts send an article link with a referrer tag (utm_source=worldmonitor,
+// utm_medium=alert, utm_campaign=<channel>). An operator may block the link
+// as the feed published it, or paste it from a delivered alert: both must
+// block the link in every form the relay sends.
+describe('link suppression ignores the alert referrer tag', () => {
+  const RAW = [
+    'https://evil.example/phish',
+    'https://evil.example/phish?x=1',
+    'https://evil.example/phish?x=1&y=2#frag',
+    'https://evil.example/phish?utm_source=rss&x=1',
+    'https://evil.example/phish?x=1&',
+    'https://evil.example/phish?',
+  ];
+
+  it('a raw entry blocks the link as every channel tags it', () => {
+    for (const raw of RAW) {
+      for (const channel of [...NOTIFY_ALERT_CHANNELS, undefined]) {
+        const tagged = withAlertReferrer(raw, channel);
+        assert.notEqual(tagged, raw);
+        assert.equal(isLinkSuppressed(tagged, parsed(raw)), true, `${raw} entry vs ${tagged}`);
+      }
+    }
+  });
+
+  it('an entry pasted from a delivered alert blocks the raw link and every other channel', () => {
+    for (const raw of RAW) {
+      const pasted = withAlertReferrer(raw, 'email');
+      assert.equal(isLinkSuppressed(raw, parsed(pasted)), true, `${pasted} entry vs ${raw}`);
+      assert.equal(isLinkSuppressed(withAlertReferrer(raw, 'web_push'), parsed(pasted)), true);
+    }
+  });
+
+  it('still tells apart links that differ in anything else, including a publisher\'s own UTM', () => {
+    const p = parsed('https://evil.example/phish?x=1');
+    assert.equal(isLinkSuppressed('https://evil.example/phish?x=2&utm_source=worldmonitor', p), false);
+    assert.equal(isLinkSuppressed('https://evil.example/phish?x=1&utm_source=newsletter', p), false);
+    assert.equal(isLinkSuppressed('https://evil.example/phish?x=1&utm_campaign=spring', p), false);
+    assert.equal(isLinkSuppressed('https://evil.example/other?x=1&utm_medium=alert', p), false);
   });
 });

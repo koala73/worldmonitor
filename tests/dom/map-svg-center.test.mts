@@ -42,6 +42,7 @@ function createMap() {
   const map = Object.assign(Object.create(MapComponent.prototype), {
     container,
     wrapper: document.createElement('div'),
+    naturalEventTexts: [],
     state: { zoom: 4, pan: { x: 0, y: 0 } },
     pendingCenter: null,
     lastContainerSize: { width: 0, height: 0 },

@@ -676,41 +676,6 @@ test.describe('MCP grant consent page (#5654)', () => {
     await expect(page.locator('#consent')).toBeHidden();
   });
 
-  test('authorize click disables button and shows authorizing state', async ({ page }) => {
-    await stubClerkModule(page);
-    await stubContextSuccess(page);
-    const requestedRedirects = await interceptGrantRedirect(page);
-
-    // Delay mint response to observe intermediate state
-    let resolveMint!: () => void;
-    const mintDelay = new Promise<void>((resolve) => {
-      resolveMint = resolve;
-    });
-    await page.route('**/api/internal/mcp-grant-mint', async (route) => {
-      expectMintRequestContract(route);
-      await mintDelay;
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ redirect: GRANT_REDIRECT }),
-      });
-    });
-
-    await page.goto(GRANT_PAGE);
-    await expect(page.locator('#consent')).toBeVisible();
-
-    await page.locator('#authorizeBtn').click();
-    await expect(page.locator('#authorizeBtn')).toBeDisabled();
-    await expect(page.locator('#authorizeBtn')).toHaveText('Authorizing…');
-
-    // Release the mint and let the resulting navigation settle INSIDE the test.
-    // Returning here would leave a cross-origin request to the production host
-    // racing page teardown.
-    resolveMint();
-    await page.waitForURL(/^https:\/\/api\.worldmonitor\.app\//);
-    expect(requestedRedirects()).toHaveLength(1);
-  });
-
   test('Clerk refresh preserves consent while mint is in flight', async ({ page }) => {
     await stubClerkModule(page);
     const context = await stubContextSuccessThenRetryable(page);

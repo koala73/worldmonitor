@@ -44,8 +44,7 @@ declare global {
 const DIGEST_GLOB = '**/api/news/v1/list-feed-digest*';
 const PARTIAL_DIGEST_COVERAGE_TEXT =
   'News coverage: partial — 0 publishers, 0 stories, feeds 7/12, categories 0/6 ' +
-  '(no completed feed: politics, military, economy, climate, …) ' +
-  '(some categories had no completed feed in this cycle)';
+  '(no completed feed: politics, military, economy, climate, …)';
 
 const installLcpDebug = async (page: Page): Promise<void> => {
   await page.route(DIGEST_GLOB, (route) => route.fulfill({
@@ -190,7 +189,10 @@ const expectCoverageRowContract = async (
     coverageRow,
     'the #7085 coverage row must stay in the accessibility tree',
   ).toBeAttached({ timeout: 30000 });
-  await expect(coverageRow).toHaveText(PARTIAL_DIGEST_COVERAGE_TEXT);
+  // The row also carries a visually hidden reason for screen readers; the
+  // visible footer text is the .digest-coverage-text span alone.
+  await expect(coverageRow.locator('.digest-coverage-text')).toHaveText(PARTIAL_DIGEST_COVERAGE_TEXT);
+  await expect(coverageRow).toContainText('Some categories had no completed feed in this cycle.');
 
   const latest = await readLcpAfterCoveragePaint(page);
 
@@ -281,6 +283,18 @@ test.describe('dashboard LCP attribution debug', () => {
     expect(latest!.url).not.toContain('token=');
   });
 
+  // PR #10989: the coverage row's visually hidden reason is absolutely
+  // positioned. Without a positioned row it escaped overflow: hidden and
+  // widened the page at 800px (settings-home-list caught it in CI).
+  test('the coverage row adds no sideways scroll at 800px', async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 700 });
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    const coverageRow = page.getByRole('status', { name: 'News coverage status' });
+    await expect(coverageRow.locator('.digest-coverage-text')).toHaveText(PARTIAL_DIGEST_COVERAGE_TEXT, { timeout: 30000 });
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow).toBe(0);
+  });
+
   // StatusPanel is a lazy chunk. When the first digest landed before it
   // loaded, its coverage report went to nobody and the row never mounted
   // (CI runs 43792956961 and 43794135730, retried by Playwright).
@@ -303,7 +317,7 @@ test.describe('dashboard LCP attribution debug', () => {
     coveragePublished = true;
     releasePanelModule();
     const coverageRow = page.getByRole('status', { name: 'News coverage status' });
-    await expect(coverageRow).toHaveText(PARTIAL_DIGEST_COVERAGE_TEXT, { timeout: 30000 });
+    await expect(coverageRow.locator('.digest-coverage-text')).toHaveText(PARTIAL_DIGEST_COVERAGE_TEXT, { timeout: 30000 });
     expect(panelRequestedBeforeCoverage, 'the StatusPanel module must be requested before coverage is published').toBe(true);
     await evidenceScreenshot(page.locator('.site-footer'), { path: testInfo.outputPath('coverage-row-late-status-panel.png') });
   });

@@ -17,6 +17,18 @@ function formatTinyPrice(price: number): string {
   return price < 0 ? `>-$${floor}` : `<$${floor}`;
 }
 
+// Index levels (^GSPC), exchange-suffixed listings priced in local currency
+// (600519.SS, 7203.T, DFMGI.AE) and FX pairs (SARUSD=X) are not dollars. US
+// tickers, US share classes (BRK.B, BF.A), US ETFs and dollar futures (BZ=F)
+// are. Quotes carry no currency field, so the symbol is the only signal.
+const NON_DOLLAR_QUOTE = /^\^|\.(?![AB]$)[A-Z]{1,3}$|=X$/i;
+
+/** formatPrice, without the dollar sign when the symbol is not quoted in dollars. */
+export function formatQuotePrice(symbol: string, price: number | null | undefined): string {
+  const formatted = formatPrice(price);
+  return NON_DOLLAR_QUOTE.test(symbol) ? formatted.replace('$', '') : formatted;
+}
+
 export function formatPrice(price: number | null | undefined): string {
   if (!isFiniteNumber(price)) return '--';
   const abs = Math.abs(price);

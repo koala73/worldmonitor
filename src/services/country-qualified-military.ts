@@ -7,6 +7,7 @@ import { isCountryActivityCoordinate, projectCountryMilitaryActivity, projectCou
 import { preloadInfrastructureTables } from './related-assets';
 
 const MAX_FLIGHT_PAGES = 8;
+const AIS_MILITARY_OPERATIONS = 35;
 
 export async function loadHostCountryMilitaryActivity(source: CountryBriefSource, code: string, country: string, signal: AbortSignal) {
   signal.throwIfAborted();
@@ -41,7 +42,8 @@ export async function loadHostCountryMilitaryActivity(source: CountryBriefSource
     let invalidReports = 0;
     for (const report of result.snapshot.candidateReports) {
       const vessel = classifyMilitaryVessel(report);
-      if (!vessel) continue;
+      // The relay also sends civilian special craft and MMSI-pattern candidates.
+      if (!vessel || (report.shipType !== AIS_MILITARY_OPERATIONS && vessel.confidence !== 'high')) continue;
       if (!Number.isFinite(report.timestamp) || report.timestamp <= 0 || report.timestamp > Date.now() + 300_000) { invalidReports++; continue; }
       if (Date.now() - report.timestamp > 3_600_000) continue;
       vessels.set(vessel.id, vessel);
@@ -81,7 +83,7 @@ export async function loadHostCountryMilitaryActivity(source: CountryBriefSource
   if ((!ais || ais.invalidReports > 0 || !fleet) && summary.foreignPresence === false) summary.foreignPresence = null;
   return { ...summary, qualified, deniedSignalFields, signalCounts: projectCountryMilitarySignalCounts(code, flights, vessels), coverage: flights && ais && !ais.invalidReports && fleet ? 'complete' as const : 'partial' as const, coverageNotes: [
     flights ? 'Flight counts include observations licensed for redistribution through this connection.' : 'Flight observations unavailable or unconfirmed. This is not a zero activity count.',
-    ais ? `AIS snapshot ${new Date(ais.at).toISOString()}. Country counts use the relay candidate snapshot, bounded to 1,500 reports.${ais.invalidReports ? ` ${ais.invalidReports} military reports with invalid dates excluded; coverage is partial.` : ''}` : 'Live AIS observations unavailable. Current source coverage excludes AIS.',
+    ais ? `AIS snapshot ${new Date(ais.at).toISOString()}. Country counts use military operations reports and known naval vessels from the relay sample of up to 1,500 candidates.${ais.invalidReports ? ` ${ais.invalidReports} military reports with invalid dates excluded; coverage is partial.` : ''}` : 'Live AIS observations unavailable. Current source coverage excludes AIS.',
     fleet ? `USNI fleet report ${fleet.articleDate}. Reported regions and homeports are approximate locations, not live positions.` : 'USNI fleet roster unavailable.',
   ] };
 }

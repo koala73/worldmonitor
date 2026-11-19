@@ -72,6 +72,27 @@ describe('shared country military observations', () => {
   it('preserves the website classification for generic AIS military activity and excludes a civil vessel', () => {
     expect(classifyMilitaryVessel({ mmsi: '235123456', name: 'Controlled AIS', shipType: 35, lat: 38, lon: -77 })?.vesselType).toBe('unknown');
     expect(classifyMilitaryVessel({ mmsi: '235123456', name: 'Controlled cargo', shipType: 70, lat: 38, lon: -77 })).toBeNull();
+    expect(classifyMilitaryVessel({ mmsi: '235123456', name: 'Liaoning', lat: 0, lon: 0 })?.confidence).toBe('high');
+    expect(classifyMilitaryVessel({ mmsi: '235123456', name: 'CVN-78', lat: 0, lon: 0 })?.confidence).toBe('high');
+  });
+  it.each([
+    { code: 'DE', country: 'Germany', lat: 53.5, lon: 10, expected: 1 },
+    { code: 'AT', country: 'Austria', lat: 48.2, lon: 16.4, expected: 0 },
+  ])('counts military evidence and excludes civilian candidates in $country', async ({ code, country, lat, lon, expected }) => {
+    vi.spyOn(geometry, 'hasCountryGeometry').mockReturnValue(true);
+    vi.spyOn(geometry, 'isCoordinateInCountry').mockImplementation((latitude, longitude) => latitude === lat && longitude === lon);
+    const reader = source(vi.fn().mockResolvedValue({ flights: [] }));
+    const timestamp = Date.now();
+    const civilians = [50, 52, 55, 70].map((shipType, index) => ({
+      mmsi: String(211001000 + index), name: shipType === 52 ? 'TUG 16' : 'Controlled civilian candidate', shipType, lat, lon, timestamp,
+    }));
+    const military = { mmsi: '211123450', name: 'Controlled military report', shipType: 35, lat: 53.5, lon: 10, timestamp };
+    reader.vessels.getVesselSnapshot = vi.fn().mockResolvedValue({ dataAvailable: true, snapshot: {
+      snapshotAt: timestamp, status: { connected: true }, candidateReports: [...civilians, military],
+    } });
+    const summary = await loadHostCountryMilitaryActivity(reader, code, country, new AbortController().signal);
+    expect(summary.signalCounts).toMatchObject({ militaryVessels: expected, militaryVesselsInCountry: expected });
+    expect(summary.nearbyVessels).toBe(expected);
   });
   it('follows flight pages and retains vessels when flight pagination fails', async () => {
     const flights = vi.fn().mockImplementation(async (args: { cursor: string }) => args.cursor ? { flights: [flight('foreign', foreign)], pagination: { nextCursor: '' } } : { flights: [flight('own')], pagination: { nextCursor: 'next' } });

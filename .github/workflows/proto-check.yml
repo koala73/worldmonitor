@@ -261,11 +261,12 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      - name: Cache buf
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      # Restore-only: go-tools-cache.yml writes this key on main.
+      - name: Restore Go binaries (buf, protoc plugins)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/go/bin
-          key: buf-${{ runner.os }}-${{ hashFiles('Makefile') }}
+          key: go-bin-${{ runner.os }}-${{ hashFiles('Makefile') }}
 
       - name: Install buf
         run: |
@@ -330,8 +331,9 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      - name: Cache Go binaries (buf, protoc plugins)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      # Restore-only: go-tools-cache.yml writes this key on main.
+      - name: Restore Go binaries (buf, protoc plugins)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/go/bin
           key: go-bin-${{ runner.os }}-${{ hashFiles('Makefile') }}
@@ -562,8 +564,9 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      - name: Cache Go binaries (buf, protoc plugins)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      # Restore-only: go-tools-cache.yml writes this key on main.
+      - name: Restore Go binaries (buf, protoc plugins)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/go/bin
           key: go-bin-${{ runner.os }}-${{ hashFiles('Makefile') }}

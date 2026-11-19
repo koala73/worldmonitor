@@ -286,10 +286,11 @@ describe('MapPopup imagery row lifecycle', () => {
   afterEach(() => { popup.hide('replacement'); container.remove(); document.body.replaceChildren(); });
 
   it('a late answer for the replaced object never paints into the current popup', async () => {
+    // The imagery loader is imported on demand, so each lookup starts a few ticks after show().
     popup.show({ type: 'nuclear', data: site('n1', 'Bushehr', 28.8) as never, x: 10, y: 10 });
-    expect(harness.loads).toHaveLength(1);
+    await vi.waitFor(() => expect(harness.loads).toHaveLength(1));
     popup.show({ type: 'nuclear', data: site('n2', 'Natanz', 33.7) as never, x: 10, y: 10 });
-    expect(harness.loads).toHaveLength(2);
+    await vi.waitFor(() => expect(harness.loads).toHaveLength(2));
     expect(harness.loads[0]!.signal?.aborted).toBe(true);
     expect(harness.loads[1]!.signal?.aborted).toBe(false);
 
@@ -309,6 +310,7 @@ describe('MapPopup imagery row lifecycle', () => {
   it('closing the popup aborts the image load and releases a painted image', async () => {
     const release = vi.fn();
     popup.show({ type: 'nuclear', data: site('n1', 'Bushehr', 28.8) as never, x: 10, y: 10 });
+    await vi.waitFor(() => expect(harness.loads).toHaveLength(1));
     harness.loads[0]!.resolve(imagery());
     await flush();
     harness.archive[0]!.resolve(okImage('blob:shown', release));
@@ -323,6 +325,7 @@ describe('MapPopup imagery row lifecycle', () => {
   it('replacing the popup while its image is loading releases that image when it lands', async () => {
     const release = vi.fn();
     popup.show({ type: 'nuclear', data: site('n1', 'Bushehr', 28.8) as never, x: 10, y: 10 });
+    await vi.waitFor(() => expect(harness.loads).toHaveLength(1));
     harness.loads[0]!.resolve(imagery());
     await flush();
     popup.show({ type: 'nuclear', data: site('n2', 'Natanz', 33.7) as never, x: 10, y: 10 });

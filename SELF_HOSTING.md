@@ -354,15 +354,20 @@ curl -s -X POST "$UPSTASH_REDIS_REST_URL/pipeline" \
 ```
 
 That single `SADD` is enough for everything served out of Redis — no key
-deletion is required, because suppression happens on read.
+deletion is required, because suppression happens on read. Each server
+instance reuses its last read of the set for up to 10 seconds, so allow that
+long before the item is gone everywhere.
 
 **Two things it does not do**, both of which matter during an incident:
 
 1. **It does not evict shared caches.** `/api/news/v1/list-feed-digest` is
    served with `max-age=60, s-maxage=300` and `CDN-Cache-Control: s-maxage=600`. Once a
    revocation is live the endpoint stops feeding shared caches, but copies
-   already stored survive. **Purge the CDN for that path** if you have one in
-   front of the stack. A purely local Docker stack has no CDN and can skip this.
+   already stored survive. **Wait one minute after the `SADD`, then purge the
+   CDN for that path** if you have one in front of the stack. An instance can
+   keep its old read of the set for 10 seconds, and a digest request can take
+   up to 25 seconds, so a request that started before the revocation can
+   still finish and refill the CDN within that minute. A purely local Docker stack has no CDN and can skip this.
 2. **It does not force a rebuild.** The existing digest keeps being rebuilt on
    its normal ~900s cycle. To rebuild immediately:
 
@@ -375,8 +380,21 @@ deletion is required, because suppression happens on read.
 
    Note the key version is **v1**. Repeat per `<variant>:<lang>` scope you serve.
 
-To lift a revocation, `SREM` the same URL — stored bodies are kept unfiltered on
-purpose, so the item reappears on the next read without waiting for a rebuild.
+To lift a revocation, `SREM` the same URL. Paths that store items unfiltered
+show it again within 10 seconds. A digest built while the URL was revoked left
+the item out, so it returns to the digest only on the next rebuild. To rebuild
+now, wait one minute after the `SREM`, then delete the digest keys as in step 2
+above. The 10-second memo is only part of that wait: a digest build that read
+the set before the `SREM` can take up to 25 seconds and still publish its
+copy without the item, so delete the keys only after any such build is done.
+If a CDN sits in front of the stack, it can still hold a digest without the
+item. Once `/api/news/v1/list-feed-digest` at the origin returns a rebuilt
+digest (its `generatedAt` is later than the key deletion), and at least one
+minute after deleting the keys, purge that CDN path. The rebuilt digest may
+still lack the item if it aged out of its feed or fell below its category cap
+in the meantime. The minute matters because a request that read the old
+digest before the deletion can still finish and refill the CDN. A purely local Docker stack can stop at the
+origin check.
 
 ```bash
 curl -s -X POST "$UPSTASH_REDIS_REST_URL/pipeline" \
@@ -386,8 +404,9 @@ curl -s -X POST "$UPSTASH_REDIS_REST_URL/pipeline" \
 ```
 
 > If the revocation set cannot be read at all (Redis erroring, not merely
-> absent), every serving path fails **closed** — it serves nothing rather than
-> serving content it could not check. A stack with no Redis configured is a
+> absent) and the instance has no successful read from the last 10 seconds,
+> every serving path fails **closed** — it serves nothing rather than serving
+> content it could not check. A stack with no Redis configured is a
 > different case: there is no suppression store to consult, so serving proceeds
 > normally.
 

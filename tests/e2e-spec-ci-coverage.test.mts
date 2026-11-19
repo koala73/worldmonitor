@@ -21,32 +21,15 @@ const workflows = readdirSync(workflowsDir)
 // Specs no workflow runs, each with the reason. Shrink this list; do not grow
 // it without a reason a reviewer can check.
 const NOT_RUN_IN_CI: Record<string, string> = {
-  'e2e/auth-ui.spec.ts': 'broken: no test passes on main',
-  'e2e/channel-oauth-binding.spec.mjs': 'broken: no test passes on main',
-  'e2e/china-corridor-panel.spec.ts': 'broken: 2 of 5 tests fail on main',
-  'e2e/deduct-situation.spec.ts': 'broken: no test passes on main',
-  'e2e/food-prices.spec.ts': 'broken: no test passes on main',
+  'e2e/food-prices.spec.ts':
+    'broken on Linux: at 1440px the panel scrollWidth exceeds clientWidth by 5px with no element or text past its edge (passes on macOS; CI run 44274809907)',
   'e2e/forecast-row-layout.spec.ts':
     'flaky: at 390px the VOID summary click is intercepted by .fc-sim-label, then #mobileTabBar, until the 300s test timeout (both attempts, CI run 43796987099)',
-  'e2e/header-signed-out-auth.spec.ts': 'broken: no test passes on main',
-  'e2e/live-media-intent.spec.ts': 'broken: 5 of 14 tests fail on main',
-  'e2e/mission-presets.spec.ts': 'broken: 2 of 5 tests fail on main',
-  'e2e/mobile-bottom-navigation.spec.ts': 'broken: 2 of 16 tests fail on main',
-  'e2e/mobile-map-native.spec.ts': 'broken: 4 of 9 tests fail on main',
-  'e2e/mobile-map-popup.spec.ts': 'broken: 2 of 22 tests fail on main',
-  'e2e/naval-group-navigation.spec.ts': 'broken: 1 of 4 tests times out on main',
   'e2e/nq-day-trader-mission.spec.ts': 'every test skips unless VITE_VARIANT=finance, and no job runs the finance variant',
-  'e2e/oref-subscription-lifecycle.spec.ts': 'broken: 1 of 2 tests fails on main',
-  'e2e/panel-drag-reorder.spec.ts': 'broken: 2 of 9 tests fail on main',
   'e2e/panel-vertical-scroll.spec.ts':
     'flaky: each test runs 1.9-2.5 min against its own 180s timeout and timed out at 1440px (CI run 43799166185)',
-  'e2e/rag-vector-store.spec.ts': 'broken: 1 of 7 tests fails on main',
-  'e2e/reservoir-levels.spec.ts': 'broken: 2 of 5 tests fail on main',
   'e2e/settings-diagnostics-layout.spec.ts':
     'broken on Linux: at 1.5x text the traffic log overflows its card by 27px (passes on macOS; CI run 43792167531)',
-  'e2e/theme-toggle.spec.ts': 'broken: 7 of 8 tests fail on main',
-  'e2e/ukmto-incidents.spec.ts': 'broken: 1 of 7 tests fails on main',
-  'e2e/widget-builder.spec.ts': 'broken: 4 of 7 tests fail on main',
 };
 
 // Specs a CI script reaches by test title (-g) instead of by file path. The

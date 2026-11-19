@@ -66,8 +66,8 @@ const UNCLAIMED_ENTRY_SOURCES = new Set(['/dashboard.html']);
  *
  * Shapes in use:
  *   /  /dashboard                  the entry documents, exact (ENTRY_DOCUMENTS)
- *   /(es|pt|ru|fr|de|ar)           slashless locale landings, exact documents
- *   /(es|pt|ru|fr|de|ar)/          trailing-slash locale landings, exact documents
+ *   /(es|pt|ru|fr|de|ar|id|ja)           slashless locale landings, exact documents
+ *   /(es|pt|ru|fr|de|ar|id|ja)/          trailing-slash locale landings, exact documents
  *   /(a|b|c)                       bare corpus families (308s, mirrored anyway)
  *   /(a|b|c)/(.*)                  nested corpus families
  *   /blog                          a bare family that is itself a document

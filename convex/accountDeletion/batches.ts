@@ -49,6 +49,7 @@ export const PERSONAL_DELETE_TABLES = [
   // insert earlier in the list would make them skip a table.
   "enterpriseMembers",
   "proBusinessUpgradeAdmissions",
+  "alertScopeNotices",
   "users",
 ] as const;
 
@@ -98,6 +99,11 @@ async function takePersonalRows(
     case "alertRules":
       return ctx.db
         .query("alertRules")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(limit);
+    case "alertScopeNotices":
+      return ctx.db
+        .query("alertScopeNotices")
         .withIndex("by_user", (q) => q.eq("userId", userId))
         .take(limit);
     case "agentFeedback":
@@ -968,6 +974,13 @@ export const completeEmailKeyedErasure = internalMutation({
 
     const writes = grants.writes + keyed.writes;
     const done = grants.done && keyed.done;
+    // markExternalComplete clears verifiedEmail, but on this repair path it
+    // already ran. Drop the proof once the sweep finishes so a completed
+    // erasure does not keep the subject's address. A row still in progress
+    // keeps it; markExternalComplete clears it when that row completes.
+    if (done && withProof.status === "complete") {
+      await ctx.db.patch(row._id, { verifiedEmail: undefined });
+    }
     if (!done) {
       await ctx.scheduler.runAfter(
         0,

@@ -102,6 +102,12 @@ describe('/monitor-the-situation/ build', () => {
       assert.ok(readFileSync(join(outDir, hub), 'utf8').includes('href="/monitor-the-situation/"'), `${hub} links the board`);
     }
   });
+
+  it('links the Pentagon Pizza Index from the board and the tools hub', () => {
+    const pizza = 'href="/blog/glossary/pentagon-pizza-index/"';
+    assert.ok(html.includes(pizza), 'board -> pizza index');
+    assert.ok(readFileSync(join(outDir, 'tools/index.html'), 'utf8').includes(pizza), 'tools hub -> pizza index');
+  });
 });
 
 describe('/monitor-the-situation/ readings', () => {

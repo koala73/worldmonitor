@@ -344,10 +344,31 @@
     "url": "https://data.gov.my/data-catalogue/pricecatcher",
     "cadence": "daily",
     "contextOnly": false,
+    "surveyItems": [
+      "Rice, imported white (Faiza Emas)",
+      "Rice, imported (Jasmine Super 5 Special)",
+      "Rice, imported super 5% (Rambutan)",
+      "Cooking oil, subsidised packet",
+      "Cooking oil, pure palm (Seri Murni)",
+      "Cooking oil, pure palm (Buruh)",
+      "White sugar, coarse",
+      "White sugar, fine",
+      "Wheat flour (Sauh)",
+      "Wheat flour (Faiza)",
+      "Coconut, whole",
+      "Coconut, grated",
+      "Buffalo meat, imported India (topside)",
+      "Buffalo meat, imported India (block)",
+      "Beef, local (thigh)",
+      "Banana (pisang berangan)",
+      "Papaya",
+      "Pineapple",
+      "Watermelon, seedless"
+    ],
     "maxFetchAgeDays": 3,
     "maxContentAgeDays": 10,
     "fetchBudgetMs": 120000,
-    "attribution": "KPDN / data.gov.my, CC BY 4.0. Median across reporting premises for each selected item; at least 10 premises. Latest completed collection day; premises and sample composition may vary. Eggs are per 30 pieces, chicken and tomatoes per kg.",
+    "attribution": "KPDN / data.gov.my, CC BY 4.0. Median of at least 10 premises. 39 staples are collected daily; 19 basket items (packaged rice, cooking oil, sugar, flour, coconut, meat, fruit) are surveyed on irregular days, so each shows its own date.",
     "hosts": [
       "storage.data.gov.my"
     ]
