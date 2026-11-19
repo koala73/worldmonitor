@@ -2905,7 +2905,10 @@ async function recordAlertPool(
   const timeout = redisTimeoutForDeadline(deadlineAt);
   if (!timeout) return;
   const items = alertPoolItems(servable, served, now, lang);
-  await runRedisTransaction([['SET', `news:alert-pool:v1:${variant}`, JSON.stringify({ generatedAt: now, items }), 'EX', 1800]], false, timeout);
+  // v2: language-filtered. A relay still reading v1 loses the pool within its
+  // 30 minute TTL, and the first v2 read is recorded as backlog, so the
+  // refilled pool cannot alert hours-old headlines whichever side deploys first.
+  await runRedisTransaction([['SET', `news:alert-pool:v2:${variant}`, JSON.stringify({ generatedAt: now, items }), 'EX', 1800]], false, timeout);
 }
 
 function redisPipelineConfirmed(

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { it } from 'node:test';
 import { ALERT_POOL_MAX_ITEMS, alertPoolItems } from '../server/worldmonitor/news/v1/list-feed-digest';
 
@@ -28,4 +29,10 @@ it('keeps the original publisher a topic feed carries, so the relay scores on it
 it('pools only headlines in the digest language, so local-language outlets cannot alert an English edition', () => {
   const servable = [item('Trump, Xi and Putin end summit', 1), item('Baigėsi Trumpo, Putino, Xi Jinpingo susitikimas', 2, { source: '15min.lt', lang: 'lt' })];
   assert.deepEqual(alertPoolItems(servable, [], now, 'en').map(i => i.title), ['Trump, Xi and Putin end summit']);
+});
+
+it('the digest writes the pool key the relay reads, and a relay from before the language filter reads neither', () => {
+  const keyIn = (file: string) => readFileSync(new URL(file, import.meta.url), 'utf8').match(/`(news:alert-pool:v\d+):\$\{variant\}`/)?.[1];
+  assert.equal(keyIn('../server/worldmonitor/news/v1/list-feed-digest.ts'), 'news:alert-pool:v2');
+  assert.equal(keyIn('../scripts/ais-relay.cjs'), 'news:alert-pool:v2');
 });
