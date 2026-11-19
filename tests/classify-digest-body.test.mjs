@@ -29,7 +29,8 @@ function loadVariant(url, observedErrors, { timeoutMs, digests = [], pools = [],
     isStaleDigestReplay: () => false,
     xNewsAccounts: { collectXAlertCandidates: () => [] }, xState: { items: [] },
     upstashGet, upstashPipeline,
-    readObservedPublisherCounts: async () => new Map(),
+    // #10977: publisher coverage and cross-wording checks add nothing here.
+    readObservedPublishers: async () => new Map(), crossWordingFamilies: async () => new Map(),
     RELAY_SOURCE_TIERS: {}, buildClassifyCandidateMap: (digest, _x, _v, _n, _r, _f, pool) => { digests.push(digest); pools.push(pool); return new Map(); },
     ...extra,
   });

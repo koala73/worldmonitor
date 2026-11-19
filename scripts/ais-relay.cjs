@@ -87,7 +87,7 @@ const {
   xPostBudgetServiceStatus,
 } = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
-const { newsStoryKey, newsStoryKeyLoadError, newsPublisherCoverageKey, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
+const { newsStoryKey, newsStoryKeyLoadError, newsPublisherCoverageKey, reachesRealtimeRules, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
 if (newsStoryKeyLoadError()) {
   // Alerts still publish, on the exact-title identity; a repeated headline can alert twice.
   console.warn('[Notify] News story key unavailable, falling back to exact-title dedup:', newsStoryKeyLoadError().message);
@@ -186,6 +186,11 @@ const chinaCountryStockIndexHelpersPromise = import('./_country-stock-index.mjs'
 // turns the null into a loud, monitor-visible failure (see below).
 const weatherAlertSelectPromise = import('./_weather-alert-select.mjs').catch((e) => {
   console.error('[Weather] location helper failed to load:', e?.message || e);
+  return null;
+});
+// Cross-wording corroboration (#10977). A failed load means no boost.
+const newsCorroborationPromise = import('./lib/news-corroboration.mjs').catch((e) => {
+  console.error('[news-corroboration] module failed to load:', e?.message || e);
   return null;
 });
 const parseProxyUrl = parseProxyConfig;
@@ -5234,8 +5239,8 @@ function relayEntityCorroborationScore(count) {
 // corroborationCount → 1 and publishedAt → Date.now() when upstream omits them.
 // Publisher families the digest saw carry each headline in the last day, over
 // every build and edition (#10977), in one short read. A title without a
-// count falls back to the build's own count.
-async function readObservedPublisherCounts(titles) {
+// history falls back to the build's own count.
+async function readObservedPublishers(titles) {
   if (titles.length === 0) return new Map();
   const now = Date.now();
   const keyed = titles.map((title) => [title, newsPublisherCoverageKey(title)]).filter(([, key]) => key);
@@ -5243,12 +5248,12 @@ async function readObservedPublisherCounts(titles) {
     keyed.map(([, key]) => ['ZRANGEBYSCORE', key, `(${now - NEWS_STORY_DEDUP_TTL_SECONDS * 1000}`, now]),
     { deadlineMs: 1500 },
   );
-  const counts = new Map();
+  const observed = new Map();
   keyed.forEach(([title], i) => {
     const families = rows?.[i]?.result;
-    if (Array.isArray(families)) counts.set(title, families.length);
+    if (Array.isArray(families)) observed.set(title, families.filter((family) => typeof family === 'string' && family));
   });
-  return counts;
+  return observed;
 }
 
 function relayComputeImportanceScore(level, source, corroborationCount, publishedAt, context = {}) {
@@ -5654,6 +5659,44 @@ function recordAlertLatency(latency, { severity, importanceScore, variant, sourc
   ]).catch(() => {});
 }
 
+// Embedding and model checks per classify cycle, so a story that floods every
+// feed cannot add minutes. A copy left unchecked gets no boost.
+const CROSS_WORDING_MAX_CHECKS = 8;
+let crossWordingChecksLeft = CROSS_WORDING_MAX_CHECKS;
+
+// Publisher families of the other wordings of each critical copy under the
+// realtime bar (#10977). High copies only corroborate; they are never boosted.
+async function crossWordingFamilies(chunk, acceptedLevels, allTitles, observedPublishers) {
+  const sightings = [];
+  const candidates = [];
+  chunk.forEach((title, i) => {
+    const level = acceptedLevels.get(i);
+    const meta = allTitles.get(title);
+    if (!meta || meta.fromX || (level !== 'critical' && level !== 'high')) return;
+    // The digest's families name the publisher behind a topic feed's copy.
+    const families = observedPublishers.get(title);
+    sightings.push({ title, source: meta.source, level, families });
+    if (level !== 'critical') return;
+    if (shouldDropRelaySourceForTier(RELAY_GATES_READY, meta.source, RELAY_TIER4_SOURCES)) return;
+    if (RELAY_GATES_READY && meta.publishedAt && Date.now() - meta.publishedAt > RELAY_RECENCY_MS) return;
+    const count = Math.max(meta.corroborationCount ?? 1, families?.length ?? 0);
+    const score = relayComputeImportanceScore(level, meta.source, count, meta.publishedAt ?? Date.now(), {
+      title, classSource: 'llm', entityCorroborationCount: 0,
+    });
+    if (!reachesRealtimeRules(level, score)) candidates.push({ title, source: meta.source, families });
+  });
+  const corroboration = await newsCorroborationPromise;
+  if (!corroboration || sightings.length === 0) return new Map();
+  // Recorded first, so two wordings in one batch can match each other.
+  await corroboration.recordSightings(sightings);
+  const checked = candidates.slice(0, Math.max(0, crossWordingChecksLeft));
+  crossWordingChecksLeft -= checked.length;
+  if (checked.length < candidates.length) {
+    console.log(`[news-corroboration] ${JSON.stringify({ unchecked: candidates.length - checked.length, reason: 'budget' })}`);
+  }
+  return corroboration.crossWordingFamilies(checked);
+}
+
 async function seedClassifyForVariant(variant, seenTitles) {
   const digestUrl = buildClassifyDigestUrl(variant);
   const transport = classifyDigestTransport(digestUrl) === 'http' ? http : https;
@@ -5842,8 +5885,9 @@ async function seedClassifyForVariant(variant, seenTitles) {
       if (typeof entry?.i === 'number' && !acceptedLevels.has(entry.i)
         && CLASSIFY_VALID_LEVELS.includes(entry.l) && CLASSIFY_VALID_CATEGORIES.includes(entry.c)) acceptedLevels.set(entry.i, entry.l);
     }
-    const observedPublishers = await readObservedPublisherCounts(chunk.filter((title, i) =>
+    const observedPublishers = await readObservedPublishers(chunk.filter((title, i) =>
       !allTitles.get(title)?.fromX && ['critical', 'high'].includes(acceptedLevels.get(i))));
+    const crossWording = await crossWordingFamilies(chunk, acceptedLevels, allTitles, observedPublishers);
     const classifiedSet = new Set();
     const labelled = [];
     for (const entry of llmResult) {
@@ -5900,8 +5944,10 @@ async function seedClassifyForVariant(variant, seenTitles) {
         // across builds and editions. Neither contains the other.
         const corroborationCount = Math.max(
           meta.corroborationCount ?? 1,
-          meta.fromX ? 0 : (observedPublishers.get(chunk[idx]) ?? 0),
+          meta.fromX ? 0 : (observedPublishers.get(chunk[idx])?.length ?? 0),
+          level === 'critical' ? (crossWording.get(chunk[idx])?.families.length ?? 0) : 0,
         );
+        const corroboratedBy = level === 'critical' ? crossWording.get(chunk[idx])?.families : undefined;
         const importanceScore = relayComputeImportanceScore(
           level,
           meta.source,
@@ -5949,6 +5995,8 @@ async function seedClassifyForVariant(variant, seenTitles) {
             // The one country the headline names, read by the relay's tier
             // gate (#10873). Deliberately not the singular field the relay scopes on (see above).
             ...(primaryCountryCode ? { primaryCountryCode } : {}),
+            // The publisher families other wordings added, for the miss audit.
+            ...(corroboratedBy ? { corroboratedBy } : {}),
           },
           severity: level,
           variant,
@@ -5984,6 +6032,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
 async function seedClassify() {
   if (classifyInFlight) return;
   classifyInFlight = true;
+  crossWordingChecksLeft = CROSS_WORDING_MAX_CHECKS;
   const t0 = Date.now();
   try {
     const hasAnyProvider = CLASSIFY_LLM_PROVIDERS.some((p) => !!process.env[p.envKey]);
@@ -6106,6 +6155,8 @@ async function checkDigestBuilds() {
       now,
       retryAt: digestBuildRetryAt,
     });
+    // A build pass is its own cycle, unless it runs between a classify cycle's editions.
+    if (!classifyInFlight) crossWordingChecksLeft = CROSS_WORDING_MAX_CHECKS;
     const editions = [];
     const summary = [];
     for (const variant of buildPassEditions(CLASSIFY_VARIANTS, rebuilt, { now, retryAt: digestBuildRetryAt })) {
