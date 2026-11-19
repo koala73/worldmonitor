@@ -306,7 +306,6 @@
     {
       "name": "New York Times World",
       "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
-      "newestFirst": true,
       "notes": [
         "Major publishers Google News World leads with and no feed carried (2026-10-16 audit). Publisher RSS since issue #10937; it previously used a Google News site: query.",
         "Major publishers Google News World leads with and no feed carried (2026-10-16 audit). Last in the category, so the free-tier cap's declaration-order pick keeps every earlier source."

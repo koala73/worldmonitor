@@ -87,7 +87,7 @@ const {
   xPostBudgetServiceStatus,
 } = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
-const { newsStoryKey, newsStoryKeyLoadError, classifyCacheIdentity, reachesRealtimeRules, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
+const { newsStoryKey, newsStoryKeyLoadError, newsPublisherCoverageKey, classifyCacheIdentity, reachesRealtimeRules, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
 if (newsStoryKeyLoadError()) {
   // Alerts still publish, on the exact-title identity; a repeated headline can alert twice.
   console.warn('[Notify] News story key unavailable, falling back to exact-title dedup:', newsStoryKeyLoadError().message);
@@ -625,8 +625,11 @@ function upstashMGet(keys) {
 
 // Runs an Upstash /pipeline body. Resolves to the per-command result array, or
 // null when the request fails.
-function upstashPipeline(commands) {
-  return new Promise((resolve) => {
+// `deadlineMs` bounds the whole request; `timeoutMs` only an idle socket.
+function upstashPipeline(commands, { timeoutMs = 10000, deadlineMs } = {}) {
+  return new Promise((settle) => {
+    let deadline = null;
+    const resolve = (value) => { clearTimeout(deadline); settle(value); };
     if (!UPSTASH_ENABLED || commands.length === 0) return resolve(null);
     const url = new URL('/pipeline', UPSTASH_REDIS_REST_URL);
     const req = UPSTASH_HTTP_MODULE.request(url, {
@@ -635,7 +638,7 @@ function upstashPipeline(commands) {
         Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
         'Content-Type': 'application/json',
       },
-      timeout: 10000,
+      timeout: timeoutMs,
     }, (resp) => {
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         resp.resume();
@@ -654,6 +657,7 @@ function upstashPipeline(commands) {
     });
     req.on('error', () => resolve(null));
     req.on('timeout', () => { req.destroy(); resolve(null); });
+    if (deadlineMs) deadline = setTimeout(() => { req.destroy(); resolve(null); }, deadlineMs);
     req.end(JSON.stringify(commands));
   });
 }
@@ -5220,6 +5224,25 @@ function relayEntityCorroborationScore(count) {
 // exercised in tests/importance-score-parity.test.mjs "unknown severity" case.
 // Caller responsibility: pass defined values; relay publish site defaults
 // corroborationCount → 1 and publishedAt → Date.now() when upstream omits them.
+// Publisher families the digest saw carry each headline in the last day, over
+// every build and edition (#10977), in one short read. A title without a
+// count falls back to the build's own count.
+async function readObservedPublisherCounts(titles) {
+  if (titles.length === 0) return new Map();
+  const now = Date.now();
+  const keyed = titles.map((title) => [title, newsPublisherCoverageKey(title)]).filter(([, key]) => key);
+  const rows = await upstashPipeline(
+    keyed.map(([, key]) => ['ZRANGEBYSCORE', key, `(${now - NEWS_STORY_DEDUP_TTL_SECONDS * 1000}`, now]),
+    { deadlineMs: 1500 },
+  );
+  const counts = new Map();
+  keyed.forEach(([title], i) => {
+    const families = rows?.[i]?.result;
+    if (Array.isArray(families)) counts.set(title, families.length);
+  });
+  return counts;
+}
+
 function relayComputeImportanceScore(level, source, corroborationCount, publishedAt, context = {}) {
   const tier = relayGetSourceTier(source);
   const tierScore = tier === 1 ? 100 : tier === 2 ? 75 : tier === 3 ? 50 : 25;
@@ -5721,7 +5744,10 @@ async function seedClassifyForVariant(variant, seenTitles) {
   let unlabelled = 0;
   const countUnlabelled = (title) => { if (threatSummaryCountries(title).length > 0) unlabelled++; };
 
-  const publishAlert = (title, level, category, cached) => {
+  const alertGateDrops = { tier4: 0, recency: 0 };
+  // observedCount: publisher families the coverage history holds for the
+  // headline (#10977); a cache hit has no fresh read and uses the build's count.
+  const publishAlert = (title, level, category, cached, observedCount = 0) => {
     const meta = allTitles.get(title) ?? {
       source: variant,
       publishedAt: Date.now(),
@@ -5735,18 +5761,27 @@ async function seedClassifyForVariant(variant, seenTitles) {
     // them to 4. Any future Telegram alert path must use the public display
     // label from shared/telegram-channel-trust.ts (#6600). #6654 should do
     // the same for X account labels rather than a generic "x" platform key.
-    if (shouldDropRelaySourceForTier(RELAY_GATES_READY, meta.source, RELAY_TIER4_SOURCES)) return;
+    if (shouldDropRelaySourceForTier(RELAY_GATES_READY, meta.source, RELAY_TIER4_SOURCES)) {
+      if (!cached) alertGateDrops.tier4++;
+      return;
+    }
     if (RELAY_GATES_READY) {
       const ageMs = Date.now() - (meta.publishedAt ?? 0);
-      if (meta.publishedAt && ageMs > RELAY_RECENCY_MS) return;
+      if (meta.publishedAt && ageMs > RELAY_RECENCY_MS) {
+        if (!cached) alertGateDrops.recency++;
+        return;
+      }
     }
     // Recompute importanceScore from the post-LLM level. Publishing the
     // digest's pre-LLM keyword-based score would leak a stale value —
     // see docs/internal/scoringDiagnostic.md §2.
+    // This build counts every wording; the history counts this headline
+    // across builds and editions. Neither contains the other.
+    const corroborationCount = Math.max(meta.corroborationCount ?? 1, meta.fromX ? 0 : observedCount);
     const importanceScore = relayComputeImportanceScore(
       level,
       meta.source,
-      meta.corroborationCount ?? 1,
+      corroborationCount,
       meta.publishedAt ?? Date.now(),
       {
         title,
@@ -5759,14 +5794,14 @@ async function seedClassifyForVariant(variant, seenTitles) {
     );
     // A cached label was published when it was written. Re-publish only a copy
     // that reaches realtime rules and has a story key to stop repeats (#10976).
-    if (cached && (!reachesRealtimeRules(level, importanceScore) || !newsStoryKey(title, { severity: level, importanceScore }))) return;
-    const titleCountryCodes = matchCountryNamesInText(title);
     // The one country the title names anywhere, not the affected target
     // countryCodes keeps ("Russia attacks Ukraine" names two).
     const primaryCountryCode = notifyPolicy.primaryNewsCountryCode(countriesNamedInHeadline(title));
     // One alert per story per day, not per title string: a second
     // publisher carrying an alerted headline is the same story.
-    const storyKey = newsStoryKey(title, { severity: level, importanceScore });
+    const storyKey = newsStoryKey(title, { severity: level, importanceScore, primaryCountryCode });
+    if (cached && (!reachesRealtimeRules(level, importanceScore) || !storyKey)) return;
+    const titleCountryCodes = matchCountryNamesInText(title);
     // An X post has no digest build behind it.
     const alertBuildAt = meta.fromX ? undefined : digestBuildAt;
     publishNotificationEvent({
@@ -5781,6 +5816,8 @@ async function seedClassifyForVariant(variant, seenTitles) {
         link: meta.link,
         publishedAt: meta.publishedAt,
         importanceScore,
+        // This build's count. A held alert re-reads the history when it is
+        // rendered (refreshPublisherCounts), so expired sightings drop out.
         corroborationCount: meta.corroborationCount ?? 1,
         // Read by API webhook subscribers (news.breaking scope). Plural on
         // purpose: the relay scopes rules on payload.countryCode and keeps
@@ -5846,6 +5883,14 @@ async function seedClassifyForVariant(variant, seenTitles) {
       continue;
     }
 
+    // Only titles that can alert: labelled critical or high, from a digest feed.
+    const acceptedLevels = new Map();
+    for (const entry of llmResult) {
+      if (typeof entry?.i === 'number' && !acceptedLevels.has(entry.i)
+        && CLASSIFY_VALID_LEVELS.includes(entry.l) && CLASSIFY_VALID_CATEGORIES.includes(entry.c)) acceptedLevels.set(entry.i, entry.l);
+    }
+    const observedPublishers = await readObservedPublisherCounts(chunk.filter((title, i) =>
+      !allTitles.get(title)?.fromX && ['critical', 'high'].includes(acceptedLevels.get(i))));
     const classifiedSet = new Set();
     const labelled = [];
     for (const entry of llmResult) {
@@ -5870,7 +5915,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
         }
         // Notifications are outside seenTitles guard — each variant publishes
         // independently, protected by the variant-scoped Redis scan-dedup key.
-        if (level === 'critical' || level === 'high') publishAlert(title, level, category, false);
+        if (level === 'critical' || level === 'high') publishAlert(title, level, category, false, observedPublishers.get(chunk[idx]) ?? 0);
       }
     }
 
@@ -5890,6 +5935,9 @@ async function seedClassifyForVariant(variant, seenTitles) {
     }
   }
 
+  if (skipped > 0 || alertGateDrops.tier4 > 0 || alertGateDrops.recency > 0) {
+    console.log(`[Classify] Alert gate drops ${variant}: tier4=${alertGateDrops.tier4} recency=${alertGateDrops.recency} classifier_skip=${skipped}`);
+  }
   if (shadow.asked > 0) {
     console.log(`[Classify] Jev shadow ${variant}: asked ${shadow.asked}, answered ${shadow.answered}, agreed ${shadow.agreed}, alert flips ${shadow.alertFlips}`);
   }

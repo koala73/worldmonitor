@@ -60,6 +60,7 @@ export interface NewsItem {
   tickers: string[];
   credibilityScore: number;
   linkVerified: boolean;
+  originPublisher: string;
 }
 
 export interface ThreatClassification {
