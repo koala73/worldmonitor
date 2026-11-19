@@ -1155,6 +1155,8 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
 
       function reloadNotifSection(): void {
         const generation = ++notifReloadGeneration;
+        secretCopyGeneration += 1;
+        dismissSecretCopyFallback();
         const loadingEl = container.querySelector<HTMLElement>('#usNotifLoading');
         const contentEl = container.querySelector<HTMLElement>('#usNotifContent');
         if (!loadingEl || !contentEl) return;
@@ -1861,12 +1863,8 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             secret: true,
             retain: () => !signal.aborted && generation === secretCopyGeneration,
           }).then((copied) => {
-            if (signal.aborted) {
-              dismissSecretCopyFallback();
-              return;
-            }
-            if (generation !== secretCopyGeneration) return;
-            if (copied) markCopied();
+            if (signal.aborted || generation !== secretCopyGeneration || !copied) return;
+            markCopied();
           });
           return;
         }

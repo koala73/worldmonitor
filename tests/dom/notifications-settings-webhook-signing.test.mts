@@ -330,6 +330,34 @@ describe('notification settings webhook signing', () => {
     });
   });
 
+  it('clears a revealed signing secret when notification settings reload', async () => {
+    channelMocks.deleteChannel.mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async () => { throw new Error('denied'); } },
+    });
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: () => false });
+    const container = await mount({
+      channels: [{ channelType: 'email', verified: true, linkedAt: 1, address: 'ops@example.com' }],
+      alertRules: [],
+    });
+    container.querySelector<HTMLButtonElement>('#usConnectWebhook')!.click();
+    container.querySelector<HTMLInputElement>('#usWebhookUrl')!.value = 'https://hooks.example.com/in';
+    container.querySelector<HTMLButtonElement>('#usWebhookSave')!.click();
+    await vi.waitFor(() => {
+      expect(container.querySelector('#usWebhookSecret')?.textContent).toBe(SECRET);
+    });
+    container.querySelector<HTMLButtonElement>('.us-notif-tg-copy-btn')!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector<HTMLTextAreaElement>('.wm-copy-fallback-input')?.value).toBe(SECRET);
+    });
+
+    container.querySelector<HTMLButtonElement>('.us-notif-disconnect[data-channel="email"]')!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector('.wm-copy-fallback')).toBeNull();
+    });
+  });
+
   it('tells Telegram users to confirm in the bot', async () => {
     const container = await mount({ channels: [], alertRules: [] });
     container.querySelector<HTMLButtonElement>('#usConnectTelegram')!.click();

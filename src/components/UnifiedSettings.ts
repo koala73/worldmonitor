@@ -690,12 +690,8 @@ export class UnifiedSettings {
   }
 
   private copyOwnedSecret(secret: string, stillHeld: () => boolean, buttonSelector: string): void {
-    void copyText(secret, { secret: true }).then((copied) => {
-      if (!stillHeld()) {
-        dismissSecretCopyFallback();
-        return;
-      }
-      if (!copied) return;
+    void copyText(secret, { secret: true, retain: stillHeld }).then((copied) => {
+      if (!stillHeld() || !copied) return;
       const btn = this.overlay.querySelector<HTMLElement>(buttonSelector);
       if (btn) {
         btn.textContent = 'Copied!';
