@@ -11735,6 +11735,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/_us-restricted-sanctions.mjs"
+        },
+        {
           "path": "scripts/ais-relay.cjs"
         },
         {
