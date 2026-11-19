@@ -16,7 +16,7 @@
     "predictionMarkets": "Rynki prognostyczne",
     "loadingMarkets": "Ładowanie rynków prognostycznych...",
     "infrastructure": "Ekspozycja infrastruktury",
-    "briefUnavailable": "Raport AI niedostępny — skonfiguruj OPENROUTER_API_KEY w Ustawieniach.",
+    "briefUnavailable": "Podsumowanie AI niedostępne w tej chwili.",
     "cached": "Z pamięci podręcznej",
     "fresh": "Aktualne",
     "noMarkets": "Nie znaleziono rynków prognostycznych",
@@ -68,13 +68,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Indeks niestabilności: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} aktywnych protestów wykrytych",
-      "aircraftTracked": "{{count}} śledzonych samolotów wojskowych",
-      "vesselsTracked": "{{count}} śledzonych okrętów wojskowych",
-      "internetOutages": "{{count}} awarii internetu",
-      "recentEarthquakes": "{{count}} niedawnych trzęsień ziemi",
+      "protestsDetected": "Aktywne protesty: {{count}}",
+      "aircraftTracked": "Monitorowane samoloty wojskowe: {{count}}",
+      "vesselsTracked": "Monitorowane okręty wojenne: {{count}}",
+      "internetOutages": "Przerwy w internecie: {{count}}",
+      "recentEarthquakes": "Ostatnie trzęsienia ziemi: {{count}}",
       "stockIndex": "Indeks giełdowy: {{value}}",
-      "activeStrikes": "Wykryto {{count}} aktywnych strajków"
+      "activeStrikes": "Ataki i przechwycenia: {{count}}"
     },
     "militaryActivity": "Aktywność wojskowa",
     "defenseIndustrial": {
@@ -632,7 +632,8 @@
         "techevent": "Wydarzenie technologiczne",
         "techhq": "Siedziba technologiczna",
         "accelerator": "Akcelerator",
-        "flight": "Lot"
+        "flight": "Lot",
+        "alert": "Alert"
       },
       "placeholderTech": "Szukaj lub wpisz polecenie...",
       "placeholderFinance": "Szukaj lub wpisz polecenie...",
@@ -646,7 +647,9 @@
       "flightMilitaryOnGround": "Wojskowy · {{type}} · na ziemi",
       "flightSearchHint": "Naciśnij Enter lub kliknij, aby wyszukać bieżącą pozycję",
       "flightNotFound": "Nie znaleziono bieżącej pozycji dla {{callsign}}",
-      "addPanel": "Dodaj"
+      "addPanel": "Dodaj",
+      "sentAlerts": "Wysłane Ci alerty",
+      "sentAlertTime": "Wysłano {{time}}"
     },
     "signal": {
       "title": "WYKONANIE INTELIGENCJI",
@@ -771,7 +774,7 @@
       "fresh": "Świeży",
       "noMarkets": "Nie znaleziono rynków prognostycznych",
       "predictionMarkets": "Rynki prognostyczne",
-      "unavailable": "Opis AI niedostępny — skonfiguruj OPENROUTER_API_KEY w Ustawieniach."
+      "unavailable": "Podsumowanie AI niedostępne w tej chwili."
     },
     "countryBrief": {
       "components": {
@@ -807,7 +810,7 @@
       "predictionMarkets": "Rynki prognostyczne",
       "loadingMarkets": "Ładowanie rynków prognoz...",
       "infrastructure": "Ekspozycja infrastruktury",
-      "briefUnavailable": "Opis AI niedostępny — skonfiguruj OPENROUTER_API_KEY w Ustawieniach.",
+      "briefUnavailable": "Podsumowanie AI niedostępne w tej chwili.",
       "cached": "w pamieci podrecznej",
       "fresh": "Świeży",
       "noMarkets": "Nie znaleziono rynków prognostycznych",
@@ -5931,6 +5934,13 @@
       "seasonalHint": "Alert gdy ostatni zmierzony poziom jest znacznie poniżej tego, co ten zbiornik zwykle mierzy w tym czasie roku.",
       "quietNote": "Te alerty docierają nawet wtedy, gdy alerty w czasie rzeczywistym są ustawione tylko na krytyczne. Ciche godziny je wyciszają.",
       "quietNoteBatch": "Te alerty docierają nawet wtedy, gdy alerty w czasie rzeczywistym są ustawione tylko na krytyczne. Ciche godziny je wyciszają albo, jeśli wybierzesz Batch, wstrzymują do końca cichych godzin."
+    },
+    "briefLanguage": {
+      "label": "Język briefingu",
+      "hint": "Twój codzienny briefing będzie w języku: {{language}}.",
+      "sameAsApp": "Taki sam jak język aplikacji",
+      "loadFailed": "Nie udało się załadować",
+      "saveFailed": "Nie udało się zapisać. Spróbuj ponownie."
     }
   }
 }

@@ -1,4 +1,6 @@
 // Kept apart from the orbit maths so cards that only check expiry don't pull pass geometry into their chunk.
+
+export const ICESAT2_PROFILE_ID = 'icesat-2';
 /**
  * A predicted ICESat-2 crossing, never a measurement: `pass` gives the first time the
  * ground track crosses the lake in the window, `none` is the normal answer when the

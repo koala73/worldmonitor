@@ -21,6 +21,17 @@ const guideFiles = ['vs', 'alternatives', 'best'].flatMap((category) =>
     .map((name) => `${category}/${name}`),
 );
 
+// A citation has to be checkable without taking our word for it, so neither
+// the product site nor this repository counts as an outside source.
+// Filtering worldmonitor.app alone let a github.com/koala73/worldmonitor
+// permalink satisfy the external-citation assertion below, and nine posts
+// shipped with no third-party source while this suite stayed green (#10880).
+const SELF_REPOSITORY_URL = /^https?:\/\/(?:www\.)?github\.com\/koala73\/worldmonitor(?:[/?#]|$)/i;
+
+function isSelfReference(url) {
+  return /(^|\.)worldmonitor\.app$/.test(url.hostname) || SELF_REPOSITORY_URL.test(url.href);
+}
+
 function parseMarkdownEntry(baseDir, file) {
   const source = readFileSync(join(baseDir, file), 'utf8');
   const frontmatter = source.match(/^---\n([\s\S]*?)\n---\n/);
@@ -174,7 +185,7 @@ describe('blog SEO and GEO corpus contract', () => {
 
       const offsiteLinks = [...post.body.matchAll(/\[[^\]]+\]\((https?:\/\/[^\s)]+)/g)]
         .map((match) => new URL(match[1]))
-        .filter((url) => !/(^|\.)worldmonitor\.app$/.test(url.hostname));
+        .filter((url) => !isSelfReference(url));
       assert.ok(offsiteLinks.length > 0, `${post.file}: add an authoritative external citation`);
 
       const published = new Date(post.field('pubDate'));

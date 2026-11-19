@@ -32,4 +32,10 @@ describe('live page meta length', () => {
       descriptions.add(page.description);
     }
   });
+
+  it('answers the worldwide outage query on the internet outages page', () => {
+    const page = LIVE_TOPIC_PAGES.find((candidate) => candidate.slug === 'internet-outages');
+    assert.match(page.title, /^Live Internet Outages Worldwide Today \| World Monitor$/);
+    assert.ok(page.description.startsWith('Is the internet down worldwide?'), page.description);
+  });
 });

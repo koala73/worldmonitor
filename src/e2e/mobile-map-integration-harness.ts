@@ -2,7 +2,7 @@ import '../styles/main.css';
 import { MapComponent } from '../components/Map';
 import { initI18n } from '../services/i18n';
 import type { CrossBorderData, DisplacementFlow, DisplacementEventsData, InternalDisplacementData } from '../services/displacement';
-import type { MilitaryVessel } from '../types';
+import type { MilitaryVessel, NaturalEvent } from '../types';
 
 type MobileMapIntegrationHarness = {
   ready: boolean;
@@ -17,6 +17,7 @@ type MobileMapIntegrationHarness = {
   seedOverlayViewportStress: (count: number) => void;
   setOverlayViewport: (lat: number, lon: number) => void;
   setOverlayZoom: (zoom: number) => void;
+  setNaturalEvents: (events: NaturalEvent[]) => void;
   seedTimeFilteredEarthquakes: (recent: number, stale: number) => void;
   getOverlayMarkerCount: () => number;
   getOverlayMarkerClassCount: (selector: string) => number;
@@ -392,6 +393,10 @@ window.__mobileMapIntegrationHarness = {
   },
   setOverlayViewport: (lat: number, lon: number) => map.setCenter(lat, lon),
   setOverlayZoom: (zoom: number) => map.setZoom(zoom),
+  setNaturalEvents: (events) => {
+    (map as unknown as { state: { layers: Record<string, boolean> } }).state.layers.natural = true;
+    map.setNaturalEvents(events.map((event) => ({ ...event, date: new Date(event.date) })));
+  },
   // #7112: the budget plan must be computed over the SAME time-filtered slice
   // the render loop iterates. The stale events here carry the HIGHEST
   // magnitudes, so a plan that ranked the unfiltered feed would spend its whole

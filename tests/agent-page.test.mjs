@@ -83,7 +83,7 @@ describe('/agent page SEO registration', () => {
     assert.ok(description, 'meta description');
     assert.ok(description.length >= 150 && description.length <= 160, `meta description is ${description.length} chars`);
     assert.ok(description.endsWith('.'));
-    assert.notEqual(description, APPROVED_DESCRIPTION, 'the approved line is the homepage meta; reuse would duplicate it');
+    assert.notEqual(description, APPROVED_DESCRIPTION, 'the approved line is the lede and the home.md description; the meta must not repeat it');
     const committedHtml = execFileSync('git', ['ls-files', '*.html'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
     for (const file of committedHtml) {
       if (file === 'public/agent/index.html') continue;

@@ -73,19 +73,22 @@ for (const width of [320, 1280]) {
         await expect(details).toContainText(lang === 'de' ? 'Geschätzt' : 'Estimated');
         await expect(details.locator('a')).toHaveCount(2);
         await expect(details.locator('img')).toHaveCount(0);
-        const geometry = await popup.evaluate(element => {
-          const rect = element.getBoundingClientRect();
-          const title = element.querySelector('h3')!;
-          return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom,
-            overflow: element.scrollWidth - element.clientWidth,
-            titleOverflow: title.scrollWidth - title.clientWidth };
-        });
-        expect(geometry.left).toBeGreaterThanOrEqual(0);
-        expect(geometry.right).toBeLessThanOrEqual(width);
-        expect(geometry.top).toBeGreaterThanOrEqual(0);
-        expect(geometry.bottom).toBeLessThanOrEqual(900);
-        expect(geometry.overflow).toBeLessThanOrEqual(1);
-        expect(geometry.titleOverflow).toBeLessThanOrEqual(1);
+        // At 320px this is the phone sheet, which slides up (main.css .map-popup-sheet); assert where it rests.
+        await expect(async () => {
+          const geometry = await popup.evaluate(element => {
+            const rect = element.getBoundingClientRect();
+            const title = element.querySelector('h3')!;
+            return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom,
+              overflow: element.scrollWidth - element.clientWidth,
+              titleOverflow: title.scrollWidth - title.clientWidth };
+          });
+          expect(geometry.left).toBeGreaterThanOrEqual(0);
+          expect(geometry.right).toBeLessThanOrEqual(width);
+          expect(geometry.top).toBeGreaterThanOrEqual(0);
+          expect(geometry.bottom).toBeLessThanOrEqual(900);
+          expect(geometry.overflow).toBeLessThanOrEqual(1);
+          expect(geometry.titleOverflow).toBeLessThanOrEqual(1);
+        }).toPass({ timeout: 5_000 });
         await details.locator('h3').scrollIntoViewIfNeeded();
         await evidenceScreenshot(popup, { path: testInfo.outputPath(`datacenter-details-${lang}-${width}.png`) });
         await details.locator('a').last().scrollIntoViewIfNeeded();
@@ -235,15 +238,24 @@ for (const deviceConfig of MOBILE_DEVICE_MATRIX) {
         document.getElementById('app')!.classList.add('live-news-fullscreen');
       });
       const popup = page.locator('.map-popup.map-popup-sheet');
-      const arrivalBox = await page.locator('.cross-border-point').boundingBox();
-      const deathBox = await page.locator('.cross-border-death').boundingBox();
-      expect(arrivalBox).not.toBeNull();
-      expect(deathBox).not.toBeNull();
-      expect(deathBox!.x + deathBox!.width).toBeLessThanOrEqual(arrivalBox!.x);
-      const arrivalDot = await page.locator('.cross-border-point .cross-border-dot').boundingBox();
-      const deathDot = await page.locator('.cross-border-death .cross-border-dot').boundingBox();
-      expect(deathBox!.width).toBeGreaterThan(deathDot!.width);
-      expect(deathDot!.width).toBeLessThan(arrivalDot!.width);
+      // The overlay re-renders the markers as it settles, so read all four boxes from one DOM snapshot.
+      await expect(async () => {
+        const boxes = await page.evaluate(() => {
+          const box = (selector: string) => {
+            const rect = document.querySelector(selector)?.getBoundingClientRect();
+            return rect && rect.width > 0 ? { x: rect.x, width: rect.width } : null;
+          };
+          return {
+            arrival: box('.cross-border-point'), death: box('.cross-border-death'),
+            arrivalDot: box('.cross-border-point .cross-border-dot'), deathDot: box('.cross-border-death .cross-border-dot'),
+          };
+        });
+        const { arrival, death, arrivalDot, deathDot } = boxes;
+        expect(arrival && death && arrivalDot && deathDot, JSON.stringify(boxes)).toBeTruthy();
+        expect(death!.x + death!.width).toBeLessThanOrEqual(arrival!.x);
+        expect(death!.width).toBeGreaterThan(deathDot!.width);
+        expect(deathDot!.width).toBeLessThan(arrivalDot!.width);
+      }).toPass({ timeout: 5_000 });
       await page.locator('.cross-border-point').tap();
       await expect(popup).toContainText('2,300');
       await expect(popup).toContainText('2026-10-19');

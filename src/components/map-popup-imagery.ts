@@ -11,7 +11,7 @@ import { loadArchiveImage } from '@/services/orbital/archive-image';
 import { IMAGE_CREDIT, sceneCredit } from '@/services/orbital/credits';
 import type { EventPair } from '@/services/orbital/event-imagery';
 import { isFirmsDetection, type FireDetectionPopupData } from '@/services/orbital/fire-mosaic';
-import { loadObjectImagery, type ImageryTarget, type ObjectImagery } from '@/services/orbital/object-imagery';
+import type { ImageryTarget, ObjectImagery } from '@/services/orbital/object-imagery';
 import { isSceneStillProcessing } from '@/services/orbital/scene-processing';
 import type { ConflictZone, MilitaryBase, NaturalEvent, NewsLocationMarker, NuclearFacility, Port, StrategicWaterway } from '@/types';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -185,6 +185,12 @@ export function renderImageryDetails(imagery: ObjectImagery, nowMs: number, show
 
 type FindEventPair = typeof import('@/services/orbital/event-imagery').findEventPair;
 
+type LoadObjectImagery = typeof import('@/services/orbital/object-imagery').loadObjectImagery;
+
+/** Loaded when a row mounts, so the pass client and archive search stay out of the popup's chunk. */
+const loadObjectImagery: LoadObjectImagery = (...args) =>
+  import('@/services/orbital/object-imagery').then(({ loadObjectImagery }) => loadObjectImagery(...args));
+
 /** Loaded on the first click, so the archive search code stays out of the popup's chunk. */
 const loadFindEventPair: FindEventPair = (...args) =>
   import('@/services/orbital/event-imagery').then(({ findEventPair }) => findEventPair(...args));
@@ -199,7 +205,7 @@ export interface EventCompareHooks {
 export interface ImageryRowHooks {
   onOpenEvidence: (target: ImageryTarget) => void;
   onLayout: () => void;
-  load?: typeof loadObjectImagery;
+  load?: LoadObjectImagery;
   now?: () => number;
   /** The before/after around a dated event; absent for objects without one. */
   eventCompare?: EventCompareHooks;

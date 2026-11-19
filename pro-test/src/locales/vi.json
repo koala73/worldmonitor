@@ -447,7 +447,8 @@
       "trendRising": "tăng",
       "trendFalling": "giảm",
       "trendStable": "ổn định",
-      "situationLink": "Theo dõi tình hình: khủng hoảng, tin tức chính, điểm nghẽn và sự cố trên một bảng"
+      "situationLink": "Theo dõi tình hình: khủng hoảng, tin tức chính, điểm nghẽn và sự cố trên một bảng",
+      "pizzaIndexLink": "Chỉ số Pizza Lầu Năm Góc: mức đông khách của các tiệm pizza gần Lầu Năm Góc"
     },
     "moments": {
       "eyebrow": "Công cụ tương quan",

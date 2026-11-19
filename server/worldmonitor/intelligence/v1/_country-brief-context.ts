@@ -209,7 +209,9 @@ export async function fetchSharedCountryContext(countryCode: string): Promise<Sh
   try {
     const [digest, revoked] = await Promise.all([
       getCachedJson(DIGEST_KEY_EN, true),
-      readRevokedUrlSet(),
+      // Fresh, not memoized: the brief is cached for 6h and never re-checks
+      // its sources, so a set from before a new SADD would outlive the memo.
+      readRevokedUrlSet({ fresh: true }),
     ]);
     // Fail CLOSED on an unreadable suppression set, matching the digest
     // endpoint's own replay tiers: this brief is cached for 6h, so grounding it

@@ -242,6 +242,7 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/supply-chain/v1/get-multi-sector-cost-shock': 1,
   '/api/supply-chain/v1/get-sector-dependency': 1,
   '/api/trade/v1/list-comtrade-flows': 1,
+  '/api/trade/v1/get-monthly-sitc-trade': 1,
   '/api/trade/v1/get-tariff-trends': 1,
   '/api/trade/v1/get-bilateral-tariff': 1,
   '/api/trade/v1/get-us-import-duty': 1,
@@ -267,6 +268,12 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/supply-chain/v1/list-vulnerability-rankings': 1,
   '/api/news/v1/list-media-perspective': 1,
   '/api/news/v1/list-news-pool': 1,
+  // Cmd+K headline search over 7 days; the 24-hour sibling stays free.
+  '/api/news/v1/search-headline-archive': 1,
+  // Account-private history of delivered realtime alerts (dashboard search).
+  // Tier-gated so the gateway resolves the session and stamps the trusted
+  // user id the handler reads; an anonymous or keyless caller never reaches it.
+  '/api/news/v1/list-sent-alerts': 1,
 };
 
 const CONVEX_INTERNAL_ENTITLEMENTS_PATH = '/api/internal-entitlements';

@@ -20,6 +20,7 @@
 *Could not find public function for 'accountDeletion/sideEffects:beginExternalAttempt'*
 *Could not find public function for 'accountDeletion/sideEffects:recordExternalFailure'*
 *Could not find public function for 'accountDeletion/sideEffects:runExternalErase'*
+*Could not find public function for 'accountDeletion/sideEffects:sweepBriefEnvelopes'*
 *Could not find public function for 'agentFeedback:findRetry'*
 *Could not find public function for 'agentFeedback:getFeedbackDigestText'*
 *Could not find public function for 'agentFeedback:getForTriage'*
@@ -47,6 +48,10 @@
 *Could not find public function for 'alertRules:setDigestSettingsForUser'*
 *Could not find public function for 'alertRules:setNotificationConfigForUser'*
 *Could not find public function for 'alertRules:setQuietHoursForUser'*
+*Could not find public function for 'alertScopeMigration:listPendingNotices'*
+*Could not find public function for 'alertScopeMigration:markNoticeStatus'*
+*Could not find public function for 'alertScopeMigration:migrateUnscopedRealtimeRules'*
+*Could not find public function for 'alertScopeMigration:sendAlertScopeNotices'*
 *Could not find public function for 'apiKeys:createApiKeyForUser'*
 *Could not find public function for 'apiKeys:getKeyOwner'*
 *Could not find public function for 'apiKeys:touchKeyLastUsed'*
@@ -205,6 +210,7 @@
 *Could not find public function for 'mcpProTokens:issueProMcpToken'*
 *Could not find public function for 'mcpProTokens:touchProMcpTokenLastUsed'*
 *Could not find public function for 'mcpProTokens:validateProMcpToken'*
+*Could not find public function for 'notificationChannels:beginChannelDeliveries'*
 *Could not find public function for 'notificationChannels:claimPairingToken'*
 *Could not find public function for 'notificationChannels:createPairingToken'*
 *Could not find public function for 'notificationChannels:createPairingTokenForUser'*
@@ -214,6 +220,8 @@
 *Could not find public function for 'notificationChannels:deleteChannelForUser'*
 *Could not find public function for 'notificationChannels:getChannelsByUserId'*
 *Could not find public function for 'notificationChannels:queueChannelWelcome'*
+*Could not find public function for 'notificationChannels:recordDeliveryResult'*
+*Could not find public function for 'notificationChannels:sendDisabledChannelNotice'*
 *Could not find public function for 'notificationChannels:setChannel'*
 *Could not find public function for 'notificationChannels:setChannelForUser'*
 *Could not find public function for 'notificationChannels:setDiscordOAuthChannelForUser'*
@@ -309,4 +317,5 @@
 *Could not find public function for 'telegramPairingTokens:cleanupExpired'*
 *Could not find public function for 'userPreferences:getPreferencesByUserId'*
 *Could not find public function for 'userPreferences:pruneStaleWriteRateLimits'*
+*Could not find public function for 'users:getBriefLanguageForUser'*
 *Could not find public function for 'users:recordTermsAcceptance'*

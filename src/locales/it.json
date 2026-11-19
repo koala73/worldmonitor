@@ -16,7 +16,7 @@
     "predictionMarkets": "Mercati predittivi",
     "loadingMarkets": "Caricamento mercati predittivi...",
     "infrastructure": "Esposizione infrastrutturale",
-    "briefUnavailable": "Rapporto IA non disponibile — configura OPENROUTER_API_KEY nelle Impostazioni.",
+    "briefUnavailable": "Briefing AI non disponibile al momento.",
     "cached": "In cache",
     "fresh": "Aggiornato",
     "noMarkets": "Nessun mercato predittivo trovato",
@@ -68,13 +68,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Indice di instabilità: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} proteste attive rilevate",
-      "aircraftTracked": "{{count}} aerei militari tracciati",
-      "vesselsTracked": "{{count}} navi militari tracciate",
-      "internetOutages": "{{count}} interruzioni internet",
-      "recentEarthquakes": "{{count}} terremoti recenti",
+      "protestsDetected": "Proteste attive: {{count}}",
+      "aircraftTracked": "Aerei militari monitorati: {{count}}",
+      "vesselsTracked": "Navi militari monitorate: {{count}}",
+      "internetOutages": "Interruzioni internet: {{count}}",
+      "recentEarthquakes": "Terremoti recenti: {{count}}",
       "stockIndex": "Indice azionario: {{value}}",
-      "activeStrikes": "{{count}} scioperi attivi rilevati"
+      "activeStrikes": "Attacchi e intercettazioni: {{count}}"
     },
     "militaryActivity": "Attività militare",
     "defenseIndustrial": {
@@ -629,7 +629,8 @@
         "techevent": "Evento tecnologico",
         "techhq": "Sede tecnologica",
         "accelerator": "Acceleratore",
-        "flight": "Volo"
+        "flight": "Volo",
+        "alert": "Avviso"
       },
       "placeholderTech": "Cerca o digita un comando...",
       "placeholderFinance": "Cerca o digita un comando...",
@@ -643,7 +644,9 @@
       "flightMilitaryOnGround": "Militare · {{type}} · a terra",
       "flightSearchHint": "Premi Invio o clicca per cercare la posizione live",
       "flightNotFound": "Nessuna posizione live trovata per {{callsign}}",
-      "addPanel": "Aggiungi"
+      "addPanel": "Aggiungi",
+      "sentAlerts": "Avvisi inviati a te",
+      "sentAlertTime": "Inviato {{time}}"
     },
     "signal": {
       "title": "RICERCA DI INTELLIGENZA",
@@ -768,7 +771,7 @@
       "fresh": "Fresco",
       "noMarkets": "Nessun mercato di previsione trovato",
       "predictionMarkets": "Mercati predittivi",
-      "unavailable": "Brief AI non disponibile: configura OPENROUTER_API_KEY in Impostazioni."
+      "unavailable": "Briefing AI non disponibile al momento."
     },
     "countryBrief": {
       "components": {
@@ -804,7 +807,7 @@
       "predictionMarkets": "Mercati predittivi",
       "loadingMarkets": "Caricamento mercati predittivi...",
       "infrastructure": "Esposizione alle infrastrutture",
-      "briefUnavailable": "Brief AI non disponibile: configura OPENROUTER_API_KEY in Impostazioni.",
+      "briefUnavailable": "Briefing AI non disponibile al momento.",
       "cached": "In cache",
       "fresh": "Aggiornato",
       "noMarkets": "Nessun mercato predittivo trovato",
@@ -5895,6 +5898,13 @@
       "seasonalHint": "Ricevi un avviso quando l'ultimo livello misurato è significativamente inferiore a quello che il serbatoio di solito misura in questo periodo dell'anno.",
       "quietNote": "Questi avvisi arrivano anche quando gli avvisi in tempo reale sono impostati solo su critico. Le ore silenziose li silenziano.",
       "quietNoteBatch": "Questi avvisi arrivano anche quando gli avvisi in tempo reale sono impostati solo su critico. Le ore silenziose li silenziano, oppure li trattengono fino alla fine delle ore silenziose se scegli Batch."
+    },
+    "briefLanguage": {
+      "label": "Lingua del briefing",
+      "hint": "Il tuo briefing quotidiano sarà scritto in {{language}}.",
+      "sameAsApp": "Uguale alla lingua dell'app",
+      "loadFailed": "Caricamento non riuscito",
+      "saveFailed": "Non è stato possibile salvare. Riprova."
     }
   }
 }

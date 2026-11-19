@@ -620,6 +620,9 @@ const STANDALONE_KEYS = {
   // Meta-only aggregate: payloads are sharded by country, so use the seed-meta
   // key as the probe target rather than pretending one country key is global.
   comtradeBilateralHs4:  'seed-meta:comtrade:bilateral-hs4',
+  // Extended headings (rubber, cocoa, fish, processed food, oleochemicals):
+  // same per-country sharding, so the same meta-only probe.
+  comtradeBilateralHs4Ext: 'seed-meta:comtrade:bilateral-hs4-ext',
   // Meta-only probes. The CPI and par-curve documents are sharded, and the
   // canonical curve is large enough to time out a health GET.
   usCpiMonthly:          'seed-meta:economic:us-cpi',
@@ -670,6 +673,8 @@ const STANDALONE_KEYS = {
   worldCpiEurostat:      'seed-meta:economic:world-cpi-eurostat',
   worldCpiEstat:         'seed-meta:economic:world-cpi-estat',
   worldCpiAbs:           'seed-meta:economic:world-cpi-abs',
+  // Meta-only probe: the DOSM SITC history (~0.5 MB) is served by GetMonthlySitcTrade.
+  sitcTradeMy:           'seed-meta:trade:monthly-sitc-my',
   // Meta-only probes for the yield-curve bundle. Every market's history is
   // sharded per year; the canonical payloads are too large to probe directly.
   yieldCurveJp:          'seed-meta:economic:yield-curve-jp',
@@ -883,6 +888,8 @@ const SEED_META = {
   gridDisruptionClock: {
     key: 'seed-meta:infra:grid-disruption-clock',
     maxStaleMin: 30,
+    // The seeder lists the regions with missing, stale or unavailable inputs.
+    projectFailedDatasets: true,
     activationKey: 'seed-activated:infra:grid-disruption-clock',
     cutover: {
       mode: 'activation-marker', fromKey: null,
@@ -1825,6 +1832,13 @@ const SEED_META = {
   },
   comtradeFlows:       { key: 'seed-meta:trade:comtrade-flows',               maxStaleMin: 2880 }, // 24h cron; 2880min = 48h = 2x interval
   comtradeBilateralHs4: { key: 'seed-meta:comtrade:bilateral-hs4',             maxStaleMin: 50400, minRecordCount: 110 }, // 35d health budget for monthly seed; 40d payload/meta TTL leaves a 5d stale-but-queryable warning window. minRecordCount mirrors MIN_COUNTRY_COVERAGE in scripts/seed-comtrade-bilateral-hs4.mjs (110 of 197 clusters) so a shrunken run reads COVERAGE_PARTIAL, not OK — without it 3-of-197 and 197-of-197 were indistinguishable for the full 35d window.
+  comtradeBilateralHs4Ext: {
+    key: 'seed-meta:comtrade:bilateral-hs4-ext', maxStaleMin: 50400, minRecordCount: 110,
+    // The Railway service lands planned (#10939); health stays soft until the
+    // first run that writes a country sets this marker.
+    activationKey: 'seed-activated:comtrade:bilateral-hs4-ext',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10939, activationKey: 'seed-activated:comtrade:bilateral-hs4-ext' },
+  }, // Same monthly budget and floor as comtradeBilateralHs4; mirrors MIN_COUNTRY_COVERAGE in scripts/seed-comtrade-bilateral-hs4-ext.mjs.
   supplyVulnerability: {
     key: 'seed-meta:supply-chain:vulnerability',
     maxStaleMin: 2880,
@@ -2332,6 +2346,20 @@ const SEED_META = {
       fromKey: null,
       issue: 8538,
       activationKey: 'seed-activated:economic:world-cpi-abs',
+    },
+  },
+  // Malaysia DOSM monthly trade by SITC section (macro bundle, daily). Monthly
+  // releases land about four weeks after the reference month; content age is
+  // checked separately by the seed's maxContentAgeMin.
+  sitcTradeMy: {
+    key: 'seed-meta:trade:monthly-sitc-my',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:trade:monthly-sitc-my',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 10930,
+      activationKey: 'seed-activated:trade:monthly-sitc-my',
     },
   },
   yieldCurveJp: {
@@ -2860,6 +2888,7 @@ const GOVERNMENT_RELEASE_INCIDENT_GRACE_MIN = 30 * 24 * 60;
 // "Loading...". Removed marketImplications below.
 const ON_DEMAND_KEYS = new Set([
   'gridDisruptionClock',
+  'comtradeBilateralHs4Ext',
   'foodPricesPihps', 'foodPricesPbs', 'foodPricesDa', 'foodPricesCbsl',
   'foodPricesSniim', 'foodPricesGiews', 'foodPricesOnagri',
   'foodPricesNabc',
@@ -2988,6 +3017,9 @@ const ON_DEMAND_KEYS = new Set([
   'worldCpiEurostat',
   'worldCpiEstat',
   'worldCpiAbs',
+  // Same bridge for the DOSM SITC trade reader, which ships before the macro
+  // bundle's tail section first publishes.
+  'sitcTradeMy',
   // Scheduled Toronto CAD producer deployment bridges. Each seeder writes a
   // permanent marker after its first successful canonical publish; health is
   // strict from that point onward.
@@ -3116,6 +3148,7 @@ const ON_DEMAND_KEYS = new Set([
 // normal EMPTY/STALE_SEED rules apply.
 const ACTIVATION_MARKERS = {
   gridDisruptionClock: SEED_META.gridDisruptionClock.activationKey,
+  comtradeBilateralHs4Ext: SEED_META.comtradeBilateralHs4Ext.activationKey,
   regionalEnergyPgcb: SEED_META.regionalEnergyPgcb.activationKey,
   regionalEnergyPetrobangla: SEED_META.regionalEnergyPetrobangla.activationKey,
   regionalEnergyNiso: SEED_META.regionalEnergyNiso.activationKey,
@@ -3208,6 +3241,7 @@ const ACTIVATION_MARKERS = {
   worldCpiEurostat: SEED_META.worldCpiEurostat.activationKey,
   worldCpiEstat: SEED_META.worldCpiEstat.activationKey,
   worldCpiAbs: SEED_META.worldCpiAbs.activationKey,
+  sitcTradeMy: SEED_META.sitcTradeMy.activationKey,
   foodPricesPihps: SEED_META.foodPricesPihps.activationKey,
   foodPricesPbs: SEED_META.foodPricesPbs.activationKey,
   foodPricesDa: SEED_META.foodPricesDa.activationKey,

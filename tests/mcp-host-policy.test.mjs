@@ -26,10 +26,10 @@ describe('shared/mcp-host-policy', () => {
   });
 
   it('splits the production aliases into served and retired labels', () => {
-    assert.deepEqual([...MCP_SERVED_ALIAS_LABELS], ['api']);
+    assert.deepEqual([...MCP_SERVED_ALIAS_LABELS], ['api', 'www']);
     assert.deepEqual(
       [...MCP_RETIRED_ALIAS_LABELS].sort(),
-      MCP_PRODUCTION_ALIAS_LABELS.filter((label) => label !== 'api').sort(),
+      MCP_PRODUCTION_ALIAS_LABELS.filter((label) => label !== 'api' && label !== 'www').sort(),
     );
   });
 
@@ -58,7 +58,8 @@ describe('shared/mcp-host-policy', () => {
 
   it('strips a trailing DNS dot and a port before matching', () => {
     assert.equal(normalizeMcpHost('WWW.worldmonitor.app:443.'), 'www.worldmonitor.app');
-    assert.equal(isMcpAliasRequest('www.worldmonitor.app.', '/mcp'), true);
+    assert.equal(isMcpAliasRequest('tech.worldmonitor.app.', '/mcp'), true);
+    assert.equal(isMcpAliasRequest('WWW.worldmonitor.app:443.', '/mcp'), false);
   });
 
   it('maps /api/mcp to the canonical endpoint and keeps well-known paths', () => {

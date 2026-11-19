@@ -14,6 +14,8 @@ import "worldmonitor/news/v1/list_label_changes.proto";
 import "worldmonitor/news/v1/error_reports.proto";
 import "worldmonitor/news/v1/search_fact_checks.proto";
 import "worldmonitor/news/v1/search_claim_headlines.proto";
+import "worldmonitor/news/v1/search_headlines.proto";
+import "worldmonitor/news/v1/list_sent_alerts.proto";
 
 // NewsService provides AI-powered article summarization and feed aggregation.
 service NewsService {
@@ -84,5 +86,20 @@ service NewsService {
   // SearchClaimHeadlines returns the fresh headlines from every configured feed that share a claim's words, so the /verify page and verify_claim can build its coverage card.
   rpc SearchClaimHeadlines(SearchClaimHeadlinesRequest) returns (SearchClaimHeadlinesResponse) {
     option (sebuf.http.config) = {path: "/search-claim-headlines", method: HTTP_METHOD_GET};
+  }
+
+  // SearchHeadlines finds headlines an edition served in the last 24 hours, including ones no longer on the dashboard. No paid plan needed.
+  rpc SearchHeadlines(SearchHeadlinesRequest) returns (SearchHeadlinesResponse) {
+    option (sebuf.http.config) = {path: "/search-headlines", method: HTTP_METHOD_GET};
+  }
+
+  // SearchHeadlineArchive finds headlines an edition served in the last 7 days in English, 3 days in 17 common languages and 1 day in the rest; window_hours says which. Requires a Pro plan.
+  rpc SearchHeadlineArchive(SearchHeadlinesRequest) returns (SearchHeadlinesResponse) {
+    option (sebuf.http.config) = {path: "/search-headline-archive", method: HTTP_METHOD_GET};
+  }
+
+  // ListSentAlerts returns the realtime alerts sent to the caller in the last seven days.
+  rpc ListSentAlerts(ListSentAlertsRequest) returns (ListSentAlertsResponse) {
+    option (sebuf.http.config) = {path: "/list-sent-alerts", method: HTTP_METHOD_GET};
   }
 }

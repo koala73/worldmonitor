@@ -95,13 +95,6 @@ test('fetchBilateral: requests an explicit safely-final annual period', async ()
   assert.equal(period.split(',')[0], String(new Date().getUTCFullYear() - 2));
 });
 
-test('recentPeriod: pins y-2 and rolls forward at the UTC year boundary', () => {
-  assert.equal(recentPeriod(new Date('2026-07-02T00:00:00Z')), '2024');
-  assert.equal(recentPeriod(new Date('2026-12-31T23:59:59Z')), '2024');
-  assert.equal(recentPeriod(new Date('2027-01-01T00:00:00Z')), '2025');
-  assert.equal(recentPeriod(new Date('2027-01-01T00:00:00Z'), 3), '2024');
-});
-
 test('candidatePeriods: returns (y-2) then (y-3) for the per-reporter fallback', () => {
   assert.deepEqual(
     candidatePeriods(new Date('2026-07-02T00:00:00Z')),

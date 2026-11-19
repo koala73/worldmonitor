@@ -152,8 +152,8 @@ describe('alias ordinary GET/HEAD redirect', () => {
     }
   }
 
-  it('HEAD /mcp on www matches GET status and Location and has no body', async () => {
-    const res = await mcpHandler(request(aliasUrl('www', '/mcp'), {
+  it('HEAD /mcp on tech matches GET status and Location and has no body', async () => {
+    const res = await mcpHandler(request(aliasUrl('tech', '/mcp'), {
       method: 'HEAD',
       headers: { Accept: 'text/html' },
     }), explodingDeps());
@@ -173,7 +173,7 @@ describe('alias ordinary GET/HEAD redirect', () => {
 
 describe('alias transport 410', () => {
   it('POST with a numeric id returns HTTP 410 JSON-RPC and does not call deps', async () => {
-    const res = await post(aliasUrl('www', '/mcp'), rpc('initialize', { id: 0 }));
+    const res = await post(aliasUrl('tech', '/mcp'), rpc('initialize', { id: 0 }));
     assert.equal(res.status, 410);
     assertNoStoreCorsCanonical(res, 'id 0');
     assertGoneRpc(await res.json(), 0);
@@ -228,7 +228,7 @@ describe('alias transport 410', () => {
   });
 
   it('HEAD SSE has status 410 and no body', async () => {
-    const res = await mcpHandler(request(aliasUrl('www', '/mcp'), {
+    const res = await mcpHandler(request(aliasUrl('happy', '/mcp'), {
       method: 'HEAD',
       headers: { Accept: 'text/event-stream' },
     }), explodingDeps());
@@ -238,7 +238,7 @@ describe('alias transport 410', () => {
   });
 
   it('OPTIONS on an alias is still 204 CORS', async () => {
-    const res = await mcpHandler(request(aliasUrl('www', '/mcp'), { method: 'OPTIONS' }), explodingDeps());
+    const res = await mcpHandler(request(aliasUrl('tech', '/mcp'), { method: 'OPTIONS' }), explodingDeps());
     assert.equal(res.status, 204);
     assert.equal(await res.text(), '');
   });

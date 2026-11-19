@@ -9,6 +9,8 @@ type Observation = Pick<FoodMarketPrice, 'item' | 'market' | 'marketType' | 'ori
 type Context = Omit<FoodSecurityContext, 'fetchedAt' | 'status'> & { fetchedAt?: string; fetchFailed?: boolean };
 interface Snapshot { fetchedAt?: string; reportUrl?: string; observations?: Observation[]; contexts?: Context[] }
 const DAY = 86400000;
+// Survey-item baselines are taken from the 7 to 28 days before a row's date; older ones are not comparable.
+const SURVEY_BASELINE_MAX_DAYS = 28;
 const seriesKey = (row: Observation): string => JSON.stringify([row.market, row.marketType, row.item, row.unit, row.currency, row.origin ?? '']);
 
 function validDate(value: unknown, now: number): value is string {
@@ -41,10 +43,27 @@ export function buildFoodPriceSource(source: SourceDefinition, value: unknown, n
     && Number.isFinite(row.price) && row.price > 0 && validDate(row.date, now));
   const latestDate = rows.map(row => row.date).sort().slice(-1)[0] ?? '';
   const history = new Map(rows.map(row => [`${seriesKey(row)}|${row.date}`, row]));
-  const latest = new Map(rows.filter(row => row.date === latestDate).map(row => [seriesKey(row), row]));
+  // Items a source lists as `surveyItems` (PriceCatcher's basket survey) are collected on irregular days: each
+  // shows its own latest observation, compared with its most recent observation at least seven days earlier.
+  // Every other series keeps the source's shared latest date and an exact seven-day baseline.
+  const surveyItems = new Set('surveyItems' in source && Array.isArray(source.surveyItems) ? source.surveyItems : []);
+  const bySeries = new Map<string, Observation[]>();
+  for (const row of [...history.values()].filter(row => surveyItems.has(row.item)).sort((a, b) => b.date.localeCompare(a.date))) {
+    const key = seriesKey(row);
+    if (!bySeries.has(key)) bySeries.set(key, []);
+    bySeries.get(key)!.push(row);
+  }
+  // The shared latest date comes from the other series only, so a basket survey dated after an incomplete daily
+  // day cannot hide every daily row. The source's report date and freshness still use its newest row.
+  const sharedDate = rows.filter(row => !surveyItems.has(row.item)).map(row => row.date).sort().slice(-1)[0] ?? '';
+  const latest = new Map(rows.filter(row => row.date === sharedDate && !surveyItems.has(row.item)).map(row => [seriesKey(row), row]));
+  for (const [key, series] of bySeries) latest.set(key, series[0]!);
   const prices: FoodMarketPrice[] = [...latest.values()].map(row => {
     const date = new Date(Date.parse(row.date) - 7 * DAY).toISOString().slice(0, 10);
-    const previous = source.contextOnly ? undefined : history.get(`${seriesKey(row)}|${date}`);
+    const previous = source.contextOnly ? undefined : surveyItems.has(row.item)
+      ? bySeries.get(seriesKey(row))!.find(candidate => candidate.date <= date
+        && candidate.date >= new Date(Date.parse(row.date) - SURVEY_BASELINE_MAX_DAYS * DAY).toISOString().slice(0, 10))
+      : history.get(`${seriesKey(row)}|${date}`);
     return {
       ...row, origin: row.origin ?? '', wowAvailable: Boolean(previous),
       wowPct: previous ? Math.round((row.price / previous.price - 1) * 10000) / 100 : 0,

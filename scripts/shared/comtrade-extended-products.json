@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "_comment": "Extended bilateral HS4 headings, seeded monthly by scripts/seed-comtrade-bilateral-hs4-ext.mjs into keys separate from the core catalogue. Kept to one Comtrade batch (at most 20 codes) so a country costs one request. Must not overlap the core catalogue (comtrade-strategic-products.json + supply-vulnerability-commodities.json).",
+  "classification": {
+    "code": "H6",
+    "name": "HS2022",
+    "revisionYear": 2022,
+    "sourceUrl": "https://comtradeapi.un.org/files/v1/app/reference/H6.json"
+  },
+  "products": [
+    { "group": "rubber", "bilateralHs4Code": "4001", "label": "Natural rubber" },
+    { "group": "rubber", "bilateralHs4Code": "4015", "label": "Rubber gloves and apparel" },
+    { "group": "cocoa", "bilateralHs4Code": "1801", "label": "Cocoa beans" },
+    { "group": "cocoa", "bilateralHs4Code": "1804", "label": "Cocoa butter" },
+    { "group": "cocoa", "bilateralHs4Code": "1805", "label": "Cocoa powder" },
+    { "group": "vegetable_oils", "bilateralHs4Code": "1513", "label": "Coconut and palm kernel oil" },
+    { "group": "fruit", "bilateralHs4Code": "0810", "label": "Fresh fruit, including durian" },
+    { "group": "fruit", "bilateralHs4Code": "0811", "label": "Frozen fruit" },
+    { "group": "fish", "bilateralHs4Code": "0302", "label": "Fresh fish" },
+    { "group": "fish", "bilateralHs4Code": "0303", "label": "Frozen fish" },
+    { "group": "fish", "bilateralHs4Code": "0306", "label": "Crustaceans, including shrimp" },
+    { "group": "prepared_seafood", "bilateralHs4Code": "1604", "label": "Prepared and preserved fish" },
+    { "group": "prepared_seafood", "bilateralHs4Code": "1605", "label": "Prepared crustaceans and molluscs" },
+    { "group": "processed_food", "bilateralHs4Code": "1905", "label": "Bread, biscuits and baked goods" },
+    { "group": "processed_food", "bilateralHs4Code": "2106", "label": "Food preparations n.e.s." },
+    { "group": "oleochemicals", "bilateralHs4Code": "3823", "label": "Industrial fatty acids and fatty alcohols" }
+  ]
+}

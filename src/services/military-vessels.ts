@@ -235,10 +235,13 @@ function matchKnownVessel(name: string): typeof KNOWN_NAVAL_VESSELS[number] | un
   if (!name) return undefined;
 
   const normalized = name.toUpperCase().trim();
+  const tokens = normalized.split(/[^A-Z0-9-]+/);
 
   for (const vessel of KNOWN_NAVAL_VESSELS) {
+    // A bare hull number such as 16 also occurs in civilian vessel names.
+    const hull = vessel.hullNumber;
     if (normalized.includes(vessel.name.toUpperCase()) ||
-        (vessel.hullNumber && normalized.includes(vessel.hullNumber))) {
+        (hull && /[A-Z]/.test(hull) && tokens.includes(hull))) {
       return vessel;
     }
   }

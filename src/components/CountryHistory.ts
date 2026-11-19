@@ -101,7 +101,10 @@ export class CountryHistory {
   }
 
   private renderDetail(detail: HTMLElement, point: CountryHistoryPoint): void {
-    const scores = [point.cii ? `CII ${point.cii.score.toFixed(0)} · ${point.cii.version}` : t('countryHistory.ciiMissing'), point.resilience ? `${t('countryHistory.resilience')} ${point.resilience.score.toFixed(0)} · ${point.resilience.version}` : t('countryHistory.resilienceMissing')];
+    const scores = [
+      point.cii ? `CII ${point.cii.score.toFixed(0)} · ${point.cii.version}` : t('countryHistory.ciiMissing'),
+      point.resilience ? `${t('countryHistory.resilience')} ${point.resilience.score.toFixed(0)}` : t('countryHistory.resilienceMissing'),
+    ];
     detail.replaceChildren(this.element('strong', point.date), this.element('p', scores.join(' / ')));
     if (point.ciiVersionBreak || point.resilienceVersionBreak) detail.append(this.element('p', t('countryHistory.break'), 'country-history-notice'));
     if (point.keySignals.includes('news_partial')) detail.append(this.element('p', t('countryHistory.partial')));

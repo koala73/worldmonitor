@@ -502,19 +502,31 @@ export class IntelligenceFindingsBadge {
   }
 
   private toggleDropdown(): void {
-    this.isOpen = !this.isOpen;
-    this.dropdown.classList.toggle('open', this.isOpen);
-    this.badge.classList.toggle('active', this.isOpen);
     if (this.isOpen) {
-      void this.update();
+      this.closeDropdown();
+      return;
     }
+    this.isOpen = true;
+    this.dropdown.classList.add('open');
+    this.badge.classList.add('active');
+    document.addEventListener('keydown', this.dropdownEscListener);
+    void this.update();
   }
 
   private closeDropdown(): void {
     this.isOpen = false;
     this.dropdown.classList.remove('open');
     this.badge.classList.remove('active');
+    document.removeEventListener('keydown', this.dropdownEscListener);
   }
+
+  private readonly dropdownEscListener = (e: KeyboardEvent): void => {
+    // Another control (Search) already closed itself and placed focus.
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    e.preventDefault();
+    this.closeDropdown();
+    this.badge.focus();
+  };
 
   private showAllFindings(): void {
     // Create modal overlay
@@ -630,6 +642,7 @@ export class IntelligenceFindingsBadge {
     }
     this.dismissContextMenu();
     this.dismissFindingsModal();
+    this.closeDropdown();
     document.removeEventListener('wm:intelligence-updated', this.boundUpdate);
     document.removeEventListener('click', this.boundCloseDropdown);
     this.badge.remove();

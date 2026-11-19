@@ -189,6 +189,7 @@ export default async function handler(
     // per-user brief envelope key bare — read it raw in every environment.
     // (The pointer above IS app-owned and correctly rides the deployment
     // prefix: this same route family writes it.)
+    // The localized sibling (brief:l10n:*) is deliberately not read: the public page serves English.
     envelope = await readRawJsonFromUpstash(`brief:${pointer.userId}:${pointer.issueDate}`, 3_000, true);
   } catch (err) {
     console.error('[api/brief/public] envelope read failed:', (err as Error).message);

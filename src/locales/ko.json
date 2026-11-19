@@ -16,7 +16,7 @@
     "predictionMarkets": "예측 시장",
     "loadingMarkets": "예측 시장 불러오는 중...",
     "infrastructure": "인프라 노출",
-    "briefUnavailable": "AI 브리핑 불가 — 설정에서 OPENROUTER_API_KEY를 구성하세요.",
+    "briefUnavailable": "AI 브리핑을 지금 사용할 수 없습니다.",
     "cached": "캐시됨",
     "fresh": "최신",
     "noMarkets": "예측 시장을 찾을 수 없습니다",
@@ -126,13 +126,13 @@
     },
     "fallback": {
       "instabilityIndex": "**불안정 지수: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}}건의 활성 시위 감지",
-      "aircraftTracked": "{{count}}대의 군용 항공기 추적 중",
-      "vesselsTracked": "{{count}}척의 군함 추적 중",
-      "internetOutages": "{{count}}건의 인터넷 장애",
-      "recentEarthquakes": "{{count}}건의 최근 지진",
+      "protestsDetected": "활동 중인 시위: {{count}}",
+      "aircraftTracked": "추적 중인 군용 항공기: {{count}}",
+      "vesselsTracked": "추적 중인 군용 함선: {{count}}",
+      "internetOutages": "인터넷 두절: {{count}}",
+      "recentEarthquakes": "최근 지진: {{count}}",
       "stockIndex": "주가 지수: {{value}}",
-      "activeStrikes": "{{count}}건의 활성 공습 감지"
+      "activeStrikes": "공격 및 요격: {{count}}"
     },
     "countryFacts": "국가 정보",
     "loadingFacts": "국가 정보 로딩 중...",
@@ -629,7 +629,8 @@
         "techevent": "기술 이벤트",
         "techhq": "기술 본사",
         "accelerator": "액셀러레이터",
-        "flight": "항공편"
+        "flight": "항공편",
+        "alert": "알림"
       },
       "flightOnGround": "지상",
       "flightAirborne": "FL{{fl}} · {{kts}}노트",
@@ -637,7 +638,9 @@
       "flightMilitaryOnGround": "군용기 · {{type}} · 지상",
       "flightSearchHint": "Enter를 누르거나 클릭하여 실시간 위치 조회",
       "flightNotFound": "{{callsign}}의 실시간 위치를 찾을 수 없음",
-      "addPanel": "추가"
+      "addPanel": "추가",
+      "sentAlerts": "나에게 전송된 알림",
+      "sentAlertTime": "{{time}}에 전송됨"
     },
     "signal": {
       "title": "정보 발견",
@@ -805,7 +808,7 @@
       "fresh": "최신",
       "noMarkets": "예측 시장을 찾을 수 없습니다",
       "predictionMarkets": "예측 시장",
-      "unavailable": "AI 브리핑 불가 — 설정에서 OPENROUTER_API_KEY를 구성하세요."
+      "unavailable": "AI 브리핑을 지금 사용할 수 없습니다."
     },
     "countryBrief": {
       "identifying": "국가 식별 중...",
@@ -821,7 +824,7 @@
       "predictionMarkets": "예측 시장",
       "loadingMarkets": "예측 시장 불러오는 중...",
       "infrastructure": "인프라 노출",
-      "briefUnavailable": "AI 브리핑 불가 — 설정에서 OPENROUTER_API_KEY를 구성하세요.",
+      "briefUnavailable": "AI 브리핑을 지금 사용할 수 없습니다.",
       "cached": "캐시됨",
       "fresh": "최신",
       "noMarkets": "예측 시장을 찾을 수 없습니다",
@@ -5823,6 +5826,13 @@
       "seasonalHint": "최신 측정 수위가 해당 저수지가 일반적으로 이 시기에 측정하는 값보다 훨씬 낮을 때 알림을 받습니다.",
       "quietNote": "이 알림은 실시간 알림이 중요(critical)만으로 설정되어 있어도 도착합니다. 조용한 시간 동안에는 알림이 울리지 않습니다.",
       "quietNoteBatch": "이 알림은 실시간 알림이 중요(critical)만으로 설정되어 있어도 도착합니다. 조용한 시간 동안에는 알림이 울리지 않으며, Batch를 선택하면 조용한 시간이 끝날 때까지 보류됩니다."
+    },
+    "briefLanguage": {
+      "label": "브리핑 언어",
+      "hint": "일일 브리핑은 {{language}}(으)로 작성됩니다.",
+      "sameAsApp": "앱 언어와 동일",
+      "loadFailed": "로드 실패",
+      "saveFailed": "저장하지 못했습니다. 다시 시도해 주세요."
     }
   }
 }

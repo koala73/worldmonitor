@@ -20,6 +20,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -283,6 +284,26 @@ describe('redis-rest-proxy command gate', () => {
     await writeTenderReceipt(createTenderReceipt());
     assert.equal(accepts(gate, emitted), true, 'self-hosted proxy must accept the actual writer command');
     assert.equal(accepts(gate, [emitted[0], `${emitted[1]} `, ...emitted.slice(2)]), false);
+  });
+
+  it('admits the sent-alert history write the notification relay actually sends', async (t) => {
+    const gate = buildGate();
+    const require = createRequire(import.meta.url);
+    const { createSentAlertLog, SENT_ALERT_WRITE_SCRIPT } = require('../scripts/lib/sent-alert-history.cjs');
+    let emitted;
+    t.mock.method(globalThis, 'fetch', async (_url, options) => {
+      emitted = JSON.parse(options.body);
+      return Response.json([{ result: 1 }]);
+    });
+    await createSentAlertLog({ upstashUrl: 'https://redis.fixture', upstashToken: 'fixture' })
+      .noteSentAlert('user_fixture', { title: 'A delivered headline', channels: ['email'] });
+
+    assert.equal(emitted.length, 1, 'one command per record');
+    const [command] = emitted;
+    assert.equal(command[1], SENT_ALERT_WRITE_SCRIPT);
+    assert.equal(accepts(gate, command), true, 'self-hosted proxy must accept the actual writer command');
+    assert.equal(accepts(gate, [command[0], `${command[1]} `, ...command.slice(2)]), false,
+      'a one-character script variant must stay blocked');
   });
 
   it('pins the physical-premium history append by exact bytes', () => {

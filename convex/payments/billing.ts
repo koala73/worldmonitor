@@ -24,6 +24,7 @@ import { ResendSendError, sendResendEmail } from "../lib/resendEmail";
 import { findEmailSuppression } from "../emailSuppressions";
 import { PLAN_PRECEDENCE, PRODUCT_CATALOG, resolveProductToPlan } from "../config/productCatalog";
 import { proActivationStepIdValidator } from "../constants";
+import { EMAIL_AMBER, emailButton, emailCard, emailFrame, emailHeading, emailNote, emailParagraph, escapeEmailHtml } from "../../shared/email-frame";
 import {
   billingDeletionForUser,
   isCancellationScheduled,
@@ -3138,12 +3139,19 @@ function readNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+/** The stuck-checkout customer email body. Exported for tests. */
+export function stuckPaymentEmailHtml(args: { planName: string; checkoutUrl: string; supportEmail: string }): string {
+  const support = escapeEmailHtml(args.supportEmail);
+  return emailFrame({
+    preheader: "Your payment is still waiting for bank or card verification.",
+    kicker: "Billing",
+    accent: EMAIL_AMBER,
+    bodyHtml: `${emailHeading("Your World Monitor checkout still needs action")}
+      ${emailCard(emailParagraph(`Your <strong style="color: #fff;">${escapeEmailHtml(args.planName)}</strong> payment is still waiting for bank or card verification. You can safely continue checkout from the button below.`), { color: EMAIL_AMBER })}
+      ${emailButton(args.checkoutUrl, "Continue checkout", EMAIL_AMBER)}
+      ${emailNote(`If you already completed payment, you can ignore this email or contact <a href="mailto:${support}" style="color: ${EMAIL_AMBER};">${support}</a>.`)}`,
+    footerNote: "You're receiving this because a World Monitor checkout was started with this address.",
+  });
 }
 
 function extractDodoPaymentStatus(payment: unknown): string | null {
@@ -3176,17 +3184,7 @@ async function sendStuckPaymentEmail(
   }
 
   const planName = planKey ? PRODUCT_CATALOG[planKey]?.displayName ?? "World Monitor" : "World Monitor";
-  const safePlanName = escapeHtml(planName);
-  const safeCheckoutUrl = escapeHtml(checkoutUrl);
-  const safeSupportEmail = escapeHtml(STUCK_PAYMENT_SUPPORT_EMAIL);
-  const html = `
-    <div style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; line-height: 1.5;">
-      <h1 style="font-size: 20px;">Your World Monitor checkout still needs action</h1>
-      <p>Your ${safePlanName} payment is still waiting for bank or card verification.</p>
-      <p>You can safely continue checkout here:</p>
-      <p><a href="${safeCheckoutUrl}" style="display: inline-block; background: #111; color: #fff; padding: 10px 14px; text-decoration: none;">Continue checkout</a></p>
-      <p>If you already completed payment, you can ignore this email or contact <a href="mailto:${safeSupportEmail}">${safeSupportEmail}</a>.</p>
-    </div>`;
+  const html = stuckPaymentEmailHtml({ planName, checkoutUrl, supportEmail: STUCK_PAYMENT_SUPPORT_EMAIL });
 
   // Shared helper: checks local suppression (this sender used to skip it)
   // and keeps reply_to on support@.
