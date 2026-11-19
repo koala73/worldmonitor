@@ -7,12 +7,32 @@ type HarnessWindow = Window & {
     seedNavalGroup: () => void;
     getWrapperTransform: () => string;
     getOverlayPositionSignature: (selector: string) => string;
+    setOverlayZoom: (zoom: number) => void;
   };
 };
 
 for (const width of [1280, 390]) {
   test.describe(`Naval group navigation (${width}px)`, () => {
     test.use({ viewport: { width, height: 900 } });
+
+    test('keeps the cluster marker at the same screen size when zooming', async ({ page }) => {
+      await page.goto('/tests/mobile-map-integration-harness.html?lang=en');
+      await page.waitForFunction(() => (window as HarnessWindow).__mobileMapIntegrationHarness?.ready);
+      await page.evaluate(() => (window as HarnessWindow).__mobileMapIntegrationHarness!.seedNavalGroup());
+      const count = page.locator('.vessel-cluster .cluster-count');
+      await expect(count).toHaveText('20');
+
+      const zoomTo = async (zoom: number) => {
+        await page.evaluate(level => (window as HarnessWindow).__mobileMapIntegrationHarness!.setOverlayZoom(level), zoom);
+        await expect.poll(() => page.locator('.map-wrapper').evaluate(wrapper =>
+          new DOMMatrixReadOnly(getComputedStyle(wrapper).transform).a,
+        )).toBe(zoom);
+      };
+      await zoomTo(2);
+      const initialSize = (await count.boundingBox())!.height;
+      await zoomTo(8);
+      expect((await count.boundingBox())!.height).toBeCloseTo(initialSize, 0);
+    });
 
     test('restores the overflowing popup scroll position and selected row', async ({ page }, testInfo) => {
       await page.goto('/tests/mobile-map-integration-harness.html?lang=en');

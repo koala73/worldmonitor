@@ -6164,8 +6164,10 @@ body.playback-mode .status-dot {
 .layer-toggles:not(.deckgl-layer-toggles) .layer-toggle-row {
   display: flex;
   align-items: stretch;
+  flex: 0 0 auto;
   gap: 2px;
   min-width: 0;
+  max-width: 100%;
 }
 
 .layer-toggles:not(.deckgl-layer-toggles) .layer-toggle {
@@ -6184,6 +6186,11 @@ body.playback-mode .status-dot {
 .layer-toggles:not(.deckgl-layer-toggles) .layer-toggle-row .layer-toggle {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+.layer-toggles:not(.deckgl-layer-toggles) .layer-truncation-count {
+  align-self: center;
+  padding-inline: 2px;
 }
 
 .layer-toggles:not(.deckgl-layer-toggles) .layer-toggle.active {
@@ -14560,7 +14567,7 @@ button.popup-link {
   display: flex;
   flex-direction: column;
   align-items: center;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) scale(var(--marker-scale, 1));
   cursor: pointer;
   z-index: 57;
   --cluster-color: var(--status-live);
