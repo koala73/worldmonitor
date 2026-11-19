@@ -11,8 +11,9 @@ import type { ToolDef } from './types';
  * every tool description.
  *
  * A tool with no category gets no `worldmonitor/category` key. The generator
- * rejects that state and tests/mcp-domains.test.mjs fails on it; the deploy
- * build runs neither, so the served card must not throw on it.
+ * rejects that state, which fails the deploy build (prebuild:full runs
+ * product:facts) and tests/mcp-domains.test.mjs. Leaving the key out keeps a
+ * discovery request from throwing if the mismatch reaches a runtime anyway.
  */
 export function serverCardTools(
   registry: readonly ToolDef[] = TOOL_REGISTRY,

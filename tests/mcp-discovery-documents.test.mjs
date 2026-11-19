@@ -27,8 +27,8 @@ test('the registry projection reproduces the published card tools list', () => {
 });
 
 test('a registry tool without a category does not break the served card', () => {
-  // The deploy build does not run the product-facts generator that rejects
-  // this mismatch, so the runtime projection must not throw on it.
+  // The product-facts generator rejects this mismatch at build time; the
+  // runtime projection still must not throw on it.
   const tools = serverCardTools(
     [{ name: 'uncategorised_tool', description: 'd', _freeTier: true }],
     {},

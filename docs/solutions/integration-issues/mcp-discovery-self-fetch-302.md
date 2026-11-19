@@ -48,7 +48,7 @@ The documents never leave the function, so a cold instance needs no network to s
 
 - Do not fetch your own deployment from an Edge handler to read a static file. The fetch is a hidden dependency on the CDN, redirects and the static origin, and its failure path becomes the response.
 - Measure `tests/edge-function-size.test.mjs` before embedding anything in `api/mcp.ts`. Headroom is about 2.5 KB after this change.
-- A runtime projection shared with a generator must not throw on invariants only the generator enforces. `build:full` does not run `product:facts`, so a tool missing from `TOOL_CATEGORY_BY_NAME` can deploy. The projection leaves the category out, and the generator and `tests/mcp-domains.test.mjs` still reject the mismatch.
+- A runtime projection shared with a generator should not throw on an invariant the generator enforces. A tool missing from `TOOL_CATEGORY_BY_NAME` fails `product:facts`, which runs in the deploy build through `prebuild:full`, and `tests/mcp-domains.test.mjs`. If the mismatch reaches a runtime anyway, the projection leaves the category out instead of failing the discovery request.
 - Regression test: `tests/mcp-transport-conformance.test.mjs` "serves every discovery document when the deployment cannot be reached" rejects every asset fetch and requires 200 with the on-disk bodies.
 
 ## Related Issues
