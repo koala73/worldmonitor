@@ -1214,8 +1214,11 @@ async function renewFeedEntry(cacheKey: string, renewed: ParseResult): Promise<v
     return;
   }
   // The conditional request starts inside the hour but its 304 can land
-  // later; never keep the entry past the pool its parse wrote.
-  const ttlSeconds = Math.min(CACHE_TTL_HEALTHY_S, Math.floor((parsedAt + CACHE_TTL_COUNTRY_S * 1000 - Date.now()) / 1000));
+  // later; never keep the entry past the pool its parse wrote. Redis applies
+  // the TTL when the write arrives, so leave room for the slowest write the
+  // client still waits for.
+  const poolLeftMs = parsedAt + CACHE_TTL_COUNTRY_S * 1000 - Date.now() - REDIS_PIPELINE_TIMEOUT_MS;
+  const ttlSeconds = Math.min(CACHE_TTL_HEALTHY_S, Math.floor(poolLeftMs / 1000));
   if (ttlSeconds <= 0) return;
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
     // The sidecar cache is synchronous, so this compare and set cannot interleave.

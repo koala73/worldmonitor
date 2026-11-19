@@ -9,7 +9,7 @@ import {
   type ParseResult,
 } from '../server/worldmonitor/news/v1/list-feed-digest';
 import { rssFeedCacheKey } from '../server/worldmonitor/news/v1/_rss-cache';
-import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
+import { REDIS_PIPELINE_TIMEOUT_MS, __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
 import { createRedisFetch, type FakeRedisState } from './helpers/fake-upstash-redis.mts';
 
 const FEED = { name: 'Reuters World', url: 'https://feeds.example.org/world.xml' };
@@ -171,7 +171,8 @@ describe('feed cache background refresh', () => {
       assert.equal(await refreshFeedCache(FEED, VARIANT, stale), 'not-modified');
       assert.equal(upstreamCalls[0]!.get('if-none-match'), '"v1"', 'fixture premise: a conditional request');
       const ttl = redis.expires.get(KEY)!;
-      assert.ok(ttl > 0 && ttl <= 2000, `renewed for ${ttl}s; the pool expires 7200s after the parse, 5200s ago`);
+      // 2000s left on the pool, less the slowest Redis write the client waits for.
+      assert.ok(ttl > 0 && ttl <= 2000 - REDIS_PIPELINE_TIMEOUT_MS / 1000, `renewed for ${ttl}s; the pool expires 7200s after the parse, 5200s ago`);
     } finally {
       Date.now = realNow;
     }
