@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { newsHandler } from '../server/worldmonitor/news/v1/handler';
 import { __testing__ as digest, fetchAndParseRss } from '../server/worldmonitor/news/v1/list-feed-digest';
-import { rssFeedCacheKey } from '../server/worldmonitor/news/v1/_rss-cache';
+import { rssFeedCacheKey, rssFeedCountryCacheKey } from '../server/worldmonitor/news/v1/_rss-cache';
 import { REVOKED_URLS_KEY, __resetRevocationMemoForTest } from '../server/_shared/digest-revocations';
 import { drainResponseHeaders } from '../server/_shared/response-headers';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
@@ -99,9 +99,11 @@ describe('country headlines from existing curated RSS caches', () => {
     assert.equal(parsed.droppedUndated, 0);
     assert.equal(parsed.droppedFeedCap, 96);
     const key = rssFeedCacheKey('full', source.url);
+    const countryKey = rssFeedCountryCacheKey('full', source.url);
     cache.delete(key);
     const readPipeline = globalThis.fetch;
     let publisherReads = 0;
+    const ttls = new Map<string, number>();
     globalThis.fetch = async (url, init) => {
       if (String(url) === source.url) {
         publisherReads++;
@@ -113,8 +115,9 @@ describe('country headlines from existing curated RSS caches', () => {
       if (String(url) === 'https://redis.example.test/') {
         const command = JSON.parse(String(init?.body));
         assert.equal(command[0], 'SET');
-        assert.equal(command[1], key);
-        cache.set(key, JSON.parse(command[2]));
+        assert.ok(command[1] === key || command[1] === countryKey, `unexpected write to ${command[1]}`);
+        cache.set(command[1], JSON.parse(command[2]));
+        ttls.set(command[1], Number(command[4]));
         return Response.json({ result: 'OK' });
       }
       return readPipeline(url, init);
@@ -124,11 +127,37 @@ describe('country headlines from existing curated RSS caches', () => {
     assert.deepEqual(cold.items, parsed.items);
     assert.deepEqual(warm, cold);
     assert.equal(publisherReads, 1, 'warm reads must reuse the retained country pool');
+    // Digest builds read the feed key on every build, so the country pool
+    // lives in its own key and only whole-catalog readers download it.
+    const stored = cache.get(key) as { countryItems?: unknown; parsedAt?: number };
+    assert.equal(stored.countryItems, undefined, 'the digest row key carries no country pool');
+    const country = cache.get(countryKey) as { parsedAt?: number; items?: unknown[] };
+    assert.equal(country.parsedAt, stored.parsedAt, 'the country pool names the parse it came from');
+    assert.deepEqual(country.items, parsed.countryItems);
+    assert.ok(ttls.get(countryKey)! > ttls.get(key)!, 'the country pool outlives a feed entry that 304s keep renewing');
     const { payload } = await request(['CM', 'NE', 'MU']);
     assert.deepEqual(Object.keys(payload.countries), ['CM', 'NE']);
     assert.equal(payload.countries.CM.items[0].source, source.name);
     const rows = selectCountryHeadlines(payload.countries.CM.items, 'CM');
     assert.equal(briefGroundingGap(rows), 'thin-grounding', 'retention cannot invent an independent publisher');
+  });
+
+  it('reads the country pool from its own key only when it came from the same parse', async () => {
+    const source = feed('Guardian Africa');
+    const parsedAt = Date.now() - 600_000;
+    cache.set(rssFeedCacheKey('full', source.url), { items: [article(source.name, { title: 'Kenya forms a cabinet', link: 'https://www.theguardian.com/kenya' })], parsedAt });
+    cache.set(rssFeedCountryCacheKey('full', source.url), {
+      parsedAt,
+      items: [article(source.name, { title: 'Cameroon announces cabinet changes', link: 'https://www.theguardian.com/cameroon' })],
+    });
+    const same = await request(['CM']);
+    assert.equal(same.payload.countries.CM.items[0].title, 'Cameroon announces cabinet changes');
+
+    // A newer parse or a failed fetch replaced the feed entry; the pool still
+    // in Redis belongs to the old parse and must not be served with it.
+    cache.set(rssFeedCacheKey('full', source.url), { items: [], parsedAt: parsedAt + 1 });
+    const stale = await request(['CM']);
+    assert.equal(stale.payload.countries.CM, undefined);
   });
 
   it('retains a dated Atom headline when the first five entries have no titles', async () => {

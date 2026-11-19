@@ -56,7 +56,7 @@ import {
   digestGateProfile,
   type ServerFeed,
 } from './_feeds';
-import { FUTURE_DATE_TOLERANCE_MS, resolveMaxAgeMs, rssFeedCacheKey } from './_rss-cache';
+import { FUTURE_DATE_TOLERANCE_MS, resolveMaxAgeMs, rssFeedCacheKey, rssFeedCountryCacheKey } from './_rss-cache';
 import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
 import {
   buildDigestCoverage,
@@ -1012,6 +1012,29 @@ export interface ParseResult {
 // upstream bounded while still recovering quickly when upstream heals.
 const CACHE_TTL_HEALTHY_S = 3600;
 const CACHE_TTL_EMPTY_S = 300;
+// A 304 renews the feed entry without reparsing, but only within an hour of
+// the last full parse, so a feed entry outlives its parse by at most two
+// hours. The country pool, written only by a full parse, must last as long.
+const CACHE_TTL_COUNTRY_S = CACHE_TTL_HEALTHY_S * 2;
+
+/**
+ * Stores a parse: digest rows under the feed key, the full variant's
+ * retained country rows under their own key (see rssFeedCountryCacheKey).
+ * Returns the feed entry as stored, which is what a cache hit returns.
+ */
+async function writeFeedParse(feed: ServerFeed, variant: string, result: ParseResult, ttlSeconds: number): Promise<ParseResult> {
+  const { countryItems, ...entry } = result;
+  const writes: Promise<boolean>[] = [setCachedJson(rssFeedCacheKey(variant, feed.url), entry, ttlSeconds)];
+  if (countryItems && countryItems.length > 0 && typeof entry.parsedAt === 'number') {
+    writes.push(setCachedJson(
+      rssFeedCountryCacheKey(variant, feed.url),
+      { parsedAt: entry.parsedAt, items: countryItems },
+      CACHE_TTL_COUNTRY_S,
+    ));
+  }
+  await Promise.all(writes);
+  return entry;
+}
 
 /**
  * Fetch one feed and parse it: direct, then the relay when direct is blocked,
@@ -1129,8 +1152,7 @@ export async function fetchAndParseRss(
     // Long cache only for healthy parses; short cache for zero-from-zero so
     // transient upstream issues don't sticky-fail for an hour.
     const ttl = result.parsedTotal > 0 ? CACHE_TTL_HEALTHY_S : CACHE_TTL_EMPTY_S;
-    await setCachedJson(cacheKey, result, ttl);
-    return result;
+    return await writeFeedParse(feed, variant, result, ttl);
   } catch {
     return {
       items: [],
@@ -1181,6 +1203,8 @@ export async function refreshFeedCache(
   const conditional = Date.now() - lastFullParse < CACHE_TTL_HEALTHY_S * 1000;
   const direct = await fetchRssText(feed.url, signal, conditional ? cached.validators : undefined);
   if (direct.notModified) {
+    // An entry from before the split still carries its pool inline; renew it
+    // as it is, since no country entry exists for it to fall back on.
     await setCachedJson(cacheKey, { ...cached, fetchedAt: Date.now() }, CACHE_TTL_HEALTHY_S);
     return 'not-modified';
   }
@@ -1204,7 +1228,7 @@ export async function refreshFeedCache(
     parsedAt: now,
   };
   if (source === 'direct' && direct.validators) result.validators = direct.validators;
-  await setCachedJson(cacheKey, result, CACHE_TTL_HEALTHY_S);
+  await writeFeedParse(feed, variant, result, CACHE_TTL_HEALTHY_S);
   return 'updated';
 }
 
