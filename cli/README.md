@@ -45,16 +45,17 @@ The dashboard boots in a couple of seconds. Views:
 | `1` | Overview | Braille world map with live blips and a radar sweep, AI world brief, ranked top stories, market strip, theater posture |
 | `2` | Map | Zoomable world map and rotating globe with every dashboard layer, NASA satellite imagery, hover highlighting, info cards, search |
 | `3` | Brief | The AI world brief as a page: story lines beside the sources they cite and related live headlines |
-| `4` | News | Digest sections, ranked and classified headlines, story detail |
-| `5` | Markets | Indices, commodities, FX, crypto with sparklines, sector heatmap, macro signals, fear & greed, ETF flows, Gulf markets |
-| `6` | Conflict | Country instability ranking, UCDP armed-conflict events, unrest signals, posture, correlation cards |
-| `7` | Air & Sea | Live military aircraft on the map, airport delays, chokepoints, vessel density, shipping stress |
-| `8` | Cyber | Threat indicators, DDoS mix, service status, internet outages and traffic anomalies |
-| `9` | Climate | Earthquakes, hazards and outbreaks, weather alerts, climate anomalies, planet vitals |
-| `0` | Predict | Prediction markets by domain and AI scenario forecasts |
-| `Alt+1` | Live | The dashboard's live news channels and webcams, played in the terminal |
-| `Alt+2` | Intel | GDELT topic feeds, sanctions pressure, travel advisories, social velocity, spending |
-| `Alt+3` | System | Platform health, per-source freshness, themes, player status |
+| `4` | Phenomena | Scientific-discovery monitor: live detector, space-weather, preprint, journal, lab and declassified-archive feeds; a research run by your local Claude that streams sourced findings; cinematic 3D explainers for each, spoken aloud |
+| `5` | News | Digest sections, ranked and classified headlines, story detail |
+| `6` | Markets | Indices, commodities, FX, crypto with sparklines, sector heatmap, macro signals, fear & greed, ETF flows, Gulf markets |
+| `7` | Conflict | Country instability ranking, UCDP armed-conflict events, unrest signals, posture, correlation cards |
+| `8` | Air & Sea | Live military aircraft on the map, airport delays, chokepoints, vessel density, shipping stress |
+| `9` | Cyber | Threat indicators, DDoS mix, service status, internet outages and traffic anomalies |
+| `0` | Climate | Earthquakes, hazards and outbreaks, weather alerts, climate anomalies, planet vitals |
+| `Alt+1` | Predict | Prediction markets by domain and AI scenario forecasts |
+| `Alt+2` | Live | The dashboard's live news channels and webcams, played in the terminal |
+| `Alt+3` | Intel | GDELT topic feeds, sanctions pressure, travel advisories, social velocity, spending |
+| `Alt+4` | System | Platform health, per-source freshness, themes, player status |
 
 Controls: `Tab` / `Shift+Tab` switch views, `←` `→` move between panes, `↑` `↓`
 move in lists, `Enter` expands the selected row of any view into a detail

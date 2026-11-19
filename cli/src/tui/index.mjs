@@ -45,6 +45,7 @@ export async function launchTui({ options = {}, config = {}, env = process.env, 
     player: detectPlayer(env),
     apiKeyPresent: Boolean(apiKey),
     fetchImpl,
+    userAgent: USER_AGENT.replace('worldmonitor-cli', 'worldmonitor-tui'),
   });
 
   const fps = Math.max(5, Math.min(60, Number(options.fps) || 20));
@@ -79,6 +80,13 @@ export async function launchTui({ options = {}, config = {}, env = process.env, 
   const shutdown = () => {
     if (!active) return;
     active = false;
+    for (const v of app.views) {
+      try {
+        v.dispose?.(); // child processes (claude, speech) must not outlive the dashboard
+      } catch {
+        // keep shutting down
+      }
+    }
     if (timer) clearInterval(timer);
     if (escTimer) clearTimeout(escTimer);
     store.stop();
