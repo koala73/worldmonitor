@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { it } from 'node:test';
+import { createRequire } from 'node:module';
 import { ALERT_POOL_MAX_ITEMS, alertPoolItems } from '../server/worldmonitor/news/v1/list-feed-digest';
+import { INTEL_SOURCES, VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds';
+
+const { buildClassifyCandidateMap } = createRequire(import.meta.url)('../scripts/lib/digest-stale-gate.cjs');
 
 const now = Date.now();
 const item = (title: string, ageMin: number, extra: Record<string, unknown> = {}) => ({
@@ -35,4 +39,21 @@ it('the digest writes the pool key the relay reads, and a relay from before the 
   const keyIn = (file: string) => readFileSync(new URL(file, import.meta.url), 'utf8').match(/`(news:alert-pool:v\d+):\$\{variant\}`/)?.[1];
   assert.equal(keyIn('../server/worldmonitor/news/v1/list-feed-digest.ts'), 'news:alert-pool:v2');
   assert.equal(keyIn('../scripts/ais-relay.cjs'), 'news:alert-pool:v2');
+});
+
+it('pools an English Google News query whatever language its feed is routed to', () => {
+  // Hankyoreh is routed to Korean digests (lang ko) but queried in English.
+  const servable = [item('Supreme Court overturns jail term', 1, { source: 'Hankyoreh', lang: 'ko' })];
+  assert.deepEqual(alertPoolItems(servable, [], now, 'en').map(i => i.title), ['Supreme Court overturns jail term']);
+});
+
+it('the pool keeps exactly the feeds the relay lets alert, for every feed in the catalog', () => {
+  const feeds = [...Object.values(VARIANT_FEEDS).flatMap(byCategory => Object.values(byCategory).flat()), ...INTEL_SOURCES];
+  const names = [...new Set(feeds.map(feed => feed.name))];
+  const candidates = buildClassifyCandidateMap({ categories: { all: { items: names.map(name => ({ title: name, source: name, publishedAt: now })) } } }, [], 'full', now, 3_600_000);
+  const alerting = names.filter(name => !candidates.get(name).otherLanguage);
+  // lang 'xx': a catalog feed is decided by the catalog, not by the item.
+  const poolKeeps = (name: string) => alertPoolItems([item(name, 1, { source: name, lang: 'xx' })], [], now, 'en').length === 1;
+  assert.deepEqual(names.filter(name => alerting.includes(name) !== poolKeeps(name)), []);
+  assert.ok(alerting.length > 500 && alerting.length < names.length);
 });

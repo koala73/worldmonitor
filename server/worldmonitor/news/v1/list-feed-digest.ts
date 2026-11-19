@@ -52,6 +52,7 @@ import {
   orderServerFeedEntries,
   VARIANT_FEEDS,
   INTEL_SOURCES,
+  feedHeadlineLanguage,
   SERVER_EDITIONS,
   digestGateProfile,
   type ServerFeed,
@@ -2865,6 +2866,20 @@ async function recordPublisherCoverage(
 }
 
 export const ALERT_POOL_MAX_ITEMS = 300;
+
+let headlineLanguages: Map<string, Set<string>> | undefined;
+/** Feed name to the languages its headlines come in (a name can have a feed per edition). */
+function headlineLanguagesBySource(): Map<string, Set<string>> {
+  if (!headlineLanguages) {
+    headlineLanguages = new Map();
+    const feeds = [...Object.values(VARIANT_FEEDS).flatMap(byCategory => Object.values(byCategory).flat()), ...INTEL_SOURCES];
+    for (const feed of feeds) {
+      const languages = headlineLanguages.get(feed.name) ?? new Set<string>();
+      headlineLanguages.set(feed.name, languages.add(feedHeadlineLanguage(feed)));
+    }
+  }
+  return headlineLanguages;
+}
 const ALERT_POOL_WINDOW_MS = 6 * 60 * 60 * 1000;
 
 /**
@@ -2877,8 +2892,9 @@ const ALERT_POOL_WINDOW_MS = 6 * 60 * 60 * 1000;
  */
 export function alertPoolItems(servable: readonly ParsedItem[], served: readonly ParsedItem[], now: number, lang: string) {
   const taken = new Set(served.map(item => item.title));
+  const inLanguage = (item: ParsedItem) => headlineLanguagesBySource().get(item.source)?.has(lang) ?? item.lang === lang;
   return [...servable]
-    .filter(item => item.lang === lang && item.publishedAt >= now - ALERT_POOL_WINDOW_MS)
+    .filter(item => inLanguage(item) && item.publishedAt >= now - ALERT_POOL_WINDOW_MS)
     .sort((a, b) => b.publishedAt - a.publishedAt)
     .filter(item => !taken.has(item.title) && taken.add(item.title))
     .slice(0, ALERT_POOL_MAX_ITEMS)

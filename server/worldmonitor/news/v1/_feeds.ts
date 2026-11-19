@@ -42,6 +42,16 @@ export interface ServerFeed {
   excludePathSegments?: string[];
 }
 
+/**
+ * The language a feed's headlines are written in. `lang` routes a feed to a
+ * digest; an English Google News query returns English headlines whatever it
+ * is routed to. scripts/lib/digest-stale-gate.cjs applies the same rule to the
+ * catalog (tests/news-alert-pool.test.mts holds the two together).
+ */
+export function feedHeadlineLanguage(feed: Pick<ServerFeed, 'lang' | 'url'>): string {
+  return !feed.lang || /^https:\/\/news\.google\.com\/.*[?&]hl=en\b/.test(feed.url) ? 'en' : feed.lang;
+}
+
 /** Match the digest language unless the catalog explicitly permits cross-language fetching. */
 export function isServerFeedReachableForLanguage(
   feed: Pick<ServerFeed, 'lang' | 'strategicDefault' | 'fetchInAllLanguages'>,
