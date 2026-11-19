@@ -23,9 +23,18 @@ describe('headlineCountries', () => {
     const filler = 'border talks '.repeat(Math.ceil(MAX_ATTRIBUTION_CHARS / 13) + 1);
     assert.deepEqual(headlineCountries(`Thailand ${filler}`, FOCUS), ['TH']);
     assert.deepEqual(headlineCountries(`${filler}Thailand`, FOCUS), []);
-    const started = performance.now();
-    headlineCountries('ไทย '.repeat(250_000), FOCUS, 'th');
-    assert.ok(performance.now() - started < 100, 'attribution cost must not grow with title length');
+  });
+
+  it('bounds a large Thai headline before the matcher normalizes it', (t) => {
+    const normalize = t.mock.method(String.prototype, 'normalize');
+    assert.deepEqual(headlineCountries('ไทย '.repeat(250_000), FOCUS, 'th'), ['TH']);
+
+    const headlineLengths = normalize.mock.calls
+      .map(({ this: input }) => String(input))
+      .filter((input) => input.startsWith('ไทย ไทย'))
+      .map((input) => input.length);
+    assert.ok(headlineLengths.length > 0, 'expected the matcher to normalize the Thai headline');
+    for (const length of headlineLengths) assert.ok(length <= MAX_ATTRIBUTION_CHARS, `normalized ${length} headline characters`);
   });
 
   it('returns the focused countries a headline names, in focus order', () => {
