@@ -66,6 +66,7 @@ import { BETA_MODE } from '@/config/beta';
 import { mlWorker } from '@/services/ml-worker';
 import { isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
+import { copyText } from '@/utils/copy-text';
 import { trackCountrySelected, trackCountryBriefOpened } from '@/services/analytics';
 import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
 import { raceWebMcpAbort, throwIfWebMcpAborted } from '@/services/webmcp';
@@ -393,7 +394,10 @@ export class CountryIntelManager implements AppModule {
             openOrbitalWatch({ lat: payload.lat, lon: payload.lon }, document.getElementById('mapContainer'), this.ctx.map));
         },
       });
-      items.push({ label: t('contextMenu.copyCoordinates'), action: () => navigator.clipboard.writeText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`).catch(() => {}) });
+      items.push({
+        label: t('contextMenu.copyCoordinates'),
+        action: () => { void copyText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`); },
+      });
       showMapContextMenu(payload.screenX, payload.screenY, items);
     });
 

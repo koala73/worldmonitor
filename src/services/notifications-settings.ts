@@ -3,6 +3,7 @@ import { isWebPushConfigured } from '@/config/push';
 import { needsIosInstall, openIosInstallSheet } from '@/services/pwa-install';
 import { openExternalUrl } from '@/services/external-navigation';
 import { escapeHtml } from '@/utils/sanitize';
+import { copyText } from '@/utils/copy-text';
 import { renderSVG } from 'uqr';
 import {
   getChannelsData,
@@ -1850,20 +1851,9 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             btn.textContent = 'Copied!';
             setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
           };
-          const execFallback = () => {
-            const ta = document.createElement('textarea');
-            ta.value = cmd;
-            ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
-            document.body.appendChild(ta);
-            ta.select();
-            try { document.execCommand('copy'); markCopied(); } catch { /* ignore */ }
-            document.body.removeChild(ta);
-          };
-          if (navigator.clipboard?.writeText) {
-            navigator.clipboard.writeText(cmd).then(markCopied).catch(execFallback);
-          } else {
-            execFallback();
-          }
+          void copyText(cmd).then((copied) => {
+            if (copied) markCopied();
+          });
           return;
         }
 

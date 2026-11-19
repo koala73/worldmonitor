@@ -16,6 +16,7 @@ import {
 import { isProUser } from '@/services/widget-store';
 import { SITE_VARIANT } from '@/config/variant';
 import { I18N_RESOURCES_LOADED_EVENT, t } from '@/services/i18n';
+import { copyText } from '@/utils/copy-text';
 import { replaceRawI18nKeyPlaceholders } from '@/utils/i18n-raw-key-healer';
 import { createSettingsButton } from '@/components/settings-button';
 import { confirmDialog } from '@/components/confirm-dialog';
@@ -531,7 +532,8 @@ export class UnifiedSettings {
       if (target.closest('.api-keys-copy-btn')) {
         const key = this.newlyCreatedKey;
         if (key) {
-          void navigator.clipboard.writeText(key).then(() => {
+          void copyText(key).then((copied) => {
+            if (!copied) return;
             const btn = this.overlay.querySelector<HTMLElement>('.api-keys-copy-btn');
             if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 1500); }
           });
@@ -553,7 +555,8 @@ export class UnifiedSettings {
       if (target.closest('.embed-keys-copy-btn')) {
         const key = this.newlyCreatedEmbedKey;
         if (key) {
-          void navigator.clipboard.writeText(key).then(() => {
+          void copyText(key).then((copied) => {
+            if (!copied) return;
             const btn = this.overlay.querySelector<HTMLElement>('.embed-keys-copy-btn');
             if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 1500); }
           });
@@ -606,13 +609,9 @@ export class UnifiedSettings {
           mcpCopyBtn.textContent = text;
           setTimeout(() => { mcpCopyBtn.textContent = label; }, 1500);
         };
-        // navigator.clipboard is async + can reject (insecure context, perms);
-        // fall back gracefully so the button never silently no-ops.
-        if (navigator.clipboard?.writeText) {
-          void navigator.clipboard.writeText(value).then(() => flash('Copied!')).catch(() => flash('Copy failed'));
-        } else {
-          flash('Copy unavailable');
-        }
+        void copyText(value).then((copied) => {
+          flash(copied ? 'Copied!' : 'Copy failed');
+        });
         return;
       }
     });
