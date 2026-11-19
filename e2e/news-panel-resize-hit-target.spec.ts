@@ -146,16 +146,19 @@ test('the right part of the translate button clicks, and the strip still resizes
   const panel = page.locator('.panel').first();
   const button = panel.locator('.cluster-meta .item-translate-btn').first();
   await expect(button).toBeVisible();
-  await button.evaluate((btn) => {
-    btn.addEventListener('click', (e) => {
+  // Cluster enrichment can replace the rows between setup and the click.
+  await panel.evaluate((el) => {
+    el.addEventListener('click', (e) => {
+      const first = el.querySelector('.cluster-meta .item-translate-btn');
+      if (!(e.target instanceof Node) || !first?.contains(e.target)) return;
       (window as unknown as { __translateClicks: number }).__translateClicks =
         ((window as unknown as { __translateClicks?: number }).__translateClicks ?? 0) + 1;
       e.stopPropagation();
-    });
+    }, { capture: true });
   });
 
-  const box = (await button.boundingBox())!;
-  await page.mouse.click(box.x + box.width - 2, box.y + box.height / 2);
+  const position = await button.evaluate(btn => ({ x: btn.clientWidth - 2, y: btn.clientHeight / 2 }));
+  await button.click({ position });
   expect(await page.evaluate(() => (window as unknown as { __translateClicks?: number }).__translateClicks ?? 0)).toBe(1);
   await expect(panel).not.toHaveClass(/col-resizing/);
 
