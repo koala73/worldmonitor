@@ -29,7 +29,7 @@ test.describe('Mobile map native experience', () => {
       ['America/New_York', 'en-US', 'america'],
       ['Europe/London', 'en-GB', 'eu'],
       ['Asia/Tokyo', 'ja-JP', 'asia'],
-    ]) {
+    ] as const) {
       test.describe(timezoneId, () => {
         test.use({ ...mobileContext, timezoneId, locale });
 
