@@ -57,6 +57,26 @@ describe('country coverage', () => {
     vi.useRealTimers();
   });
 
+  it('keeps reviewed reporting and omits encyclopedia and sports PR from Top News', async () => {
+    vi.setSystemTime(new Date('2026-09-01T12:00:00Z'));
+    const recent = new Date('2026-08-31T10:00:00Z');
+    rssMocks.fetchFeed.mockImplementation(async feed => feed.name === 'Country coverage: Germany' ? [
+      newsItem('Germany - Federalism, Democracy, Unity - Britannica', 'general', recent),
+      newsItem('Patriots Players Take a Historic Tour of Munich, Germany - Patriots.com', 'general', recent),
+      newsItem('Germany reports a rise in factory orders - Reuters', 'economic', recent),
+      newsItem('Germany publishes its latest trade figures - CNN', 'economic', recent),
+      newsItem('Manufacturers in Germany brace for changes - The New York Times', 'economic', recent),
+    ] : []);
+
+    const coverage = await fetchCountryCoverage('Germany');
+
+    expect(coverage.headlines.map(({ title, source }) => ({ title, source }))).toEqual([
+      { title: 'Germany reports a rise in factory orders', source: 'Reuters' },
+      { title: 'Germany publishes its latest trade figures', source: 'CNN World' },
+      { title: 'Manufacturers in Germany brace for changes', source: 'New York Times World' },
+    ]);
+  });
+
   it('loads recent country headlines and maps only timeline event categories', async () => {
     vi.setSystemTime(new Date('2026-09-01T12:00:00Z'));
     const recentMilitary = newsItem(
@@ -88,12 +108,10 @@ describe('country coverage', () => {
     const coverage = await fetchCountryCoverage('France', ['france', 'french', 'paris']);
 
     expect(rssMocks.fetchFeed).toHaveBeenCalledTimes(2);
-    for (const [, options] of rssMocks.fetchFeed.mock.calls) {
-      expect(options).toEqual({
-        policy: BRIEF_ONLY_RSS_FETCH_POLICY,
-        signal: undefined,
-      });
-    }
+    expect(rssMocks.fetchFeed.mock.calls.map(([, options]) => options)).toEqual([
+      { policy: BRIEF_ONLY_RSS_FETCH_POLICY, signal: undefined, maxItems: 30 },
+      { policy: BRIEF_ONLY_RSS_FETCH_POLICY, signal: undefined },
+    ]);
     const queries = rssMocks.fetchFeed.mock.calls.map(([feed]) => {
       const proxyUrl = new URL(feed.url, 'https://worldmonitor.test');
       expect(proxyUrl.pathname).toBe('/api/rss-proxy');
