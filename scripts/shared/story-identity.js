@@ -705,8 +705,9 @@ export function classifyCacheIdentity(title) {
   const words = rest.replace(DOTTED_ABBREVIATION_RE, (run) => run.replaceAll('.', ''));
   const story = normalizeNewsStoryTitle(words.replace(IN_WORD_HYPHEN_RE, ' '));
   if (story.split(' ').length < 4) return lower;
-  // The question test backtracks over runs of marks, so it reads a bounded tail.
-  return story + (CLASSIFY_QUESTION_RE.test(title.slice(-NORMALIZED_TITLE_SCAN)) ? ' ?' : '');
+  // The question test reads the same credit-stripped text the key does, bounded
+  // above, so stripped whitespace cannot move the '?' out of its window.
+  return story + (CLASSIFY_QUESTION_RE.test(rest) ? ' ?' : '');
 }
 
 export function normalizeNewsStoryTitle(title) {

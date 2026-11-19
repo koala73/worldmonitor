@@ -145,6 +145,16 @@ describe('classify cache key is the story, not the title string (#10976)', () =>
       await buildClassifyCacheKey(`Iran closes Strait of Hormuz?${pad}`),
       await buildClassifyCacheKey(`Iran closes Strait of Hormuz${pad}`),
     );
+    // Whitespace that goes with a stripped credit must not push the '?' out either.
+    const gap = `${' '.repeat(2_100)}- Reuters`;
+    assert.notEqual(
+      await buildClassifyCacheKey(`Iran closes Strait of Hormuz?${gap}`),
+      await buildClassifyCacheKey(`Iran closes Strait of Hormuz${gap}`),
+    );
+    assert.notEqual(
+      await buildClassifyCacheKey('Iran closes Strait of Hormuz? - Reuters'),
+      await buildClassifyCacheKey('Iran closes Strait of Hormuz - Reuters'),
+    );
   });
 
   it('keeps a question in any script apart from the report', async () => {
