@@ -55,6 +55,9 @@ describe('US restricted-party list parsing', () => {
     const entry = manifest.lists.us_dhs_uflpa;
     assert.equal(parseUrpList('us_dhs_uflpa', Buffer.concat([body, Buffer.from('\n')]), entry, now).error, 'URP_HASH_MISMATCH');
     assert.equal(parseUrpList('us_dhs_uflpa', body, { ...entry, records: 3 }, now).error, 'URP_COUNT_MISMATCH');
+    for (const records of [undefined, '2', 2.5, 0]) {
+      assert.equal(parseUrpList('us_dhs_uflpa', body, { ...entry, records }, now).error, 'URP_COUNT_MISMATCH');
+    }
     assert.equal(parseUrpList('us_dhs_uflpa', body, undefined, now).error, 'URP_LIST_MISSING');
   });
 
@@ -69,9 +72,19 @@ describe('US restricted-party list parsing', () => {
     assert.deepEqual(records.map(r => r.name), ['Acme']);
   });
 
-  it('does not date a list in the future', () => {
-    const entry = { ...manifest.lists.us_far_889, fetched_at: '2027-01-01T00:00:00Z' };
-    assert.equal(parseUrpList('us_far_889', file('us_far_889.jsonl'), entry, now).publishedAt, 0);
+  it('rejects lists without recent upstream fetch evidence', () => {
+    const list = 'us_far_889';
+    const entry = manifest.lists[list];
+    const body = file(entry.file);
+    const maxAge = 72 * 60 * 60 * 1000;
+    const fetchedAt = Date.parse(entry.fetched_at);
+    assert.equal(parseUrpList(list, body, entry, fetchedAt + maxAge).error, null);
+    assert.equal(parseUrpList(list, body, entry, fetchedAt + maxAge + 1).error, 'URP_FETCH_UNCONFIRMED');
+    for (const fetched_at of [null, 'invalid', '2027-01-01T00:00:00Z']) {
+      const result = parseUrpList(list, body, { ...entry, fetched_at }, now);
+      assert.equal(result.error, 'URP_FETCH_UNCONFIRMED');
+      assert.deepEqual(result.records, []);
+    }
   });
 });
 
@@ -96,6 +109,36 @@ describe('US restricted-party list ingest', () => {
     assert.equal(lists['US-889'].error, 'URP_HASH_MISMATCH');
     assert.equal(lists['US-1260H'].error, null);
     assert.equal(lists['US-UFLPA'].error, null);
+  });
+
+  it('rejects a list with an explicit upstream error while accepting the other lists', async () => {
+    const reportedFailure = { ...manifest, errors: { us_fcc_covered: 'agency request failed' } };
+    const { fetchFn, seen } = release({ files: { 'manifest.json': JSON.stringify(reportedFailure) } });
+    const { lists, error } = await ingestUsRestrictedEntries({ fetchFn, now });
+    assert.equal(error, null);
+    assert.equal(lists['US-FCC'].error, 'URP_UPSTREAM_FAILED');
+    assert.ok(!seen.some(({ url }) => url.endsWith('us_fcc_covered.jsonl')));
+    assert.equal(lists['US-UFLPA'].error, null);
+  });
+
+  it('keeps completed lists when another request runs out of time', async t => {
+    const deadline = new AbortController();
+    t.mock.method(AbortSignal, 'timeout', () => deadline.signal);
+    const fixture = release();
+    const fetchFn = async (url, init) => {
+      if (!url.endsWith('us_fcc_covered.jsonl')) return fixture.fetchFn(url, init);
+      return new Promise((_, reject) => {
+        init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true });
+        setImmediate(() => deadline.abort(new DOMException('Deadline exceeded', 'TimeoutError')));
+      });
+    };
+    const { lists, error } = await ingestUsRestrictedEntries({ fetchFn, now });
+    assert.equal(error, null);
+    assert.equal(lists['US-FCC'].error, 'URP_FETCH_DEADLINE');
+    for (const source of ['US-1260H', 'US-889', 'US-UFLPA']) {
+      assert.equal(lists[source].error, null);
+      assert.ok(lists[source].records.length > 0);
+    }
   });
 
   it('fails every list when the manifest is unavailable or served from another host, and never throws', async () => {

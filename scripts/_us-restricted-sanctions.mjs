@@ -26,6 +26,9 @@ export const URP_MAX_BYTES = 4 * 1024 * 1024;
 // Runs alongside SEMA (45s), so it adds nothing to the fetch phase.
 export const URP_TIMEOUT_MS = 30_000;
 const URP_MIN_BUDGET_MS = 5_000;
+// Releases may be skipped when bytes are unchanged. After three daily build
+// intervals without published evidence of a successful fetch, coverage is unknown.
+const URP_MAX_FETCH_AGE_MS = 72 * 60 * 60 * 1000;
 // Release downloads redirect from github.com to GitHub's asset host.
 const URP_HOSTS = /^(?:github\.com|(?:release-assets|objects)\.githubusercontent\.com)$/;
 const NOTICE_MAX = 200;
@@ -103,14 +106,16 @@ export function parseUrpList(list, body, entry, nowMs) {
     const record = urpRecord(row, list, source);
     if (record && !records.has(record.id)) records.set(record.id, record);
   }
-  if (Number.isSafeInteger(entry.records) && entry.records !== lines) return { records: [], publishedAt: 0, error: 'URP_COUNT_MISMATCH' };
+  if (!Number.isSafeInteger(entry.records) || entry.records <= 0 || entry.records !== lines) {
+    return { records: [], publishedAt: 0, error: 'URP_COUNT_MISMATCH' };
+  }
   if (!records.size) return { records: [], publishedAt: 0, error: 'URP_LIST_MISSING' };
   const fetchedAt = Date.parse(text(entry.fetched_at));
-  return {
-    records: [...records.values()],
-    publishedAt: Number.isSafeInteger(fetchedAt) && fetchedAt <= nowMs ? fetchedAt : 0,
-    error: null,
-  };
+  if (!Number.isSafeInteger(fetchedAt) || fetchedAt <= 0 || fetchedAt > nowMs
+      || nowMs - fetchedAt > URP_MAX_FETCH_AGE_MS) {
+    return { records: [], publishedAt: 0, error: 'URP_FETCH_UNCONFIRMED' };
+  }
+  return { records: [...records.values()], publishedAt: fetchedAt, error: null };
 }
 
 /** Milliseconds the downloads may take before `deadlineAt`, or 0 when too little is left. */
@@ -150,23 +155,23 @@ export async function ingestUsRestrictedEntries({
       const manifest = JSON.parse((await download(fetchFn, URP_MANIFEST_URL,
         { accept: 'application/json', signal, maxBytes, observe })).toString('utf8'));
       if (!manifest || typeof manifest.lists !== 'object' || manifest.lists === null) return { lists: {}, error: 'URP_INVALID_MANIFEST' };
-      const lists = {};
-      for (const [list, source] of Object.entries(URP_LISTS)) {
+      const results = await Promise.all(Object.entries(URP_LISTS).map(async ([list, source]) => {
+        if (Object.hasOwn(manifest.errors ?? {}, list)) {
+          return [source, { records: [], publishedAt: 0, error: 'URP_UPSTREAM_FAILED' }];
+        }
         const entry = manifest.lists[list];
         const file = typeof entry?.file === 'string' && /^[a-z0-9_]+\.jsonl$/.test(entry.file) ? entry.file : null;
         if (!file) {
-          lists[source] = { records: [], publishedAt: 0, error: 'URP_LIST_MISSING' };
-          continue;
+          return [source, { records: [], publishedAt: 0, error: 'URP_LIST_MISSING' }];
         }
         try {
           const body = await download(fetchFn, `${URP_RELEASE_URL}${file}`, { accept: 'application/x-ndjson, */*', signal, maxBytes });
-          lists[source] = parseUrpList(list, body, entry, now);
-        } catch (err) {
-          if (signal.aborted) throw err;
-          lists[source] = { records: [], publishedAt: 0, error: 'URP_FETCH_FAILED' };
+          return [source, parseUrpList(list, body, entry, now)];
+        } catch {
+          return [source, { records: [], publishedAt: 0, error: signal.aborted ? 'URP_FETCH_DEADLINE' : 'URP_FETCH_FAILED' }];
         }
-      }
-      return { lists, error: null };
+      }));
+      return { lists: Object.fromEntries(results), error: null };
     });
   } catch (err) {
     const code = err?.cause?.code;

@@ -32,7 +32,9 @@ description: "制裁压力面板整合美国财政部 OFAC SDN、OFAC Consolidat
 
 筛查和指定变更记录还覆盖美国综合筛查清单（CSL，国际贸易管理局批量下载）中的六个出口管制清单：BIS 实体清单（`CSL-EL`）、拒绝人员清单（`CSL-DPL`）、未核实清单（`CSL-UVL`）、军事最终用户清单（`CSL-MEU`），以及国务院 ITAR 禁止清单（`CSL-DTC`）和防扩散制裁清单（`CSL-ACN`）。CSL 中的财政部条目会被跳过，因为 OFAC 自身的名单已经提供；终止日期已过的拒绝令也会被剔除。CSL 条目不计入压力评分或国家计数，因为出口管制不属于制裁压力。这些清单没有实体类型，因此条目类型为 `unspecified`。其变更事件带有《联邦公报》引用（`notice`）和清单页面（`url`）。CSL 下载失败时，`seed-meta:sanctions:entities` 会以 `CSL_INGEST_FAILED` 降级；压力健康状态不受影响。
 
-四个不在 CSL 中的美国受限方清单也以同样方式参与筛查：国防部第 1260H 条中国军事企业清单及其列名子公司（`US-1260H`）、第 889 条涵盖的电信和视频监控企业（`US-889`）、FCC 涵盖清单（`US-FCC`）以及国土安全部 UFLPA 实体清单（`US-UFLPA`）。数据来自每日发布的 [us-restricted-parties](https://github.com/Mattbusel/us-restricted-parties)（CC BY 4.0，整理自《联邦公报》、eCFR、FCC 和 DHS）；每个清单文件都必须与该发布的 `manifest.json` 中的 sha256 和行数一致。条目类型为 `entity` 并带有别名，变更事件带有《联邦公报》文件号或 CFR 引用（`notice`）和来源页面（`url`）。与 CSL 一样，这些条目不计入压力评分或国家计数；下载失败时，`seed-meta:sanctions:entities` 会以 `URP_INGEST_FAILED` 降级。
+四个不在 CSL 中的美国受限方清单也以同样方式参与筛查：国防部第 1260H 条中国军事企业清单及其列名子公司（`US-1260H`）、第 889 条涵盖的电信和视频监控企业（`US-889`）、FCC 涵盖清单（`US-FCC`）以及国土安全部 UFLPA 实体清单（`US-UFLPA`）。数据来自 [us-restricted-parties](https://github.com/Mattbusel/us-restricted-parties)（CC BY 4.0，整理自《联邦公报》、eCFR、FCC 和 DHS）；每个清单文件都必须与该发布的 `manifest.json` 中的 sha256 和行数一致。组织条目的类型为 `entity`，其他条目的类型为 `unspecified`。筛查包含别名，变更事件在有相应信息时包含来源页面（`url`）和引用（`notice`）。这些清单没有国家代码。要将其纳入筛查，请省略国家筛选条件。这些条目不计入压力评分或国家计数。
+
+数据提供方每天检查官方来源，清单无变化时可以不发布新版本。如果发布清单的元数据报告抓取失败，或者距上次确认成功抓取已超过 72 小时，World Monitor 会将该清单标记为降级。系统可在上次成功写入缓存后的 48 小时内继续提供已验证的快照。索引元数据的 `failedSources` 字段列出受影响的来源。只有美国受限方清单失败时，错误代码为 `URP_INGEST_FAILED`。
 
 种子器独立拉取各名单并合并记录，标准化国家归属，统计船舶和航空器，并与前一个快照比较以计算 `newEntryCount`。
 

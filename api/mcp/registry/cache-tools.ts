@@ -2386,7 +2386,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        country: { type: 'string', description: 'Country to filter sanctioned entities and pressure scores to, as an ISO 3166-1 alpha-2 or alpha-3 code or a country name. Unresolved inputs return Invalid params.' },
+        country: { type: 'string', description: 'Country to filter sanctioned entities and pressure scores to, as an ISO 3166-1 alpha-2 or alpha-3 code or a country name. Unresolved inputs return Invalid params. Omit this filter to include rows with no country code, including all entries from the four US restricted-party lists.' },
         entity_type: { type: 'string', description: 'Entity type to keep, matched as a case-insensitive substring: "vessel", "aircraft", "individual" or "entity". Consolidated Screening List rows are typed "unspecified".' },
         query: { type: 'string', description: 'Keep only sanctioned entities whose name contains this text (case-insensitive).' },
         screen: { type: 'string', minLength: 2, maxLength: 200, description: 'Name, alias or IMO number to screen against the seeded lists. Names are fuzzy-matched by tokens; an IMO number must match exactly. Cannot be combined with changes_since_days.' },
@@ -2536,9 +2536,9 @@ export const CACHE_TOOLS: ToolDef[] = [
     },
     _cacheKeys: ['sanctions:entities:v1', 'sanctions:pressure:v1', 'sanctions:changes:v1'],
     _freshnessChecks: [
-      { key: 'seed-meta:sanctions:entities', maxStaleMin: 720 },
+      { key: 'seed-meta:sanctions:entities', maxStaleMin: 720, honorSourceError: true },
       { key: 'seed-meta:sanctions:pressure', maxStaleMin: 720 },
-      { key: 'seed-meta:sanctions:changes', maxStaleMin: 720 },
+      { key: 'seed-meta:sanctions:changes', maxStaleMin: 720, honorSourceError: true },
     ],
     _apiPaths: [
       "GET /api/sanctions/v1/list-sanctions-pressure",
