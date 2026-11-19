@@ -45,6 +45,7 @@ export async function launchTui({ options = {}, config = {}, env = process.env, 
     player: detectPlayer(env),
     apiKeyPresent: Boolean(apiKey),
     fetchImpl,
+    userAgent: USER_AGENT.replace('worldmonitor-cli', 'worldmonitor-tui'),
   });
 
   const fps = Math.max(5, Math.min(60, Number(options.fps) || 20));

@@ -95,7 +95,8 @@ describe('Screen', () => {
     s.put(0, 0, '🟠');
     s.put(2, 0, 'x');
     assert.equal(s.toLines()[0], '🟠x');
-    assert.ok(s.diff(null).includes('🟠x'), 'the terminal sees x right after the emoji');
+    // x lands in column 3, right after the emoji (the renderer may re-anchor the cursor first).
+    assert.match(s.diff(null), /🟠(\x1b\[1;3H)?x/, 'the terminal sees x right after the emoji');
     s.put(4, 0, '⚓'); // no room for its right half
     assert.equal(s.toLines()[0], '🟠x');
   });

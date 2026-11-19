@@ -135,6 +135,14 @@ Boundary rules from `AGENTS.md` hold: `cli/` imports nothing from `src/` or
   testing and the card's measurements.
 - `orbit.mjs`: TLE parsing and a Kepler + J2 propagator for satellite
   sub-points and ground tracks.
+- Street level: `pbf.mjs` (protobuf reader + Mapbox Vector Tile decoder),
+  `jpeg.mjs` (baseline JPEG decoder for imagery tiles), `tiles.mjs` (slippy
+  tile caches for OpenFreeMap vector tiles and Esri World Imagery, centre-first
+  priority, per-frame request renewal, LRU), `osm.mjs` (OpenMapTiles layers →
+  features with Google-style level of detail, POI and place-of-worship icon
+  tables, feature links), `services.mjs` (one paced cache for Nominatim,
+  Overpass, Open-Meteo, Wikipedia and adsb.lol). The flat projection is Web
+  Mercator so tiles align; zoom goes to 2^21 (about 2 m per dot).
 - `layers.mjs`: the layer registry. Static registries (cables, pipelines,
   nuclear, bases, ports, airports, data centers, finance/tech/commodity sites…)
   come from the catalog; live layers read the store. Every feature carries
@@ -212,6 +220,13 @@ in the browser, `s` cycles stream sources.
   every layer, hover picking, pinning, detail, drag/zoom, globe + satellite
   compositing, layer toggles and persistence, search, dead reckoning, themes,
   the detail overlay in other views and the brief view.
+- Street tests (`cli/test/tui-street.test.mjs`): vector tile decoding of a
+  real OpenFreeMap tile, level-of-detail styling, baseline JPEG decoding, tile
+  math and scale bar, tile cache ordering / dropping / eviction, the lookup
+  services with stubbed responses and pacing, and the map view at street zoom:
+  tiles drawn, hover on a mosque, details enriched with OpenStreetMap tags and
+  links, "what's here", Nominatim search fallback, Wikipedia and ADS-B layers,
+  Esri imagery, double-click zoom, sidebar toggles, leaving street mode.
 - Manual: run in tmux at 160x45, capture frames of every view, convert to
   HTML, screenshot for the PR.
 
