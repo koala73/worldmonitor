@@ -1096,19 +1096,91 @@ describe('MCP live smoke — the production detection net', () => {
   // MCP behaviour and its smoke expectation together went red on main (#7572,
   // #10293, #11012) and green on its own deployment_status run. Smoke-only
   // merges never deploy, so the push trigger must still probe those.
-  it('leaves a deploying push to the deployment_status run', () => {
+  describe('push runs defer only to a production deploy that exists', () => {
     const smokeJob = YAML.parse(smokeWorkflow).jobs.smoke;
     const gateIndex = smokeJob.steps.findIndex((step: { id?: string }) => step.id === 'deploy');
     const gate = smokeJob.steps[gateIndex];
-    assert.ok(gate, 'a step with id "deploy" decides whether this push deploys');
-    assert.equal(gate.if, "github.event_name == 'push'");
-    assert.equal(gate.env?.BEFORE, '${{ github.event.before }}');
-    assert.match(gate.run, /VERCEL_GIT_COMMIT_REF=main VERCEL_GIT_PREVIOUS_SHA="\$BEFORE" bash scripts\/vercel-ignore\.sh/);
-    assert.match(gate.run, /pending=true/);
 
-    const probeIndex = smokeJob.steps.findIndex((step: { run?: string }) => step.run?.includes('mcp-live-smoke.mjs'));
-    assert.ok(gateIndex < probeIndex, 'the deploy check runs before the probe');
-    assert.equal(smokeJob.steps[probeIndex].if, "steps.deploy.outputs.pending != 'true'");
+    // Runs the step's real shell with stub `git`, `gh` and vercel-ignore.sh.
+    // `deployment` is what GitHub lists for this SHA: a vercel[bot]
+    // Production deployment with that latest status, or none at all.
+    function runGate({ vercelBuilds, deployment }: { vercelBuilds: boolean; deployment: 'success' | 'failure' | 'none' }) {
+      const dir = mkdtempSync(resolve(tmpdir(), 'mcp-smoke-gate-'));
+      try {
+        const bin = resolve(dir, 'bin');
+        mkdirSync(bin);
+        mkdirSync(resolve(dir, 'scripts'));
+        writeFileSync(resolve(dir, 'scripts/vercel-ignore.sh'), `exit ${vercelBuilds ? 1 : 0}\n`);
+        writeFileSync(resolve(bin, 'git'), '#!/bin/bash\nexit 0\n', { mode: 0o755 });
+        const ghLog = resolve(dir, 'gh.log');
+        writeFileSync(
+          resolve(bin, 'gh'),
+          `#!/bin/bash\necho "$*" >> ${JSON.stringify(ghLog)}\n`
+            + (deployment === 'none' ? 'exit 0\n' : `echo ${deployment}\n`),
+          { mode: 0o755 },
+        );
+        const output = resolve(dir, 'output');
+        writeFileSync(output, '');
+        const result = spawnSync('bash', ['-e', '-c', gate.run], {
+          cwd: dir,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            PATH: `${bin}:${process.env.PATH}`,
+            GITHUB_OUTPUT: output,
+            BEFORE: 'b'.repeat(40),
+            SHA: 'c'.repeat(40),
+            REPO: 'koala73/worldmonitor',
+            DEPLOY_WAIT_SECONDS: '2',
+            DEPLOY_POLL_SECONDS: '1',
+          },
+        });
+        assert.equal(result.status, 0, result.stderr);
+        return {
+          pending: readFileSync(output, 'utf8').match(/^pending=(.*)$/m)?.[1],
+          ghCalls: existsSync(ghLog) ? readFileSync(ghLog, 'utf8').trim().split('\n') : [],
+        };
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+
+    it('gates the probe and report on a push-only deploy step', () => {
+      assert.ok(gate, 'a step with id "deploy" decides whether this push deploys');
+      assert.equal(gate.if, "github.event_name == 'push'");
+      assert.equal(gate.env?.BEFORE, '${{ github.event.before }}');
+      assert.equal(gate.env?.SHA, '${{ github.sha }}');
+      const probeIndex = smokeJob.steps.findIndex((step: { run?: string }) => step.run?.includes('mcp-live-smoke.mjs'));
+      assert.ok(gateIndex < probeIndex, 'the deploy check runs before the probe');
+      assert.equal(smokeJob.steps[probeIndex].if, "steps.deploy.outputs.pending != 'true'");
+      assert.equal(YAML.parse(smokeWorkflow).permissions?.deployments, 'read');
+      assert.ok(
+        smokeJob['timeout-minutes'] >= 20 + 12,
+        'the job must outlast the deploy wait plus the probe budget',
+      );
+    });
+
+    it('probes a smoke-only push at once without asking for deployments', () => {
+      assert.deepEqual(runGate({ vercelBuilds: false, deployment: 'none' }), { pending: 'false', ghCalls: [] });
+    });
+
+    it('skips the probe once Vercel deploys this SHA to production', () => {
+      assert.equal(runGate({ vercelBuilds: true, deployment: 'success' }).pending, 'true');
+    });
+
+    it('probes when the production deploy of this SHA fails', () => {
+      assert.equal(runGate({ vercelBuilds: true, deployment: 'failure' }).pending, 'false');
+    });
+
+    // B changes a web file and its deploy fails; C reverts that file and edits
+    // the smoke. The B→C diff predicts a build, but Vercel compares against A,
+    // the last successful deploy, and skips. No deployment_status run follows,
+    // so the push run must still probe.
+    it('probes when the predicted deploy never appears', () => {
+      const { pending, ghCalls } = runGate({ vercelBuilds: true, deployment: 'none' });
+      assert.equal(pending, 'false');
+      assert.ok(ghCalls.length >= 2, 'it polled for the deployment before giving up');
+    });
   });
 
   it('writes and uploads a diagnostic report for both passing and failing runs', () => {
