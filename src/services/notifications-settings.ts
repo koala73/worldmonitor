@@ -345,6 +345,10 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
     attach(container: HTMLElement): () => void {
       const ac = new AbortController();
       const { signal } = ac;
+      const release = (): void => {
+        dismissSecretCopyFallback();
+        ac.abort();
+      };
       // Set by renderNotifContent, read by afterRuleSave (#4273). Declared here so
       // a synchronous first content render can never hit its TDZ. Stays true
       // until the conversion's digest write SUCCEEDS, so a failed rule save or
@@ -362,7 +366,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             });
           }, { signal });
         }
-        return () => ac.abort();
+        return release;
       }
 
       // #4273: the snapshot is still hydrating, so which ladder to render is
@@ -382,7 +386,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           // same status is a no-op, so 'unavailable' cannot loop.
           if (status === verificationStatus || replacementCleanup !== null || signal.aborted) return;
           offVerification?.();
-          ac.abort();
+          release();
           const next = renderNotificationsSettings(host);
           setTrustedHtml(container, trustedHtml(next.html, 'entitlement verification settled re-render (#4273)'));
           replacementCleanup = next.attach(container);
@@ -394,7 +398,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           signal.addEventListener('abort', offVerification);
         }
         return () => {
-          ac.abort();
+          release();
           if (replacementCleanup) replacementCleanup();
         };
       }
@@ -417,7 +421,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         if (replacementCleanup !== null || signal.aborted) return;
         if ((signedIn && hasTier(1)) === isPro) return;
         offEntitlement?.();
-        ac.abort();
+        release();
         const next = renderNotificationsSettings(host);
         setTrustedHtml(container, trustedHtml(next.html, 'entitlement flip re-render (#4273)'));
         replacementCleanup = next.attach(container);
@@ -2267,7 +2271,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       window.addEventListener('message', onMessage, { signal });
 
       return () => {
-        ac.abort();
+        release();
         if (replacementCleanup) replacementCleanup();
       };
     },
