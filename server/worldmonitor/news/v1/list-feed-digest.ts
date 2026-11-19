@@ -98,7 +98,7 @@ import { deriveCoreStoryPhase } from '../../../../shared/story-phase.js';
 import { buildTickerDictionary, extractTickers } from '../../../../shared/ticker-extract.js';
 import stocksData from '../../../../shared/stocks.json';
 import { buildClassifyCacheKey, isValidClassifyHit } from '../../intelligence/v1/_shared';
-import { declaredSourceTier, getSourceTier } from '../../../_shared/source-tiers';
+import { SOURCE_TIERS, declaredSourceTier, getSourceTier } from '../../../_shared/source-tiers';
 import {
   getSourcePropagandaRisk,
   hasReviewedPropagandaRisk,
@@ -200,6 +200,13 @@ const ITEMS_PER_FEED = 5;
 // the whole feed grows the pool from about 4,400 to 8,300 headlines.
 const COUNTRY_ITEMS_PER_FEED = 100;
 const MAX_ITEMS_PER_CATEGORY = 20;
+const FEED_CAP_LEDGER_TOP = 20;
+
+// #10976: the feeds that lost the most items to ITEMS_PER_FEED, so a missed
+// story can be traced to the feed whose cap dropped it.
+function topFeedCapDrops(drops: Map<string, number>): Record<string, number> {
+  return Object.fromEntries([...drops].sort((a, b) => b[1] - a[1]).slice(0, FEED_CAP_LEDGER_TOP));
+}
 const FEED_TIMEOUT_MS = 8_000;
 // Vercel Edge functions have a 25s initial-response ceiling. The digest
 // must fail closed to the warmed in-isolate fallback before the platform does.
@@ -1323,16 +1330,16 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
   const isAtom = !sitemap && matches.length === 0;
   if (isAtom) matches = scanTagBlocks(xml, xmlLower, 'entry');
   const excluded = feed.excludePathSegments?.length ? new Set(feed.excludePathSegments) : null;
-  if (sitemap || feed.newestFirst || excluded) {
-    // News sitemaps can be ordered by last modification, and some RSS feeds
-    // (NYT World) list items in editorial order. Rank once by publication
-    // date so older or updated items cannot crowd new ones out of the top
-    // items. Excluded paths drop out first so they never take a slot.
+  {
+    // Rank every feed once by publication date, before the per-feed cap, so
+    // a fresh item cannot sit below the cap in a relevance-ordered Google News
+    // search, an editorial-order feed (NYT World) or a sitemap ordered by last
+    // modification (#10978). Undated items keep feed order after dated ones.
+    // Excluded paths drop out first so they never take a slot.
     const ranked = matches.flatMap((block, index) => {
       const lower = asciiLower(block);
       if (sitemap && (!extractTag(block, 'news:title', lower) || !extractTag(block, 'loc', lower))) return [];
       if (excluded && hasExcludedPathSegment(feedItemLink(block, lower, sitemap, isAtom), excluded)) return [];
-      if (!sitemap && !feed.newestFirst) return [{ block, index, publishedAt: 0 }];
       const raw = sitemap ? extractTag(block, 'news:publication_date', lower) : extractFirstDateTag(block, isAtom, lower);
       return [{ block, index, publishedAt: usableFeedDateMs(raw) ?? -Infinity }];
     });
@@ -2358,8 +2365,15 @@ async function readAdoptionState(
 }
 
 export function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsItem {
+  const resolved = item.originPublisherTrusted === true && typeof item.originPublisher === 'string' && item.originPublisher.trim()
+    ? resolveCredibilitySourceName(item).toLowerCase()
+    : '';
+  // The tier table's spelling: the relay's tier lookup is exact-key.
+  const origin = resolved ? Object.keys(SOURCE_TIERS).find((name) => name.toLowerCase() === resolved) ?? '' : '';
   return {
     source: item.source,
+    // Only a publisher with a curated tier: the aggregator's text alone is not an identity.
+    originPublisher: origin,
     title: item.title,
     link: item.link,
     publishedAt: item.publishedAt,
@@ -3604,6 +3618,7 @@ async function buildDigest(
   // #4920 coverage ledger: count every silent drop gate so "how much did
   // we NOT show" is a queryable number instead of a feeling.
   const ledgerDrops = { perFeedCap: 0, undated: 0, freshnessFloor: 0, perCategoryCap: 0 };
+  const feedCapDrops = new Map<string, number>();
   const categories: Record<string, CategoryBucket> = {};
   const digestStartedAt = Date.now();
 
@@ -3648,6 +3663,7 @@ async function buildDigest(
           outcome,
           value: {
             category,
+            feedName: feed.name,
             items: result.items,
             droppedUndated: result.droppedUndated,
             droppedFeedCap: result.droppedFeedCap ?? 0,
@@ -3659,12 +3675,13 @@ async function buildDigest(
     await depthWarming;
 
     for (const { value } of attempts.fulfilled) {
-      const { category, items, droppedUndated, droppedFeedCap } = value;
+      const { category, feedName, items, droppedUndated, droppedFeedCap } = value;
       const existing = results.get(category) ?? [];
       existing.push(...items);
       results.set(category, existing);
       ledgerDrops.undated += droppedUndated;
       ledgerDrops.perFeedCap += droppedFeedCap;
+      if (droppedFeedCap > 0) feedCapDrops.set(feedName, (feedCapDrops.get(feedName) ?? 0) + droppedFeedCap);
     }
 
     const deadlineAborted = deadlineController.signal.aborted;
@@ -4025,6 +4042,7 @@ async function buildDigest(
       itemsServed: allSliced.length,
       distinctSources,
       drops: { ...ledgerDrops },
+      perFeedCapTop: topFeedCapDrops(feedCapDrops),
     };
     // Key-cardinality clamp: variant/lang are request-supplied — only write
     // ledgers for known variants and well-formed 2-letter langs so a caller
@@ -4110,6 +4128,7 @@ async function publishAcceptedLabelCounts(response: ListFeedDigestResponse, dead
 
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
+  topFeedCapDrops,
   recordPublisherCoverage,
   writeCoverageLedger,
   storyCorroborationByHash,

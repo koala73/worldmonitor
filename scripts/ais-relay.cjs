@@ -5805,6 +5805,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
 
   let classified = 0;
   let skipped = 0;
+  const alertGateDrops = { tier4: 0, recency: 0 };
   const shadow = { asked: 0, answered: 0, agreed: 0, alertFlips: 0 };
 
   for (let b = 0; b < misses.length; b += CLASSIFY_BATCH_SIZE) {
@@ -5866,10 +5867,16 @@ async function seedClassifyForVariant(variant, seenTitles) {
         // them to 4. Any future Telegram alert path must use the public display
         // label from shared/telegram-channel-trust.ts (#6600). #6654 should do
         // the same for X account labels rather than a generic "x" platform key.
-        if (shouldDropRelaySourceForTier(RELAY_GATES_READY, meta.source, RELAY_TIER4_SOURCES)) continue;
+        if (shouldDropRelaySourceForTier(RELAY_GATES_READY, meta.source, RELAY_TIER4_SOURCES)) {
+          alertGateDrops.tier4++;
+          continue;
+        }
         if (RELAY_GATES_READY) {
           const ageMs = Date.now() - (meta.publishedAt ?? 0);
-          if (meta.publishedAt && ageMs > RELAY_RECENCY_MS) continue;
+          if (meta.publishedAt && ageMs > RELAY_RECENCY_MS) {
+            alertGateDrops.recency++;
+            continue;
+          }
         }
         // Recompute importanceScore from the post-LLM level. Publishing the
         // digest's pre-LLM keyword-based score would leak a stale value —
@@ -5902,7 +5909,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
         const primaryCountryCode = notifyPolicy.primaryNewsCountryCode(countriesNamedInHeadline(chunk[idx]));
         // One alert per story per day, not per title string: a second
         // publisher carrying an alerted headline is the same story.
-        const storyKey = newsStoryKey(chunk[idx], { severity: level, importanceScore });
+        const storyKey = newsStoryKey(chunk[idx], { severity: level, importanceScore, primaryCountryCode });
         // An X post has no digest build behind it.
         const alertBuildAt = meta.fromX ? undefined : digestBuildAt;
         publishNotificationEvent({
@@ -5954,6 +5961,9 @@ async function seedClassifyForVariant(variant, seenTitles) {
     }
   }
 
+  if (skipped > 0 || alertGateDrops.tier4 > 0 || alertGateDrops.recency > 0) {
+    console.log(`[Classify] Alert gate drops ${variant}: tier4=${alertGateDrops.tier4} recency=${alertGateDrops.recency} classifier_skip=${skipped}`);
+  }
   if (shadow.asked > 0) {
     console.log(`[Classify] Jev shadow ${variant}: asked ${shadow.asked}, answered ${shadow.answered}, agreed ${shadow.agreed}, alert flips ${shadow.alertFlips}`);
   }

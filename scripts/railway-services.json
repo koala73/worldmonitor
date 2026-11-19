@@ -257,8 +257,11 @@
       "CONVEX_NOTIFICATION_RELAY_SECRET"
     ],
     "watchPatterns": [
+      "scripts/_env-file.mjs",
+      "scripts/audit-alert-misses.mjs",
       "scripts/lib/_upstash-pipeline.mjs",
       "scripts/lib/ai-routing-policy.cjs",
+      "scripts/lib/alert-miss-audit.mjs",
       "scripts/lib/brief-dedup-consts.mjs",
       "scripts/lib/brief-dedup-jaccard.mjs",
       "scripts/lib/brief-embedding.mjs",

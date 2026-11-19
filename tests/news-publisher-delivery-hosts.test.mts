@@ -177,3 +177,56 @@ describe('publisher-link gate: the relay sends the links the digest verified, an
     assert.equal(buildClassifyCandidateMap(digest, [], 'full', now, 6 * 3600_000).get('Headline').link, '');
   });
 });
+
+describe('the relay scores a topic feed item on its original publisher (#10977)', () => {
+  const feed = { name: 'Strategic Chokepoints', url: 'https://news.google.com/rss/search?q=Hormuz&hl=en-US&gl=US&ceid=US:en', lang: 'en' };
+  const xml = (publisher: string) => `<?xml version="1.0"?><rss><channel><item><title>Headline - ${publisher}</title><link>https://news.google.com/rss/articles/abc</link><pubDate>${new Date().toUTCString()}</pubDate><source url="https://english.alarabiya.net">${publisher}</source></item></channel></rss>`;
+  const relaySource = (served: ReturnType<typeof toProtoItem>) => {
+    const digest = { coverage: { servedStale: false }, categories: { energy: { items: [served] } } };
+    return [...buildClassifyCandidateMap(digest, [], 'energy', Date.now(), 6 * 3600_000).values()][0].source;
+  };
+
+  it('serves the original publisher and the relay scores on it', () => {
+    const parsed = __testing__.parseRssXml(xml('Al Arabiya'), feed, 'energy');
+    const served = toProtoItem(parsed!.items[0]!);
+    assert.equal(served.source, 'Strategic Chokepoints');
+    assert.equal(served.originPublisher, 'Al Arabiya');
+    assert.equal(relaySource(served), 'Al Arabiya');
+  });
+
+  it('serves the tier table spelling of the publisher', () => {
+    const served = toProtoItem(__testing__.parseRssXml(xml('al arabiya'), feed, 'energy')!.items[0]!);
+    assert.equal(served.originPublisher, 'Al Arabiya');
+  });
+
+  it('keeps the feed name when the named publisher has no curated tier', () => {
+    const parsed = __testing__.parseRssXml(xml('Totally Real Wire'), feed, 'energy');
+    assert.equal(parsed!.items[0]!.originPublisher, 'Totally Real Wire');
+    assert.equal(parsed!.items[0]!.originPublisherTrusted, true);
+    const served = toProtoItem(parsed!.items[0]!);
+    assert.equal(served.originPublisher, '');
+    assert.equal(relaySource(served), 'Strategic Chokepoints');
+  });
+
+  it('resolves the name Google News gives Al Arabiya to its tier table spelling', () => {
+    const served = toProtoItem(__testing__.parseRssXml(xml('Al Arabiya English'), feed, 'energy')!.items[0]!);
+    assert.equal(served.originPublisher, 'Al Arabiya');
+    assert.equal(relaySource(served), 'Al Arabiya');
+    const relayTiers = { ...require('../shared/source-tiers.json'), ...require('../shared/x-account-source-tiers.json') };
+    assert.equal(relayTiers[relaySource(served)], 2);
+  });
+
+  it('reads the publisher from <source>, never from the title suffix', () => {
+    const spoofed = xml('Totally Real Wire').replace('Headline - Totally Real Wire', 'Headline - Reuters');
+    const served = toProtoItem(__testing__.parseRssXml(spoofed, feed, 'energy')!.items[0]!);
+    assert.equal(served.originPublisher, '');
+    assert.equal(relaySource(served), 'Strategic Chokepoints');
+  });
+
+  it('keeps the feed name when the feed is not a trusted aggregator', () => {
+    const parsed = __testing__.parseRssXml(xml('Al Arabiya'), { ...feed, url: 'https://example.com/feed' }, 'energy');
+    const served = toProtoItem(parsed!.items[0]!);
+    assert.equal(served.originPublisher, '');
+    assert.equal(relaySource(served), 'Strategic Chokepoints');
+  });
+});
