@@ -64,12 +64,14 @@ describe('country coverage', () => {
       newsItem('Germany - Federalism, Democracy, Unity - Britannica', 'general', recent),
       newsItem('Patriots Players Take a Historic Tour of Munich, Germany - Patriots.com', 'general', recent),
       newsItem('Germany reports a rise in factory orders - Reuters', 'economic', recent),
+      newsItem('Germany publishes its latest trade figures - CNN', 'economic', recent),
     ] : []);
 
     const coverage = await fetchCountryCoverage('Germany');
 
     expect(coverage.headlines.map(({ title, source }) => ({ title, source }))).toEqual([
       { title: 'Germany reports a rise in factory orders', source: 'Reuters' },
+      { title: 'Germany publishes its latest trade figures', source: 'CNN World' },
     ]);
   });
 
