@@ -5172,7 +5172,8 @@ describe('crawlable corpus generator', () => {
         assert.doesNotMatch(crisesIndex, /data-active-war/);
       } else {
         assert.match(crisesIndex, /<h1>Wars happening right now<\/h1>/);
-        assert.match(crisesIndex, new RegExp(`<title>Wars Happening Right Now: ${wars.countryCount} Active Conflicts \\| World Monitor</title>`));
+        assert.match(crisesIndex, /<title>Wars Happening Right Now: Global Conflict Tracker<\/title>/);
+        assert.match(crisesIndex, /<meta name="description" content="Live global conflict tracker: /);
         assert.match(crisesIndex, /<h2>Current crisis trackers<\/h2>/);
         const warRows = [...crisesIndex.matchAll(/<tr data-active-war="([^"]+)"><td>(\d+)<\/td>(.*?)<\/tr>/g)];
         assert.deepEqual(warRows.map(([, key]) => key), wars.conflicts.map((row) => row.code ?? row.name));
@@ -8617,8 +8618,26 @@ describe('crisis tracker editorial (#8605)', () => {
         entry.question = `What is happening in ${'a very long place name '.repeat(3)}?`;
         return entry;
       }), crises),
-      /title ".+" exceeds 72 characters/,
+      /title ".+" exceeds 60 characters/,
     );
+  });
+
+  it('drops the brand, never the question, when the branded title passes 60 characters', () => {
+    const reviewed = editorial[0].lastReviewed;
+    const year = reviewed.slice(0, 4);
+    assert.equal(
+      crisisPageTitle('What is happening in Sudan?', reviewed),
+      `What is happening in Sudan? ${year} tracker | World Monitor`,
+    );
+    assert.equal(
+      crisisPageTitle('What is happening in the Strait of Hormuz?', reviewed),
+      `What is happening in the Strait of Hormuz? ${year} tracker`,
+    );
+    const [entry] = normalizeCrisisEditorial(withEntry(first, (item) => {
+      item.question = 'What is happening in the Horn of Africa?';
+      return item;
+    }), crises).values();
+    assert.ok(entry, 'a long question that fits without the brand is accepted');
     assert.throws(
       () => normalizeCrisisEditorial(withEntry(first, (entry) => {
         delete entry.question;
@@ -8640,6 +8659,7 @@ describe('crisis tracker editorial (#8605)', () => {
         const title = doc.querySelector('title').textContent;
         assert.equal(title, crisisPageTitle(entry.question, entry.lastReviewed));
         assert.ok(title.startsWith(`${entry.question} ${entry.lastReviewed.slice(0, 4)} tracker`), title);
+        assert.ok([...title].length <= 60, `${entry.slug} title runs ${[...title].length} characters: ${title}`);
         assert.ok(!titles.has(title), `${entry.slug} repeats a crisis title`);
         titles.add(title);
         assert.equal(doc.querySelector('meta[property="og:title"]').getAttribute('content'), title);

@@ -16,7 +16,7 @@
     "predictionMarkets": "Predikční trhy",
     "loadingMarkets": "Načítám predikční trhy...",
     "infrastructure": "Ohrožení infrastruktury",
-    "briefUnavailable": "AI svodka není k dispozici — nastavte OPENROUTER_API_KEY v Nastavení.",
+    "briefUnavailable": "AI přehled není právě dostupný.",
     "cached": "Z mezipaměti",
     "fresh": "Aktuální",
     "noMarkets": "Nenalezeny žádné predikční trhy",
@@ -68,13 +68,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Index nestability: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "Detekováno aktivních protestů: {{count}}",
-      "aircraftTracked": "Sledováno vojenských letadel: {{count}}",
-      "vesselsTracked": "Sledováno vojenských plavidel: {{count}}",
-      "internetOutages": "Výpadky internetu: {{count}}",
+      "protestsDetected": "Aktivní protesty: {{count}}",
+      "aircraftTracked": "Monitorovaná vojenská letadla: {{count}}",
+      "vesselsTracked": "Monitorované vojenské lodě: {{count}}",
+      "internetOutages": "Přerušení internetu: {{count}}",
       "recentEarthquakes": "Nedávná zemětřesení: {{count}}",
       "stockIndex": "Akciový index: {{value}}",
-      "activeStrikes": "Detekováno aktivních útoků/stávek: {{count}}"
+      "activeStrikes": "Útoky a záchyty: {{count}}"
     },
     "militaryActivity": "Vojenská aktivita",
     "defenseIndustrial": {
@@ -634,7 +634,8 @@
         "techevent": "Tech událost",
         "techhq": "Tech centrála",
         "accelerator": "Akcelerátor",
-        "flight": "Let"
+        "flight": "Let",
+        "alert": "Výstraha"
       },
       "commands": "Příkazy",
       "results": "Výsledky",
@@ -646,7 +647,9 @@
       "flightMilitaryOnGround": "Vojenský · {{type}} · na zemi",
       "flightSearchHint": "Stiskněte Enter nebo klikněte pro vyhledání živé polohy",
       "flightNotFound": "Pro {{callsign}} nebyla nalezena žádná živá poloha",
-      "addPanel": "Přidat"
+      "addPanel": "Přidat",
+      "sentAlerts": "Výstrahy odeslané vám",
+      "sentAlertTime": "Odesláno {{time}}"
     },
     "signal": {
       "title": "ZPRAVODAJSKÉ ZJIŠTĚNÍ",
@@ -814,7 +817,7 @@
       "fresh": "Aktuální",
       "noMarkets": "Nenalezeny žádné predikční trhy",
       "predictionMarkets": "Predikční trhy",
-      "unavailable": "AI svodka není k dispozici — nastavte OPENROUTER_API_KEY v Nastavení."
+      "unavailable": "AI přehled není právě dostupný."
     },
     "countryBrief": {
       "identifying": "Identifikuji zemi...",
@@ -830,7 +833,7 @@
       "predictionMarkets": "Predikční trhy",
       "loadingMarkets": "Načítám predikční trhy...",
       "infrastructure": "Ohrožení infrastruktury",
-      "briefUnavailable": "AI svodka není k dispozici — nastavte OPENROUTER_API_KEY v Nastavení.",
+      "briefUnavailable": "AI přehled není právě dostupný.",
       "cached": "Z mezipaměti",
       "fresh": "Aktuální",
       "noMarkets": "Nenalezeny žádné predikční trhy",
@@ -5931,6 +5934,13 @@
       "seasonalHint": "Upozornění když poslední naměřená hladina je výrazně nižší, než obvykle měří tato přehrada v tuto dobu roku.",
       "quietNote": "Tyto výstrahy přicházejí, i když jsou výstrahy v reálném čase nastaveny pouze na kritické. Tiché hodiny je umlčí.",
       "quietNoteBatch": "Tyto výstrahy přicházejí, i když jsou výstrahy v reálném čase nastaveny pouze na kritické. Tiché hodiny je umlčí, nebo je zadrží do konce tichých hodin, pokud zvolíte Batch."
+    },
+    "briefLanguage": {
+      "label": "Jazyk přehledu",
+      "hint": "Váš denní přehled bude v jazyce {{language}}.",
+      "sameAsApp": "Stejný jako jazyk aplikace",
+      "loadFailed": "Načtení se nezdařilo",
+      "saveFailed": "Nepodařilo se to uložit. Zkuste znovu."
     }
   }
 }

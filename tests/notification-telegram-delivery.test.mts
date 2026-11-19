@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { DIGEST_EMAIL_MAX_HTML_BYTES } from '../scripts/lib/digest-email-html.mjs';
+import { selectDigestChannelContent } from '../scripts/lib/digest-channel-content.mjs';
 
 const require = createRequire(import.meta.url);
 const savedEnv = { ...process.env };
@@ -61,7 +62,8 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
       sends.push(JSON.parse(String(init?.body)));
       return Response.json({ ok: true });
     };
-    await relay.processEvent({ eventType: 'market_alert', severity: 'critical', payload: { title: 'Synthetic alert' } });
+    // A market-wide move is a global event (#10873), so it reaches this unscoped rule.
+    await relay.processEvent({ eventType: 'market_alert', severity: 'critical', payload: { title: 'Synthetic alert', assetClass: 'commodity', symbol: 'CL=F' } });
     assert.equal(reads, 1);
     assert.equal(sends.length, proof === 'verified' ? 1 : 0);
     if (sends.length) assert.equal(sends[0].chat_id, '12345');
@@ -83,6 +85,7 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
     ].map(productionFunction).join('\n') + '\nmain', {
       Date, Map, Set, Intl, AbortSignal, process: { env: {} }, console: { log() {}, warn() {} },
       DIGEST_EMAIL_MAX_HTML_BYTES,
+      withDeliveryReports: async (deliver: () => Promise<unknown>) => deliver(),
       CONVEX_SITE_URL: 'https://convex.test', RELAY_SECRET: 'fake', DIGEST_LOOKBACK_MS: 86400000,
       TELEGRAM_BOT_TOKEN: 'fake', TELEGRAM_MAX_LEN: 4096, AI_DIGEST_ENABLED: false,
       scanAndEnqueueWatchlistStoryEvents: async () => {},
@@ -99,7 +102,8 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
       readCooldownConfig: () => ({ invalidRaw: null, mode: 'off' }),
       getLastSentAt: async () => 0, isDue: () => true, isUserPro: async () => true,
       digestWindowStartMs: () => 0, buildDigest: async () => [{ title: 'Synthetic alert' }],
-      buildDigestDeliveryPlan: ({ rawStories }: any) => ({ formatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
+      selectDigestChannelContent,
+      buildDigestDeliveryPlan: ({ rawStories }: any) => ({ formatterStories: rawStories, canonicalFormatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
       formatDigest: () => 'Synthetic alert',
       renderDigestEmailHtml: () => ({ html: '<p>Synthetic alert</p>', bytes: 0, truncated: false, shownStories: 1 }),
       buildChannelBodies: (lists: any) => ({ text: lists.plain, telegramText: lists.telegram }),

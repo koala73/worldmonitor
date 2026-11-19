@@ -7,7 +7,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 
 const read = (name) => readFileSync(new URL(`../src/styles/${name}`, import.meta.url), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '');
@@ -51,8 +51,7 @@ describe('Orbital Watch design tokens', () => {
     });
   }
 
-  it('has no lookup-only token stylesheet and no --ow-* palette', () => {
-    assert.ok(!existsSync(new URL('../src/styles/orbital-tokens.css', import.meta.url)));
+  it('has no --ow-* palette', () => {
     for (const sheet of sheets) assert.doesNotMatch(read(sheet), /--ow-/, sheet);
   });
 

@@ -243,6 +243,12 @@ function overrideStringExample(key, context = {}) {
   if (key === 'id' && (where.includes('getusinterestrates') || where.includes('get-us-interest-rates'))) {
     return 'fed_funds_effective';
   }
+  // GetMonthlySitcTrade covers Malaysia only and validates sections against
+  // "0"-"9" | "overall"; the heuristic's "US" / "example" would not run.
+  if (where.includes('getmonthlysitctrade') || where.includes('get-monthly-sitc-trade')) {
+    if (key === 'country') return 'MY';
+    if (key === 'sections') return '0';
+  }
   // ListMediaPerspective validates codes, audiences and region slugs; the
   // heuristic's "example" values are rejected with HTTP 400.
   if (where.includes('listmediaperspective') || where.includes('list-media-perspective')) {
@@ -271,6 +277,16 @@ function overrideStringExample(key, context = {}) {
     if (key === 'category') return 'europe';
     if (key === 'sources' || key === 'source') return 'France 24';
     if (key === 'state') return 'found';
+  }
+  // SearchHeadlines / SearchHeadlineArchive validate the edition, and the
+  // heuristic's "example" is rejected with HTTP 400. The response sample is
+  // one real-looking match so publisher, title and state read as they are served.
+  if (where.includes('searchheadline') || where.includes('search-headline')) {
+    if (key === 'query') return 'hormuz tanker';
+    if (key === 'variant') return 'full';
+    if (key === 'state') return 'complete';
+    if (key === 'source') return 'Reuters World';
+    if (key === 'title') return 'Strait of Hormuz tanker seized by patrol boats';
   }
   if (where.includes('listvulnerabilityrankings') || where.includes('list-vulnerability-rankings')) {
     if (key === 'commodityid') return 'crude_oil';
@@ -1189,6 +1205,31 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
       }],
     };
   }
+  // GetMonthlySitcTrade: the generic builder keeps only the alphabetically
+  // first optional fields, which leaves out `series` and the availability
+  // flags. Show the response to the documented request (MY, section 0, one
+  // month) with DOSM fixture values; indices lag trade, so September has none.
+  if (depth === 0 && context.operationId === 'GetMonthlySitcTrade'
+    && context.exampleSurface === 'response') {
+    return {
+      country: 'MY',
+      currency: 'MYR',
+      source: 'DOSM Monthly Trade by SITC Section',
+      sourceUrl: 'https://open.dosm.gov.my/data-catalogue/trade_sitc_1d',
+      indexBase: '2010=100',
+      latestMonth: '2026-09',
+      latestIndexMonth: '2026-08',
+      fetchedAt: 1794902400000,
+      series: [{
+        section: '0',
+        label: 'Food',
+        months: [{ month: '2026-09', exports: 4834780427, imports: 7086989476 }],
+      }],
+      // A served response leaves unavailableReason at its zero value, which
+      // examples never show (see GetTradeFlows above).
+      upstreamUnavailable: false,
+    };
+  }
   if (depth === 0 && context.operationId === 'GetWebcamImage'
     && context.exampleSurface === 'response') {
     return {
@@ -1472,6 +1513,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   if (type === 'integer' && String(name ?? '').toLowerCase() === 'year') {
     const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
     if (where.includes('getbilateraltariff') || where.includes('get-bilateral-tariff')) return 2021;
+  }
+  // SearchHeadlines answers for a fixed window: 24 hours, or 168 on the Pro
+  // archive route. The generic integer `1` documents a window neither serves.
+  if (type === 'integer' && String(name ?? '').toLowerCase() === 'windowhours') {
+    const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
+    if (where.includes('searchheadlinearchive') || where.includes('search-headline-archive')) return 168;
+    if (where.includes('searchheadlines') || where.includes('search-headlines')) return 24;
   }
   if (type === 'number' && String(name ?? '').toLowerCase() === 'boundrate') {
     const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();

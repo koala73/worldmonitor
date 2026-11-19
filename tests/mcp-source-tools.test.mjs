@@ -27,11 +27,16 @@ const assertOutputSchema = (result) => {
 it('ships exactly the provider fields consumed from the canonical attribution manifest', () => {
   const read = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
   const manifest = read('../shared/source-attribution-manifest.json');
-  const fields = ['host', 'provider', 'kind', 'status', 'license', 'observed', 'catalogActive'];
-  const expected = manifest.entries.map((entry) => Object.fromEntries(
+  const fields = ['host', 'provider', 'kind', 'status', 'license'];
+  const active = manifest.entries.filter((entry) => entry.observed === true
+    && entry.catalogActive !== false
+    && ['reviewed', 'terms-review'].includes(entry.status));
+  const providers = active.map((entry) => Object.fromEntries(
     fields.filter((field) => Object.hasOwn(entry, field)).map((field) => [field, entry[field]]),
   ));
-  assert.deepEqual(read('../api/mcp/registry/_source-providers.generated.json'), expected);
+  const generated = read('../api/mcp/registry/_source-providers.generated.json');
+  assert.deepEqual(generated.providers, providers);
+  assert.equal(generated.excludedProviderCount, manifest.entries.filter((entry) => entry.status === 'excluded').length);
 });
 
 describe('get_sources — registration', () => {
@@ -58,6 +63,8 @@ describe('get_sources — summary view', () => {
   it('reports excluded manifest rows as a count instead of dropping them silently', async () => {
     const { summary } = await run({});
     assert.ok(summary.excludedProviderCount > 0, 'the manifest does contain excluded rows');
+    const manifest = JSON.parse(readFileSync(new URL('../shared/source-attribution-manifest.json', import.meta.url), 'utf8'));
+    assert.equal(summary.excludedProviderCount, manifest.entries.filter((entry) => entry.status === 'excluded').length);
     assert.ok(summary.providerCount > 0);
     // The two must be disjoint: an excluded row must not also be counted active.
     assert.ok(summary.providerCount < summary.providerCount + summary.excludedProviderCount);

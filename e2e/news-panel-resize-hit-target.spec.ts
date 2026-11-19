@@ -184,6 +184,11 @@ test('aiming at a visible resize grip lands on its drag strip (#9729)', async ({
     style.textContent = '.panel-resize-handle, .panel-col-resize-handle { background: none !important; }'
       + ' .panel-resize-handle::after, .panel-col-resize-handle::after { color: #ff00ff !important; transition: none !important; }';
     document.head.appendChild(style);
+    // Chromium answers a viewport capture with "Unable to capture screenshot"
+    // until the page has produced a frame. That is normally immediate, but a
+    // WebGL map closing in the same browser process holds frames back for
+    // seconds, and this test can run straight after one.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     return ['.panel-col-resize-handle', '.panel-resize-handle'].map((selector) => {
       const r = panel.getElement().querySelector(selector)!.getBoundingClientRect();
       return { selector, x: r.left, y: r.top, width: r.width, height: r.height };

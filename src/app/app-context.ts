@@ -34,6 +34,7 @@ export interface UnifiedSettingsController {
   close(): void;
   hasPendingChanges(): boolean;
   refreshPanelToggles(): void;
+  refreshSourceToggles(): void;
   getButton(): HTMLButtonElement;
   destroy(): void;
 }
@@ -93,6 +94,17 @@ export interface AppContext {
   cyberThreatsCache: CyberThreat[] | null;
 
   disabledSources: Set<string>;
+  pendingSourcePreferences?: {
+    /** Ownership for the live source selection. */
+    gateOwned: Set<string> | null;
+    /** Ownership for the stored selection after a partial write. */
+    baselineGateOwned: Set<string> | null;
+    /** Session overrides; true disables a source, false enables it. */
+    edits: Map<string, boolean>;
+    /** Startup defaults used until saved or replaced by an applied cloud snapshot. */
+    fallbackDisabledSources?: Set<string>;
+    migrationMarkers: string[];
+  };
   currentTimeRange: import('@/components').TimeRange;
 
   inFlight: Set<string>;

@@ -243,7 +243,8 @@
         "techevent": "Evento de tecnologia",
         "techhq": "Sede de tecnologia",
         "accelerator": "Aceleradora",
-        "flight": "Voo"
+        "flight": "Voo",
+        "alert": "Alerta"
       },
       "placeholderTech": "Pesquisar ou digitar um comando...",
       "placeholderFinance": "Pesquisar ou digitar um comando...",
@@ -257,7 +258,9 @@
       "flightMilitaryOnGround": "Militar · {{type}} · em solo",
       "flightSearchHint": "Pressione Enter ou clique para consultar posição ao vivo",
       "flightNotFound": "Nenhuma posição ao vivo encontrada para {{callsign}}",
-      "addPanel": "Adicionar"
+      "addPanel": "Adicionar",
+      "sentAlerts": "Alertas enviados para você",
+      "sentAlertTime": "Enviado {{time}}"
     },
     "signal": {
       "source": "Source",
@@ -364,7 +367,7 @@
       "loadingIndex": "Carregando índice...",
       "loadingMarkets": "Carregando mercados de previsão...",
       "generatingBrief": "Gerando resumo de inteligência...",
-      "unavailable": "Resumo de IA indisponível – configure OPENROUTER_API_KEY em Configurações.",
+      "unavailable": "Resumo da IA indisponível no momento.",
       "cached": "em cache",
       "fresh": "Fresco",
       "noMarkets": "Nenhum mercado de previsão encontrado",
@@ -404,7 +407,7 @@
       "predictionMarkets": "Mercados de previsão",
       "loadingMarkets": "Carregando mercados de previsão...",
       "infrastructure": "Exposição de infraestrutura",
-      "briefUnavailable": "Resumo de IA indisponível – configure OPENROUTER_API_KEY em Configurações.",
+      "briefUnavailable": "Resumo da IA indisponível no momento.",
       "cached": "em cache",
       "fresh": "Fresco",
       "noMarkets": "Nenhum mercado de previsão encontrado",
@@ -4195,7 +4198,7 @@
     "predictionMarkets": "Mercados de Previsão",
     "loadingMarkets": "Carregando mercados de previsão...",
     "infrastructure": "Exposição de Infraestrutura",
-    "briefUnavailable": "Resumo de IA indisponível — configure OPENROUTER_API_KEY em Configurações.",
+    "briefUnavailable": "Resumo da IA indisponível no momento.",
     "cached": "Em cache",
     "fresh": "Atualizado",
     "noMarkets": "Nenhum mercado de previsão encontrado",
@@ -4247,13 +4250,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Índice de Instabilidade: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} protestos ativos detectados",
-      "aircraftTracked": "{{count}} aeronaves militares rastreadas",
-      "vesselsTracked": "{{count}} embarcações militares rastreadas",
-      "internetOutages": "{{count}} interrupções de internet",
-      "recentEarthquakes": "{{count}} terremotos recentes",
+      "protestsDetected": "Protestos ativos: {{count}}",
+      "aircraftTracked": "Aeronaves militares monitoradas: {{count}}",
+      "vesselsTracked": "Navios militares monitorados: {{count}}",
+      "internetOutages": "Interrupções de internet: {{count}}",
+      "recentEarthquakes": "Terremotos recentes: {{count}}",
       "stockIndex": "Índice de ações: {{value}}",
-      "activeStrikes": "{{count}} greves ativas detectadas"
+      "activeStrikes": "Ataques e interceptações: {{count}}"
     },
     "militaryActivity": "Atividade militar",
     "defenseIndustrial": {
@@ -5895,6 +5898,13 @@
       "seasonalHint": "Alerta quando o nível medido mais recente está bem abaixo do que aquele reservatório normalmente mede nesta época do ano.",
       "quietNote": "Esses alertas chegam mesmo quando os alertas em tempo real estão configurados apenas para críticos. As horas silenciosas os silenciam.",
       "quietNoteBatch": "Esses alertas chegam mesmo quando os alertas em tempo real estão configurados apenas para críticos. As horas silenciosas os silenciam ou os mantêm retidos até o fim das horas silenciosas, se você escolher Batch."
+    },
+    "briefLanguage": {
+      "label": "Idioma do resumo",
+      "hint": "O seu resumo diário será escrito em {{language}}.",
+      "sameAsApp": "Igual ao idioma da aplicação",
+      "loadFailed": "Falha ao carregar",
+      "saveFailed": "Não foi possível salvar. Tente novamente."
     }
   }
 }

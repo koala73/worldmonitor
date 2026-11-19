@@ -1896,7 +1896,7 @@ describe('each quote renders in its own currency, so the price check grounds the
 // Greptile on #9780: the news-retrieval keyword list keeps eight terms, so a
 // long question filled the slots before "Brent" and the quote fell back to the
 // default four. Instrument matching reads every term of the question.
-const LONG_BRENT_QUESTION = "Explain today's energy market reaction to the latest OPEC production announcement: why is Brent up?";
+const LONG_BRENT_QUESTION = "Explain today's energy market reaction to the surprise OPEC production announcement: why is Brent up?";
 
 describe('instrument matching reads the whole question, not the eight-term retrieval cap', () => {
   it('the retrieval cap drops "brent" from the long question (the gap)', () => {

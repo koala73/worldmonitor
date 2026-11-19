@@ -156,7 +156,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private currentBrief: string | null = null;
   private currentBriefGeneratedAt: string | number | null = null;
   private currentBriefCached: boolean | null = null;
-  private currentBriefIsFallback = false;
+  private currentBriefIsSignalRows = false;
   private historyRegistered = false;
   private currentHeadlines: NewsItem[] = [];
   private isMaximizedState = false;
@@ -370,9 +370,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   public showLoading(): void {
+    const focusWasInside = this.panel.contains(document.activeElement);
     this.currentCode = '__loading__';
     this.currentName = null;
     this.renderLoading();
+    this.keepFocusInside(focusWasInside);
     this.open();
   }
 
@@ -403,6 +405,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   public show(country: string, code: string, score: CountryScore | null, signals: CountrySignalCounts | null): void {
+    const focusWasInside = this.panel.contains(document.activeElement);
     this.qualifiedCountrySignals = null;
     this.abortController.abort();
     this.abortController = new AbortController();
@@ -414,7 +417,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.currentBrief = null;
     this.currentBriefGeneratedAt = null;
     this.currentBriefCached = null;
-    this.currentBriefIsFallback = false;
+    this.currentBriefIsSignalRows = false;
     this.currentHeadlines = [];
     this.currentHeadlineCount = 0;
     this.economicIndicators = [];
@@ -427,6 +430,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
     if (this.source?.mode === 'host') this.renderAtlasExposure(true);
     this.content.scrollTop = 0;
+    this.keepFocusInside(focusWasInside);
     // open() reports only a closed-to-open change. Opened by showLoading(),
     // the panel now has its real country, so report that too.
     if (!this.open()) this.onStateChangeCallback?.({ visible: true, maximized: this.isMaximizedState });
@@ -3362,8 +3366,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return wrapper;
   }
 
-  public isFallbackBrief(): boolean {
-    return this.currentBriefIsFallback;
+  public isSignalRowsBrief(): boolean {
+    // Closing the page clears currentBrief but not the flag.
+    return this.currentBriefIsSignalRows && this.currentBrief !== null;
   }
 
   public updateScore(score: CountryScore | null, _signals: CountrySignalCounts | null): void {
@@ -3511,7 +3516,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.currentBrief = null;
       this.currentBriefGeneratedAt = null;
       this.currentBriefCached = null;
-      this.currentBriefIsFallback = false;
+      this.currentBriefIsSignalRows = false;
       this.briefBody.append(this.makeEmpty(data.error || data.reason || t('countryBrief.assessmentUnavailable')));
       return;
     }
@@ -3519,10 +3524,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.currentBrief = data.brief;
     this.currentBriefGeneratedAt = data.generatedAt ?? null;
     this.currentBriefCached = data.cached === true;
-    this.currentBriefIsFallback = data.fallback === true;
+    this.currentBriefIsSignalRows = data.signalRows === true;
 
     const briefSources = collectBriefSources(data.sources ?? [], 6);
-    const summaryHtml = this.formatBrief(summarizeCountryBrief(data.brief), briefSources, 0, data.evidence);
+    // Signal rows have no sentence punctuation; summarizing them joined every
+    // line into a single run-on paragraph.
+    const summary = data.signalRows ? data.brief.split('\n').slice(0, 5).join('\n') : summarizeCountryBrief(data.brief);
+    const summaryHtml = this.formatBrief(summary, briefSources, 0, data.evidence);
     const text = this.el('div', 'cdp-assessment-text cdp-summary-only');
     setTrustedHtml(text, trustedHtml(summaryHtml, "legacy direct innerHTML migration"));
 
@@ -4595,6 +4603,31 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const assets = this.infrastructureByType.get(type) ?? [];
     if (assets.length === 0) return;
     this.map.flashAssets(type, assets.map((asset) => asset.id));
+  }
+
+  /**
+   * A rebuild of a visible brief removes its controls. If one of them had
+   * focus, focus would drop to the page, so it moves to the close button.
+   * Focus on a control that survives, or outside the brief, stays put.
+   */
+  private keepFocusInside(focusWasInside: boolean): void {
+    if (!focusWasInside || !this.panel.classList.contains('active')) return;
+    if (!this.panel.contains(document.activeElement)) this.closeButton.focus();
+  }
+
+  /**
+   * A map click or map menu is opening this brief. A closed brief saves its
+   * return target when it opens (the map, which the caller has just focused).
+   * A visible brief reloads in place without reopening, so it takes the map
+   * as its return target now, and focus moves into the brief as on a first
+   * open. Background refreshes don't call this, so they never move focus.
+   */
+  public returnFocusTo(target: HTMLElement): void {
+    if (!this.panel.classList.contains('active')) return;
+    this.lastFocusedElement = target;
+    requestAnimationFrame(() => {
+      if (this.panel.classList.contains('active') && !this.panel.contains(document.activeElement)) this.closeButton.focus();
+    });
   }
 
   /** Returns true when the panel was closed and is now open. */

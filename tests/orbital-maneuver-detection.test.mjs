@@ -386,13 +386,47 @@ describe('review round 3 (#10865)', () => {
     // reported inclination of 61° on day 20 only. The newest epoch's J2 rate must not use the refit.
     const meanMotion = meanMotionFor(7000);
     const rate = j2RaanRateDegPerDay({ meanMotion, eccentricity: 0.001, inclination: 60 });
-    const entries = (refit) => Array.from({ length: 21 }, (_, d) => ({
+    const entries = (refit, days = 20) => Array.from({ length: days + 1 }, (_, d) => ({
       noradId: 7, epoch: T0 + d * DAY_MS, meanMotion, eccentricity: 0.001, bstar: 0,
       inclination: refit && d === 20 ? 61 : 60, raan: rate * d + (d >= 19 ? 0.04 : 0),
     }));
-    for (const refit of [false, true]) {
-      const found = run(entries(refit)).candidates.map((c) => [c.element, c.toEpoch]);
-      assert.deepEqual(found, [['raan', new Date(T0 + 19 * DAY_MS).toISOString()]], `refit=${refit}`);
-    }
+    const step = [['raan', new Date(T0 + 19 * DAY_MS).toISOString()]];
+    const found = (list) => run(list).candidates.map((c) => [c.element, c.toEpoch]);
+    assert.deepEqual(found(entries(false)), step);
+    // On day 20 alone the refit cannot be told from a real inclination change, which would cancel the
+    // node step (round 4): the step waits, unjudged, and the next epoch settles it.
+    const pending = run(entries(true));
+    assert.deepEqual(pending.candidates, []);
+    assert.ok(pending.unjudgedElements.includes('raan'));
+    assert.deepEqual(found(entries(true, 21)).filter(([element]) => element === 'raan'), step);
+  });
+});
+
+describe('review round 4 (#10865, #10866)', () => {
+  const quiet = { sma: 0, inc: 0, raan: 0 };
+  const dayIso = (day) => new Date(T0 + day * DAY_MS).toISOString();
+  const found = (entries) => run(entries).candidates.map((c) => [c.element, c.toEpoch]);
+
+  it('reports a node step under a steady inclination drift: the newest epoch is not smoothed back a day', () => {
+    // Inclination 60 + 0.2 deg/day at 7000 km, node propagated under J2, a persistent -0.021 deg node step on day 19.
+    const meanMotion = meanMotionFor(7000);
+    const at = (d) => ({ noradId: 7, epoch: T0 + d * DAY_MS, meanMotion, eccentricity: 0.001, bstar: 0, inclination: 60 + 0.2 * d });
+    let node = 0;
+    const entries = Array.from({ length: 21 }, (_, d) => {
+      if (d > 0) node += (j2RaanRateDegPerDay(at(d - 1)) + j2RaanRateDegPerDay(at(d))) / 2;
+      return { ...at(d), raan: node + (d >= 19 ? -0.021 : 0) };
+    });
+    assert.deepEqual(found(entries), [['raan', dayIso(19)]]);
+  });
+
+  it('does not let a real inclination change on the newest epoch confirm a node refit', () => {
+    // Day 19 is a node refit; day 20 is a real 1 deg inclination change, propagated with its J2 rate.
+    const entries = history({ aKm: 7000, eccentricity: 0.001, inclination: 60, noise: quiet, events: [{ day: 19, dRaan: 0.04, once: true }, { day: 20, dInc: 1 }] });
+    const result = run(entries);
+    assert.deepEqual(result.candidates, []);
+    assert.ok(result.unjudgedElements?.includes('raan'), 'the node step the newest epoch would confirm is left unjudged');
+    // One epoch later the inclination change is settled and the day-19 refit stays a refit.
+    const later = history({ aKm: 7000, eccentricity: 0.001, inclination: 60, days: 21, noise: quiet, events: [{ day: 19, dRaan: 0.04, once: true }, { day: 20, dInc: 1 }] });
+    assert.deepEqual(found(later).filter(([element]) => element === 'raan'), []);
   });
 });

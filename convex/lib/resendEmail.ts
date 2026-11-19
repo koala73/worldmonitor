@@ -49,6 +49,7 @@ export type ResendEmailInput = {
   purpose: EmailPurpose;
   timeoutMs?: number;
   userAgent?: string;
+  idempotencyKey?: string;
 };
 
 export type ResendEmailResult =
@@ -105,7 +106,7 @@ export async function sendResendEmail(
 
   const res = await fetch(RESEND_EMAILS_URL, {
     method: "POST",
-    headers,
+    headers: { ...headers, ...(input.idempotencyKey ? { "Idempotency-Key": input.idempotencyKey } : {}) },
     body: JSON.stringify(buildResendEmailPayload(input)),
     signal: AbortSignal.timeout(input.timeoutMs ?? DEFAULT_TIMEOUT_MS),
   });

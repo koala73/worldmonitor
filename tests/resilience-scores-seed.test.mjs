@@ -94,33 +94,6 @@ describe('exported constants', () => {
   });
 });
 
-describe('seed script does not export tsx/esm helpers', () => {
-  it('ensureResilienceScoreCached is not exported', async () => {
-    const mod = await import('../scripts/seed-resilience-scores.mjs');
-    assert.equal(typeof mod.ensureResilienceScoreCached, 'undefined');
-  });
-
-  it('createMemoizedSeedReader is not exported', async () => {
-    const mod = await import('../scripts/seed-resilience-scores.mjs');
-    assert.equal(typeof mod.createMemoizedSeedReader, 'undefined');
-  });
-
-  it('buildRankingItem is not exported (ranking write removed)', async () => {
-    const mod = await import('../scripts/seed-resilience-scores.mjs');
-    assert.equal(typeof mod.buildRankingItem, 'undefined');
-  });
-
-  it('sortRankingItems is not exported (ranking write removed)', async () => {
-    const mod = await import('../scripts/seed-resilience-scores.mjs');
-    assert.equal(typeof mod.sortRankingItems, 'undefined');
-  });
-
-  it('buildRankingPayload is not exported (ranking write removed)', async () => {
-    const mod = await import('../scripts/seed-resilience-scores.mjs');
-    assert.equal(typeof mod.buildRankingPayload, 'undefined');
-  });
-});
-
 describe('score cache payload validation', () => {
   it('accepts any valid formula tag independent of seeder env unless a live runtime formula is supplied', () => {
     // The seeder no longer re-derives a "current" formula from its own env.

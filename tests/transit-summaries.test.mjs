@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { detectTrafficAnomaly, THREAT_LEVEL } from '../server/worldmonitor/supply-chain/v1/_scoring.mjs';
 import { summarizePortwatchHistory } from '../shared/chokepoint-traffic-anomaly.js';
 import {
@@ -218,7 +219,7 @@ describe('seedTransitSummaries (relay)', () => {
     'korea_strait', 'dover_strait', 'kerch_strait', 'lombok_strait',
   ];
 
-  it('neither publisher stamps fresh metadata when pending gate observations cannot persist', async () => {
+  it('the AIS publisher keeps last-good counts when pending gate observations cannot persist', async () => {
     const writes = [];
     const deps = {
       envelopeRead: async () => ({ hormuz_strait: { history: [] } }),
@@ -227,7 +228,6 @@ describe('seedTransitSummaries (relay)', () => {
       transitTracker: { flush: async () => { throw new Error('gate storage unavailable'); } },
     };
     await assert.rejects(buildSeedChokepointTransits(deps)(), /gate storage unavailable/);
-    await assert.rejects(buildSeedTransitSummaries(deps)(), /gate storage unavailable/);
     assert.deepEqual(writes, []);
   });
 
@@ -280,16 +280,37 @@ describe('seedTransitSummaries (relay)', () => {
     assert.ok(!meta.transitCoverage.missing.includes('hormuz_strait'));
   });
 
-  it('neither publisher replaces last-good counts when the durable window cannot be read', async () => {
+  it('the AIS publisher keeps last-good counts when the durable window cannot be read', async () => {
     const envelopeWrite = async () => assert.fail('must not publish without durable history');
     const upstashSet = async () => assert.fail('must not refresh metadata');
     const upstashEval = async () => null;
     await assert.rejects(buildSeedChokepointTransits({ envelopeWrite, upstashSet, upstashEval })(), /transit window/);
-    await assert.rejects(buildSeedTransitSummaries({
-      envelopeRead: async key => key === 'supply_chain:portwatch:v1' ? { suez: { history: [] } } : null,
-      envelopeWrite, upstashSet, upstashEval,
-    })(), /transit window/);
   });
+
+  for (const [failure, deps] of Object.entries({
+    'tracker flush fails': { transitTracker: { flush: async () => { throw new Error('gate storage unavailable'); } } },
+    'window read fails': { upstashEval: async () => null },
+  })) {
+    it(`publishes PortWatch history and counts with unavailable AIS counts when the ${failure}`, async () => {
+      const history = makeDays(7, 120, 0);
+      const writes = new Map();
+      await buildSeedTransitSummaries({
+        envelopeRead: async key => key === 'supply_chain:portwatch:v1' ? { suez: { history } } : null,
+        envelopeWrite: async (key, value) => { writes.set(key, value); return true; },
+        upstashSet: async (key, value) => { writes.set(key, value); return true; },
+        ...deps,
+      })();
+      const { summaries } = writes.get('supply_chain:transit-summaries:v1');
+      assert.equal(summaries.suez.dataAvailable, true);
+      assert.equal(summaries.suez.officialLatestTotal, 120);
+      assert.equal(summaries.suez.officialLatestDate, history[0].date);
+      for (const summary of Object.values(summaries)) {
+        for (const field of ['todayTotal', 'todayTanker', 'todayCargo', 'todayOther']) assert.equal(summary[field], null);
+      }
+      assert.deepEqual(writes.get('supply_chain:transit-summaries:history:v1:suez').history, history);
+      assert.equal(writes.get('seed-meta:supply_chain:transit-summaries').recordCount, 1);
+    });
+  }
 
   it('populated portwatch actually produces the compact summary key, all 13 per-id history keys, and a seed-meta write', async () => {
     const fakePortwatch = {
@@ -512,6 +533,7 @@ describe('seedTransitSummaries (relay)', () => {
         'fetch', 'envelopeRead', 'envelopeWrite', 'upstashSet', 'console', 'UPSTASH_ENABLED',
         'chokepointCrossings', 'detectTrafficAnomaly', 'summarizePortwatchHistory', 'CHOKEPOINT_THREAT_LEVELS',
         'CORRIDOR_RISK_NAME_MAP', 'deriveCorridorRiskLevel', 'CHROME_UA', 'publishNotificationEvent', 'readTransitWindow', 'upstashEval', 'transitTracker',
+        'notifyPolicy',
         source,
       )(
         async () => Response.json([{ name: 'Strait of Hormuz', score: 80, incident_count_7d: 628,
@@ -525,6 +547,7 @@ describe('seedTransitSummaries (relay)', () => {
         CORRIDOR_RISK_NAME_MAP, deriveCorridorRiskLevel, 'test-agent',
         async event => { notifications.push(event); },
         readTransitWindow, transitStore(), { flush: async () => new Set() },
+        createRequire(import.meta.url)('../scripts/lib/notification-publish-policy.cjs'),
       );
       await seed.seedCorridorRisk();
       await seed.seedTransitSummaries();
@@ -539,7 +562,7 @@ describe('seedTransitSummaries (relay)', () => {
       }
       assert.equal(summary.todayTotal, null);
       assert.equal(summary.dataAvailable, true);
-      assert.equal(notifications.length, 1);
+      assert.equal(notifications.length, 0);
       assert.doesNotMatch(JSON.stringify([...writes.values(), notifications]), /REROUTE|50-80K|Salalah/);
     }
   });

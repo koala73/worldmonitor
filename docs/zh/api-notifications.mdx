@@ -126,11 +126,13 @@ description: "World Monitor 通知系统 API 完整参考：涵盖通知渠道�
   {
     "version": "1",
     "eventType": "digest",
+    "lang": "en",
     "stories": [{ "title": "...", "severity": "high", "phase": "...", "sources": ["..."] }],
     "summary": "...",
     "storyCount": 12
   }
   ```
+  `lang` 表示此负载的语言,始终为 `"en"`:即使读者的邮件、聊天和杂志简报使用其他语言,webhook 也始终携带规范的英文报道和摘要。
 
 ### 签名密钥
 

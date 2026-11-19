@@ -447,7 +447,8 @@
       "trendRising": "steigend",
       "trendFalling": "fallend",
       "trendStable": "stabil",
-      "situationLink": "Situation überwachen: Krisen, Schlagzeilen, Engpässe und Ausfälle auf einem Dashboard"
+      "situationLink": "Situation überwachen: Krisen, Schlagzeilen, Engpässe und Ausfälle auf einem Dashboard",
+      "pizzaIndexLink": "Pentagon-Pizza-Index: wie voll die Pizzerien rund um das Pentagon sind"
     },
     "moments": {
       "eyebrow": "Korrelations-Engine",

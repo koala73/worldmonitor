@@ -27,6 +27,7 @@ import { getCountryNameByCode, preloadCountryGeometry, hasCountryGeometry, isCoo
 import { toCachedCII } from '@/services/cached-risk-scores';
 import { initI18n, t as translate } from '@/services/i18n';
 import { combineAbortSignals } from '@/services/timeout-signal';
+import { isImeEnter } from '@/utils/dom-utils';
 import { createHostCountryDownload, hostSupportsCountryDownload, CountryDownloadRequestError, COUNTRY_EXPORT_REQUEST_BYTES } from '@/utils/country-text-download';
 import type { CountryIntelData } from '@/components/CountryBriefPanel';
 import { hostContextFromInitialize, layoutFlags, mergeHostContext, type PluginHostContext } from './plugin-host-context';
@@ -842,7 +843,7 @@ async function mountPlugin(): Promise<void> {
   const openSelectedCountry = () => { void open({ country_code: input.value }).catch(error => { status.textContent = error.message; }); };
   document.getElementById('openCountry')!.addEventListener('click', openSelectedCountry);
   form.addEventListener('submit', event => { event.preventDefault(); openSelectedCountry(); });
-  input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); openSelectedCountry(); } });
+  input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); if (!isImeEnter(event)) openSelectedCountry(); } });
   document.getElementById('refreshCountry')!.addEventListener('click', () => {
     const code = panel.getCode();
     if (!code) return;

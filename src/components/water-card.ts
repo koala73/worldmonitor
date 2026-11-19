@@ -3,7 +3,7 @@ import type { ReservoirLevel } from '@/services/climate';
 import { loadReservoirLevelsById, loadReservoirNextPasses } from '@/services/climate/reservoir-context-loader';
 import { STRATEGIC_RESERVOIR_SITES, type StrategicReservoirSite } from '@/services/climate/reservoir-context';
 import { getLocale, t } from '@/services/i18n';
-import { loadObjectImagery, loadReservoirWaterExtent, type ObjectImage } from '@/services/orbital/object-imagery';
+import type { ObjectImage } from '@/services/orbital/object-imagery';
 import { reservoirNextPassExpiresAt, type ReservoirNextPass } from '@/services/orbital/reservoir-next-pass-expiry';
 import { escapeHtml } from '@/utils/sanitize';
 import { formatPassDate, reservoirHeadline, reservoirMeasuredShort, reservoirNextPassText, type ReservoirFormatContext } from './reservoir-levels-view';
@@ -128,10 +128,12 @@ export function waterCard(name: string, input: WaterCardInput, ctx: ReservoirFor
 export async function loadWaterCard(site: StrategicReservoirSite, signal: AbortSignal): Promise<HTMLElement> {
   const [w, s, e, n] = site.core;
   const centre = { lat: Math.round(((s + n) / 2) * 100) / 100, lon: Math.round(((w + e) / 2) * 100) / 100 };
+  // The imagery loader is imported here, not at the top: the map popup imports this module on every visit.
+  const imageryModule = import('@/services/orbital/object-imagery');
   const [levels, extent, imagery, passes] = await Promise.all([
     loadReservoirLevelsById().catch(() => WATER_UNAVAILABLE),
-    loadReservoirWaterExtent(site.id, signal).catch(() => WATER_UNAVAILABLE),
-    loadObjectImagery({ kind: 'point', point: centre, ownNextPass: true, optical: true }, signal).catch(() => WATER_UNAVAILABLE),
+    imageryModule.then(m => m.loadReservoirWaterExtent(site.id, signal)).catch(() => WATER_UNAVAILABLE),
+    imageryModule.then(m => m.loadObjectImagery({ kind: 'point', point: centre, ownNextPass: true, optical: true }, signal)).catch(() => WATER_UNAVAILABLE),
     loadReservoirNextPasses(STRATEGIC_RESERVOIR_SITES, { signal }).catch(() => null),
   ]);
   signal.throwIfAborted();

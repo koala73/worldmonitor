@@ -173,14 +173,17 @@ function cleanHistory(entries) {
 
 /**
  * Each epoch's elements replaced by the median of a three-epoch window, so a one-epoch refit drops
- * out. At the first and last epochs the window is the nearest three, not the epoch alone: a refit on
- * the newest epoch would otherwise enter the J2 rate of the very step it confirms.
+ * out. The first and last epochs have one neighbour, so their window is the epoch, its neighbour and
+ * the line through the next two extended to the epoch: a refit on the newest epoch stays out of the J2
+ * rate of the step it confirms, and a steady drift is not pulled back by a day.
  */
 function smoothedElements(history) {
+  const n = history.length;
   const mid = (k, field) => {
-    if (history.length < 3) return history[k][field];
-    const lo = Math.min(Math.max(k - 1, 0), history.length - 3);
-    return median([history[lo][field], history[lo + 1][field], history[lo + 2][field]]);
+    if (n < 3) return history[k][field];
+    if (k === 0) return median([history[0][field], history[1][field], 2 * history[1][field] - history[2][field]]);
+    if (k === n - 1) return median([history[k][field], history[k - 1][field], 2 * history[k - 1][field] - history[k - 2][field]]);
+    return median([history[k - 1][field], history[k][field], history[k + 1][field]]);
   };
   return history.map((_, k) => ({
     meanMotion: mid(k, 'meanMotion'),
@@ -198,6 +201,12 @@ function smoothedElements(history) {
 function buildSeries(history) {
   const t0 = history[0].epoch;
   const rates = smoothedElements(history).map((elements) => j2RaanRateDegPerDay(elements));
+  // The newest epoch has no later one to tell a refit from a real change. If it is real, its own J2
+  // rate applies to the last interval: the node there would differ by this much.
+  const last = history.length - 1;
+  const newestNodeAlternative = last > 0
+    ? ((rates[last] - j2RaanRateDegPerDay(history[last])) / 2) * ((history[last].epoch - history[last - 1].epoch) / DAY_MS)
+    : 0;
   const sma = [];
   const inc = [];
   const raan = [];
@@ -213,7 +222,7 @@ function buildSeries(history) {
     }
     raan.push({ t, y: residualRaan });
   });
-  return { semiMajorAxis: sma, inclination: inc, raan };
+  return { semiMajorAxis: sma, inclination: inc, raan, newestNodeAlternative };
 }
 
 /** Degrees from the nearer equatorial orbit, prograde (0) or retrograde (180): the node is undefined at both. */
@@ -306,14 +315,19 @@ export function detectSatelliteManeuvers(entries, { nowMs, dragDisturbed, option
       }
       const baseline = indices.map((i) => points[i]);
 
-      if (k === latestK) judgedLatest = true;
       const fit = fitLine(baseline);
       const sigma = robustSigma(baseline.map((p) => p.y - fit.predict(p.t)));
       const threshold = Math.max(floors[element], options.sigmaMultiplier * sigma);
       const residual = points[k].y - fit.predict(points[k].t);
       const confirming = points[k + 1].y - fit.predict(points[k + 1].t);
+      const confirms = (c) => Math.sign(c) === Math.sign(residual) && Math.abs(c) >= options.confirmFraction * Math.abs(residual);
+      // The node at the newest epoch depends on whether its elements are a refit or a real change.
+      // When the two readings disagree on confirming the step, it waits for the next epoch.
+      if (element === 'raan' && k === latestK && Math.abs(residual) > threshold
+        && confirms(confirming) !== confirms(confirming + series.newestNodeAlternative)) continue;
+      if (k === latestK) judgedLatest = true;
       if (Math.abs(residual) <= threshold) continue;
-      if (Math.sign(confirming) !== Math.sign(residual) || Math.abs(confirming) < options.confirmFraction * Math.abs(residual)) {
+      if (!confirms(confirming)) {
         // The next epoch is back on the trend: epoch k was a refit, not a new level.
         if (Math.abs(confirming) <= threshold) refits.add(k);
         continue;

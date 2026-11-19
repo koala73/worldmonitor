@@ -1,0 +1,223 @@
+{
+ "note": "Critical/high boundary on attacks on shipping and energy infrastructure (#10976). Titles are real headlines from shadow:score-log:v5, 2026-11-11 to 2026-11-18. Judged against the production rubric by the agent that wrote #10976's fixes, with the issue's call that an armed attack on a vessel in the Strait of Hormuz is critical; the judge had seen the production labels, so this is a regression set, not a blind one. `borderline` = the judge would accept the adjacent level. Re-capture with scripts/eval-classify-labels.mjs --fixture tests/fixtures/classify-judged-shipping-energy.json --capture after any prompt or model change.",
+ "rows": [
+  {
+   "title": "UAE's ADNOC L&S says one crew member missing after attack on its vessel in Hormuz - Reuters",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "ADNOC Says One of Its Vessels Attacked in Strait of Hormuz - - WANA News Agency",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "ADNOC Ship Attacked in Hormuz as Maritime Security Risks Rise",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "Middle East War: Iran attacks Bahrain, ADNOC vessel hit in Hormuz, Kuwait drone threats keep Gulf on high alert as US hits Iran’s Qeshm",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "Iran says two oil tankers hit by mines in Strait of Hormuz",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "Two oil tankers 'disabled' by explosions in Strait of Hormuz, IRGC says - Reuters",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "Four tankers struck by explosions in Strait of Hormuz, Iran says - Reuters",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "Iran says tanker carrying LNG hit mine, suffered explosion in Hormuz - Reuters",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "Crew abandons gas tanker after being hit by projectile while sailing through Strait of Hormuz - New York Post",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "Gas tanker in Strait of Hormuz set ablaze - NBC News",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "Tanker struck by unknown projectile in Strait of Hormuz: UK agency - Anadolu Ajansı",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "Oil Prices Jump 6% as Iran Sets UAE Oil Port Ablaze, Strikes Vessels in Strait of Hormuz - EnergyNow.com",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "U.S. Strikes Iranian Launchers Near Strait of Hormuz, Sending Oil Prices Higher - EnergyNow.com",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "Iran Targets Maritime Navigation Systems on Omani Island in Strait of Hormuz - IranWire",
+   "judge": "critical",
+   "borderline": true
+  },
+  {
+   "title": "UN says 25 seafarers killed in, around Hormuz since US-Israel war on Iran",
+   "judge": "high",
+   "borderline": true
+  },
+  {
+   "title": "Three Tankers Attacked in Two Days in Strait of Hormuz Crisis - The Maritime Executive",
+   "judge": "high",
+   "borderline": true
+  },
+  {
+   "title": "Strait of Hormuz Watch: Negotiations Uncertain as Vessel Attacks Continue - IndustryWeek",
+   "judge": "medium",
+   "borderline": false
+  },
+  {
+   "title": "Barnea: Blockade in Strait of Hormuz best current option to stop nuclear weapons - The Jerusalem Post",
+   "judge": "medium",
+   "borderline": false
+  },
+  {
+   "title": "Trump faces escalating oil crisis over Iran blocking Strait of Hormuz - ABC News - Breaking News, Latest News and Videos",
+   "judge": "medium",
+   "borderline": true
+  },
+  {
+   "title": "Iran Warns Strait of Hormuz Will ‘Never Return’ to Pre-War Status After US-Israel War, Insists There Are - Benzinga",
+   "judge": "medium",
+   "borderline": true
+  },
+  {
+   "title": "Mohsen Rezaei Says Iran Won’t Reopen Strait of Hormuz Until US Meets Seven Conditions: 22 outlets compared - NewsCord",
+   "judge": "high",
+   "borderline": true
+  },
+  {
+   "title": "Iran Says Deal on Strait of Hormuz is Close But Will Not Open the Waterway by Itself - EnergyNow.com",
+   "judge": "medium",
+   "borderline": true
+  },
+  {
+   "title": "Dramatic moment oil tanker erupts into huge inferno in Strait of Hormuz",
+   "judge": "critical",
+   "borderline": true
+  },
+  {
+   "title": "IAEA raises alarm over Iran's nuclear program as tanker hits mine in Strait of Hormuz - Ynetnews",
+   "judge": "high",
+   "borderline": true
+  }
+ ],
+ "runs": {
+  "relay-after": {
+   "path": "relay",
+   "model": "deepseek/deepseek-v4.1-flash",
+   "promptSha": "2b0ff61d068f8a71",
+   "note": "production relay prompt and model, run 1 (captured 2026-11-18)",
+   "labels": [
+    "high",
+    "high",
+    "high",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "high",
+    "high",
+    "high",
+    "critical",
+    "critical",
+    "high",
+    "critical",
+    "high",
+    "medium",
+    "info",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high"
+   ]
+  },
+  "relay-after-rerun": {
+   "path": "relay",
+   "model": "deepseek/deepseek-v4.1-flash",
+   "promptSha": "2b0ff61d068f8a71",
+   "note": "production relay prompt and model, run 2 (run-to-run noise) (captured 2026-11-18)",
+   "labels": [
+    "high",
+    "high",
+    "high",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "high",
+    "high",
+    "high",
+    "critical",
+    "critical",
+    "high",
+    "critical",
+    "high",
+    "medium",
+    "info",
+    "medium",
+    "high",
+    "medium",
+    "medium",
+    "high",
+    "high"
+   ]
+  },
+  "rpc-after": {
+   "path": "rpc",
+   "model": "deepseek/deepseek-v4.1-flash",
+   "promptSha": "f62de715acfa2a3f",
+   "note": "production RPC prompt and model (captured 2026-11-18)",
+   "labels": [
+    "high",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical"
+   ]
+  }
+ }
+}

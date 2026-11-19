@@ -3,13 +3,16 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { newsHandler } from '../server/worldmonitor/news/v1/handler';
 import { __testing__ as digest, fetchAndParseRss } from '../server/worldmonitor/news/v1/list-feed-digest';
 import { rssFeedCacheKey } from '../server/worldmonitor/news/v1/_rss-cache';
-import { REVOKED_URLS_KEY } from '../server/_shared/digest-revocations';
+import { REVOKED_URLS_KEY, __resetRevocationMemoForTest } from '../server/_shared/digest-revocations';
 import { drainResponseHeaders } from '../server/_shared/response-headers';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
 import { createNewsServiceRoutes, type ListCountryHeadlinesResponse } from '../src/generated/server/worldmonitor/news/v1/service_server';
 import { validateGeneratedRequest } from '../server/request-validator';
 import { selectCountryHeadlines } from '../scripts/freeze-crawlable-live-pulse.mjs';
 import { briefGroundingGap } from '../scripts/crawlable-developments.mjs';
+
+// Each test sets its own revocations; drop the previous test's memoized read.
+beforeEach(__resetRevocationMemoForTest);
 
 const route = createNewsServiceRoutes(newsHandler, { validateRequest: validateGeneratedRequest })
   .find(entry => entry.path.endsWith('/list-country-headlines'))!;
@@ -128,14 +131,13 @@ describe('country headlines from existing curated RSS caches', () => {
     assert.equal(briefGroundingGap(rows), 'thin-grounding', 'retention cannot invent an independent publisher');
   });
 
-  it('retains a dated Atom headline when the first five entries have no titles', async () => {
+  it('serves a dated Atom headline ranked above five untitled entries', async () => {
     const source = feed('Guardian Pacific');
     const xml = `<feed>${'<entry></entry>'.repeat(5)}<entry><title>Vanuatu ferry search continues</title><link href="https://www.theguardian.com/world/vanuatu-search"/><published>${new Date(Date.now() - 3600_000).toISOString()}</published><source><title>Invented Publisher</title></source></entry></feed>`;
     const parsed = digest.parseRssXml(xml, source, 'full');
     assert.ok(parsed);
-    assert.deepEqual(parsed.items, []);
-    assert.equal(parsed.parsedTotal, 0);
-    assert.equal(parsed.droppedFeedCap, undefined, 'preserve the empty digest result counters');
+    assert.deepEqual(parsed.items.map(item => item.title), ['Vanuatu ferry search continues'], 'undated entries rank after dated ones');
+    assert.equal(parsed.parsedTotal, 1);
     cache.set(rssFeedCacheKey('full', source.url), parsed);
     const { payload } = await request(['VU']);
     assert.equal(payload.countries.VU.items[0].source, source.name);

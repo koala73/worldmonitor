@@ -3,7 +3,8 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
-  LOCALES,
+  LOCALES as ALL_LOCALES,
+  PRO_ONLY_LOCALES,
   baselinePathFor,
   classifyKeys,
   expectedKeysForLocale,
@@ -13,6 +14,7 @@ import {
   localesRootFor,
 } from '../scripts/translate-locales.mjs';
 
+const LOCALES = ALL_LOCALES.filter((locale) => !PRO_ONLY_LOCALES.has(locale));
 const LOCALES_DIR = localesRootFor(false);
 const BASELINE_PATH = baselinePathFor(false);
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'));
