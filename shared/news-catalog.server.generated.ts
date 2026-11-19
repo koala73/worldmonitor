@@ -37,8 +37,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "New York Times World",
-          "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
-          "newestFirst": true
+          "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
         },
         {
           "name": "Washington Post World",
