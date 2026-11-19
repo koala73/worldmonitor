@@ -167,34 +167,57 @@ export function sectionFailureKey(label, sectionLabel) {
   return `bundle:section-failure:${label}:${sectionLabel}`;
 }
 
+export function sectionDeferralKey(label, sectionLabel) {
+  return `bundle:section-deferral:${label}:${sectionLabel}`;
+}
+
 /**
- * Record a section's failed run so a later stall can name its cause.
+ * TTL for a section's outcome records: outlives the 2x-interval stall
+ * threshold with a full interval to spare.
+ */
+export function sectionOutcomeTtlSeconds(section) {
+  return Math.ceil(Math.max(DAY, section.intervalMs * (STALL_AGE_INTERVAL_MULTIPLE + 1)) / 1000);
+}
+
+/**
+ * Record each section's failed runs and deferrals so a later stall can name
+ * its cause.
  *
  * The stall guard below sees only seed-meta age, and the age looks the same
  * whether the section lost every budget race or was admitted and failed at the
  * source on every tick. Both produced the same "starvation" line on
  * seed-bundle-macro: Amman on 2026-11-16 (#10833) and Food-MIT on 2026-11-19,
- * when viwanda.go.tz returned HTTP 500 site-wide. Only failures are written; a
- * later success advances seed-meta past this record, which retires it. The
- * TTL outlives the 2x-interval stall threshold with a full interval to spare.
+ * when viwanda.go.tz returned HTTP 500 site-wide. A failure alone does not
+ * settle it: a section can fail once, its upstream can recover, and it can
+ * then lose every budget race. So deferrals are recorded too, and a stall is
+ * blamed on the source only when nothing deferred the section after its last
+ * failed run. A later success advances seed-meta past both records, which
+ * retires them. All writes go out in one pipeline at the end of the tick.
  */
-async function writeSectionFailure(label, section, record) {
-  if (!REDIS_URL || !REDIS_TOKEN) return;
-  const ttlSeconds = Math.ceil(Math.max(DAY, section.intervalMs * (STALL_AGE_INTERVAL_MULTIPLE + 1)) / 1000);
+async function writeSectionOutcomes(label, commands) {
+  if (!commands.length || !REDIS_URL || !REDIS_TOKEN) return;
   try {
-    const resp = await fetch(REDIS_URL, {
+    const resp = await fetch(`${REDIS_URL}/pipeline`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${REDIS_TOKEN}`,
         'Content-Type': 'application/json',
         'User-Agent': 'worldmonitor-bundle-runner/1.0',
       },
-      body: JSON.stringify(['SET', sectionFailureKey(label, section.label), JSON.stringify(record), 'EX', ttlSeconds]),
+      body: JSON.stringify(commands),
       signal: AbortSignal.timeout(REDIS_READ_TIMEOUT_MS),
     });
-    if (!resp.ok) console.warn(`  [${section.label}] failure record write failed: HTTP ${resp.status}`);
+    if (!resp.ok) {
+      console.warn(`[Bundle:${label}] section outcome records not written: HTTP ${resp.status}`);
+      return;
+    }
+    const replies = await resp.json().catch(() => null);
+    const rejected = Array.isArray(replies)
+      ? commands.filter((_, i) => replies[i]?.result !== 'OK').map(command => command[1])
+      : commands.map(command => command[1]);
+    if (rejected.length) console.warn(`[Bundle:${label}] section outcome records not written: ${rejected.join(', ')}`);
   } catch (err) {
-    console.warn(`  [${section.label}] failure record write failed: ${err instanceof Error ? err.message : err}`);
+    console.warn(`[Bundle:${label}] section outcome records not written: ${err instanceof Error ? err.message : err}`);
   }
 }
 
@@ -697,8 +720,11 @@ export async function runBundle(label, sections, opts = {}) {
     : null;
 
   let ran = 0, skipped = 0, deferred = 0, failed = 0, gracefulFailed = 0, stalled = 0, publishBlocked = 0;
-  // Written in the background so a slow Redis never eats section budget.
-  const failureWrites = [];
+  // Sent in one pipeline after the loop, so Redis never eats section budget.
+  const outcomeWrites = [];
+  const recordOutcome = (key, section, record) => {
+    outcomeWrites.push(['SET', key, JSON.stringify(record), 'EX', sectionOutcomeTtlSeconds(section)]);
+  };
   const stalledSections = [];
 
   let disabled = 0;
@@ -769,6 +795,7 @@ export async function runBundle(label, sections, opts = {}) {
         stalledSections.push({ section, fetchedAt: freshness.fetchedAt, ageMs: Date.now() - freshness.fetchedAt });
         stalled++;
       }
+      recordOutcome(sectionDeferralKey(label, section.label), section, { at: Date.now() });
       continue;
     }
 
@@ -820,32 +847,47 @@ export async function runBundle(label, sections, opts = {}) {
       if (status === 'GRACEFUL_FAIL') gracefulFailed++;
       else if (status === 'PUBLISH_BLOCKED') publishBlocked++;
       else failed++;
-      failureWrites.push(writeSectionFailure(label, section, {
+      recordOutcome(sectionFailureKey(label, section.label), section, {
         at: Date.now(),
         status,
         reason: (result.reason || 'unknown').replace(/\s+/g, ' '),
-      }));
+      });
     }
   }
 
-  await Promise.all(failureWrites);
+  // Read before this tick's records are written, so the deferral that made
+  // the stall does not count as a deferral after the failure.
   const stallCauses = await Promise.all(stalledSections.map(async (stall) => {
-    const record = await readRedisKey(sectionFailureKey(label, stall.section.label));
+    const [failure, deferral] = await Promise.all([
+      readRedisKey(sectionFailureKey(label, stall.section.label)),
+      readRedisKey(sectionDeferralKey(label, stall.section.label)),
+    ]);
     // Only a failure after the last good fetch explains the age. An older one
     // was followed by a success, so the section has been starved since.
-    return Number.isFinite(record?.at) && record.at > stall.fetchedAt ? record : null;
+    if (!Number.isFinite(failure?.at) || failure.at <= stall.fetchedAt) return null;
+    const deferredAfter = Number.isFinite(deferral?.at) && deferral.at > failure.at ? deferral.at : null;
+    return { failure, deferredAfter };
   }));
+  await writeSectionOutcomes(label, outcomeWrites);
   let failingAtSource = 0;
   for (const [i, { section, ageMs }] of stalledSections.entries()) {
     const ageMin = Math.round(ageMs / 60_000);
     const intervalMin = Math.round(section.intervalMs / 60_000);
     const head = `  [${section.label}] Deferred, but its data is ${ageMin}min old — over ${STALL_AGE_INTERVAL_MULTIPLE}x its ${intervalMin}min interval. `;
     const cause = stallCauses[i];
-    if (cause) {
+    const lastRun = cause
+      ? `its last admitted run at ${new Date(cause.failure.at).toISOString()} ended ${cause.failure.status} (${cause.failure.reason})`
+      : '';
+    if (cause && cause.deferredAfter == null) {
       failingAtSource++;
       console.error(
-        `${head}This is a failing source, not starvation: its last admitted run at ${new Date(cause.at).toISOString()} `
-        + `ended ${cause.status} (${cause.reason}). Check the upstream before changing budget or order.`,
+        `${head}This is a failing source, not starvation: ${lastRun}, and no tick has deferred it since. `
+        + 'Check the upstream before changing budget or order.',
+      );
+    } else if (cause) {
+      console.error(
+        `${head}This is starvation, not pressure: ${lastRun}, and a tick deferred it again at `
+        + `${new Date(cause.deferredAfter).toISOString()}. Check both the upstream and the budget.`,
       );
     } else {
       console.error(`${head}This is starvation, not pressure: the section keeps losing the budget race while the bundle stays green.`);
