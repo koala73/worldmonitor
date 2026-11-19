@@ -24,7 +24,15 @@
 import type { Clerk } from '@clerk/clerk-js';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { EULA_PATH, PRIVACY_PATH, absoluteLegalUrl } from '../../shared/legal';
+import {
+  SIGN_UP_CODE_SUBTITLE,
+  installSignUpSignInEscape,
+  createSignUpToSignInSwitch,
+  type SignUpToSignInSwitch,
+} from '../../shared/clerk-sign-up-escape';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
+import { isDesktopRuntime } from '@/config/desktop-runtime';
+import { showToast } from '@/utils/toast';
 
 type ClerkInstance = Clerk;
 type ClerkSession = NonNullable<ClerkInstance['session']>;
@@ -50,6 +58,18 @@ export function isClerkAuthEnabled(): boolean {
 }
 
 let clerkInstance: ClerkInstance | null = null;
+/** True once Frontend API calls go through the desktop Rust relay (#9396). */
+let desktopRelayActive = false;
+const PRODUCTION_CLERK_FAPI_HOST = 'clerk.worldmonitor.app';
+
+/**
+ * Only production desktop builds sign in through the browser: the page and
+ * the sign-in ticket belong to the production Clerk instance. A development
+ * build (pk_test key) keeps the in-app card. Exported for testing.
+ */
+export function usesDesktopBrowserSignIn(desktopRelay: boolean, fapiHost: string): boolean {
+  return desktopRelay && fapiHost === PRODUCTION_CLERK_FAPI_HOST;
+}
 let loadPromise: Promise<void> | null = null;
 let loadScheduled = false;
 const pendingSubscribers: Array<() => void> = [];
@@ -165,11 +185,24 @@ function getAfterSignOutUrl(): string {
 // is absent (mirrors stale-bundle-check.ts's __BUILD_HASH__ handling).
 const CLERK_JS_VERSION = typeof __CLERK_JS_VERSION__ !== 'undefined' ? __CLERK_JS_VERSION__ : '';
 
-// @clerk/ui major paired with @clerk/clerk-js v6. The UI controller ships in a
-// SEPARATE package from the (headless) SDK and is loaded from the same Frontend
-// API; its UMD bundle exposes `window.__internal_ClerkUICtor`, which we pass to
-// `clerk.load()`. Bump this alongside any @clerk/clerk-js MAJOR upgrade.
-const CLERK_UI_VERSION = '1';
+// @clerk/ui version paired with @clerk/clerk-js v6. The UI controller ships in
+// a SEPARATE package from the (headless) SDK and is loaded from the same
+// Frontend API; its UMD bundle exposes `window.__internal_ClerkUICtor`, which
+// we pass to `clerk.load()`.
+//
+// Pinned EXACTLY (#7352): a bare major resolved at request time, so Clerk
+// could change or remove parts of the prebuilt SignIn/UserProfile surfaces —
+// including passkey management — with no repo change, no PR, and no CI
+// signal. Upgrades are now deliberate: bump this constant (and the
+// @clerk/clerk-js pin in package.json) together, then re-verify the auth
+// smoke against the SERVED bundles, not node_modules.
+//
+// The initial pins (clerk-js 6.13.0 + ui 1.42.4) are the pair production was
+// already serving when the bare range and bare major were removed, so pinning
+// changed no behavior. The two version lines do not move in lockstep here
+// (clerk-js 6.13.x, ui 1.42.x), and that pair is the one that has run in
+// production; do not assume matching minors are required or safe.
+const CLERK_UI_VERSION = '1.42.4';
 
 // The SDK UMD bundle, loaded with a `data-clerk-publishable-key` attribute,
 // auto-creates a (not-yet-loaded) Clerk instance on `window.Clerk` — it exposes
@@ -197,6 +230,16 @@ function clerkFapiHost(publishableKey: string): string {
   } catch {
     return '';
   }
+}
+
+/**
+ * Load options that differ on desktop. Clerk's production Frontend API rejects
+ * the desktop WebView origins (`400 origin_invalid`, #9396), so desktop runs
+ * clerk-js in native mode: no cookies, Frontend API calls through the Rust
+ * relay (see clerk-desktop-relay.ts). Exported for testing.
+ */
+export function clerkRuntimeLoadOptions(desktop: boolean): { standardBrowser?: false } {
+  return desktop ? { standardBrowser: false } : {};
 }
 
 let umdLoadPromise: Promise<void> | null = null;
@@ -263,6 +306,25 @@ function loadClerkUmd(publishableKey: string): Promise<void> {
  * (mcp-grant page bootstrap, getClerkToken on first authenticated request).
  * Idempotent — repeated calls return the same in-flight promise.
  */
+/**
+ * Clerk's modal renders internal steps ("Use another method") as anchors whose
+ * href is a virtual-router path such as `/CLERK-ROUTER/VIRTUAL/sign-in/factor-one`.
+ * Clerk's React handler cancels the click and routes inside the modal, but a
+ * click stopped before it reaches React (1Password's passkey prompt does this)
+ * lets the browser follow the href to a 404. Cancel only the default action on
+ * the window capture phase; propagation is untouched, so Clerk still routes.
+ */
+export function installClerkVirtualLinkGuard(target: Window): () => void {
+  const guard = (event: MouseEvent) => {
+    const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
+    if (anchor instanceof HTMLAnchorElement && anchor.pathname.startsWith('/CLERK-ROUTER/')) {
+      event.preventDefault();
+    }
+  };
+  target.addEventListener('click', guard, true);
+  return () => target.removeEventListener('click', guard, true);
+}
+
 export async function initClerk(): Promise<void> {
   if (clerkInstance) return;
   if (loadPromise) return loadPromise;
@@ -272,6 +334,12 @@ export async function initClerk(): Promise<void> {
   }
   loadPromise = (async () => {
     try {
+      let desktopRelay = false;
+      if (isDesktopRuntime()) {
+        const { installClerkDesktopRelay } = await import('@/services/clerk-desktop-relay');
+        desktopRelay = installClerkDesktopRelay(clerkFapiHost(PUBLISHABLE_KEY));
+      }
+      desktopRelayActive = desktopRelay;
       await loadClerkUmd(PUBLISHABLE_KEY);
       const clerk = getClerkInstance();
       if (!clerk) throw new Error('[clerk] window.Clerk unavailable after load');
@@ -284,10 +352,16 @@ export async function initClerk(): Promise<void> {
           userButton: {
             action__manageAccount: 'Profile & security',
           },
+          signUp: {
+            emailCode: { subtitle: SIGN_UP_CODE_SUBTITLE },
+          },
         },
         afterSignOutUrl: getAfterSignOutUrl(),
+        ...clerkRuntimeLoadOptions(desktopRelay),
       } as Parameters<typeof clerk.load>[0]);
       clerkInstance = clerk;
+      installClerkVirtualLinkGuard(window);
+      installSignUpEscapeToSignIn(clerk);
       attachPendingSubscribers();
     } catch (e) {
       loadPromise = null; // allow retry on next call
@@ -402,6 +476,37 @@ function captureClerkSurfaceFailure(action: string, err: unknown, reason: string
   });
 }
 
+export interface ClerkSurfaceFailureEffects {
+  notify: (message: string) => void;
+  capture: (action: string, err: unknown, reason: string) => void;
+  log: (message: string, err: unknown) => void;
+}
+
+const defaultSurfaceFailureEffects: ClerkSurfaceFailureEffects = {
+  notify: (message) => {
+    if (typeof document !== 'undefined') showToast(message, 6000);
+  },
+  capture: captureClerkSurfaceFailure,
+  log: (message, err) => console.error(message, err),
+};
+
+/**
+ * A Sign in / Create account click that cannot open Clerk must say so. Before
+ * #9396 the failure only reached the console and Sentry, so the button looked
+ * dead. Exported for testing.
+ */
+export function reportClerkSurfaceFailure(
+  action: 'open-sign-in' | 'open-sign-up',
+  reason: string,
+  err: unknown,
+  effects: ClerkSurfaceFailureEffects = defaultSurfaceFailureEffects,
+): void {
+  effects.log(`[clerk] ${action} failed (${reason}):`, err);
+  effects.capture(action, err, reason);
+  const what = action === 'open-sign-in' ? 'Sign in' : 'Create account';
+  effects.notify(`${what} could not open. Check your connection and try again.`);
+}
+
 function scheduleNextFrame(cb: () => void): void {
   if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => cb());
   else setTimeout(cb, 50);
@@ -446,10 +551,18 @@ export function runClerkSurfaceOpen(
 }
 
 function openLoadedClerkSignIn(): void {
+  // Never pass withSignUp here. Under strict enumeration protection the served
+  // Clerk UI turns an unknown email into a "no account found" notice instead of a
+  // sign-up, and hides the footer Sign up link that new visitors need.
   clerkInstance?.openSignIn({ appearance: getAppearance() });
 }
 
 function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
+  // With no key and nothing loaded, Clerk will never load.
+  if (!clerkInstance && !PUBLISHABLE_KEY) {
+    if (typeof document !== 'undefined') showToast('Sign-in is not available in this build.', 6000);
+    return;
+  }
   const open = action === 'open-sign-in'
     ? openLoadedClerkSignIn
     : () => clerkInstance?.openSignUp({ appearance: getAppearance() });
@@ -458,25 +571,71 @@ function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
   // (initClerk rejected: dynamic-import 4xx/5xx, transient network) — querying
   // by `reason` must not mix the two or it dilutes the race alert signal.
   const onFail = (reason: string) => (err: unknown): void => {
-    console.error(`[clerk] ${action} failed (${reason}):`, err);
-    captureClerkSurfaceFailure(action, err, reason);
+    reportClerkSurfaceFailure(action, reason, err);
   };
   const openClerk = (): void => runClerkSurfaceOpen(open, onFail('ui-components-not-ready'));
   // The resume hook needs the loaded client, so it runs after the force-load too.
   const openSurface = (): void => {
-    if (action === 'open-sign-up' && signUpResumeHook?.(openClerk)) return;
+    // Header Sign In is the only account action (#10464), so a mid-signup
+    // click on it still resumes. The hook treats Sign In conservatively
+    // (live, undismissed code only, never a resend) so it cannot trap a
+    // returning user away from Clerk's sign-in form.
+    const intent = action === 'open-sign-in' ? 'sign-in' : 'sign-up';
+    if (signUpResumeHook?.(openClerk, intent)) return;
     openClerk();
   };
-  if (clerkInstance) {
+  // Desktop: passkeys and Google cannot run in the WebView, so sign-in and
+  // sign-up happen on www.worldmonitor.app in the default browser, with the
+  // in-app card as the fallback.
+  const openForRuntime = (): void => {
+    if (PUBLISHABLE_KEY && usesDesktopBrowserSignIn(desktopRelayActive, clerkFapiHost(PUBLISHABLE_KEY))) {
+      void startDesktopBrowserSignIn(openSurface).catch(onFail('desktop-browser-sign-in'));
+      return;
+    }
     openSurface();
+  };
+  if (clerkInstance) {
+    openForRuntime();
     return;
   }
   // Deferred-load fast path: user clicked before the idle callback fired.
   // Force the load, then open once the SDK is live so the click never
   // silently no-ops.
   void initClerk()
-    .then(openSurface)
+    .then(openForRuntime)
     .catch(onFail('clerk-load-failed'));
+}
+
+let desktopBrowserSignIn: ((deps: import('@/services/desktop-browser-sign-in').BrowserSignInDeps) => Promise<unknown>) | null = null;
+
+async function startDesktopBrowserSignIn(openInApp: () => void): Promise<void> {
+  const clerk = clerkInstance;
+  if (!clerk || !PUBLISHABLE_KEY) return;
+  const [{ createSingleFlightSignIn }, { invokeTauri }, { showDesktopSignInWaiting }] = await Promise.all([
+    import('@/services/desktop-browser-sign-in'),
+    import('@/services/tauri-bridge'),
+    import('@/utils/desktop-sign-in-waiting'),
+  ]);
+  desktopBrowserSignIn ??= createSingleFlightSignIn(() => showToast('Finish signing in in your browser.', 6000));
+  await desktopBrowserSignIn({
+    fapiHost: clerkFapiHost(PUBLISHABLE_KEY),
+    start: (fapiHost) => invokeTauri('start_desktop_browser_sign_in', { fapiHost }),
+    finish: () => invokeTauri('finish_desktop_browser_sign_in'),
+    cancel: () => invokeTauri('cancel_desktop_browser_sign_in'),
+    reloadClient: async () => {
+      // Rust swapped in a new client; drop tokens minted for the old one.
+      clearClerkTokenCache();
+      await clerk.client?.reload();
+    },
+    setActive: async (sessionId) => {
+      await clerk.setActive({ session: sessionId });
+    },
+    notify: (message) => {
+      if (typeof document !== 'undefined') showToast(message, 6000);
+    },
+    openInApp,
+    showWaiting: showDesktopSignInWaiting,
+  });
 }
 
 /** Open the Clerk sign-in modal. */
@@ -491,6 +650,10 @@ export function isClerkReady(): boolean {
 /** True when Clerk's sign-in (or other auth) modal is already on screen. */
 export function isClerkSignInOpen(): boolean {
   if (!clerkInstance || typeof document === 'undefined') return false;
+  // Between closing sign-up and opening sign-in no Clerk form is on screen,
+  // but sign-in is on its way: dismissal watchers (MCP grant) must not read
+  // that gap as a cancel.
+  if (signUpEscapeSwitch?.inFlight()) return true;
   try {
     return Boolean(document.querySelector(
       '.cl-modalBackdrop, .cl-modal, [data-clerk-component="SignIn"]',
@@ -662,11 +825,48 @@ export function openSignUp(): void {
 }
 
 /**
- * Consulted by `openSignUp()` once Clerk is loaded. Returning true means the
- * resume surface took the click; `openClerkSignUp` is the fallback it may call
- * later if resuming fails.
+ * Runs when the customer leaves sign-up for sign-in from the sign-up code card,
+ * before sign-in opens. The resume controller releases its attempt here, or the
+ * next Sign In click would resume the sign-up code card again.
  */
-export type SignUpResumeHook = (openClerkSignUp: () => void) => boolean;
+let signUpEscapeHook: (() => void) | null = null;
+let signUpEscapeSwitch: SignUpToSignInSwitch | null = null;
+
+export function registerSignUpEscapeHook(hook: (() => void) | null): void {
+  signUpEscapeHook = hook;
+}
+
+/**
+ * Add "Already have an account? Sign in" to Clerk's sign-up code card on every
+ * page that loads Clerk. Under strict enumeration protection an existing
+ * account typed into sign-up reaches that card and never gets a code.
+ */
+function installSignUpEscapeToSignIn(clerk: ClerkInstance): void {
+  if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return;
+  const escapeSwitch = createSignUpToSignInSwitch(clerk);
+  signUpEscapeSwitch = escapeSwitch;
+  installSignUpSignInEscape(document, () => {
+    if (escapeSwitch.inFlight()) return;
+    const emailAddress = clerk.client?.signUp?.emailAddress ?? null;
+    signUpEscapeHook?.();
+    escapeSwitch.run(() => {
+      runClerkSurfaceOpen(
+        () => clerk.openSignIn({
+          appearance: getAppearance(),
+          ...(emailAddress ? { initialValues: { emailAddress } } : {}),
+        }),
+        (err) => reportClerkSurfaceFailure('open-sign-in', 'sign-up-escape', err),
+      );
+    });
+  });
+}
+
+/**
+ * Consulted by `openSignIn()` / `openSignUp()` once Clerk is loaded. Returning
+ * true means the resume surface took the click; the open callback is the
+ * fallback it may call later if resuming fails.
+ */
+export type SignUpResumeHook = (openClerkSignUp: () => void, intent: 'sign-in' | 'sign-up') => boolean;
 
 let signUpResumeHook: SignUpResumeHook | null = null;
 
@@ -730,6 +930,7 @@ export function clearClerkTokenCache(): void {
   _cachedSession = null;
   _tokenInflight = null;
   _tokenGen++;
+  _lastRejectedToken = null;
   _clerkClockState = { kind: 'uncalibrated' };
 }
 
@@ -750,6 +951,11 @@ let _cachedTokenAt = 0;
 let _cachedSession: ClerkSession | null = null;
 let _tokenInflight: Promise<string | null> | null = null;
 let _tokenGen = 0;
+// Bumped by each new edge rejection. A fetch that started under an older epoch
+// still returns to its own callers but may no longer write the cache or the
+// clock state, so it cannot restore what the rejection invalidated.
+let _tokenEpoch = 0;
+let _lastRejectedToken: string | null = null;
 // Positive means the client clock is behind the issuer clock. This is measured
 // from a token fetched with skipCache so a stale Clerk token cannot masquerade
 // as a clock offset. Keep the modes explicit: a trusted zero skew is different
@@ -789,20 +995,28 @@ function canCacheClerkToken(state: ClerkClockState): boolean {
 
 type ClerkTokenClaimsMs = { exp: number | null; iat: number | null };
 
-function clerkTokenClaimsMs(token: string | null): ClerkTokenClaimsMs {
+function clerkTokenClaims(token: string | null): Record<string, unknown> | null {
   const payload = token?.split('.')[1];
-  if (!payload) return { exp: null, iat: null };
+  if (!payload) return null;
   try {
     const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const claims = JSON.parse(
-      atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)),
-    ) as Record<string, unknown>;
-    const toEpochMs = (value: unknown): number | null =>
-      typeof value === 'number' && Number.isFinite(value) ? value * 1_000 : null;
-    return { exp: toEpochMs(claims.exp), iat: toEpochMs(claims.iat) };
+    const claims: unknown = JSON.parse(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)));
+    return claims && typeof claims === 'object' ? claims as Record<string, unknown> : null;
   } catch {
-    return { exp: null, iat: null };
+    return null;
   }
+}
+
+function clerkTokenClaimsMs(token: string | null): ClerkTokenClaimsMs {
+  const claims = clerkTokenClaims(token);
+  const toEpochMs = (value: unknown): number | null =>
+    typeof value === 'number' && Number.isFinite(value) ? value * 1_000 : null;
+  return { exp: toEpochMs(claims?.exp), iat: toEpochMs(claims?.iat) };
+}
+
+function clerkTokenSubject(token: string | null): string | null {
+  const sub = clerkTokenClaims(token)?.sub;
+  return typeof sub === 'string' && sub !== '' ? sub : null;
 }
 
 /**
@@ -884,6 +1098,31 @@ async function fetchClerkToken(session: ClerkSession, skipCache = false): Promis
   }
 }
 
+/**
+ * Clerk's standard session token, uncached and with no JWT template.
+ *
+ * Only the session token carries `sid`; a JWT-template token (the `convex`
+ * one `getClerkToken()` prefers) gets just `azp, exp, iat, iss, jti, nbf,
+ * sub`. The routes that trade a bearer for a credential outliving it (desktop
+ * sign-in, the Pro MCP grant) confirm that `sid` is still live at Clerk, so
+ * they must be sent this token. Null when nobody is signed in.
+ */
+export async function getClerkSessionToken(): Promise<string | null> {
+  const session = clerkInstance?.session;
+  if (!session) return null;
+  const myGen = _tokenGen;
+  try {
+    // A fresh token: Clerk's cache may hand back one with seconds left, and the
+    // route this feeds still has Clerk calls of its own to make before it
+    // reads the claims. These are one-shot user clicks, not a hot path.
+    const token = await session.getToken({ skipCache: true });
+    if (myGen !== _tokenGen || clerkInstance?.session !== session) return null;
+    return token;
+  } catch {
+    return null;
+  }
+}
+
 export async function getClerkToken(): Promise<string | null> {
   const now = Date.now();
   const clockState = _clerkClockState;
@@ -904,6 +1143,7 @@ export async function getClerkToken(): Promise<string | null> {
   if (_tokenInflight) return _tokenInflight;
 
   const myGen = _tokenGen;
+  const myEpoch = _tokenEpoch;
   const promise: Promise<string | null> = (async () => {
     if (!clerkInstance && PUBLISHABLE_KEY) {
       try { await initClerk(); } catch { /* Clerk load failed, proceed with null */ }
@@ -991,12 +1231,14 @@ export async function getClerkToken(): Promise<string | null> {
       // flight, this JWT belongs to the previous user. Drop it on the
       // floor — do not cache, do not return.
       if (myGen !== _tokenGen || clerkInstance?.session !== session) return null;
-      if (token === null && nextClockState.kind === 'retry-after') {
+      // An edge rejection since this fetch began owns the cache and clock now.
+      const mayCommit = myEpoch === _tokenEpoch;
+      if (mayCommit && token === null && nextClockState.kind === 'retry-after') {
         _cachedToken = null;
         _cachedTokenAt = 0;
         _cachedSession = null;
       }
-      _clerkClockState = nextClockState;
+      if (mayCommit) _clerkClockState = nextClockState;
       const fetchedAt = Date.now();
       if (shouldReuseCachedClerkTokenWithExpiry({
         token,
@@ -1006,7 +1248,7 @@ export async function getClerkToken(): Promise<string | null> {
       }, tokenClaims.exp)) {
         // Cache only after a trusted clock sample exists, or after the opaque
         // token path has explicitly opted back into the legacy flat TTL.
-        if (canCacheClerkToken(nextClockState)) {
+        if (mayCommit && canCacheClerkToken(nextClockState)) {
           _cachedToken = token;
           _cachedTokenAt = fetchedAt;
           _cachedSession = session;
@@ -1028,11 +1270,49 @@ export async function getClerkToken(): Promise<string | null> {
       // If clearClerkTokenCache() fired during our await it has already
       // nulled _tokenInflight AND bumped _tokenGen; a newer caller may
       // have assigned a fresh promise that we must not clobber.
-      if (myGen === _tokenGen) _tokenInflight = null;
+      // A rejection detaches the in-flight fetch the same way, by epoch.
+      if (myGen === _tokenGen && myEpoch === _tokenEpoch) _tokenInflight = null;
     }
   })();
   _tokenInflight = promise;
   return promise;
+}
+
+/**
+ * A replacement for a token the edge just refused with 401, or null when Clerk
+ * has nothing different to offer.
+ *
+ * The client judged `rejected` unexpired, so either its clock sample is off or
+ * the request sat between signing and the wire (a frozen tab resumed). The
+ * first rejection of a token drops it from the cache, resets the clock state so
+ * `getClerkToken()` forces a fresh, uncached token and re-samples the skew, and
+ * bumps the epoch so a fetch already in flight (which may hold the same token
+ * or a stale clock sample) is neither joined nor allowed to write back.
+ *
+ * No generation bump: a burst of sibling requests all 401 on the same token,
+ * and the generation is the sign-out signal that makes in-flight callers get
+ * null. Later rejections of the same token join the first one's refresh.
+ *
+ * The replacement must belong to the same Clerk user as `rejected`. A 401 that
+ * lands after an account switch must not replay the first user's request with
+ * the second user's token; an unreadable subject fails closed.
+ */
+export async function refreshClerkTokenAfterRejection(rejected: string): Promise<string | null> {
+  if (rejected !== _lastRejectedToken) {
+    _lastRejectedToken = rejected;
+    _tokenEpoch++;
+    _tokenInflight = null;
+    if (_cachedToken === rejected) {
+      _cachedToken = null;
+      _cachedTokenAt = 0;
+      _cachedSession = null;
+    }
+    _clerkClockState = { kind: 'uncalibrated' };
+  }
+  const next = await getClerkToken();
+  if (!next || next === rejected) return null;
+  const subject = clerkTokenSubject(rejected);
+  return subject !== null && clerkTokenSubject(next) === subject ? next : null;
 }
 
 export function __setClerkInstanceForTests(instance: ClerkInstance | null): void {
@@ -1085,9 +1365,15 @@ export function subscribeClerk(callback: () => void): () => void {
  * Mount Clerk's UserButton component into a DOM element.
  * Returns an unmount function.
  */
+/** A custom avatar-menu entry. The caller translates the label, so this module stays i18n-free. */
+export interface AccountMenuEntry {
+  readonly label: string;
+  readonly onClick: () => void;
+}
+
 export interface UserButtonMenuActions {
-  onBillingClick?: () => void;
-  onSettingsClick?: () => void;
+  readonly billing?: AccountMenuEntry;
+  readonly settings?: AccountMenuEntry;
 }
 
 type UserButtonProps = NonNullable<Parameters<ClerkInstance['mountUserButton']>[1]>;
@@ -1126,18 +1412,18 @@ function mountMenuIcon(el: HTMLDivElement, kind: MenuIconKind): void {
 
 export function createAccountMenuItems(actions: UserButtonMenuActions): CustomMenuItem[] {
   const items: CustomMenuItem[] = [];
-  if (actions.onBillingClick) {
+  if (actions.billing) {
     items.push({
-      label: 'Plan & billing',
-      onClick: actions.onBillingClick,
+      label: actions.billing.label,
+      onClick: actions.billing.onClick,
       mountIcon: (el) => mountMenuIcon(el, 'billing'),
       unmountIcon: (el) => el?.replaceChildren(),
     });
   }
-  if (actions.onSettingsClick) {
+  if (actions.settings) {
     items.push({
-      label: 'Settings',
-      onClick: actions.onSettingsClick,
+      label: actions.settings.label,
+      onClick: actions.settings.onClick,
       mountIcon: (el) => mountMenuIcon(el, 'settings'),
       unmountIcon: (el) => el?.replaceChildren(),
     });

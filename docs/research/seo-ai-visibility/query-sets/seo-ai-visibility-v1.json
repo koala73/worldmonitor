@@ -1,0 +1,583 @@
+{
+  "schemaVersion": 1,
+  "querySetId": "seo-ai-visibility-v1",
+  "reviewedAt": "2026-07-27",
+  "reviewNotes": "Twenty-five English-language decision queries reviewed against World Monitor's current page families. Reference entities are comparison candidates or primary sources to inspect; their inclusion is not an endorsement or a ranking claim.",
+  "queries": [
+    {
+      "id": "q01",
+      "query": "best real-time global intelligence dashboard for geopolitical risk monitoring",
+      "intent": "category_definition",
+      "targetAudience": "Security analysts and cross-domain risk teams",
+      "targetPage": {
+        "family": "homepage",
+        "url": "https://www.worldmonitor.app/"
+      },
+      "conversionGoal": "Launch the dashboard",
+      "referenceEntities": [
+        {
+          "role": "competitor",
+          "name": "Dataminr",
+          "url": "https://www.dataminr.com/"
+        },
+        {
+          "role": "competitor",
+          "name": "Recorded Future",
+          "url": "https://www.recordedfuture.com/"
+        }
+      ]
+    },
+    {
+      "id": "q02",
+      "query": "open-source OSINT dashboard for global events",
+      "intent": "category_definition",
+      "targetAudience": "OSINT practitioners, journalists, and researchers",
+      "targetPage": {
+        "family": "dashboard",
+        "url": "https://www.worldmonitor.app/dashboard"
+      },
+      "conversionGoal": "Open the live map and inspect a source",
+      "referenceEntities": [
+        {
+          "role": "competitor",
+          "name": "Liveuamap",
+          "url": "https://liveuamap.com/"
+        },
+        {
+          "role": "source",
+          "name": "GDELT Project",
+          "url": "https://www.gdeltproject.org/"
+        }
+      ]
+    },
+    {
+      "id": "q03",
+      "query": "what is a global intelligence dashboard",
+      "intent": "category_definition",
+      "targetAudience": "New evaluators and non-specialist decision-makers",
+      "targetPage": {
+        "family": "blog",
+        "url": "https://www.worldmonitor.app/blog/posts/what-is-worldmonitor-real-time-global-intelligence/"
+      },
+      "conversionGoal": "Continue from the explainer to the dashboard",
+      "referenceEntities": [
+        {
+          "role": "competitor",
+          "name": "BlackRock Geopolitical Risk Dashboard",
+          "url": "https://www.blackrock.com/corporate/insights/blackrock-investment-institute/interactive-charts/geopolitical-risk-dashboard"
+        },
+        {
+          "role": "source",
+          "name": "World Monitor GitHub repository",
+          "url": "https://github.com/koala73/worldmonitor"
+        }
+      ]
+    },
+    {
+      "id": "q04",
+      "query": "real-time situational awareness map for conflicts shipping and markets",
+      "intent": "category_definition",
+      "targetAudience": "Operations and crisis-management teams",
+      "targetPage": {
+        "family": "homepage",
+        "url": "https://www.worldmonitor.app/"
+      },
+      "conversionGoal": "Launch the dashboard with relevant layers",
+      "referenceEntities": [
+        {
+          "role": "competitor",
+          "name": "ACLED Explorer",
+          "url": "https://acleddata.com/explorer/"
+        },
+        {
+          "role": "competitor",
+          "name": "MarineTraffic",
+          "url": "https://www.marinetraffic.com/"
+        }
+      ]
+    },
+    {
+      "id": "q05",
+      "query": "geopolitical monitoring methodology and data sources",
+      "intent": "category_definition",
+      "targetAudience": "Analysts validating provenance and methodology",
+      "targetPage": {
+        "family": "documentation",
+        "url": "https://www.worldmonitor.app/docs/data-sources"
+      },
+      "conversionGoal": "Review methodology and source documentation",
+      "referenceEntities": [
+        {
+          "role": "source",
+          "name": "ACLED methodology",
+          "url": "https://acleddata.com/methodology/"
+        },
+        {
+          "role": "source",
+          "name": "UCDP methodology",
+          "url": "https://ucdp.uu.se/methodology"
+        }
+      ]
+    },
+    {
+      "id": "q06",
+      "query": "country risk monitoring dashboard for analysts",
+      "intent": "use_case",
+      "targetAudience": "Country-risk, macro, and supply-chain analysts",
+      "targetPage": {
+        "family": "country_pages",
+        "url": "https://www.worldmonitor.app/countries/"
+      },
+      "conversionGoal": "Open a country page and continue into the dashboard",
+      "referenceEntities": [
+        {
+          "role": "competitor",
+          "name": "S&P Global Country Risk",
+          "url": "https://www.spglobal.com/market-intelligence/en/solutions/products/country-risk"
+        },
+        {
+          "role": "source",
+          "name": "World Bank Worldwide Governance Indicators",
+          "url": "https://www.worldbank.org/en/publication/worldwide-governance-indicators"
+        }
+      ]
+    },
+    {
+      "id": "q07",
+      "query": "Strait of Hormuz live traffic and disruption tracker",
+      "intent": "use_case",
+      "targetAudience": "Energy traders, maritime analysts, and logistics teams",
+      "targetPage": {
+        "family": "chokepoints",
+        "url": "https://www.worldmonitor.app/chokepoints/"
+      },
+      "conversionGoal": "Inspect live chokepoint status and open the dashboard",
+      "referenceEntities": [
+        {
+          "role": "competitor",
+          "name": "MarineTraffic",
+          "url": "https://www.marinetraffic.com/"
+        },
+        {
+          "role": "source",
+          "name": "IMF PortWatch",
+          "url": "https://portwatch.imf.org/"
+        }
+      ]
+    },
+    {
+      "id": "q08",
+      "query": "live geopolitical crisis tracker with sources",
+      "intent": "use_case",
+      "targetAudience": "Newsrooms, researchers, and crisis-response teams",
+      "targetPage": {
+        "family": "crises",
+        "url": "https://www.worldmonitor.app/crises/"
+      },
+      "conversionGoal": "Open a bounded crisis tracker and verify its sources",
+      "referenceEntities": [
+        {
+          "role": "competitor",
+          "name": "International Crisis Group CrisisWatch",
+          "url": "https://www.crisisgroup.org/crisiswatch"
+        },
+        {
+          "role": "competitor",
+          "name": "Liveuamap",
+          "url": "https://liveuamap.com/"
+        }
+      ]
+    },
+    {
+      "id": "q09",
+      "query": "airspace disruption checker for security teams",
+      "intent": "use_case",
+      "targetAudience": "Travel-security, aviation, and duty-of-care teams",
+      "targetPage": {
+        "family": "tools",
+        "url": "https://www.worldmonitor.app/tools/airspace-disruption-checker/"
+      },
+      "conversionGoal": "Run the checker and open the aviation dashboard context",
+      "referenceEntities": [
+        {
+          "role": "competitor",
+          "name": "Flightradar24",
+          "url": "https://www.flightradar24.com/"
+        },
+        {
+          "role": "source",
+          "name": "OpenSky Network",
+          "url": "https://opensky-network.org/"
+        }
+      ]
+    },
+    {
+      "id": "q10",
+      "query": "supply-chain early warning dashboard for chokepoints and country risk",
+      "intent": "use_case",
+      "targetAudience": "Procurement, logistics, and supply-chain risk teams",
+      "targetPage": {
+        "family": "blog",
+        "url": "https://www.worldmonitor.app/blog/posts/supply-chain-early-warning-dashboard-worldmonitor-api/"
+      },
+      "conversionGoal": "Review the workflow and start an API or dashboard path",
+      "referenceEntities": [
+        {
+          "role": "competitor",
+          "name": "Everstream Analytics",
+          "url": "https://www.everstream.ai/"
+        },
+        {
+          "role": "competitor",
+          "name": "Interos",
+          "url": "https://www.interos.ai/"
+        }
+      ]
+    },
+    {
+      "id": "q11",
+      "query": "geopolitical risk API with real-time global data",
+      "intent": "developer_agent",
+      "targetAudience": "Developers building risk and monitoring products",
+      "targetPage": {
+        "family": "developer_mcp",
+        "url": "https://www.worldmonitor.app/docs/api-reference"
+      },
+      "conversionGoal": "Review the API reference and pricing",
+      "referenceEntities": [
+        {
+          "role": "source",
+          "name": "GDELT API documentation",
+          "url": "https://www.gdeltproject.org/data.html"
+        },
+        {
+          "role": "source",
+          "name": "ACLED API documentation",
+          "url": "https://acleddata.com/acleddatanew/wp-content/uploads/dlm_uploads/2024/03/API-Documentation.pdf"
+        }
+      ]
+    },
+    {
+      "id": "q12",
+      "query": "MCP server for live geopolitical intelligence",
+      "intent": "developer_agent",
+      "targetAudience": "AI-agent developers and MCP client users",
+      "targetPage": {
+        "family": "developer_mcp",
+        "url": "https://www.worldmonitor.app/docs/mcp-overview"
+      },
+      "conversionGoal": "Connect an MCP client",
+      "referenceEntities": [
+        {
+          "role": "source",
+          "name": "Model Context Protocol",
+          "url": "https://modelcontextprotocol.io/"
+        },
+        {
+          "role": "source",
+          "name": "Anthropic MCP documentation",
+          "url": "https://docs.anthropic.com/en/docs/agents-and-tools/mcp"
+        }
+      ]
+    },
+    {
+      "id": "q13",
+      "query": "build a geopolitical risk agent with live world data",
+      "intent": "developer_agent",
+      "targetAudience": "Agent engineers and technical analysts",
+      "targetPage": {
+        "family": "blog",
+        "url": "https://www.worldmonitor.app/blog/posts/build-geopolitical-risk-agent-worldmonitor-mcp/"
+      },
+      "conversionGoal": "Follow the tutorial and connect MCP",
+      "referenceEntities": [
+        {
+          "role": "source",
+          "name": "OpenAI agents documentation",
+          "url": "https://platform.openai.com/docs/guides/agents"
+        },
+        {
+          "role": "source",
+          "name": "Anthropic tool use documentation",
+          "url": "https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview"
+        }
+      ]
+    },
+    {
+      "id": "q14",
+      "query": "REST API for conflicts markets shipping and aviation data",
+      "intent": "developer_agent",
+      "targetAudience": "Data engineers and application developers",
+      "targetPage": {
+        "family": "documentation",
+        "url": "https://www.worldmonitor.app/docs/api-reference"
+      },
+      "conversionGoal": "Inspect endpoint coverage and create an API integration",
+      "referenceEntities": [
+        {
+          "role": "source",
+          "name": "OpenSky Network API",
+          "url": "https://openskynetwork.github.io/opensky-api/"
+        },
+        {
+          "role": "source",
+          "name": "USGS Earthquake API",
+          "url": "https://earthquake.usgs.gov/fdsnws/event/1/"
+        }
+      ]
+    },
+    {
+      "id": "q15",
+      "query": "give Claude or GPT real-time geopolitical context",
+      "intent": "developer_agent",
+      "targetAudience": "AI product teams and advanced assistant users",
+      "targetPage": {
+        "family": "developer_mcp",
+        "url": "https://www.worldmonitor.app/docs/mcp-quickstart"
+      },
+      "conversionGoal": "Connect an assistant through MCP",
+      "referenceEntities": [
+        {
+          "role": "source",
+          "name": "OpenAI MCP documentation",
+          "url": "https://platform.openai.com/docs/mcp"
+        },
+        {
+          "role": "source",
+          "name": "Anthropic MCP documentation",
+          "url": "https://docs.anthropic.com/en/docs/agents-and-tools/mcp"
+        }
+      ]
+    },
+    {
+      "id": "q16",
+      "query": "free vs paid real-time intelligence dashboard",
+      "intent": "evaluation",
+      "targetAudience": "Individual analysts comparing free and paid options",
+      "targetPage": {
+        "family": "pricing",
+        "url": "https://www.worldmonitor.app/pro#pricing"
+      },
+      "conversionGoal": "Review plans and start a Pro checkout",
+      "referenceEntities": [
+        {
+          "role": "competitor",
+          "name": "Dataminr",
+          "url": "https://www.dataminr.com/"
+        },
+        {
+          "role": "competitor",
+          "name": "Palantir",
+          "url": "https://www.palantir.com/"
+        }
+      ]
+    },
+    {
+      "id": "q17",
+      "query": "World Monitor alternatives for geopolitical intelligence",
+      "intent": "evaluation",
+      "targetAudience": "Buyers shortlisting intelligence platforms",
+      "targetPage": {
+        "family": "blog",
+        "url": "https://www.worldmonitor.app/blog/posts/worldmonitor-vs-traditional-intelligence-tools/"
+      },
+      "conversionGoal": "Compare fit and continue to the appropriate product tier",
+      "referenceEntities": [
+        {
+          "role": "competitor",
+          "name": "Recorded Future",
+          "url": "https://www.recordedfuture.com/"
+        },
+        {
+          "role": "competitor",
+          "name": "Janes",
+          "url": "https://www.janes.com/"
+        }
+      ]
+    },
+    {
+      "id": "q18",
+      "query": "World Monitor vs GDELT",
+      "intent": "evaluation",
+      "targetAudience": "Researchers and developers choosing data workflows",
+      "targetPage": {
+        "family": "documentation",
+        "url": "https://www.worldmonitor.app/docs/data-sources"
+      },
+      "conversionGoal": "Understand source composition and inspect the API",
+      "referenceEntities": [
+        {
+          "role": "competitor",
+          "name": "GDELT Project",
+          "url": "https://www.gdeltproject.org/"
+        },
+        {
+          "role": "source",
+          "name": "World Monitor source catalog",
+          "url": "https://www.worldmonitor.app/docs/data-sources"
+        }
+      ]
+    },
+    {
+      "id": "q19",
+      "query": "World Monitor vs Liveuamap",
+      "intent": "evaluation",
+      "targetAudience": "News, OSINT, and security analysts",
+      "targetPage": {
+        "family": "dashboard",
+        "url": "https://www.worldmonitor.app/dashboard"
+      },
+      "conversionGoal": "Evaluate the live dashboard using a current event",
+      "referenceEntities": [
+        {
+          "role": "competitor",
+          "name": "Liveuamap",
+          "url": "https://liveuamap.com/"
+        },
+        {
+          "role": "source",
+          "name": "World Monitor GitHub repository",
+          "url": "https://github.com/koala73/worldmonitor"
+        }
+      ]
+    },
+    {
+      "id": "q20",
+      "query": "geopolitical intelligence platform pricing for individual analysts",
+      "intent": "evaluation",
+      "targetAudience": "Independent analysts, researchers, and consultants",
+      "targetPage": {
+        "family": "pricing",
+        "url": "https://www.worldmonitor.app/pro#pricing"
+      },
+      "conversionGoal": "Select an individual plan or remain on the free tier",
+      "referenceEntities": [
+        {
+          "role": "competitor",
+          "name": "S&P Global Market Intelligence",
+          "url": "https://www.spglobal.com/market-intelligence/en"
+        },
+        {
+          "role": "competitor",
+          "name": "Recorded Future",
+          "url": "https://www.recordedfuture.com/"
+        }
+      ]
+    },
+    {
+      "id": "q21",
+      "query": "World Monitor capabilities",
+      "intent": "branded_entity",
+      "targetAudience": "Prospective users checking product scope",
+      "targetPage": {
+        "family": "homepage",
+        "url": "https://www.worldmonitor.app/"
+      },
+      "conversionGoal": "Launch the dashboard or choose a focused variant",
+      "referenceEntities": [
+        {
+          "role": "source",
+          "name": "World Monitor product reference",
+          "url": "https://www.worldmonitor.app/llms.txt"
+        },
+        {
+          "role": "source",
+          "name": "World Monitor GitHub repository",
+          "url": "https://github.com/koala73/worldmonitor"
+        }
+      ]
+    },
+    {
+      "id": "q22",
+      "query": "World Monitor data sources and methodology",
+      "intent": "branded_entity",
+      "targetAudience": "Analysts performing source due diligence",
+      "targetPage": {
+        "family": "documentation",
+        "url": "https://www.worldmonitor.app/docs/data-sources"
+      },
+      "conversionGoal": "Validate provenance and continue to a methodology page",
+      "referenceEntities": [
+        {
+          "role": "source",
+          "name": "World Monitor data-source catalog",
+          "url": "https://www.worldmonitor.app/docs/data-sources"
+        },
+        {
+          "role": "source",
+          "name": "World Monitor health endpoint documentation",
+          "url": "https://www.worldmonitor.app/docs/health-endpoints"
+        }
+      ]
+    },
+    {
+      "id": "q23",
+      "query": "World Monitor pricing",
+      "intent": "branded_entity",
+      "targetAudience": "Users evaluating paid access",
+      "targetPage": {
+        "family": "pricing",
+        "url": "https://www.worldmonitor.app/pro#pricing"
+      },
+      "conversionGoal": "View current pricing and start checkout",
+      "referenceEntities": [
+        {
+          "role": "source",
+          "name": "World Monitor pricing reference",
+          "url": "https://www.worldmonitor.app/pricing.md"
+        },
+        {
+          "role": "source",
+          "name": "World Monitor Pro page",
+          "url": "https://www.worldmonitor.app/pro#pricing"
+        }
+      ]
+    },
+    {
+      "id": "q24",
+      "query": "World Monitor MCP access",
+      "intent": "branded_entity",
+      "targetAudience": "Developers and assistant users checking MCP access",
+      "targetPage": {
+        "family": "developer_mcp",
+        "url": "https://www.worldmonitor.app/docs/mcp-overview"
+      },
+      "conversionGoal": "Review access requirements and connect a client",
+      "referenceEntities": [
+        {
+          "role": "source",
+          "name": "World Monitor MCP server reference",
+          "url": "https://www.worldmonitor.app/mcp-server.md"
+        },
+        {
+          "role": "source",
+          "name": "Model Context Protocol",
+          "url": "https://modelcontextprotocol.io/"
+        }
+      ]
+    },
+    {
+      "id": "q25",
+      "query": "how fresh is World Monitor data",
+      "intent": "branded_entity",
+      "targetAudience": "Analysts validating operational freshness",
+      "targetPage": {
+        "family": "crises",
+        "url": "https://www.worldmonitor.app/crises/"
+      },
+      "conversionGoal": "Inspect source health and open a live crisis view",
+      "referenceEntities": [
+        {
+          "role": "source",
+          "name": "World Monitor health endpoint documentation",
+          "url": "https://www.worldmonitor.app/docs/health-endpoints"
+        },
+        {
+          "role": "source",
+          "name": "World Monitor compact health API",
+          "url": "https://www.worldmonitor.app/api/health?compact=1"
+        }
+      ]
+    }
+  ]
+}

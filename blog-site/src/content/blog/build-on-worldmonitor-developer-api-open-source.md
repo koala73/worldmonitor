@@ -102,7 +102,7 @@ For example:
 
 - `api.worldmonitor.app/api/market/v1/quotes` for stock quotes
 - `api.worldmonitor.app/api/conflict/v1/events` for conflict data
-- `api.worldmonitor.app/api/intelligence/v1/cii` for Country Instability Index scores
+- `api.worldmonitor.app/api/intelligence/v1/cii` for Country [Instability Index](/blog/posts/country-instability-index-methodology-explained/) scores
 
 ## Building with World Monitor's API
 
@@ -166,7 +166,7 @@ World Monitor is AGPL-3.0. You can self-host the entire platform, including [loc
 
 **Data Layer:** Redis for caching, with seed scripts that populate data from public sources.
 
-Self-hosting gives you:
+[Self-hosting](/blog/posts/self-host-worldmonitor-open-source-osint-dashboard/) gives you:
 
 - Complete control over data flows
 - Custom domain deployment

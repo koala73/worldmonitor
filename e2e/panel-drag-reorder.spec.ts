@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 const DASHBOARD_VIEWPORT = { width: 1700, height: 900 };
 
@@ -8,10 +9,13 @@ async function loadHappyDashboard(page: Page): Promise<void> {
     if (sessionStorage.getItem('__panel_drag_reorder_init_done')) return;
     localStorage.clear();
     localStorage.setItem('worldmonitor-variant', 'happy');
+    // A fresh profile opens the Mission picker over the first panels' headers.
+    localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
     sessionStorage.setItem('__panel_drag_reorder_init_done', '1');
   });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await waitForPanelCount(page, 4);
+  await waitForMountedPanels(page, 4);
 }
 
 async function waitForPanelCount(page: Page, minCount: number, gridSelector = '#panelsGrid'): Promise<void> {
@@ -26,6 +30,20 @@ async function waitForPanelCount(page: Page, minCount: number, gridSelector = '#
       { timeout: 60_000 },
     )
     .toBeGreaterThanOrEqual(minCount);
+}
+
+// Boot inserts non-draggable deferred shells that carry the panel's data-panel id; the real
+// panel replaces each one when its chunk loads. Dragging a shell does nothing.
+async function waitForMountedPanels(page: Page, count: number, gridSelector = '#panelsGrid'): Promise<void> {
+  await expect
+    .poll(
+      () => page.locator(`${gridSelector} > .panel[data-panel]:not(.hidden)`).evaluateAll(
+        (els, n) => els.slice(0, n).filter((el) => (el as HTMLElement).dataset.deferredPanel !== 'true').length,
+        count,
+      ),
+      { timeout: 60_000 },
+    )
+    .toBe(count);
 }
 
 async function panelIds(page: Page, gridSelector = '#panelsGrid'): Promise<string[]> {
@@ -50,7 +68,7 @@ async function nextAnimationFrame(page: Page): Promise<void> {
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
 }
 
-async function beginDragToPoint(page: Page, sourceId: string, x: number, y: number): Promise<void> {
+async function startDrag(page: Page, sourceId: string): Promise<void> {
   const sourceHeader = page.locator(`${panelSelector(sourceId)} > .panel-header`).first();
   await expect(sourceHeader).toBeVisible();
   const sourceBox = await boundingBoxOrThrow(sourceHeader, `source panel ${sourceId}`);
@@ -60,6 +78,12 @@ async function beginDragToPoint(page: Page, sourceId: string, x: number, y: numb
   await page.mouse.move(startX, startY);
   await page.mouse.down();
   await page.mouse.move(startX + 12, startY + 12, { steps: 3 });
+  // Without this, the "no change" cases pass even when no drag ever starts.
+  await expect.poll(() => page.evaluate(() => document.body.classList.contains('panel-drag-active'))).toBe(true);
+}
+
+async function beginDragToPoint(page: Page, sourceId: string, x: number, y: number): Promise<void> {
+  await startDrag(page, sourceId);
   await page.mouse.move(x, y, { steps: 12 });
   await nextAnimationFrame(page);
 }
@@ -161,6 +185,7 @@ test.describe('panel drag reorder semantics', () => {
 
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForPanelCount(page, 4);
+    await waitForMountedPanels(page, 4);
     await expect.poll(async () => (await panelIds(page)).slice(0, 4)).toEqual(expectedPrefix);
   });
 
@@ -196,11 +221,16 @@ test.describe('panel drag reorder semantics', () => {
     const [sourceId] = await panelIds(page);
     expect(sourceId).toBeTruthy();
 
+    // The drop zone's height transition can stall on a CPU-starved CI browser.
+    await page.addStyleTag({ content: '.map-bottom-grid, .map-bottom-grid::after { transition: none !important; }' });
+    // #4352: the empty zone is collapsed and opens only while a drag is active.
     const bottomGrid = page.locator('#mapBottomGrid');
+    await startDrag(page, sourceId!);
+    await expect.poll(async () => (await bottomGrid.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(100);
     const bottomBox = await boundingBoxOrThrow(bottomGrid, 'bottom grid');
-    expect(bottomBox.height).toBeGreaterThan(20);
-
-    await dragPanelToPoint(page, sourceId!, bottomBox.x + bottomBox.width / 2, bottomBox.y + bottomBox.height / 2);
+    await page.mouse.move(bottomBox.x + bottomBox.width / 2, bottomBox.y + bottomBox.height / 2, { steps: 12 });
+    await nextAnimationFrame(page);
+    await releaseDrag(page);
 
     await expect(page.locator(`#mapBottomGrid > ${panelSelector(sourceId!)}`)).toHaveCount(1);
     await expect(page.locator(`#panelsGrid > ${panelSelector(sourceId!)}`)).toHaveCount(0);
@@ -238,5 +268,79 @@ test.describe('panel drag reorder semantics', () => {
 
     await expect.poll(async () => await panelIds(page)).toEqual(before);
     expect(await page.evaluate(() => localStorage.getItem('panel-order'))).toBe(storedBefore);
+  });
+});
+
+test.describe('monitor panel reload', () => {
+  async function loadMonitorDashboard(page: Page, order: string[], variant: 'full' | 'happy' = 'full'): Promise<void> {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.route('**/api/**', route => route.fulfill({ json: {} }));
+    await page.goto('/tests/runtime-harness.html');
+    await page.evaluate(async ({ panelOrder, variant }) => {
+      const { ALL_PANELS } = await import('/src/config/panels.ts');
+      localStorage.clear();
+      localStorage.setItem('worldmonitor-variant', variant);
+      localStorage.setItem('worldmonitor-happy-panel-fix-v1', 'done');
+      localStorage.setItem('wm-layer-warning-dismissed', 'true');
+      localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
+      localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
+      localStorage.setItem('worldmonitor-panel-order-v1.9', 'done');
+      localStorage.setItem('worldmonitor-layout-reset-v2.5', 'done');
+      localStorage.setItem('worldmonitor-panels', JSON.stringify(Object.fromEntries(
+        Object.entries(ALL_PANELS).map(([key, config]) => [key, {
+          ...config, enabled: panelOrder.includes(key),
+        }]),
+      )));
+      localStorage.setItem('panel-order', JSON.stringify(panelOrder));
+      localStorage.setItem('worldmonitor-monitors', JSON.stringify([
+        { id: 'strait', keywords: ['taiwan', 'strait'], color: '#ff0000' },
+        { id: 'shipping', keywords: ['shipping'], color: '#00ff00' },
+      ]));
+    }, { panelOrder: order, variant });
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true');
+  }
+
+  test('restores saved keyword tags after a deferred mount and reload', async ({ page }, testInfo) => {
+    await loadMonitorDashboard(page, ['live-news', 'live-webcams', 'monitors']);
+    const panel = page.locator('.panel[data-panel="monitors"]');
+    await expect(async () => { await panel.scrollIntoViewIfNeeded(); }).toPass();
+    await expect(panel.locator('.monitor-input')).toBeVisible();
+    await expect(panel.locator('.monitor-tag')).toHaveText(['taiwan, strait×', 'shipping×']);
+
+    await panel.locator('.monitor-input').fill('energy');
+    await panel.locator('.monitor-add-btn').click();
+    await expect(panel.locator('.monitor-tag')).toHaveCount(3);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(async () => { await panel.scrollIntoViewIfNeeded(); }).toPass();
+    await expect(panel.locator('.monitor-tag')).toHaveText(['taiwan, strait×', 'shipping×', 'energy×']);
+    await panel.locator('.monitor-tag').last().locator('.monitor-tag-remove').click();
+    await expect(panel.locator('.monitor-tag')).toHaveCount(2);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('worldmonitor-monitors')!)))
+      .toHaveLength(2);
+    await evidenceScreenshot(panel, { path: testInfo.outputPath('monitor-tags-after-reload.png') });
+  });
+
+  test('keeps My Monitors in its saved position after refresh', async ({ page }, testInfo) => {
+    const order = ['monitors', 'live-news', 'live-webcams'];
+    await loadMonitorDashboard(page, order);
+    const visibleOrder = () => page.locator('#panelsGrid > .panel[data-panel]:not(.hidden)')
+      .evaluateAll(elements => elements.map(element => (element as HTMLElement).dataset.panel));
+    await expect.poll(visibleOrder).toEqual(order);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect.poll(visibleOrder).toEqual(order);
+    expect(await storedPanelOrder(page)).toEqual(order);
+    await evidenceScreenshot(page, { path: testInfo.outputPath('monitor-position-after-reload.png') });
+  });
+
+  test('excludes My Monitors from saved Happy layouts after refresh', async ({ page }) => {
+    await loadMonitorDashboard(page, ['monitors', 'positive-feed'], 'happy');
+    const panels = page.locator('#panelsGrid > .panel[data-panel]:not(.hidden)');
+    const visibleOrder = () => panels.evaluateAll(elements => elements.map(element => (element as HTMLElement).dataset.panel));
+    await expect.poll(visibleOrder).toEqual(['positive-feed']);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('worldmonitor-panels')!).monitors.enabled))
+      .toBe(true);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect.poll(visibleOrder).toEqual(['positive-feed']);
   });
 });

@@ -1,0 +1,103 @@
+<?xml version="1.0"?>
+<?xml-stylesheet href="/Style Library/st/xslt/rss2.xsl" type="text/xsl" media="screen" ?>
+<rss xmlns:atom="http://www.w3.org/2005/Atom" xmlns:ta="http://www.smartraveller.gov.au/schema/rss/travel_advisories/" xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0">
+  <channel>
+    <title>Travel Advisories</title>
+    <link>https://www.smartraveller.gov.au/</link>
+    <description/>
+    <language>en</language>
+    <webMaster>webmaster@dfat.gov.au</webMaster>
+    <copyright>Copyright Commonwealth of Australia 2011</copyright>
+    <ttl>60</ttl>
+    <atom:link href="http://smartraveller.gov.au/countries/Documents/index.rss" rel="self" type="application/rss+xml"/>
+    <generator>zcms</generator>
+
+    <item>
+  <title>No travel advice</title>
+  <link>https://www.smartraveller.gov.au/destinations/no-travel-advice</link>
+  <description>
+
+</description>
+  <pubDate>07 Oct 2026 23:00:00 AEDT</pubDate>
+    <dc:creator>Smartraveller</dc:creator>
+    <guid isPermaLink="false">18e386ef-fdf7-477e-9faf-1ae154a19de5</guid>
+    <ta:warnings>
+                        <dc:coverage>No travel advice</dc:coverage>
+                        <ta:level>1/5</ta:level>
+                        <dc:description/>
+                    </ta:warnings>
+    </item>
+    <item>
+  <title>Guam</title>
+  <link>https://www.smartraveller.gov.au/destinations/pacific/guam</link>
+  <description>We continue to advise exercise normal safety precautions in Guam.
+
+&lt;p&gt;We advise:&lt;/p&gt;
+&lt;p&gt;Exercise normal safety precautions in Guam.&lt;/p&gt;
+</description>
+  <pubDate>20 Oct 2026 23:00:00 AEDT</pubDate>
+    <dc:creator>Smartraveller</dc:creator>
+    <guid isPermaLink="false">d588d32d-dd07-4a25-b996-c7ff3a86d593</guid>
+    <ta:warnings>
+                        <dc:coverage>Guam</dc:coverage>
+                        <ta:level>2/5</ta:level>
+                        <dc:description>Exercise normal safety precautions</dc:description>
+                    </ta:warnings>
+    </item>
+    <item>
+  <title>Armenia</title>
+  <link>https://www.smartraveller.gov.au/destinations/europe/armenia</link>
+  <description>We continue to advise exercise a high degree of caution. Do not travel within 5km of Armenia's border with Azerbaijan. Australians do not need a visa for stays of up to 180 days per year (see 'Travel').&lt;br&gt;
+
+
+&lt;p&gt;&lt;span&gt;We advise:&lt;/span&gt;&lt;/p&gt;
+&lt;p&gt;&lt;span&gt;Exercise a high degree of caution in Armenia overall due to the unpredictable security situation in the Middle East region.&lt;/span&gt;&lt;/p&gt;
+&lt;p&gt;Higher levels apply.&lt;/p&gt;
+</description>
+  <pubDate>17 Jun 2026 22:00:00 AEST</pubDate>
+    <dc:creator>Smartraveller</dc:creator>
+    <guid isPermaLink="false">04b56f32-7250-48f2-8d3e-ba40cccdadcd</guid>
+    <ta:warnings>
+                        <dc:coverage>Armenia</dc:coverage>
+                        <ta:level>3/5</ta:level>
+                        <dc:description>Exercise a high degree of caution</dc:description>
+                    </ta:warnings>
+    </item>
+    <item>
+  <title>Mauritania</title>
+  <link>https://www.smartraveller.gov.au/destinations/africa/mauritania</link>
+  <description>We continue to advise reconsider your need to travel for Mauritania overall. Higher levels apply in some areas. You must apply for an electronic visa online and receive authorisation from Mauritanian authorities before travelling. You can no longer obtain a visa on arrival (see 'Travel').
+
+&lt;p dir="ltr"&gt;We advise:&lt;/p&gt;
+&lt;p dir="ltr"&gt;Reconsider your need to travel to Mauritania overall due to the threat of terrorism and kidnapping and the risk of violent crime.&lt;/p&gt;
+&lt;p dir="ltr"&gt;Higher levels apply in some areas.&lt;/p&gt;
+</description>
+  <pubDate>14 May 2026 22:00:00 AEST</pubDate>
+    <dc:creator>Smartraveller</dc:creator>
+    <guid isPermaLink="false">3306d80c-b7a3-4b62-883f-d5f7a214918b</guid>
+    <ta:warnings>
+                        <dc:coverage>Mauritania</dc:coverage>
+                        <ta:level>4/5</ta:level>
+                        <dc:description>Reconsider your need to travel</dc:description>
+                    </ta:warnings>
+    </item>
+    <item>
+  <title>Libya</title>
+  <link>https://www.smartraveller.gov.au/destinations/africa/libya</link>
+  <description>We continue to advise do not travel to Libya due to the dangerous security situation and the high threat of terrorism and kidnapping. If you're in Libya, you should leave as soon as possible if it's safe to do so. Australia doesn't have a diplomatic mission in Libya. Our ability to provide consular assistance to Australians in Libya is severely limited (see 'Safety').
+
+&lt;p dir="ltr"&gt;We advise:&lt;/p&gt;
+&lt;p dir="ltr"&gt;Do not travel to Libya due to the dangerous security situation and the high threat of terrorism and kidnapping.&lt;/p&gt;
+</description>
+  <pubDate>13 Aug 2026 22:00:00 AEST</pubDate>
+    <dc:creator>Smartraveller</dc:creator>
+    <guid isPermaLink="false">83649a37-61b8-4011-843b-2883dc5eb388</guid>
+    <ta:warnings>
+                        <dc:coverage>Libya</dc:coverage>
+                        <ta:level>5/5</ta:level>
+                        <dc:description>Do not travel</dc:description>
+                    </ta:warnings>
+    </item>
+
+  </channel>
+</rss>

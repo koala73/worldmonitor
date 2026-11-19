@@ -1,26 +1,3 @@
-// Per-tool output-shape contract regression. For every tool in
-// `__testing__.TOOL_REGISTRY`, dispatch a `tools/call` through the public
-// handler with default-ish arguments and assert the returned `content[0].text`
-// JSON validates against that tool's declared `outputSchema`.
-//
-// Coverage scope (documented intent — see PR body):
-//   • Cache tools (no `_execute`): real dispatch pipeline. fetch is stubbed
-//     so every cache-key read returns a non-null `{}` payload, executeTool
-//     assembles the envelope, and the test validates the response. This
-//     catches envelope-shape regression (missing `cached_at` / `stale`,
-//     wrong `data` shape, executeTool stripping the envelope, etc.).
-//   • RPC tools (has `_execute`): `_execute` is monkey-patched to return a
-//     minimal-shape object derived from the declared `outputSchema`. This
-//     proves the schema declaration is internally consistent (a `required`
-//     field whose type allows no concrete value would fail) and that the
-//     dispatch pipeline preserves the response unchanged through
-//     `applyJmespath` and `rpcOk`. It does NOT exercise the real `_execute`
-//     body — field-level shape drift for RPC tools is OUT OF SCOPE and is
-//     covered indirectly by the per-fixture parity test in
-//     `mcp-output-schema-coverage.test.mjs` (3 cache tools today).
-//
-// One `it()` per tool so a failure names the offending tool.
-
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 
@@ -28,6 +5,8 @@ import Ajv2020 from 'ajv/dist/2020.js';
 
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { assembleRawSignals, failedRawSignal, RAW_SIGNAL_FAMILIES } from '../shared/country-raw-signals.ts';
+import { buildTravelRiskResult, TRAVEL_RISK_FEEDS } from '../api/mcp/registry/_travel-risk-document.ts';
+import { parseTravelRiskArgs } from '../api/mcp/registry/travel-risk-tool.ts';
 import { validate } from './helpers/json-schema-mini.mjs';
 import {
   HMAC_SECRET,
@@ -44,7 +23,31 @@ const originalEnv = { ...process.env };
 // before reaching dispatch. Values are deliberately benign and aligned with
 // each tool's documented format (e.g. ISO 3166-1 alpha-2 for country_code).
 const REQUIRED_ARGS = {
+  get_fred_series: { series_ids: ['UNRATE'] },
+  find_webcams: { bound_w: 4, bound_s: 51, bound_e: 5, bound_n: 52, zoom: 9 },
+  get_webcam_media: { webcam_id: '123456789' },
+  get_country_history: { country_code: 'US' },
+  get_media_perspective: { subject_country: 'SA' },
+  get_defense_industrial_base: { country_code: 'US' },
+  get_point_satellite_passes: { lat: 39.74, lon: -104.99 },
+  get_country_imagery_evidence: { country_code: 'UA' },
+  get_watched_site_imagery: { country_code: 'IR' },
+  get_country_coverage: { country_code: 'US' },
+  get_food_stocks: { country_code: 'US' },
+  get_demographics_capability: { country_code: 'US' },
+  get_resilience_indicators: { country_code: 'US' },
+  get_five_factor_scorecard: { country_code: 'US' },
+  get_supply_vulnerabilities: { country_code: 'US' },
+  get_chokepoint_dependencies: { chokepoint_id: 'suez' },
+  prepare_travel_risk_assessment: { countries: [{ country_code: 'TH' }] },
+  verify_claim: { claim: 'A controlled claim for verification.' },
+  analyze_news_headlines: { headlines: ['Controlled headline'] },
+  get_country_brief_section: { section: 'risk', arguments: { country_code: 'US' } },
+  get_bilateral_tariff: { reporter: 'US', partner: 'CN', hs_code: '010121' },
+  get_us_import_duty: { partner: 'CN', hs_code: '010121' },
   classify_event: { text: 'Iran closes Strait of Hormuz to tanker traffic' },
+  start_upgrade: { plan: 'pro_monthly' },
+  report_issue: { kind: 'bug', summary: 'A controlled report.' },
   get_country_brief: { country_code: 'US' },
   open_country_brief: { country_code: 'US' },
   get_country_risk: { country_code: 'US' },
@@ -53,6 +56,7 @@ const REQUIRED_ARGS = {
   get_maritime_activity: { country_code: 'US' },
   analyze_situation: { query: 'test query' },
   search_intel_history: { query: 'test query' },
+  get_intel_timeline: { domain: 'conflict' },
   // `situation` carries a 10-char proto minimum, so the placeholder clears it.
   get_similar_events: { situation: 'a test situation description' },
   search_flights: { origin: 'JFK', destination: 'LHR', departure_date: '2026-06-01' },
@@ -101,10 +105,25 @@ const STUB_FIXTURES = {
   get_country_brief_section: assembleRawSignals('US', Object.fromEntries(RAW_SIGNAL_FAMILIES.map(family =>
     [family, failedRawSignal(family, 'unavailable', '2026-10-05T12:00:00Z', 'Controlled failure')])), '2026-10-05T12:00:00Z'),
   get_stock_research: { operation: 'analysis', data: { available: false, symbol: 'AAPL' } },
+  get_point_satellite_passes: {
+    point: { lat: 39.74, lon: -104.99 }, windowStartMs: 1, windowEndMs: 2, computedAt: 1, inventoryVersion: 'v', catalogFetchedAt: 0,
+    stale: true, passes: [], outOfFootprintPasses: 0, acquisitions: [], archiveStatus: 'complete', failedSources: [], unansweredProfiles: [],
+  },
+  get_country_imagery_evidence: { countryCode: 'UA', asOf: 0, stale: true, siteCount: 0, confirmedFlagCount: 0, sites: [] },
   get_five_factor_scorecard: { unavailable: true, unavailableReason: 'country-unavailable' },
   list_five_factor_scorecards: {
     methodologyVersion: '', computedAt: '', scorecards: [], unavailable: true, unavailableReason: 'scorecard-snapshot-unavailable',
   },
+  // The real assembler over all-unavailable sources: every block and the sources table in their degraded form.
+  prepare_travel_risk_assessment: buildTravelRiskResult(
+    parseTravelRiskArgs({ countries: [{ country_code: 'TH', cities: ['Bangkok'] }, { country_code: 'UA' }], date_from: '2026-12-01', date_to: '2026-12-10' }),
+    {
+      feeds: Object.fromEntries(TRAVEL_RISK_FEEDS.map((feed) => [feed.id, { status: 'unavailable', value: null, reason: 'Controlled failure', updatedAt: null, stale: true }])),
+      hotspots: { status: 'unavailable', value: null, reason: 'Controlled failure', updatedAt: null, stale: true },
+      cii: { UA: { status: 'ok', value: { history: { methodologyVersion: 'v', points: [{ date: '2026-11-09', combinedScore: 61.2 }], change: null, stale: false } }, reason: null, updatedAt: '2026-11-09T00:00:00.000Z', stale: false } },
+    },
+    Date.parse('2026-11-10T12:00:00Z'),
+  ),
 };
 
 // What a strict MCP client does: validate `structuredContent` against the
@@ -191,7 +210,13 @@ describe('api/mcp.ts — per-tool output contract (envelope-shape, all registry 
       }
 
       let args = REQUIRED_ARGS[name] ?? {};
-      const { deps, pipe } = makeProDeps();
+      // A plan-feature tool is refused before dispatch unless the entitlement carries its flag.
+      const { deps, pipe } = makeProDeps(tool._planFeature ? {
+        getEntitlements: async () => ({ planKey: 'pro_business_monthly', features: { tier: 1, mcpAccess: true, [tool._planFeature]: true }, validUntil: Date.now() + 86_400_000 }),
+      } : {});
+      // start_upgrade creates its checkout session in dispatch, before the
+      // stubbed _execute; answer the relay so the call reaches the result path.
+      if (name === 'start_upgrade') deps.createCheckout = async () => ({ kind: 'created', checkoutUrl: 'https://checkout.example/session' });
       let originalForecast;
       if (name === 'get_forecast_case' || name === 'get_forecast_theaters') {
         const generatedAt = Date.now();
@@ -264,4 +289,57 @@ describe('api/mcp.ts — per-tool output contract (envelope-shape, all registry 
       );
     });
   }
+});
+
+describe('get_maritime_activity ports view through the real producer and REST reader', () => {
+  it('serves the top 25 ports, preserves unknown trends, and handles uncovered countries', async () => {
+    const { finalisePortsForCountry } = await import('../scripts/seed-portwatch-port-activity.mjs');
+    const { getCountryPortActivity } = await import('../server/worldmonitor/intelligence/v1/get-country-port-activity.ts');
+    const { installRedis } = await import('./helpers/fake-upstash-redis.mts');
+    const tool = TOOL_REGISTRY.find(t => t.name === 'get_maritime_activity');
+    const accum = new Map(Array.from({ length: 30 }, (_, i) => [String(i), {
+      portname: `Port ${i}`, last30_calls: 100 - i, prev30_calls: i === 0 ? 0 : 50,
+      last30_import: 1000, last30_export: 500,
+    }]));
+    const ports = finalisePortsForCountry(accum, new Map());
+    ports[1].prevTankerCalls30d = undefined;
+    const savedEnv = { ...process.env };
+    const savedFetch = globalThis.fetch;
+    delete process.env.LOCAL_API_MODE;
+    const redis = installRedis({
+      'supply_chain:portwatch-ports:v1:_countries': ['NL'],
+      'supply_chain:portwatch-ports:v1:NL': { ports, cacheWrittenAt: Date.now(), fetchedAt: '2026-10-17T00:00:00Z' },
+    });
+    const calls = [];
+    globalThis.fetch = async (url, init) => {
+      if (new URL(url).hostname !== 'example.test') return redis.fetchImpl(url, init);
+      calls.push(String(url));
+      assert.equal(new URL(url).pathname, '/api/intelligence/v1/get-country-port-activity');
+      return Response.json(await getCountryPortActivity({}, { countryCode: new URL(url).searchParams.get('country_code') }));
+    };
+    try {
+      const result = await tool._execute({ country_code: 'Netherlands', view: 'ports' }, 'https://example.test', { kind: 'env_key', apiKey: 'test' });
+      assert.equal(calls.length, 1);
+      assert.equal(result.country_code, 'NL');
+      assert.equal(result.available, true);
+      assert.equal(result.fetched_at, '2026-10-17T00:00:00Z');
+      assert.equal(result.ports.length, 25);
+      assert.equal(result.ports[0].trend_delta_pct, null);
+      assert.equal(result.ports[1].trend_delta_pct, null);
+      assert.equal(result.ports[2].trend_delta_pct, 96);
+      assert.equal(result.ports[2].import_tanker_dwt_30d, 1000);
+      assert.equal(result.ports[2].export_tanker_dwt_30d, 500);
+      assert.equal(Object.hasOwn(result.ports[0], 'anomaly_signal'), false);
+      assert.deepEqual(validate(tool.outputSchema, result), []);
+      const validateOutput = ajv.compile(tool.outputSchema);
+      assert.equal(validateOutput(result), true, JSON.stringify(validateOutput.errors));
+      const empty = await tool._execute({ country_code: 'CH', view: 'ports' }, 'https://example.test', { kind: 'env_key', apiKey: 'test' });
+      assert.equal(empty.available, false);
+      assert.deepEqual(empty.ports, []);
+    } finally {
+      globalThis.fetch = savedFetch;
+      for (const key of Object.keys(process.env)) if (!(key in savedEnv)) delete process.env[key];
+      Object.assign(process.env, savedEnv);
+    }
+  });
 });

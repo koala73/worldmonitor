@@ -1,0 +1,89 @@
+{
+  "class": "dataset",
+  "label": "Consumer Price Index at a detailed level by ECOICOP version 2, by months by Years, Products and Index",
+  "source": "State Statistical Office",
+  "updated": "2025-01-23T11:00:00Z",
+  "id": [
+    "Година",
+    "Продукти",
+    "Индекс"
+  ],
+  "size": [
+    2,
+    3,
+    2
+  ],
+  "dimension": {
+    "Година": {
+      "extension": {
+        "show": "value"
+      },
+      "label": "Years",
+      "category": {
+        "index": {
+          "2026M08": 0,
+          "2026M09": 1
+        },
+        "label": {
+          "2026M08": "2026M08",
+          "2026M09": "2026M09"
+        }
+      }
+    },
+    "Продукти": {
+      "extension": {
+        "show": "value"
+      },
+      "label": "Products",
+      "category": {
+        "index": {
+          "0002": 0,
+          "0003": 1,
+          "0011": 2
+        },
+        "label": {
+          "0002": "01 FOOD AND NON-ALCOHOLIC BEVERAGES",
+          "0003": "01.1 Food",
+          "0011": "01.1.8 Sugar, confectionery and desserts"
+        }
+      }
+    },
+    "Индекс": {
+      "extension": {
+        "show": "value"
+      },
+      "label": "Index",
+      "category": {
+        "index": {
+          "02": 0,
+          "03": 1
+        },
+        "label": {
+          "02": "Current month / previous month",
+          "03": "Current month / same month of the previous year"
+        }
+      }
+    }
+  },
+  "value": [
+    100.53,
+    101,
+    100.58,
+    100.95,
+    100.67,
+    100.33,
+    100.54,
+    101.68,
+    100.55,
+    101.77,
+    100.86,
+    100.86
+  ],
+  "role": {},
+  "version": "2.0",
+  "extension": {
+    "px": {
+      "decimals": 2
+    }
+  }
+}

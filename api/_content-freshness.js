@@ -121,8 +121,15 @@ export function buildContentFreshnessAssessment(meta, requirement, now) {
   const criticalAgeMinutes = criticalAgeMs === null
     ? null
     : Math.round(criticalAgeMs / 60_000);
+  // A producer may narrow the critical scope only by naming the country as
+  // absent from its source (PortWatch, WORLDMONITOR-1AF). An unnamed narrowing
+  // still fails closed, and a country cannot be both judged and exempted.
+  const criticalSourceAbsentCountries = entityList(block?.criticalSourceAbsentCountries);
   const declaredScopeCoversExpected = expectedCountries.length > 0
-    && expectedCountries.every((entity) => criticalCountries.includes(entity));
+    && expectedCountries.every((entity) => criticalCountries.includes(entity)
+      || criticalSourceAbsentCountries.includes(entity));
+  const sourceAbsentOverlapsCritical = criticalSourceAbsentCountries
+    .some((entity) => criticalCountries.includes(entity));
 
   const unusableReasons = [];
   if (coveredCount === null) unusableReasons.push('covered_count_unusable');
@@ -145,6 +152,7 @@ export function buildContentFreshnessAssessment(meta, requirement, now) {
     unusableReasons.push('content_counts_inconsistent');
   }
   if (!declaredScopeCoversExpected) unusableReasons.push('declared_scope_narrowed');
+  if (sourceAbsentOverlapsCritical) unusableReasons.push('source_absent_overlaps_critical');
   if (criticalFreshCount === null) unusableReasons.push('critical_fresh_count_unusable');
   else if (criticalFreshCount > criticalCountries.length) {
     unusableReasons.push('critical_fresh_exceeds_declared');
@@ -191,6 +199,7 @@ export function buildContentFreshnessAssessment(meta, requirement, now) {
       ? null
       : Math.round(block.oldestAgeMinutes),
     criticalCountries,
+    criticalSourceAbsentCountries,
     criticalFreshCount,
     criticalStaleCountries: entityList(block?.criticalStaleCountries),
     criticalMissingCountries: count(block?.criticalMissingCountries),
@@ -201,7 +210,9 @@ export function buildContentFreshnessAssessment(meta, requirement, now) {
     criticalOldestAgeMinutes: criticalAgeMinutes,
     // Compare raw milliseconds inclusively. The producer treats exactly-at-
     // budget as stale; rounded minutes would accept up to 29,999ms over.
-    contentStale: usable
+    // Every pinned country declared absent leaves nothing to judge; the
+    // absence itself is reported through coverage, not as stale content.
+    contentStale: usable && criticalCountries.length > 0
       ? criticalFreshCount < criticalCountries.length
         || criticalAgeMs === null
         || criticalAgeMs < 0

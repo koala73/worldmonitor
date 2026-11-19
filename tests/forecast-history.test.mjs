@@ -1,5 +1,50 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { buildProbabilityTrail, stampResolutionTrajectories } from '../scripts/_forecast-probability-trail.mjs';
+
+describe('published probability trail', () => {
+  const hour = 3_600_000;
+  const now = Date.parse('2026-10-18T00:00:00Z');
+  const row = (probability = 0.4, region = 'Iran') => ({ id: 'fc-1', region, probability });
+  const run = (prior, at, predictions = [row()], history = []) => buildProbabilityTrail(prior, { generatedAt: at, predictions }, history);
+
+  it('backfills chronologically, samples moves or six hours, and is retry-idempotent', () => {
+    const trail = run(null, now, [row(0.6)], [
+      { generatedAt: now - hour, predictions: [row(0.401)] },
+      { generatedAt: now - 7 * hour, predictions: [row()] },
+    ]);
+    assert.equal(trail.forecasts['fc-1'].firstSeenAt, new Date(now - 7 * hour).toISOString());
+    assert.deepEqual(trail.forecasts['fc-1'].points.map(p => p[1]), [0.4, 0.401, 0.6]);
+    assert.deepEqual(run(trail, now, [row(0.6)]), trail);
+    const unchanged = run(trail, now + hour, [row(0.601)]);
+    assert.equal(unchanged.forecasts['fc-1'].points.length, 3);
+    assert.equal(unchanged.forecasts['fc-1'].lastSeenAt, new Date(now + hour).toISOString());
+  });
+
+  it('resets on a region change, including a return to the original region', () => {
+    let trail = run(null, now);
+    trail = run(trail, now + hour, [row(0.8, 'Syria')]);
+    trail = run(trail, now + 2 * hour);
+    assert.equal(trail.forecasts['fc-1'].points.length, 1);
+    assert.equal(trail.forecasts['fc-1'].firstSeenProbability, 0.4);
+    assert.equal(trail.forecasts['fc-1'].subjectChangedAt, new Date(now + 2 * hour).toISOString());
+  });
+
+  it('keeps 120 points from 30 days, drops IDs after 35 days, and stays below 250 KB', () => {
+    let trail;
+    for (let i = 0; i < 150; i++) trail = run(trail, now + i * 6 * hour, Array.from({ length: 30 }, (_, j) => ({ ...row(i % 2 ? 0.6 : 0.4), id: `fc-${j}` })));
+    assert.equal(trail.forecasts['fc-1'].points.length, 120);
+    assert.ok(Buffer.byteLength(JSON.stringify(trail)) < 250 * 1024);
+    assert.equal(Object.keys(run(trail, now + 149 * 6 * hour + 35 * 24 * hour + 1, []).forecasts).length, 0);
+    assert.ok(Date.parse(trail.forecasts['fc-1'].points[0][0]) >= trail.generatedAt - 30 * 24 * hour);
+    const entry = { id: 'fc-1', region: 'Iran', firstSeenAt: now, deadline: trail.generatedAt, resolvedAt: trail.generatedAt, status: 'resolved' };
+    stampResolutionTrajectories({ entry }, trail, trail.generatedAt);
+    assert.equal(entry.trajectory.length, 30);
+    assert.deepEqual(entry.trajectory[0], trail.forecasts['fc-1'].points[0]);
+    assert.deepEqual(entry.trajectory.at(-1), trail.forecasts['fc-1'].points.at(-1));
+    assert.throws(() => run({}, now), /Invalid prior/);
+  });
+});
 
 import {
   makePrediction,
@@ -7,7 +52,68 @@ import {
   buildForecastCase,
   buildHistoryForecastEntry,
   buildPublishedForecastPayload,
+  readProbabilityTrailInputs,
+  FORECAST_EXTRA_KEYS,
 } from '../scripts/seed-forecasts.mjs';
+
+describe('probability trail producer integration', () => {
+  it('backfills only a confirmed miss, preserves failed reads, and publishes the bounded key', async t => {
+    const originalFetch = globalThis.fetch;
+    const originalEnv = { ...process.env };
+    t.after(() => { globalThis.fetch = originalFetch; for (const name of ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN']) {
+      if (originalEnv[name] === undefined) delete process.env[name]; else process.env[name] = originalEnv[name];
+    } });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://trail.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test';
+    const snapshot = { generatedAt: Date.parse('2026-10-17T00:00:00Z'), predictions: [{ id: 'a', region: 'Iran', probability: 0.4 }] };
+    const commands = [];
+    globalThis.fetch = async (_url, options) => {
+      const command = JSON.parse(options.body); commands.push(command);
+      return Response.json({ result: command[0] === 'GET' ? null : [JSON.stringify(snapshot)] });
+    };
+    const inputs = await readProbabilityTrailInputs();
+    assert.deepEqual(commands.map(command => command[0]), ['GET', 'LRANGE']);
+    assert.deepEqual(commands[1].slice(-2), [0, 199]);
+    const current = { ...snapshot, generatedAt: snapshot.generatedAt + 3_600_000 };
+    const data = { ...current, probabilityTrail: buildProbabilityTrail(inputs.prior, current, inputs.history) };
+    const extra = FORECAST_EXTRA_KEYS.find(entry => entry.key === 'forecast:probability-trail:v1');
+    assert.equal(extra.ttl, 45 * 24 * 60 * 60);
+    assert.equal(extra.metaKey, 'seed-meta:forecast:probability-trail');
+    assert.equal(extra.skipWhenEmpty, true);
+    assert.equal(extra.declareRecords(extra.transform(data)), 1);
+    assert.equal(extra.transform(data).forecasts.a.firstSeenAt, new Date(snapshot.generatedAt).toISOString());
+    globalThis.fetch = async () => new Response('unavailable', { status: 503 });
+    await assert.rejects(readProbabilityTrailInputs(), /HTTP 503/);
+    globalThis.fetch = async () => Response.json({ error: 'ERR unavailable' });
+    await assert.rejects(readProbabilityTrailInputs(), /malformed response/);
+  });
+  it('writes durable activation markers and rejects unconfirmed writes', async t => {
+    const originalFetch = globalThis.fetch;
+    const savedUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const savedToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    t.after(() => {
+      globalThis.fetch = originalFetch;
+      for (const [key, value] of [['UPSTASH_REDIS_REST_URL', savedUrl], ['UPSTASH_REDIS_REST_TOKEN', savedToken]]) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+    });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://activation.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+    const { markProbabilityTrailActivated } = await import('../scripts/seed-forecasts.mjs');
+    const { markForecastArchiveActivated } = await import('../scripts/seed-forecast-resolutions.mjs');
+    const commands = [];
+    globalThis.fetch = async (_url, options) => { commands.push(JSON.parse(options.body)); return Response.json({ result: 'OK' }); };
+    await markProbabilityTrailActivated();
+    await markForecastArchiveActivated();
+    assert.deepEqual(commands, [
+      ['SET', 'seed-activated:forecast:probability-trail', '1'],
+      ['SET', 'seed-activated:forecast:archive', '1'],
+    ]);
+    globalThis.fetch = async () => Response.json({ error: 'ERR unavailable' });
+    await assert.rejects(markProbabilityTrailActivated(), /activation marker write failed/);
+    await assert.rejects(markForecastArchiveActivated(), /Redis SET rejected|activation marker write failed/);
+  });
+});
 
 import {
   CONFLICT_COUNT_SOURCE_FEED,

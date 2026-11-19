@@ -41,3 +41,18 @@ test('malformed NOTAM seed rows are unavailable', async () => {
   const { loadNotamClosures } = await import('../server/worldmonitor/aviation/v1/_shared.ts');
   assert.deepEqual(await loadNotamClosures(), { data: null, unavailable: true });
 });
+
+test('NOTAM coverage rows must be ICAO strings; a seed without them covers nothing', async () => {
+  const seed = { closedIcaos: [], restrictedIcaos: [], reasons: {} };
+  for (const [coveredIcaos, expected] of [
+    [undefined, { data: { ...seed, coveredIcaos: [] }, unavailable: false }],
+    [['OIIE'], { data: { ...seed, coveredIcaos: ['OIIE'] }, unavailable: false }],
+    [[7], { data: null, unavailable: true }],
+    ['OIIE', { data: null, unavailable: true }],
+  ] as const) {
+    const redis = installRedis({ 'aviation:notam:closures:v2': { ...seed, ...(coveredIcaos === undefined ? {} : { coveredIcaos }) } });
+    globalThis.fetch = (async (input, init) => redis.fetchImpl(input, init)) as typeof fetch;
+    const { loadNotamClosures } = await import('../server/worldmonitor/aviation/v1/_shared.ts');
+    assert.deepEqual(await loadNotamClosures(), expected, JSON.stringify(coveredIcaos));
+  }
+});

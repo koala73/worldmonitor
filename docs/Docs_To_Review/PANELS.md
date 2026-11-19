@@ -239,7 +239,6 @@ Span values are persisted per-panel in the `worldmonitor-panel-spans` localStora
 | `setDataBadge(state, detail?)` | `(string, string?): void` | Update data freshness badge |
 | `clearDataBadge()` | `(): void` | Hide data badge |
 | `setErrorState(err, tip?)` | `(boolean, string?): void` | Toggle header error styling |
-| `getId()` | `(): string` | Return panel ID |
 | `resetHeight()` | `(): void` | Clear saved span, remove span classes |
 | `destroy()` | `(): void` | Remove all event listeners |
 

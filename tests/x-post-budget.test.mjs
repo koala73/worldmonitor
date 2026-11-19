@@ -373,12 +373,13 @@ describe('shared X returned-Post budget', () => {
     assert.equal(status.available, true);
     assert.equal(status.dailyRemaining, DEFAULT_X_POST_DAILY_LIMIT - 3);
     assert.equal(status.dailyCoverageHeld, 562);
-    assert.equal(status.dailySpendableRemaining, 35);
+    assert.equal(status.dailySpendableRemaining, DEFAULT_X_POST_DAILY_LIMIT - 3 - 562);
     assert.equal(status.monthlyRemaining, DEFAULT_X_POST_MONTHLY_LIMIT - 103);
   });
 
   it('reports whether the next fixed-size request fits after converting its held coverage', async () => {
-    const dailyUsed = [95, 96];
+    const exactDailyUsed = DEFAULT_X_POST_DAILY_LIMIT - DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS;
+    const dailyUsed = [exactDailyUsed, exactDailyUsed + 1];
     const budget = createXPostBudget({
       evalCommand: async () => [
         dailyUsed.shift(),
@@ -401,9 +402,11 @@ describe('shared X returned-Post budget', () => {
   });
 
   it('projects the full daily coverage hold before its first reservation', async () => {
+    const exactDailyUsed = DEFAULT_X_POST_DAILY_LIMIT - DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS;
+    const exactMonthlyUsed = DEFAULT_X_POST_MONTHLY_LIMIT - DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS;
     const usage = [
-      [95, 19_495],
-      [96, 19_496],
+      [exactDailyUsed, exactMonthlyUsed],
+      [exactDailyUsed + 1, exactMonthlyUsed + 1],
     ];
     const budget = createXPostBudget({
       evalCommand: async () => {

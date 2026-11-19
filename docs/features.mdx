@@ -45,6 +45,9 @@ Layers are organized into logical groups for efficient monitoring:
 | **Hotspots** | Intelligence hotspots with activity levels based on news correlation |
 | **Sanctions** | Countries under economic sanctions regimes |
 | **Protests** | Live social unrest events from ACLED and GDELT |
+| **Armed Conflict Events** | UCDP georeferenced events, coloured by violence type and sized by deaths. Refreshed every 6 hours. Off by default |
+| **Middle East Strikes** | Strike reports from Telegram channels, classified and geocoded, with a GDELT backstop that requires multi-source reporting. State-media claims from a belligerent appear only when an independent source corroborates them within 2 hours. Shown only on deployments built with `VITE_ENABLE_IRAN_ATTACKS=true` and served with `IRAN_EVENTS_ENABLED=true`; Pro-only on desktop |
+| **Cyber Threats** | Threat-intelligence indicators by country, with severity. Shown only on deployments built with `VITE_ENABLE_CYBER_LAYER=true`. Off by default |
 
 **Military & Strategic**
 | Layer | Description |
@@ -59,7 +62,7 @@ Layers are organized into logical groups for efficient monitoring:
 **Infrastructure**
 | Layer | Description |
 |-------|-------------|
-| **Undersea Cables** | 86 submarine cable routes worldwide |
+| **Undersea Cables** | 98 submarine cable routes worldwide |
 | **Pipelines** | 88 operating oil & gas pipelines across all continents |
 | **Internet Outages** | Network disruptions via Cloudflare Radar |
 | **AI Datacenters** | 313 AI compute clusters tracked from Epoch AI dataset |
@@ -69,14 +72,23 @@ Layers are organized into logical groups for efficient monitoring:
 |-------|-------------|
 | **Ships (AIS)** | Live vessel tracking via AIS with chokepoint monitoring and the strategic-port registry* |
 | **Delays** | FAA airport delay status and ground stops |
+| **Aircraft emergencies** | Aircraft squawking 7500 (unlawful interference), 7600 (radio failure), or 7700 (general emergency) on adsb.lol, polled every 60 seconds. A marker appears only when the last message is at most 120 seconds old and the position at most 90 seconds old; older reports stay in the list for up to 15 minutes after the last observation. An aircraft that stops reporting becomes "unknown", never "resolved". Receiver coverage is incomplete. Flat map only. Off by default |
+| **Live Tanker Positions** | Tankers near six major chokepoints, from AIS. Energy variant only; see [Energy Monitor](/overview#energy-monitor) |
 
 *\*AIS data via [AISStream.io](https://aisstream.io) uses terrestrial receivers with stronger coverage in European/Atlantic waters. Middle East, Asia, and open ocean coverage is limited. Satellite AIS providers (Spire, Kpler) offer global coverage but require commercial licenses.*
+
+**Canada**
+| Layer | Description |
+|-------|-------------|
+| **Canada Roads** | Road closures and incidents from Ontario, Alberta, and Manitoba 511, Toronto road restrictions, and DriveBC (Open511). Provinces whose API key is not configured keep their last good data. Off by default because the payload is large |
+| **Canada Alerts** | Public emergency alerts from Alberta Emergency Alert, B.C. Evacuation Orders, and SaskAlert, refreshed every 15 minutes. Polygons are drawn at their centroid. Ontario is not covered. On by default on desktop in the geopolitical variant |
 
 **Natural Events**
 | Layer | Description |
 |-------|-------------|
 | **Natural** | USGS earthquakes (M4.5+) + NASA EONET events (storms, wildfires, volcanoes, floods) |
 | **Weather** | Official severe weather alerts (NWS, ECCC, WMO SWIC) |
+| **Water Levels** | One dot per reservoir or lake on the 50-entry Strategic Water Levels watchlist, coloured by status: red and amber for falling or low, blue for rising or high, grey for normal, and a hollow ring when there is no recent satellite pass or too little history to judge. Geopolitical and Energy variants. Off by default |
 
 **Overlays & Labels**
 | Layer | Description |
@@ -101,14 +113,15 @@ Beyond raw data feeds, the dashboard provides synthesized intelligence panels:
 |-------|---------|
 | **AI Strategic Posture** | Theater-level military aggregation with strike capability analysis |
 | **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
-| **Country Instability Index** | Real-time CII v8 stability scores and signed 24-hour movement deltas for 31 Tier-1 countries |
+| **Country Instability Index** | Real-time CII v14 stability scores and signed 24-hour movement deltas for 31 Tier-1 countries |
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
 | **Intel Feed** | Curated defense and security news sources |
 | **Country Brief** | AI-generated country profiles with key indicators, risk factors, and recent developments |
 | **Aviation Intelligence** | 6-tab aviation panel (Ops, Flights, Airlines, Tracking, News, Prices) with NOTAM closure detection across the registered airport watchlist |
 | **Climate Anomalies** | Temperature and precipitation deviations across 15 zones using Open-Meteo ERA5 data against rolling baselines |
-| **Displacement Tracking** | UN OCHA HAPI refugee, asylum seeker, and IDP data with origin/host country perspectives |
+| **Strategic Water Levels** | Water-surface level of 50 reservoirs and lakes that matter for hydropower, irrigation, shipping and transboundary water disputes, from NASA ICESat-2 lidar. Records and fast moves sort first. Each row shows the status, the level against the usual for that month (or the 12-month change), a level sparkline and the date of the last satellite pass, with All, Needs attention and Transboundary filters. Selecting a row opens it on the map. Level only, not storage volume; NASA publishes each pass 50 to 70 days after it is measured. On by default in the Energy variant, opt-in in the geopolitical variant. See [Strategic Water Levels](/data-sources#strategic-water-levels) |
+| **Displacement Tracking** | UNHCR refugee, asylum seeker, and IDP data by origin and host country, IDMC new internal displacement events, IOM DTM internal displacement by region, and source-dated cross-border movements (UNHCR portal, UK Home Office, US CBP, Frontex, Panama) |
 | **Gulf Economies** | Indices, currencies, and oil data for 6 GCC countries (Saudi, UAE, Qatar, Kuwait, Bahrain, Oman) |
 | **WTO Trade Policy** | Active trade restrictions, tariff trends, bilateral trade flows, and SPS/TBT barriers |
 | **Central Banks, BIS & IMF** | Policy-rate and institutional finance signals from central-bank and supranational finance institutions |
@@ -246,7 +259,7 @@ Two full-screen, keyboard-first workflows complement the map + panels experience
 
 Two complementary country-scoring surfaces:
 
-- **[Country Instability Index](/country-instability-index)** — a high-frequency CII v8 stress score with signed 24-hour movement deltas, blending unrest, conflict, security, and information signals for 31 Tier-1 countries.
+- **[Country Instability Index](/country-instability-index)** — a high-frequency CII v14 stress score with signed 24-hour movement deltas, blending unrest, conflict, security, and information signals for 31 Tier-1 countries.
 - **[Country Resilience Index](/methodology/country-resilience-index)** — a 0-100 resilience score for the 196-country public rankable universe built from 72 indicators across 21 active dimensions and 6 domains. Live API scores refresh every 6 hours. Crawlable country snapshots publish monthly with their capture date and revision note.
 
 CII and CRI answer different questions and are not interchangeable: CII is short-horizon stress; CRI is structural resilience plus live shock exposure.
@@ -267,6 +280,8 @@ Universal command palette for navigating the entire application. Every panel, ma
   - **Utilities**: [Airline Intelligence](/panels/airline-intel), [Tech Readiness Index](/panels/tech-readiness), [World Clock](/panels/world-clock), [My Monitors](/panels/monitors), [OREF Sirens](/panels/oref-sirens), [Telegram Intel](/panels/telegram-intel), [X News Accounts](/panels/x-intel), [Financial Stress](/panels/fsi), Webcams, Layoffs
 - **Workflows**: open Route Explorer or activate a Scenario Engine template directly from the palette
 - **Country briefs**: search any country name to open its intelligence brief or navigate the map
+- **Headlines**: type words from a headline to find it. Search covers the news loaded in your dashboard and, from the server, every headline your edition carried in the last 24 hours, or on Pro the last 7 days in English and the last 3 days in most other languages, including stories that have since left the panels. Each result shows its publisher and age; a headline no longer on the dashboard opens the article.
+- **Alerts sent to you** (Pro, signed in): realtime alerts delivered to your account in the last seven days, by email, push or any other channel, with the publisher and the time sent. They are listed even when the dashboard no longer has the story loaded; selecting one opens the article
 - **Time range**: filter events by 1h, 6h, 24h, 48h, or 7 days
 - **View controls**: dark/light mode, fullscreen, settings, refresh all data
 
@@ -278,7 +293,56 @@ The full panel inventory lives in the app itself — Cmd+K surfaces what's avail
 - Country dossier evidence bundles as portable Markdown with source links and freshness notes where available (Pro and above)
 - Historical playback from snapshots
 
-Dashboard tabs are capped per plan: 3 on Free, 10 on Pro, 25 on Pro Business. The cap applies when you create a tab — tabs you already have keep working, and none are removed if your plan changes.
+## Dashboard tabs and sharing
+
+Dashboard tabs are capped per plan: 3 on Free, 10 on Pro, 25 on Pro Business. The cap applies when you create a tab. Existing tabs keep working if your plan changes.
+
+The **▾** button next to **+** sets what new tabs start with: **Use this tab's panels** saves the current tab's shown and hidden panels and their order, and **Use the default panels** returns new tabs to the built-in set.
+
+To share a map position and its layers, copy the browser URL. See [Shareable links](#shareable-links) for the included settings. A map link does not share your dashboard's panel layout or grant paid access.
+
+### Team dashboards
+
+Team dashboards share a tab's panel layout and map settings with signed-in teammates. API Business owners and accepted members of their [Pro seats](/accounts#api-business-team-seats) have access while the subscription covers them. Enterprise members need an active membership and a current contract.
+
+Only one team is available at a time. World Monitor selects your eligible Enterprise account first, then your own API Business subscription, then an accepted seat on another owner's API Business subscription. If your Enterprise account or own subscription takes priority, you will not see the inviting team's dashboards. If no higher-priority team applies and several accepted seats qualify, World Monitor selects the first eligible seat it finds. Other inviting teams' dashboards are unavailable.
+
+Standalone Pro, Pro Business, and API Starter subscriptions do not create a team. The 25 custom dashboards on Pro Business are personal tabs, not 25 shared team dashboards. See [Plans & Pricing](/pricing#dashboard-sharing-by-plan).
+
+#### Share a dashboard with your team
+
+1. Sign in with your own account that belongs to the team.
+2. Open the tab you want to share.
+3. Arrange its panels and map settings.
+4. Click **Team** next to the dashboard tabs.
+5. Click **Share this tab with your team**.
+
+The dashboard appears in your team's list under the tab's name. It includes panel order, visibility, docking, and sizes, plus the map view, zoom, center, time range, and layers. Custom widgets and MCP panels are excluded. Sharing copies the layout, not a snapshot of the data or the publisher's credentials. Each member's own access determines which paid data they can view.
+
+#### Open and update a team dashboard
+
+1. Click **Team** in the same dashboard variant as your teammate.
+2. Click the shared dashboard's name.
+
+The dashboard opens as a new tab. If it is already open, World Monitor switches to that tab. Your personal tab limit still applies when opening a new tab.
+
+Your changes are not published to teammates until you click **Team**, then **Share this tab's changes with your team**. Use **Get the latest version** to apply a newer shared layout. This replaces the tab's panel layout, including any unpublished local panel edits.
+
+Opening a team dashboard as a new tab or getting its latest version also applies its map settings to the browser's current map. Map settings are shared across tabs. Switching tabs restores panel state but does not restore the previous map. Panel sizes also apply to those panels in other tabs in the same browser.
+
+If another member publishes after your Team list was last loaded, sharing reports a conflict and refreshes the list. Once the list refreshes, sharing your older local layout can overwrite the teammate's newer layout without another conflict warning. Save any local work you need, then use **Get the latest version** and review it before publishing further changes.
+
+#### Stop sharing a dashboard
+
+1. Click **Team**.
+2. Click the remove button beside the dashboard, labelled **Stop sharing** followed by its name.
+3. Confirm the removal.
+
+The dashboard leaves the team's list. Tabs that members already opened remain available.
+
+Every team member can publish, update, or stop sharing any dashboard in that team. Each team can share up to 25 dashboards per dashboard variant. At that limit, stop sharing an existing dashboard before publishing another.
+
+If **Team** is missing, check that you are signed in with an accepted API Business seat or an active Enterprise membership. An API Business owner also needs a current subscription. A standalone paid subscription does not grant team membership.
 
 ---
 

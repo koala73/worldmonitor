@@ -2,7 +2,7 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-import { postProcessAnalystHtml } from '@/utils/analyst-markdown';
+import { balanceStreamingMarkdown, postProcessAnalystHtml } from '@/utils/analyst-markdown';
 import { yieldToMain } from '@/utils/after-paint';
 import { LatestRequestGuard } from '@/utils/latest-request-guard';
 import { premiumFetch } from '@/services/premium-fetch';
@@ -16,7 +16,7 @@ import {
 import { classifyDenialResponse, type ClientEntitlementBelief } from '@/services/premium-denial';
 import { reportEntitlementDesync } from '@/services/entitlement-desync-telemetry';
 import { trackAnalystControlAction } from '@/services/analytics';
-import { h, replaceChildren, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
+import { h, isImeEnter, replaceChildren, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
 import {
   isDashboardControlAction,
   parseAgentBusAction,
@@ -308,6 +308,7 @@ export class ChatAnalystPanel extends Panel {
       if (!target || target !== this.inputEl) return;
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
+        if (isImeEnter(e)) return;
         this.sendFromInput();
       }
     });
@@ -633,46 +634,70 @@ export class ChatAnalystPanel extends Panel {
     const decoder = new TextDecoder();
     let buf = '';
     let accumulated = '';
+    // Partial answers go through the same marked + DOMPurify path as the
+    // finished one, at most once per frame. `streaming` is cleared on every exit
+    // so a frame still queued when the stream ends cannot overwrite the final
+    // render written by finalizeStreamingBubble.
+    let streaming = true;
+    let framePending = false;
+    const scheduleRender = (): void => {
+      if (framePending) return;
+      framePending = true;
+      requestAnimationFrame(() => {
+        framePending = false;
+        if (!streaming || !bodyEl.isConnected || !this.streamGuard.isCurrent(generation)) return;
+        this.renderStreamingMarkdown(bodyEl, accumulated);
+      });
+    };
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (!this.streamGuard.isCurrent(generation)) return 'incomplete';
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const lines = buf.split('\n');
-      buf = lines.pop() ?? '';
-      for (const line of lines) {
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
         if (!this.streamGuard.isCurrent(generation)) return 'incomplete';
-        if (!line.startsWith('data: ')) continue;
-        try {
-          const payload = JSON.parse(line.slice(6)) as {
-            delta?: string;
-            done?: boolean;
-            error?: string;
-            meta?: MetaEvent;
-            action?: unknown;
-          };
-          if (payload.error) {
-            this.finalizeStreamingBubble(bodyEl, '⚠ Analyst unavailable. Try again shortly.', false);
-            return 'error';
-          }
-          if (payload.meta) {
-            this.renderSourceChips(bubble, payload.meta);
-          }
-          if (payload.action) {
-            this.renderActionChip(bubble, payload.action);
-          }
-          if (payload.delta) {
-            accumulated += payload.delta;
-            bodyEl.appendChild(document.createTextNode(payload.delta));
-            onToken(accumulated);
-            this.scrollToBottom();
-          }
-          if (payload.done) return 'done';
-        } catch { /* malformed SSE chunk */ }
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!this.streamGuard.isCurrent(generation)) return 'incomplete';
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const payload = JSON.parse(line.slice(6)) as {
+              delta?: string;
+              done?: boolean;
+              error?: string;
+              meta?: MetaEvent;
+              action?: unknown;
+            };
+            if (payload.error) {
+              this.finalizeStreamingBubble(bodyEl, '⚠ Analyst unavailable. Try again shortly.', false);
+              return 'error';
+            }
+            if (payload.meta) {
+              this.renderSourceChips(bubble, payload.meta);
+            }
+            if (payload.action) {
+              this.renderActionChip(bubble, payload.action);
+            }
+            if (payload.delta) {
+              accumulated += payload.delta;
+              onToken(accumulated);
+              scheduleRender();
+            }
+            if (payload.done) return 'done';
+          } catch { /* malformed SSE chunk */ }
+        }
       }
+      return 'incomplete';
+    } finally {
+      streaming = false;
     }
-    return 'incomplete';
+  }
+
+  private renderStreamingMarkdown(bodyEl: HTMLElement, text: string): void {
+    setTrustedHtml(bodyEl, renderMarkdown(balanceStreamingMarkdown(text)));
+    bodyEl.appendChild(h('span', { className: 'chat-streaming-dot' }));
+    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
   }
 
   // Defer the synchronous DOMPurify+marked sanitize off the current task so the

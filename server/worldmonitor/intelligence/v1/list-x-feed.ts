@@ -128,6 +128,15 @@ export const listXFeed: IntelligenceServiceHandler['listXFeed'] = async (
       error: data.error || '',
     };
   } catch (error) {
-    return { enabled: false, posts: [], count: 0, error: String(error) };
+    // Fixed strings only: exception text can carry internal hostnames or
+    // cache-key names. Same vocabulary as the legacy api/x-feed.js.
+    // sentry-coverage-ok: a relay blip (restart, timeout) is an expected
+    // degraded state — the response carries enabled:false and the client
+    // treats it as "relay starting"; relay health is monitored on Railway.
+    const isTimeout = error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError');
+    if (!isTimeout) {
+      console.error('[x-feed] relay fetch failed:', error instanceof Error ? error.message : String(error));
+    }
+    return { enabled: false, posts: [], count: 0, error: isTimeout ? 'Relay timeout' : 'Relay request failed' };
   }
 };

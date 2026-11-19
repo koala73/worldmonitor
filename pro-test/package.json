@@ -34,7 +34,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "stream-json": "file:../vendor/stream-json",
-    "vite": "^7.3.2"
+    "vite": "^7.3.7"
   },
   "devDependencies": {
     "@sentry/vite-plugin": "^5.4.0",
@@ -43,6 +43,9 @@
     "typescript": "~5.8.2"
   },
   "overrides": {
+    "glob@13": "14.0.2",
+    "uuid@8": "11.1.1",
+    "uuid@11": "11.1.1",
     "braces": "$braces",
     "esbuild": "0.28.1",
     "postcss": "8.5.23",

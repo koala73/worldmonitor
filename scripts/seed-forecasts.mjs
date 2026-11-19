@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { loadEnvFile, runSeed, CHROME_UA, withRetry, parseRetryAfterMs, getResponseHeader, isRetryableHttpStatus, getDeployRevision } from './_seed-utils.mjs';
 import { compactForecastDashboardPayload } from './_forecast-dashboard.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { buildProbabilityTrail, PROBABILITY_TRAIL_KEY, PROBABILITY_TRAIL_META_KEY, PROBABILITY_TRAIL_TTL_SECONDS, PROBABILITY_TRAIL_ACTIVATION_KEY } from './_forecast-probability-trail.mjs';
 import { allBootstrapMarkets } from './_prediction-classify.mjs';
 import { subjectMatcherForRegion } from './_forecast-subject.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
@@ -2812,6 +2813,15 @@ async function readPriorPredictions() {
     const { url, token } = getRedisCredentials();
     return await redisGet(url, token, PRIOR_KEY);
   } catch { return null; }
+}
+
+export async function readProbabilityTrailInputs() {
+  const { url, token } = getRedisCredentials();
+  const prior = await redisGetOrThrow(url, token, PROBABILITY_TRAIL_KEY);
+  if (prior) return { prior, history: [] };
+  const response = await redisCommand(url, token, ['LRANGE', HISTORY_KEY, 0, HISTORY_MAX_RUNS - 1]);
+  if (!Array.isArray(response?.result)) throw new Error('Probability trail backfill read failed');
+  return { prior: null, history: response.result.map(row => JSON.parse(row)) };
 }
 
 function computeTrends(predictions, prior) {
@@ -16680,6 +16690,7 @@ function scoreDetectedPredictions(predictions, { inputs, prior, calibrationPubli
 
 async function fetchForecasts() {
   await warmPingChokepoints();
+  const trailInputs = await readProbabilityTrailInputs();
   const traceStorageConfig = resolveR2StorageConfig();
   const [priorWorldStates, priorWorldStateFallback, priorTracePointer] = traceStorageConfig
     ? await Promise.all([
@@ -16843,6 +16854,7 @@ async function fetchForecasts() {
 
   return {
     predictions: publishedPredictions,
+    probabilityTrail: buildProbabilityTrail(trailInputs.prior, { generatedAt: runGeneratedAt, predictions: publishedPredictions }, trailInputs.history),
     fullRunPredictions,
     inputs,
     generatedAt: runGeneratedAt,
@@ -18201,6 +18213,14 @@ export function declareRecords(data) {
 
 export const FORECAST_EXTRA_KEYS = [
   {
+    key: PROBABILITY_TRAIL_KEY,
+    transform: data => data.probabilityTrail,
+    ttl: PROBABILITY_TRAIL_TTL_SECONDS,
+    declareRecords: data => Object.keys(data.forecasts).length,
+    metaKey: PROBABILITY_TRAIL_META_KEY,
+    skipWhenEmpty: true,
+  },
+  {
     key: DASHBOARD_KEY,
     // Compose with buildPublishedSeedPayload — the SAME projection the canonical key
     // gets via `publishTransform`. runSeed hands extraKey transforms the RAW `data`
@@ -18234,6 +18254,12 @@ export const FORECAST_EXTRA_KEYS = [
   },
 ];
 
+export async function markProbabilityTrailActivated() {
+  const { url, token } = getRedisCredentials();
+  const result = await redisCommand(url, token, ['SET', PROBABILITY_TRAIL_ACTIVATION_KEY, '1']);
+  if (result?.result !== 'OK') throw new Error('Probability trail activation marker write failed');
+}
+
 // Runs after the canonical publish. The calibration record goes first: it
 // describes the probabilities just published, and the later stages share an
 // LLM budget and R2 latency that must not delay or skip it.
@@ -18242,6 +18268,10 @@ async function runForecastAfterPublish(data, meta, triggerContext) {
     await writeCalibrationPublication(data.calibrationPublication);
   } catch (err) {
     console.warn(`  [Calibration] Publication record write failed: ${err.message}`);
+  }
+  if (Object.keys(data.probabilityTrail?.forecasts ?? {}).length) {
+    try { await markProbabilityTrailActivated(); }
+    catch (err) { console.warn(`  [ProbabilityTrail] Activation marker write failed: ${err.message}`); }
   }
 
   if (triggerContext.triggerRequest) {

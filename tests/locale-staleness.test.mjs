@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import {
   baselinePathFor,
   classifyKeys,
+  copiedEnglishKeys,
+  copiedKeysStillOutstanding,
   expectedKeysForLocale,
   findPluralBases,
   flatten,
@@ -324,6 +326,43 @@ describe('baseline advance', () => {
     assert.equal(mayAdvanceBaseline({ ...clean, rejected: 1 }).advance, false);
   });
 
+  it('refuses when a requested English copy was not refreshed', () => {
+    // classifyKeys calls a value that still equals its English source fresh, so
+    // the missing/stale/orphan scan cannot see a copied-English batch that
+    // threw, omitted the key, or wrote the English back. The fill has to fail
+    // on that remainder itself.
+    const verdict = mayAdvanceBaseline({ ...clean, copiedOutstanding: 4 });
+    assert.equal(verdict.advance, false);
+    assert.match(verdict.reason, /copied-English/);
+  });
+
+  it('keeps a requested copy outstanding when the written value is still English', () => {
+    const expected = { 'panels.science': 'Science' };
+    const stillEnglish = copiedKeysStillOutstanding(
+      ['panels.science'],
+      new Set(['panels.science']),
+      { 'panels.science': 'Science' },
+      expected,
+    );
+    assert.deepEqual(stillEnglish, ['panels.science']);
+
+    const translated = copiedKeysStillOutstanding(
+      ['panels.science'],
+      new Set(['panels.science']),
+      { 'panels.science': 'Наука' },
+      expected,
+    );
+    assert.deepEqual(translated, []);
+
+    const omitted = copiedKeysStillOutstanding(
+      ['panels.science'],
+      new Set(),
+      { 'panels.science': 'Наука' },
+      expected,
+    );
+    assert.deepEqual(omitted, ['panels.science']);
+  });
+
   it('refuses when an existing baseline has lost entries', () => {
     // Deleting the baseline file — or resolving a merge conflict in it by
     // dropping a line — otherwise makes every key untracked, so a run that
@@ -336,5 +375,59 @@ describe('baseline advance', () => {
 
   it('never advances on a dry run', () => {
     assert.equal(mayAdvanceBaseline({ ...clean, dryRun: true }).advance, false);
+  });
+});
+
+describe('copied English left in place by the freshness pass', () => {
+  // A value that still equals its English source is classified fresh: the key
+  // exists and the English it was "translated" from has not changed. Ukrainian
+  // and the leftover German and Russian sentences sit in that bucket, so a
+  // normal pass never sends them. The selector is what a fill pass uses.
+  const expected = {
+    'shell.offlineTitle': "You're Offline",
+    'widgets.proBadge': 'PRO',
+    'panels.science': 'Science',
+    'countryBrief.foodStocks': 'Food stocks',
+    'header.live': 'LIVE',
+    'alerts.active_few': '{{count}} active alerts',
+    'modals.settingsWindow.worldMonitor.apiKey.placeholder': 'wm_xxxxxxxxxxxxxxxxxxxxxxxx',
+    'commands.tips.mapExample': 'iran',
+  };
+
+  it('selects an unchanged English sentence and skips a real translation and a kept token', () => {
+    const locale = {
+      'shell.offlineTitle': "You're Offline",
+      'widgets.proBadge': 'PRO',
+      'panels.science': 'Наука',
+      'countryBrief.foodStocks': 'Food stocks',
+      'header.live': 'LIVE',
+      'alerts.active_few': '{{count}} active alerts',
+      'modals.settingsWindow.worldMonitor.apiKey.placeholder': 'wm_xxxxxxxxxxxxxxxxxxxxxxxx',
+      'commands.tips.mapExample': 'iran',
+    };
+
+    assert.deepEqual(copiedEnglishKeys(locale, expected, 'uk'), [
+      'alerts.active_few',
+      'countryBrief.foodStocks',
+      'header.live',
+      'shell.offlineTitle',
+    ]);
+  });
+
+  it('selects German prose that is still English and leaves a kept token', () => {
+    const locale = {
+      'shell.offlineTitle': "You're Offline",
+      'widgets.proBadge': 'PRO',
+      'panels.science': 'Wissenschaft',
+      'countryBrief.foodStocks': 'Food stocks',
+      'header.live': 'LIVE',
+      'alerts.active_few': '{{count}} aktive Meldungen',
+    };
+
+    assert.deepEqual(copiedEnglishKeys(locale, expected, 'de'), [
+      'countryBrief.foodStocks',
+      'header.live',
+      'shell.offlineTitle',
+    ]);
   });
 });

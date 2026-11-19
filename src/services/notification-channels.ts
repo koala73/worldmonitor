@@ -4,6 +4,7 @@ import {
   readBillingVerificationCode,
 } from '@/services/billing-retry';
 import { SITE_VARIANT } from '@/config/variant';
+import type { ReservoirAlertSettings } from '../../shared/alert-rule-shape';
 
 export type ChannelType = 'telegram' | 'slack' | 'email' | 'discord' | 'teams' | 'webhook' | 'web_push';
 export type Sensitivity = 'all' | 'high' | 'critical';
@@ -14,6 +15,7 @@ export interface NotificationChannel {
   channelType: ChannelType;
   verified: boolean;
   linkedAt: number;
+  deliveryFailure?: { count: number; firstFailedAt: number; lastError: string; disabledAt?: number };
   chatId?: string;
   email?: string;
   slackChannelName?: string;
@@ -52,6 +54,10 @@ export interface AlertRule {
   // Optional chokepoint-scope for the opt-in chokepoint_disruption event
   // (#9217). Empty/absent → every chokepoint.
   chokepoints?: string[];
+  // Watched-site ids for the opt-in watched-site alerts. Empty/absent → none.
+  orbitalSites?: string[];
+  // Opt-in reservoir level alert: the reservoirs followed and the criteria. Empty/absent → none.
+  reservoirAlert?: ReservoirAlertSettings;
 }
 
 export interface ChannelsData {
@@ -274,18 +280,6 @@ export async function setEmailChannel(
   }
 }
 
-export async function setSlackChannel(
-  webhookEnvelope: string,
-  signal?: AbortSignal,
-): Promise<void> {
-  const res = await authFetch('/api/notification-channels', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'set-channel', channelType: 'slack', webhookEnvelope }),
-  }, undefined, signal);
-  if (!res.ok) throw new Error(`set slack channel: ${res.status}`);
-}
-
 export async function setWebhookChannel(
   webhookUrl: string,
   label?: string,
@@ -372,7 +366,19 @@ export async function saveAlertRules(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'set-alert-rules', ...rules }),
   }, undefined, signal);
-  if (!res.ok) throw new Error(`save alert rules: ${res.status}`);
+  if (res.ok) return;
+  // Mirror setNotificationConfig: the relay may return structured 400
+  // INCOMPATIBLE_DELIVERY when legacy set-alert-rules hits the
+  // (realtime, high|all) gate. Route that to IncompatibleDeliveryError so the
+  // settings UI can show the helper text instead of a generic save failure.
+  let body: { error?: string; message?: string } = {};
+  try { body = await res.json(); } catch { /* keep default */ }
+  if (res.status === 400 && body.error === 'INCOMPATIBLE_DELIVERY') {
+    throw new IncompatibleDeliveryError(
+      body.message ?? 'Real-time delivery requires Critical sensitivity.',
+    );
+  }
+  throw new Error(`save alert rules: ${res.status}`);
 }
 
 export async function setQuietHours(settings: {
@@ -500,6 +506,10 @@ export async function setNotificationConfig(args: {
   countries?: string[];
   tickers?: string[];
   chokepoints?: string[];
+  orbitalSites?: string[];
+  reservoirAlert?: ReservoirAlertSettings;
+  /** Scope a rule with no stored countries to the followed countries, server-side (#10873). */
+  seedCountriesFromFollowed?: boolean;
 }, expectedUserId?: string, signal?: AbortSignal): Promise<void> {
   const res = await authFetch('/api/notification-channels', {
     method: 'POST',

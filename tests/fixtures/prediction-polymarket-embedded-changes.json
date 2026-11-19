@@ -1,0 +1,20 @@
+{
+  "provenance": {
+    "capturedAt": "2026-10-18T09:02:04.975Z",
+    "capture": "Read-only node fetch over Railway SSH in existing verification-desk service",
+    "projectId": "29419572-0b0d-437f-8e71-4fa68daf514f",
+    "serviceId": "1f732679-760d-467b-bc36-4be3f45bc586",
+    "environmentId": "91a05726-0b83-4d44-a33e-6aec94e58780",
+    "endpoint": "https://gamma-api.polymarket.com/events?tag_slug=geopolitics&closed=false&active=true&archived=false&end_date_min=2026-10-18T09%3A02%3A04.378Z&order=volume&ascending=false&limit=5",
+    "events": 5,
+    "embeddedMarkets": 103,
+    "withDay": 61,
+    "withWeek": 83,
+    "projection": "Three embedded markets carrying both fields; unrelated fields omitted"
+  },
+  "markets": [
+    { "eventId": "34051", "eventSlug": "netanyahu-out-before-2027", "marketId": "1632763", "outcomePrices": "[\"0\", \"1\"]", "oneDayPriceChange": -0.001, "oneWeekPriceChange": -0.005 },
+    { "eventId": "143443", "eventSlug": "venezuela-leader-end-of-2026", "marketId": "1105742", "outcomePrices": "[\"0.19\", \"0.81\"]", "oneDayPriceChange": -0.055, "oneWeekPriceChange": -0.04 },
+    { "eventId": "143443", "eventSlug": "venezuela-leader-end-of-2026", "marketId": "1105744", "outcomePrices": "[\"0.7185\", \"0.2815\"]", "oneDayPriceChange": 0.004, "oneWeekPriceChange": 0.004 }
+  ]
+}

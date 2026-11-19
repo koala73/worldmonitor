@@ -59,6 +59,8 @@ export interface NewsItem {
   snippet: string;
   tickers: string[];
   credibilityScore: number;
+  linkVerified: boolean;
+  originPublisher: string;
 }
 
 export interface ThreatClassification {
@@ -97,6 +99,8 @@ export interface DigestCoverage {
   servedStale: boolean;
   staleAgeSeconds: number;
   staleReason: string;
+  itemsConsidered: number;
+  publishersConsidered: number;
 }
 
 export interface ListCountryHeadlinesRequest {
@@ -120,6 +124,110 @@ export interface CountryHeadline {
   title: string;
   link: string;
   publishedAt: number;
+}
+
+export interface ListMediaPerspectiveRequest {
+  subjectCountry: string;
+  outletCountries: string[];
+  audience: string;
+  windowHours: number;
+  outletRegions: string[];
+}
+
+export interface ListMediaPerspectiveResponse {
+  subjectCountry: string;
+  windowHours: number;
+  groups: MediaPerspectiveGroup[];
+  noCoverageCountries: string[];
+  unattributedCount: number;
+  state: string;
+  feedTotal: number;
+  feedCached: number;
+  readAt: string;
+}
+
+export interface MediaPerspectiveGroup {
+  homeCountry: string;
+  audience: string;
+  outletCount: number;
+  headlineCount: number;
+  framing?: MediaPerspectiveFramingCounts;
+  headlines: MediaPerspectiveHeadline[];
+}
+
+export interface MediaPerspectiveFramingCounts {
+  favorable: number;
+  neutral: number;
+  critical: number;
+  hostile: number;
+  unlabeled: number;
+  method: string;
+  model: string;
+  promptVersion: string;
+}
+
+export interface MediaPerspectiveHeadline {
+  title: string;
+  englishTitle: string;
+  titleLanguage: string;
+  outlet: string;
+  publisherFamily: string;
+  tier: number;
+  ownershipClass: string;
+  stateAffiliated: string;
+  propagandaRisk: string;
+  framing: string;
+  publishedAt: number;
+  link: string;
+}
+
+export interface ListNewsPoolRequest {
+  languages: string[];
+  editions: string[];
+  category: string;
+}
+
+export interface ListNewsPoolResponse {
+  items: NewsPoolItem[];
+  cells: NewsPoolCell[];
+  state: string;
+  generatedAt: string;
+}
+
+export interface NewsPoolItem {
+  item?: NewsItem;
+  language: string;
+  editions: string[];
+  category: string;
+}
+
+export interface NewsPoolCell {
+  edition: string;
+  language: string;
+  state: string;
+  items: number;
+  staleAgeSeconds: number;
+  generatedAt: string;
+}
+
+export interface ListSourceItemsRequest {
+  editions: string[];
+  category: string;
+  sources: string[];
+  lang: string;
+}
+
+export interface ListSourceItemsResponse {
+  items: NewsItem[];
+  sources: SourceItemsState[];
+  generatedAt: string;
+}
+
+export interface SourceItemsState {
+  source: string;
+  state: string;
+  edition: string;
+  items: number;
 }
 
 export interface ListLabelChangesRequest {
@@ -249,6 +357,43 @@ export interface ClaimHeadline {
   publishedAt: number;
 }
 
+export interface SearchHeadlinesRequest {
+  query: string;
+  variant: string;
+  lang: string;
+}
+
+export interface SearchHeadlinesResponse {
+  headlines: HeadlineMatch[];
+  searchedHeadlines: number;
+  windowHours: number;
+  state: string;
+  newestServedAt: number;
+}
+
+export interface HeadlineMatch {
+  source: string;
+  title: string;
+  link: string;
+  publishedAt: number;
+  lastServedAt: number;
+}
+
+export interface ListSentAlertsRequest {
+}
+
+export interface ListSentAlertsResponse {
+  alerts: SentAlert[];
+  state: string;
+}
+
+export interface SentAlert {
+  title: string;
+  source: string;
+  link: string;
+  sentAt: number;
+}
+
 export type StoryPhase = "STORY_PHASE_UNSPECIFIED" | "STORY_PHASE_BREAKING" | "STORY_PHASE_DEVELOPING" | "STORY_PHASE_SUSTAINED" | "STORY_PHASE_FADING";
 
 export type SummarizeStatus = "SUMMARIZE_STATUS_UNSPECIFIED" | "SUMMARIZE_STATUS_SUCCESS" | "SUMMARIZE_STATUS_CACHED" | "SUMMARIZE_STATUS_SKIPPED" | "SUMMARIZE_STATUS_ERROR";
@@ -304,12 +449,18 @@ export interface NewsServiceHandler {
   getSummarizeArticleCache(ctx: ServerContext, req: GetSummarizeArticleCacheRequest): Promise<SummarizeArticleResponse>;
   listFeedDigest(ctx: ServerContext, req: ListFeedDigestRequest): Promise<ListFeedDigestResponse>;
   listCountryHeadlines(ctx: ServerContext, req: ListCountryHeadlinesRequest): Promise<ListCountryHeadlinesResponse>;
+  listMediaPerspective(ctx: ServerContext, req: ListMediaPerspectiveRequest): Promise<ListMediaPerspectiveResponse>;
+  listNewsPool(ctx: ServerContext, req: ListNewsPoolRequest): Promise<ListNewsPoolResponse>;
+  listSourceItems(ctx: ServerContext, req: ListSourceItemsRequest): Promise<ListSourceItemsResponse>;
   listLabelChanges(ctx: ServerContext, req: ListLabelChangesRequest): Promise<ListLabelChangesResponse>;
   submitErrorReport(ctx: ServerContext, req: SubmitErrorReportRequest): Promise<SubmitErrorReportResponse>;
   listErrorReports(ctx: ServerContext, req: ListErrorReportsRequest): Promise<ListErrorReportsResponse>;
   reviewErrorReport(ctx: ServerContext, req: ReviewErrorReportRequest): Promise<ReviewErrorReportResponse>;
   searchFactChecks(ctx: ServerContext, req: SearchFactChecksRequest): Promise<SearchFactChecksResponse>;
   searchClaimHeadlines(ctx: ServerContext, req: SearchClaimHeadlinesRequest): Promise<SearchClaimHeadlinesResponse>;
+  searchHeadlines(ctx: ServerContext, req: SearchHeadlinesRequest): Promise<SearchHeadlinesResponse>;
+  searchHeadlineArchive(ctx: ServerContext, req: SearchHeadlinesRequest): Promise<SearchHeadlinesResponse>;
+  listSentAlerts(ctx: ServerContext, req: ListSentAlertsRequest): Promise<ListSentAlertsResponse>;
 }
 
 export function createNewsServiceRoutes(
@@ -352,7 +503,7 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -399,7 +550,7 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -447,7 +598,7 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -494,7 +645,157 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/list-media-perspective",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListMediaPerspectiveRequest = {
+            subjectCountry: params.get("subject_country") ?? "",
+            outletCountries: params.getAll("outlet_countries"),
+            audience: params.get("audience") ?? "",
+            windowHours: Number(params.get("window_hours") ?? "0"),
+            outletRegions: params.getAll("outlet_regions"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listMediaPerspective", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listMediaPerspective(ctx, body);
+          return new Response(JSON.stringify(result as ListMediaPerspectiveResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/list-news-pool",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListNewsPoolRequest = {
+            languages: params.getAll("languages"),
+            editions: params.getAll("editions"),
+            category: params.get("category") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listNewsPool", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listNewsPool(ctx, body);
+          return new Response(JSON.stringify(result as ListNewsPoolResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/list-source-items",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListSourceItemsRequest = {
+            editions: params.getAll("editions"),
+            category: params.get("category") ?? "",
+            sources: params.getAll("sources"),
+            lang: params.get("lang") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listSourceItems", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listSourceItems(ctx, body);
+          return new Response(JSON.stringify(result as ListSourceItemsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -542,7 +843,7 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -585,7 +886,7 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -632,7 +933,7 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -675,7 +976,7 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -722,7 +1023,7 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -769,7 +1070,142 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/search-headlines",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: SearchHeadlinesRequest = {
+            query: params.get("query") ?? "",
+            variant: params.get("variant") ?? "",
+            lang: params.get("lang") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("searchHeadlines", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.searchHeadlines(ctx, body);
+          return new Response(JSON.stringify(result as SearchHeadlinesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/search-headline-archive",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: SearchHeadlinesRequest = {
+            query: params.get("query") ?? "",
+            variant: params.get("variant") ?? "",
+            lang: params.get("lang") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("searchHeadlineArchive", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.searchHeadlineArchive(ctx, body);
+          return new Response(JSON.stringify(result as SearchHeadlinesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/list-sent-alerts",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListSentAlertsRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listSentAlerts(ctx, body);
+          return new Response(JSON.stringify(result as ListSentAlertsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },

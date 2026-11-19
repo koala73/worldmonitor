@@ -16,6 +16,9 @@ message ListSanctionsPressureRequest {
 // ListSanctionsPressureResponse contains normalized OFAC pressure summaries and recent entries.
 message ListSanctionsPressureResponse {
   repeated SanctionsEntry entries = 1;
+  // Top 12 countries by address or nationality. SEMA regulation targets are
+  // counted separately in regulation_targets. A designation can be associated with more than one
+  // country. Vessel flags and aircraft registries are counted in flagRegistries instead.
   repeated CountrySanctionsPressure countries = 2;
   repeated ProgramSanctionsPressure programs = 3;
   int64 fetched_at = 4;
@@ -30,4 +33,38 @@ message ListSanctionsPressureResponse {
   int32 sema_count = 12;
   // Present when the SEMA source failed while other sanctions data remained available.
   optional string sema_error = 13;
+  // Distinct designations with neither a country association nor a vessel flag or
+  // aircraft registry, across the full snapshot. Older snapshots may omit this summary.
+  UnattributedSanctionsPressure unattributed = 14;
+  // Top 12 vessel flag and aircraft registries, ordered by new vessels and aircraft,
+  // then all vessels and aircraft. A registry outside the top 12 may still register
+  // sanctioned assets. A flag or registry is often one of convenience, so these counts
+  // are not sanctions pressure on the registering state.
+  // Empty for snapshots written before this field existed.
+  repeated FlagRegistrySanctionsPressure flag_registries = 15;
+  // Top 12 SEMA regulation target states for people and entities, ordered by new
+  // then total designations. These are not nationality or address counts and
+  // never feed country risk scores or briefs. Excludes vessels, protected-state
+  // Ukraine/Moldova regulations and thematic regimes. Empty in older snapshots.
+  repeated CountrySanctionsPressure regulation_targets = 16;
+}
+
+// FlagRegistrySanctionsPressure counts sanctioned vessels by flag and sanctioned aircraft
+// by the state of registry in their tail number. The response lists at most 12 registries,
+// ordered by new vessels and aircraft, then all vessels and aircraft, so an omitted
+// registry may still register sanctioned assets. Older snapshots return none.
+message FlagRegistrySanctionsPressure {
+  string country_code = 1;
+  string country_name = 2;
+  int32 vessel_count = 3;
+  int32 new_vessel_count = 4;
+  // Zero in snapshots written before aircraft registries were counted.
+  int32 aircraft_count = 5;
+  int32 new_aircraft_count = 6;
+}
+
+message UnattributedSanctionsPressure {
+  int32 entry_count = 1;
+  int32 vessel_count = 2;
+  int32 aircraft_count = 3;
 }

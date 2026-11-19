@@ -52,4 +52,18 @@ describe('aviation airport coordinates', () => {
     const pdx = payload.alerts.find((a) => a.iata === 'PDX');
     assert.deepEqual(pdx.location, { latitude: PDX.lat, longitude: PDX.lon });
   });
+
+  it('an airport the NOTAM feed covers without a closure is open, not unknown', () => {
+    const payload = buildDelaysBootstrapPayload({
+      faaPayload: { alerts: [] },
+      intlPayload: { alerts: [], coverage: [] },
+      notamPayload: { closedIcaos: ['OEJN'], restrictedIcaos: [], reasons: {}, coveredIcaos: ['OEJN', 'OIIE'] },
+    });
+    const byIata = (iata) => payload.alerts.find((a) => a.iata === iata);
+    assert.equal(byIata('IKA').severity, 'FLIGHT_DELAY_SEVERITY_NORMAL');
+    assert.equal(byIata('IKA').source, 'FLIGHT_DELAY_SOURCE_NOTAM');
+    assert.equal(byIata('IKA').reason, 'Open');
+    assert.equal(byIata('JED').severity, 'FLIGHT_DELAY_SEVERITY_SEVERE');
+    assert.equal(byIata('OSL').severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN', 'nothing in the feed for Oslo');
+  });
 });

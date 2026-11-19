@@ -1,14 +1,22 @@
 import { argBool, argNum, argStrList, capNested, selectDatasets } from './filters';
 import { DEFAULT_LIST_LIMIT } from './constants';
 import { compactNaturalEventsDashboardPayload, projectNaturalEventsRetention } from '../_natural-events-dashboard.js';
+import { attachGeoFilter, filterEventLists, locationPoint, locator, oldestDatedRows, pointAt, type EventList } from './_geo-filter';
 
 export type NaturalDisastersPanelRead = { value: unknown; reuseUntil: number | null };
 
 const SOURCES = {
-  earthquakes: { label: 'earthquakes', list: 'earthquakes', lifetime: 30 * 60_000 },
-  wildfires: { label: 'fires', list: 'fireDetections', lifetime: 7_200_000 },
-  other: { label: 'events', list: 'events', lifetime: 540 * 60_000 },
+  earthquakes: { label: 'earthquakes', list: 'earthquakes', lifetime: 30 * 60_000, locator: locator(locationPoint, 'occurredAt') },
+  wildfires: { label: 'fires', list: 'fireDetections', lifetime: 7_200_000, locator: locator(locationPoint, 'detectedAt') },
+  other: { label: 'events', list: 'events', lifetime: 540 * 60_000, locator: locator(row => pointAt(row.lat, row.lon), 'date') },
 } as const;
+// The natural-events bucket also carries regional sub-lists: western-Pacific
+// cyclones (copies of rows in events.events) and raw HKO warnings.
+const REGIONAL_EVENT_LISTS: readonly EventList[] = [
+  { label: 'events', within: 'westernPacific', list: 'events', locator: locator(row => pointAt(row.lat, row.lon), 'date') },
+  { label: 'events', within: 'hkoWarnings', list: 'warnings', locator: locator(row => pointAt(row.lat, row.lon), 'observedAt') },
+];
+export const NATURAL_DISASTER_EVENT_LISTS: readonly EventList[] = [...Object.values(SOURCES), ...REGIONAL_EVENT_LISTS];
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -87,17 +95,23 @@ export function filterNaturalDisastersPanelData(data: Record<string, unknown>, a
   const magnitude = argNum(args.min_magnitude);
   const limit = argNum(args.limit) ?? DEFAULT_LIST_LIMIT;
   if (record(data.events) && Array.isArray(data.events.events)) data.events = projectNaturalEventsRetention(data.events);
-  for (const source of Object.values(SOURCES)) {
+  const usable = Object.values(SOURCES).filter((source) => {
     const bucket = data[source.label];
-    if (!record(bucket) || !validRows(bucket[source.list])) continue;
+    return record(bucket) && validRows(bucket[source.list]);
+  });
+  const located = [...usable, ...(usable.includes(SOURCES.other) ? REGIONAL_EVENT_LISTS : [])];
+  const stored = oldestDatedRows(data, located);
+  for (const source of usable) {
+    const bucket = data[source.label] as Record<string, unknown>;
     let rows = bucket[source.list] as Record<string, unknown>[];
     if (magnitude !== null && source.label !== 'fires') rows = rows.filter(row => (argNum(row.magnitude) ?? 0) >= magnitude);
     if (source.label === 'events' && argBool(args.active_only)) rows = rows.filter(row => row.closed === false);
     bucket[source.list] = rows;
-    capNested(data, source.label, source.list, limit);
   }
+  const geo = filterEventLists(data, located, args, 'get_natural_disasters', stored);
+  for (const source of usable) capNested(data, source.label, source.list, limit);
   const labels = argStrList(args.dataset).map(value => SOURCES[value as keyof typeof SOURCES]?.label).filter((value): value is 'earthquakes' | 'fires' | 'events' => value !== undefined);
-  return labels.length ? selectDatasets(data, labels) : data;
+  return attachGeoFilter(labels.length ? selectDatasets(data, labels) : data, geo);
 }
 
 export function presentNaturalDisastersPanel(result: Record<string, unknown>, budgetBytes: number, summary = false): Record<string, unknown> {

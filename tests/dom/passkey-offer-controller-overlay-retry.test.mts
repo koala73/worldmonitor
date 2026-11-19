@@ -74,6 +74,7 @@ vi.mock('@/services/analytics', () => ({
 vi.mock('@/services/i18n', () => ({ t: (k: string) => k }));
 
 import { PasskeyOfferController } from '@/app/passkey-offer-controller';
+import { ABOUT_YOU_CARD_ID } from '@/components/AboutYouCard';
 
 import type { AppContext } from '@/app/app-context';
 
@@ -279,21 +280,59 @@ describe('offer blocked by an overlay is retried when it closes', () => {
   });
 });
 
-describe('the cached-mode banner drives --wm-bottom-banner (PR #7353 P2)', () => {
-  const bannerVar = () => document.documentElement.style.getPropertyValue('--wm-bottom-banner');
-
-  it('measures a banner that exists at init', async () => {
-    const banner = document.createElement('div');
-    banner.className = 'cached-mode-banner';
-    Object.defineProperty(banner, 'getBoundingClientRect', { value: () => ({ height: 96 }) });
-    document.body.appendChild(banner);
-
+describe('the About-you card and the passkey offer never share the screen', () => {
+  it('defers the offer while the About-you card is open, and mounts it once the card closes', async () => {
     const c = makeController();
     c.init();
+    authListener?.();
     await flush();
-    expect(bannerVar()).toBe('96px');
+
+    // The card is a non-modal region, so the modal predicate alone misses it.
+    const card = document.createElement('section');
+    card.id = ABOUT_YOU_CARD_ID;
+    card.setAttribute('role', 'region');
+    document.body.appendChild(card);
+
+    state.userId = 'user_abc';
+    state.ready = true;
+    authListener?.();
+    await flush();
+    expect(mounted()).toBe(0);
+
+    card.remove();
+    await flush();
+    await flush();
+    expect(mounted()).toBe(1);
     c.destroy();
   });
+
+  it('hides a mounted offer while the card is open and restores it after', async () => {
+    const c = makeController();
+    c.init();
+    authListener?.();
+    await flush();
+    state.userId = 'user_abc';
+    state.ready = true;
+    authListener?.();
+    await flush();
+    expect(mounted()).toBe(1);
+
+    const card = document.createElement('section');
+    card.id = ABOUT_YOU_CARD_ID;
+    document.body.appendChild(card);
+    await flush();
+    const prompt = document.querySelector<HTMLElement>('.passkey-offer-prompt')!;
+    expect(prompt.hidden).toBe(true);
+
+    card.remove();
+    await flush();
+    expect(prompt.hidden).toBe(false);
+    c.destroy();
+  });
+});
+
+describe('the cached-mode banner drives --wm-bottom-banner (PR #7353 P2)', () => {
+  const bannerVar = () => document.documentElement.style.getPropertyValue('--wm-bottom-banner');
 
   it('resets to 0px when the banner is removed, so the card does not float', async () => {
     const banner = document.createElement('div');

@@ -24,7 +24,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import { getAllCommands } from '@/config/commands';
 import { getCurrentLanguage, getCurrentLanguageTag, getLocale } from '@/services/i18n';
-import { renderPreferences } from '@/services/preferences-content';
+import { renderPreferenceSection } from '@/services/preferences-content';
 import { formatTime } from '@/utils';
 import { getLocalizedNameExpression } from '@/utils/map-locale';
 
@@ -111,7 +111,7 @@ describe('language picker — which entry is marked selected', () => {
    * and it is what this renderer actually decides, so assert that directly.
    */
   function markedOptions(): Array<{ value: string; label: string }> {
-    document.body.innerHTML = renderPreferences({ isDesktopApp: false }).html;
+    document.body.innerHTML = renderPreferenceSection('display', { isDesktopApp: false }).html;
     const select = document.querySelector<HTMLSelectElement>('#us-language');
     if (!select) throw new Error('language select missing from preferences markup');
 

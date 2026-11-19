@@ -51,6 +51,13 @@ message GetIntelTimelineRequest {
     (buf.validate.field).int32.lte = 200,
     (sebuf.http.query) = {name: "limit"}
   ];
+
+  // Opaque next_cursor from the preceding response. Omit for the first page.
+  // Keep domain, country, from and to unchanged between pages.
+  optional string cursor = 6 [
+    (buf.validate.field).string.max_len = 4096,
+    (sebuf.http.query) = {name: "cursor"}
+  ];
 }
 
 // GetIntelTimelineResponse returns the scoped history newest-first.
@@ -58,11 +65,16 @@ message GetIntelTimelineResponse {
   // Events ordered by descending occurred_at. Every record carries score = 0:
   // a chronological read has no query vector to rank against.
   repeated IntelHistoryRecord records = 1;
-  // True when the bounded post-filter candidate window may omit older events.
+  // True when more history may remain after this bounded page. Continue with
+  // next_cursor, including when records is empty.
   bool partial = 2;
   // True when the history store could not be reached. The gateway reads this
   // flag out of the body and switches the response to Cache-Control:
   // no-store, so a transient outage is never pinned as a false-empty timeline
   // for the tier's full TTL.
   bool upstream_unavailable = 3;
+
+  // Continue with this cursor, even when records is empty. Empty means the
+  // scoped archive is exhausted. Also empty when upstream_unavailable is true.
+  string next_cursor = 4;
 }

@@ -561,6 +561,17 @@ function responseExample() {
       },
     },
   ];
+  // The production parser (shared/china-corridor-control-towers.ts) accepts a
+  // payload only with every reviewed corridor and every signal family on each,
+  // so the example keeps all four. Two corridors carry the full observed port
+  // condition (signal plus provenance); the other two take the all-unavailable
+  // shape the parser also accepts, the same one
+  // createUnavailableChinaCorridorControlTowerResponse emits. Repeating the
+  // observed structure on every corridor put ~7 KB of escaped payloadJson into
+  // public/openapi.json for no extra documentation, and that artifact sits
+  // under a 950,000-byte scanner budget
+  // (docs/perf/openapi-bundle-capacity-2026-08-13.md).
+  const OBSERVED_CORRIDOR_EXAMPLES = 2;
   payload.corridors = corridorExamples.map((definition) => {
     const corridor = structuredClone(payload.corridors[0]);
     corridor.id = definition.id;
@@ -589,6 +600,17 @@ function responseExample() {
     port.provenance.claims.derivation.value.inputSignalIds = [signal.id];
     return corridor;
   });
+  for (const corridor of payload.corridors.slice(OBSERVED_CORRIDOR_EXAMPLES)) {
+    corridor.availability = 'unavailable';
+    corridor.conditions = corridor.conditions.map((condition) => ({
+      family: condition.family,
+      providerId: `provider:${condition.family}`,
+      availability: 'unavailable',
+      reason: 'No reviewed source observation is available in this example.',
+      sourceSignals: [],
+      provenance: null,
+    }));
+  }
   return {
     payloadJson: JSON.stringify(payload),
     generatedAt: payload.generatedAt,

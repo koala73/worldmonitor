@@ -14,6 +14,44 @@ const {
 } = require('../scripts/lib/digest-stale-gate.cjs');
 
 describe('relay digest stale gate (#7084)', () => {
+  it('carries story tracking first-seen time so the relay can log how long an alert waited', () => {
+    const now = Date.parse('2026-11-16T23:45:00Z');
+    const digest = {
+      categories: {
+        politics: {
+          items: [
+            { title: 'tracked headline', source: 'CNN World', publishedAt: now - 60_000, storyMeta: { firstSeen: now - 30_000 } },
+            { title: 'untracked headline', source: 'CNN World', publishedAt: now - 60_000 },
+            { title: 'unset first seen', source: 'CNN World', publishedAt: now - 60_000, storyMeta: { firstSeen: 0 } },
+          ],
+        },
+      },
+    };
+    const candidates = buildClassifyCandidateMap(digest, [], 'full', now, 6 * 60 * 60 * 1000);
+    assert.equal(candidates.get('tracked headline').firstSeen, now - 30_000);
+    assert.equal('firstSeen' in candidates.get('untracked headline'), false);
+    assert.equal('firstSeen' in candidates.get('unset first seen'), false);
+  });
+
+  it('adds fresh pool items the category cap kept off the dashboard, after served ones (#10978)', () => {
+    const now = Date.now();
+    const digest = { categories: { politics: { items: [{ title: 'served headline', source: 'CNN World', publishedAt: now - 60_000, storyMeta: { firstSeen: now - 30_000 } }] } } };
+    const pool = [
+      { title: 'served headline', source: 'Gulf News', publishedAt: now - 60_000 },
+      { title: 'ADNOC vessel attacked in Strait of Hormuz', source: 'Al Arabiya', publishedAt: now - 120_000, corroborationCount: 2 },
+      { title: 'old pool headline', source: 'Al Arabiya', publishedAt: now - 7 * 3_600_000 },
+    ];
+    const candidates = buildClassifyCandidateMap(digest, [], 'full', now, 6 * 60 * 60 * 1000, undefined, pool);
+    assert.equal(candidates.get('served headline').source, 'CNN World');
+    assert.equal(candidates.get('served headline').firstSeen, now - 30_000);
+    assert.equal(candidates.get('ADNOC vessel attacked in Strait of Hormuz').corroborationCount, 2);
+    assert.equal(candidates.has('old pool headline'), false);
+    assert.equal('fromPool' in candidates.get('served headline'), false);
+    assert.equal(candidates.get('ADNOC vessel attacked in Strait of Hormuz').fromPool, true);
+    const stale = { ...digest, coverage: { servedStale: true } };
+    assert.equal(buildClassifyCandidateMap(stale, [], 'full', now, 6 * 60 * 60 * 1000, undefined, pool).size, 0);
+  });
+
   it('skips a server-marked stale replay', () => {
     assert.equal(isStaleDigestReplay({ coverage: { servedStale: true, staleReason: 'build-error' } }), true);
     assert.equal(isStaleDigestReplay({ coverage: { servedStale: true, staleReason: 'gate-held' } }), true);
@@ -62,6 +100,7 @@ describe('relay digest stale gate (#7084)', () => {
         publishedAt: now - 30_000,
         corroborationCount: 1,
         link: 'https://x.com/trusted/status/1',
+        fromX: true,
       },
     ]]);
   });
@@ -89,6 +128,26 @@ describe('relay digest stale gate (#7084)', () => {
 
     assert.deepEqual([...candidates.keys()], ['fresh RSS event', 'fresh X event']);
     assert.equal(candidates.get('fresh RSS event').source, 'Reuters');
+  });
+
+  it('marks only X-only candidates, so a headline in both keeps its digest build time', () => {
+    // The relay records an alert's build-to-queue delay unless the candidate
+    // came from X, which has no digest build. A headline in both inputs is the
+    // digest's candidate and must keep that stage.
+    const now = Date.parse('2026-11-17T14:00:00Z');
+    const digest = {
+      coverage: { servedStale: false },
+      categories: { conflicts: { items: [{ title: 'in both', source: 'Reuters', publishedAt: now - 60_000 }] } },
+    };
+    const xCandidates = [
+      { title: 'in both', source: 'X duplicate', publishedAt: now, corroborationCount: 1, link: 'x-dup' },
+      { title: 'X only', source: 'Trusted X account', publishedAt: now, corroborationCount: 1, link: 'x-only' },
+    ];
+
+    const candidates = buildClassifyCandidateMap(digest, xCandidates, 'global', now, 6 * 60 * 60 * 1000);
+
+    assert.equal(candidates.get('in both').fromX, undefined);
+    assert.equal(candidates.get('X only').fromX, true);
   });
 
   it('is actually required by the relay at the digest alert pass', () => {
@@ -161,6 +220,53 @@ describe('relay rss_alert publisher-link gate (#8398)', () => {
       recencyMs,
     );
     assert.equal(candidates.get('New outlet event').link, '');
+  });
+
+  // The digest checks each link against the feed's own host, which the relay
+  // never sees. 2026-11-17: a critical Egypt Independent alert went out with
+  // no link because the relay's family table has no entry for that publisher.
+  const EGYPT_INDEPENDENT_LINK =
+    'https://www.egyptindependent.com/exclusive-us-intel-indicates-iran-developing-plans/';
+
+  it('keeps a link the digest verified, for a publisher the family table does not list', () => {
+    const candidates = buildClassifyCandidateMap(
+      digestFor([{
+        title: 'Egypt Independent event',
+        source: 'Egypt Independent',
+        publishedAt: now - 60_000,
+        link: EGYPT_INDEPENDENT_LINK,
+        linkVerified: true,
+      }]),
+      [],
+      'full',
+      now,
+      recencyMs,
+    );
+    assert.equal(candidates.get('Egypt Independent event').link, EGYPT_INDEPENDENT_LINK);
+  });
+
+  it('blanks an unlisted publisher link the digest did not verify', () => {
+    for (const linkVerified of [undefined, false, null, 'true', 1, {}]) {
+      assert.equal(
+        candidateLinkFor({ link: EGYPT_INDEPENDENT_LINK, source: 'Egypt Independent', linkVerified }),
+        '',
+        `linkVerified=${JSON.stringify(linkVerified)}`,
+      );
+    }
+  });
+
+  it('never keeps a non-http(s) link, verified or not', () => {
+    for (const link of ['javascript:alert(1)', 'data:text/html,x', '//evil.example/x', 'ftp://www.egyptindependent.com/x']) {
+      assert.equal(candidateLinkFor({ link, source: 'Egypt Independent', linkVerified: true }), '', link);
+    }
+  });
+
+  it('falls back to the family table for an item with no verified flag', () => {
+    // A digest built before the flag shipped, or a cached feed row: same
+    // result as before the flag existed.
+    const reuters = 'https://www.reuters.com/world/europe/x';
+    assert.equal(candidateLinkFor({ link: reuters, source: 'Reuters World' }), reuters);
+    assert.equal(candidateLinkFor({ link: 'https://evil.example/phish', source: 'Reuters World' }), '');
   });
 
   it('candidateLinkFor passes a custom family resolver through', () => {

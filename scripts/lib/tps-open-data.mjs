@@ -20,6 +20,7 @@
  * This is not live CAD (#6682) and must not be labelled as live_dispatch.
  */
 
+import { withSourceRequestDiagnostics } from './source-request-diagnostics.mjs';
 import { CHROME_UA, MAX_PAYLOAD_BYTES } from '../_seed-utils.mjs';
 import {
   TPS_CALLS_KEY,
@@ -498,28 +499,31 @@ async function fetchTpsJson(url, {
   form = null,
 }) {
   if (!isAllowedUrl(url)) throw new TpsOpenDataError(`host_not_allowlisted:${label}`);
-  let resp;
-  try {
-    resp = await fetchImpl(url, {
-      method: form ? 'POST' : 'GET',
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': CHROME_UA,
-        ...(form ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
-      },
-      ...(form ? { body: form.toString() } : {}),
-      signal: AbortSignal.timeout(timeoutMs),
-      redirect: 'error',
-    });
-  } catch (err) {
-    const message = `${err?.message || err}`;
-    if (err?.name === 'TimeoutError' || /timeout|aborted/i.test(message)) {
-      throw new TpsOpenDataError(`timeout:${label}`, { cause: err });
+  return withSourceRequestDiagnostics({ source: 'tps', stage: label }, async observe => {
+    let resp;
+    try {
+      resp = await fetchImpl(url, {
+        method: form ? 'POST' : 'GET',
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': CHROME_UA,
+          ...(form ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
+        },
+        ...(form ? { body: form.toString() } : {}),
+        signal: AbortSignal.timeout(timeoutMs),
+        redirect: 'error',
+      });
+    } catch (err) {
+      const message = `${err?.message || err}`;
+      if (err?.name === 'TimeoutError' || /timeout|aborted/i.test(message)) {
+        throw new TpsOpenDataError(`timeout:${label}`, { cause: err });
+      }
+      throw new TpsOpenDataError(`fetch_failed:${label}`, { cause: err });
     }
-    throw new TpsOpenDataError(`fetch_failed:${label}`, { cause: err });
-  }
-  if (!resp.ok) throw new TpsOpenDataError(`http_${resp.status}:${label}`, { status: resp.status });
-  return readLimitedJson(resp, maxBytes, label);
+    observe(resp);
+    if (!resp.ok) throw new TpsOpenDataError(`http_${resp.status}:${label}`, { status: resp.status });
+    return readLimitedJson(resp, maxBytes, label);
+  });
 }
 
 function fetchArcGisJson(url, options) {

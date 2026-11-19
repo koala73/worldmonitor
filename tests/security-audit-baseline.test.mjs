@@ -484,11 +484,17 @@ describe('security audit baseline', () => {
     }
 
     for (const [label, entry] of [
-      ['blog-site', blogLock.packages['node_modules/js-yaml']],
       ['consumer-prices-core', cpcLock.packages['node_modules/js-yaml']],
     ]) {
       assert.ok(entry, `${label} js-yaml must be present`);
       assert.ok(atLeast(entry.version, '4.3.1'), `${label} js-yaml ${entry.version} is below the patched 4.3.1`);
+    }
+
+    for (const [path, entry] of Object.entries(blogLock.packages)) {
+      if (!path.endsWith('/node_modules/js-yaml') && path !== 'node_modules/js-yaml') continue;
+      const minimum = { 3: '3.15.1', 4: '4.3.1' }[entry.version.split('.')[0]];
+      assert.ok(minimum, `blog-site ${path} has an unreviewed js-yaml major: ${entry.version}`);
+      assert.ok(atLeast(entry.version, minimum), `blog-site ${path} ${entry.version} is below the patched ${minimum}`);
     }
 
     // The helper must reject the lexicographic trap it exists to avoid.

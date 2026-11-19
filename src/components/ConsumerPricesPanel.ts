@@ -444,7 +444,8 @@ export class ConsumerPricesPanel extends Panel {
         </tr>`;
     }).join('');
     return `
-      <table class="cp-global-table">
+      <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+      <table class="wm-table cp-global-table">
         <thead>
           <tr>
             <th scope="col">Market</th><th scope="col">Index</th><th scope="col">WoW</th><th scope="col">Spread</th><th scope="col">Updated</th>
@@ -452,6 +453,7 @@ export class ConsumerPricesPanel extends Panel {
         </thead>
         <tbody>${rows}</tbody>
       </table>
+      </div>
       <div class="cp-global-hint">Tap a market row to drill in</div>
     `;
   }
@@ -508,7 +510,8 @@ export class ConsumerPricesPanel extends Panel {
           value="${escapeHtml(this.inflationFilter)}" />
         <span class="cp-world-count">${escapeHtml(this.inflationCountText(visible))}</span>
       </div>
-      <table class="cp-global-table cp-world-table">
+      <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+      <table class="wm-table cp-global-table cp-world-table">
         <thead>
           <tr>
             <th scope="col">${escapeHtml(t('components.consumerPrices.world.country'))}</th>
@@ -519,6 +522,7 @@ export class ConsumerPricesPanel extends Panel {
         </thead>
         <tbody>${this.inflationTbodyHtml(visible)}</tbody>
       </table>
+      </div>
       <div class="cp-global-hint">${escapeHtml(t('components.consumerPrices.world.source'))}</div>
     `;
   }
@@ -586,7 +590,8 @@ export class ConsumerPricesPanel extends Panel {
     if (!cats?.length) return this.renderEmptyState('No category data yet');
 
     return `
-      <table class="cp-table">
+      <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+      <table class="wm-table cp-table">
         <thead>
           <tr>
             <th scope="col">Category</th>
@@ -608,6 +613,7 @@ export class ConsumerPricesPanel extends Panel {
           `).join('')}
         </tbody>
       </table>
+      </div>
     `;
   }
 

@@ -98,6 +98,8 @@ export const DEFAULT_PROBES: ProbeSpec[] = [
   { key: 'economic:fsi-eu:v1',         shape: 'envelope', dataHas: ['latestValue', 'history'] },
   { key: 'climate:zone-normals:v1',    shape: 'envelope', dataHas: ['normals'], minRecords: 13 },
   { key: 'wildfire:fires:v1',          shape: 'envelope', dataHas: ['fireDetections'] },
+  // Derived extra key the CII and temporal-anomaly rebuilds read (#9509).
+  { key: 'wildfire:fires-summary:v1',  shape: 'envelope', dataHas: ['totalCount', 'firms', 'byCountry'] },
   { key: 'seismology:earthquakes:v1',  shape: 'envelope', dataHas: ['earthquakes'] },
 
   // Multi-panel canonical + extras — regression guard for publishTransform

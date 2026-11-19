@@ -36,6 +36,10 @@ export function getRpcNoStoreReasonFromPayload(
   if (options.includeAvailableFalse !== false && payload.available === false) return 'available-false';
   if (nonEmptyString(payload.error)) return 'error';
 
+  if (options.pathname === '/api/displacement/v1/get-cross-border-movements'
+    && Array.isArray(payload.sources)
+    && payload.sources.some(source => isRecord(source) && source.status !== 'ok')) return 'degraded';
+
   if (options.pathname === SCENARIO_STATUS_PATH && nonEmptyString(payload.status)) {
     const status = payload.status.trim().toLowerCase();
     if (!SCENARIO_TERMINAL_STATUSES.has(status)) return 'nonterminal';

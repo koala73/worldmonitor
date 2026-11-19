@@ -1,0 +1,189 @@
+---
+title: "MCP 工具：军事与升级"
+sidebarTitle: "军事与升级"
+description: "World Monitor MCP 工具参考：军事空中活动与态势、升级、信号汇聚、人口暴露、基础设施级联与警报。逐一列出每个工具的输入参数与类型、数据新鲜度窗口、对应的后端 REST API 端点，以及可直接复制使用的示例调用负载，帮助开发者构建情报智能体、工作流自动化与自定义 MCP 客户端集成。"
+---
+
+本页属于 [MCP 工具参考](/zh/mcp-tools-reference)，该索引列出全部工具。连接、认证、套餐与错误见 [MCP Server 概览](/zh/mcp-overview)。
+
+以下工具暂仅提供英文参考：[`get_global_air_activity`](/mcp-tools/military-escalation#get_global_air_activity)。
+
+`curl` 示例假设已执行 `export WM_KEY="wm_…"`；使用 OAuth 时，请将 `-H "X-WorldMonitor-Key: $WM_KEY"` 替换为 `-H "Authorization: Bearer $TOKEN"`。
+
+### `get_military_surge`
+
+军事激增监测：各战区飞机态势（战斗机、加油机、预警机、侦察机、运输机、轰炸机、无人机）、外国军力存在检测，以及航班 seeder 自己计算的激增警报（作为独立的 `seeded_surges` 块报告 — 它使用与快照引擎不同的基线，两者绝不静默合并）。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `theater` | string | 按 id 或名称子串筛选为一个战区（不区分大小写）。 |
+
+- **API 端点：** 无（仅 MCP 的派生分析；态势聚合也由 `get_military_posture` 提供）。
+- **类型：** 派生分析 — 与仪表板共享的引擎，基于 Redis 种子缓存。
+- **新鲜度预算：** 军机 **30 分钟**、战区态势 **60 分钟**，超期标记 `stale: true`。
+
+### `get_military_posture`
+
+战区态势评估：每个战区的态势等级（normal、elevated、critical），以及其背后的军用航班和舰船数量与行动标记。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `theater` | string | 按 id 筛选为一个战区（不区分大小写的子串，例如 "iran"、"taiwan"、"baltic"、"korea"）。 |
+| `posture_level` | string | 筛选为单个态势级别。 |
+| `limit` | number | 将战区列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** `GET /api/military/v1/get-theater-posture`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **2 小时**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_military_posture","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_hotspot_escalation`
+
+热点升级评分：29 个精选情报热点，按文档化的 1-5 综合评分排序。新闻压力、国家不稳定性、地理信号汇聚和附近军事活动被归一化为 0-100 分量，按 35/25/25/15 加权，再与每个热点的精选静态基线按 30/70 混合 — 与仪表板地图发布的数学完全相同。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `hotspot_id` | string | 仅返回此精选热点 id（任意完整响应中可见 id 列表）。 |
+| `limit` | number | 限制排序后的热点列表（默认 29，即完整精选集；传 0 表示不限）。 |
+
+- **API 端点：** 无（仅 MCP 的派生分析）。
+- **类型：** 派生分析 — 与仪表板共享的引擎，基于 Redis 种子缓存。
+- **新鲜度预算：** 新闻/风险/军机最多 **30 分钟**，抗议 **120 分钟**，超期标记 `stale: true`。
+
+### `get_population_exposure`
+
+人口暴露：估算活跃地震、野火和冲突事件影响半径内的人口，使用与仪表板相同的方法（事件所在国家的平均人口密度 × 事件类型半径圆面积）。人口表中 20 个国家以外的地点，以及仅定位到地区或国家级别的冲突事件，不提供估算。这是粗粒度的筛查数字 — 背后没有城市级人口数据集。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `mode` | string: events / point / countries | events 富化实时数据源（默认）；point 接受 lat/lon；countries 列出人口表。 |
+| `event_source` | string: earthquakes / wildfires / conflicts / all | events 模式下要富化的事件源（默认 all）。 |
+| `lat` | number | point 模式的纬度。 |
+| `lon` | number | point 模式的经度。 |
+| `radius_km` | number | point 模式的公里半径（默认 50，上限 1000）。 |
+| `limit` | number | events 模式下富化事件列表的上限（默认 20，传 0 表示不限）。 |
+
+- **API 端点：** `GET /api/displacement/v1/get-population-exposure`
+- **类型：** 派生分析 — 共享暴露核心；events 模式读取 Redis 种子缓存。
+- **新鲜度预算：** 按数据源（地震 30 分钟、野火 360 分钟、冲突 1440 分钟）；point 和 countries 模式为纯计算，`cached_at: null`。
+
+### `simulate_infrastructure_cascade`
+
+基础设施级联模拟：在种子化的海底电缆表加上精选的管道、港口和咽喉要道注册表上进行广度优先故障传播。不传 `source_id` 可获取按类型分组的可模拟节点目录；链式容量沿路径相乘，远端影响会真实地衰减。
+
+传入 `countries` 可比较各国的海底电缆暴露度。`data.exposure` 中每一项列出在该国登陆的电缆、不同登陆站、这些电缆经过的咽喉要道及其占该国电缆的比例（`largestSingleChokepointShare` 为单一封锁的最坏情况），以及 `activeIncidents`：NGA 通告监测标记为 `FAULT` 或 `DEGRADED` 的电缆。没有事件的电缆只是没有匹配的通告，并不代表确认正常。`health_available: false` 表示无法读取电缆健康快照。咽喉要道判定结合简化路由几何与登陆点：在波斯湾或红海内外均有登陆点的电缆，视为穿过两者之间的出口。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `source_id` | string | 要中断的节点 id（不传参数可获取完整目录）。 |
+| `source_ids` | array | 同时切断多个节点（例如一组电缆 id）；所有 id 必须有效，各国影响在切断集合内累加。传入 `source_id` 时忽略。 |
+| `cut_cables_through` | string | 咽喉要道 id（例如 `chokepoint:hormuz_strait`）：切断路由经过该处的所有电缆。传入 `source_id` 或 `source_ids` 时忽略。 |
+| `disruption_level` | number | 初始故障严重度，0.1 到 1 之间（默认 1）。 |
+| `countries` | array | 最多 10 个国家（ISO alpha-2、alpha-3 或英文名称），在 `data.exposure` 中返回各国电缆暴露度比较。可与切断参数组合使用。 |
+
+- **API 端点：** 无（仅 MCP 的派生分析）。
+- **类型：** 派生分析 — 每次请求从种子化电缆表构建依赖图。
+- **新鲜度预算：** 每周更新的电缆表最多 **25200 分钟**（约 17.5 天），超期标记 `stale: true`。
+
+### `get_china_decision_signals`
+
+返回国家摘要使用的受限六领域中国决策信号快照。宏观金融、政策与执法、台海活动、
+企业披露、走廊状况和活动 nowcast 采用稳定顺序，并共享 `available`、`partial`、
+`stale` 或 `unavailable` 状态词汇。
+
+每个条目都保留规范溯源、发布者类型、来源与原始引用、翻译状态、观测/生效/发布/
+检索时间、修订与替代、置信度、佐证和新鲜度声明。该工具返回与公共 RPC 相同的受限
+条目；它不暴露详细双边贸易行或仅限 operator 的来源健康信息。
+
+- **参数：** 除可选通用 `jmespath` 投影外，无参数。
+- **API 端点：** `GET /api/intelligence/v1/get-china-decision-signals`
+- **类型：** 基于 Railway 组合缓存的规范 RPC。
+- **刷新节奏：** 每 **15 分钟**；各领域可独立降级。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_china_decision_signals","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_alert_digest`
+
+weekly 视图增加 `weekly.cii_movers`，在 31 个 CII 国家中分别列出最多五个上升和下降项。比较最新点与起始日当天或之前的最后一点，使用实际 `fromDate`。排除 ±1 分以内的变动；两端必须属于当前方法版本。缺少可比历史的国家列入 `insufficient_history`，`as_of` 为最新有效源时间。历史不可用时在 `data.unavailable` 中列出 `cii_history`；超过 30 分钟则响应标为 stale。历史从启用时开始积累，七日排名至少需要七天的观测。
+
+跨域警报摘要：七个域（国家不稳定性、军事激增、电缆健康、进行中的断网、时间异常、热点升级、航运压力）的所有阈值触发，使用每个生产者自己的严重度词汇 — 本工具不发明阈值。有数据但无触发的域列为 quiet，缓存不可用的域单独列出，静默绝不会被误认为平静。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `view` | string: today / weekly | today 列出当前阈值触发（默认）；weekly 增加趋势上下文。 |
+| `movers_days` | integer | weekly 的 CII 比较窗口，7-90 天，默认 7；today 视图拒绝此参数 |
+
+- **API 端点：** 无（仅 MCP 的派生分析）。
+- **类型：** 派生分析 — 共享摘要核心，基于七个 Redis 种子缓存。
+- **新鲜度预算：** 按数据源（30-360 分钟）；任一数据源超期即标记 `stale: true`。
+
+### `get_signal_convergence`
+
+地理信号汇聚：在 24 小时窗口内，抗议、军机、海军动向与地震在一度网格单元中共现的位置。警报包含坐标、贡献域、反向地理编码的位置名称以及广度/数量评分。同时传入 `lat`/`lon`/`radius_km` 可缩小到特定区域。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `lat` | number | 关注区域的纬度；需同时提供 lon 和 radius_km。 |
+| `lon` | number | 关注区域的经度；需同时提供 lat 和 radius_km。 |
+| `radius_km` | number | 以 lat/lon 为中心保留警报的公里半径；需同时提供 lat 和 lon。 |
+| `min_domains` | number | 每个网格单元所需的不同信号域数量，2-5（默认 3）。当前接入四个数据源，因此 5 是兼容性安全阈值，不会返回告警。 |
+
+- **API 端点：** 无（仅 MCP 的派生分析）。
+- **类型：** 派生分析 — 与仪表板共享的引擎，基于 Redis 种子缓存。
+- **新鲜度预算：** 按数据源（军机 30 分钟、抗议 120 分钟、地震 30 分钟、舰队 720 分钟）；任一数据源超期即标记 `stale: true`。
+
+### `get_focal_points`
+
+焦点检测：新闻报道与实时地图信号在同一实体上汇聚的位置，按多信号评分排序。新闻故事簇与精选实体注册表匹配，并与跨源升级信号交叉引用，使用与仪表板相同的引擎评分。包含由应用生成的 `ai_context` 块；源标题保留在单独的焦点证据中。还包含映射覆盖率计数。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `country_code` | string | 筛选为一个国家（ISO-2）及注册表关联到它的实体。 |
+| `limit` | number | 限制焦点列表数量（默认 10，传 0 表示不限）。 |
+
+- **API 端点：** 无（仅 MCP 的派生分析）。
+- **类型：** 派生分析 — 与仪表板共享的引擎，基于 Redis 种子缓存。
+- **新鲜度预算：** 每个数据源最多 **30 分钟**，超期标记 `stale: true`。

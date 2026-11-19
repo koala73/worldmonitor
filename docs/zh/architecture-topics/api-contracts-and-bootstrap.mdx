@@ -1,0 +1,110 @@
+---
+title: "API 契约、引导与轮询"
+description: "World Monitor 如何以 Proto 优先定义 API 契约，通过一次引导载荷完成仪表盘水合，并使用自适应的 SmartPollLoop 刷新数据，涵盖生成客户端、缓存键与降级行为的关键约定与实现细节，面向评估平台的工程师与希望参与贡献的开发者阅读。"
+---
+
+本页属于[设计哲学](/zh/architecture)指南，该页索引全部主题。部署拓扑、目录结构与 CI/CD 请参阅 [`ARCHITECTURE.md`](https://github.com/koala73/worldmonitor/blob/main/ARCHITECTURE.md)。
+
+---
+
+## API 与数据管道
+
+> **CORS** — 所有 API 端点强制执行来源白名单。请参阅 [CORS.md](/zh/cors) 了解允许的来源、实现细节以及如何为新端点添加 CORS。
+
+### Proto 优先 API 契约
+
+整个 API 接口在 Protocol Buffer（`.proto`）文件中使用 [sebuf](https://github.com/SebastienMelki/sebuf) HTTP 注解定义。代码生成从单一事实来源产出 TypeScript 客户端、服务端处理器桩代码和 OpenAPI 3.1.0 文档 — 消除前后端之间的请求/响应 schema 漂移。
+
+**服务目录**覆盖每个数据垂直：
+
+| 领域           | RPC                                             |
+| ---------------- | ------------------------------------------------ |
+| `aviation`       | 机场延误（FAA、AviationStack、ICAO NOTAM）  |
+| `climate`        | 气候异常                                |
+| `conflict`       | ACLED 事件、UCDP 事件、人道主义摘要|
+| `cyber`          | 网络威胁 IOC                                |
+| `displacement`   | 人口流离失所、暴露数据           |
+| `economic`       | 能源价格、FRED 序列、宏观信号、World Bank、BIS 政策利率、汇率、信贷/GDP |
+| `infrastructure` | 互联网中断、服务状态、时间基线 |
+| `intelligence`   | 事件分类、国家简报、风险评分|
+| `maritime`       | 船舶快照、航行警告          |
+| `market`         | 股票指数、加密/大宗商品报价、ETF 资金流|
+| `military`       | 飞机详情、战区态势、USNI 舰队    |
+| `news`           | 新闻条目、文章摘要                |
+| `prediction`     | 预测市场                               |
+| `research`       | arXiv 论文、HackerNews、科技事件            |
+| `seismology`     | 地震                                      |
+| `supply-chain`   | 咽喉点中断评分、航运费率、关键矿产集中度 |
+| `trade`          | WTO 贸易限制、关税趋势、贸易流、贸易壁垒 |
+| `unrest`         | 抗议/动荡事件                            |
+| `wildfire`       | 火灾检测                                  |
+| `giving`         | 捐赠平台交易量、加密捐赠、ODA    |
+| `positive-events`| 正面新闻分类、保护数据  |
+| `consumer-prices`| 消费者价格概览、篮子序列、零售商价差、通胀变动 |
+| `forecast`       | 情景预测、模拟包与结果 |
+| `health`         | 疫情爆发、空气质量警报            |
+| `imagery`        | 卫星影像搜索                         |
+| `leads`          | 联系提交、意向登记        |
+| `natural`        | 自然灾害事件（USGS、GDACS、EONET）     |
+| `radiation`      | 辐射观测（RadNet、Safecast）        |
+| `resilience`     | 国家韧性评分与排名           |
+| `sanctions`      | 制裁压力、实体查询                |
+| `scenario`       | 情景模拟、模板、运行状态      |
+| `shipping`       | 航线风险情报、配送 Webhook       |
+| `thermal`        | 热力升级检测                    |
+| `webcam`         | 实时网络摄像头目录与影像                |
+
+**代码生成管道** — 一个 `Makefile` 驱动 `buf generate` 配合三个自定义 sebuf protoc 插件：
+
+1. `protoc-gen-ts-client` → 带类型的基于 fetch 的客户端类（`src/generated/client/`）
+2. `protoc-gen-ts-server` → 处理器接口和路由描述符（`src/generated/server/`）
+3. `protoc-gen-openapiv3` → YAML 和 JSON 格式的 OpenAPI 3.1.0 规范（`docs/api/`）
+
+Proto 定义包含 `buf.validate` 字段约束（例如，纬度 ∈ [−90, 90]），因此请求校验是自动生成的 — 处理器接收预校验数据。破坏性变更通过 `buf breaking` 对比 main 分支在 CI 时被捕获。
+
+**边缘网关** — proto 支持的领域入口点（`api/[domain]/v1/[rpc].ts`）将其生成的 `createServiceRoutes()` 描述符注册到一个扁平路径路由器。每个 RPC 使用其 proto/OpenAPI 契约中声明的 HTTP 方法：大多数读取端点为 `GET`（例如，`GET /api/aviation/v1/list-airport-delays`），而变更和批量操作使用 `POST`。共享网关添加 CORS 强制执行、隐藏 5xx 响应内部细节的顶层错误边界，以及限流支持（429 时 `retryAfter`）。同一个路由器通过 Vite dev-server 插件（`vite.config.ts` 中的 `sebufApiPlugin`）在本地运行，并在处理器变更时进行 HMR 失效。
+
+### 引导水合
+
+仪表盘通过在任何面板渲染前于单次 Redis pipeline 调用中预抓取 38 个常用数据集，消除了冷启动延迟。页面加载时，客户端并行发起两个请求 — 一个**快速层**和一个**慢速层** — 到 `/api/bootstrap` 边缘函数，两者均带 800ms 中止超时以避免阻塞首次渲染。
+
+```
+Page Load → parallel fetch ─┬─ /api/bootstrap?tier=fast  (s-maxage=1200)
+                              │    earthquakes, outages, serviceStatuses,
+                              │    macroSignals, chokepoints, marketQuotes,
+                              │    commodityQuotes, positiveGeoEvents,
+                              │    riskScores, flightDelays, insights,
+                              │    predictions, iranEvents
+                              │
+                              └─ /api/bootstrap?tier=slow  (s-maxage=7200)
+                                   bisPolicy, bisExchange, bisCredit,
+                                   minerals, giving, sectors, etfFlows,
+                                   shippingRates, wildfires, climateAnomalies,
+                                   cyberThreats, techReadiness, theaterPosture,
+                                   naturalEvents, cryptoQuotes, gulfQuotes,
+                                   stablecoinMarkets, unrestEvents, ucdpEvents
+```
+
+边缘函数在单次 Upstash Redis pipeline 中读取所有键 — 一次 HTTP 往返最多 38 个键。结果存储在内存中的 `hydrationCache` Map 里。面板初始化时调用 `getHydratedData(key)`，返回预抓取的数据并从缓存中驱逐（一次性读取）以释放内存。找到水合数据的面板完全跳过其初始 API 调用，使用预加载内容即时渲染。在水合数据已被消费后挂载的面板回退到其正常抓取周期。
+
+**负哨兵缓存** — 当 Redis 键中无数据时，引导端点在响应中存储一个 `__WM_NEG__` 哨兵值，而不是省略该键。这使消费者能够区分"数据尚未加载"（水合中不存在该键）和"数据源无内容"（负哨兵），防止对空数据源进行不必要的 RPC 回退调用。
+
+**分层 CDN 缓存** — 快速层使用 `s-maxage=1200`（20 分钟）配合 `stale-while-revalidate=300`，适用于地震和行情报价等近实时数据。慢速层使用 `s-maxage=7200`（2 小时）配合 `stale-while-revalidate=1800`，适用于 BIS 政策利率和气候异常等不常变化的数据。两层均包含 `stale-if-error` 指令，在源站暂时不可达时提供缓存响应。
+
+**选择性抓取** — 客户端可通过 `?keys=earthquakes,flightDelays,insights` 请求自定义键子集进行定向水合，在特定面板需要重新初始化时实现部分引导恢复。
+
+这将 38 次独立 API 调用（每次都有 DNS 查询、TLS 握手和 Redis 往返）减少为恰好 2 次，在典型连接上将首次有意义渲染时间缩短 2–4 秒。
+
+### SmartPollLoop — 自适应数据刷新
+
+`SmartPollLoop` 是所有数据抓取面板使用的核心刷新编排原语。它不采用固定间隔轮询，而是根据网络条件、标签页可见性、面板可见性和失败历史进行适配：
+
+**自适应行为**：
+
+- **指数退避** — 连续失败将轮询间隔乘以可配置的 `backoffMultiplier`（默认 2×），最高到基础间隔的 4×。一次成功的抓取将乘数重置为 1×
+- **隐藏标签页节流** — 当 `document.visibilityState` 为 `hidden` 时，轮询间隔乘以 `hiddenMultiplier`（默认 5×）。前台每 60 秒轮询的面板在标签页后台化后放慢到每 5 分钟一次
+- **手动触发** — `handle.triggerNow()` 无论当前间隔如何都强制立即轮询，在用户明确请求刷新或相关面板数据变化时使用
+- **尝试追踪** — 连续失败计数器接入熔断器集成。`maxAttempts` 次失败后，轮询循环完全停止，熔断器提供缓存数据
+- **原因标记** — 每次轮询携带一个 `SmartPollReason`（`'interval'`、`'resume'`、`'manual'`、`'startup'`），以便处理器调整行为（例如，`startup` 轮询可抓取更大数据集）
+
+**面板集成** — 面板在其构造函数中以基础间隔和回调创建 `SmartPollLoop`，在挂载时调用 `handle.start()`，在销毁时调用 `handle.stop()`。面板折叠或滚动出视图（通过 Intersection Observer）时循环自动暂停，重新出现时恢复。

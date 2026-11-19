@@ -67,12 +67,20 @@ const dispatchThroughRealRoutes = async args => {
       } }),
     }));
     assert.deepEqual(unexpectedKeys, [], 'all Redis reads must use declared fixtures');
-    for (const body of rateLimitRequests) {
+    // The operator key pays its per-minute limiter and one unit of its own
+    // daily ceiling; nothing else reaches the pipeline.
+    const pipelineKinds = rateLimitRequests.map(body => {
       const commands = JSON.parse(String(body));
       assert.equal(commands.length, 1);
-      assert.equal(commands[0][0], 'evalsha');
-      assert.match(commands[0][3], /^rl:mcp:key:/);
-    }
+      if (commands[0][0] === 'evalsha') {
+        assert.match(commands[0][3], /^rl:mcp:key:/);
+        return 'per-minute';
+      }
+      assert.equal(commands[0][0], 'EVAL');
+      assert.match(commands[0][3], /mcp:pro-usage:env_key:/);
+      return 'daily-ceiling';
+    });
+    assert.ok(pipelineKinds.includes('per-minute'), JSON.stringify(pipelineKinds));
     assert.equal(response.status, 200);
     return await response.json();
   } finally {

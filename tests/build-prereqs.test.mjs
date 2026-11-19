@@ -169,6 +169,22 @@ describe('BUILD_PREREQS table', () => {
 });
 
 describe('checkBuildPrereqs scoping', () => {
+  for (const platform of ['linux', 'darwin', 'win32']) {
+    test(`missing GnuPG blocks only desktop bundling on ${platform}`, () => {
+      const dependencies = {
+        runProbe: (probe) => ({ ok: probe.command !== 'gpg', detail: probe.command ?? 'stubbed' }),
+      };
+      const bundle = checkBuildPrereqs({ scope: 'desktop', bundle: true, platform, dependencies });
+      assert.deepEqual(bundle.missing.map((r) => r.prereq.id), ['gpg']);
+      assert.match(bundle.missing[0].prereq.hint, /https:\/\/gnupg\.org\/download\//);
+      for (const scope of ['web', 'desktop']) {
+        const development = checkBuildPrereqs({ scope, platform, dependencies });
+        assert.deepEqual(development.missing, []);
+        assert.ok(!development.results.some((r) => r.prereq.id === 'gpg'));
+      }
+    });
+  }
+
   test('web scope never asks for GTK', () => {
     // A contributor who only touches the web app must never be told to
     // install a desktop toolkit.

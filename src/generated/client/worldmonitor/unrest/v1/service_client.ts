@@ -38,6 +38,7 @@ export interface UnrestEvent {
   actors: string[];
   confidence: ConfidenceLevel;
   sourceUrls: string[];
+  hasPreciseLocation?: boolean;
 }
 
 export interface GeoCoordinates {

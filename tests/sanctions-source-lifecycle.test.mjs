@@ -1,13 +1,17 @@
+import { COUNTRY_NAME_TO_ISO2, normalizeCountryToken } from '../scripts/shared/country-name-to-iso2.cjs';
+import { buildSanctionsChanges } from '../scripts/_sanctions-changes.mjs';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { gzipSync, gunzipSync } from 'node:zlib';
-import { mergeSanctionEntries, SEMA_SOURCE, SANCTIONS_SOURCE_VERSION, sanctionsListContentMeta } from '../scripts/_sema-sanctions.mjs';
+import { mergeSanctionEntries, semaTargetCountry, SEMA_SOURCE, SEMA_TIMEOUT_MS, SANCTIONS_SOURCE_VERSION, sanctionsListContentMeta } from '../scripts/_sema-sanctions.mjs';
+import { CSL_ROW_ID, CSL_SOURCES, CSL_TIMEOUT_MS } from '../scripts/_csl-sanctions.mjs';
 import { projectCountrySanctions } from '../shared/country-sanctions-signals.mjs';
 import { __testing__ as health } from '../api/health.js';
 import { readSeedSnapshot, verifySeedKey, runSeed, writeExtraKeyWithMeta } from '../scripts/_seed-utils.mjs';
 import { buildEnvelope } from '../scripts/_seed-envelope-source.mjs';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 const source = readFileSync('scripts/seed-sanctions-pressure.mjs', 'utf8');
 const pure = source.replace(/^import\s.*$/gm, '').replace(/loadEnvFile\([^)]+\);/, '').split('async function fetchSource')[0];
@@ -17,38 +21,53 @@ const now = Date.UTC(2026, 8, 25);
 // OFAC's lists change slowly; a Railway container that loses egress for two 6h
 // runs must not drop ~20k OFAC entities (2026-09-27: 12h retention published 0 SDN).
 const RETAIN_MS = 48 * 3600000;
-const row = (source, i) => ({
+const row = (source, i, countryCodes = []) => ({
   id: source === SEMA_SOURCE ? `sema-ca:iran:1-part-2:${i}` : `${source}:${i}`,
-  name: `${source} Person ${i}`, sourceLists: [source], countryCodes: [], countryNames: [],
+  name: `${source} Person ${i}`, sourceLists: [source], countryCodes, countryNames: countryCodes,
   programs: ['TEST'], entityType: 'SANCTIONS_ENTITY_TYPE_INDIVIDUAL', effectiveAt: '0',
   isNew: false, _aliases: [`Alias ${source} ${i}`], _identifiers: [],
 });
-const canadian = Array.from({ length: 80 }, (_, i) => row(SEMA_SOURCE, i + 1));
+const canadian = Array.from({ length: 80 }, (_, i) => ({ ...row(SEMA_SOURCE, i + 1), _regime: 'Iran', _targetCountryCodes: ['IR'] }));
+const cslRow = (source, i) => ({
+  id: `${source}:${i.toString(16).padStart(56, '0')}`, name: `${source} Firm ${i}`, sourceLists: [source],
+  countryCodes: ['CN'], countryNames: [], programs: [], entityType: 'SANCTIONS_ENTITY_TYPE_UNSPECIFIED',
+  effectiveAt: '0', _aliases: [], _identifiers: [], _notice: '90 FR 14032', _url: 'https://www.bis.gov/regulations/ear/744',
+});
+const cslLists = Object.fromEntries(CSL_SOURCES.map(source => [source, Array.from({ length: 40 }, (_, i) => cslRow(source, i + 1))]));
 
-async function publish({ successes = ['SDN', 'CONSOLIDATED', SEMA_SOURCE], stored = null, preview = [], previousState = null, clock = now, writeError = false, readError = false, semaRecords = canadian, semaQuarantined = [], io = {} } = {}) {
+async function publish({ ofacCountryCodes = ['RU'], successes = ['SDN', 'CONSOLIDATED', SEMA_SOURCE, 'CSL'], cslRecords = cslLists, stored = null, preview = [], previousState = null, history = null, activated = false, clock = now, writeError = false, readError = false, semaRecords = canadian, semaQuarantined = [], io = {} } = {}) {
   const writes = [];
   let options;
   const context = vm.createContext({
-    console: { log() {}, warn() {} }, Buffer, gzipSync, gunzipSync,
+    console: { log() {}, warn() {} }, Buffer, gzipSync, gunzipSync, COUNTRY_NAME_TO_ISO2, normalizeCountryToken,
     Date: class extends Date { static now() { return clock; } },
-    SEMA_SOURCE, mergeSanctionEntries, sanctionsListContentMeta, projectCountrySanctions,
+    SEMA_SOURCE, SEMA_TIMEOUT_MS, CSL_TIMEOUT_MS, mergeSanctionEntries, semaTargetCountry, sanctionsListContentMeta, projectCountrySanctions, buildSanctionsChanges,
     SANCTIONS_SOURCE_VERSION, SANCTIONS_MAX_CONTENT_AGE_MIN: 43200,
-    readSeedSnapshot: async () => {
+    readSeedSnapshot: async key => {
       if (readError) throw new Error('synthetic cache read failure');
+      if (key === 'sanctions:changes:v1') return history;
+      if (key === 'seed-activated:sanctions:changes') return activated ? 1 : null;
       return stored;
     },
     verifySeedKey: async key => key === 'sanctions:pressure:v1' ? { entries: preview } : previousState,
     fetchSource: async ({ label }) => {
       if (!successes.includes(label)) throw new Error('synthetic source timeout');
-      return { entries: [row(label, 1)], datasetDate: now - 86400000 };
+      return { entries: [row(label, 1, ofacCountryCodes)], datasetDate: now - 86400000 };
     },
     ingestSemaEntries: async () => successes.includes(SEMA_SOURCE)
       ? { records: semaRecords, quarantined: semaQuarantined, publishedAtMs: now - 2 * 86400000, error: null }
       : { records: [], publishedAtMs: 0, error: 'SEMA_INVALID_RECORD' },
+    CSL_SOURCES, CSL_ROW_ID,
+    ingestCslEntries: async () => successes.includes('CSL')
+      ? { lists: Object.fromEntries(CSL_SOURCES.map(source => [source,
+        { records: cslRecords[source] ?? [], publishedAt: now - 3 * 86400000, error: cslRecords[source]?.length ? null : 'CSL_LIST_MISSING' }])), error: null }
+      : { lists: {}, error: 'ECONNRESET' },
     writeExtraKeyWithMeta: async (...args) => {
       if (writeError) throw new Error('synthetic cache write failure');
       writes.push(normalize(args));
     },
+    getOptionalUpstashCreds: () => ({ restUrl: 'https://sanctions.test', token: 'test' }),
+    upstashCommand: async (_creds, command) => writes.push(normalize(command)),
     runSeed: (_d, _r, _k, _f, opts) => { options = opts; },
     ...io,
   });
@@ -63,6 +82,65 @@ async function save(fresh) {
 }
 
 describe('sanctions source lifecycle', () => {
+  it('does not reset missing history after the durable activation marker exists', async () => {
+    const fresh = await publish({ activated: true });
+    assert.equal(fresh.data._changes, null);
+    assert.equal(fresh.options.validateFn(fresh.data), true);
+    await fresh.options.beforePublish(fresh.data, {});
+    assert.deepEqual(fresh.writes, []);
+  });
+  it('publishes durable changes before advancing source snapshots and keeps private history out of pressure', async () => {
+    const first = await publish();
+    const stored = await save(first);
+    const next = await publish({ stored, history: normalize(first.data._changes), clock: now + 6 * 3600000,
+      semaRecords: [...canadian, row(SEMA_SOURCE, 81)] });
+    assert.equal(next.data._changes.events.length, 1);
+    assert.equal(next.data._changes.events[0].op, 'added');
+    assert.equal(next.data._changes.events[0].list, SEMA_SOURCE);
+    assert.equal(next.options.publishTransform(next.data)._changes, undefined);
+    await save(next);
+    const [key, log, ttl, count, metaKey, metaTtl, , diagnostics] = next.writes[0];
+    assert.equal(key, 'sanctions:changes:v1');
+    assert.equal(log.events.length, 1);
+    assert.equal(count, 1);
+    assert.equal(ttl, 100 * 86400);
+    assert.equal(metaTtl, ttl);
+    assert.equal(metaKey, 'seed-meta:sanctions:changes');
+    assert.equal(diagnostics.sourceState, 'ok');
+    assert.equal(next.writes[1][0], 'sanctions:source-snapshots:v1');
+    assert.deepEqual(next.writes[2], ['SET', 'seed-activated:sanctions:changes', '1']);
+    const failed = await publish({ stored, history: normalize(first.data._changes), successes: [], clock: now + 6 * 3600000 });
+    await save(failed);
+    assert.equal(failed.data._changes.events.length, 0);
+    assert.equal(failed.data._changes.gaps.filter(g => g.reason === 'retained').length, 3 + CSL_SOURCES.length);
+    assert.equal(failed.writes[0][7].sourceState, 'error');
+    const invalid = await publish({ stored, history: {} });
+    assert.equal(invalid.data._changes, null);
+    await invalid.options.beforePublish(invalid.data, {});
+    assert.deepEqual(invalid.writes, []);
+  });
+
+  it('health accepts a quiet present change log, rejects a missing log and reports held sources', () => {
+    const key = health.STANDALONE_KEYS.sanctionsChanges;
+    assert.equal(key, 'sanctions:changes:v1');
+    assert.equal(health.SEED_META.sanctionsChanges.maxStaleMin, 720);
+    const classify = (size, extra = {}) => health.classifyKey('sanctionsChanges', key, { allowOnDemand: false }, {
+      now, containmentEvidenceByName: new Map(), keyStrens: new Map([[key, size]]), keyErrors: new Map(),
+      keyMetaValues: new Map([[health.SEED_META.sanctionsChanges.key, JSON.stringify({ fetchedAt: now, recordCount: 0, ...extra })]]),
+      keyMetaErrors: new Map(),
+    });
+    assert.equal(classify(1024).status, 'OK');
+    assert.equal(classify(0).status, 'EMPTY');
+    assert.equal(classify(1024, { sourceState: 'error', errorCode: 'SANCTIONS_CHANGES_HELD' }).status, 'SEED_ERROR');
+    const missing = activated => health.classifyKey('sanctionsChanges', key, { allowOnDemand: true }, {
+      now, containmentEvidenceByName: new Map(), keyStrens: new Map([[key, 0]]), keyErrors: new Map(),
+      keyMetaValues: new Map(), keyMetaErrors: new Map(),
+      activationStates: new Map([['sanctionsChanges', activated]]),
+    });
+    assert.equal(missing(false).status, 'EMPTY_ON_DEMAND');
+    assert.equal(missing(true).status, 'EMPTY');
+  });
+
   it('captures the actual preceding state clock and keeps expired or legacy baselines unknown', async () => {
     for (const previousState of [null, { entryIds: ['SDN:1'] },
       { entryIds: ['SDN:1'], observedAt: String(now - 7 * 3600000) }]) {
@@ -127,6 +205,85 @@ describe('sanctions source lifecycle', () => {
     }
   });
 
+  it('reports degraded OFAC country attribution as a seed error while every source succeeds', async () => {
+    const { data, options } = await publish({ ofacCountryCodes: [] });
+    const result = await options.afterPublish(data, {});
+    assert.equal(result.freshnessMetaPatch.sourceState, 'degraded');
+    assert.equal(result.freshnessMetaPatch.errorCode, 'SANCTIONS_ATTRIBUTION_DEGRADED');
+    assert.equal(result.freshnessMetaPatch.failedSources.length, 0);
+    assert.equal(result.freshnessMetaPatch.attribution.unattributedShare, 1);
+    assert.equal(result.completionState, 'DEGRADED');
+    assert.equal(options.publishTransform(data)._ofacAttribution, undefined, 'the diagnostics stay out of the public payload');
+    const key = health.BOOTSTRAP_KEYS.sanctionsPressure;
+    const meta = { fetchedAt: now, recordCount: data.totalCount, ...result.freshnessMetaPatch };
+    const verdict = health.classifyKey('sanctionsPressure', key, { allowOnDemand: false }, {
+      now, containmentEvidenceByName: new Map(), keyStrens: new Map([[key, 1024]]), keyErrors: new Map(),
+      keyMetaValues: new Map([[health.SEED_META.sanctionsPressure.key, JSON.stringify(meta)]]), keyMetaErrors: new Map(),
+    });
+    assert.equal(verdict.status, 'SEED_ERROR');
+    assert.equal(verdict.errorCode, 'SANCTIONS_ATTRIBUTION_DEGRADED');
+  });
+
+  it('publishes SEMA target failures as attribution seed errors, independently of healthy OFAC', async () => {
+    const semaRecords = canadian.map(entry => ({ ...entry, _targetCountryCodes: [] }));
+    const { data, options } = await publish({ semaRecords });
+    const result = await options.afterPublish(data, {});
+    assert.equal(result.freshnessMetaPatch.attribution.degraded, false);
+    assert.equal(result.freshnessMetaPatch.semaAttribution.regimes.Iran.unattributedShare, 1);
+    assert.equal(result.freshnessMetaPatch.errorCode, 'SANCTIONS_ATTRIBUTION_DEGRADED');
+    assert.equal(result.completionState, 'DEGRADED');
+    assert.equal(options.publishTransform(data)._semaAttribution, undefined);
+  });
+
+  it('rebuilds absent legacy targets only for retained SEMA health records', async () => {
+    const withoutTargets = canadian.map(({ _targetCountryCodes, ...entry }) => entry);
+    const fresh = await publish({ semaRecords: withoutTargets });
+    assert.equal(fresh.data._semaAttribution.regimes.Iran.unattributedShare, 1,
+      'fresh missing target fields must still expose parser failures');
+    const stored = await save(fresh);
+    const retained = await publish({ stored, successes: ['SDN', 'CONSOLIDATED', 'CSL'], clock: now + 6 * 3600000 });
+    assert.equal(retained.data._sourceHealth[SEMA_SOURCE].status, 'retained');
+    assert.equal(retained.data._semaAttribution.regimes.Iran.unattributedShare, 0);
+    assert.equal(retained.data._semaAttribution.degraded, false);
+    const result = await retained.options.afterPublish(retained.data, {});
+    assert.equal(result.freshnessMetaPatch.errorCode, 'SEMA_INGEST_FAILED', 'the real source outage remains visible');
+    assert.equal(Object.hasOwn(retained.data._sourceSnapshots[SEMA_SOURCE].records[0], '_targetCountryCodes'), false,
+      'health normalization does not rewrite retained evidence or change-history baselines');
+
+    const explicitFailure = await publish({ semaRecords: canadian.map(entry => ({ ...entry, _targetCountryCodes: [] })) });
+    const retainedFailure = await publish({ stored: await save(explicitFailure),
+      successes: ['SDN', 'CONSOLIDATED', 'CSL'], clock: now + 6 * 3600000 });
+    assert.equal(retainedFailure.data._semaAttribution.degraded, true, 'explicit failure evidence is preserved');
+  });
+
+  it('logs the attribution summary on healthy runs', async () => {
+    const logs = [];
+    const { data } = await publish({ io: { console: { log: line => logs.push(line), warn() {} } } });
+    assert.equal(data._ofacAttribution.degraded, false);
+    assert.equal(data._semaAttribution.degraded, false);
+    const line = logs.find(line => line.startsWith('  Sanctions attribution: '));
+    assert.ok(line, 'healthy runs emit the monitorable summary');
+    const summary = JSON.parse(line.slice('  Sanctions attribution: '.length));
+    assert.deepEqual(summary.attribution, normalize(data._ofacAttribution));
+    assert.equal(summary.semaRegimeCount, 1);
+    assert.equal(summary.semaUnattributedCount, 0);
+  });
+
+  it('publishes aircraft resolution failures as seed errors despite whole-list headroom', async () => {
+    const { data, options } = await publish({ io: { fetchSource: async ({ label }) => ({ datasetDate: now,
+      entries: [...Array.from({ length: 99 }, (_, i) => row(label, i + 1, ['RU'])),
+        ...Array.from({ length: 5 }, (_, i) => ({ ...row(label, 100 + i, ['IR']), entityType: 'SANCTIONS_ENTITY_TYPE_AIRCRAFT', _aircraftHasCurrentTail: true }))],
+    }) } });
+    const result = await options.afterPublish(data, {});
+    assert.equal(result.freshnessMetaPatch.attribution.unattributedShare, 0);
+    assert.equal(result.freshnessMetaPatch.attribution.unattributedAircraftShare, 1);
+    assert.equal(result.freshnessMetaPatch.attribution.unresolvedAircraftWithTailCount, 10);
+    assert.equal(data._sourceSnapshots.SDN.records.at(-1)._aircraftHasCurrentTail, true);
+    assert.ok(options.publishTransform(data).entries.every(entry => !Object.hasOwn(entry, '_aircraftHasCurrentTail')));
+    assert.equal(result.freshnessMetaPatch.errorCode, 'SANCTIONS_ATTRIBUTION_DEGRADED');
+    assert.equal(result.completionState, 'DEGRADED');
+  });
+
   it('keeps health OK and names the quarantined Canadian rows in source health', async () => {
     const quarantined = ['116', '117', '118', '119', '120'].map(item => ({ id: `sema-ca:iran:1-part-2:${item}`, reason: 'INVALID_IMO' }));
     const { data, options } = await publish({ semaQuarantined: quarantined });
@@ -181,12 +338,29 @@ describe('sanctions source lifecycle', () => {
     assert.equal(result.freshnessMetaPatch.sourceHealth[SEMA_SOURCE].retainedUntil, null);
   });
 
-  it('strips private snapshots and source health from public data and stops on a snapshot write failure', async () => {
+  it('strips private snapshots and source health and contains history publication failure', async () => {
     const { data, options } = await publish({ writeError: true });
     const publicData = options.publishTransform(data);
     assert.ok(!('_sourceSnapshots' in publicData));
     assert.ok(!('_sourceHealth' in publicData));
-    await assert.rejects(options.beforePublish(data, {}), /synthetic cache write failure/);
+    await assert.doesNotReject(options.beforePublish(data, {}));
+    assert.equal(options.validateFn(data), true);
+  });
+
+  it('contains history read and credential failures without advancing history or baselines', async () => {
+    for (const io of [
+      { readSeedSnapshot: async key => {
+        if (key === 'sanctions:changes:v1') throw new Error('history read failed');
+        return null;
+      } },
+      { getOptionalUpstashCreds: () => null },
+    ]) {
+      const fresh = await publish({ io });
+      await assert.doesNotReject(fresh.options.beforePublish(fresh.data, {}));
+      assert.deepEqual(fresh.writes, []);
+      assert.equal(fresh.options.validateFn(fresh.data), true);
+      assert.ok(fresh.data._entityIndex.length > 0);
+    }
   });
 
   it('clears source failure metadata on complete recovery', async () => {
@@ -271,15 +445,108 @@ describe('sanctions source lifecycle', () => {
     for (const clock of [now + 3600000, now + RETAIN_MS]) {
       const { data, options, writes } = await publish({ successes: [], stored, clock });
       const count = clock < now + RETAIN_MS ? 82 : 0;
+      // Retained CSL rows are screened but never counted as sanctions pressure.
+      const screened = clock < now + RETAIN_MS ? count + CSL_SOURCES.length * 40 : 0;
       assert.equal(options.publishTransform(data).totalCount, count);
       assert.equal(options.validateFn(options.publishTransform(data)), true);
       assert.equal(options.declareRecords(options.publishTransform(data)), count);
       assert.equal(options.extraKeys[0].transform(data).entryIds.length, count);
       await options.afterPublish(data, {});
-      assert.equal(writes.find(([key]) => key === 'sanctions:entities:v1')[1].length, count);
-      assert.equal(writes.find(([key]) => key === 'sanctions:entities:v1')[3], count);
-      assert.deepEqual(writes.find(([key]) => key === 'sanctions:country-counts:v1')[1], {});
+      const index = writes.find(([key]) => key === 'sanctions:entities:v1');
+      assert.equal(index[1].length, screened);
+      assert.equal(index[3], screened);
+      assert.equal(index[7].sourceState, 'error', 'every source outage degrades the screening index health');
+      assert.equal(index[7].errorCode, 'SEMA_INGEST_FAILED');
+      assert.deepEqual([...index[7].failedSources].sort(), ['CONSOLIDATED', 'SDN', SEMA_SOURCE, ...CSL_SOURCES].sort());
+      assert.deepEqual(writes.find(([key]) => key === 'sanctions:country-counts:v1')[1], count ? { RU: 2 } : {});
     }
+  });
+});
+
+describe('US Consolidated Screening List in the sanctions seed (#9352)', () => {
+  it('screens CSL rows but keeps them out of pressure, country counts and pressure health', async () => {
+    const { data, options, writes } = await publish();
+    const index = data._entityIndex.filter(entry => entry.id.startsWith('CSL-'));
+    assert.equal(index.length, CSL_SOURCES.length * 40);
+    assert.deepEqual(index[0].sl, ['CSL-EL']);
+    assert.equal(index[0].et, 'unspecified');
+    assert.deepEqual(index[0].cc, ['CN']);
+    assert.equal(data.totalCount, 82, 'pressure counts OFAC and SEMA only');
+    assert.ok(!data.countries.some(country => country.countryCode === 'CN'));
+    assert.equal(data._countryCounts.CN, undefined);
+    assert.deepEqual(Object.keys(data.pressureMetadata.sourceHealth).sort(), ['CONSOLIDATED', 'SDN', SEMA_SOURCE].sort());
+    const result = await options.afterPublish(data, {});
+    assert.deepEqual(Object.keys(result.freshnessMetaPatch.sourceHealth).sort(), ['CONSOLIDATED', 'SDN', SEMA_SOURCE].sort());
+    assert.equal(writes.find(([key]) => key === 'sanctions:entities:v1')[7].sourceState, 'ok');
+  });
+
+  it('a CSL outage degrades screening only, never the pressure publication', async () => {
+    const { data, options } = await publish({ successes: ['SDN', 'CONSOLIDATED', SEMA_SOURCE] });
+    const result = await options.afterPublish(data, {});
+    assert.equal(result.freshnessMetaPatch.sourceState, 'ok');
+    assert.equal(result.freshnessMetaPatch.failedSources.length, 0);
+    assert.equal(result.completionState, 'OK');
+  });
+
+  it('reports every source missing from the screening index, not only the CSL lists', async () => {
+    const entityMeta = writes => writes.find(([key]) => key === 'sanctions:entities:v1')[7];
+    const ofacDown = await publish({ successes: ['CONSOLIDATED', SEMA_SOURCE, 'CSL'] });
+    await ofacDown.options.afterPublish(ofacDown.data, {});
+    const meta = entityMeta(ofacDown.writes);
+    assert.equal(meta.sourceState, 'error');
+    assert.equal(meta.errorCode, 'OFAC_INGEST_FAILED');
+    assert.deepEqual([...meta.failedSources], ['SDN']);
+    const cslDown = await publish({ successes: ['SDN', 'CONSOLIDATED', SEMA_SOURCE] });
+    await cslDown.options.afterPublish(cslDown.data, {});
+    assert.equal(entityMeta(cslDown.writes).errorCode, 'CSL_INGEST_FAILED');
+    assert.equal(entityMeta(cslDown.writes).failedSources.length, CSL_SOURCES.length);
+  });
+
+  it('logs a CSL designation with its Federal Register citation and list page, after a baseline run', async () => {
+    const first = await publish();
+    assert.ok(first.data._changes.gaps.filter(g => g.list.startsWith('CSL-')).every(g => g.reason === 'baseline-unavailable'),
+      'the first run starts a baseline instead of logging every CSL row as added');
+    assert.equal(first.data._changes.events.length, 0);
+    const stored = await save(first);
+    const added = { ...cslLists, 'CSL-EL': [...cslLists['CSL-EL'], cslRow('CSL-EL', 41)] };
+    const next = await publish({ stored, history: normalize(first.data._changes), clock: now + 6 * 3600000, cslRecords: added });
+    const [event] = next.data._changes.events;
+    assert.equal(next.data._changes.events.length, 1);
+    assert.equal(event.op, 'added');
+    assert.equal(event.list, 'CSL-EL');
+    assert.equal(event.et, 'unspecified');
+    assert.equal(event.notice, '90 FR 14032');
+    assert.equal(event.url, 'https://www.bis.gov/regulations/ear/744');
+    // The stored history now holds a CSL event; the next run must still accept it.
+    const third = await publish({ stored: await save(next), history: normalize(next.data._changes),
+      clock: now + 12 * 3600000, cslRecords: added });
+    assert.notEqual(third.data._changes, null, 'history with a CSL event validates on the next run');
+    assert.equal(third.data._changes.events.length, 1);
+    assert.equal(third.data._changes.events[0].notice, '90 FR 14032');
+  });
+
+  it('bounds the CSL download by the fetch-phase deadline', async () => {
+    let seen;
+    const { options } = await publish({ io: { ingestCslEntries: async args => { seen = args; return { lists: {}, error: 'CSL_FETCH_DEADLINE' }; } } });
+    assert.equal(seen.deadlineAt, now + options.fetchPhaseTimeoutMs - 30_000);
+  });
+
+  it('writes no change history when the source snapshots cannot be encoded', async () => {
+    const first = await publish();
+    first.data._sourceSnapshots = { ...first.data._sourceSnapshots, 'CSL-EL': { records: [{ name: 'x'.repeat(33 * 1024 * 1024) }] } };
+    await first.options.beforePublish(first.data, {});
+    assert.deepEqual(first.writes.filter(([key]) => key === 'sanctions:changes:v1'), [],
+      'an oversized snapshot must not leave history ahead of its baseline');
+  });
+
+  it('holds a CSL list that loses more than 5% of its rows instead of logging mass removals', async () => {
+    const first = await publish();
+    const stored = await save(first);
+    const shrunk = { ...cslLists, 'CSL-DPL': cslLists['CSL-DPL'].slice(0, 30) };
+    const next = await publish({ stored, history: normalize(first.data._changes), clock: now + 6 * 3600000, cslRecords: shrunk });
+    assert.equal(next.data._changes.events.length, 0);
+    assert.ok(next.data._changes.gaps.some(g => g.list === 'CSL-DPL' && g.reason === 'held'));
+    assert.ok(next.data._changes.heldSources.includes('CSL-DPL'));
   });
 });
 
@@ -302,13 +569,13 @@ async function withLocalRedis(run) {
     if (op === 'EXPIRE' || op === 'EVAL') return 1;
     throw new Error(`unexpected fixture command ${op}`);
   }
-  globalThis.fetch = async (url, init = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, init = {}) => {
     assert.equal(new URL(url).hostname, 'sanctions-redis.test', 'no real network allowed');
     const match = String(url).match(/\/get\/([^/?#]+)$/);
     if (match) return Response.json({ result: store.get(decodeURIComponent(match[1])) ?? null });
     const body = JSON.parse(init.body);
     return Response.json(Array.isArray(body[0]) ? body.map(c => ({ result: command(c) })) : { result: command(body) });
-  };
+  });
   try { return await run({ store, logs }); }
   finally {
     globalThis.fetch = original.fetch;
@@ -404,27 +671,31 @@ it('keeps the preceding canonical cohort and private baseline when the publicati
   });
 });
 
-it('preserves the published comparison cohort on a before-publish failure and does not advance the saved state', async () => {
+it('refreshes core publication on a history failure while preserving the history baseline', async () => {
   await withLocalRedis(async ({ store }) => {
     const priorAt = now - 7 * 3600000;
     const first = await publish({ previousState: { entryIds: ['SDN:1'], observedAt: String(priorAt) },
       io: { writeExtraKeyWithMeta } });
     await assert.rejects(runSeed('sanctions', 'pressure', 'sanctions:pressure:v1', async () => first.data, first.options),
       error => error.exitCode === 0);
-    const previousCanonical = store.get('sanctions:pressure:v1');
-    const previousState = store.get('sanctions:pressure:state:v1');
+    const previousHistory = store.get('sanctions:changes:v1');
+    const previousSnapshots = store.get('sanctions:source-snapshots:v1');
     const failed = await publish({ clock: now + 6 * 3600000, io: {
       verifySeedKey,
-      writeExtraKeyWithMeta: async () => { throw new Error('fixture publication failure'); },
+      writeExtraKeyWithMeta: async (key, ...args) => {
+        if (key === 'sanctions:changes:v1') throw new Error('fixture publication failure');
+        return writeExtraKeyWithMeta(key, ...args);
+      },
     } });
     assert.equal(failed.data.pressureMetadata.comparison.from, String(now));
     await assert.rejects(runSeed('sanctions', 'pressure', 'sanctions:pressure:v1', async () => failed.data, failed.options),
-      /fixture publication failure/);
-    assert.equal(store.get('sanctions:pressure:v1'), previousCanonical);
-    assert.equal(store.get('sanctions:pressure:state:v1'), previousState);
-    const canonical = JSON.parse(previousCanonical).data;
-    assert.equal(canonical._state.comparison.from, String(priorAt));
-    assert.equal(canonical._state.cohort.computationAt, String(now));
+      error => error.exitCode === 0);
+    assert.equal(store.get('sanctions:changes:v1'), previousHistory);
+    assert.equal(store.get('sanctions:source-snapshots:v1'), previousSnapshots);
+    const canonical = JSON.parse(store.get('sanctions:pressure:v1')).data;
+    assert.equal(canonical._state.comparison.from, String(now));
+    assert.equal(canonical._state.cohort.computationAt, String(now + 6 * 3600000));
+    assert.equal(JSON.parse(store.get('sanctions:pressure:state:v1')).data.observedAt, String(now + 6 * 3600000));
   });
 });
 
@@ -464,12 +735,12 @@ it('keeps malformed and mixed-invalid IDs unknown through the real saved-state r
       const canonical = JSON.parse(store.get('sanctions:pressure:v1')).data;
       const result = projectCountrySanctions(canonical, 'IR', Number(canonical.fetchedAt));
       assert.equal(result.state, 'observed');
-      assert.equal(result.sanctionsDesignations, 80);
+      assert.equal(result.sanctionsDesignations, 0, 'SEMA target states do not supply country evidence');
       assert.equal(result.sanctionsNewDesignations, null, JSON.stringify(entryIds));
       assert.equal(result.websiteCounts.sanctionsNewDesignations, null);
       assert.equal(result.comparison.kind, 'baseline-unavailable');
       assert.equal(result.comparison.from, null);
-      assert.equal(result.countryRow.newEntryCount, canonical.countries.find(row => row.countryCode === 'IR').newEntryCount);
+      assert.equal(result.countryRow, null);
     }
   });
 });
@@ -483,13 +754,13 @@ it('keeps old canonical metadata and state when the canonical SET fails after so
     const oldState = store.get('sanctions:pressure:state:v1');
     const next = await publish({ clock: now + 6 * 3600000, io: { verifySeedKey, writeExtraKeyWithMeta } });
     const fixtureFetch = globalThis.fetch;
-    globalThis.fetch = async (url, init = {}) => {
+    globalThis.fetch = withSeedLockFence(async (url, init = {}) => {
       const command = init.body ? JSON.parse(init.body) : null;
       if (command?.[0] === 'SET' && command[1] === 'sanctions:pressure:v1') {
         return new Response('fixture canonical write failure', { status: 400 });
       }
       return fixtureFetch(url, init);
-    };
+    });
     await assert.rejects(runSeed('sanctions', 'pressure', 'sanctions:pressure:v1', async () => next.data, next.options),
       /HTTP 400/);
     assert.equal(store.get('sanctions:pressure:v1'), oldCanonical);

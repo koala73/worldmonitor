@@ -26,7 +26,7 @@ const allowed = Object.values(PRODUCT_CATALOG).filter((p) => p.dodoProductId && 
 const rejected = [
   ...Object.values(PRODUCT_CATALOG).filter((p) => p.dodoProductId && (!p.currentForCheckout || !p.selfServe)).map((p) => p.dodoProductId!),
   ...Object.keys(LEGACY_PRODUCT_ALIASES),
-  "pdt_unmapped_investigation", "not-a-product-id", "", "constructor", "__proto__",
+  "pdt_unmapped_investigation", "not-a-product-id", "pro_monthly", "", "constructor", "__proto__",
 ];
 
 const invoke = (t: ReturnType<typeof convexTest>, productId: string, bypassPendingGuard = false) =>

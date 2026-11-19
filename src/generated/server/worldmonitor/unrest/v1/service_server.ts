@@ -38,6 +38,7 @@ export interface UnrestEvent {
   actors: string[];
   confidence: ConfidenceLevel;
   sourceUrls: string[];
+  hasPreciseLocation?: boolean;
 }
 
 export interface GeoCoordinates {
@@ -171,7 +172,7 @@ export function createUnrestServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },

@@ -11,6 +11,7 @@ import {
   fetchTelegramChannelFeed,
   fetchTelegramChannelPreview,
   formatTelegramTime,
+  isUnpolledTelegramFeed,
   type TelegramChannelPreview,
   type TelegramFeedResponse,
   type TelegramItem,
@@ -98,6 +99,7 @@ export class TelegramIntelPanel extends Panel {
   private previewEl: HTMLElement | null = null;
   private inputEl: HTMLInputElement | null = null;
   private relayEnabled = false;
+  private relayStarting = false;
   private disposed = false;
   private onAccessGranted: (() => void) | null = null;
   private previewState: PreviewState = { channel: null, error: null, loading: false, username: '' };
@@ -185,6 +187,7 @@ export class TelegramIntelPanel extends Panel {
     if (!this.canUseFeed() || generation !== getTelegramIntelGeneration()) return;
     this.relayEnabled = response.enabled !== false && !response.error;
     this.baseItems = response.items || [];
+    this.relayStarting = !response.error && isUnpolledTelegramFeed(response);
 
     if (this.inputEl) {
       this.inputEl.disabled = !this.relayEnabled;
@@ -460,6 +463,10 @@ export class TelegramIntelPanel extends Panel {
     this.setCount(filtered.length);
 
     if (filtered.length === 0) {
+      if (this.relayStarting && mergedItems.length === 0) {
+        this.showLoading(t('components.telegramIntel.loading'));
+        return;
+      }
       this.setContentNodes(
         h('div', { className: 'empty-state' }, t('components.telegramIntel.empty')),
       );

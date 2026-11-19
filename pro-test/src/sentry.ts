@@ -1,6 +1,6 @@
 import * as Sentry from '@sentry/react';
-import { sanitizeSentryTelemetry, sentryPrivacyOptions } from '../../shared/sentry-privacy';
 import { getSentryBuildMetadata, isolateNonProductionSentryEvent } from '../../shared/sentry-build-metadata';
+import { scrubSentryCredentials } from '../../shared/sensitive-url-params';
 
 import { SENTRY_ALLOW_URLS } from './sentry-allow-urls';
 import {
@@ -27,7 +27,6 @@ export function initSentry(): void {
     : 'development';
 
   Sentry.init({
-    ...sentryPrivacyOptions,
     dsn: sentryDsn || undefined,
     ...getSentryBuildMetadata(__APP_VERSION__, __BUILD_HASH__, environment),
     environment,
@@ -35,6 +34,9 @@ export function initSentry(): void {
     allowUrls: SENTRY_ALLOW_URLS,
     tracesSampleRate: 0.1,
     ignoreErrors: MARKETING_IGNORE_ERRORS,
+    beforeBreadcrumb: scrubSentryCredentials,
+    beforeSendTransaction: scrubSentryCredentials,
+    beforeSendSpan: scrubSentryCredentials,
     beforeSend: (event) => {
       const filteredEvent = marketingBeforeSend(event);
       if (!filteredEvent) return null;
@@ -43,7 +45,7 @@ export function initSentry(): void {
         const safeRequestUrl = sanitizeMarketingRequestUrl(filteredEvent.request.url);
         filteredEvent.request.url = safeRequestUrl;
       }
-      return sanitizeSentryTelemetry(decorateRemoveChildEvent(filteredEvent, collectRemoveChildEvidence({
+      return scrubSentryCredentials(decorateRemoveChildEvent(filteredEvent, collectRemoveChildEvidence({
         document,
         location,
         servedLanguage,

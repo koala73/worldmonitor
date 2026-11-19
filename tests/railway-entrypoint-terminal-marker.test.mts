@@ -60,6 +60,7 @@ function hasTerminalMarker(rawSrc: string): boolean {
   const src = stripComments(rawSrc);
   return (
     /\brunSeed\s*\(/.test(src) ||               // shared runner prints `=== Done (Nms) ===`
+    /await runFoodPriceSource\(/.test(src) && /from ['"]\.\/lib\/food-prices-seed\.mjs['"]/.test(src) ||
     /===\s*Done\b/.test(src) ||                  // printed directly
     /exiting 0 \(not a crash\)/.test(src) ||     // scripts/_bundle-runner.mjs clean exit
     /_bundle-runner/.test(src) ||                // delegates to the bundle runner
@@ -146,6 +147,12 @@ function collectEntryPoints(): { path: string; src: string }[] {
 }
 
 describe('hasTerminalMarker predicate', () => {
+  it('verifies the food-price delegate uses the shared terminal-marker runner', () => {
+    const helper = readFileSync(join(repoRoot, 'scripts/lib/food-prices-seed.mjs'), 'utf8');
+    assert.match(stripComments(helper), /return runSeed\(/);
+    assert.equal(hasTerminalMarker("import { runFoodPriceSource } from './lib/food-prices-seed.mjs';\nawait runFoodPriceSource('pihps', import.meta.url);"), true);
+    assert.equal(hasTerminalMarker("await runFoodPriceSource('pihps', import.meta.url);"), false);
+  });
   it('accepts each shape currently in use', () => {
     assert.equal(hasTerminalMarker('await runSeed({ domain: "x" })'), true, 'runSeed');
     assert.equal(hasTerminalMarker('console.log(`\\n=== Done (${ms}ms) ===`)'), true, 'direct');

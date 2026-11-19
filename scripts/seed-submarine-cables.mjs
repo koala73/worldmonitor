@@ -22,6 +22,7 @@ export const CABLE_REGIONS = [
       'marea', 'grace-hopper', 'havfrueaec-2', 'dunant', 'amitie',
       'atlantic-crossing-1-ac-1', 'apollo', 'nuvem', 'flag-atlantic-1-fa-1',
       'tata-tgn-atlantic-south', 'tata-tgn-western-europe',
+      'exa-north-and-south',
     ],
   },
   {
@@ -39,6 +40,7 @@ export const CABLE_REGIONS = [
       'seamewe-6', 'seamewe-4', 'seamewe-5', 'asia-africa-europe-1-aae-1',
       'imewe', 'europe-india-gateway-eig', 'peace-cable',
       'seacomtata-tgn-eurasia', 'te-northtgn-eurasiaseacomalexandrosmedex',
+      'fea', 'middle-east-north-africa-mena-cable-systemgulf-bridge-international',
     ],
   },
   {
@@ -56,6 +58,7 @@ export const CABLE_REGIONS = [
       'south-america-1-sam-1', 'ellalink', 'brusa', 'monet', 'seabras-1',
       'firmina', 'south-atlantic-cable-system-sacs', 'south-atlantic-inter-link-sail',
       'arcos', 'america-movil-submarine-cable-system-1-amx-1', 'globenet', 'malbec',
+      'south-american-crossing-sac', 'pan-american-crossing-pac',
     ],
   },
   {
@@ -66,6 +69,8 @@ export const CABLE_REGIONS = [
       'asia-direct-cable-adc', 'bifrost', 'apricot', 'apcn-2',
       'australia-japan-cable-ajc', 'australia-singapore-cable-asc',
       'japan-guam-australia-south-jga-s', 'sea-us', 'india-asia-xpress-iax', 'raman',
+      'eac-c2c', 'asia-submarine-cable-express-asecahaya-malaysia', 'mist',
+      'bay-of-bengal-gateway-bbg', 'oman-australia-cable-oac',
     ],
   },
   {
@@ -80,6 +85,7 @@ export const CABLE_REGIONS = [
     ids: [
       'falcon', 'tata-tgn-gulf', 'fiber-optic-gulf-fog', 'omranepeg',
       'gulf-bridge-international-cable-systemmiddle-east-north-africa-cable-system-gbicsmena',
+      'uae-iran', 'kuwait-iran',
     ],
   },
   {
@@ -91,7 +97,7 @@ export const CABLE_REGIONS = [
 const COUNTRY_CODES = {
   'Afghanistan': 'AF', 'Albania': 'AL', 'Algeria': 'DZ', 'Angola': 'AO', 'Argentina': 'AR',
   'Australia': 'AU', 'Austria': 'AT', 'Bahrain': 'BH', 'Bangladesh': 'BD', 'Belgium': 'BE',
-  'Belize': 'BZ', 'Benin': 'BJ', 'Bermuda': 'BM', 'Brazil': 'BR', 'Brunei': 'BN',
+  'Belize': 'BZ', 'British Indian Ocean Territory': 'IO', 'Cocos (Keeling) Islands': 'CC', 'Benin': 'BJ', 'Bermuda': 'BM', 'Brazil': 'BR', 'Brunei': 'BN',
   'Bulgaria': 'BG', 'Cameroon': 'CM', 'Canada': 'CA', 'Cayman Islands': 'KY',
   'Chile': 'CL', 'China': 'CN', 'Colombia': 'CO', 'Comoros': 'KM',
   'Costa Rica': 'CR', 'Croatia': 'HR', 'Cuba': 'CU', "Côte d'Ivoire": 'CI', 'Cyprus': 'CY',

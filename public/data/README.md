@@ -6,6 +6,12 @@ filenames are effectively content-pinned — **bump the filename (or relax the
 cache rule) if a file's contents ever change**, otherwise returning visitors
 keep the stale copy for up to a year.
 
+`/data/v1/(.*)` is the exception. `vercel.json` and the self-hosted
+`docker/nginx.conf` give it `Cache-Control: public, max-age=3600` and
+`Access-Control-Allow-Origin: *`, so files there may change in place.
+`v1/chokepoints/` holds the daily chokepoint status open dataset (CC BY 4.0);
+see [`v1/chokepoints/README.md`](v1/chokepoints/README.md).
+
 ## Map atlas (TopoJSON)
 
 | File | Upstream source | Regenerate |

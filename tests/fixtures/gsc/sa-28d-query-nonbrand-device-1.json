@@ -1,0 +1,35 @@
+{
+  "rows": [
+    {
+      "keys": [
+        "pizza index",
+        "DESKTOP"
+      ],
+      "clicks": 3,
+      "impressions": 200,
+      "ctr": 0.015,
+      "position": 8.0
+    },
+    {
+      "keys": [
+        "quiet desktop query",
+        "DESKTOP"
+      ],
+      "clicks": 0,
+      "impressions": 150,
+      "ctr": 0.0,
+      "position": 6.0
+    },
+    {
+      "keys": [
+        "tiny query",
+        "MOBILE"
+      ],
+      "clicks": 0,
+      "impressions": 5,
+      "ctr": 0.0,
+      "position": 4.0
+    }
+  ],
+  "responseAggregationType": "byPage"
+}

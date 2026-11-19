@@ -1,0 +1,41 @@
+name: Rust SDK
+
+on:
+  pull_request:
+    paths:
+      - 'sdk/rust/**'
+      - '.github/workflows/rust-sdk.yml'
+      - '.github/workflows/publish-rust.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'sdk/rust/**'
+      - '.github/workflows/rust-sdk.yml'
+      - '.github/workflows/publish-rust.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: sdk/rust
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt --component clippy --no-self-update
+          rustup default stable
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      - run: cargo package --locked
+      - name: Build documentation
+        env:
+          RUSTDOCFLAGS: '-D warnings'
+        run: cargo doc --locked --no-deps

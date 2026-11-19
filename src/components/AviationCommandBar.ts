@@ -2,7 +2,7 @@ import { fetchFlightStatus, fetchAirportOpsSummary, fetchFlightPrices, fetchAvia
 import { safeStorageSet } from '@/utils/safe-storage';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { MONITORED_AIRPORTS } from '@/config/airports';
-import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { isImeEnter, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import { declareOverlay } from '@/utils/open-modal';
 
@@ -133,9 +133,10 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
                 : s.severity === 'minor' ? '#f59e0b'
                 : '#ef4444';
             const sevLabel = s.severity === 'unknown' ? 'NO DATA' : s.severity.toUpperCase();
+            // A NOTAM-sourced row only knows the airport is open, not its delays.
             const suffix = s.severity === 'unknown'
                 ? ''
-                : `<span>${s.avgDelayMinutes > 0 ? `+${s.avgDelayMinutes}m delay` : 'Normal ops'}</span>`;
+                : `<span>${s.avgDelayMinutes > 0 ? `+${s.avgDelayMinutes}m delay` : s.source === 'notam' ? 'Open' : 'Normal ops'}</span>`;
             return `
       <div class="cmd-row">
         <strong>${escapeHtml(s.iata)}</strong>
@@ -358,7 +359,7 @@ export class AviationCommandBar {
         const input = this.overlay.querySelector('#aviation-cmd-input') as HTMLInputElement;
         input?.addEventListener('keydown', async (e) => {
             if (e.key === 'Escape') { this.close(); return; }
-            if (e.key === 'Enter') {
+            if (e.key === 'Enter' && !isImeEnter(e)) {
                 const val = input.value.trim();
                 if (!val) return;
                 this.addToHistory(val);

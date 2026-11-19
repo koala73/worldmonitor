@@ -212,6 +212,106 @@ describe('sign-up resume controller', () => {
     assert.equal(h.surface.opened, 2);
   });
 
+  // Header Sign In is the only account action (#10464). A returning user with
+  // an abandoned sign-up attempt must always be able to reach Clerk's sign-in.
+  it('Sign In click never sends an email: an expired code falls through to Clerk sign-in', () => {
+    const h = harness(pending(NOW - 1));
+    const c = createSignUpResumeController(h.ports);
+    assert.equal(c.resumeOnUserIntent(() => {}, 'sign-in'), false);
+    assert.equal(h.resends, 0);
+    assert.equal(h.surface.opened, 0);
+  });
+
+  it('Sign In click does not re-trap a user who dismissed the resume card', () => {
+    const h = harness();
+    const c = createSignUpResumeController(h.ports);
+    c.onClerkEmission(true);
+    h.surface.dismiss?.();
+    assert.equal(c.resumeOnUserIntent(() => {}, 'sign-in'), false);
+    assert.equal(h.surface.opened, 1, 'no second resume card');
+  });
+
+  it('Sign In click still resumes a live, undismissed attempt', () => {
+    const h = harness();
+    const c = createSignUpResumeController(h.ports);
+    assert.equal(c.resumeOnUserIntent(() => {}, 'sign-in'), true);
+    assert.equal(h.surface.opened, 1);
+    assert.equal(h.resends, 0);
+  });
+
+  it('releaseAttempt stops the hydration and Sign In resumes of that attempt, so Sign in reaches Clerk\'s sign-in form', () => {
+    // An existing account typed into sign-up gets a code screen with no code
+    // under strict enumeration protection. The escape to sign-in releases the
+    // attempt; without that, the next Sign In click resumes the dead card.
+    const h = harness();
+    const c = createSignUpResumeController(h.ports);
+    c.onClerkEmission(true);
+    assert.equal(h.surface.opened, 1);
+    c.releaseAttempt();
+    assert.equal(h.surface.isOpen(), false, 'resume card closed');
+    assert.equal(c.resumeOnUserIntent(() => {}, 'sign-in'), false, 'Sign In opens Clerk sign-in');
+    assert.equal(h.surface.opened, 1);
+    createSignUpResumeController(h.ports).onClerkEmission(true);
+    assert.equal(h.surface.opened, 1, 'a reload does not resume it either');
+    assert.equal(h.log.includes('dismissed'), false, 'not counted as a funnel dismissal');
+  });
+
+  it('releaseAttempt holds in this page when storage rejects the marker', () => {
+    const h = harness();
+    const c = createSignUpResumeController({
+      ...h.ports,
+      markers: { ...h.ports.markers, markDismissed: () => {}, dismissed: () => false },
+    });
+    c.releaseAttempt();
+    assert.equal(c.resumeOnUserIntent(() => {}, 'sign-in'), false);
+    assert.equal(h.surface.opened, 0);
+  });
+
+  it('a resend that settles after releaseAttempt opens nothing', async () => {
+    const expired = harness(pending(NOW - 60_000));
+    const c = createSignUpResumeController(expired.ports);
+    assert.equal(c.resumeOnUserIntent(() => {}, 'sign-up'), true);
+    c.releaseAttempt();
+    await tick();
+    assert.equal(expired.surface.opened, 0, 'no resume card over sign-in');
+
+    const failing = harness(pending(NOW - 60_000));
+    failing.state.resendResult = 'fail';
+    const c2 = createSignUpResumeController(failing.ports);
+    let fallbacks = 0;
+    assert.equal(c2.resumeOnUserIntent(() => { fallbacks += 1; }, 'sign-up'), true);
+    c2.releaseAttempt();
+    await tick();
+    assert.equal(fallbacks, 0, 'no Clerk sign-up modal over sign-in');
+  });
+
+  it('a Create account click after releaseAttempt still shows the resumed card once its resend settles', async () => {
+    const h = harness(pending(NOW - 60_000));
+    const c = createSignUpResumeController(h.ports);
+    c.releaseAttempt();
+    assert.equal(c.resumeOnUserIntent(() => {}, 'sign-up'), true);
+    await tick();
+    assert.equal(h.resends, 1);
+    assert.equal(h.surface.opened, 1, 'the click was taken, so a form must appear');
+
+    const failing = harness(pending(NOW - 60_000));
+    failing.state.resendResult = 'fail';
+    const c2 = createSignUpResumeController(failing.ports);
+    c2.releaseAttempt();
+    let fallbacks = 0;
+    assert.equal(c2.resumeOnUserIntent(() => { fallbacks += 1; }, 'sign-up'), true);
+    await tick();
+    assert.equal(fallbacks, 1, "Clerk's sign-up form opens when the resend fails");
+  });
+
+  it('releaseAttempt is a no-op with no pending attempt', () => {
+    const h = harness({ kind: 'none' });
+    const c = createSignUpResumeController(h.ports);
+    c.releaseAttempt();
+    assert.equal(h.surface.closed, 0);
+    assert.equal(h.markers.size, 0);
+  });
+
   it('tracks started once per attempt id across reloads and emissions', () => {
     const h = harness();
     createSignUpResumeController(h.ports).onClerkEmission(true);

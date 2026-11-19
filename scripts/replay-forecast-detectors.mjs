@@ -43,6 +43,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { serializeR2JsonBody, sha256Hex } from './_r2-storage.mjs';
+import { parseStoredSeedJson } from './_seed-payload-codec.mjs';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(dirname(SCRIPT_PATH), '..');
@@ -379,7 +380,7 @@ async function readLedgerEntry(entryKey) {
   const payload = await resp.json();
   if (payload?.error || payload?.result == null) throw new Error(`Redis GET ${LEDGER_KEY} returned no ledger`);
   const { unwrapEnvelope } = await import('./_seed-envelope-source.mjs');
-  const data = unwrapEnvelope(JSON.parse(payload.result)).data;
+  const data = unwrapEnvelope(parseStoredSeedJson(payload.result)).data;
   const entries = Array.isArray(data) ? data : Object.values(data || {});
   const entry = entries.find((row) => row?.key === entryKey);
   if (!entry) throw new Error(`no ledger entry ${entryKey}`);

@@ -116,3 +116,41 @@ Three read-only `readSeedSnapshot({strict:true})` GETs at 2026-09-13 17:22:31 UT
 Counts describe corridor models, not validated shipments. Lower coverage records removed false matches; it does not imply less trade. The actual reader, generated service client, capture, builder and DOM test preserves the legacy 842 US row at 39.2%, keeps Australia's 30% as route unknown and Qatar's 20% exposed, and embeds the same evidence in JSON. Browser wheat fixtures exercise Australia-Japan at desktop/mobile widths and both themes, including downloaded HTML/JSON parity. These are controlled fixtures.
 
 No production refresh, seed, cache write or deployment is part of this follow-up. The original Germany incident's exact historical provider failure, the next natural seed outcome, authenticated deployed API/UI parity, and broader port/mode-specific route validity remain open under #7990. Reuse the recovery and rollback procedure above. For this route change, the deployment owner should inspect JP wheat, JP HS2804 and DE wheat at the first post-deploy comparison: unknown routes must retain trade shares and Qatar must retain Hormuz. Roll back the application revision if either condition fails; no cache rollback is required.
+
+# Follow-up, 2026-11-01: Germany recovered; the roster tail starves instead
+
+Read-only GETs on 2026-11-01 (`readSeedSnapshot({strict:true})` and plain Upstash GETs; no writes):
+
+| Cache | Fetch timestamp UTC | Headings | Observation years |
+| --- | --- | --- | --- |
+| DE | 2026-10-29 19:16:08 | 36 | 2025 for all 36 |
+| JP | 2026-10-29 19:15:47 | 36 | 2025 (35), 2024 (1) |
+| US | 2026-10-29 19:15:09 | 36 | 2025 for all 36 |
+
+Germany's July 20-heading payload has been replaced by a complete 36-heading 2025 payload, with its sibling partner key and `countryCoverage.DE = observed`, no missing headings. The original July/September failure itself remains unreconstructed: Railway keeps no logs for those runs.
+
+The same metadata shows a different, recurring loss. The 2026-10-29 run wrote 110 countries (`status: ok`, exactly the 110 floor), recorded 13 as `no_records` and 74 as `unavailable`. All 74 are the last 74 reporters in `country-port-clusters.json` order (SZ at index 123 onward), attempted about 1.6 s apart with no raw rows, i.e. refused immediately rather than after a 60 s 429 wait or a 45 s timeout. Counting the five run-level requests, the first refusal was request ~252. The 2026-10-01 run's first refused reporter was MU (index 125): request ~253, with no LNG requests then. 56 reporters already carried `preserveStreaks` 2, so their September payloads would expire after one more refused run.
+
+Two corrections to the seeder's assumptions:
+
+- The UN Comtrade free subscription is [500 calls per day](https://uncomtrade.org/docs/subscriptions/), not per month. The provider still refused both October runs from about request 250 onward; the exact status was not logged and Railway's retention has lapsed.
+- The keyed `data/v1/get` route is no longer used by this seeder alone. `seed-recovery-import-hhi` and `seed-recovery-reexport-share` run in the `seed-bundle-resilience-recovery` service (import-HHI wrote 173 reporters at 2026-11-01 00:07 UTC). Whether they share the same key was not checked: reading Railway variables was out of scope.
+
+Repair: `orderCountriesForRun` fetches reporters the previous run did not refresh first, longest-preserved before the rest, so a run cut short at ~123 reporters rotates through the roster and every reporter refreshes at least every second run. HTTP 401 and 403 now count with 429 toward the five-refusal breaker, so an exhausted key ends the run (the rest stay `not_attempted`) instead of spending one request per remaining reporter, and the refusal body is logged so the next cut-off is attributable. The next scheduled run is 2026-12-01 06:00 UTC (the 24-day gate skipped 2026-11-01). At that run, check that the 74 reporters lead the request log and that `preserveStreaks` stays at most 1.
+
+## Route coverage measured on live caches, 2026-11-01
+
+Origins from the live 2026-10-29 canonical payloads, run through `computeSupplierRouteRisk`. "Modeled origins" counts listed origins: `3/4` means three of four listed origins have a modeled route. "Share modeled" is weighted by import value: `38.3% of 77.0%` means the origins with a modeled route hold 38.3% of import value, out of the 77.0% that the listed origins hold together. The share after each unknown origin is that origin's own share of import value.
+
+| Selection | Modeled origins | Share modeled | Unknown origins |
+| --- | --- | --- | --- |
+| JP HS2804 | 3/4 | 38.3% of 77.0% | US 38.7% |
+| JP HS1001 | 2/5 | 0.2% of 99.9% | CA, US, AU |
+| JP HS2836 | 2/5 | 30.9% of 90.9% | CL, US, AR |
+| US HS2804 | 2/5 | 12.1% of 80.3% | BR, CA, MY |
+| DE HS1001 | 0/5 | 0% of 85.0% | CZ, PL, FR, SK, HU |
+| DE HS2804 | 1/5 | 12.0% of 60.5% | NO, QA, FR, BR |
+| KR HS2804 | 4/5 | 64.5% of 83.3% | US |
+| IN HS2709 | 2/5 | 25.4% of 82.0% | RU, IQ, US |
+
+All unknown origins render as Unknown, never Safe, and keep their shares, which meets the acceptance rule. Closing these gaps means adding corridors to `TRADE_ROUTES` and `nearestRouteIds`, which also moves the map layer, the route explorer and the seeded chokepoint-exposure scores. That is a model extension, not a defect repair, so it is not part of this change. Two gaps have strong geographic grounds: Iraq to India (Basra crude exits through Hormuz) and US to Japan/Korea. For US to Japan/Korea, a West Coast leg has no modeled chokepoint, while Gulf Coast cargo such as helium passes through Panama, so a West-Coast-only route would understate exposure. PR #9944 adds those two corridors only and measures how they move the seeded exposure scores.

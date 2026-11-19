@@ -235,8 +235,8 @@ describe('seeder and handler agree on the cache contract', () => {
     assert.equal(tariffTrendCoverageId('840'), '840');
   });
 
-  test('TARIFF_TTL is 8h so the meta-only health budget can pin against it', () => {
-    assert.equal(TARIFF_TTL, 28800);
+  test('TARIFF_TTL is 24h (#4873) so the meta-only health budget can pin against it', () => {
+    assert.equal(TARIFF_TTL, 86400);
   });
 });
 
@@ -462,8 +462,9 @@ describe('publishTariffTrends', () => {
     assert.ok(redisStore.has(seedTariffTrendSeedKey('156')));
     assert.ok(redisStore.has(TARIFF_COVERAGE_KEY));
     assert.ok(redisStore.has(TARIFF_META_KEY));
-    const meta = redisStore.get(TARIFF_META_KEY) as { recordCount: number };
+    const meta = redisStore.get(TARIFF_META_KEY) as { recordCount: number; payloadTtlSeconds: number };
     assert.equal(meta.recordCount, 2);
+    assert.equal(meta.payloadTtlSeconds, TARIFF_TTL);
     const manifest = redisStore.get(TARIFF_COVERAGE_KEY) as { reporters: string[] };
     assert.deepEqual(manifest.reporters, ['156', '840']);
   });
@@ -484,6 +485,26 @@ describe('publishTariffTrends', () => {
     assert.ok(!redisStore.has(TARIFF_COVERAGE_KEY));
     // Meta still lands so health can see the fleet size.
     assert.ok(redisStore.has(TARIFF_META_KEY));
+  });
+
+  test('failed payload writes cannot enable the longer health budget', async () => {
+    const previousMeta = { fetchedAt: 1, recordCount: 200 };
+    redisStore.set(TARIFF_META_KEY, previousMeta);
+    const fetchRedis = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const command = typeof init?.body === 'string' ? JSON.parse(init.body) : [];
+      if (String(command[1]).startsWith(`${TARIFF_KEY_PREFIX}:`)) {
+        return new Response('write rejected', { status: 400 });
+      }
+      return fetchRedis(input, init);
+    }) as typeof fetch;
+    await publishTariffTrends({
+      trends: { [seedTariffTrendSeedKey('840')]: seededPayload(2015, 2025) },
+      manifest: { reporters: ['840'], startYear: 2015, endYear: 2025,
+        fetchedAt: '2026-08-09T00:00:00.000Z', reporterListIsFallback: false },
+    });
+    assert.deepEqual(redisStore.get(TARIFF_META_KEY), previousMeta);
+    assert.ok(!redisWrites.some(({ key }) => key === TARIFF_META_KEY));
   });
 
   test('writes nothing when the fleet is empty (leaves prior meta alone)', async () => {

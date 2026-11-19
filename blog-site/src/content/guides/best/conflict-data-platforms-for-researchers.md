@@ -1,7 +1,7 @@
 ---
 title: "Best conflict data platforms for researchers"
-description: "Which conflict data platform should a researcher use? ACLED for coded event data, World Monitor for current cross-domain context with a public, tiered source inventory and an API, Liveuamap for incident discovery in case work."
-metaTitle: "Best conflict data platforms for researchers (2026) | World Monitor"
+description: "Compare conflict data platforms for researchers: ACLED for coded event datasets, World Monitor for live cross-domain context and API, and Liveuamap for cases."
+metaTitle: "Best conflict data platforms for researchers"
 keywords: "Conflict researchers, best conflict data platforms for researchers, conflict event data, ACLED alternatives, OSINT research tools, global intelligence tools"
 audience: "Conflict researchers"
 pubDate: "2026-10-02"

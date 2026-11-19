@@ -165,6 +165,45 @@ function sanitizeNotificationLinkUrl(value) {
   return '';
 }
 
+// Referrer tag for an outbound article link in an alert, so a publisher can
+// attribute the visit to WorldMonitor: utm_source=worldmonitor,
+// utm_medium=alert, utm_campaign=<channel>. Same rule as the brief's
+// buildTrackedSourceUrl (server/_shared/brief-render.js): a parameter the link
+// already carries is kept as the publisher set it.
+//
+// Only an off-origin article link is tagged. First-party links, the dashboard
+// fallback and anything the classifier rejects come back unchanged. The
+// parameters are appended to the classified URL as text, before the fragment:
+// the host, path, existing query and fragment are never re-serialised.
+//
+// The link-suppression matchers remove exactly these tags before comparing
+// (scripts/shared/notification-link-suppression.cjs,
+// api/notification-suppressions.js, public/link-suppression-check.js), so a
+// new channel here must be added to all three.
+const NOTIFY_ALERT_UTM_SOURCE = 'worldmonitor';
+const NOTIFY_ALERT_UTM_MEDIUM = 'alert';
+const NOTIFY_ALERT_CHANNELS = ['email', 'telegram', 'slack', 'discord', 'teams', 'web_push'];
+
+function withAlertReferrer(value, channel) {
+  const classified = classifyNotificationLink(value);
+  if (classified.kind !== 'article' || isFirstPartyNotificationHost(classified.host)) return value;
+  const tags = [
+    ['utm_source', NOTIFY_ALERT_UTM_SOURCE],
+    ['utm_medium', NOTIFY_ALERT_UTM_MEDIUM],
+  ];
+  if (NOTIFY_ALERT_CHANNELS.includes(channel)) tags.push(['utm_campaign', channel]);
+  const present = new URL(classified.url).searchParams;
+  const additions = tags.filter(([key]) => !present.has(key)).map(([key, tag]) => `${key}=${tag}`);
+  if (additions.length === 0) return classified.url;
+  const hashAt = classified.url.indexOf('#');
+  const beforeFragment = hashAt === -1 ? classified.url : classified.url.slice(0, hashAt);
+  const fragment = hashAt === -1 ? '' : classified.url.slice(hashAt);
+  const queryAt = beforeFragment.indexOf('?');
+  let joiner = '?';
+  if (queryAt !== -1) joiner = queryAt === beforeFragment.length - 1 ? '' : '&';
+  return `${beforeFragment}${joiner}${additions.join('&')}${fragment}`;
+}
+
 function renderNotificationLinkForText(value) {
   const classified = classifyNotificationLink(value);
   if (classified.kind === 'absent') return '';
@@ -181,9 +220,13 @@ module.exports = {
   NOTIFY_COMMUNITY_TITLE_PREFIX,
   NOTIFY_NEUTRAL_SOURCE,
   NOTIFY_REDACTED_LINK_TOKEN,
+  NOTIFY_ALERT_UTM_SOURCE,
+  NOTIFY_ALERT_UTM_MEDIUM,
+  NOTIFY_ALERT_CHANNELS,
   stripNotificationControlChars,
   sanitizeNotificationText,
   redactNotificationUrlTokens,
+  URL_TOKEN_PATTERN,
   isImpersonatingSource,
   sanitizeNotificationTitle,
   sanitizeCommunityNotificationTitle,
@@ -195,5 +238,6 @@ module.exports = {
   isFirstPartyNotificationHost,
   sanitizeUserNotificationLinkUrl,
   sanitizeNotificationLinkUrl,
+  withAlertReferrer,
   renderNotificationLinkForText,
 };

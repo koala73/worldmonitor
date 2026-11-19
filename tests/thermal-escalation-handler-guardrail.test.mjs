@@ -1,3 +1,8 @@
+// Source guard by design (#8690, section 2): this suite pins the handler's
+// seeded Redis read and prohibits direct fetch and NASA FIRMS references.
+// Runtime fixtures exercise selected paths, while this source check also
+// catches those references in paths the fixtures do not reach.
+//
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

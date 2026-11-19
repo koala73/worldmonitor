@@ -26,6 +26,7 @@ import { ENTITY_REGISTRY } from '../shared/entity-registry.js';
 import { buildDependencyGraph, calculateCascade } from '../shared/analysis-infrastructure-cascade.ts';
 import { getTheaterPostureSummaries } from '../shared/analysis-military-surge.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
+import { CII_FORMULA_VERSION } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
 // Entered through the registry barrel, not `rpc-tools.ts` directly: rpc-tools
 // imports TOOL_REGISTRY back from the barrel, so importing it first hits the
 // cycle mid-initialisation ("Cannot access 'RPC_TOOLS' before initialization").
@@ -127,7 +128,7 @@ function analysisPayloads() {
     id: `fire-${i}`,
     frp: i + 1,
     region: 'Sahel',
-    location: { latitude: 14 + i / 100, longitude: 1 },
+    location: { latitude: 12 + i / 100, longitude: -1.5 },
   }));
   return {
     'unrest:events:v1': {
@@ -209,7 +210,7 @@ function analysisPayloads() {
         },
       ],
     },
-    'risk:scores:sebuf:v8': {
+    'risk:scores:sebuf:v14': {
       ciiScores: [
         { region: 'IR', combinedScore: 88 },
         { region: 'TW', combinedScore: 61 },
@@ -242,7 +243,7 @@ function analysisPayloads() {
     },
     'wildfire:fires:v1': { fireDetections: fires },
     'conflict:ucdp-events:v1': {
-      events: [{ id: 1, country: 'Sudan', dateStart: '2026-07-28', location: { latitude: 15.5, longitude: 32.5 } }],
+      events: [{ id: 1, country: 'Sudan', dateStart: '2026-07-28', location: { latitude: 15.5, longitude: 32.5 }, hasPreciseLocation: true }],
     },
     'cable-health-v1': structuredClone(PRODUCER_PAYLOADS.cableHealth),
     'infra:outages:v1': structuredClone(PRODUCER_PAYLOADS.internetOutages),
@@ -668,7 +669,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     {
       tool: 'get_focal_points',
       params: {},
-      keys: ['news:insights:v1', 'intelligence:cross-source-signals:v1', 'risk:scores:sebuf:v8'],
+      keys: ['news:insights:v1', 'intelligence:cross-source-signals:v1', 'risk:scores:sebuf:v14'],
     },
     {
       tool: 'get_military_surge',
@@ -684,7 +685,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
       tool: 'get_alert_digest',
       params: {},
       keys: [
-        'risk:scores:sebuf:v8',
+        'risk:scores:sebuf:v14',
         'military:surges:v1',
         'cable-health-v1',
         'infra:outages:v1',
@@ -698,7 +699,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
       params: {},
       keys: [
         'news:insights:v1',
-        'risk:scores:sebuf:v8',
+        'risk:scores:sebuf:v14',
         'military:flights:v1',
         'unrest:events:v1',
         'seismology:earthquakes:v1',
@@ -844,6 +845,19 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.ok(catalogNodes.every((node) => !node.id.startsWith('country-')));
   });
 
+  it('rejects a multi-cut containing both known and unknown node ids', async () => {
+    installUpstashStub(analysisPayloads());
+    const tool = findTool('simulate_infrastructure_cascade');
+    const result = await tool._execute(
+      { source_ids: ['cable:sea-me-we-5', 'cable:misspelled'] }, '', {}, {},
+    );
+
+    assert.match(result.error ?? '', /unknown.*cable:misspelled/i);
+    assert.equal(result.data.cascade, null);
+    assert.equal(result.data.catalog, null);
+    for (const key of tool.outputSchema.required) assert.ok(key in result);
+  });
+
   it('keeps the static cascade catalog and chokepoint simulations available without cable data', async () => {
     installUpstashStub(analysisPayloads(), {
       misses: ['infrastructure:submarine-cables:v1'],
@@ -934,7 +948,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.equal(distant.data.alerts.length, 0);
   });
 
-  it('reads every composite payload and freshness record in one Redis pipeline', async () => {
+  it('reads weekly payload metadata together and bounds movers to one separate pipeline', async () => {
     installUpstashStub(analysisPayloads());
     const redisFetch = globalThis.fetch;
     let pipelineCalls = 0;
@@ -946,7 +960,52 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
 
     await findTool('get_alert_digest')._execute({ view: 'weekly' }, '', {}, {});
 
-    assert.equal(pipelineCalls, 1);
+    assert.equal(pipelineCalls, 2);
+  });
+
+  it('rejects movers_days for today and enforces whole weekly depths from 7 to 90', async () => {
+    const tool = findTool('get_alert_digest');
+    for (const args of [{ movers_days: 30 }, { view: 'today', movers_days: 7 }, ...[6, 91, 7.5, '30', null].map(movers_days => ({ view: 'weekly', movers_days }))]) {
+      await assert.rejects(() => tool._execute(args, '', {}, {}), /movers_days/);
+    }
+  });
+
+  it('returns weekly movers from 62 bounded preview-owned reads and includes history freshness', async () => {
+    const now = Date.now(), day = Math.floor(now / 86400000);
+    const metaKey = 'seed-meta:intelligence:risk-scores-history';
+    installUpstashStub({ ...analysisPayloads(), [metaKey]: { fetchedAt: now, recordCount: 31 } });
+    const redisFetch = globalThis.fetch;
+    let historyCommands = [];
+    let historyFails = false;
+    globalThis.fetch = async (input, init) => {
+      const commands = JSON.parse(String(init?.body ?? '[]'));
+      if (commands[0]?.[0] !== 'ZRANGE') return redisFetch(input, init);
+      historyCommands = commands;
+      return Response.json(commands.map(([verb, key, bound]) => {
+        if (historyFails) return { error: 'simulated history outage' };
+        const latest = Number(bound) === day;
+        const date = new Date((latest ? day : day - 31) * 86400000).toISOString().slice(0, 10);
+        const score = key.endsWith(':IR') ? (latest ? 50 : 30) : key.endsWith(':US') ? (latest ? 20 : 30) : 20;
+        return { result: [JSON.stringify({ d: date, v: CII_FORMULA_VERSION, s: score, u: 1, c: 2, m: 3, n: 4, t: latest ? now : (day - 31) * 86400000 })] };
+      }));
+    };
+    const tool = findTool('get_alert_digest');
+    const result = await tool._execute({ view: 'weekly', movers_days: 30 }, '', {}, {});
+    assert.equal(historyCommands.length, 62);
+    assert.ok(historyCommands.every(cmd => cmd[0] === 'ZRANGE' && cmd.slice(4).join(' ') === 'BYSCORE REV LIMIT 0 1'));
+    const movers = result.data.weekly.cii_movers;
+    assert.equal(movers.window_days, 30);
+    assert.equal(movers.methodology_version, CII_FORMULA_VERSION);
+    assert.equal(movers.risers[0].countryCode, 'IR');
+    assert.equal(movers.risers[0].delta, 20);
+    assert.equal(movers.fallers[0].countryCode, 'US');
+    assert.ok(!result.data.unavailable.includes('cii_history'));
+    historyFails = true;
+    const failed = await tool._execute({ view: 'weekly', movers_days: 30 }, '', {}, {});
+    assert.equal(failed.stale, true);
+    assert.ok(failed.data.unavailable.includes('cii_history'));
+    assert.equal(failed.data.weekly.cii_movers.insufficient_history.length, 31);
+    assert.ok(failed.failed_inputs.includes('risk:scores:history:IR'));
   });
 
   it('marks a partial HTTP failure stale and names the failed input', async () => {
@@ -1041,6 +1100,19 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
 
       assert.equal(result.stale, true);
       assert.ok(!result.failed_inputs.includes('seed-meta:intelligence:risk-scores'));
+    });
+  }
+
+  // CII v14 counts two realtime families (conflict, news), so 2 is full coverage.
+  for (const toolName of ['get_focal_points', 'get_military_surge', 'get_alert_digest', 'get_hotspot_escalation']) {
+    it(`${toolName} treats full v14 CII coverage (2 families) as fresh`, async () => {
+      installUpstashStub({
+        ...analysisPayloads(),
+        'seed-meta:intelligence:risk-scores': { fetchedAt: Date.now(), recordCount: 2, sourceVersion: 'test' },
+      });
+      const result = await findTool(toolName)._execute({}, '', {}, {});
+      assert.ok(!(result.stale_inputs ?? []).includes('seed-meta:intelligence:risk-scores'), JSON.stringify(result.stale_inputs));
+      assert.equal(result.stale, false);
     });
   }
 
@@ -1165,6 +1237,82 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
 
     assert.equal(result.data.events.length, 1);
     assert.equal(result.data.events[0].id, 'palestine-quake');
+    assert.equal(result.data.events[0].country, 'PSE');
+  });
+
+  it('keeps a supported wildfire after a full feed of misses before applying the result limit', async () => {
+    const payloads = analysisPayloads();
+    payloads['wildfire:fires:v1'].fireDetections = [
+      ...Array.from({ length: 15000 }, (_, i) => ({
+        id: `unsupported-${i}`, frp: 100,
+        location: { latitude: 45 + (i % 10) / 100, longitude: 75 + (i % 10) / 100 },
+      })),
+      { id: 'supported', frp: 1, location: { latitude: 31.52, longitude: 34.45 } },
+    ];
+    installUpstashStub(payloads);
+    for (const limit of [1, 0]) {
+      const result = await findTool('get_population_exposure')._execute(
+        { mode: 'events', event_source: 'wildfires', limit }, '', {}, {},
+      );
+      assert.deepEqual(result.data.events.map(event => event.id), ['supported']);
+      assert.equal(result.data.events[0].country, 'PSE');
+      assert.equal(result.data.events[0].nearestCountry, 'PSE');
+    }
+  });
+
+  it('returns folded conflict locations with current country names in events mode', async () => {
+    const payloads = analysisPayloads();
+    payloads['conflict:ucdp-events:v1'].events = [
+      { id: 643820, country: 'Ukraine', locationName: 'Kyiv city', location: { latitude: 50.45, longitude: 30.52 } },
+      { id: 643824, country: 'Ukraine', locationName: 'Kyiv city', location: { latitude: 50.45, longitude: 30.52 } },
+      { id: 'gaza', country: 'Israel', locationName: 'Gaza town', location: { latitude: 31.52, longitude: 34.45 } },
+      { id: 'yemen', country: 'Yemen (North Yemen)', location: { latitude: 15.35, longitude: 44.2 } },
+    ].map(event => ({ ...event, dateStart: '2026-07-28', hasPreciseLocation: true }));
+    installUpstashStub(payloads);
+
+    const result = await findTool('get_population_exposure')._execute(
+      { mode: 'events', event_source: 'conflicts', limit: 0 }, '', {}, {},
+    );
+    assert.deepEqual(result.data.events.map(({ name, eventCount, reportedCountry, country }) =>
+      [name, eventCount, reportedCountry, country]).sort(), [
+      ['Conflict event — Yemen', 1, 'Yemen', 'YEM'],
+      ['Gaza town, Palestine', 1, 'Israel', 'PSE'],
+      ['Kyiv city, Ukraine', 2, 'Ukraine', 'UKR'],
+    ]);
+  });
+
+  it('estimates each event from its own country and drops what the density table cannot cover', async () => {
+    const payloads = analysisPayloads();
+    const at = (latitude, longitude) => ({ location: { latitude, longitude } });
+    payloads['seismology:earthquakes:v1'].earthquakes = [
+      { id: 'santiago', place: 'Santiago', magnitude: 6, ...at(-33.45, -70.67), occurredAt: Date.now() },
+      { id: 'kyiv', place: 'Kyiv', magnitude: 4, ...at(50.45, 30.52), occurredAt: Date.now() },
+    ];
+    payloads['conflict:ucdp-events:v1'].events = [
+      { id: 'gaza', country: 'Israel', dateStart: '2026-07-28', ...at(31.52, 34.45), hasPreciseLocation: true },
+      { id: 'precise', country: 'Sudan', dateStart: '2026-07-28', ...at(15.5, 32.5), hasPreciseLocation: true },
+      { id: 'country-level', country: 'Sudan', dateStart: '2026-07-29', ...at(15.5, 32.5), hasPreciseLocation: false },
+      { id: 'unknown-precision', country: 'Sudan', dateStart: '2026-07-29', ...at(15.5, 32.5) },
+      { id: 'reported-elsewhere', country: 'Chile', dateStart: '2026-07-29', ...at(15.5, 32.5), hasPreciseLocation: true },
+    ];
+    installUpstashStub(payloads);
+
+    const result = await findTool('get_population_exposure')._execute(
+      { mode: 'events', event_source: 'all', limit: 0 },
+      '',
+      {},
+      {},
+    );
+    const byId = Object.fromEntries(result.data.events.map((event) => [event.id, event.country]));
+    assert.equal(byId.kyiv, 'UKR');
+    assert.equal(byId.precise, 'SDN');
+    assert.equal(byId.gaza, 'PSE');
+    for (const event of result.data.events) assert.equal(event.nearestCountry, event.country);
+    assert.equal(result.data.events.find(event => event.id === 'precise').eventCount, 1,
+      'an event without an estimate must neither hide nor count toward a supported location');
+    for (const id of ['santiago', 'country-level', 'unknown-precision', 'reported-elsewhere']) {
+      assert.equal(id in byId, false, `${id} must not get an estimate`);
+    }
   });
 
   for (const view of ['today', 'weekly']) {
@@ -1174,7 +1322,17 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
         payloads['military:surges:v1'].sourceVersion = sourceVersion;
         const fetchedAt = Date.now() - MIN;
         payloads['seed-meta:intelligence:risk-scores'] = { fetchedAt, recordCount: 3 };
+        if (view === 'weekly') payloads['seed-meta:intelligence:risk-scores-history'] = { fetchedAt, recordCount: 31 };
         installUpstashStub(payloads);
+        if (view === 'weekly') {
+          const redisFetch = globalThis.fetch;
+          globalThis.fetch = async (input, init) => {
+            const commands = JSON.parse(String(init?.body ?? '[]'));
+            if (commands[0]?.[0] !== 'ZRANGE') return redisFetch(input, init);
+            const point = JSON.stringify({ d: new Date(fetchedAt).toISOString().slice(0, 10), v: CII_FORMULA_VERSION, s: 20, u: 1, c: 2, m: 3, n: 4, t: fetchedAt });
+            return Response.json(commands.map((_, index) => ({ result: index % 2 === 0 ? [point] : [] })));
+          };
+        }
 
         const result = await findTool('get_alert_digest')._execute({ view }, '', {}, {});
         const allowed = sourceVersion === 'wingbits';
@@ -1234,5 +1392,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.ok(result.data.unavailable.includes('military_history'));
     assert.equal(result.data.weekly.history_available, false);
     assert.deepEqual(result.data.weekly.trends, []);
+    assert.ok(result.data.unavailable.includes('cii_history'));
+    assert.deepEqual(result.data.weekly.cii_movers.risers, []);
   });
 });

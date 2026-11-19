@@ -67,7 +67,7 @@ export class TransitChart {
     this.tooltip = document.createElement('div');
     Object.assign(this.tooltip.style, {
       position: 'absolute', display: 'none', pointerEvents: 'none', zIndex: '10',
-      background: 'var(--bg-elevated, #1a1a2e)', border: '1px solid var(--border-subtle, #444)',
+      background: 'var(--surface, #1a1a2e)', border: '1px solid var(--border-subtle, #444)',
       borderRadius: '4px', padding: '6px 9px',
       fontSize: 'calc(11px * var(--wm-panel-effective-scale, 1))', color: 'var(--text-primary, #eee)',
       whiteSpace: 'nowrap', lineHeight: '1.6',

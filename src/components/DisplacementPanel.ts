@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
-import type { UnhcrSummary, CountryDisplacement, CrossBorderData, CrossBorderSituation, InternalDisplacementData, InternalDisplacementOperation } from '@/services/displacement';
+import type { UnhcrSummary, CountryDisplacement, CrossBorderData, CrossBorderSituation, DisplacementEventCountrySummary, DisplacementEventsData, InternalDisplacementData, InternalDisplacementOperation } from '@/services/displacement';
 import { formatPopulation } from '@/services/displacement';
 import { t } from '@/services/i18n';
 import { renderFollowedOnlyChip, type FollowedOnlyChipHandle } from '@/utils/followed-only-chip';
@@ -8,20 +8,28 @@ import { isFollowed, subscribe as subscribeFollowed } from '@/services/followed-
 import { toIso2 } from '@/utils/country-codes';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { bindActivationKeys } from '@/utils/activation';
+import type { ResolvedScope } from '@/services/tab-focus';
+import { PanelScopeFilter, focusedEmptyHtml, scopeTagHtml, type ScopeCountries, type ScopeRow } from './panel-scope-filter';
 
 
-type DisplacementTab = 'origins' | 'hosts' | 'internal' | 'crossBorder';
+type DisplacementTab = 'origins' | 'hosts' | 'recent' | 'internal' | 'crossBorder';
 
 export class DisplacementPanel extends Panel {
   private data: UnhcrSummary | null = null;
   private internalData: InternalDisplacementData | null = null;
   private crossBorderData: CrossBorderData | null = null;
+  private eventsData: DisplacementEventsData | null = null;
   private activeTab: DisplacementTab = 'origins';
   private onCountryClick?: (lat: number, lon: number) => void;
   private followedOnlyChip: FollowedOnlyChipHandle | null = null;
   private followedOnlyHost: HTMLElement | null = null;
   private followedOnlyTeardown: (() => void) | null = null;
   private followedUnsub: (() => void) | null = null;
+  // Dashboard focus (#10453): every tab's rows name a country (UNHCR ISO3
+  // `code`, IDMC/DTM `countryCode`, cross-border `countryCodes`).
+  private readonly scopeFilter: PanelScopeFilter;
+  /** Rows the focus leaves in the active tab, or null when nothing is narrowed. */
+  private focusedCount: number | null = null;
 
   constructor() {
     super({
@@ -32,6 +40,7 @@ export class DisplacementPanel extends Panel {
       infoTooltip: t('components.displacement.infoTooltip'),
       defaultRowSpan: 2,
     });
+    this.scopeFilter = new PanelScopeFilter({ content: this.content, onChange: () => this.renderContent() });
     this.showLoading(t('common.loadingDisplacement'));
 
     this.content.addEventListener('click', (e) => {
@@ -84,7 +93,48 @@ export class DisplacementPanel extends Panel {
   }
 
   protected override updateFreshnessBadge(): void {
-    super.updateFreshnessBadge(this.activeTab === 'internal' || this.activeTab === 'crossBorder' ? null : undefined);
+    super.updateFreshnessBadge(this.activeTab === 'origins' || this.activeTab === 'hosts' ? undefined : null);
+  }
+
+  public override applyScope(scope: ResolvedScope | null): void {
+    // The next successful load draws with the new focus; redrawing now would
+    // erase a load failure.
+    if (this.scopeFilter.setScope(scope) && !this.showingLoadFailure) this.renderContent();
+  }
+
+  public override showLoading(message?: string): void {
+    this.scopeFilter?.hideStrip();
+    super.showLoading(message);
+  }
+
+  public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
+    this.scopeFilter.hideStrip();
+    super.showError(message, onRetry, autoRetrySeconds);
+  }
+
+  /**
+   * Narrow one tab's rows by the focus (chosen countries, then neighbours)
+   * and draw the strip for them. Runs before the "Followed only" chip and
+   * before the tab's row cut, so a focused country is never cut off.
+   */
+  private scoped<T>(items: T[], getCountry: (item: T) => ScopeCountries): { items: T[]; rowFor: Map<T, ScopeRow<T>>; emptyHtml: string | null } {
+    const view = this.scopeFilter.view(items, getCountry);
+    this.scopeFilter.renderStrip(view);
+    this.focusedCount = view.partition ? view.rows.length : null;
+    return {
+      items: view.rows.map((row) => row.item),
+      rowFor: new Map(view.rows.map((row) => [row.item, row])),
+      emptyHtml: view.emptyByFocus ? focusedEmptyHtml(t('focus.filter.emptyDisplacement')) : null,
+    };
+  }
+
+  /**
+   * The row cut for a tab. A focus lists every row that matches it: the cut
+   * would drop matching countries with nothing saying so, and a focus holds
+   * at most 12 chosen countries plus their neighbours.
+   */
+  private rowLimit(unfocused: number): number {
+    return this.focusedCount !== null ? Number.POSITIVE_INFINITY : unfocused;
   }
 
   public setCountryClickHandler(handler: (lat: number, lon: number) => void): void {
@@ -107,18 +157,29 @@ export class DisplacementPanel extends Panel {
     this.renderContent();
   }
 
-  // Any one source counts: a later UNHCR failure must not replace DTM or portal tabs with an error.
-  public hasData(): boolean {
-    return this.data !== null || this.internalData !== null || this.crossBorderData !== null;
+  public setEventsData(data: DisplacementEventsData): void {
+    this.eventsData = data;
+    // UNHCR owns the header count once it arrives.
+    if (!this.data) this.setCount(data.countries.length);
+    this.renderContent();
   }
 
-  // UNHCR yearly data, IOM DTM and the UNHCR portal load independently; each
+  // Any one source counts: a later UNHCR failure must not replace DTM, IDMC or portal tabs with an error.
+  public hasData(): boolean {
+    return this.data !== null || this.internalData !== null || this.crossBorderData !== null || this.eventsData !== null;
+  }
+
+  // UNHCR yearly data, IDMC, IOM DTM and the UNHCR portal load independently; each
   // tab renders as soon as its own data is there.
   private renderContent(): void {
     const sources: { id: DisplacementTab; label: string; render?: () => string }[] = [];
     if (this.data) {
       sources.push({ id: 'origins', label: t('components.displacement.origins') });
       sources.push({ id: 'hosts', label: t('components.displacement.hosts') });
+    }
+    const events = this.eventsData;
+    if (events) {
+      sources.push({ id: 'recent', label: t('components.displacement.recent'), render: () => this.renderRecentTable(events) });
     }
     const internal = this.internalData;
     if (internal) {
@@ -137,9 +198,17 @@ export class DisplacementPanel extends Panel {
         ${sources.map((source) => `<button class="panel-tab ${this.activeTab === source.id ? 'active' : ''}" data-tab="${source.id}" role="tab" aria-selected="${this.activeTab === source.id}" id="disp-tab-${source.id}" aria-controls="disp-tab-panel">${source.label}</button>`).join('')}
       </div>
     `;
-    const statsHtml = this.data ? this.renderStats(this.data) : '';
     const active = sources.find((source) => source.id === this.activeTab)!;
+    this.focusedCount = null;
     const bodyHtml = active.render ? active.render() : this.renderUnhcrTable(this.data!);
+    // Worldwide totals would mislabel the focused table.
+    const statsHtml = this.data && this.focusedCount === null ? this.renderStats(this.data) : '';
+    // The header count follows the focused tab; without a focus it is the
+    // count setData / setEventsData set.
+    if (this.focusedCount !== null) this.setCount(this.focusedCount);
+    else if (this.data) this.setCount(this.data.countries?.length ?? 0);
+    else if (this.eventsData) this.setCount(this.eventsData.countries.length);
+    else this.setCount(0);
 
     this.setSafeContent(unsafeRawHtml(`
       <div class="disp-panel-content">
@@ -180,6 +249,11 @@ export class DisplacementPanel extends Panel {
         .sort((a, b) => (b.hostTotal || 0) - (a.hostTotal || 0));
     }
 
+    // Origins and hosts both narrow by the row's own country.
+    const focus = this.scoped(countries, (c) => toIso2(c.code ?? ''));
+    if (focus.emptyHtml) return focus.emptyHtml;
+    countries = focus.items;
+
     // U7 — "Followed only" filter chip. When active, drop rows whose
     // country code is not in the user's watchlist. Items without a
     // resolvable ISO-2 are dropped (we can't prove they belong to a
@@ -192,7 +266,7 @@ export class DisplacementPanel extends Panel {
       });
     }
 
-    const displayed = countries.slice(0, 30);
+    const displayed = countries.slice(0, this.rowLimit(30));
     let tableHtml: string;
 
     if (displayed.length === 0) {
@@ -218,14 +292,14 @@ export class DisplacementPanel extends Panel {
           : '';
 
         return `<tr class="disp-row" data-lat="${c.lat || ''}" data-lon="${c.lon || ''}" tabindex="0">
-          <td class="disp-name">${escapeHtml(c.name)}</td>
+          <td class="disp-name">${escapeHtml(c.name)}${scopeTagHtml(focus.rowFor.get(c))}</td>
           <td class="disp-status">${badgeHtml}</td>
           <td class="disp-count">${formatPopulation(count)}</td>
         </tr>`;
       }).join('');
 
       tableHtml = `
-        <table class="disp-table">
+        <table class="wm-table disp-table">
           <thead>
             <tr>
               <th scope="col">${t('components.displacement.country')}</th>
@@ -242,7 +316,10 @@ export class DisplacementPanel extends Panel {
   // One row per UNHCR situation. Situations overlap (Sudanese refugees in
   // Chad are also in the Sahel situation), so rows are never added up.
   private renderCrossBorderTable(allSituations: CrossBorderSituation[]): string {
-    let situations = allSituations;
+    // A situation counts when its crisis country or any receiving country does.
+    const focus = this.scoped(allSituations, (s) => s.countryCodes.map((code) => toIso2(code)).filter((code): code is string => code !== null));
+    if (focus.emptyHtml) return focus.emptyHtml;
+    let situations = focus.items;
     const followedOnlyActive = this.followedOnlyChip?.isActive() === true;
     if (followedOnlyActive) {
       situations = situations.filter(s => s.countryCodes.some(code => isFollowed(code)));
@@ -258,38 +335,100 @@ export class DisplacementPanel extends Panel {
       let change = '—';
       let period = '';
       if (s.lastMonth) {
-        change = signed(s.lastMonth.individuals);
+        change = formatPopulation(s.lastMonth.individuals);
         period = s.lastMonth.month;
       } else if (s.latestChange) {
         change = signed(s.latestChange.delta);
         period = s.latestChange.days ? t('components.displacement.inDays', { days: String(s.latestChange.days) }) : '';
       }
       const badge = s.accelerating ? ` <span class="disp-badge disp-crisis">${t('components.displacement.accelerating')}</span>` : '';
-      const detail = [s.asOf, s.topCountries.join(', ')].filter(Boolean).join(' · ');
+      const detail = [s.asOf, s.kind, s.measure, s.stale ? t('components.displacement.staleReport') : '', s.topCountries.join(', ')].filter(Boolean).join(' · ');
+      const source = s.source || 'UNHCR Operational Data Portal';
+      const sourceLink = /^https:\/\//.test(s.sourceUrl) ? `<a href="${escapeHtml(s.sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source)}</a>` : escapeHtml(source);
+      const windows = s.last7Days !== undefined || s.last30Days !== undefined
+        ? `${s.last7Days === undefined ? '—' : s.last7Days.toLocaleString('en-US')} / ${s.last30Days === undefined ? '—' : s.last30Days.toLocaleString('en-US')}` : '';
+      if (windows) { change = windows; period = t('components.displacement.last7And30'); }
+      if (s.changePct !== undefined) period += ` (${s.changePct > 0 ? '+' : ''}${s.changePct.toFixed(0)}%)`;
       return `<tr class="disp-row" data-lat="${s.lat ?? ''}" data-lon="${s.lon ?? ''}" tabindex="0">
-          <td class="disp-name">${escapeHtml(s.name)}${badge}<div class="disp-operation">${escapeHtml(detail)}</div></td>
+          <td class="disp-name">${escapeHtml(s.name)}${badge}${scopeTagHtml(focus.rowFor.get(s))}<div class="disp-operation">${escapeHtml(detail)}</div><div class="disp-operation">${sourceLink}</div></td>
           <td class="disp-round">${escapeHtml(change)}${period ? `<div class="disp-operation">${escapeHtml(period)}</div>` : ''}</td>
           <td class="disp-count">${formatPopulation(s.total)}</td>
         </tr>`;
     }).join('');
+    const statuses = this.crossBorderData?.sources?.map(source => `${source.name}: ${source.status}`).join(' · ');
     return `
-        <table class="disp-table">
+        ${statuses ? `<div class="disp-source-note">${escapeHtml(statuses)}</div>` : ''}
+        <table class="wm-table disp-table disp-movements-table">
           <thead>
             <tr>
               <th scope="col">${t('components.displacement.situation')}</th>
-              <th scope="col" class="disp-round">${t('components.displacement.latestChange')}</th>
-              <th scope="col" class="disp-count">${t('components.displacement.total')}</th>
+              <th scope="col" class="disp-round">${t('components.displacement.period')}</th>
+              <th scope="col" class="disp-count">${t('components.displacement.reported')}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
-        <div class="disp-source-note">${escapeHtml(t('components.displacement.crossBorderNote'))}</div>`;
+        <div class="disp-source-note">${escapeHtml(t('components.displacement.movementNote'))}</div>`;
+  }
+
+  // One row per country with IDMC figures in the last 30 days or published this week.
+  private renderRecentTable(events: DisplacementEventsData): string {
+    const focus = this.scoped(events.countries, (c) => toIso2(c.countryCode ?? ''));
+    if (focus.emptyHtml) return focus.emptyHtml;
+    let countries: DisplacementEventCountrySummary[] = focus.items;
+    const followedOnlyActive = this.followedOnlyChip?.isActive() === true;
+    if (followedOnlyActive) {
+      countries = countries.filter(c => {
+        const code = toIso2(c.countryCode ?? '');
+        return code ? isFollowed(code) : false;
+      });
+    }
+    if (countries.length === 0) {
+      const emptyMsg = followedOnlyActive
+        ? 'No items in your followed countries. Add countries by tapping the star, or turn off this filter.'
+        : t('common.noDataShort');
+      return `<div class="panel-empty">${escapeHtml(emptyMsg)}</div>`;
+    }
+    const rows = countries.slice(0, this.rowLimit(40)).map(c => {
+      const badge = c.surge ? ` <span class="disp-badge disp-crisis">${t('components.displacement.surge')}</span>` : '';
+      const split = [
+        c.conflict30d > 0 ? `${t('components.displacement.conflict')} ${formatPopulation(c.conflict30d)}` : '',
+        c.disaster30d > 0 ? `${t('components.displacement.disaster')} ${formatPopulation(c.disaster30d)}` : '',
+      ].filter(Boolean).join(' · ');
+      return `<tr class="disp-row" data-lat="${c.lat ?? ''}" data-lon="${c.lon ?? ''}" tabindex="0">
+          <td class="disp-name">${escapeHtml(c.countryName)}${badge}${scopeTagHtml(focus.rowFor.get(c))}${split ? `<div class="disp-operation">${escapeHtml(split)}</div>` : ''}</td>
+          <td class="disp-round">${c.newlyReported7d > 0 ? formatPopulation(c.newlyReported7d) : '—'}</td>
+          <td class="disp-count">${formatPopulation(c.displaced30d)}</td>
+        </tr>`;
+    }).join('');
+    return `
+        <table class="wm-table disp-table">
+          <thead>
+            <tr>
+              <th scope="col">${t('components.displacement.country')}</th>
+              <th scope="col" class="disp-round">${t('components.displacement.newThisWeek')}</th>
+              <th scope="col" class="disp-count">${t('components.displacement.last30Days')}</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="disp-source-note">${escapeHtml(this.recentNote(events))}</div>`;
+  }
+
+  private recentNote(events: DisplacementEventsData): string {
+    return [
+      t('components.displacement.recentNote'),
+      events.asOf ? t('components.displacement.recentAsOf', { date: events.asOf }) : '',
+      events.missingCountries.length ? t('components.displacement.recentMissing', { countries: events.missingCountries.join(', ') }) : '',
+    ].filter(Boolean).join(' ');
   }
 
   // One row per IOM DTM operation. Operations in a country can overlap, so
   // rows are never added up into a country total.
   private renderInternalTable(allOperations: InternalDisplacementOperation[]): string {
-    let operations = allOperations;
+    const focus = this.scoped(allOperations, (op) => toIso2(op.countryCode ?? ''));
+    if (focus.emptyHtml) return focus.emptyHtml;
+    let operations = focus.items;
     const followedOnlyActive = this.followedOnlyChip?.isActive() === true;
     if (followedOnlyActive) {
       operations = operations.filter(op => {
@@ -303,13 +442,13 @@ export class DisplacementPanel extends Panel {
         : t('common.noDataShort');
       return `<div class="panel-empty">${escapeHtml(emptyMsg)}</div>`;
     }
-    const rows = operations.slice(0, 40).map(op => `<tr class="disp-row" data-lat="${op.lat ?? ''}" data-lon="${op.lon ?? ''}" tabindex="0">
-          <td class="disp-name">${escapeHtml(op.countryName)}<div class="disp-operation">${escapeHtml(op.operation)}</div></td>
+    const rows = operations.slice(0, this.rowLimit(40)).map(op => `<tr class="disp-row" data-lat="${op.lat ?? ''}" data-lon="${op.lon ?? ''}" tabindex="0">
+          <td class="disp-name">${escapeHtml(op.countryName)}${scopeTagHtml(focus.rowFor.get(op))}<div class="disp-operation">${escapeHtml(op.operation)}</div></td>
           <td class="disp-round">${escapeHtml(op.reportingDate)}</td>
           <td class="disp-count">${formatPopulation(op.totalIdps)}</td>
         </tr>`).join('');
     return `
-        <table class="disp-table">
+        <table class="wm-table disp-table">
           <thead>
             <tr>
               <th scope="col">${t('components.displacement.country')}</th>

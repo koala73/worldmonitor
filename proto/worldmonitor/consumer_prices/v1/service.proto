@@ -15,7 +15,7 @@ import "worldmonitor/consumer_prices/v1/get_consumer_price_freshness.proto";
 service ConsumerPricesService {
   option (sebuf.http.service_config) = {base_path: "/api/consumer-prices/v1"};
 
-  // GetConsumerPriceOverview retrieves headline basket indices and coverage metrics.
+  // GetConsumerPriceOverview returns essentials and value basket indices, week and month changes, retailer spread and coverage for one of 10 scraped markets.
   rpc GetConsumerPriceOverview(GetConsumerPriceOverviewRequest) returns (GetConsumerPriceOverviewResponse) {
     option (sebuf.http.config) = {path: "/get-consumer-price-overview", method: HTTP_METHOD_GET};
   }
@@ -25,22 +25,22 @@ service ConsumerPricesService {
     option (sebuf.http.config) = {path: "/get-consumer-price-basket-series", method: HTTP_METHOD_GET};
   }
 
-  // ListConsumerPriceCategories retrieves category summaries with sparklines.
+  // ListConsumerPriceCategories returns per-category price indices with week and month changes, sparklines and coverage for a market over a 7d, 30d or 90d range.
   rpc ListConsumerPriceCategories(ListConsumerPriceCategoriesRequest) returns (ListConsumerPriceCategoriesResponse) {
     option (sebuf.http.config) = {path: "/list-consumer-price-categories", method: HTTP_METHOD_GET};
   }
 
-  // ListConsumerPriceMovers retrieves the largest upward and downward item price moves.
+  // ListConsumerPriceMovers returns up to 10 risers and 10 fallers, the products with the largest price changes in a market over 7d, 30d or 90d, by category.
   rpc ListConsumerPriceMovers(ListConsumerPriceMoversRequest) returns (ListConsumerPriceMoversResponse) {
     option (sebuf.http.config) = {path: "/list-consumer-price-movers", method: HTTP_METHOD_GET};
   }
 
-  // ListRetailerPriceSpreads retrieves cheapest-basket comparisons across retailers.
+  // ListRetailerPriceSpreads compares essentials basket totals across retailers in a market, with each store's gap to the cheapest and the overall spread.
   rpc ListRetailerPriceSpreads(ListRetailerPriceSpreadsRequest) returns (ListRetailerPriceSpreadsResponse) {
     option (sebuf.http.config) = {path: "/list-retailer-price-spreads", method: HTTP_METHOD_GET};
   }
 
-  // GetConsumerPriceFreshness retrieves feed freshness and coverage health per retailer.
+  // GetConsumerPriceFreshness returns scrape freshness per retailer in a market, with last run time, status, parse success rate and the count of stalled feeds.
   rpc GetConsumerPriceFreshness(GetConsumerPriceFreshnessRequest) returns (GetConsumerPriceFreshnessResponse) {
     option (sebuf.http.config) = {path: "/get-consumer-price-freshness", method: HTTP_METHOD_GET};
   }

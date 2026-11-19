@@ -31,10 +31,6 @@ export function normalizeBriefSourceUrl(value: unknown): string {
   return normalizeInsightSourceUrl(value);
 }
 
-export function normalizeBriefSource(candidate: BriefSourceCandidate): BriefSource | null {
-  return normalizeInsightSource(candidate);
-}
-
 export function collectBriefSources(
   candidates: BriefSourceCandidate[],
   maxSources = DEFAULT_MAX_SOURCES,

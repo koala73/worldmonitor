@@ -53,7 +53,8 @@ export function publishFindings(report, {
   if (!findings.length) return { findings: 0 };
   if (!repository) throw new Error('GITHUB_REPOSITORY is required to publish MCP preset findings');
   const pages = gh(['api', '--paginate', '--slurp', `repos/${repository}/issues?state=open&per_page=100`]);
-  const existing = pages.flat().find(issue => !issue.pull_request && issue.title === ISSUE_TITLE);
+  const existing = pages.flat().find(issue => !issue.pull_request
+    && issue.title === ISSUE_TITLE && issue.user?.login === 'github-actions[bot]');
   const endpoint = `repos/${repository}/issues${existing ? `/${existing.number}` : ''}`;
   gh(['api', '--method', existing ? 'PATCH' : 'POST', endpoint, '--input', '-'], { title: ISSUE_TITLE, body });
   return { findings: findings.length, action: existing ? 'updated' : 'created' };

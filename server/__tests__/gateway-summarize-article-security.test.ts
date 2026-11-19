@@ -38,9 +38,11 @@ vi.mock("../../api/_api-key.js", async (importOriginal) => ({
   validateApiKey: (...a: unknown[]) => validateApiKey(...a),
 }));
 
+// The gateway resolves wm_ keys through the desktop-aware principal (plan
+// 2026-10-25-001 U4); an `api` principal with rank 0 is today's API customer.
 const validateUserApiKey = vi.fn();
 vi.mock("../_shared/user-api-key", () => ({
-  validateUserApiKey: (...a: unknown[]) => validateUserApiKey(...a),
+  validateUserApiKeyPrincipal: (...a: unknown[]) => validateUserApiKey(...a),
 }));
 
 const reserveDirectLlmQuota = vi.fn();
@@ -255,7 +257,7 @@ describe("summarize-article gateway spend controls", () => {
       features: { tier: 1, apiAccess: true, apiRateLimit: 60 },
       validUntil: Date.now() + 86_400_000,
     };
-    validateUserApiKey.mockResolvedValue({ userId: "api_user", keyId: "key_1", name: "test" });
+    validateUserApiKey.mockResolvedValue({ userId: "api_user", keyId: "key_1", keyKind: "api", keyHash: "h".repeat(64), activeKeyRank: 0 });
     getEntitlements.mockResolvedValue(activeEntitlement);
     const calls = { summarize: 0, cache: 0 };
 

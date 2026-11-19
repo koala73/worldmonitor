@@ -16,7 +16,9 @@ const pizzintBreaker = createCircuitBreaker<PizzIntStatus>({
   name: 'PizzINT',
   maxFailures: 3,
   cooldownMs: 5 * 60 * 1000,
-  cacheTtlMs: 30 * 60 * 1000,
+  // Under one jittered poll (REFRESH_INTERVALS.pizzint × 0.9), so every poll
+  // asks for the relay's latest 15-min reading.
+  cacheTtlMs: 5 * 60 * 1000,
   persistCache: true,
   revivePersistedData: revivePizzIntStatus,
 });
@@ -93,6 +95,13 @@ function toTensionPair(proto: ProtoTensionPair): GdeltTensionPair {
     trend: TREND_REVERSE[proto.trend] || 'stable',
     changePercent: proto.changePercent,
     region: proto.region,
+    evidence: (proto.evidence ?? []).map(item => ({
+      channel: item.channel,
+      value: item.value,
+      baseline: typeof item.baseline === 'number' ? item.baseline : null,
+      countries: item.countries ?? [],
+      airports: item.airports ?? [],
+    })),
   };
 }
 
@@ -141,7 +150,11 @@ export async function fetchPizzIntStatus(): Promise<PizzIntStatus> {
     const resp: GetPizzintStatusResponse = await getClient().getPizzintStatus({ includeGdelt: false });
     if (!resp.pizzint) throw new Error('No PizzINT data');
     return toStatus(resp.pizzint);
-  }, defaultStatus, { shouldCache: isCacheablePizzIntStatus });
+  }, defaultStatus, {
+    shouldCache: isCacheablePizzIntStatus,
+    // A stale entry waits for the refresh instead of showing the old reading for another poll.
+    staleRefreshMode: 'await',
+  });
 }
 
 export async function fetchGdeltTensions(): Promise<GdeltTensionPair[]> {

@@ -61,14 +61,6 @@ export const MODEL_CONFIGS: ModelConfig[] = [
   },
 ];
 
-export const ML_FEATURE_FLAGS = {
-  semanticClustering: true,
-  mlSentiment: true,
-  summarization: true,
-  mlNER: true,
-  insightsPanel: true,
-};
-
 export const ML_THRESHOLDS = {
   semanticClusterThreshold: 0.75,
   minClustersForML: 5,
@@ -77,15 +69,3 @@ export const ML_THRESHOLDS = {
   inferenceTimeoutMs: 120_000,
   memoryBudgetMB: 200,
 };
-
-export function getModelConfig(modelId: string): ModelConfig | undefined {
-  return MODEL_CONFIGS.find(m => m.id === modelId);
-}
-
-export function getRequiredModels(): ModelConfig[] {
-  return MODEL_CONFIGS.filter(m => m.required);
-}
-
-export function getModelsByPriority(): ModelConfig[] {
-  return [...MODEL_CONFIGS].sort((a, b) => a.priority - b.priority);
-}

@@ -107,14 +107,22 @@ describe('resolveGateAction — ANONYMOUS', () => {
 });
 
 describe('resolveGateAction — FREE_TIER', () => {
-  it('opens the pricing page on an absolute origin, in a new tab, with noopener', () => {
+  it('opens the pricing section on an absolute origin without a panel key', async () => {
     act(PanelGateReason.FREE_TIER)();
 
     // Absolute, because the desktop webview has no worldmonitor.app origin —
     // a relative href there resolves against tauri://localhost.
-    expect(openSpy).toHaveBeenCalledWith(`${PRO_ORIGIN}/pro`, '_blank');
+    await vi.waitFor(() => expect(openSpy).toHaveBeenCalledWith(`${PRO_ORIGIN}/pro#pricing`, '_blank'));
     expect(openAuthModal).not.toHaveBeenCalled();
   });
+});
+
+it('carries the locked panel key into pricing attribution', async () => {
+  resolveGateAction(PanelGateReason.FREE_TIER, { openAuthModal, panelKey: 'market-implications' })();
+  await vi.waitFor(() => expect(openSpy).toHaveBeenCalled());
+  const url = new URL(String(openSpy.mock.calls[0]![0]));
+  expect(url.hash).toBe('#pricing');
+  expect(url.searchParams.get('wm_checkout_panel')).toBe('market-implications');
 });
 
 describe.each([
@@ -210,7 +218,8 @@ describe('resolveGateAction — desktop runtime (#5911)', () => {
 
     expect(tauriInvocations[0]).toEqual({
       command: 'open_url',
-      payload: { url: `${PRO_ORIGIN}/pro` },
+      // #10342: the desktop opener marks /pro as a desktop checkout handoff.
+      payload: { url: `${PRO_ORIGIN}/pro?wm_checkout_handoff=desktop#pricing` },
     });
     expect(openSpy).not.toHaveBeenCalled();
   });
@@ -223,7 +232,7 @@ describe('resolveGateAction — desktop runtime (#5911)', () => {
 
     expect(tauriInvocations[0]).toEqual({
       command: 'open_url',
-      payload: { url: `${PRO_ORIGIN}/pro?wm_reactivate_plan=pro_business_yearly#pricing` },
+      payload: { url: `${PRO_ORIGIN}/pro?wm_reactivate_plan=pro_business_yearly&wm_checkout_handoff=desktop#pricing` },
     });
     expect(openSpy).not.toHaveBeenCalled();
   });

@@ -103,6 +103,21 @@ Echoing the request id matters as much as the status code. An `id: null` refusal
 - Tests that pin the behavior: `tests/mcp-transport-challenge.test.mjs` (the challenge per host and path, the id echo, JSON body, keyless `tools/list` answering and `get_sources` never hitting the auth wall, aliases still anonymous, `GET` and `OPTIONS` untouched), and the `probeConnectChallenge` and `probeStatelessKeylessList` probes in `scripts/mcp-live-smoke.mjs`, which run against production every 15 minutes.
 - **Expect one red smoke run on merge.** "MCP Live Smoke" also runs on push to `main` when its script changes, and that run starts before the production deploy finishes, so a PR that changes both the smoke and the behavior it checks fails once ("expected HTTP 401, got 200") and passes on the deployment-status run minutes later. Re-running the failed job after deploy clears it.
 
+## Follow-up: generic HTTP clients are exempt (2026-10-24)
+
+The challenge also hit scripts and self-built agents that send a library's default `User-Agent`, and those clients do not sign in. They retry the handshake instead. Over 2026-10-17 to 10-24, the IPs that got the connect-time `401` signed in as follows:
+
+| `User-Agent` | IPs challenged | Signed in later | `401`s from IPs that never signed in |
+|---|---|---|---|
+| `python-httpx` | 254 | 1 | 201,957 |
+| `node` | 195 | 2 | 25,476 |
+| `Go-http-client` | 102 | 0 | 11,880 |
+| `undici` | 45 | 3 | 1,480 |
+| `Claude-User` | 34 | 34 | 0 |
+| `grok-connectors-manager` | 69 | 11 | 4,713 |
+
+Twenty IPs sent 69% of all `401`s, each retrying every 25 to 60 seconds. On legacy protocol versions a default library `User-Agent` (`python-httpx`, `python-requests`, `Python-urllib`, `node`, `undici`, `Go-http-client`, `hermes-agent`) now completes `initialize` anonymously and gets the `401` at its first gated call. The Python and TypeScript SDK auth providers start OAuth from that `401` too. Every connector in the table above names itself, so it keeps the connect-time challenge. The residual risk is a hosted connector that sends a bare library `User-Agent` and decides on sign-in only at connect. The few `undici` and `node` IPs that signed in after the challenge are where that would show up.
+
 ## Related
 
 - [MCP OAuth registration rejected every hosted MCP client except Claude](mcp-oauth-dcr-rejected-hosted-mcp-clients.md): the registration-side half of the same report (#8303). That fix was necessary and not sufficient.

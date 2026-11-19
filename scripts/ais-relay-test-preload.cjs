@@ -4,6 +4,7 @@
 // loaded through NODE_OPTIONS by that test; production relay processes never
 // load it.
 const { EventEmitter } = require('node:events');
+const fs = require('node:fs');
 const https = require('node:https');
 // Node 24 loads the shared TypeScript module directly (type stripping), so the
 // emergency codes have one source of truth across TS, ESM and CommonJS.
@@ -28,12 +29,50 @@ const openskyRetryAfterSeconds = Number(process.env.RELAY_TEST_OPENSKY_RETRY_AFT
 const openskyRemainingCredits = Number(process.env.RELAY_TEST_OPENSKY_REMAINING_CREDITS || 0);
 const openskyResponseDelayMs = Number(process.env.RELAY_TEST_OPENSKY_RESPONSE_DELAY_MS || 0);
 const openskyMalformedEncoding = process.env.RELAY_TEST_OPENSKY_MALFORMED_ENCODING === '1';
+// Air-traffic lanes. RELAY_TEST_OPENSKY_STATES_FILE is a JSON array with one
+// entry per 200 response: an array of /states/all rows, or null for a body whose
+// states is null. The last entry repeats once the list is exhausted, and the
+// status sequence then defaults to 200 instead of 429.
+const openskySnapshots = process.env.RELAY_TEST_OPENSKY_STATES_FILE
+  ? JSON.parse(fs.readFileSync(process.env.RELAY_TEST_OPENSKY_STATES_FILE, 'utf8'))
+  : null;
+// One entry per OpenSky data request: 1 never answers and fires the request's
+// timeout, 0 answers normally. Exhausted -> 0.
+const openskyTimeouts = (process.env.RELAY_TEST_OPENSKY_TIMEOUT_SEQUENCE || '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+// The fixture clock starts at RELAY_TEST_CLOCK_START_MS and runs RATE times
+// faster than real time, so 1-second test ticks land in separate 5-minute bins.
+if (process.env.RELAY_TEST_CLOCK_START_MS) {
+  const realNow = Date.now.bind(Date);
+  const realStart = realNow();
+  const fixtureStart = Number(process.env.RELAY_TEST_CLOCK_START_MS);
+  const rate = Number(process.env.RELAY_TEST_CLOCK_RATE) || 1;
+  Date.now = () => fixtureStart + Math.floor((realNow() - realStart) * rate);
+}
 const wingbitsEchoAreas = process.env.RELAY_TEST_WINGBITS_ECHO_AREAS === '1';
 const wingbitsGhostRows = process.env.RELAY_TEST_WINGBITS_GHOST_ROWS === '1';
 // adsb.lol modes consumed per request: 'error' -> 503 (falls through to
 // Wingbits), 'empty' -> 200 with zero aircraft (authoritative quiet skies —
 // stops the fallback chain), 'flight' -> 200 with one military aircraft in
 // iran-theater bounds. Exhausted -> 'error'.
+// Air-traffic Wingbits lanes. Every area of a traffic request (aliases 'us-'
+// and 'eu-') returns all flights in RELAY_TEST_WINGBITS_TRAFFIC_FILE, each
+// reported `ageMs` (default 1000) before the response. Statuses come from the
+// sequence, then 200. 'short' answers one area fewer than asked; 'dup' repeats
+// the first area in place of the last.
+const wingbitsTrafficFlights = process.env.RELAY_TEST_WINGBITS_TRAFFIC_FILE
+  ? JSON.parse(fs.readFileSync(process.env.RELAY_TEST_WINGBITS_TRAFFIC_FILE, 'utf8'))
+  : null;
+const wingbitsTrafficStatuses = (process.env.RELAY_TEST_WINGBITS_TRAFFIC_STATUS_SEQUENCE || '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+// Real milliseconds before the first traffic response is answered.
+let wingbitsTrafficFirstDelayMs = Number(process.env.RELAY_TEST_WINGBITS_TRAFFIC_FIRST_DELAY_MS || 0);
+// Real milliseconds before the first traffic body finishes, after its headers.
+let wingbitsTrafficFirstBodyDelayMs = Number(process.env.RELAY_TEST_WINGBITS_TRAFFIC_FIRST_BODY_DELAY_MS || 0);
 const adsbModes = (process.env.RELAY_TEST_ADSB_MODE_SEQUENCE || '')
   .split(',')
   .map((value) => value.trim())
@@ -128,6 +167,29 @@ globalThis.fetch = async (url, options) => {
     return { status: 503, ok: false, statusText: 'Service Unavailable', text: async () => '', json: async () => ({}) };
   }
   if (target.includes('customer-api.wingbits.com')) {
+    const requested = JSON.parse(String(options?.body || '[]'));
+    if (wingbitsTrafficFlights && requested.some((area) => /^(us|eu)-/.test(area.alias))) {
+      if (wingbitsTrafficFirstDelayMs > 0) {
+        const delayMs = wingbitsTrafficFirstDelayMs;
+        wingbitsTrafficFirstDelayMs = 0;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+      const mode = nextValue(wingbitsTrafficStatuses, '200');
+      const status = mode === 'short' || mode === 'dup' ? 200 : Number(mode);
+      const now = Date.now();
+      const flights = wingbitsTrafficFlights.map(({ ageMs = 1000, ...f }) => ({ ...f, ra: new Date(now - ageMs).toISOString() }));
+      const answered = mode === 'short' ? requested.slice(1)
+        : mode === 'dup' ? [...requested.slice(0, -1), requested[0]]
+          : requested;
+      const areas = answered.map((area) => ({ alias: area.alias, data: flights }));
+      const bodyDelayMs = wingbitsTrafficFirstBodyDelayMs;
+      wingbitsTrafficFirstBodyDelayMs = 0;
+      const json = async () => {
+        if (bodyDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, bodyDelayMs));
+        return areas;
+      };
+      return { status: mode === 'dup' ? 200 : status, ok: mode === 'dup' || status === 200, statusText: '', text: async () => '', json };
+    }
     if (wingbitsEchoAreas) {
       const areas = JSON.parse(String(options?.body || '[]'));
       return {
@@ -195,7 +257,8 @@ https.get = function patchedGet(...args) {
   const cb = typeof options === 'function' ? options : callback;
   const parsed = targetUrl(input);
   if (parsed.hostname === 'opensky-network.org') {
-    const status = nextValue(openskyStatuses, 429);
+    if (nextValue(openskyTimeouts, '0') === '1') return request({ callback: cb, timeout: true });
+    const status = nextValue(openskyStatuses, openskySnapshots ? 200 : 429);
     const headers = {
       'content-type': 'application/json',
       'x-rate-limit-remaining': String(openskyRemainingCredits),
@@ -207,7 +270,10 @@ https.get = function patchedGet(...args) {
     return request({
       callback: cb,
       statusCode: status,
-      body: JSON.stringify({ states: status === 200 ? [OPENSKY_MIL_STATE, ...emergencyCodes.map((squawk, index) => {
+      body: openskySnapshots && status === 200 ? JSON.stringify({
+        states: openskySnapshots.length > 1 ? openskySnapshots.shift() : openskySnapshots[0],
+        time: Math.floor(Date.now() / 1000),
+      }) : JSON.stringify({ states: status === 200 ? [OPENSKY_MIL_STATE, ...emergencyCodes.map((squawk, index) => {
         const row = Array.from({ length: 15 }, (_, i) => OPENSKY_MIL_STATE[i] ?? null);
         row[0] = `ae000${index}`;
         row[1] = `RCH${squawk}`;

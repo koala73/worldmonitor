@@ -28,7 +28,13 @@ retailer:
     allowedHosts:
       - www.jiomart.com
     urlPathContains: /product/
-    extractionFallback: exa
+    # No Exa extraction fallback. Exa's render of a JioMart page carries the
+    # hidden installation-service and device-protection modals but not the
+    # selling price: one modal prints the product name followed by a
+    # placeholder "₹3,700.00", another a "₹77,000.00" television. All 72 Exa
+    # observations from 2026-08-08 to 10-22 were such placeholders (67 at
+    # ₹3,700 across 22 products) and passed the price-evidence gate because
+    # the number is on the page. Firecrawl renders the real price.
     requireStrictValidator: true
 
   rateLimit:

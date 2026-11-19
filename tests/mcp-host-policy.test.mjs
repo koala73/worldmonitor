@@ -5,6 +5,8 @@ import {
   MCP_CANONICAL_ENDPOINT,
   MCP_CANONICAL_ORIGIN,
   MCP_PRODUCTION_ALIAS_LABELS,
+  MCP_RETIRED_ALIAS_LABELS,
+  MCP_SERVED_ALIAS_LABELS,
   MCP_PRODUCT_PATHS,
   isMcpAliasRequest,
   mcpCanonicalLocation,
@@ -23,8 +25,27 @@ describe('shared/mcp-host-policy', () => {
     assert.equal(isMcpAliasRequest('www.worldmonitor.app', '/docs/mcp'), false);
   });
 
-  it('classifies listed production aliases on every product path', () => {
-    for (const label of MCP_PRODUCTION_ALIAS_LABELS) {
+  it('splits the production aliases into served and retired labels', () => {
+    assert.deepEqual([...MCP_SERVED_ALIAS_LABELS], ['api']);
+    assert.deepEqual(
+      [...MCP_RETIRED_ALIAS_LABELS].sort(),
+      MCP_PRODUCTION_ALIAS_LABELS.filter((label) => label !== 'api').sort(),
+    );
+  });
+
+  it('serves the transport paths on served aliases but keeps their well-known cards on the policy', () => {
+    for (const label of MCP_SERVED_ALIAS_LABELS) {
+      const host = `${label}.worldmonitor.app`;
+      assert.equal(isMcpAliasRequest(host, '/mcp'), false);
+      assert.equal(isMcpAliasRequest(host, '/api/mcp'), false);
+      assert.equal(isMcpAliasRequest(`${label.toUpperCase()}.worldmonitor.app:443.`, '/mcp'), false);
+      assert.equal(isMcpAliasRequest(host, '/.well-known/mcp'), true);
+      assert.equal(isMcpAliasRequest(host, '/.well-known/mcp.json'), true);
+    }
+  });
+
+  it('classifies retired production aliases on every product path', () => {
+    for (const label of MCP_RETIRED_ALIAS_LABELS) {
       for (const path of MCP_PRODUCT_PATHS) {
         assert.equal(
           isMcpAliasRequest(`${label}.worldmonitor.app`, path),

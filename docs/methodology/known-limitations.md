@@ -1,4 +1,7 @@
-# Known limitations — resilience scorer
+---
+title: "Resilience Scorer Known Limitations"
+description: "Construct limitations, data-source edge cases, and modeling choices to know before interpreting individual Country Resilience Index scores."
+---
 
 Documented construct limitations, data-source edge cases, and
 modeling-choice notes that aren't bugs but reviewers should know

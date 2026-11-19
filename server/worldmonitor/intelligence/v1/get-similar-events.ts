@@ -4,11 +4,13 @@ import type {
   GetSimilarEventsRequest,
   GetSimilarEventsResponse,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
+import { ApiError } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
+import { resolveAiRouting } from '../../../_shared/ai-routing-policy';
 import {
   intelHistorySearch,
   resolveLimit,
 } from '../../../_shared/intel-history-client';
-import { embedQueryText, normalizeQueryText } from '../../../_shared/intel-history-embed';
+import { embedQueryText, normalizeQueryText, queryEmbeddingDenial } from '../../../_shared/intel-history-embed';
 import {
   cacheSuccessfulHistoryRead,
   validateHistoryScope,
@@ -49,12 +51,14 @@ export const PRECEDENT_MIN_SCORE = 0.55;
  * for the same reason — every cache miss spends one embeddings call.
  */
 export const getSimilarEvents: IntelligenceServiceHandler['getSimilarEvents'] = async (
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: GetSimilarEventsRequest,
 ): Promise<GetSimilarEventsResponse> => {
   const situation = validateHistoryText(req.situation, 'situation', 10, MAX_SITUATION_LEN);
   const scope = validateHistoryScope(req, MAX_LIMIT);
   const limit = resolveLimit(scope.limit, DEFAULT_LIMIT, MAX_LIMIT);
+  const embeddingDenial = queryEmbeddingDenial(await resolveAiRouting(ctx.request));
+  if (embeddingDenial) throw new ApiError(embeddingDenial.status, embeddingDenial.message, '');
 
   const result = await cacheSuccessfulHistoryRead('precedents', {
     situation: normalizeQueryText(situation), domain: scope.domain, country: scope.country,

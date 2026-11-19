@@ -18,9 +18,10 @@ export const DEFERRED_GENERATED_SERVICES = new Map([
     {
       removalIssue: '#6003',
       owner: '@koala73',
-      // Re-affirm or remove by this date. Chosen as ~3 months from the contract landing
-      // (2026-08-05); shorten it if #6003 is scheduled sooner.
-      reviewBy: '2026-11-05',
+      // Re-affirm or remove by this date. First set ~3 months from the contract landing
+      // (2026-08-05). Re-affirmed 2026-11-06 by @koala73: #6003 is still open and the
+      // service still has no gateway; shorten it if #6003 is scheduled sooner.
+      reviewBy: '2027-02-05',
     },
   ],
 ]);

@@ -20,7 +20,6 @@ import UN_TO_ISO2 from '../../../../shared/un-to-iso2.json';
 import ISO2_TO_ISO3 from '../../../../shared/iso2-to-iso3.json';
 
 export const TRADESTATS_TARIFF_BASE = 'https://wits.worldbank.org/API/V1/SDMX/V21/datasource/tradestats-tariff';
-export const TRADESTATS_SOURCE = 'UNCTAD TRAINS via World Bank WITS';
 export const TRADESTATS_KEY_PREFIX = 'trade:wits:tradestats-tariff:v1';
 export const SIMPLE_INDICATOR = 'AHS-SMPL-AVRG';
 export const WEIGHTED_INDICATOR = 'AHS-WGHTD-AVRG';

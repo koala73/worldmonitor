@@ -13,7 +13,8 @@ import {
   hashCohortManifest,
   reconcileCohort,
 } from '../scripts/_forecast-cohort.mjs';
-import { parseArgs, writeManifestFile } from '../scripts/forecast-cohort.mjs';
+import { parseArgs, readJson, writeManifestFile } from '../scripts/forecast-cohort.mjs';
+import { encodeGzipPayload } from '../scripts/_seed-payload-codec.mjs';
 import { createHash } from 'node:crypto';
 import { DEFAULT_JUDGED_SLA_MS, JUDGED_EVIDENCE_GRACE_MS, hardSlaMs } from '../scripts/_forecast-scorecard.mjs';
 import { emissionCandidate, windowQuestionKey } from '../scripts/seed-forecast-resolutions.mjs';
@@ -443,6 +444,19 @@ describe('forecast-cohort CLI and docs (#7066)', () => {
       for (const term of ['scripts/forecast-cohort.mjs', 'hardSlaMs', 'slaDueAt', 'RESOLVER_CYCLE_MS', 'missing_from_ledger', 'awaiting_registration', 'data/forecast-cohorts/', '--carry-code-versions', 'manifestSha256', 'duplicate_window', 'base_rate_placeholder', '--origin legacy_detector']) {
         assert.ok(text.includes(term), `${path} mentions ${term}`);
       }
+    }
+  });
+});
+
+describe('forecast-cohort ledger read', () => {
+  it('reads the gzip-encoded ledger that freeze and reconcile consume', async () => {
+    const value = envelope({ 'k@1': { key: 'k@1', status: 'resolved' } }, 1_791_000_000_000);
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(JSON.stringify({ result: encodeGzipPayload(JSON.stringify(value)) }), { status: 200 });
+    try {
+      assert.deepEqual(await readJson('https://redis.test', 'token', 'forecast:resolutions:v1'), value);
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 });

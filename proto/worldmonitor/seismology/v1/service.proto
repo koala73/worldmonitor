@@ -9,7 +9,7 @@ import "worldmonitor/seismology/v1/list_earthquakes.proto";
 service SeismologyService {
   option (sebuf.http.service_config) = {base_path: "/api/seismology/v1"};
 
-  // ListEarthquakes retrieves recent earthquakes from USGS and Earthquakes Canada (NRCan).
+  // ListEarthquakes returns M4.5+ earthquakes from the past 7 days from USGS and Earthquakes Canada (NRCan), flagging quakes within 100 km of nuclear test sites.
   rpc ListEarthquakes(ListEarthquakesRequest) returns (ListEarthquakesResponse) {
     option (sebuf.http.config) = {path: "/list-earthquakes", method: HTTP_METHOD_GET};
   }

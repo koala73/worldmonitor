@@ -80,3 +80,45 @@ it('preserves actual Unknown and Safe route labels beside supplier evidence', as
   await vi.waitFor(() => { expect(body.querySelector('.cdp-risk-unknown')?.textContent).toBe('Unknown'); expect(body.querySelector('.cdp-risk-safe')?.textContent).toBe('Safe'); });
   expect(body.textContent).toContain('1 supplier(s) verified safe. 1 supplier(s) have no modeled route data.');
 });
+// #7990: JP imports from CN (Taiwan Strait) and QA (Hormuz, Malacca).
+function jpFixture(chokepoints: Array<{ id: string; disruptionScore: number }>, extra: { fetchedAt?: string; upstreamUnavailable?: boolean } = {}) {
+  const { panel, body } = fixture();
+  Reflect.set(panel, 'currentCode', 'JP');
+  Reflect.set(panel, 'source', { chokepoints: async () => ({ chokepoints, fetchedAt: new Date().toISOString(), upstreamUnavailable: false, ...extra }) });
+  panel.updateProductImports(response([product({ hs4: '2804', description: 'Synthetic gases', topExporters: [
+    { partnerCode: 156, partnerIso2: 'CN', share: 0.6, value: 600 },
+    { partnerCode: 634, partnerIso2: 'QA', share: 0.4, value: 400 },
+  ] })]));
+  return body;
+}
+const riskBadges = (body: HTMLElement) => [...body.querySelectorAll('.cdp-risk-badge')].map(b => b.textContent);
+it.each([
+  ['a partial snapshot', {}],
+  ['a partial snapshot flagged upstream-unavailable', { upstreamUnavailable: true }],
+])('does not call an unmeasured route safe or an alternative with %s', async (_label, extra) => {
+  const body = jpFixture([{ id: 'taiwan_strait', disruptionScore: 90 }], extra);
+  await vi.waitFor(() => expect(riskBadges(body)).toEqual(['Critical', 'Unknown']));
+  expect(body.textContent).not.toContain('via routes avoiding');
+  expect(body.textContent).toContain('Strait of Hormuz (no data)');
+  expect(body.textContent).toContain('1 supplier(s) lack current disruption data for their modeled chokepoints.');
+});
+it('counts safe and unmeasured suppliers separately when no route is at risk', async () => {
+  // CN fully measured (Taiwan 0) is Safe; QA's Hormuz and Malacca are missing.
+  const body = jpFixture([{ id: 'taiwan_strait', disruptionScore: 0 }]);
+  await vi.waitFor(() => expect(riskBadges(body)).toEqual(['Safe', 'Unknown']));
+  expect(body.textContent).toContain('1 supplier(s) verified safe. 1 supplier(s) lack current disruption data for their modeled chokepoints.');
+});
+it('does not call fully measured zero scores safe when the snapshot is stale', async () => {
+  const body = jpFixture([{ id: 'taiwan_strait', disruptionScore: 0 }, { id: 'hormuz_strait', disruptionScore: 0 }, { id: 'malacca_strait', disruptionScore: 0 }], { fetchedAt: '2020-01-01T00:00:00Z' });
+  await vi.waitFor(() => expect(riskBadges(body)).toEqual(['Unknown', 'Unknown']));
+  expect(body.textContent).not.toContain('avoid disrupted chokepoints');
+  expect(body.textContent).toContain('2 supplier(s) lack current disruption data');
+});
+it('keeps current, fully measured low scores safe and offers a measured alternative (controls)', async () => {
+  const safe = jpFixture([{ id: 'taiwan_strait', disruptionScore: 0 }, { id: 'hormuz_strait', disruptionScore: 0 }, { id: 'malacca_strait', disruptionScore: 0 }]);
+  await vi.waitFor(() => expect(riskBadges(safe)).toEqual(['Safe', 'Safe']));
+  expect(safe.textContent).toContain('All current suppliers use routes that avoid disrupted chokepoints.');
+  const alt = jpFixture([{ id: 'taiwan_strait', disruptionScore: 90 }, { id: 'hormuz_strait', disruptionScore: 0 }, { id: 'malacca_strait', disruptionScore: 0 }]);
+  await vi.waitFor(() => expect(riskBadges(alt)).toEqual(['Critical', 'Safe']));
+  expect(alt.textContent).toContain('QA supplies 40% via routes avoiding this chokepoint.');
+});

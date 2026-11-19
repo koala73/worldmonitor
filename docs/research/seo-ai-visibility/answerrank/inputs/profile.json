@@ -1,0 +1,136 @@
+{
+ "brand": "World Monitor",
+ "aliases": [
+  "worldmonitor",
+  "world monitor app",
+  "worldmonitor.app",
+  "worldmonitor cli",
+  "worldmonitor npm",
+  "world monitor pro"
+ ],
+ "domains": [
+  "worldmonitor.app"
+ ],
+ "category": "real-time OSINT and geopolitical intelligence dashboard",
+ "one_liner": "Streams OSINT, markets, transport, cyber and disaster signals onto a live map with APIs, alerts and AI briefings.",
+ "audiences": [
+  "geopolitical analysts",
+  "security analysts",
+  "journalists",
+  "researchers",
+  "traders and market analysts",
+  "supply-chain and logistics teams",
+  "developers building intelligence workflows",
+  "risk and resilience teams"
+ ],
+ "use_cases": [
+  "monitor breaking conflicts and unrest on a live map",
+  "verify a breaking event against attributed sources",
+  "track shipping chokepoint disruption and vessel flows",
+  "connect geopolitical events to market and commodity moves",
+  "screen country instability and resilience scores",
+  "follow aviation, maritime, cyber, outage, fire and disaster signals together",
+  "generate source-attributed daily intelligence briefs",
+  "plan shipment routes around chokepoints and country-risk exposure",
+  "run disruption scenarios for conflicts, weather, sanctions and tariffs",
+  "feed geopolitical and market data into applications through REST APIs, SDKs or an MCP server"
+ ],
+ "differentiators": [
+  "Free core dashboard with no signup required.",
+  "Open-source platform licensed AGPL-3.0-only, with official thin clients under MIT.",
+  "Combines 460 news and OSINT feeds from 762 attributed providers on one map.",
+  "Includes 58 map layer types across geopolitics, markets, shipping, aviation, infrastructure, cyber and natural events.",
+  "Provides REST API, MCP server, CLI and SDKs for npm, Python, Ruby and Go.",
+  "Publishes country instability and resilience scoring, including resilience rankings for 170 countries."
+ ],
+ "signature_terms": [
+  "By the time it's news, you already knew",
+  "Country Instability Index",
+  "Country Resilience Index",
+  "Route Explorer",
+  "Scenario Engine",
+  "WorldMonitor CLI",
+  "worldmonitor get",
+  "worldmonitor list",
+  "58 map layer types",
+  "460 News & OSINT feeds",
+  "762 Attributed providers",
+  "13 critical maritime passages",
+  "AI agents can drive the dashboard",
+  "MCP server",
+  "Happy"
+ ],
+ "competitors": [
+  {
+   "name": "Liveuamap",
+   "aliases": [
+    "live universal awareness map",
+    "liveuamap.com"
+   ]
+  },
+  {
+   "name": "ACLED",
+   "aliases": [
+    "armed conflict location & event data",
+    "armed conflict location and event data",
+    "acleddata"
+   ]
+  },
+  {
+   "name": "GDELT",
+   "aliases": [
+    "the gdelt project",
+    "global database of events language and tone"
+   ]
+  },
+  {
+   "name": "Dataminr",
+   "aliases": [
+    "dataminr first alert"
+   ]
+  },
+  {
+   "name": "Recorded Future",
+   "aliases": [
+    "recorded future intelligence cloud",
+    "recordedfuture"
+   ]
+  },
+  {
+   "name": "DeepStateMap",
+   "aliases": [
+    "deepstate map",
+    "deepstatemap.live",
+    "deepstate"
+   ]
+  },
+  {
+   "name": "Factal",
+   "aliases": [
+    "factal.com"
+   ]
+  },
+  {
+   "name": "Crisis24",
+   "aliases": [
+    "crisis24 horizon",
+    "garda risk intelligence"
+   ]
+  },
+  {
+   "name": "Janes",
+   "aliases": [
+    "janes inteltrak",
+    "janes intelligence",
+    "ihs janes"
+   ]
+  },
+  {
+   "name": "Palantir",
+   "aliases": [
+    "palantir gotham",
+    "palantir foundry"
+   ]
+  }
+ ]
+}

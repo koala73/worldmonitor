@@ -42,7 +42,7 @@ Generic awareness is worthless without personal relevance. This segment is where
 
 ## Minutes 8–11: Your Region
 
-Press Cmd+K, jump to your regional preset (Americas, Europe, MENA, Asia-Pacific), and read the map with the layers that match your concerns: conflicts and protests for security analysts, [chokepoints and ports](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/) for supply-chain roles, cyber threats and outages for [security teams](/blog/posts/cyber-threat-intelligence-for-security-teams/).
+Press [Cmd+K](/blog/posts/command-palette-search-everything-instantly/), jump to your regional preset (Americas, Europe, MENA, Asia-Pacific), and read the map with the layers that match your concerns: conflicts and protests for security analysts, [chokepoints and ports](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/) for supply-chain roles, cyber threats and outages for [security teams](/blog/posts/cyber-threat-intelligence-for-security-teams/).
 
 Set the time filter to 24 hours so the map shows only what is new since yesterday's briefing. The discipline of a fixed daily window is what turns a map into a diff.
 

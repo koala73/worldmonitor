@@ -260,3 +260,30 @@ func TestNonJSONBodyIsWrappedAsJSONString(t *testing.T) {
 		t.Fatalf("result = %s (err %v)", result, err)
 	}
 }
+
+func TestRedirectsAreNotFollowed(t *testing.T) {
+	var leaked []string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		leaked = append(leaked, r.Header.Get(APIKeyHeader))
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"jsonrpc":"2.0","id":1,"result":{}}`)
+	}))
+	t.Cleanup(target.Close)
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+r.URL.Path, http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(origin.Close)
+	client := &Client{APIKey: "wm_k", BaseURL: origin.URL, MCPURL: origin.URL + "/mcp", HTTPClient: &http.Client{}}
+
+	_, rpcErr := client.ListTools(context.Background())
+	_, getErr := client.Get(context.Background(), "/api/health", nil)
+	for name, err := range map[string]error{"ListTools": rpcErr, "Get": getErr} {
+		var apiErr *APIError
+		if !errors.As(err, &apiErr) || apiErr.Status != http.StatusTemporaryRedirect {
+			t.Fatalf("%s: err = %v, want APIError 307", name, err)
+		}
+	}
+	if len(leaked) != 0 {
+		t.Fatalf("redirect target received %d request(s) carrying keys %q", len(leaked), leaked)
+	}
+}

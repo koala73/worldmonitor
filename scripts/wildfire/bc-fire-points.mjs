@@ -24,6 +24,7 @@ export const MAX_BC_RESPONSE_BYTES = 12 * 1024 * 1024;
 export const BC_FETCH_TIMEOUT_MS = 30_000;
 export const BC_WFS_PAGE_SIZE = 1000;
 export const BC_WFS_MAX_PAGES = 8;
+export const BC_WFS_RETRY_DELAY_MS = 2_000;
 export const BC_MAX_NETWORKLINK_HOPS = 2;
 export const BC_SNAPSHOT_KEY = 'wildfire:bc-source:v1';
 export const BC_SNAPSHOT_TTL_SECONDS = 7200;
@@ -333,6 +334,38 @@ function parseAllowedUrl(url) {
   return parsed;
 }
 
+const BC_WFS_TIMEOUT_PATTERN = /\b(?:SocketTimeoutException|SQLTimeoutException)\b|\btimed out\b/i;
+
+/**
+ * Bounded, prose-free summary of a WFS exception report for logging, plus
+ * whether it reports the GeoServer's own timeout. `timedOut` is read from the
+ * exception text, not the logged signals, which are capped at eight.
+ */
+function bcWfsFailureDiagnostic(text) {
+  const scanLimit = 8192;
+  const prefix = text.slice(0, scanLimit);
+  const exceptions = [...prefix.matchAll(/<(?:[\w.-]+:)?ExceptionText(?=[\s/>])[^>]*?(?:\/\s*>|>([\s\S]*?)(?:<\/(?:[\w.-]+:)?ExceptionText\s*>|$))/gi)]
+    .filter(match => match[1] !== undefined);
+  const exceptionText = decodeHtmlEntities(exceptions.map(match => match[1]).join('\n'));
+  const signals = [
+    ...['ORA-00904', 'ORA-00942', 'ORA-01017', 'ORA-01031', 'ORA-01722',
+      'ORA-03113', 'ORA-03114', 'ORA-12154', 'ORA-12514', 'ORA-12541']
+      .filter(code => new RegExp(`\\b${code}\\b`).test(exceptionText)),
+    ...[
+      ['sql_syntax', /\bSQLSyntaxErrorException\b/i],
+      ['database_connection', /\bSQL(?:Transient|NonTransient)ConnectionException\b|\bcannot get a connection\b/i],
+      ['timeout', BC_WFS_TIMEOUT_PATTERN],
+      ['authorization', /\bSQLInvalidAuthorizationSpecException\b|\binvalid username\/password\b|\bpermission denied\b/i],
+      ['invalid_property', /\bcould not resolve property\b/i],
+      ['unsupported_sort', /\bsorting is not supported\b/i],
+    ].filter(([, pattern]) => pattern.test(exceptionText)).map(([signal]) => signal),
+  ].slice(0, 8);
+  return {
+    diagnostic: { exceptionTextPresent: exceptions.length > 0, scanTruncated: text.length > scanLimit, signals },
+    timedOut: BC_WFS_TIMEOUT_PATTERN.test(exceptionText),
+  };
+}
+
 export async function fetchApprovedBcUrl(url, {
   maxBytes = MAX_BC_RESPONSE_BYTES,
   fetchFn = globalThis.fetch,
@@ -354,19 +387,26 @@ export async function fetchApprovedBcUrl(url, {
   });
   const text = await readBoundedText(response, maxBytes);
   if (!response.ok) {
+    const request = parsed.searchParams.get('request') === 'GetFeature' ? 'wfs' : 'kml';
     const exceptionCode = text.match(/\bexceptionCode=["']([^"']+)["']/)?.[1];
     const locator = text.match(/\blocator=["']([^"']+)["']/)?.[1];
+    const wfsFailure = request === 'wfs' ? bcWfsFailureDiagnostic(text) : null;
+    const wfsDiagnostic = wfsFailure?.diagnostic ?? null;
     console.warn(JSON.stringify({
       event: 'bc_fire_request_failure',
-      request: parsed.searchParams.get('request') === 'GetFeature' ? 'wfs' : 'kml',
+      request,
       startIndex: /^\d{1,6}$/.test(parsed.searchParams.get('startIndex') || '')
         ? Number(parsed.searchParams.get('startIndex')) : null,
       status: response.status,
       exceptionCode: ['InvalidParameterValue', 'MissingParameterValue', 'NoApplicableCode', 'OperationProcessingFailed']
         .includes(exceptionCode) ? exceptionCode : null,
       locator: ['sortBy', 'startIndex', 'count', 'typeNames', 'srsName', 'outputFormat'].includes(locator) ? locator : null,
+      ...(wfsDiagnostic ? { wfsDiagnostic } : {}),
     }));
-    throw new BcFirePointsError(`HTTP_${response.status}`, { status: response.status });
+    const error = new BcFirePointsError(`HTTP_${response.status}`, { status: response.status });
+    // The GeoServer's own query timeout is transient; any other 400 is not.
+    if (wfsFailure?.timedOut) error.transient = true;
+    throw error;
   }
   const result = { text, contentType: response.headers?.get?.('content-type') || '', cacheKey: key };
   cache?.set(key, result);
@@ -420,7 +460,20 @@ async function fetchBcFireKmlTree({ fetchFn, cache, maxHops = BC_MAX_NETWORKLINK
   return fireDetections;
 }
 
-async function fetchBcFireWfs({ fetchFn, cache, pageSize = BC_WFS_PAGE_SIZE, maxPages = BC_WFS_MAX_PAGES, confirmEmpty = false } = {}) {
+// One retry per page for the GeoServer's transient query timeout (Sentry
+// WORLDMONITOR-1C1). A second timeout fails the source and keeps the
+// retained rows, as before.
+async function fetchBcWfsPage(url, options, retryDelayMs) {
+  try {
+    return await fetchApprovedBcUrl(url, options);
+  } catch (error) {
+    if (!error?.transient) throw error;
+    if (retryDelayMs > 0) await new Promise(r => setTimeout(r, retryDelayMs));
+    return fetchApprovedBcUrl(url, options);
+  }
+}
+
+async function fetchBcFireWfs({ fetchFn, cache, pageSize = BC_WFS_PAGE_SIZE, maxPages = BC_WFS_MAX_PAGES, confirmEmpty = false, retryDelayMs = BC_WFS_RETRY_DELAY_MS } = {}) {
   const fireDetections = [];
   const seen = new Set();
   const seenPageRows = new Set();
@@ -431,12 +484,12 @@ async function fetchBcFireWfs({ fetchFn, cache, pageSize = BC_WFS_PAGE_SIZE, max
   let confirmingEmpty = false;
   for (let request = 0; request < maxPages; request += 1) {
     const url = buildBcWfsUrl({ startIndex, count: pageSize });
-    const response = await fetchApprovedBcUrl(url, {
+    const response = await fetchBcWfsPage(url, {
       fetchFn,
       cache: confirmingEmpty ? undefined : cache,
       cacheKey: bcFireCacheKey({ kind: 'wfs', startIndex }),
       accept: 'application/json, application/geo+json, */*',
-    });
+    }, retryDelayMs);
     const parsed = parseBcFireGeoJson(response.text);
     if (confirmingEmpty || (confirmEmpty && parsed.numberReturned === 0)) {
       console.warn(JSON.stringify({ event: 'bc_fire_empty_confirmation',
@@ -490,6 +543,7 @@ async function fetchCurrentBcFirePoints({
   pageSize = BC_WFS_PAGE_SIZE,
   maxPages = BC_WFS_MAX_PAGES,
   confirmEmpty = false,
+  wfsRetryDelayMs = BC_WFS_RETRY_DELAY_MS,
 } = {}) {
   let kmlDetections = [];
   let kmlError = null;
@@ -503,7 +557,7 @@ async function fetchCurrentBcFirePoints({
   }
 
   try {
-    const wfsDetections = await fetchBcFireWfs({ fetchFn, cache, pageSize, maxPages, confirmEmpty });
+    const wfsDetections = await fetchBcFireWfs({ fetchFn, cache, pageSize, maxPages, confirmEmpty, retryDelayMs: wfsRetryDelayMs });
     return { fireDetections: wfsDetections, _bcVia: 'wfs', _bcCount: wfsDetections.length };
   } catch (err) {
     if (kmlError) {
@@ -835,6 +889,7 @@ export function canadianWildfireAfterPublish(data, { previousMeta = null } = {})
             consecutiveFailures: snapshot.consecutiveFailures,
             firstFailureAt: snapshot.firstFailureAt,
             retainedUntil: snapshot.retainedUntil,
+            retainedRecordCount: snapshot.fireDetections.length,
           },
         },
         lastSourceAttemptAt: snapshot.lastAttemptAt,

@@ -242,6 +242,23 @@ describe('resilience dimension scorers', () => {
     assert.equal(score.imputedWeight, 0, 'NaN metrics must not be counted as imputed either');
   });
 
+  it('scoreMacroFiscal traces each IMF metric with its own year, not the inflation year', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'economic:imf:macro:v2') {
+        return { countries: { EC: {
+          inflationPct: 2, govRevenuePct: 35, currentAccountPct: 1.5, year: 2026,
+          periods: { inflationPct: 2026, govRevenuePct: 2025, currentAccountPct: 2024 },
+        } } };
+      }
+      return null;
+    };
+    const trace = createIndicatorTraceCollector();
+    await scoreMacroFiscal('EC', reader, { trace });
+    const rows = trace.readDimension('macroFiscal')?.contributions ?? [];
+    assert.equal(rows.find((r) => r.indicatorId === 'govRevenuePct')?.sourceYear, 2025);
+    assert.equal(rows.find((r) => r.indicatorId === 'currentAccountPct')?.sourceYear, 2024);
+  });
+
   it('roundScore clamps finite scores and maps non-finite values to a safe numeric floor', () => {
     assert.equal(roundScore(12.6), 13, 'finite values still round normally');
     assert.equal(roundScore(-1), 0, 'finite low values clamp to 0');

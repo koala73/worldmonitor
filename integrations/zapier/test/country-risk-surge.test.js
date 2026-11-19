@@ -1,11 +1,11 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { createHmac } = require('node:crypto');
 const nock = require('nock');
 const zapier = require('zapier-platform-core');
 
 const App = require('../index');
+const { signedRequest } = require('./helpers/signed-request');
 const { BASE_URL, PATHS } = require('../constants');
 
 const appTester = zapier.createAppTester(App);
@@ -33,12 +33,7 @@ const BODY = JSON.stringify({
   details: { riseThreshold: 15, floor: 70, staticBaseline: 50, components: { newsActivity: 24, ciiContribution: 0, geoConvergence: 10, militaryActivity: 50 }, methodologyVersion: 'v8', computedAt: 1790830140000, scoresFetchedAt: '2026-10-01T04:49:00.000Z' },
 });
 
-const sign = (body) => `sha256=${createHmac('sha256', SECRET).update(body).digest('hex')}`;
-const rawRequest = (body) => ({
-  method: 'POST',
-  content: body,
-  headers: { 'Http-X-Wm-Signature': sign(body), 'Http-X-Wm-Event': 'country.risk_surge', 'Http-X-Wm-Delivery-Id': DELIVERY_ID },
-});
+const rawRequest = (body, overrides = {}) => signedRequest(body, { secret: SECRET, event: 'country.risk_surge', deliveryId: DELIVERY_ID, overrides });
 
 // Recorded from risk:scores:sebuf:v8 on 2026-10-17 (trimmed to four countries).
 const RISK_SCORES = {
@@ -98,7 +93,7 @@ describe('trigger country_risk_surge (REST hook)', () => {
 
   it('rejects an unsigned or mis-signed delivery', async () => {
     const raw = rawRequest(BODY);
-    raw.headers['Http-X-Wm-Signature'] = `sha256=${'0'.repeat(64)}`;
+    raw.headers['Http-X-Wm-Signature-V2'] = `sha256=${'0'.repeat(64)}`;
     await assert.rejects(
       () => appTester(trigger.perform, { authData: AUTH, subscribeData: { secret: SECRET }, cleanedRequest: JSON.parse(BODY), rawRequest: raw }),
       /did not verify/,

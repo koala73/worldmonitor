@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "worldmonitor-sdk"
-version = "0.1.1"
+version = "0.1.2"
 description = "Official Python SDK for the World Monitor global-intelligence API — country briefs, risk scores, conflict/cyber/market/news feeds, and MCP tools without writing an HTTP integration."
 readme = "README.md"
 requires-python = ">=3.9"

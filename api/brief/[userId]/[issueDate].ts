@@ -24,7 +24,9 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../_sentry-edge.js';
-import { renderBriefMagazine } from '../../../server/_shared/brief-render.js';
+import { assertBriefEnvelope, renderBriefMagazine, selectBriefEnvelope } from '../../../server/_shared/brief-render.js';
+import { briefLocalizedKey } from '../../../shared/brief-envelope.js';
+import { briefFontPlatform } from '../../../server/_shared/brief-font-platform.js';
 import { readRawJsonFromUpstash, redisPipeline } from '../../_upstash-json.js';
 import { verifyBriefToken, BriefUrlError } from '../../../server/_shared/brief-url';
 import {
@@ -165,7 +167,7 @@ export default async function handler(
     return new Response(null, { status: 204, headers: cors });
   }
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    return new Response('Method not allowed', { status: 405, headers: cors });
+    return new Response('Method not allowed', { status: 405, headers: { ...cors, Allow: 'GET, HEAD, OPTIONS' } });
   }
 
   const secret = process.env.BRIEF_URL_SIGNING_SECRET ?? '';
@@ -220,6 +222,10 @@ export default async function handler(
   // distinguish those two — a reader with a valid brief deserves a
   // "service unavailable" state during outages, not a misleading
   // "expired" page.
+  // The localized sibling is optional: a failed or empty read falls back
+  // to the canonical English envelope and never fails the request.
+  const siblingPromise = readRawJsonFromUpstash(briefLocalizedKey(userId, issueDate), 3_000, true)
+    .catch(() => null);
   let envelope: unknown;
   try {
     // Seeder-owned envelope (#7674): the Railway digest composer writes the
@@ -272,7 +278,7 @@ export default async function handler(
       }
     } catch (err) {
       console.warn('[api/brief] share URL derive failed:', (err as Error).message);
-      captureSilentError(err, { tags: { route: 'api/brief', step: 'share-url-derive', severity: 'warn' }, fingerprint: ['api/brief', 'share-url-derive', err instanceof Error ? err.name : 'Error'], ctx });
+      captureSilentError(err, { level: 'warning', tags: { route: 'api/brief', step: 'share-url-derive', severity: 'warn' }, fingerprint: ['api/brief', 'share-url-derive', err instanceof Error ? err.name : 'Error'], ctx });
     }
   }
 
@@ -282,15 +288,20 @@ export default async function handler(
   // empty watchlist yields an empty list, so all stories stamp
   // `followed=false`. Visible content and story order are unchanged.
   const followedCountries = await followedCountriesPromise;
+  const sibling = await siblingPromise;
 
   // Cast to BriefEnvelope; renderBriefMagazine runs its own
   // assertBriefEnvelope at the top and will throw on any shape
   // mismatch, which we catch below.
   let html: string;
   try {
+    // Validate canonical first so a malformed canonical stays a 404 even
+    // when a matching sibling would render.
+    assertBriefEnvelope(envelope);
+    const selectedEnvelope = selectBriefEnvelope(envelope, sibling);
     html = renderBriefMagazine(
-      envelope as Parameters<typeof renderBriefMagazine>[0],
-      { shareUrl, followedCountries },
+      selectedEnvelope as Parameters<typeof renderBriefMagazine>[0],
+      { shareUrl, followedCountries, fontPlatform: briefFontPlatform(req.headers.get('user-agent') ?? '') },
     );
   } catch (err) {
     // Malformed envelope in Redis (composer bug, version drift, etc.)
@@ -304,5 +315,6 @@ export default async function handler(
     return htmlResponse(req, 404, EXPIRED_PAGE);
   }
 
-  return htmlResponse(req, 200, html);
+  // The page links a different font file set per platform (brief-font-platform.js).
+  return htmlResponse(req, 200, html, { Vary: 'User-Agent' });
 }

@@ -3,7 +3,7 @@ import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
 import { proFreshRpcFetch } from '@/services/premium-fetch';
 import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
-import { formatPrice, formatChange, getChangeClass } from '@/utils';
+import { formatQuotePrice, formatChange, getChangeClass } from '@/utils';
 import { miniSparkline } from '@/utils/sparkline';
 
 import type { ListGulfQuotesResponse, GulfQuote } from '@/generated/client/worldmonitor/market/v1/service_client';
@@ -22,7 +22,7 @@ function renderSection(title: string, quotes: GulfQuote[]): string {
       </div>
       <div class="market-data">
         ${miniSparkline(q.sparkline, q.change)}
-        <span class="market-price">${formatPrice(q.price)}</span>
+        <span class="market-price">${escapeHtml(formatQuotePrice(q.symbol, q.price))}</span>
         <span class="market-change ${getChangeClass(q.change)}">${formatChange(q.change)}</span>
       </div>
     </div>

@@ -22,7 +22,7 @@ each reassembled file serializes to the exact byte count production reported.
 
 | File | Tool | Production bytes |
 |---|---|---|
-| `rpc-generate-forecasts.response.json` | `generate_forecasts` (`_execute` result) | 85,985 |
+| `rpc-generate-forecasts.response.json` | `generate_forecasts` (`_execute` result; retired, still callable) | 85,985 |
 | `oversized-get-natural-disasters.response.json` | `get_natural_disasters` | 158,957 |
 | `oversized-get-imd-cyclone-marine.response.json` | `get_imd_cyclone_marine` | 98,859 |
 

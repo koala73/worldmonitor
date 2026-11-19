@@ -29,7 +29,7 @@ Module._load = function patchedLoad(request, parent, ...rest) {
 // changes. The relay only starts its poll loop when require.main === module, so
 // requiring it here is side-effect free (same technique as
 // tests/notification-relay-country-scope-5359.test.mjs).
-const { eventMatchesTickerScope, ruleMatchesEventType } = require(
+const { eventMatchesTickerScope, ruleDropReason, ruleMatchesEventType } = require(
   resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'),
 );
 
@@ -84,11 +84,8 @@ describe('notification-relay watchlist ticker filter — source-grep contract', 
       /function\s+ruleMatchesEventType\s*\(\s*rule\s*,\s*event\s*\)/,
       'relay must declare ruleMatchesEventType(rule, event)',
     );
-    assert.match(
-      relaySrc,
-      /return\s+rule\.eventTypes\.includes\(WATCHLIST_STORY_EVENT_TYPE\)/,
-      'watchlist events must require explicit eventTypes inclusion',
-    );
+    assert.equal(ruleMatchesEventType({ eventTypes: [] }, { eventType: 'watchlist_story_alert', payload: {} }), false,
+      'watchlist events must require explicit eventTypes inclusion');
     // The legacy inline wildcard must be replaced by the helper in the
     // matching filter — otherwise wildcard rules would silently receive
     // watchlist events they never opted into.
@@ -100,39 +97,73 @@ describe('notification-relay watchlist ticker filter — source-grep contract', 
   });
 
   it('watchlist opt-in does not shrink the broadcast wildcard', () => {
-    assert.match(
-      relaySrc,
-      /const\s+broadcastTypes\s*=\s*rule\.eventTypes\.filter\(\s*\(?t\)?\s*=>\s*t\s*!==\s*WATCHLIST_STORY_EVENT_TYPE\s*\)/,
-      'ruleMatchesEventType must exclude the watchlist opt-in when evaluating the broadcast wildcard',
-    );
+    const rss = { eventType: 'rss_alert', payload: {} };
+    assert.equal(ruleMatchesEventType({ eventTypes: ['watchlist_story_alert'] }, rss), true,
+      'ruleMatchesEventType must exclude the watchlist opt-in when evaluating the broadcast wildcard');
   });
 
-  it('filter is wired into the per-rule matching loop alongside shouldNotify + country scope', () => {
-    assert.match(
-      relaySrc,
-      /ruleMatchesEventType\(r,\s*event\)\s*&&\s*\n?\s*shouldNotify\(r,\s*event\)\s*&&\s*\n?\s*eventMatchesCountryScope\(event,\s*r\)\s*&&\s*\n?\s*eventMatchesTickerScope\(event,\s*r\)/,
-      'eventMatchesTickerScope must be in the matching filter alongside shouldNotify/eventMatchesCountryScope',
-    );
+  it('the matching loop drops a watchlist story for a rule without its ticker', () => {
+    const story = { eventType: 'watchlist_story_alert', severity: 'critical', payload: { tickers: ['AAPL'] } };
+    const rule = { digestMode: 'realtime', sensitivity: 'critical', eventTypes: ['watchlist_story_alert'], countries: [] };
+    assert.equal(ruleDropReason({ ...rule, tickers: ['MSFT'] }, story), 'ticker_scope');
+    assert.equal(ruleDropReason({ ...rule, tickers: ['aapl'] }, story), null);
   });
 
-  it('layer-3 PRO gate still guards delivery for every matched rule (fail-closed isUserPro)', () => {
-    // The batch PRO check runs on the SAME `matching` set the ticker filter
-    // built, and the per-rule delivery loop skips non-PRO users. Watchlist
-    // events route through this unchanged code path.
+  it('layer-3 tier gate still guards delivery for every matched rule (fail-closed getUserTier)', () => {
+    // The batch tier check runs on the SAME `matching` set the ticker filter
+    // built, and the per-rule delivery loop clamps free-tier (and
+    // fail-closed) users to the free alert ladder (#4273). Watchlist events
+    // route through this unchanged code path.
     assert.match(
       relaySrc,
       /const uniqueUserIds = \[\.\.\.new Set\(matching\.map\(r => r\.userId\)\)\]/,
-      'batch PRO check must be derived from the matching set',
+      'batch tier check must be derived from the matching set',
     );
     assert.match(
       relaySrc,
-      /uniqueUserIds\.map\(async uid => \[uid, await isUserPro\(uid\)\]\)/,
-      'isUserPro must be consulted per unique user',
+      /uniqueUserIds\.map\(async uid => \[uid, await getUserTier\(uid\)\]\)/,
+      'getUserTier must be consulted per unique user',
     );
     assert.match(
       relaySrc,
-      /if \(!proSet\.has\(rule\.userId\)\) continue;/,
-      'delivery loop must skip users that failed the PRO gate',
+      /if \(!freeTierAllowsEvent\(userTier, eventSeverity\)\) \{/,
+      'delivery loop must clamp free-tier users to the free-ladder severity',
+    );
+    assert.match(
+      relaySrc,
+      /freeTierAllowsChannel\(userTier, c\.channelType\)/,
+      'channel delivery must clamp free-tier users to the free channel set',
+    );
+    assert.match(
+      relaySrc,
+      /freeTierCountryScope\(userTier, rule\.countries\)/,
+      'delivery loop must clamp free-tier rules to an explicit country scope',
+    );
+    assert.match(
+      relaySrc,
+      /freeTierAllowsChannel\(drainTier, c\.channelType\)/,
+      'the quiet-hours held-queue drain must apply the same free channel clamp',
+    );
+    // Strix review 4 on #10303: held entries are clamped at HOLD time against
+    // the tier the account had then, so the drain must re-apply the severity
+    // and country rungs against the CURRENT tier, or a downgrade inside the
+    // hold window delivers past-the-ladder alerts.
+    assert.match(
+      relaySrc,
+      /freeTierAllowsEvent\(drainTier, ev\.severity \?\? 'high'\)/,
+      'the held-queue drain must re-apply the free severity rung per entry',
+    );
+    assert.match(
+      relaySrc,
+      /drainTier < 1 && \(!drainScope\.ok \|\| !eventMatchesDeliveryScope\(ev, \{ countries: drainScope\.countries \}\)\)/,
+      'the held-queue drain must re-apply the free country rung per entry',
+    );
+    // Strix review 6 on #10303: the AI-composed impact block is paid output;
+    // tier-0 delivery must not trigger LLM inference.
+    assert.match(
+      relaySrc,
+      /AI_IMPACT_ENABLED && userTier >= 1/,
+      'AI impact generation must be gated on a paid tier',
     );
   });
 });

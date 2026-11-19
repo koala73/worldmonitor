@@ -17,7 +17,8 @@ async function expectDashboardBooted(page: import('@playwright/test').Page): Pro
   await expect(page.locator('#mapSection')).toBeVisible({ timeout: 45_000 });
   await expect(page.locator('#panelsGrid')).toBeVisible({ timeout: 45_000 });
   await expect(page.locator('#panelsGrid > .panel[data-panel]:not(.hidden)').first()).toBeVisible({ timeout: 45_000 });
-  await expect(page.locator('#mapSection')).toHaveClass(/collapsed/);
+  // Nothing readable in storage means the first-visit default: the map, expanded.
+  await expect(page.locator('#mapSection')).not.toHaveClass(/collapsed/);
 }
 
 declare global {
@@ -40,7 +41,7 @@ test.describe('collapsed-map cohort first paint (#5159)', () => {
       const sample = (): void => {
         const sec = document.getElementById('mapSection');
         if (sec) {
-          const frames = window.__wmMapFrames;
+          const frames = window.__wmMapFrames!;
           const collapsed = sec.classList.contains('collapsed');
           const last = frames[frames.length - 1];
           if (!last || last.collapsed !== collapsed) {

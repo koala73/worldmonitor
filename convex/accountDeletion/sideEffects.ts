@@ -17,6 +17,15 @@ const REDIS_FETCH_TIMEOUT_MS = 5_000;
 const CLERK_FETCH_TIMEOUT_MS = 8_000;
 const DODO_ATTEMPT_TIMEOUT_MS = 8_000;
 const MCP_NEG_CACHE_TTL_SECONDS = 60;
+// The relay writes a recipient's alert history when its delivery pass ends,
+// which can be after the account's Redis keys were deleted here. Its write
+// (scripts/lib/sent-alert-history.cjs) is refused while this per-user marker
+// exists, so a late write cannot recreate the history. The marker only has to
+// outlive a pass that loaded the account's alert rules before the `personal`
+// step deleted them (minutes); it uses the history's own 7-day TTL.
+// tests/list-sent-alerts.test.mts fails when the key or the TTL drift from the
+// relay module.
+const SENT_ALERTS_ERASED_TTL_SECONDS = 7 * 24 * 60 * 60;
 const USER_AGENT = "worldmonitor-convex/1.0";
 const MAX_EXTERNAL_ATTEMPTS = 5;
 const RETRY_BASE_DELAY_MS = 30_000;
@@ -221,6 +230,11 @@ async function redisResult(response: Response, operation: string): Promise<unkno
  *
  * Upstash counts its request-size cap per command, not per pipeline, and this
  * set is bounded by the account's own key/token counts, so batching is safe.
+ *
+ * The SETs go first. A pipeline runs its commands in order but is not a
+ * transaction, and the alert-history marker has to exist before that history
+ * is deleted: a relay write landing between a DEL and a later SET would bring
+ * the history back.
  */
 async function redisRevoke(
   delKeys: string[],
@@ -228,10 +242,10 @@ async function redisRevoke(
 ): Promise<void> {
   const uniqueDels = mergeUniqueStrings([], delKeys);
   const commands: string[][] = [
-    ...uniqueDels.map((key) => ["DEL", key]),
     ...setExEntries.map(({ key, value, ttlSeconds }) => [
       "SET", key, value, "EX", String(ttlSeconds),
     ]),
+    ...uniqueDels.map((key) => ["DEL", key]),
   ];
   if (commands.length === 0) return;
   const response = await redisCommand("/pipeline", {
@@ -252,6 +266,20 @@ async function redisGetJson(key: string): Promise<unknown> {
   }
 }
 
+/** How long a digest compose can still see an erase; one compose run takes minutes. */
+const BRIEF_ERASED_TTL_SECONDS = 86_400;
+
+/** Bounds one account's slot index read; the writer trims it to the 7-day envelope TTL. */
+const MAX_BRIEF_SLOTS = 1_000;
+
+async function redisZrangeAll(key: string): Promise<string[]> {
+  const response = await redisCommand(`/zrange/${encodeURIComponent(key)}/0/${MAX_BRIEF_SLOTS - 1}`);
+  const body = (await redisResult(response, "ZRANGE")) as { result?: unknown };
+  return Array.isArray(body.result)
+    ? body.result.filter((slot): slot is string => typeof slot === "string" && slot.length > 0)
+    : [];
+}
+
 async function deleteAccountRedisKeys(args: {
   userId: string;
   keyHashes: string[];
@@ -260,7 +288,8 @@ async function deleteAccountRedisKeys(args: {
 }): Promise<void> {
   const keys = [
     entitlementKey(args.userId),
-    `brief:latest:${args.userId}`,
+    // Alerts delivered to the account (scripts/lib/sent-alert-history.cjs).
+    `wm:notif:sent:v1:${args.userId}`,
     ...args.keyHashes.flatMap((hash) => [
       `user-api-key:${hash}`,
       `bootstrap-user-api-key-invalid:${hash}`,
@@ -268,6 +297,11 @@ async function deleteAccountRedisKeys(args: {
     ...args.embedKeyHashes.map((hash) => `embed-key:${hash}`),
   ];
 
+  // Marked first (briefErasedKey in shared/brief-envelope.js): a digest compose
+  // re-reads it after its envelope write, so a compose racing this erase
+  // either sees it and removes its own brief or wrote a slot the reads below
+  // find. It only has to outlive one compose run.
+  await redisRevoke([], [{ key: `brief:erased:${args.userId}`, value: "1", ttlSeconds: BRIEF_ERASED_TTL_SECONDS }]);
   const latest = await redisGetJson(`brief:latest:${args.userId}`);
   const slot =
     latest && typeof latest === "object" && typeof (latest as { issueSlot?: unknown }).issueSlot === "string"
@@ -275,21 +309,154 @@ async function deleteAccountRedisKeys(args: {
       : typeof latest === "string"
         ? latest
         : null;
-  if (slot) keys.push(`brief:${args.userId}:${slot}`);
+  // Every slot in the per-user index (briefSlotsKey in shared/brief-envelope.js),
+  // plus the pointer's slot for briefs written before the index existed.
+  const slotsKey = `brief:slots:${args.userId}`;
+  const slots = mergeUniqueStrings(await redisZrangeAll(slotsKey), slot ? [slot] : []);
+  for (const s of slots) {
+    keys.push(`brief:${args.userId}:${s}`);
+    // Localized sibling; source of truth is briefLocalizedKey in shared/brief-envelope.js.
+    keys.push(`brief:l10n:${args.userId}:${s}`);
+  }
 
-  // Deletes and the MCP negative-cache sentinels go in one pipeline. The
-  // sentinels used to be a per-token await, each its own fetch with its own
-  // 5s budget, serialized inside the same action that still has to reach Dodo
-  // and Clerk.
+  // Deletes, the alert-history marker and the MCP negative-cache sentinels go
+  // in one pipeline. The sentinels used to be a per-token await, each its own
+  // fetch with its own 5s budget, serialized inside the same action that still
+  // has to reach Dodo and Clerk.
   await redisRevoke(
     keys,
-    args.mcpTokenIds.map((tokenId) => ({
-      key: `pro-mcp-token-neg:${tokenId}`,
-      value: "1",
-      ttlSeconds: MCP_NEG_CACHE_TTL_SECONDS,
-    })),
+    [
+      { key: `wm:notif:sent-erased:v1:${args.userId}`, value: "1", ttlSeconds: SENT_ALERTS_ERASED_TTL_SECONDS },
+      ...args.mcpTokenIds.map((tokenId) => ({
+        key: `pro-mcp-token-neg:${tokenId}`,
+        value: "1",
+        ttlSeconds: MCP_NEG_CACHE_TTL_SECONDS,
+      })),
+    ],
   );
+  // The index and pointer are how a retry finds the slots. Upstash runs every
+  // command in a pipeline even after one fails, so they are deleted in a
+  // separate request, only once every slot delete above has succeeded
+  // (redisRevoke throws on any failed command).
+  await redisRevoke([slotsKey, `brief:latest:${args.userId}`], []);
 }
+
+const MAX_BRIEF_SWEEP_PAGES = 1_000;
+
+/**
+ * The brief keys a compose writes for an account: envelopes and localized
+ * siblings per slot, the slot index, and the latest pointer. The erase
+ * tombstone is excluded: a compose still running reads it to remove its own
+ * brief.
+ */
+function isAccountBriefKey(key: string, userId: string): boolean {
+  if (key === `brief:slots:${userId}` || key === `brief:latest:${userId}`) return true;
+  for (const prefix of [`brief:${userId}:`, `brief:l10n:${userId}:`]) {
+    if (key.startsWith(prefix)) {
+      const slot = key.slice(prefix.length);
+      return slot.length > 0 && !slot.includes(":");
+    }
+  }
+  return false;
+}
+
+function reportBriefSweepFailure(
+  args: { deletionId: string; cursor: string; pages?: number },
+  error: string,
+): void {
+  // sentry-coverage-ok: structured console.error is forwarded by Convex.
+  console.error(JSON.stringify({ breadcrumb: "account_deletion_brief_sweep_failed",
+    deletionId: args.deletionId, cursor: args.cursor, pages: args.pages ?? 0, error }));
+}
+
+/**
+ * Bound both each action and the total shared-keyspace scan per sweep. One
+ * pass matches every brief key shape for the account, so a full sweep costs
+ * one keyspace scan (~580 pages at COUNT 1000 today), within the budget.
+ */
+export const sweepBriefEnvelopes = internalAction({
+  args: {
+    deletionId: v.id("accountDeletions"),
+    cursor: v.string(),
+    attempt: v.number(),
+    pages: v.optional(v.number()),
+    page: v.optional(v.object({ cursor: v.string(), keys: v.array(v.string()) })),
+  },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    let page = args.page;
+    try {
+      const snapshot = await ctx.runQuery(internal.accountDeletion.erase.getExternalEraseSnapshot,
+        { deletionId: args.deletionId });
+      // Billing events can reopen an erased account's deletion. Its personal
+      // data still needs cleanup even if cancellation is pending or failed.
+      if (!snapshot) return null;
+      const { userId } = snapshot;
+      // Redis MATCH is a glob, not a literal. Escape identity characters; the
+      // glob over-matches (brief:erased:, ids sharing a prefix), so every key
+      // is checked against the exact account shapes before deleting.
+      const pattern = `brief:*${userId.replace(/[\\*?\[\]]/g, "\\$&")}*`;
+      if (!page) {
+        const response = await redisCommand("", {
+          body: JSON.stringify(["SCAN", args.cursor, "MATCH", pattern, "COUNT", "1000"]),
+        });
+        const body = await redisResult(response, "BRIEF_SCAN") as { result?: unknown };
+        const result = body.result;
+        if (!Array.isArray(result) || result.length !== 2 ||
+            typeof result[0] !== "string" || !/^\d+$/.test(result[0]) ||
+            !Array.isArray(result[1]) || !result[1].every((key: unknown) =>
+              typeof key === "string" && key.startsWith("brief:") && key.includes(userId))) {
+          throw new Error("REDIS_BRIEF_SCAN_INVALID_RESULT");
+        }
+        page = { cursor: result[0], keys: (result[1] as string[]).filter(key => isAccountBriefKey(key, userId)) };
+      }
+      if (!page.keys.every(key => isAccountBriefKey(key, userId))) {
+        throw new Error("REDIS_BRIEF_PAGE_INVALID_KEYS");
+      }
+      const { keys, cursor } = page;
+      // COUNT is a hint, so bound each delete request independently.
+      for (let i = 0; i < keys.length; i += 100) {
+        await redisRevoke(keys.slice(i, i + 100), []);
+      }
+      if (cursor !== "0") {
+        const pages = (args.pages ?? 0) + 1;
+        if (pages >= MAX_BRIEF_SWEEP_PAGES) {
+          // sentry-coverage-ok: structured console.error is forwarded by Convex.
+          // Include the next cursor so an operator can continue this sweep
+          // with pages: 0 after checking Redis load, without rescanning.
+          console.error(JSON.stringify({ breadcrumb: "account_deletion_brief_sweep_truncated",
+            deletionId: args.deletionId, cursor, pages }));
+          return null;
+        }
+        await ctx.scheduler.runAfter(0, internal.accountDeletion.sideEffects.sweepBriefEnvelopes, {
+          deletionId: args.deletionId, cursor, attempt: 0, pages,
+        });
+      }
+    } catch (err) {
+      if (args.attempt + 1 < MAX_EXTERNAL_ATTEMPTS) {
+        // SCAN may not return the same keys when a cursor is replayed. Keep
+        // this page until every DEL succeeds; repeated deletes are safe.
+        try {
+          await ctx.scheduler.runAfter(
+            Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** args.attempt),
+            internal.accountDeletion.sideEffects.sweepBriefEnvelopes,
+            { ...args, ...(page ? { page } : {}), attempt: args.attempt + 1 },
+          );
+        } catch (scheduleErr) {
+          // Nothing retries a scheduled action, so a lost continuation must be
+          // reported. Resume from this page's own cursor: its keys may not all
+          // be deleted, so the next cursor is not safe.
+          reportBriefSweepFailure(args, `${errorMessage(err)}; retry not scheduled: ${errorMessage(scheduleErr)}`);
+          throw scheduleErr;
+        }
+      } else {
+        reportBriefSweepFailure(args, errorMessage(err));
+        throw err;
+      }
+    }
+    return null;
+  },
+});
 
 async function deleteClerkUser(userId: string): Promise<"deleted" | "missing"> {
   const secret = process.env.CLERK_SECRET_KEY;

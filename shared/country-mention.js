@@ -184,6 +184,101 @@ export function countryDisplayName(code) {
   }
 }
 
+const CJK_SCRIPT = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u;
+const KATAKANA_RUN = /[\p{Script=Katakana}ー]/u;
+
+/**
+ * Normalizes headline text for localized matching. Japanese and Chinese keep
+ * every mark (stripping the prolonged sound mark turns スーダン into スタン,
+ * which sits inside パキスタン); other scripts use normalizeMentionText.
+ */
+function normalizeLocalizedText(text) {
+  const value = String(text || '');
+  if (CJK_SCRIPT.test(value)) return value.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+  return normalizeMentionText(value);
+}
+
+function icuRegionNames(code, lang) {
+  const names = new Set();
+  for (const style of ['long', 'short']) {
+    try {
+      const name = new Intl.DisplayNames([lang], { type: 'region', style }).of(code);
+      if (!name || name.toUpperCase() === code) continue;
+      const text = normalizeLocalizedText(name);
+      if (style === 'short' && [...text.replace(/\s/g, '')].length < (CJK_SCRIPT.test(text) ? 2 : 4)) continue;
+      if (text) names.add(text);
+    } catch {
+      /* Intl.DisplayNames can be missing in constrained runtimes. */
+    }
+  }
+  return [...names];
+}
+
+const regionNamesByLanguage = new Map();
+
+/** Every ICU region name in one language, so a short name is never credited inside a longer one. */
+function allRegionNames(lang) {
+  if (!regionNamesByLanguage.has(lang)) {
+    const names = new Set();
+    for (let a = 65; a <= 90; a += 1) {
+      for (let b = 65; b <= 90; b += 1) {
+        for (const name of icuRegionNames(String.fromCharCode(a, b), lang)) names.add(name);
+      }
+    }
+    regionNamesByLanguage.set(lang, [...names]);
+  }
+  return regionNamesByLanguage.get(lang);
+}
+
+/**
+ * The country's ICU names in one language, normalized, or [] for English
+ * (covered by countryMentionTerms) and when ICU has no name. The short style
+ * is kept only when it is a real name of 4+ letters (2+ characters in CJK):
+ * ICU short forms are often abbreviations ("RU" for the United Kingdom in
+ * Spanish) that would match unrelated words.
+ */
+export function localizedCountryNames(code, language) {
+  const normalized = String(code || '').trim().toUpperCase();
+  const lang = String(language || '').trim().toLowerCase();
+  if (!/^[A-Z]{2}$/.test(normalized) || !/^[a-z]{2,3}$/.test(lang) || lang === 'en') return [];
+  return icuRegionNames(normalized, lang);
+}
+
+/**
+ * True when the text names the country in its own language. A spaced-script
+ * name must stand as a whole word; a Japanese name must not sit inside a
+ * longer katakana run (タイ in タイトル); and in every script a match is
+ * dropped when a longer region name covers it (南スーダン, Южный Судан,
+ * 印度尼西亚 for 印度).
+ */
+export function mentionsLocalizedCountry(rawText, names, language) {
+  if (!names || names.length === 0) return false;
+  const lang = String(language || '').trim().toLowerCase();
+  const text = normalizeLocalizedText(rawText);
+  const unspaced = ['zh', 'ja'].includes(lang);
+  const wordChar = /[\p{L}\p{N}]/u;
+  const longer = allRegionNames(lang)
+    .filter((other) => !names.includes(other) && names.some((name) => other.length > name.length && other.includes(name)));
+  const covered = (at, length) => longer.some((other) => {
+    for (let start = text.indexOf(other); start !== -1; start = text.indexOf(other, start + 1)) {
+      if (at >= start && at + length <= start + other.length) return true;
+    }
+    return false;
+  });
+  return names.some((name) => {
+    if (!name) return false;
+    for (let at = text.indexOf(name); at !== -1; at = text.indexOf(name, at + 1)) {
+      const before = text[at - 1] || '';
+      const after = text[at + name.length] || '';
+      const bounded = !unspaced
+        ? !wordChar.test(before) && !wordChar.test(after)
+        : lang !== 'ja' || (!KATAKANA_RUN.test(before) && !KATAKANA_RUN.test(after));
+      if (bounded && !covered(at, name.length)) return true;
+    }
+    return false;
+  });
+}
+
 /**
  * Terms one country is recognised by. `names` and `exclusions` are normalized
  * (compare against normalizeMentionText output); `demonyms` are raw-cased.

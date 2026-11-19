@@ -92,7 +92,7 @@ function duties(hs6: string, partner: string, line?: string) {
   const target = line ? lines.find((l) => l.htsCode === line)! : lines[0]!;
   const shard = INDEX.coverage[hs6.slice(0, 2)] ?? {};
   const base = resolveBaseRate(target, partner, columnTwoOverride(CATALOG, shard, target.htsCode, partner));
-  const list = resolveAdditionalDuties(CATALOG, shard, target.htsCode, partner, base.adValorem);
+  const list = resolveAdditionalDuties(CATALOG, shard, target.htsCode, partner, base.adValorem, NOW.toISOString().slice(0, 10));
   return { line: target, base, list, estimate: estimateRate(base.adValorem, list) };
 }
 

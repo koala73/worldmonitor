@@ -98,10 +98,24 @@ test('Docker nginx applies an inert response policy to the RSS proxy route', () 
 
 test('Docker nginx denies the native administration namespace before the data proxy', () => {
   const nginx = readProjectFile('docker/nginx.conf');
-  assert.match(nginx, /location \^~ \/api\/local- \{\s*add_header Origin-Agent-Cluster "\?1" always;\s*return 403;/);
+  assert.match(nginx, /location \^~ \/api\/local- \{\s*add_header Origin-Agent-Cluster "\?1" always;\s*add_header X-Robots-Tag "noindex, follow" always;\s*return 403;/);
   const staticNginx = readProjectFile('docker/nginx.conf.template');
   assert.doesNotMatch(staticNginx, /LOCAL_API_TOKEN|X-WorldMonitor-Local-Token/);
   assert.match(staticNginx, /proxy_pass \$\{API_UPSTREAM\}/);
+});
+
+test('frontend nginx authenticates TLS upstreams for every API location', () => {
+  const nginx = readProjectFile('docker/nginx.conf.template');
+  const httpDefaults = nginx.slice(nginx.indexOf('http {'), nginx.indexOf('  server {'));
+  for (const directive of [
+    'proxy_ssl_verify on;',
+    'proxy_ssl_verify_depth 3;',
+    'proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;',
+    'proxy_ssl_server_name on;',
+    'proxy_ssl_name $proxy_host;',
+  ]) assert.ok(httpDefaults.includes(directive), directive);
+  assert.equal((nginx.match(/proxy_pass \$\{API_UPSTREAM\};/g) ?? []).length, 3);
+  assert.doesNotMatch(nginx, /proxy_ssl_(?:verify|server_name)\s+off;/);
 });
 
 // Opt in where nginx is installed: WM_TEST_NGINX=/usr/sbin/nginx node --test ...
@@ -299,6 +313,20 @@ test('Docker compose forwards optional trusted proxy CIDRs to the API container'
   const compose = readProjectFile('docker-compose.yml');
 
   assert.match(compose, /WM_TRUSTED_PROXY_CIDRS: "\$\{WM_TRUSTED_PROXY_CIDRS:-\}"/);
+});
+
+// Plan 2026-11-04-001 (U3): the desktop-key relay's off switch and the Secure
+// cookie flag reach the sidecar only if compose forwards them, and the cookie's
+// Secure flag and the per-client POST limit read headers nginx sets on /api/.
+test('Docker forwards the desktop-key relay settings and the headers the relay reads', () => {
+  const compose = readProjectFile('docker-compose.yml');
+  const nginx = readProjectFile('docker/nginx.conf');
+  const apiBlock = nginx.match(/location \/api\/ \{[\s\S]*?\n {4}\}/)?.[0] ?? '';
+
+  assert.match(compose, /WORLDMONITOR_SELFHOST_RELAY: "\$\{WORLDMONITOR_SELFHOST_RELAY:-\}"/);
+  assert.match(compose, /WORLDMONITOR_PUBLIC_HTTPS: "\$\{WORLDMONITOR_PUBLIC_HTTPS:-\}"/);
+  assert.match(apiBlock, /proxy_set_header X-Forwarded-Proto \$scheme;/);
+  assert.match(apiBlock, /proxy_set_header X-Real-IP \$remote_addr;/);
 });
 
 test('Docker healthcheck uses the dedicated sidecar liveness route', () => {

@@ -1,4 +1,3 @@
-import Exa from 'exa-js';
 import type { AcquisitionProvider, ExtractResult, ExtractSchema, FetchOptions, FetchResult, SearchOptions, SearchResult } from './types.js';
 
 export class ExaProvider implements AcquisitionProvider {
@@ -6,20 +5,21 @@ export class ExaProvider implements AcquisitionProvider {
 
   private readonly apiKey: string;
   private readonly baseUrl = 'https://api.exa.ai';
-  private client: Exa;
 
+  // Every call goes straight to the REST API. The exa-js SDK pulls in zod@3,
+  // which GHSA-mrhx-c7xc-m3w5 affects with no 3.x fix.
   constructor(apiKey: string) {
     this.apiKey = apiKey;
-    this.client = new Exa(apiKey);
   }
 
-  async fetch(url: string, _opts: FetchOptions = {}): Promise<FetchResult> {
-    const result = await this.client.getContents([url], {
+  async fetch(url: string, opts: FetchOptions = {}): Promise<FetchResult> {
+    const result = await this.request<{ results?: Array<{ text?: string; highlights?: string[] }> }>('/contents', {
+      urls: [url],
       text: { maxCharacters: 100_000 },
       highlights: { numSentences: 5, highlightsPerUrl: 3 },
-    });
+    }, opts.timeout);
 
-    const item = result.results[0];
+    const item = result.results?.[0];
     if (!item) throw new Error(`Exa returned no content for ${url}`);
 
     return {
@@ -91,8 +91,6 @@ export class ExaProvider implements AcquisitionProvider {
       additionalProperties: false,
     };
 
-    // exa-js does not expose an AbortSignal for getContents, so use the API
-    // directly here to keep the opt-in fallback genuinely bounded.
     // `text` rides along in the same call as ground truth for the caller's
     // on-page price verification (price-evidence.ts) — same request, no
     // second fetch.
@@ -117,7 +115,7 @@ export class ExaProvider implements AcquisitionProvider {
 
   async validate(): Promise<boolean> {
     try {
-      await this.client.search('test', { numResults: 1 });
+      await this.request('/search', { query: 'test', numResults: 1 });
       return true;
     } catch {
       return false;

@@ -259,6 +259,9 @@ module WorldMonitor
       http.use_ssl = uri.scheme == "https"
       http.open_timeout = timeout
       http.read_timeout = timeout
+      # Net::HTTP otherwise retries failed reads immediately, without backoff.
+      # Keep the SDK's one-request contract, including after a read timeout.
+      http.max_retries = 0
       klass = request[:method] == "POST" ? Net::HTTP::Post : Net::HTTP::Get
       req = klass.new(uri.request_uri)
       (request[:headers] || {}).each { |k, v| req[k] = v }

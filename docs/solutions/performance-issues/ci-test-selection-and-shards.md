@@ -74,9 +74,32 @@ read commit history, not old file contents. Running those 34 files in a
 blobless clone gave the same results as a full clone and lazily fetched one
 blob, from a clone a third of the size.
 
-`scripts/shared/data-test-durations.json` must stay current or placement drifts:
+Duration estimates must stay current or placement drifts:
 `natural-events-transport` (111 s in CI) had no entry and was costed at 1 s,
-which left one shard 45 s behind the others.
+which left one shard 45 s behind the others. CI now refreshes them itself. After
+its tests, each unit shard blends its own timings into the estimates it ran with
+(each of its files moves halfway to what it measured; a failed or killed shard
+saves nothing) and saves the result as a `data-test-durations-v1-*` cache entry,
+whether the run passed or not. A cache saved only by green runs stays stale for
+as long as main is red (sorrycc/Mayoi#102 lost its Go cache that way). The next
+run's `changes` job looks the newest entry up once and every shard restores that
+exact key. They cannot each restore by prefix: every shard computes the whole
+partition and keeps its part, so a shard that read a newer entry than its
+siblings would drop or repeat test files. Only one shard saves per run: the one
+after the shard that saved the restored entry (the key ends in its number). When
+every shard saved, the newest entry was whichever finished last, and the same
+shard could win every run while the others' files never refreshed. The turn is
+taken from the restored key rather than `github.run_number` because PR and main
+runs share the run counter but not the cache, so a counter could keep landing
+main on one shard. A saver whose tests failed saves the estimates unchanged, so
+it passes the turn on instead of holding it while it stays red. The lookup key is
+`data-test-durations-v1-lookup`, which no entry is saved under: actions/cache
+prefix-matches the primary key before the restore keys, so a key with the run id
+would make a re-run of an old run restore its own stale entry. This needs no extra job:
+`test.yml` may not hold advisory jobs (#5402), and a gated job after the shards
+would add its startup to the wall clock, which the shards set. The committed
+`scripts/shared/data-test-durations.json` is the fallback when no
+entry exists, and the manual refresh below still updates it.
 
 ## Local commands
 
@@ -91,7 +114,7 @@ non-convergence cases through the real CLI with a local fake Railway executable.
 When source-health behavior changes, add the expanded proof once before delivery:
 
 ```sh
-node --import tsx --test --test-concurrency=2 tests/seed-freshness-monitor.test.mjs tests/seed-health-status-publisher.test.mjs
+node --import tsx --test --test-concurrency=2 tests/health-verdict-snapshot.test.mjs tests/health-classify.test.mjs
 ```
 
 Keep `npm run test:data` as the complete-suite command. Reproduce one CI shard with:
@@ -114,6 +137,21 @@ every measured file; it controls placement only. Refresh estimates from the
 `data-test-timings-*` artifacts of a successful CI run, not a local machine. Do not use reporter row counts as
 the test inventory: some existing suites change `NODE_TEST_CONTEXT` and suppress
 their per-file summary. The glob inventory and partition contract remain the proof.
+
+Download the artifacts from several recent successful runs into separate directories,
+then refresh estimates with:
+
+```sh
+node scripts/refresh-data-test-durations.mjs /tmp/ci-timings/*/*.jsonl
+node --import tsx --test tests/data-test-shards.test.mjs
+```
+
+The command uses the median duration for each current file that executed passing
+tests. It retains unmeasured estimates and requires each artifact to end with a
+successful aggregate summary. Failed, truncated, empty, duplicate or invalid input
+is rejected, as is an existing estimates file that is not an object of positive
+numbers. Use the same runner class and test concurrency across input runs. Review
+the resulting diff; local benchmark times do not replace hosted estimates.
 
 ## Browser failure evidence
 
@@ -154,3 +192,37 @@ samples, not a median or tail-latency claim. Hosted CI evidence is recorded with
 the pull request.
 The duplicate shard setup/build cost must be included when comparing runner
 minutes. Preview deployment and the browser job can still determine total PR time.
+
+## Long-suite setup optimization (2026-10-22)
+
+Repeated Git history reads dominated the corpus test profile. Pure rendering tests
+now clone one lazy data fixture; loader, explicit-clock, injected-snapshot, Git and
+full-build checks still load fresh data. Calibration trials still call the resolver
+on every simulated day. They defer the extra inferiority diagnostic until the
+assertions read it, including any unexpected early refit. All assertions, 40 seeds,
+trial lengths and bootstrap settings are retained. Production code is unchanged.
+
+Five alternating baseline/candidate pairs ran serially on the same Apple M5 Max,
+Node 24.20.0, installed dependencies and runtime sources from baseline
+`4cc208377b6fb0b1c5a1fc0a26ad26df65c3719a`. Each invocation used one file process:
+`node --import tsx --test --test-concurrency=1 --test-reporter=tap <suite>`.
+Calibration measurements also logged each daily resolver decision identically
+for both versions. These are local file timings, not hosted workflow savings.
+
+| Suite | Baseline median (range), s | Candidate median (range), s |
+| --- | --- | --- |
+| Corpus (153 tests) | 102.0 (96.8–137.8) | 61.7 (58.8–63.8) |
+| Calibration (102 tests) | 55.2 (53.3–64.4) | 39.2 (38.8–40.7) |
+
+All 20 suite runs passed without skips. Test names and counts matched, as did
+all 2,210 daily resolver decisions across 40 seeded trials on every calibration
+run. Baseline variability exceeded the planned 5% noise threshold (coefficient
+of variation: corpus 13.8%, calibration 7.2%); the medians are descriptive.
+Candidate ranges did not overlap their baseline ranges in this sample.
+
+Shard estimates use the per-file medians from successful hosted runs
+[39657393920](https://github.com/koala73/worldmonitor/actions/runs/39657393920),
+[39661108147](https://github.com/koala73/worldmonitor/actions/runs/39661108147) and
+[39661923668](https://github.com/koala73/worldmonitor/actions/runs/39661923668),
+covering 2,217 current files with executed passing tests. Local timings were not
+substituted into those estimates.

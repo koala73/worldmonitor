@@ -79,7 +79,9 @@ export interface Feed {
   propagandaRisk?: PropagandaRisk;
   stateAffiliated?: string;  // e.g., "Russia", "China", "Iran"
   lang?: string;             // ISO 2-letter code for filtering (locale boost)
+  fetchInAllLanguages?: boolean; // keep language metadata/locale defaults, allow selection in any UI language
   strategicDefault?: boolean; // always default-on regardless of UI language
+  digestLang?: string;        // only this digest language carries it (server is stricter than the browser)
 }
 
 export type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
@@ -255,6 +257,13 @@ export interface MarketData {
   price: number | null;
   change: number | null;
   sparkline?: number[];
+  priceSource?: string;
+  priceBasis?: string;
+  priceAt?: number;
+  /** Width of each sparkline bar in seconds (300 intraday, 86400 daily closes). */
+  sparklineIntervalSeconds?: number;
+  /** Start of the first sparkline bar in epoch ms; closed periods are left out after it. */
+  sparklineStartAt?: number;
 }
 
 export interface CryptoData {
@@ -422,6 +431,8 @@ export interface UcdpGeoEvent {
   date_end: string;
   latitude: number;
   longitude: number;
+  hasPreciseLocation?: boolean;
+  locationName?: string;
   country: string;
   side_a: string;
   side_b: string;
@@ -432,7 +443,7 @@ export interface UcdpGeoEvent {
   source_original: string;
 }
 
-// WorldPop Population Exposure
+// Population Exposure
 export interface CountryPopulation {
   code: string;
   name: string;
@@ -448,6 +459,18 @@ export interface PopulationExposure {
   lon: number;
   exposedPopulation: number;
   exposureRadiusKm: number;
+  eventCount: number;
+  locationPending?: boolean;
+}
+
+// Every feed event lands in exactly one bucket: a shown row or one of the three left-out reasons.
+export interface ExposureCoverage {
+  totalEvents: number;
+  withoutPreciseLocation: number;
+  withoutEstimate: number;
+  atOtherPlaces: number;
+  // When true, these counts cover unrest only, not the older UCDP projection.
+  ucdpPending?: boolean;
 }
 
 // Military base operator types
@@ -565,21 +588,6 @@ export interface CableHealthResponse {
   cables: Record<string, CableHealthRecord>;
 }
 
-export interface ShippingChokepoint {
-  id: string;
-  name: string;
-  lat: number;
-  lon: number;
-  desc: string;
-}
-
-export interface CyberRegion {
-  id: string;
-  group: string;
-  aka: string;
-  sponsor: string;
-}
-
 // Nuclear facility types
 export type NuclearFacilityType =
   | 'plant'        // Power reactors
@@ -692,6 +700,10 @@ export interface MapLayers {
   irradiators: boolean;
   radiationWatch?: boolean;
   sanctions: boolean;
+  /** Sentinel-5P NO2 activity direction per country and industrial cluster. */
+  no2Activity?: boolean;
+  /** ICESat-2 water-surface level status of strategic reservoirs and lakes. */
+  reservoirLevels?: boolean;
   weather: boolean;
   /** Official Canada road events and conditions from Ontario, Alberta, Toronto, and British Columbia. */
   canadaRoads: boolean;
@@ -778,6 +790,14 @@ export interface AIDataCenter {
   h100Equivalent?: number;
   sector?: string;
   note?: string;
+  /** Optional enrichment; omit fields without verified public evidence. */
+  description?: string;
+  sourceUrl?: string;
+  sourceDate?: string;
+  metadataReviewedAt?: string;
+  firstOperationalDate?: string;
+  locationPrecision?: 'site' | 'city' | 'region' | 'country';
+  powerBasis?: 'reported' | 'estimated';
 }
 
 export interface InternetOutage {
@@ -844,8 +864,6 @@ export interface AppState {
   isLoading: boolean;
 }
 
-export type FeedCategory = 'politics' | 'tech' | 'finance' | 'gov' | 'intel';
-
 // Social Unrest / Protest Types
 export type ProtestSeverity = 'low' | 'medium' | 'high';
 export type ProtestSource = 'acled' | 'gdelt' | 'rss';
@@ -857,6 +875,7 @@ export interface SocialUnrestEvent {
   summary?: string;
   eventType: ProtestEventType;
   city?: string;
+  hasPreciseLocation?: boolean;
   country: string;
   region?: string;
   lat: number;
@@ -1132,6 +1151,16 @@ export interface GdeltTensionPair {
   trend: 'rising' | 'stable' | 'falling';
   changePercent: number;
   region: string;
+  // Non-news signals above their usual level (scripts/_tension-evidence.mjs).
+  evidence?: TensionEvidence[];
+}
+
+export interface TensionEvidence {
+  channel: string;
+  value: number;
+  baseline: number | null;
+  countries: string[];
+  airports: { name: string; status: string }[];
 }
 
 // NASA EONET Natural Events
@@ -1297,7 +1326,16 @@ export interface CascadeResult {
     id: string;
     name: string;
     capacityShare: number;
+    /** False when the alternative crosses a chokepoint that a cut cable also crosses. */
+    avoidsCutZone?: boolean;
   }[];
+  /** Every disrupted node when several were cut together (multi-cable / chokepoint cut). */
+  sources?: InfrastructureNode[];
+  /** Present when the result rests on estimated rather than measured inputs. */
+  dataQuality?: {
+    estimated: boolean;
+    note: string;
+  };
 }
 
 export type PortType = 'container' | 'oil' | 'lng' | 'naval' | 'mixed' | 'bulk';
@@ -1315,7 +1353,7 @@ export interface Port {
 
 // AI Regulation Types
 export type RegulationType = 'comprehensive' | 'sectoral' | 'voluntary' | 'proposed';
-export type ComplianceStatus = 'active' | 'proposed' | 'draft' | 'superseded';
+export type ComplianceStatus = 'active' | 'proposed' | 'draft' | 'superseded' | 'revoked' | 'lapsed';
 export type RegulationStance = 'strict' | 'moderate' | 'permissive' | 'undefined';
 
 export interface AIRegulation {
@@ -1328,12 +1366,23 @@ export interface AIRegulation {
   status: ComplianceStatus;
   announcedDate: string;
   effectiveDate?: string;
-  complianceDeadline?: string;
+  deadlines?: ComplianceDeadline[];
   scope: string[];
   keyProvisions: string[];
   penalties?: string;
   link?: string;
   description?: string;
+}
+
+export interface ComplianceDeadline {
+  date: string;
+  label: string;
+  source: string;
+}
+
+export interface RegulationDeadline {
+  regulation: AIRegulation;
+  deadline: ComplianceDeadline;
 }
 
 export interface RegulatoryAction {
@@ -1346,6 +1395,7 @@ export interface RegulatoryAction {
   description: string;
   impact: 'high' | 'medium' | 'low';
   source?: string;
+  sourceUrl: string;
 }
 
 export interface CountryRegulationProfile {

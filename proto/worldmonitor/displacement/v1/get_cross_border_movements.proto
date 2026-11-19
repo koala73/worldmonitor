@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package worldmonitor.displacement.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/geo.proto";
+
+// Dated report. Do not sum measures.
+message CrossBorderMovement {
+  string id = 1;
+  string route = 2;
+  string name = 3;
+  // arrival/outflow/return/encounter/death; encounters are not unique people.
+  string kind = 4;
+  // stock, monthly, daily, or incident.
+  string measure = 5;
+  string country_code = 6;
+  string origin_code = 7;
+  string as_of = 8;
+  string period = 9;
+  int64 count = 10 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  optional int64 last_7_days = 11 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  optional int64 last_30_days = 12 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  optional double change_pct = 13;
+  bool surge = 14;
+  bool stale = 15;
+  string source = 16;
+  string source_url = 17;
+  string license = 18;
+  string license_url = 19;
+  worldmonitor.core.v1.GeoCoordinates location = 20;
+  string notice = 21;
+  optional int64 stock_change = 22 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  string stock_change_since = 23;
+}
+
+message CrossBorderSourceStatus {
+  string id = 1;
+  string name = 2;
+  // ok, partial, stale, or unavailable.
+  string status = 3;
+  int64 fetched_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 content_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int32 max_content_age_min = 6;
+}
+
+message GetCrossBorderMovementsRequest {
+  // Two letters; no ISO assignment check.
+  string country_code = 1 [
+    (sebuf.http.query) = {name: "country_code"},
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).string.pattern = "^[A-Za-z]{2}$"
+  ];
+  // Exact route or situation ID.
+  string route = 2 [(sebuf.http.query) = {name: "route"}, (buf.validate.field).string.max_len = 120];
+}
+
+message GetCrossBorderMovementsResponse {
+  repeated CrossBorderMovement movements = 1 [(buf.validate.field).repeated.max_items = 5000];
+  repeated CrossBorderSourceStatus sources = 2 [(buf.validate.field).repeated.max_items = 5];
+  bool data_available = 3;
+}

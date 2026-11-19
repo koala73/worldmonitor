@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,9 +13,12 @@ import {
   computeOilDemandChange,
   jodiSourceYears,
   jodiCsvCandidates,
+  fetchCsv,
   fetchYearCsv,
   validateCoverage,
   mergeSourceRows,
+  prepareOilPublish,
+  readPreviousOilMeta,
   CANONICAL_KEY,
   COUNTRY_KEY_PREFIX,
   JODI_TTL,
@@ -168,10 +172,21 @@ describe('extractCountryData schema', () => {
     assert.equal(result, null);
   });
 
-  it('returns null when all rows have assessment_code=3', () => {
+  // JODI code 3 is "data has not been assessed", not "missing": Saudi Arabia,
+  // Kazakhstan, Nigeria, Venezuela and others publish their crude exports
+  // under it. Unassessed values are kept; only non-numeric cells are absent.
+  it('keeps a country whose rows are all assessment_code=3 (not assessed, still reported)', () => {
     const rows = makeFullRows('DE', '2025-11', '3');
     const result = extractCountryData(rows, 'DE');
-    assert.equal(result, null);
+    assert.ok(result !== null);
+    assert.equal(result.dataMonth, '2025-11');
+    assert.equal(result.crude.exportsKbd, 200);
+    assert.equal(result.diesel.demandKbd, 100);
+  });
+
+  it('returns null when every cell is a non-numeric placeholder (the UAE since 2019)', () => {
+    const rows = makeFullRows('AE', '2026-07', '3').map((r) => ({ ...r, OBS_VALUE: '-' }));
+    assert.equal(extractCountryData(rows, 'AE'), null);
   });
 
   it('includes all 6 product keys in output', () => {
@@ -212,15 +227,25 @@ describe('extractCountryData schema', () => {
     assert.ok(typeof result.seededAt === 'string');
   });
 
-  it('assessment_code=3 fields become null', () => {
+  it('assessment_code=3 fields keep their reported value', () => {
     const rows = [
       makeRow({ REF_AREA: 'DE', TIME_PERIOD: '2025-11', ENERGY_PRODUCT: 'GASDIES', FLOW_BREAKDOWN: 'TOTDEMO', OBS_VALUE: '894', ASSESSMENT_CODE: '3' }),
       makeRow({ REF_AREA: 'DE', TIME_PERIOD: '2025-11', ENERGY_PRODUCT: 'GASDIES', FLOW_BREAKDOWN: 'REFGROUT', OBS_VALUE: '500', ASSESSMENT_CODE: '1' }),
     ];
     const result = extractCountryData(rows, 'DE');
     assert.ok(result !== null);
-    assert.equal(result.diesel.demandKbd, null, 'code=3 TOTDEMO should be null');
+    assert.equal(result.diesel.demandKbd, 894, 'code=3 TOTDEMO is unassessed, not missing');
     assert.equal(result.diesel.refOutputKbd, 500, 'code=1 REFGROUT should have value');
+  });
+
+  it('Saudi crude exports published under code 3 survive (raw JODI 2026-05 row)', () => {
+    const rows = [
+      makeRow({ REF_AREA: 'SA', TIME_PERIOD: '2026-05', ENERGY_PRODUCT: 'CRUDEOIL', FLOW_BREAKDOWN: 'TOTEXPSB', OBS_VALUE: '3434.9032', ASSESSMENT_CODE: '3' }),
+      makeRow({ REF_AREA: 'SA', TIME_PERIOD: '2026-05', ENERGY_PRODUCT: 'GASDIES', FLOW_BREAKDOWN: 'TOTEXPSB', OBS_VALUE: '650', ASSESSMENT_CODE: '3' }),
+    ];
+    const result = extractCountryData(rows, 'SA');
+    assert.ok(result !== null);
+    assert.equal(result.crude.exportsKbd, 3434.9032);
   });
 
   it('anomaly cap: TOTDEMO > 10000 for non-US becomes null', () => {
@@ -251,9 +276,20 @@ describe('extractCountryData schema', () => {
     assert.equal(result.diesel.demandKbd, 900);
   });
 
-  it('skips month with only code=3 rows and uses earlier month', () => {
+  it('uses the newest month even when its values are unassessed (code=3)', () => {
     const rows = [
       makeRow({ REF_AREA: 'DE', TIME_PERIOD: '2025-11', ENERGY_PRODUCT: 'GASDIES', FLOW_BREAKDOWN: 'TOTDEMO', OBS_VALUE: '900', ASSESSMENT_CODE: '3' }),
+      makeRow({ REF_AREA: 'DE', TIME_PERIOD: '2025-10', ENERGY_PRODUCT: 'GASDIES', FLOW_BREAKDOWN: 'TOTDEMO', OBS_VALUE: '800', ASSESSMENT_CODE: '1' }),
+    ];
+    const result = extractCountryData(rows, 'DE');
+    assert.ok(result !== null);
+    assert.equal(result.dataMonth, '2025-11');
+    assert.equal(result.diesel.demandKbd, 900);
+  });
+
+  it('skips a month of placeholder cells and uses the earlier reported month', () => {
+    const rows = [
+      makeRow({ REF_AREA: 'DE', TIME_PERIOD: '2025-11', ENERGY_PRODUCT: 'GASDIES', FLOW_BREAKDOWN: 'TOTDEMO', OBS_VALUE: '-', ASSESSMENT_CODE: '3' }),
       makeRow({ REF_AREA: 'DE', TIME_PERIOD: '2025-10', ENERGY_PRODUCT: 'GASDIES', FLOW_BREAKDOWN: 'TOTDEMO', OBS_VALUE: '800', ASSESSMENT_CODE: '1' }),
     ];
     const result = extractCountryData(rows, 'DE');
@@ -291,6 +327,184 @@ describe('extractCountryData schema', () => {
     ];
     const result = extractCountryData(rows, 'DE');
     assert.equal(result, null, 'Should return null when only crude rows are present');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Country refinery yields: trailing-12-month product output ÷ refinery intake
+// ---------------------------------------------------------------------------
+
+describe('refinery yields from the trailing 12 JODI months', () => {
+  // Real JODI KBD rows (public annual files read 2026-10-28), cut to the flows
+  // the yield window reads for JP, KR, DE, US, CN, CA and IN.
+  const windowRows = parseCsv(readFileSync(resolve(FIXTURE_DIR, 'energy-shock/jodi-oil-refinery-window-2026-10-28.csv'), 'utf-8'));
+  // Expected values were computed independently from the same fixture (Python).
+  const MEASURED = {
+    JP: { startMonth: '2025-09', endMonth: '2026-08', gasoline: 0.3065, diesel: 0.316, jet: 0.0887, fuelOil: 0.0904, lpg: 0.0287, naphtha: 0.0945 },
+    KR: { startMonth: '2025-09', endMonth: '2026-08', gasoline: 0.1777, diesel: 0.336, jet: 0.1504, fuelOil: 0.0873, lpg: 0.0306, naphtha: 0.2831 },
+    DE: { startMonth: '2025-09', endMonth: '2026-08', gasoline: 0.2827, diesel: 0.4886, jet: 0.0641, fuelOil: 0.0444, lpg: 0.0389, naphtha: 0.1045 },
+    US: { startMonth: '2025-09', endMonth: '2026-08', gasoline: 0.4981, diesel: 0.3022, jet: 0.1164, fuelOil: 0.019, lpg: 0.0211, naphtha: 0.0084 },
+    IN: { startMonth: '2025-04', endMonth: '2026-03', gasoline: 0.2109, diesel: 0.4537, jet: 0.0639, fuelOil: 0.0308, lpg: 0.0768, naphtha: 0.0868 },
+  };
+
+  for (const [iso2, expected] of Object.entries(MEASURED)) {
+    it(`${iso2}: product output ÷ crude refinery intake over ${expected.startMonth}–${expected.endMonth}`, () => {
+      const row = extractCountryData(windowRows, iso2);
+      const { startMonth, endMonth, ...products } = expected;
+      assert.equal(row.dataMonth, endMonth);
+      assert.deepEqual(
+        { ...row.refineryYields, products: undefined },
+        { basis: 'crude_refinery_intake', intakeIssue: null, startMonth, endMonth, months: 12, products: undefined },
+      );
+      assert.deepEqual(row.refineryYields.products, products);
+    });
+  }
+
+  it('stores naphtha as a product, with the same four flows as the others', () => {
+    const kr = extractCountryData(windowRows, 'KR');
+    assert.deepEqual(Object.keys(kr.naphtha).sort(), ['demandKbd', 'exportsKbd', 'importsKbd', 'refOutputKbd']);
+    for (const field of ['demandKbd', 'refOutputKbd', 'importsKbd']) {
+      assert.ok(kr.naphtha[field] > 0, `KR naphtha ${field} = ${kr.naphtha[field]}`);
+    }
+  });
+
+  it('CN: JODI refinery intake is a balancing item, so total refinery output is the denominator', () => {
+    const cn = extractCountryData(windowRows, 'CN');
+    assert.equal(cn.refineryYields.basis, 'total_refinery_output');
+    assert.equal(cn.refineryYields.intakeIssue, 'balancing_item');
+    assert.deepEqual(cn.refineryYields.products, { gasoline: 0.232, diesel: 0.2517, jet: null, fuelOil: 0.048, lpg: 0.1084, naphtha: 0.1318 });
+  });
+
+  it('CA: total output at 2.2x crude intake is not a credible crude-intake basis', () => {
+    const ca = extractCountryData(windowRows, 'CA');
+    assert.equal(ca.refineryYields.basis, 'total_refinery_output');
+    assert.equal(ca.refineryYields.intakeIssue, 'implausible_output_ratio');
+    assert.equal(ca.refineryYields.products.gasoline, 0.27, 'not the 60.5% a crude-only denominator gives');
+  });
+
+  // Synthetic 12-month windows ending 2026-06 for the rule's edges.
+  const months = (n, end = '2026-06') => Array.from({ length: n }, (_, i) => {
+    const [y, m] = end.split('-').map(Number);
+    const idx = y * 12 + m - 1 - i;
+    return `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, '0')}`;
+  });
+  function windowFixture({ count = 12, intake = 1000, total = 1050, gasoline = 250, balancedMonths = 0, extra = [] } = {}) {
+    const rows = [];
+    months(count).forEach((month, i) => {
+      const add = (product, flow, value) => rows.push(makeRow({ REF_AREA: 'XX', TIME_PERIOD: month, ENERGY_PRODUCT: product, FLOW_BREAKDOWN: flow, OBS_VALUE: String(value), ASSESSMENT_CODE: '1' }));
+      add('GASOLINE', 'REFGROUT', gasoline);
+      add('GASOLINE', 'TOTDEMO', 300);
+      if (total != null) add('TOTPRODS', 'REFGROUT', total);
+      if (intake != null) {
+        add('CRUDEOIL', 'REFINOBS', intake);
+        add('CRUDEOIL', 'INDPROD', 100);
+        add('CRUDEOIL', 'TOTEXPSB', 0);
+        // A balanced month reports intake as exactly production + imports - exports.
+        add('CRUDEOIL', 'TOTIMPSB', i < balancedMonths ? intake - 100 : intake - 100 + 40);
+      }
+    });
+    return [...rows, ...extra];
+  }
+
+  it('sums over the window only: an older month cannot move the yield', () => {
+    const old = makeRow({ REF_AREA: 'XX', TIME_PERIOD: '2025-06', ENERGY_PRODUCT: 'GASOLINE', FLOW_BREAKDOWN: 'REFGROUT', OBS_VALUE: '900', ASSESSMENT_CODE: '1' });
+    const oldIntake = makeRow({ REF_AREA: 'XX', TIME_PERIOD: '2025-06', ENERGY_PRODUCT: 'CRUDEOIL', FLOW_BREAKDOWN: 'REFINOBS', OBS_VALUE: '1000', ASSESSMENT_CODE: '1' });
+    const row = extractCountryData(windowFixture({ extra: [old, oldIntake] }), 'XX');
+    assert.equal(row.refineryYields.startMonth, '2025-07');
+    assert.equal(row.refineryYields.products.gasoline, 0.25);
+  });
+
+  it('balancing rule: 9 of 12 balanced months flag the intake, 8 of 12 do not', () => {
+    assert.equal(extractCountryData(windowFixture({ balancedMonths: 9 }), 'XX').refineryYields.intakeIssue, 'balancing_item');
+    const eight = extractCountryData(windowFixture({ balancedMonths: 8 }), 'XX').refineryYields;
+    assert.equal(eight.basis, 'crude_refinery_intake');
+    assert.equal(eight.intakeIssue, null);
+  });
+
+  it('plausibility band: output at 1.5x intake keeps the intake basis, 1.6x does not', () => {
+    assert.equal(extractCountryData(windowFixture({ total: 1500 }), 'XX').refineryYields.basis, 'crude_refinery_intake');
+    assert.equal(extractCountryData(windowFixture({ total: 1600 }), 'XX').refineryYields.intakeIssue, 'implausible_output_ratio');
+    assert.equal(extractCountryData(windowFixture({ total: 700 }), 'XX').refineryYields.intakeIssue, 'implausible_output_ratio');
+  });
+
+  it('one month of total output cannot reject twelve months of intake', () => {
+    // Greptile on #9788: a single 1.6x month used to flip the basis to total
+    // output, which then had too few months, so every yield went to the median.
+    const rows = windowFixture({ total: null, extra: [makeRow({ REF_AREA: 'XX', TIME_PERIOD: '2026-06', ENERGY_PRODUCT: 'TOTPRODS', FLOW_BREAKDOWN: 'REFGROUT', OBS_VALUE: '1600', ASSESSMENT_CODE: '1' })] });
+    const yields = extractCountryData(rows, 'XX').refineryYields;
+    assert.equal(yields.basis, 'crude_refinery_intake');
+    assert.equal(yields.intakeIssue, null);
+    assert.equal(yields.products.gasoline, 0.25);
+  });
+
+  it('unreported intake falls back to total output; no denominator at all publishes no yields', () => {
+    const noIntake = extractCountryData(windowFixture({ intake: null, total: 1000 }), 'XX').refineryYields;
+    assert.equal(noIntake.basis, 'total_refinery_output');
+    assert.equal(noIntake.intakeIssue, 'unreported');
+    assert.equal(noIntake.products.gasoline, 0.25);
+    assert.equal(extractCountryData(windowFixture({ intake: null, total: null }), 'XX').refineryYields, null);
+  });
+
+  it('a product with fewer than 6 paired months, or a yield above 100%, is null; the others stay measured', () => {
+    assert.equal(extractCountryData(windowFixture({ count: 5 }), 'XX').refineryYields, null, '5 months of intake is not a window');
+    const sparseJet = months(5).map((month) => makeRow({ REF_AREA: 'XX', TIME_PERIOD: month, ENERGY_PRODUCT: 'JETKERO', FLOW_BREAKDOWN: 'REFGROUT', OBS_VALUE: '80', ASSESSMENT_CODE: '1' }));
+    const row = extractCountryData(windowFixture({ extra: sparseJet }), 'XX');
+    assert.equal(row.refineryYields.products.jet, null);
+    assert.equal(row.refineryYields.products.gasoline, 0.25);
+    assert.equal(extractCountryData(windowFixture({ gasoline: 1200, total: 1300 }), 'XX').refineryYields.products.gasoline, null);
+  });
+
+  it('product trade: pre-crisis baseline (2025-02–2026-01) and current flows (latest 3 months, none before 2026-03)', () => {
+    // Expected averages computed independently from the fixture (Python).
+    const kr = extractCountryData(windowRows, 'KR').productTrade;
+    assert.deepEqual({ ...kr.preCrisisBaseline, products: undefined }, { startMonth: '2025-02', endMonth: '2026-01', months: 12, products: undefined });
+    assert.deepEqual(kr.preCrisisBaseline.products.gasoline, { demandKbd: 268.9, importsKbd: 0, exportsKbd: 298.3 });
+    assert.deepEqual(kr.preCrisisBaseline.products.diesel, { demandKbd: 439.6, importsKbd: 0, exportsKbd: 571.7 });
+    assert.deepEqual(kr.preCrisisBaseline.products.jet, { demandKbd: 157.7, importsKbd: 0, exportsKbd: 252.8 });
+    assert.deepEqual(kr.preCrisisBaseline.products.naphtha, { demandKbd: 1193.3, importsKbd: 650.5, exportsKbd: 95.7 });
+    assert.deepEqual({ ...kr.currentFlows, products: undefined }, { startMonth: '2026-06', endMonth: '2026-08', months: 3, products: undefined });
+    assert.deepEqual(kr.currentFlows.products.jet, { demandKbd: 159.1, importsKbd: 0, exportsKbd: 328.7 });
+    assert.deepEqual(kr.currentFlows.products.naphtha, { demandKbd: 1058.4, importsKbd: 390.3, exportsKbd: 27.9 });
+
+    const jp = extractCountryData(windowRows, 'JP').productTrade;
+    assert.deepEqual(jp.preCrisisBaseline.products.naphtha, { demandKbd: 589, importsKbd: 390.7, exportsKbd: 4.4 });
+    assert.deepEqual(jp.currentFlows.products.diesel, { demandKbd: 643.5, importsKbd: 14, exportsKbd: 99.4 });
+  });
+
+  it('product trade: India ends 2026-03, so current flows is that one month; unreported imports stay null', () => {
+    const india = extractCountryData(windowRows, 'IN').productTrade;
+    assert.deepEqual({ ...india.currentFlows, products: undefined }, { startMonth: '2026-03', endMonth: '2026-03', months: 1, products: undefined });
+    assert.deepEqual(india.currentFlows.products.diesel, { demandKbd: 2122.4, importsKbd: 0.7, exportsKbd: 468.9 });
+    assert.deepEqual(india.preCrisisBaseline.products.gasoline, { demandKbd: 975.8, importsKbd: null, exportsKbd: 396.8 });
+    assert.deepEqual(india.preCrisisBaseline.products.naphtha, { demandKbd: 289, importsKbd: 33.2, exportsKbd: 152.1 });
+  });
+
+  it('product trade: a window needs half its months per flow; no current window before 2026-03; no data is null', () => {
+    const tradeRows = (monthsList, flow = 'TOTEXPSB', value = '100') => monthsList.map((month) => makeRow({ REF_AREA: 'XX', TIME_PERIOD: month, ENERGY_PRODUCT: 'GASOLINE', FLOW_BREAKDOWN: flow, OBS_VALUE: value, ASSESSMENT_CODE: '1' }));
+    const pre = ['2025-02', '2025-03', '2025-04', '2025-05', '2025-06'];
+    const five = extractCountryData([...tradeRows(pre), ...tradeRows(['2026-06'], 'TOTDEMO')], 'XX').productTrade;
+    assert.equal(five.preCrisisBaseline.months, 5);
+    assert.equal(five.preCrisisBaseline.products.gasoline.exportsKbd, null, '5 of 12 months is not a baseline');
+    const six = extractCountryData([...tradeRows([...pre, '2025-07']), ...tradeRows(['2026-06'], 'TOTDEMO')], 'XX').productTrade;
+    assert.equal(six.preCrisisBaseline.products.gasoline.exportsKbd, 100);
+    assert.equal(six.currentFlows.products.gasoline.demandKbd, 100);
+    assert.equal(six.currentFlows.products.gasoline.exportsKbd, null, 'no exports reported in 2026-04..06');
+    const early = extractCountryData(tradeRows(['2025-12', '2026-01', '2026-02'], 'TOTDEMO'), 'XX').productTrade;
+    assert.equal(early.currentFlows, null, 'a data month before 2026-03 has no current-flows window');
+    assert.equal(early.preCrisisBaseline.months, 2);
+    assert.equal(extractCountryData(tradeRows(['2026-07'], 'TOTDEMO'), 'XX').productTrade.preCrisisBaseline, null);
+  });
+
+  it('naphtha does not join the demand-change basket', () => {
+    const rows = [];
+    for (const month of ['2025-06', '2026-06']) {
+      for (const product of ['GASOLINE', 'GASDIES', 'JETKERO', 'NAPHTHA']) {
+        rows.push(makeRow({ REF_AREA: 'XX', TIME_PERIOD: month, ENERGY_PRODUCT: product, FLOW_BREAKDOWN: 'TOTDEMO', OBS_VALUE: '100', ASSESSMENT_CODE: '1' }));
+      }
+    }
+    const row = extractCountryData(rows, 'XX');
+    assert.equal(row.naphtha.demandKbd, 100);
+    assert.deepEqual(row.demandChange.products, ['diesel', 'gasoline', 'jet']);
   });
 });
 
@@ -427,10 +641,17 @@ describe('computeOilDemandChange', () => {
     assert.equal(
       computeOilDemandChange([
         ...demandRows('CN', '2026-04', { GASDIES: 600, GASOLINE: 600, JETKERO: 600 }),
-        ...demandRows('CN', '2025-04', { GASDIES: 600, GASOLINE: 600, JETKERO: 600 }, '3'),
+        ...demandRows('CN', '2025-04', { GASDIES: '-', GASOLINE: '-', JETKERO: '-' }, '3'),
       ], 'CN', '2026-04'),
       null,
-      'assessment code 3 is not an observation',
+      'a placeholder cell is not an observation',
+    );
+    assert.ok(
+      computeOilDemandChange([
+        ...demandRows('CN', '2026-04', { GASDIES: 600, GASOLINE: 600, JETKERO: 600 }),
+        ...demandRows('CN', '2025-04', { GASDIES: 600, GASOLINE: 600, JETKERO: 600 }, '3'),
+      ], 'CN', '2026-04') !== null,
+      'an unassessed (code 3) number is still an observation',
     );
     assert.equal(
       computeOilDemandChange([
@@ -601,6 +822,26 @@ describe('mergeSourceRows', () => {
       () => mergeSourceRows(primaryCsv, primaryCsv, '', ''),
       /Both secondary JODI CSV files failed/,
     );
+  });
+
+  it('keeps only kb/d and closing-stock rows, with a year file the size of JODI\'s inside a 128 MB heap', () => {
+    // A secondary year file is ~637k rows across five units, of which only
+    // KBD and KBBL closing stocks are read. Building every row first held
+    // ~640 MB of heap for the six files and, once the 2026 files downloaded,
+    // pushed JODI-Oil past the 1 GB Railway container (measured 2026-10-29).
+    const moduleUrl = new URL('../scripts/seed-jodi-oil.mjs', import.meta.url).href;
+    const script = `const m = await import(${JSON.stringify(moduleUrl)});
+      // 2,124 copies of a 300-row block: 637,200 rows, five units in equal shares.
+      const units = ['CONVBBL', 'KBBL', 'KBD', 'KL', 'KTONS'];
+      const flows = ['TOTDEMO', 'CLOSTLV', 'REFGROUT', 'TOTEXPSB', 'TOTIMPSB'];
+      const block = Array.from({ length: 300 }, (_, i) => 'A' + (i % 90) + ',2025-' + String((i % 12) + 1).padStart(2, '0') + ',GASDIES,' + flows[Math.floor(i / 5) % 5] + ',' + units[i % 5] + ',' + (i % 997) + '.125,1\\n').join('');
+      const text = 'REF_AREA,TIME_PERIOD,ENERGY_PRODUCT,FLOW_BREAKDOWN,UNIT_MEASURE,OBS_VALUE,ASSESSMENT_CODE\\n' + block.repeat(2124);
+      const rows = m.mergeSourceRows('', '', text, '');
+      process.stdout.write(JSON.stringify({ rows: rows.length, units: [...new Set(rows.map((r) => r.UNIT_MEASURE))].sort() }));`;
+    const child = spawnSync(process.execPath, ['--max-old-space-size=128', '--input-type=module', '-e', script], { encoding: 'utf8', timeout: 60_000 });
+    assert.equal(child.status, 0, child.stderr.slice(-400));
+    // Per block: 60 KBD rows plus 12 KBBL rows on the CLOSTLV flow.
+    assert.deepEqual(JSON.parse(child.stdout), { rows: 72 * 2124, units: ['KBBL', 'KBD'] });
   });
 
   it('proceeds when current-year secondary succeeds but prior-year fails', () => {
@@ -777,5 +1018,264 @@ describe('JODI current-year source resolution (#6799)', () => {
     assert.equal(result.text, '');
     assert.match(result.error, /404/);
     assert.deepEqual(result.attempted, jodiCsvCandidates('primary', 2026));
+  });
+});
+
+// The year files are 7-26 MB and jodidata.org serves them at about 1 MB/s per
+// connection, so a fixed 30 s request timeout aborted every 2026 download on
+// Railway (2026-10-29). A download is cut only when it stops moving or runs
+// past its whole budget.
+describe('JODI CSV download timeouts', () => {
+  // A body that yields `chunks` pieces `gapMs` apart and errors on abort.
+  const trickle = (chunks, gapMs) => async (_url, { signal }) => {
+    const body = new ReadableStream({
+      async start(controller) {
+        signal.addEventListener('abort', () => controller.error(signal.reason), { once: true });
+        for (let i = 0; i < chunks; i++) {
+          await new Promise((r) => setTimeout(r, gapMs));
+          if (signal.aborted) return;
+          controller.enqueue(new TextEncoder().encode(i === 0 ? 'REF_AREA,TIME_PERIOD\n' : `DE,2026-0${i}\n`));
+        }
+        controller.close();
+      },
+    });
+    return new Response(body, { status: 200 });
+  };
+
+  it('keeps a slow download that never stalls, past the per-chunk limit in total', async () => {
+    const text = await fetchCsv('https://jodi.test/a.csv', { fetchImpl: trickle(6, 40), stallMs: 100, budgetMs: 2000 });
+    assert.equal(text, 'REF_AREA,TIME_PERIOD\nDE,2026-01\nDE,2026-02\nDE,2026-03\nDE,2026-04\nDE,2026-05\n');
+  });
+
+  it('aborts a download that stops sending', async () => {
+    const started = Date.now();
+    await assert.rejects(
+      fetchCsv('https://jodi.test/a.csv', { fetchImpl: trickle(3, 400), stallMs: 100, budgetMs: 5000 }),
+      /stalled/,
+    );
+    assert.ok(Date.now() - started < 1000, `took ${Date.now() - started} ms`);
+  });
+
+  it('aborts a download past its whole budget, and does not retry it', async () => {
+    const err = await fetchCsv('https://jodi.test/a.csv', { fetchImpl: trickle(50, 30), stallMs: 200, budgetMs: 300 }).catch((e) => e);
+    assert.match(err?.message ?? '', /exceeded/);
+    assert.equal(err.nonRetryable, true, 'a steady but slow transfer will not finish faster on a retry');
+  });
+
+  it('keeps a 404 non-retryable', async () => {
+    const err = await fetchCsv('https://jodi.test/2026.csv', { fetchImpl: async () => new Response('missing', { status: 404 }) }).catch((e) => e);
+    assert.match(err.message, /HTTP 404/);
+    assert.equal(err.nonRetryable, true);
+  });
+});
+
+// JODI files carry month-end closing stocks (CLOSTLV, thousand barrels) beside
+// the kb/d flows. They are the only recurring stock observation for importers
+// outside the IEA (India, Taiwan, Thailand, Philippines...).
+describe('closing stocks (CLOSTLV)', () => {
+  const stock = (product, month, value, area = 'IN') => makeRow({ REF_AREA: area, TIME_PERIOD: month, ENERGY_PRODUCT: product, FLOW_BREAKDOWN: 'CLOSTLV', UNIT_MEASURE: 'KBBL', OBS_VALUE: value });
+  const flows = (month, area = 'IN') => [
+    makeRow({ REF_AREA: area, TIME_PERIOD: month, ENERGY_PRODUCT: 'GASDIES', FLOW_BREAKDOWN: 'TOTDEMO', OBS_VALUE: '1900' }),
+    makeRow({ REF_AREA: area, TIME_PERIOD: month, ENERGY_PRODUCT: 'CRUDEOIL', FLOW_BREAKDOWN: 'TOTIMPSB', OBS_VALUE: '4800' }),
+  ];
+
+  it('mergeSourceRows keeps the stock rows, which are in KBBL, not KBD', () => {
+    const rows = mergeSourceRows(
+      makeCsv([stock('CRUDEOIL', '2026-03', '45280'), makeRow({ FLOW_BREAKDOWN: 'TOTIMPSB', UNIT_MEASURE: 'KTONS' })]), '',
+      makeCsv([...flows('2026-03'), stock('TOTPRODS', '2026-03', '95989')]), '',
+    );
+    assert.equal(rows.filter((r) => r.FLOW_BREAKDOWN === 'CLOSTLV').length, 2);
+    assert.ok(!rows.some((r) => r.UNIT_MEASURE === 'KTONS'), 'other non-KBD units stay out');
+  });
+
+  it('publishes the latest month reporting both crude and product stocks, in million barrels', () => {
+    const rows = [
+      ...flows('2026-04'), ...flows('2026-03'),
+      stock('CRUDEOIL', '2026-03', '45280'), stock('TOTPRODS', '2026-03', '95989'),
+      stock('CRUDEOIL', '2026-04', '44000'), // products not yet filed for April
+      stock('CRUDEOIL', '2026-02', '47000'), stock('TOTPRODS', '2026-02', '90000'),
+    ];
+    assert.deepEqual(extractCountryData(rows, 'IN').stocks, { month: '2026-03', crudeMb: 45.28, productsMb: 95.989 });
+  });
+
+  it('falls back to TOTCRUDE when CRUDEOIL carries no stock', () => {
+    const rows = [...flows('2026-03'), stock('CRUDEOIL', '2026-03', '-'), stock('TOTCRUDE', '2026-03', '25354'), stock('TOTPRODS', '2026-03', '33166')];
+    assert.deepEqual(extractCountryData(rows, 'IN').stocks, { month: '2026-03', crudeMb: 25.354, productsMb: 33.166 });
+  });
+
+  it('a zero TOTCRUDE stock is a placeholder, not an empty tank (India files KBBL 0 beside 6,086 kt)', () => {
+    const rows = [...flows('2026-03'), stock('CRUDEOIL', '2026-03', '-'), stock('TOTCRUDE', '2026-03', '0'), stock('TOTPRODS', '2026-03', '95989')];
+    assert.equal(extractCountryData(rows, 'IN').stocks, null);
+  });
+
+  it('is null when no month reports both, or the total is zero, and never reads another country', () => {
+    assert.equal(extractCountryData([...flows('2026-03'), stock('CRUDEOIL', '2026-03', '45280')], 'IN').stocks, null);
+    assert.equal(extractCountryData([...flows('2026-03'), stock('CRUDEOIL', '2026-03', '0'), stock('TOTPRODS', '2026-03', '0')], 'IN').stocks, null);
+    assert.equal(extractCountryData([...flows('2026-03'), stock('CRUDEOIL', '2026-03', '1', 'TH'), stock('TOTPRODS', '2026-03', '1', 'TH')], 'IN').stocks, null);
+  });
+
+  it('stock rows never change the flow data month', () => {
+    const rows = [...flows('2026-03'), stock('CRUDEOIL', '2026-05', '1'), stock('TOTPRODS', '2026-05', '1'), stock('GASDIES', '2026-05', '1')];
+    assert.equal(extractCountryData(rows, 'IN').dataMonth, '2026-03');
+  });
+});
+
+// IEA days of cover are days of the previous calendar year's net oil imports
+// (crude, NGL and feedstocks, and products). Converting them with crude imports
+// alone understates a product importer (Australia) and overstates a product
+// exporter (Korea).
+describe('net oil imports (IEA days basis)', () => {
+  const flow = (area, month, product, flowCode, value) => makeRow({ REF_AREA: area, TIME_PERIOD: month, ENERGY_PRODUCT: product, FLOW_BREAKDOWN: flowCode, OBS_VALUE: String(value) });
+  const year = (area, y, { crudeImp, crudeExp, prodImp, prodExp }, months = 12, crudeCode = 'TOTCRUDE', crudeImpByMonth = {}) => {
+    const rows = [];
+    for (let m = 1; m <= months; m++) {
+      const ym = `${y}-${String(m).padStart(2, '0')}`;
+      rows.push(flow(area, ym, crudeCode, 'TOTIMPSB', crudeImpByMonth[m] ?? crudeImp), flow(area, ym, crudeCode, 'TOTEXPSB', crudeExp),
+        flow(area, ym, 'TOTPRODS', 'TOTIMPSB', prodImp), flow(area, ym, 'TOTPRODS', 'TOTEXPSB', prodExp));
+    }
+    return rows;
+  };
+  const current = (area, ym) => [flow(area, ym, 'GASDIES', 'TOTDEMO', 500)];
+
+  it('averages crude plus product net imports over the calendar year before the data month', () => {
+    // Australia-like: little crude, large product imports.
+    const rows = [...year('AU', 2025, { crudeImp: 150, crudeExp: 20, prodImp: 900, prodExp: 40 }), ...current('AU', '2026-08')];
+    assert.deepEqual(extractCountryData(rows, 'AU').netOilImports, [{ year: 2025, kbd: 990, months: 12 }]);
+  });
+
+  it('a product exporter nets its exports (Korea-like)', () => {
+    const rows = [...year('KR', 2025, { crudeImp: 2800, crudeExp: 0, prodImp: 900, prodExp: 1300 }), ...current('KR', '2026-08')];
+    assert.equal(extractCountryData(rows, 'KR').netOilImports[0].kbd, 2400);
+  });
+
+  it('uses CRUDEOIL when TOTCRUDE is not reported', () => {
+    const rows = [...year('JP', 2025, { crudeImp: 2400, crudeExp: 0, prodImp: 600, prodExp: 300 }, 12, 'CRUDEOIL'), ...current('JP', '2026-08')];
+    assert.equal(extractCountryData(rows, 'JP').netOilImports[0].kbd, 2700);
+  });
+
+  it('weights each month by its days, not equally', () => {
+    // 1,000 kb/d all year except a 2,000 kb/d February: (1000 x 337 + 2000 x 28) / 365.
+    const rows = [...year('JP', 2025, { crudeImp: 1000, crudeExp: 0, prodImp: 0, prodExp: 0 }, 12, 'TOTCRUDE', { 2: 2000 }), ...current('JP', '2026-08')];
+    assert.equal(extractCountryData(rows, 'JP').netOilImports[0].kbd, 1076.7);
+  });
+
+  it('publishes every complete year before the data month, newest first, for the reader to match IEA', () => {
+    const rows = [
+      ...year('AU', 2024, { crudeImp: 200, crudeExp: 20, prodImp: 800, prodExp: 30 }),
+      ...year('AU', 2025, { crudeImp: 150, crudeExp: 20, prodImp: 900, prodExp: 40 }),
+      ...current('AU', '2026-01'),
+    ];
+    assert.deepEqual(extractCountryData(rows, 'AU').netOilImports.map((e) => [e.year, e.kbd]), [[2025, 990], [2024, 950]]);
+  });
+
+  it('omits a year with fewer than 9 complete months, or a net-exporting year', () => {
+    assert.deepEqual(extractCountryData([...year('AU', 2025, { crudeImp: 150, crudeExp: 20, prodImp: 900, prodExp: 40 }, 8), ...current('AU', '2026-08')], 'AU').netOilImports, []);
+    assert.deepEqual(extractCountryData([...year('NO', 2025, { crudeImp: 0, crudeExp: 1500, prodImp: 100, prodExp: 300 }), ...current('NO', '2026-08')], 'NO').netOilImports, []);
+  });
+
+  it("counts the data month's own year once it has 9 complete months (IEA in January, JODI at December)", () => {
+    const full = [...year('AU', 2025, { crudeImp: 150, crudeExp: 20, prodImp: 900, prodExp: 40 }), ...current('AU', '2025-12')];
+    assert.deepEqual(extractCountryData(full, 'AU').netOilImports, [{ year: 2025, kbd: 990, months: 12 }]);
+    const partial = [...year('AU', 2025, { crudeImp: 150, crudeExp: 20, prodImp: 900, prodExp: 40 }, 8), ...current('AU', '2025-08')];
+    assert.deepEqual(extractCountryData(partial, 'AU').netOilImports, []);
+  });
+
+  it('reads the optional lookback primary file, which holds the year IEA counts against each January', () => {
+    const csv = makeCsv([makeRow({ REF_AREA: 'AU', TIME_PERIOD: '2024-05', ENERGY_PRODUCT: 'TOTCRUDE', FLOW_BREAKDOWN: 'TOTIMPSB', OBS_VALUE: '150' })]);
+    const rows = mergeSourceRows('', '', makeCsv([makeRow({})]), '', '', csv);
+    assert.ok(rows.some((r) => r.TIME_PERIOD === '2024-05' && r.ENERGY_PRODUCT === 'TOTCRUDE'));
+  });
+});
+
+describe('prepareOilPublish refuses an older vintage than the published one', () => {
+  const NOW = new Date('2026-10-29T07:32:00.000Z');
+
+  /** Diesel demand for `count` countries, all in `month`. */
+  function rowsFor(month, count = 45) {
+    const rows = [];
+    for (let index = 0; index < count; index++) {
+      rows.push({
+        REF_AREA: `X${String(index).padStart(2, '0')}`,
+        TIME_PERIOD: month,
+        ENERGY_PRODUCT: 'GASDIES',
+        FLOW_BREAKDOWN: 'TOTDEMO',
+        UNIT_MEASURE: 'KBD',
+        OBS_VALUE: '894.4',
+        ASSESSMENT_CODE: '1',
+      });
+    }
+    return rows;
+  }
+
+  const publishedThrough = (month) => ({ newestItemAt: Date.parse(monthPeriodEnd(month)) });
+
+  it('refuses a run whose newest month is older than the snapshot it would replace', () => {
+    // 2026-10-29: every 2026 file timed out, so the run built December 2025
+    // and overwrote a snapshot dated August 2026.
+    const { refusalReason } = prepareOilPublish({
+      allRows: rowsFor('2025-12'),
+      previousMeta: publishedThrough('2026-08'),
+      now: NOW,
+    });
+    assert.match(refusalReason ?? '', /newest month 2025-12 is older than the published 2026-08/);
+  });
+
+  it('publishes the same or a newer vintage', () => {
+    for (const month of ['2026-08', '2026-09']) {
+      const { refusalReason } = prepareOilPublish({
+        allRows: rowsFor(month),
+        previousMeta: publishedThrough('2026-08'),
+        now: NOW,
+      });
+      assert.equal(refusalReason, null, month);
+    }
+  });
+
+  it('publishes when no previous vintage is recorded', () => {
+    for (const previousMeta of [null, {}, { newestItemAt: null }, { newestItemAt: 'not a time' }]) {
+      const { refusalReason } = prepareOilPublish({ allRows: rowsFor('2025-12'), previousMeta, now: NOW });
+      assert.equal(refusalReason, null, JSON.stringify(previousMeta));
+    }
+  });
+
+  it('reads the previous vintage strictly: a failed read stops the run, a missing key does not', async (t) => {
+    const previousDelay = process.env.WM_SEED_RETRY_DELAY_MS;
+    process.env.WM_SEED_RETRY_DELAY_MS = '1';
+    t.after(() => {
+      if (previousDelay === undefined) delete process.env.WM_SEED_RETRY_DELAY_MS;
+      else process.env.WM_SEED_RETRY_DELAY_MS = previousDelay;
+    });
+
+    const calls = [];
+    // Fails the first `failures` reads, then returns `value`.
+    const read = (failures, value = null) => async (key, options) => {
+      calls.push({ key, options });
+      if (calls.length <= failures) throw new Error('Redis snapshot read failed: HTTP 503');
+      return value;
+    };
+
+    await assert.rejects(
+      readPreviousOilMeta(read(Infinity)),
+      /HTTP 503/,
+      'a read failure must not pass as "no previous vintage"',
+    );
+    assert.equal(calls.length, 3, 'a persistent failure is retried twice, then stops the run');
+
+    calls.length = 0;
+    assert.deepEqual(await readPreviousOilMeta(read(1, { newestItemAt: 1 })), { newestItemAt: 1 }, 'a transient failure is retried');
+
+    calls.length = 0;
+    assert.equal(await readPreviousOilMeta(read(0, null)), null, 'a missing key is a first publish');
+    assert.equal(calls.length, 1);
+    assert.ok(calls.every(({ key, options }) => key === 'seed-meta:energy:jodi-oil' && options?.strict === true));
+  });
+
+  it('keeps the country-floor reason when both gates fail', () => {
+    const { refusalReason } = prepareOilPublish({
+      allRows: rowsFor('2025-12', 39),
+      previousMeta: publishedThrough('2026-08'),
+      now: NOW,
+    });
+    assert.match(refusalReason ?? '', /only 39 countries/);
   });
 });

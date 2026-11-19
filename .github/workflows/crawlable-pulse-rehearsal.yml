@@ -1,0 +1,67 @@
+name: Crawlable Pulse Rehearsal
+
+# Replays the weekly crawlable-pulse refresh's build and verify steps against a
+# drifted copy of the committed capture (scripts/rehearse-crawlable-pulse-refresh.mjs).
+# Six weekly refreshes failed in verify on a test pinned to a value the old
+# capture happened to hold (#7533, #7884, #8345, #8417, #9115, #9693). Each pin
+# passed on its own PR and broke weeks later on the bot PR. This runs on the
+# PR that adds the pin instead.
+#
+# The paths are the refresh's verify tests, the generators they exercise, the
+# capture itself (so the weekly bot PR is rehearsed against next week too) and
+# this machinery. tests/rehearse-crawlable-pulse-refresh.test.mjs asserts every
+# verify test is listed here.
+
+on:
+  pull_request:
+    paths:
+      - 'docs/snapshots/crawlable-live-pulse-*.json'
+      - 'scripts/build-crawlable-corpus.mjs'
+      - 'scripts/build-llms-full.mjs'
+      - 'scripts/build-sitemap.mjs'
+      - 'scripts/build-welcome-teasers.mjs'
+      - 'scripts/crawlable-*.mjs'
+      - 'scripts/freeze-crawlable-live-pulse.mjs'
+      - 'scripts/rehearse-crawlable-pulse-refresh.mjs'
+      - 'tests/accuracy-corpus.test.mjs'
+      - 'tests/seo-geo-residue.test.mjs'
+      - 'tests/crawlable-corpus.test.mjs'
+      - 'tests/situation-page.test.mjs'
+      - 'tests/crawlable-developments.test.mjs'
+      - 'tests/crawlable-live-tools.test.mjs'
+      - 'tests/country-mention.test.mjs'
+      - 'tests/brief-relevance.test.mjs'
+      - 'tests/ci-workflow-coverage.test.mts'
+      - 'tests/freeze-crawlable-live-pulse.test.mjs'
+      - 'tests/welcome-teasers.test.mjs'
+      - 'tests/sitemap-generation.test.mjs'
+      - 'tests/country-corpus-slugs-freshness.test.mjs'
+      - 'tests/rehearse-crawlable-pulse-refresh.test.mjs'
+      - '.github/workflows/crawlable-pulse-refresh.yml'
+      - '.github/workflows/crawlable-pulse-rehearsal.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crawlable-pulse-rehearsal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    # The refresh's build plus its verify suite take about ten minutes.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # The corpus build reads git history for lastmod dates.
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci --ignore-scripts
+      - name: Rehearse the refresh against a drifted capture
+        run: node scripts/rehearse-crawlable-pulse-refresh.mjs

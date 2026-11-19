@@ -45,6 +45,20 @@ describe('MCP server card schema conformance', () => {
     }
   });
 
+  it('the product card links each MCP Apps tool to its ui:// resource', async () => {
+    // Unauthenticated scanners cannot call tools/list, so the card carries the
+    // same _meta.ui.resourceUri the live wire emits.
+    const { TOOL_REGISTRY } = await import('../api/mcp/registry/index.ts');
+    const card = readJson('../public/.well-known/mcp/server-card.json');
+    const expected = Object.fromEntries(TOOL_REGISTRY.filter((t) => t._uiResourceUri).map((t) => [t.name, t._uiResourceUri]));
+    const actual = Object.fromEntries(card.tools.filter((t) => t._meta?.ui).map((t) => [t.name, t._meta.ui.resourceUri]));
+    assert.ok(Object.keys(expected).length > 0);
+    assert.deepEqual(actual, expected);
+    for (const uri of Object.values(actual)) {
+      assert.ok(card.metadata.mcpApps.uiResources.includes(uri), `${uri} must be a listed ui resource`);
+    }
+  });
+
   it('the product card name matches the MCP Registry server.json name', () => {
     assert.equal(readJson('../public/.well-known/mcp/server-card.json').name, readJson('../server.json').name);
   });

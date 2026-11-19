@@ -1,0 +1,179 @@
+---
+title: "实体关联与提取"
+description: "World Monitor 如何在新闻与市场数据之间匹配实体：实体知识库、实体类型、注册表架构、实体提取、置信度评分与市场关联，说明原始标题如何被解析为可跨来源关联的命名实体，面向评估平台的工程师与希望参与贡献的开发者阅读。"
+---
+
+本页属于[信号情报](/zh/signal-intelligence)指南，该页索引全部主题。
+
+---
+
+## 实体感知关联
+
+信号引擎使用一个**实体知识库**来智能地将市场走势与新闻覆盖关联起来。系统不是简单的关键词匹配，而是理解"AVGO"（股票代码）与"Broadcom"（公司）、"AI chips"（板块）以及"Nvidia"（竞争对手）等实体之间的关系。
+
+### 实体知识库
+
+注册表中的每个实体包含：
+
+| 字段 | 用途 | 示例 |
+|-------|---------|---------|
+| **ID** | 规范标识符 | `broadcom` |
+| **Name** | 显示名称 | `Broadcom Inc.` |
+| **Type** | 类别 | `company`, `commodity`, `crypto`, `country`, `person` |
+| **Aliases** | 别名 | `AVGO`, `Broadcom`, `Broadcom Inc` |
+| **Keywords** | 相关话题 | `AI chips`, `semiconductors`, `VMware` |
+| **Sector** | 行业分类 | `semiconductors` |
+| **Related** | 关联实体 | `nvidia`, `intel`, `amd` |
+
+### 实体类型
+
+| 类型 | 数量 | 示例 |
+|------|-------|----------|
+| **公司** | 38 | Nvidia, Apple, Tesla, Broadcom, Boeing, Lockheed Martin, TSMC, Rheinmetall |
+| **指数** | 3 | S&P 500, Dow Jones, NASDAQ |
+| **板块** | 5 | Technology (XLK), Finance (XLF), Energy (XLE), Healthcare (XLV), Semiconductors (SMH) |
+| **大宗商品** | 6 | Oil (WTI), Gold, Natural Gas, Copper, Silver, VIX |
+| **加密货币** | 3 | Bitcoin, Ethereum, Solana |
+| **国家** | 11 | China, Russia, Iran, Israel, Ukraine, Taiwan, Saudi Arabia, UAE, Qatar, Turkey, Egypt |
+
+### 实体匹配的工作原理
+
+当市场出现显著波动（≥2%）时，系统会：
+
+1. **在实体注册表中查询股票代码**（例如 `AVGO` → `broadcom`）
+2. **收集所有标识符**：别名、关键词、板块同业、关联实体
+3. **扫描所有新闻簇**以匹配任意标识符
+4. **根据匹配类型评分**置信度：
+   - 别名匹配（精确名称）：95%
+   - 关键词匹配（话题）：70%
+   - 关联实体匹配：60%
+
+若找到关联新闻 → 生成**"市场波动有解释"**信号，并附上新闻标题。
+若穷尽搜索后仍未找到关联 → 生成**"静默背离"**信号。
+
+### 示例：Broadcom +2.5%
+
+```
+1. Ticker AVGO detected with +2.5% move
+2. Entity lookup: broadcom
+3. Search terms: ["Broadcom", "AVGO", "AI chips", "semiconductors", "VMware", "nvidia", "intel", "amd"]
+4. News scan finds: "Broadcom AI Revenue Beats Estimates"
+5. Result: "✓ Market Move Explained: Broadcom AI Revenue Beats Estimates"
+```
+
+没有此系统时，同样的波动只会生成一条通用的"Silent Divergence: AVGO +2.5%"信号。
+
+### 板块覆盖
+
+实体注册表横跨具有战略意义的板块：
+
+| 板块 | 示例 | 跟踪的关键词 |
+|--------|----------|------------------|
+| **科技** | Apple, Microsoft, Nvidia, Google, Meta, TSMC | AI, cloud, chips, datacenter, streaming |
+| **国防与航天** | Lockheed Martin, Raytheon, Northrop Grumman, Boeing, Rheinmetall, Airbus | F-35, missiles, drones, tanks, defense contracts |
+| **半导体** | ASML, Samsung, AMD, Intel, Broadcom | Lithography, EUV, foundry, fab, wafer |
+| **关键矿产** | Albemarle, SQM, MP Materials, Freeport-McMoRan | Lithium, rare earth, cobalt, copper |
+| **金融** | JPMorgan, Berkshire Hathaway, Visa, Mastercard | Banking, credit, investment, interest rates |
+| **医疗** | Eli Lilly, Novo Nordisk, UnitedHealth, J&J | Pharma, drugs, GLP-1, obesity, diabetes |
+| **能源** | Exxon, Chevron, ConocoPhillips | Oil, gas, drilling, refinery, LNG |
+| **消费** | Tesla, Walmart, Costco, Home Depot | EV, retail, grocery, housing |
+
+这种广泛的覆盖使得跨多样化地缘政治和市场事件的关联检测成为可能。
+
+## 实体注册表架构
+
+实体注册表是一个带有丰富元数据的知识库，用于智能关联：
+
+```typescript
+{
+  id: 'NVDA',           // Unique identifier
+  name: 'Nvidia',       // Display name
+  type: 'company',      // company | country | index | commodity | currency
+  sector: 'semiconductors',
+  searchTerms: ['Nvidia', 'NVDA', 'Jensen Huang', 'H100', 'CUDA'],
+  aliases: ['nvidia', 'nvda'],
+  competitors: ['AMD', 'INTC'],
+  related: ['AVGO', 'TSM', 'ASML'],  // Related entities
+  country: 'US',        // Headquarters/origin
+}
+```
+
+**实体类型**：
+
+| 类型 | 数量 | 用例 |
+|------|-------|----------|
+| `company` | 38 | 市场-新闻关联、板块分析 |
+| `country` | 11 | 焦点检测、CII 评分 |
+| `index` | 3 | 市场概览、区域跟踪 |
+| `commodity` | 6 | 能源和矿产关联 |
+| `sector` | 5 | 板块级联分析 |
+| `crypto` | 3 | 加密货币关联 |
+
+**查找索引**：
+
+注册表提供多条查找路径以实现快速实体解析：
+
+| 索引 | 查询示例 | 用例 |
+|-------|---------------|----------|
+| `byId` | `'NVDA'` → Nvidia entity | 从股票代码直接查找 |
+| `byAlias` | `'nvidia'` → Nvidia entity | 大小写不敏感的名称匹配 |
+| `byKeyword` | `'AI chips'` → [Nvidia, AMD, Intel] | 新闻关键词提取 |
+| `bySector` | `'semiconductors'` → all chip companies | 板块级联分析 |
+| `byCountry` | `'US'` → all US entities | 国家级聚合 |
+
+---
+
+## 实体提取系统
+
+仪表盘从新闻标题中提取**命名实体**（公司、国家、领导人、组织），以实现新闻到市场的关联和基于实体的过滤。
+
+### 工作原理
+
+标题通过一个精心策划的实体索引进行扫描，该索引包含：
+
+| 实体类型 | 示例 | 用途 |
+|-------------|----------|---------|
+| **公司** | Apple, Tesla, NVIDIA, Boeing | 市场代码关联 |
+| **国家** | Russia, China, Iran, Ukraine | 地缘政治归因 |
+| **领导人** | Putin, Xi Jinping, Khamenei | 政治事件追踪 |
+| **组织** | NATO, OPEC, Fed, SEC | 机构新闻过滤 |
+| **大宗商品** | Oil, Gold, Bitcoin | 大宗商品新闻关联 |
+
+### 实体匹配
+
+每个实体有多种匹配模式以实现全面检测：
+
+```
+Entity: NVIDIA (NVDA)
+  Aliases: nvidia, nvda, jensen huang
+  Keywords: gpu, h100, a100, cuda, ai chip
+  Match Types:
+    - Name match: "NVIDIA announces..." → 95% confidence
+    - Alias match: "Jensen Huang says..." → 90% confidence
+    - Keyword match: "H100 shortage..." → 70% confidence
+```
+
+### 置信度评分
+
+实体提取根据匹配质量生成置信度评分：
+
+| 匹配类型 | 置信度 | 示例 |
+|------------|------------|---------|
+| **直接名称** | 95% | "Apple reports earnings" |
+| **别名** | 90% | "Tim Cook announces..." |
+| **关键词** | 70% | "iPhone sales decline" |
+| **关联簇** | 63% | 次要标题提及（90% × 0.7） |
+
+### 市场关联
+
+当某市场代码出现显著波动时，系统在新闻簇中搜索相关实体：
+
+1. **代码查找** - 通过市场代码查找实体（例如 `AAPL` → Apple）
+2. **新闻搜索** - 查找提及该实体或关联实体的簇
+3. **置信度排序** - 按提取置信度排序
+4. **结果** - 生成"市场波动有解释"或"静默背离"信号
+
+这使得以下信号成为可能：
+
+- **有解释**："AVGO +5.2% — Broadcom 在 3 个新闻簇中被提及（AI 芯片需求）"
+- **静默**："AVGO +5.2% — 实体搜索后无关联新闻"

@@ -21,6 +21,7 @@ import { assembleBootstrapTierPayload } from '../scripts/publish-bootstrap-tiers
 import { MAX_PAYLOAD_BYTES, runSeed } from '../scripts/_seed-utils.mjs';
 import { buildEnvelope, unwrapEnvelope } from '../scripts/_seed-envelope-source.mjs';
 import type { FireDetection } from '../src/generated/server/worldmonitor/wildfire/v1/service_server';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 const REGIONS = ['Ukraine', 'Russia', 'Iran', 'Israel/Gaza', 'Syria', 'Taiwan', 'North Korea', 'Saudi Arabia', 'Turkey'];
 const SATELLITES = ['VIIRS_SNPP_NRT', 'VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT'];
@@ -55,7 +56,7 @@ describe('wildfire dashboard payload cap', () => {
 
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-    globalThis.fetch = async (input) => {
+    globalThis.fetch = withSeedLockFence(async (input) => {
       const key = decodeURIComponent(new URL(String(input)).pathname.replace('/get/', ''));
       requestedKeys.push(key);
       const value = key === 'wildfire:fires-bootstrap:v1'
@@ -64,7 +65,7 @@ describe('wildfire dashboard payload cap', () => {
           ? { fetchedAt: 1_783_500_000_000 }
           : null;
       return Response.json({ result: value == null ? null : JSON.stringify(value) });
-    };
+    });
 
     try {
       const response = await listFireDetections({} as never, {});
@@ -98,7 +99,7 @@ describe('wildfire dashboard payload cap', () => {
 
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-    globalThis.fetch = async (input) => {
+    globalThis.fetch = withSeedLockFence(async (input) => {
       const key = decodeURIComponent(new URL(String(input)).pathname.replace('/get/', ''));
       requestedKeys.push(key);
       const value = key === 'wildfire:fires:v1'
@@ -107,7 +108,7 @@ describe('wildfire dashboard payload cap', () => {
           ? { fetchedAt: 1_783_600_000_000 }
           : null;
       return Response.json({ result: value == null ? null : JSON.stringify(value) });
-    };
+    });
 
     try {
       const response = await listFireDetections({} as never, {});
@@ -426,7 +427,7 @@ describe('canonical wildfire payload cap (#5866)', () => {
 
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-    globalThis.fetch = async (input) => {
+    globalThis.fetch = withSeedLockFence(async (input) => {
       const key = decodeURIComponent(new URL(String(input)).pathname.replace('/get/', ''));
       const value = key === 'wildfire:fires:v1'
         ? { ...canonical, dataAvailable: true }
@@ -434,7 +435,7 @@ describe('canonical wildfire payload cap (#5866)', () => {
           ? { fetchedAt: 1_785_416_460_000 }
           : null;
       return Response.json({ result: value == null ? null : JSON.stringify(value) });
-    };
+    });
 
     try {
       const response = await listFireDetections({} as never, {});
@@ -475,7 +476,7 @@ describe('canonical wildfire payload cap (#5866)', () => {
 
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-    globalThis.fetch = async (input, init) => {
+    globalThis.fetch = withSeedLockFence(async (input, init) => {
       const url = String(input);
       const body = init?.body == null ? null : JSON.parse(String(init.body));
       calls.push({ url, body });
@@ -492,7 +493,7 @@ describe('canonical wildfire payload cap (#5866)', () => {
         if (body[0] === 'DEL' && typeof body[1] === 'string') values.delete(body[1]);
       }
       return Response.json({ result: 'OK' });
-    };
+    });
     process.exit = ((code = 0) => {
       const error = new Error(`__test_exit__:${code}`) as Error & { exitCode: number };
       error.exitCode = code;
@@ -810,7 +811,7 @@ describe('tagged FIRMS+CWFIS payload cap', () => {
 
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-    globalThis.fetch = async (input, init) => {
+    globalThis.fetch = withSeedLockFence(async (input, init) => {
       const url = String(input);
       const body = init?.body == null ? null : JSON.parse(String(init.body));
       calls.push({ url, body });
@@ -826,7 +827,7 @@ describe('tagged FIRMS+CWFIS payload cap', () => {
         if (body[0] === 'DEL' && typeof body[1] === 'string') values.delete(body[1]);
       }
       return Response.json({ result: 'OK' });
-    };
+    });
     process.exit = ((code = 0) => {
       const error = new Error(`__test_exit__:${code}`) as Error & { exitCode: number };
       error.exitCode = code;

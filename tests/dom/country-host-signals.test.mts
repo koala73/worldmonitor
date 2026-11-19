@@ -97,8 +97,8 @@ it('retains website recent evidence when a score refresh updates the count chips
   expect(body.querySelector('.cdp-signal-breakdown')?.textContent).toBe(breakdown);
   expect(body.textContent).toContain('2 Military Air');
   panel.updateSignals(countrySignalsFromMilitary('US'));
-  expect(body.textContent).not.toContain('Observed evidence');
-  expect(body.textContent).toContain('Aggregate severity');
+  expect(body.textContent).toContain('Observed evidence');
+  expect(body.textContent).toContain('Critical1');
   panel.hide();
 });
 

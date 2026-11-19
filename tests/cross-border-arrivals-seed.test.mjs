@@ -131,6 +131,13 @@ describe('advanceHistory', () => {
     assert.deepEqual(state.change, { since: '2026-08-31', delta: 46171 });
   });
 
+  it('reports no change for a report older than the newest stored one, and keeps the history', () => {
+    const stored = [['2026-08-31', 426448], ['2026-09-30', 472619]];
+    const state = advanceHistory(stored, '2026-08-31', 426448);
+    assert.equal(state.change, undefined);
+    assert.deepEqual(state.history, stored);
+  });
+
   it('keeps a bounded history and ignores malformed points', () => {
     let points = [['bad'], null];
     for (let m = 1; m <= 12; m++) points = advanceHistory(points, `2026-${String(m).padStart(2, '0')}-01`, m).history;
@@ -218,6 +225,72 @@ describe('fetchCrossBorderArrivals', () => {
     assert.equal(early.situations.find((s) => s.id === 'mediterranean').trend.latestDelta, 12033);
     const later = await fetchCrossBorderArrivals({ nowMs: Date.parse('2026-09-20T00:00:00Z'), previousHistory: {} });
     assert.equal(later.situations.find((s) => s.id === 'mediterranean').trend.latestDelta, 11676, 'the current month stays unjudged');
+  });
+
+  it('reads the previous history from Redis, unwrapping the Upstash result envelope', async () => {
+    const env = { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN };
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    try {
+      // Exactly what the history extraKey stores: { history } as a JSON string.
+      const stored = JSON.stringify({ history: { 'sudan|outflow|Refugees from Sudan|Chad': [['2026-09-07', 950000]] } });
+      stub((url) => {
+        if (url.origin === 'https://redis.test') return Response.json({ result: stored });
+        if (url.pathname.endsWith('/timeseries')) return Response.json({ data: { timeseries: [] } });
+        if (url.searchParams.get('sv_id') === '63') return Response.json({ data: [row({ individuals: 959126 })] });
+        return new Response('gone', { status: 404 });
+      });
+      const data = await fetchCrossBorderArrivals({ nowMs: Date.parse('2026-10-08T00:00:00Z') });
+      const chad = data.situations.find((s) => s.id === 'sudan').flows[0].countries[0];
+      assert.deepEqual(chad.change, { since: '2026-09-07', delta: 9126 });
+      assert.deepEqual(data.history['sudan|outflow|Refugees from Sudan|Chad'], [['2026-09-07', 950000], ['2026-09-21', 959126]]);
+    } finally {
+      for (const [name, value] of [['UPSTASH_REDIS_REST_URL', env.url], ['UPSTASH_REDIS_REST_TOKEN', env.token]]) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
+
+  it('fails the run rather than start fresh when the history read fails, so the stored history survives', async () => {
+    const env = { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN };
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    try {
+      stub((url) => {
+        if (url.origin === 'https://redis.test') return new Response('unavailable', { status: 503 });
+        return Response.json({ data: [row({ individuals: 959126 })] });
+      });
+      await assert.rejects(fetchCrossBorderArrivals({ nowMs: Date.parse('2026-10-08T00:00:00Z') }), /history/);
+    } finally {
+      for (const [name, value] of [['UPSTASH_REDIS_REST_URL', env.url], ['UPSTASH_REDIS_REST_TOKEN', env.token]]) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
+
+  it('keeps the history of a country missing from today\'s report, and drops one silent for over 180 days', async () => {
+    stub((url) => {
+      if (url.pathname.endsWith('/timeseries')) return Response.json({ data: { timeseries: [] } });
+      if (url.searchParams.get('sv_id') === '63') return Response.json({ data: [row({ individuals: 959126 })] });
+      return new Response('gone', { status: 404 });
+    });
+    const data = await fetchCrossBorderArrivals({
+      nowMs: Date.parse('2026-10-08T00:00:00Z'),
+      previousHistory: {
+        'sudan|outflow|Refugees from Sudan|Libya': [['2026-09-21', 469703]],
+        'sudan|outflow|Refugees from Sudan|Uganda': [['2026-03-31', 80000]],
+      },
+    });
+    assert.deepEqual(data.history['sudan|outflow|Refugees from Sudan|Libya'], [['2026-09-21', 469703]]);
+    assert.equal(data.history['sudan|outflow|Refugees from Sudan|Uganda'], undefined);
+  });
+
+  it('keeps the 30-day history TTL when a failed run preserves the stored keys', async () => {
+    const { seedOptions, ARRIVALS_HISTORY_KEY } = await import('../scripts/seed-cross-border-arrivals.mjs');
+    const history = seedOptions.extraKeys.find((ek) => ek.key === ARRIVALS_HISTORY_KEY);
+    assert.deepEqual(seedOptions.preserveKeyTtls, [{ key: ARRIVALS_HISTORY_KEY, ttlSeconds: history.ttl }]);
   });
 
   it('fails validation when too few situations answer', async () => {

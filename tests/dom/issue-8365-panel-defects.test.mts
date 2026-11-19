@@ -3,6 +3,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { initTestI18n } from './helpers/i18n.mts';
 
 vi.mock('@/services/storage', () => ({
+  isStorageAvailable: vi.fn(async () => true),
   getSnapshotTimestamps: vi.fn(async () => [1_000, 2_000]),
   getSnapshotAt: vi.fn(),
 }));
@@ -201,11 +202,13 @@ describe('PlaybackControl stale snapshots', () => {
     toggle.click();
     toggle.click();
     toggle.click();
-    newer.resolve([3_000, 1_000, 2_000]);
-    await Promise.resolve();
-    older.resolve([1_000]);
-    await Promise.resolve();
     const slider = control.getElement().querySelector<HTMLInputElement>('.playback-slider')!;
+    // Each open first checks storage, so wait for results rather than
+    // counting microtasks.
+    newer.resolve([3_000, 1_000, 2_000]);
+    await vi.waitFor(() => expect(slider.max).toBe('2'));
+    older.resolve([1_000]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(slider.max).toBe('2');
     expect(slider.value).toBe('2');
     vi.mocked(getSnapshotAt).mockResolvedValueOnce(null);

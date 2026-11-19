@@ -118,6 +118,13 @@ export const MAP_OVERLAY_MARKER_BUDGET_DESKTOP: GlobeMarkerBudget = { perLayer: 
 export const MAP_OVERLAY_MARKER_BUDGET_MOBILE: GlobeMarkerBudget = { perLayer: 150, total: 400 };
 
 /**
+ * Half the mobile ceiling for low-end devices (`src/utils/device-tier.ts`),
+ * where p75 INP is 656-1,704 ms and is set by paint, so it scales with the
+ * marker DOM. The truncation badge still tells the user markers were cut.
+ */
+export const MAP_OVERLAY_MARKER_BUDGET_LOW_END: GlobeMarkerBudget = { perLayer: 75, total: 200 };
+
+/**
  * Largest per-group cap `c <= max` for which `sum(min(len_i, c)) <= total`.
  *
  * Trimming the biggest groups first (max-min fairness) rather than trimming

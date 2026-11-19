@@ -218,9 +218,31 @@ export class CorrelationEngine {
     signals: SignalEvidence[],
     radiusKm: number,
   ): SignalCluster[] {
-    // Grid-based spatial indexing + union-find: O(n * k) where k = avg signals per cell
+    // Grid-based spatial indexing + union-find: O(n * k) where k = avg signals per cell.
+    // Cells are cellSizeDeg wide in both axes, so a column is the same longitude band
+    // at every latitude. In-radius neighbors are at most one row apart, but a degree of
+    // longitude shrinks toward the poles, so they can be several columns apart.
+    // spatialRadius 0 means no proximity clustering (types.ts), and a non-positive
+    // radius would make the column span infinite.
+    if (!(radiusKm > 0)) return [];
     const DEG_PER_KM_LAT = 1 / 111;
-    const cellSizeLat = radiusKm * DEG_PER_KM_LAT;
+    const EARTH_RADIUS_KM = 6371; // the radius haversineKm uses
+    const cellSizeDeg = radiusKm * DEG_PER_KM_LAT;
+    const maxColSpan = Math.ceil(360 / cellSizeDeg);
+    const sinHalfRadius = Math.sin(radiusKm / EARTH_RADIUS_KM / 2);
+    // Columns to scan either side of a cell in `row`. Neighbors lie in rows
+    // row-1..row+1; for two points at |lat| <= maxAbsLat within radiusKm, haversine
+    // gives sin(dLon / 2) <= sin(radiusKm / 2R) / cos(maxAbsLat).
+    const colSpanForRow = (row: number): number => {
+      const maxAbsLat = Math.min(90, Math.max(
+        Math.abs((row - 1) * cellSizeDeg),
+        Math.abs((row + 2) * cellSizeDeg),
+      ));
+      const ratio = sinHalfRadius / Math.cos(maxAbsLat * Math.PI / 180);
+      if (!(ratio < 1)) return maxColSpan;
+      const maxDeltaLonDeg = 2 * Math.asin(ratio) * 180 / Math.PI;
+      return Math.min(maxColSpan, Math.ceil(maxDeltaLonDeg / cellSizeDeg + 1e-9));
+    };
 
     // Union-Find with path compression
     const parent: number[] = signals.map((_, i) => i);
@@ -240,22 +262,21 @@ export class CorrelationEngine {
       const s = signals[i]!;
       if (s.lat == null || s.lon == null) continue;
       validIndices.push(i);
-      const cellRow = Math.floor(s.lat / cellSizeLat);
-      const cosLat = Math.cos(s.lat * Math.PI / 180);
-      const cellSizeLon = cosLat > 0.01 ? cellSizeLat / cosLat : cellSizeLat;
-      const cellCol = Math.floor(s.lon / cellSizeLon);
+      const cellRow = Math.floor(s.lat / cellSizeDeg);
+      const cellCol = Math.floor(s.lon / cellSizeDeg);
       const key = `${cellRow}:${cellCol}`;
       const list = grid.get(key);
       if (list) list.push(i); else grid.set(key, [i]);
     }
 
-    // Check 3x3 neighborhood for each cell
+    // Check the neighborhood for each cell: one row either side, colSpan columns either side
     for (const [key, indices] of grid) {
       const sep = key.indexOf(':');
       const row = Number(key.slice(0, sep));
       const col = Number(key.slice(sep + 1));
+      const colSpan = colSpanForRow(row);
       for (let dr = -1; dr <= 1; dr++) {
-        for (let dc = -1; dc <= 1; dc++) {
+        for (let dc = -colSpan; dc <= colSpan; dc++) {
           const neighbors = grid.get(`${row + dr}:${col + dc}`);
           if (!neighbors) continue;
           for (const i of indices) {

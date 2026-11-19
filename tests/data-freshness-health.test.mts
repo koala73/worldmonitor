@@ -51,7 +51,7 @@ describe('health freshness ingestion', () => {
 
     const weatherGap = getIntelligenceGaps().find(gap => gap.source === 'weather');
 
-    assert.equal(dataFreshness.getSource('weather')?.name, 'Severe Weather Alerts (NWS, ECCC, WMO SWIC)');
+    assert.equal(dataFreshness.getSource('weather')?.name, 'Weather Alerts');
     assert.match(weatherGap?.message ?? '', /NWS, ECCC, or WMO SWIC/);
 
     // The two assertions above are satisfied by DataFreshnessTracker's constructor alone:

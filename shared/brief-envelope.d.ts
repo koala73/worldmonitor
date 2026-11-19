@@ -22,6 +22,17 @@
 
 export const BRIEF_ENVELOPE_VERSION: 4;
 
+/** Version of the localized sibling envelope at brief:l10n:{userId}:{issueSlot}. */
+export const BRIEF_LOCALIZED_ENVELOPE_VERSION: 5;
+
+/** `brief:l10n:${userId}:${issueSlot}` */
+export function briefLocalizedKey(userId: string, issueSlot: string): string;
+
+/** `brief:slots:${userId}`: ZSET of issue slots, scored by write time in ms. */
+export function briefSlotsKey(userId: string): string;
+/** Redis marker account deletion sets before reading the slot index. */
+export function briefErasedKey(userId: string): string;
+
 /**
  * Versions the renderer accepts from Redis on READ. Always contains
  * the current BRIEF_ENVELOPE_VERSION plus any versions still live in
@@ -160,7 +171,9 @@ export interface BriefData {
  * drift incident (PR #3139) for why.
  */
 export interface BriefEnvelope {
-  version: typeof BRIEF_ENVELOPE_VERSION;
+  version: typeof BRIEF_ENVELOPE_VERSION | typeof BRIEF_LOCALIZED_ENVELOPE_VERSION;
+  /** Present only on version 5. A UI language code such as "fr" or "zh-TW". Never "en". */
+  lang?: string;
   /** Unix ms when the envelope was composed. Informational only. */
   issuedAt: number;
   data: BriefData;

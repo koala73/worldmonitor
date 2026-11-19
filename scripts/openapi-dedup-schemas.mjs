@@ -52,8 +52,8 @@ const SCHEMA_SINGLE_KEYS = new Set([
 // cost, so selected groups always reduce the served artifact.
 // The pass stays lossless either way — every transform is resolved back to the
 // source document in tests — so the thresholds only trade emit time for bytes.
-const MIN_SHARED_SCHEMA_BYTES = 48;
-const MIN_GROUP_SAVING_BYTES = 48;
+const MIN_SHARED_SCHEMA_BYTES = 40;
+const MIN_GROUP_SAVING_BYTES = 20;
 
 function pointerSegment(value) {
   return value.replaceAll('~', '~0').replaceAll('/', '~1');
@@ -172,7 +172,7 @@ export function dedupeSharedSchemaSubtrees(spec) {
     .filter((group) => group.length >= 2)
     .map((group) => {
       const ordered = [...group].sort(
-        (a, b) => a.pointer.length - b.pointer.length || a.pointer.localeCompare(b.pointer),
+        (a, b) => a.pointer.length - b.pointer.length || a.pointer.localeCompare(b.pointer, 'en-US'),
       );
       const target = ordered[0];
       const refBytes = Buffer.byteLength(JSON.stringify({ $ref: target.pointer }), 'utf8');
@@ -209,18 +209,81 @@ export function dedupeSharedSchemaSubtrees(spec) {
     stats.groups += 1;
   }
 
+  stats.repointedRefs = repointRefsThroughReplacedNodes(spec);
   stats.bytesFreed = beforeBytes - Buffer.byteLength(JSON.stringify(spec), 'utf8');
   return stats;
 }
 
 /**
+ * Earlier passes leave refs that point INTO a component schema (the China
+ * provenance value refs end in `/classification_confidence/oneOf/0/...`). When
+ * the pass above replaces an ancestor on such a path with a ref to its
+ * byte-identical twin, the old pointer names a path that no longer exists: a
+ * resolver that evaluates JSON Pointer strictly, without following the `$ref`
+ * it meets midway, finds nothing. Re-point each of those refs at the same
+ * position inside the twin, which holds an identical node, so every pointer in
+ * the served document resolves directly. Returns the number re-pointed.
+ */
+function repointRefsThroughReplacedNodes(spec) {
+  const decode = (raw) => raw.replaceAll('~1', '/').replaceAll('~0', '~');
+  const strictTarget = (pointer) => {
+    let node = spec;
+    for (const raw of pointer.replace(/^#\//, '').split('/')) {
+      if (node == null || typeof node !== 'object') return undefined;
+      node = Array.isArray(node) ? node[Number(decode(raw))] : node[decode(raw)];
+    }
+    return node;
+  };
+  // Follow the local refs met along the path; give up after a few hops so a
+  // cycle cannot spin.
+  const throughRefs = (pointer) => {
+    let current = pointer;
+    for (let hop = 0; hop < 8; hop += 1) {
+      if (strictTarget(current) !== undefined) return current;
+      const segments = current.replace(/^#\//, '').split('/');
+      let node = spec;
+      let next = null;
+      for (let i = 0; i < segments.length; i += 1) {
+        if (node && typeof node === 'object' && typeof node.$ref === 'string' && node.$ref.startsWith('#/')) {
+          next = [node.$ref, ...segments.slice(i)].join('/');
+          break;
+        }
+        if (node == null || typeof node !== 'object') return null;
+        node = Array.isArray(node) ? node[Number(decode(segments[i]))] : node[decode(segments[i])];
+      }
+      if (!next) return null;
+      current = next;
+    }
+    return null;
+  };
+  let repointed = 0;
+  const walk = (value) => {
+    if (Array.isArray(value)) {
+      for (const child of value) walk(child);
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    if (typeof value.$ref === 'string' && value.$ref.startsWith('#/') && strictTarget(value.$ref) === undefined) {
+      const resolved = throughRefs(value.$ref);
+      if (resolved && resolved !== value.$ref) {
+        value.$ref = resolved;
+        repointed += 1;
+      }
+    }
+    for (const child of Object.values(value)) walk(child);
+  };
+  walk(spec);
+  return repointed;
+}
+
+/**
  * Component-name prefix for the subtree hoist below. Compact on purpose: the
  * name is paid at every ref, exactly like the `E<status>` response names in
- * openapi-dedup-responses.mjs — `WMShared12` buys back ~19 bytes per site over
+ * openapi-dedup-responses.mjs — `WM12` buys back ~25 bytes per site over
  * a descriptive name, which is most of the yield on the 60-70 byte subtrees
  * this pass exists for.
  */
-export const SHARED_SUBTREE_COMPONENT_PREFIX = 'WMShared';
+export const SHARED_SUBTREE_COMPONENT_PREFIX = 'WM';
 
 /**
  * Collect every Schema Object node that an existing document-local `$ref`
@@ -268,7 +331,7 @@ function refPointerPathNodes(spec) {
  * document is longer than the subtree itself, so an inline-target ref would
  * cost more than the repetition it removes. This pass is the escape hatch for
  * exactly those groups: the subtree moves into `components.schemas` under a
- * compact `WMShared<N>` name and every site, including the first, becomes a
+ * compact `WM<N>` name and every site, including the first, becomes a
  * short ref.
  *
  * Naming follows the dedupeErrorResponses precedent: deterministic (first-seen
@@ -295,7 +358,7 @@ export function dedupeSharedSubtreeComponents(spec) {
   // Same overlap bookkeeping as dedupeSharedSchemaSubtrees, with a named
   // component ref instead of a ref-to-shortest-inline-copy. Unlike that pass,
   // this one also groups $ref nodes: a repeated ref to a long component name,
-  // or a ref carrying a repeated sibling description, becomes a WMShared ref to
+  // or a ref carrying a repeated sibling description, becomes a WM ref to
   // the same content. That adds one resolution hop and is lossless; the
   // contract test resolves the chains back. On 2026-10-15 these groups freed
   // about 7 KB and kept the bundle under SCANNER_BUDGET_BYTES; skipping them
@@ -317,8 +380,15 @@ export function dedupeSharedSubtreeComponents(spec) {
     }
   };
   for (const [name, schema] of Object.entries(schemas)) visit(schema, schemas, name);
+  // Hoisted error responses (dedupeErrorResponses runs first) carry Schema
+  // Objects too, and their envelopes repeat across status codes.
+  for (const response of Object.values(spec.components?.responses ?? {})) {
+    for (const media of Object.values(response?.content ?? {})) {
+      if (media && typeof media === 'object' && media.schema) visit(media.schema, media, 'schema');
+    }
+  }
 
-  // Ref bytes for a name two ordinals wide: `WMShared99`. Selection only needs
+  // Ref bytes for a name two ordinals wide: `WM99`. Selection only needs
   // a stable estimate; the exact per-group saving is recomputed once the group
   // is picked and named.
   const estimatedRefBytes = Buffer.byteLength(

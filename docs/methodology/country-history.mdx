@@ -1,0 +1,74 @@
+---
+title: "Daily country history"
+description: "Daily CII, resilience and selected headline snapshots, with source versions, observation gaps and retention limits."
+---
+
+_Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/corrections)._
+
+Daily country history records what the dashboard observed at capture time.
+It helps you compare a country's scores across days and inspect selected headlines.
+The archive starts when its daily worker is activated. It cannot reconstruct earlier news.
+
+## Snapshot contents
+
+Each UTC date contains a capture time, optional CII and resilience scores, and up to five headlines.
+Each score carries its source observation time and formula identity.
+Headlines retain a title, source, category and HTTP or HTTPS link. The archive stores no article body.
+Selection uses explicit country-name mentions in the English digest headline. It is not a complete event census.
+Ambiguous names require a qualifying alias, such as `Republic of Georgia`, `Guinea Conakry` or `Congo Brazzaville`. This conservative selection can omit relevant headlines.
+News selection covers the preceding 24 hours. A partial digest remains marked `news_partial`.
+
+CII is available for its monitored country set. Resilience uses the published ranking cache, including scored countries outside the headline ranking.
+Missing scores remain absent. An observed numeric zero remains zero.
+The resilience observation time is the ranking publication time, not the observation date of each underlying indicator.
+
+## Comparison limits
+
+Higher CII means more instability. Higher resilience means more capacity.
+They measure different concepts and must not be combined into one risk trend.
+
+Each series stops across missing dates, missing scores or a formula change.
+The response marks these with `ciiVersionBreak` and `resilienceVersionBreak`.
+Compare changes only within a continuous series with the same formula identity.
+The archive does not interpolate missing days or replace them with zero.
+
+No selected headline does not prove that nothing happened. It means the digest selection stored no eligible headline for that country and date.
+An empty archive does not imply a stable country.
+
+## Read history
+
+Use `GET /api/intelligence/v1/get-country-history?country=US&days=30`.
+The `country` parameter is an assigned ISO alpha-2 country code.
+The window includes today in UTC. `days=0` or omitted defaults to seven.
+
+The server clamps the window to the verified caller's entitlement.
+
+| Caller | Maximum window |
+| --- | --- |
+| Anonymous or free | 7 days |
+| Pro or Pro Business | 90 days |
+| API or Enterprise | 365 days |
+
+`requestedDays` reports the requested window. `effectiveDays` reports the clamped window.
+`returnedDays` counts observed points. It can be smaller than `effectiveDays`.
+`allowedDays` reports the account limit, including when the archive is empty.
+Responses use `Cache-Control: no-store` so deeper history cannot leak through a shared cache.
+
+The MCP tool `get_country_history` reads the same cache-backed API with the authenticated caller's identity.
+It accepts `country_code` and `days`. Existing MCP subscription and quota rules apply.
+If a deep result exceeds the output budget, it retains one selected headline per day and adds `events_reduced_for_output_budget`.
+
+## Freshness and activation
+
+The worker runs daily around 00:30 UTC after its Railway service is provisioned.
+It reads existing CII, resilience and news caches. It does not invoke score builders.
+Publication replaces the current date atomically, trims records older than 365 UTC days, and stamps health only after confirmed publication.
+An older overlapping run cannot replace a newer capture.
+
+`upstreamUnavailable=true` means the read failed or the archive has not published.
+`stale=true` means the archive is unavailable or the last successful publication is over 36 hours old.
+The health endpoint reports pending activation before the first publication and detects a stopped cron after activation.
+
+There is no automatic backfill. Existing resilience history covers a different score/time contract and lacks captured headlines.
+Importing it as complete daily snapshots would imply observations the archive never made.
+Existing CII history remains available through its existing tools.

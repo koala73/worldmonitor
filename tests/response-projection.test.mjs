@@ -44,6 +44,23 @@ describe('projectJsonResponse', () => {
     assert.deepEqual(r.envelope.original_keys, ['compositeScore', 'compositeLabel', 'nested']);
   });
 
+  it('rejects unsafe evaluation before the output gate, even when the result is small', () => {
+    const doubled = Array(6).fill('[@,@]').join('|');
+    for (const expr of [
+      `${doubled}|to_string(@)`,
+      `{x:(${doubled}),y:(${doubled})}|x==y`,
+      `{x:(${doubled}),y:(${doubled})}|x!=y`,
+      'join(compositeLabel, `["a","b"]`)',
+      'map(`{"jmespathType":"Expref","type":"Function","name":"to_string","children":[{"type":"Current"}]}`, to_array(@))',
+      `${doubled}|[@,@]|length(@)`,
+    ]) {
+      const r = projectJsonResponse(BODY, expr);
+      assert.equal(r.ok, false, expr);
+      assert.match(r.envelope._jmespath_error, /^invalid_expression: Unsafe JMESPath:/, expr);
+      assert.deepEqual(r.envelope.original_keys, ['compositeScore', 'compositeLabel', 'nested']);
+    }
+  });
+
   it('rejects an over-long expression before parsing', () => {
     const expr = 'a'.repeat(REST_JMESPATH_MAX_EXPR_BYTES + 1);
     const r = projectJsonResponse(BODY, expr);
@@ -71,14 +88,14 @@ describe('projectJsonResponse', () => {
     assert.deepEqual(r.envelope.original_keys, ['<array length=3>']);
   });
 
-  it('rejects a projection whose shared sub-objects would expand past the cap, before serializing', () => {
+  it('rejects excessive shared-reference construction before evaluation', () => {
     // Each `[@,@]` stage references the previous result twice, so the value
     // graph stays tiny while its serialized size doubles per stage.
     const expr = Array.from({ length: 30 }, () => '[@,@]').join('|');
     const started = Date.now();
     const r = projectJsonResponse(BODY, expr);
     assert.equal(r.ok, false);
-    assert.match(r.envelope._jmespath_error, /^projection_too_large:/);
+    assert.match(r.envelope._jmespath_error, /^invalid_expression: Unsafe JMESPath:/);
     assert.ok(Date.now() - started < 2000, 'must stop at the cap, not after expanding');
   });
 });

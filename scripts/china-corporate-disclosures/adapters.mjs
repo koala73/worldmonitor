@@ -1,3 +1,4 @@
+import { retainLastFailure } from '../_last-failure.mjs';
 import {
   assertMetadataResponse,
   errorCodeFor,
@@ -603,9 +604,20 @@ async function fetchSzseAnnouncements(fetchFn, now, {
   // credential -- it is what makes "the fix never engaged" distinguishable from
   // "two distinct exits are both blocked" in the decision log.
   const proxyExitPorts = [];
+  let requestedPage = 1;
   const fail = (error) => {
     const failure = sourceError(errorCodeFor(error), error);
     failure.requestCount = requestCount;
+    if (failure.code === 'REQUEST_BUDGET_EXCEEDED') {
+      failure.requestBudget = {
+        page: requestedPage,
+        directRequests: directRequestCount,
+        proxyRequests: proxyRequestCount,
+        maxRequests: contract.maxRequestsPerRun,
+        maxDirectRequests: contract.maxDirectRequestsPerRun,
+        maxProxyRequests: contract.maxProxyRequestsPerRun,
+      };
+    }
     failure.transportPath = transportPath;
     if (fallbackReason) failure.fallbackReason = fallbackReason;
     if (proxyFailureReason) failure.proxyFailureReason = proxyFailureReason;
@@ -664,6 +676,7 @@ async function fetchSzseAnnouncements(fetchFn, now, {
     return request(pageNum, fetchFn, SZSE_DIRECT_TIMEOUT_MS);
   };
   const fetchPage = async (pageNum) => {
+    requestedPage = pageNum;
     if (transportPath === 'proxy') return requestViaProxy(pageNum);
     try {
       return await requestDirect(pageNum);
@@ -906,6 +919,12 @@ function sourceStates(outcomes, previousSnapshot, previousTransportFailures, gen
       generatedAt,
       contract.transportRecoverySuccessRuns ?? 1,
     );
+    const priorFailure = retainLastFailure(previous?.lastFailure, previousTransportFailures[id]?.lastFailure);
+    const lastFailure = retainLastFailure(priorFailure,
+      transportReliability.status !== 'degraded' ? null : {
+        ...outcome, checkedAt: generatedAt, lastSuccessAt: previous?.lastSuccessAt,
+        errorCode: outcome?.errorCode ?? 'NOT_ATTEMPTED',
+      });
     if (outcome?.ok) {
       return {
         id,
@@ -923,6 +942,7 @@ function sourceStates(outcomes, previousSnapshot, previousTransportFailures, gen
           : {}),
         emptyResultCount,
         transportReliability,
+        lastFailure,
         errorCode: coverageGap ? 'COVERAGE_GAP' : null,
       };
     }
@@ -944,6 +964,7 @@ function sourceStates(outcomes, previousSnapshot, previousTransportFailures, gen
           : {}),
         emptyResultCount,
         transportReliability,
+        lastFailure,
         errorCode: outcome.errorCode ?? (coverageGap ? 'COVERAGE_GAP' : 'PARTIAL_FETCH'),
       };
     }
@@ -963,6 +984,7 @@ function sourceStates(outcomes, previousSnapshot, previousTransportFailures, gen
         : {}),
       emptyResultCount,
       transportReliability,
+      lastFailure,
       errorCode: outcome?.errorCode ?? 'NOT_ATTEMPTED',
     };
   });
@@ -1397,6 +1419,7 @@ export async function fetchChinaCorporateDisclosureSnapshot({
         ok: false,
         requestCount: error?.requestCount ?? requestCount,
         errorCode: errorCodeFor(error),
+        ...(error?.requestBudget ? { requestBudget: error.requestBudget } : {}),
         transportPath: error?.transportPath ?? 'direct',
         ...(error?.fallbackReason ? { fallbackReason: error.fallbackReason } : {}),
         ...(error?.proxyFailureReason
@@ -1434,6 +1457,7 @@ export async function fetchChinaCorporateDisclosureSnapshot({
           ? 'accepted'
           : 'degraded',
       requestCount: source.requestCount,
+      ...(outcome?.requestBudget ? { requestBudget: outcome.requestBudget } : {}),
       ...(source.errorCode
         ? { reason: source.errorCode }
         : reliabilityReason

@@ -28,7 +28,8 @@ describe('refresh listing corroboration', () => {
       repository: 'o/r',
       gh: () => ({ total_count: 1, workflow_runs: [{
         id: 1, run_attempt: 2, status: 'completed', conclusion: 'failure',
-        created_at: '2026-09-14T00:00:00Z', updated_at: '2026-09-24T00:00:00Z',
+        created_at: '2026-09-14T00:00:00Z', run_started_at: '2026-09-23T23:40:00Z',
+        updated_at: '2026-09-24T00:00:00Z',
       }] }),
     });
     const verdict = evaluatePulseFreshness(HAND_REFRESHED, lastRun);
@@ -39,6 +40,40 @@ describe('refresh listing corroboration', () => {
     }, lastRun);
     assert.equal(repaired.alert, false);
     assert.equal(repaired.lastRun.superseded, true);
+  });
+
+  it('treats the merged snapshot a failed run captured as the repair of that run (#9700)', () => {
+    // The 2026-10-26 refresh captured at 04:55, failed verify at 05:17, and its
+    // review PR merged after the test fix. That snapshot is the remedy, yet it
+    // predates the run's completion, so anchoring on completion re-alerted daily.
+    const lastRun = readLastRefreshRun({
+      repository: 'o/r',
+      gh: () => ({ total_count: 1, workflow_runs: [{
+        id: 40271439055, run_attempt: 1, status: 'completed', conclusion: 'failure',
+        created_at: '2026-10-26T04:54:23Z', run_started_at: '2026-10-26T04:54:23Z',
+        updated_at: '2026-10-26T05:17:33Z',
+      }] }),
+    });
+    const merged = {
+      filename: 'crawlable-live-pulse-2026-10-26.json',
+      capturedAt: '2026-10-26',
+      capturedAtMs: Date.parse('2026-10-26T04:55:44.068Z'),
+      ageDays: 0,
+    };
+    const verdict = evaluatePulseFreshness(merged, lastRun);
+    assert.equal(verdict.alert, false);
+    assert.equal(verdict.lastRun.superseded, true);
+  });
+
+  it('falls back to the completion time when the listing omits run_started_at', () => {
+    const lastRun = readLastRefreshRun({
+      repository: 'o/r',
+      gh: () => ({ total_count: 1, workflow_runs: [{
+        id: 1, run_attempt: 2, status: 'completed', conclusion: 'failure',
+        created_at: '2026-09-14T00:00:00Z', updated_at: '2026-09-24T00:00:00Z',
+      }] }),
+    });
+    assert.equal(evaluatePulseFreshness(HAND_REFRESHED, lastRun).lastRun.superseded, false);
   });
   it('still reports a stale snapshot when the workflow listing is unknown', () => {
     const verdict = evaluatePulseFreshness(snapshot(10), { unknown: true });
@@ -230,7 +265,8 @@ describe('pulse freshness reporting', () => {
     const verdict = evaluatePulseFreshness(snapshot(9), { conclusion: 'failure' });
     const result = publishPulseFreshness(verdict, {
       repository: 'koala73/worldmonitor',
-      gh: () => [[{ number: 8339, title: ISSUE_TITLE }]],
+      gh: () => [[{ number: 1, title: ISSUE_TITLE, user: { login: 'outsider' } }],
+        [{ number: 8339, title: ISSUE_TITLE, user: { login: 'github-actions[bot]' } }]],
       ghPost: (args, payload) => { calls.push({ args, payload }); return {}; },
     });
 
@@ -272,7 +308,8 @@ describe('pulse freshness reporting', () => {
     const verdict = evaluatePulseFreshness(HAND_REFRESHED, FAILED_BEFORE_REFRESH);
     const result = publishPulseFreshness(verdict, {
       repository: 'koala73/worldmonitor',
-      gh: () => [[{ number: 8417, title: ISSUE_TITLE }]],
+      gh: () => [[{ number: 1, title: ISSUE_TITLE, user: { login: 'outsider' } }],
+        [{ number: 8417, title: ISSUE_TITLE, user: { login: 'github-actions[bot]' } }]],
       ghPost: (args, payload) => { calls.push({ args, payload }); return {}; },
     });
 
@@ -296,6 +333,26 @@ describe('pulse freshness reporting', () => {
     });
     assert.deepEqual(result, { alert: false });
     assert.equal(posted, false);
+  });
+
+  it('never updates, comments on, or closes an outside or unidentified issue', () => {
+    for (const user of [{ login: 'outsider' }, undefined]) {
+      for (const alert of [true, false]) {
+        const calls = [];
+        const verdict = evaluatePulseFreshness(snapshot(alert ? 9 : 1), { conclusion: 'success' });
+        const result = publishPulseFreshness(verdict, {
+          repository: 'koala73/worldmonitor',
+          gh: () => [[{ number: 42, title: ISSUE_TITLE, user }]],
+          ghPost: (args, payload) => { calls.push({ args, payload }); return {}; },
+        });
+        assert.equal(result.action, alert ? 'created' : undefined);
+        assert.equal(calls.length, alert ? 1 : 0);
+        if (alert) {
+          assert.ok(calls[0].args.includes('POST'));
+          assert.ok(calls[0].args.includes('repos/koala73/worldmonitor/issues'));
+        }
+      }
+    }
   });
 
   it('tells the reader how to fix it, including the keyless-freeze trap', () => {

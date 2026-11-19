@@ -1,3 +1,6 @@
+// These source checks pin CI build/test ordering and built-output guard wiring
+// (#8690, section 2).
+// The spawned probes exercise guard behavior, but cannot verify workflow ordering.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -118,8 +121,10 @@ describe('built-output guard contract', () => {
     // it in this sequence keeps both contracts — the data test still runs
     // against the dist the step above just built, and the gate cannot drift
     // to a position where dist/ might be stale or absent.
+    // The /pro build is build:pro's build half; its install half runs on a
+    // dependency-cache miss earlier in the job.
     const expectedSequence = [
-      '        run: npm run build:pro',
+      '        run: npm --prefix pro-test run build',
       '      - name: Build dashboard artifacts for built-output tests',
       '        run: VITE_VARIANT=full ./node_modules/.bin/vite build',
       '      - name: Client bundle size budget (#7111, #7119)',

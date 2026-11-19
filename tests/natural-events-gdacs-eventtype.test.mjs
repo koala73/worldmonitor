@@ -124,6 +124,19 @@ test('dedupes an event that GDACS lists under two types by eventtype+eventid, no
   assert.deepEqual(events.map((e) => e.id).sort(), ['gdacs-EQ-7', 'gdacs-FL-7']);
 });
 
+test('GDACS records keep the alert level, which natural.hazard webhook scopes filter on', async () => {
+  const { fetchFn } = gdacsStub({
+    FL: [feature('FL', 2, 'Orange')],
+    TC: [feature('TC', 4, 'Red')],
+  });
+
+  const { events } = await fetchGdacs(fetchFn);
+
+  assert.equal(events.find((e) => e.id === 'gdacs-FL-2').alertLevel, 'Orange');
+  assert.equal(events.find((e) => e.id === 'gdacs-TC-4').alertLevel, 'Red');
+  assert.ok(events.find((e) => e.id === 'gdacs-TC-4').title.startsWith('\u{1F534} '), 'the title prefix the dashboard renders is unchanged');
+});
+
 // ── the reader: fetchNaturalEvents + publish/after-publish ─────────────────
 
 function hkoCoverage(dataAvailable = true) {
@@ -285,4 +298,31 @@ test('a GDACS gap during an NHC failure is reported, not hidden behind the NHC g
   const verdict = classify(data);
   assert.notEqual(verdict.status, 'ok');
   assert.equal(verdict.sourceFailurePendingUntil, undefined, 'not parked in the NHC pending bucket');
+});
+
+// Since 07:30 UTC on 2026-11-03 GDACS's F5 bot defense answers any client that
+// claims to be a browser with `200 text/html`, a 5.6 KB JavaScript challenge
+// (TSPD, `window["bobcmn"]`), for every event type. The same request with a
+// non-browser User-Agent gets the JSON list (both probed live that day).
+test('identifies itself honestly so the GDACS bot defense serves JSON', async () => {
+  const userAgents = [];
+  const fetchFn = async (input, init = {}) => {
+    const url = new URL(String(input));
+    const ua = new Headers(init.headers).get('user-agent') ?? '';
+    userAgents.push(ua);
+    if (/Mozilla\//.test(ua)) {
+      return new Response('<html><noscript>Please enable JavaScript</noscript><script>window["bobcmn"]="TSPD"</script></html>', {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      });
+    }
+    const eventtype = url.searchParams.get('eventtype') || url.searchParams.get('eventlist');
+    return Response.json({ type: 'FeatureCollection', features: eventtype === 'EQ' ? [feature('EQ', 7, 'Orange')] : [] });
+  };
+
+  const result = await fetchGdacs(fetchFn, { now: NOW });
+
+  assert.deepEqual(result.failedTypes, []);
+  assert.equal(userAgents.length, GDACS_TYPES.length);
+  for (const ua of userAgents) assert.match(ua, /^WorldMonitor\//);
 });

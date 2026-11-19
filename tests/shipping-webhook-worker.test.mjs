@@ -4,20 +4,19 @@ import { describe, it } from 'node:test';
 
 import { THREAT_LEVEL, aisComponent, warningComponent } from '../server/worldmonitor/supply-chain/v1/_scoring.mjs';
 
+import { fakeRedis } from './_lib/fake-webhook-redis.mjs';
 import {
   BACKFILL_CURSOR_KEY,
   CHOKEPOINT_STATUS_KEY,
   CHOKEPOINT_STATUS_RPC_URL,
   LOCK_KEY,
   LOCK_RENEW_SCRIPT,
-  PRUNE_SCRIPT,
+  MAX_DELIVERIES_PER_OWNER_PER_TICK,
   RECORD_CAS_SCRIPT,
   RISK_SCORES_KEY,
   RISK_SCORES_STALE_KEY,
   RISK_SURGE_RULE,
   SCORE_SOURCE_MAX_POINTS,
-  STATE_WRITE_SCRIPT,
-  STATUS_WRITE_SCRIPT,
   THREAT_POINTS_BY_TIER,
   WORKER_ACTIVATION_KEY,
   WORKER_META_KEY,
@@ -474,90 +473,9 @@ describe('reason precedence', () => {
   }
 });
 
-function fakeRedis(initial = {}) {
-  const store = new Map(Object.entries(initial));
-  const ttl = new Map();
-  const log = [];
-  const run = (command) => {
-    const [verb, key, ...args] = command;
-    switch (verb) {
-      case 'GET': return store.get(key) ?? null;
-      case 'SET': {
-        if (args.includes('NX') && store.has(key)) return null;
-        store.set(key, args[0]);
-        if (args[1] === 'EX') ttl.set(key, Number(args[2]));
-        else if (!args.includes('KEEPTTL')) ttl.delete(key);
-        return 'OK';
-      }
-      case 'SMEMBERS': return [...(store.get(key) ?? new Set())];
-      case 'SADD': {
-        const set = store.get(key) ?? new Set();
-        let added = 0;
-        for (const member of args) if (!set.has(member)) { set.add(member); added += 1; }
-        store.set(key, set);
-        return added;
-      }
-      case 'SREM': {
-        const set = store.get(key);
-        if (!set?.delete(args[0])) return 0;
-        if (set.size === 0) store.delete(key);
-        return 1;
-      }
-      case 'DEL': return store.delete(key) ? 1 : 0;
-      case 'HGETALL': return Object.entries(store.get(key) ?? {}).flat();
-      case 'HSET': {
-        const hash = store.get(key) ?? {};
-        for (let i = 0; i < args.length; i += 2) hash[args[i]] = args[i + 1];
-        store.set(key, hash);
-        return args.length / 2;
-      }
-      case 'EXPIRE': ttl.set(key, Number(args[0])); return store.has(key) ? 1 : 0;
-      case 'SCAN': {
-        const keys = [...store.keys()].filter((name) => /^webhook:sub:.+:v1$/.test(name));
-        return ['0', keys];
-      }
-      case 'EVAL': {
-        const script = key;
-        const keys = args.slice(1, 1 + Number(args[0]));
-        const argv = args.slice(1 + Number(args[0]));
-        if (script === LOCK_RENEW_SCRIPT) return store.get(keys[0]) === argv[0] ? 1 : 0;
-        if (store.get(keys[0]) !== argv[0]) return -1;
-        if (script === PRUNE_SCRIPT) {
-          if (store.has(keys[1])) return 0;
-          store.get(keys[2])?.delete(argv[1]);
-          store.delete(keys[3]);
-          return 1;
-        }
-        if (script === STATE_WRITE_SCRIPT) {
-          if (!store.has(keys[1])) return 0;
-          const hash = store.get(keys[2]) ?? {};
-          for (let i = 2; i < argv.length; i += 2) hash[argv[i]] = argv[i + 1];
-          store.set(keys[2], hash);
-          ttl.set(keys[2], Number(argv[1]));
-          return 1;
-        }
-        if (script === STATUS_WRITE_SCRIPT) {
-          store.set(keys[1], argv[1]);
-          ttl.set(keys[1], Number(argv[2]));
-          store.set(keys[2], argv[3]);
-          ttl.set(keys[2], Number(argv[4]));
-          if (argv[5] === '1' && !store.has(keys[3])) store.set(keys[3], '1');
-          return 1;
-        }
-        assert.equal(script, RECORD_CAS_SCRIPT);
-        if (store.get(keys[1]) !== argv[1]) return 0;
-        store.set(keys[1], argv[2]);
-        return 1;
-      }
-      default: throw new Error(`unexpected command ${verb}`);
-    }
-  };
-  const redis = async (commands) => {
-    log.push(...commands);
-    return commands.map((command) => ({ result: run(command) }));
-  };
-  return { redis, store, ttl, log };
-}
+// The in-memory pipeline lives in tests/_lib/fake-webhook-redis.mjs so the
+// occurrence-event suite (tests/shipping-webhook-worker-occurrences.test.mjs)
+// drives the same fenced scripts.
 
 const TOKEN = 'run-1';
 
@@ -624,6 +542,52 @@ const tick = (fake, deliver, extra = {}) => runTick({
 });
 
 describe('runTick', () => {
+  for (const accountQuota of [false, true]) {
+    it(`bounds slow successful fanout and preserves other owners and deferred state (${accountQuota ? 'account' : 'legacy key'})`, async () => {
+      const fake = seeded();
+      fake.store.delete(RECORD_KEY);
+      const ids = Array.from({ length: 100 }, (_, i) => `wh_mallory_${i}`);
+      for (const [i, id] of ids.entries()) {
+        fake.store.set(`webhook:sub:${id}:v1`, JSON.stringify(record({
+          subscriberId: id,
+          ownerTag: accountQuota ? `rotated-key-${i}` : 'mallory',
+          ...(accountQuota ? { quotaTag: 'mallory-account' } : {}),
+        })));
+      }
+      fake.store.set(RECORD_KEY, JSON.stringify(record({ ownerTag: 'alice' })));
+      fake.store.set('webhook:all:v1', new Set([...ids, SUB]));
+      const sent = [];
+      let aliceSent;
+      const alice = new Promise(resolve => { aliceSent = resolve; });
+      let release;
+      const slow = new Promise(resolve => { release = resolve; });
+      const deliver = async rec => {
+        sent.push(rec.subscriberId);
+        if (rec.ownerTag === 'alice') aliceSent();
+        else await slow;
+        return { ok: true, status: 200 };
+      };
+      const running = tick(fake, deliver);
+      // Alice must start while Mallory's successful callbacks are still blocked.
+      await Promise.race([alice, new Promise((_, reject) => {
+        const timer = setTimeout(() => reject(new Error('Alice was starved')), 1000);
+        timer.unref();
+      })]);
+      assert.ok(sent.indexOf(SUB) < 4);
+      release();
+      const summary = await running;
+      assert.equal(summary.deliveries, MAX_DELIVERIES_PER_OWNER_PER_TICK + 1);
+      assert.equal(summary.ownerBudgetDeferred, 100 - MAX_DELIVERIES_PER_OWNER_PER_TICK);
+      const deferredId = ids.find(id => !sent.includes(id));
+      const pending = JSON.parse(fake.store.get(stateKey(deferredId)).suez).pending;
+      assert.ok(pending.deliveryId);
+      const retry = deliverStub([]);
+      await tick(fake, retry.deliver);
+      const delivery = retry.sent.find(({ rec }) => rec.subscriberId === deferredId);
+      assert.equal(delivery.deliveryId, pending.deliveryId);
+    });
+  }
+
   it('delivers, disarms the chokepoint, and records the outcome on the subscriber', async () => {
     const fake = seeded();
     const { sent, deliver } = deliverStub([{ ok: true, status: 202 }]);
@@ -884,10 +848,15 @@ describe('runTick', () => {
       recordCount: 1,
       sourceState: 'ok',
       riskSourceState: 'error',
+      fanoutState: 'ok',
+      hazardSourceState: 'error',
       deliveries: 1,
+      ownerBudgetDeferred: 0,
       failures: 0,
       deactivated: 0,
       pruned: 0,
+      occurrences: { drained: 0, unreadable: 0, duplicates: 0, matched: 0, suppressed: 0, deferred: 0, expired: 0, pruned: 0 },
+      hazards: { feedIds: 0, new: 0, bootstrapped: 0, stale: 0, closed: 0, crossSource: 0 },
       scoresFetchedAt: '2026-10-17T11:58:00.000Z',
       riskFetchedAt: null,
     });

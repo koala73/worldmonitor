@@ -30,6 +30,20 @@
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { findReloadBlockingModal, type ModalDocumentLike, type ReloadBlocker } from '@/utils/open-modal';
 
+// Captured before main() replaces window.fetch. check() catches the promise
+// it awaits. A wrapper on the live fetch can also attach
+// promise.then(onFulfilled) and leave that derived promise to reject.
+let fetchBeforeWindowPatches: typeof globalThis.fetch | undefined =
+  typeof globalThis.fetch === 'function' ? globalThis.fetch : undefined;
+
+export function _setFetchBeforeWindowPatchesForTests(
+  next: typeof globalThis.fetch | undefined,
+): typeof globalThis.fetch | undefined {
+  const previous = fetchBeforeWindowPatches;
+  fetchBeforeWindowPatches = next;
+  return previous;
+}
+
 interface EventTargetLike {
   addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => void;
   removeEventListener: (type: string, listener: EventListenerOrEventListenerObject) => void;
@@ -151,11 +165,9 @@ const DEFAULT_WEDGE_AFTER_DEFERRALS = 10;
  */
 export function installStaleBundleCheck(options: StaleBundleCheckOptions = {}): () => void {
   const currentHash = options.currentHash ?? (typeof __BUILD_HASH__ !== 'undefined' ? __BUILD_HASH__ : 'dev');
-  // Arrow-function wrapper instead of fetch.bind(globalThis) (banned per
-  // AGENTS.md §Critical Conventions). Same effect — preserves the global
-  // `this` for fetch — without the brittle .bind() form.
-  const fetchImpl: typeof globalThis.fetch =
-    options.fetch ?? ((...args) => globalThis.fetch(...args));
+  const fetchImpl: typeof globalThis.fetch = options.fetch
+    ?? fetchBeforeWindowPatches
+    ?? ((...args) => globalThis.fetch(...args));
   const eventTarget = options.eventTarget ?? window;
   const documentTarget = options.documentTarget ?? (typeof document !== 'undefined' ? document : undefined);
   const setIntervalImpl = options.setInterval ?? ((cb: () => void, ms: number) => globalThis.setInterval(cb, ms));

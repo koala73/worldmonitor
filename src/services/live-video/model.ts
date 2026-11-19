@@ -138,7 +138,8 @@ export type FailureOutcome =
   | { readonly kind: 'hls-http'; readonly status: number }
   | { readonly kind: 'hls-fatal'; readonly detail: string };
 
-export type UnverifiableReason = 'player-api-blocked' | 'player-api-silent' | 'live-signal-missing';
+/** 'not-started': a ready, live stream that never began playing; the viewer can start it themselves. */
+export type UnverifiableReason = 'player-api-blocked' | 'player-api-silent' | 'live-signal-missing' | 'not-started';
 
 export type AttemptVerdict =
   | { readonly verdict: 'pending' }
@@ -152,6 +153,10 @@ export type SettledVerdict = Exclude<AttemptVerdict, { verdict: 'pending' }>;
 export const LIVE_VIDEO_TIMING = {
   pollMs: 1_000,
   verdictDeadlineMs: 15_000,
+  /** With no frame (YouTube) or no manifest (HLS) by now, nothing is coming: move to the next source. */
+  nothingLoadedDeadlineMs: 8_000,
+  /** A ready, live stream still not playing after this long offers the viewer a play control. */
+  tapToPlayMs: 3_000,
   channelEmptyGraceMs: 5_000,
   /** How long isLive=false must hold while playing before the video counts as an ended recording. */
   recordingConfirmMs: 2_000,
@@ -186,7 +191,7 @@ function playedThroughConfirmWindow(durations: readonly DurationSample[]): boole
  *  video id + isLive false, playing through the confirm window → recording
  *  channel embed ready with no video for the grace period → failed(channel-not-live)
  *  deadline: frame loaded but never ready        → unverifiable(player-api-silent)
- *            isLive true but never played        → failed(not-started)
+ *            isLive true but never played        → failed(not-started), or unverifiable(not-started) when holding
  *            isLive missing                      → unverifiable(live-signal-missing)
  *            otherwise                           → failed(timeout)
  *  hls: http/fatal failure                       → failed(hls-http / hls-fatal)
@@ -195,17 +200,33 @@ function playedThroughConfirmWindow(durations: readonly DurationSample[]): boole
  *       live manifest + playback unchecked       → live (the Node checker has only the manifest)
  *       deadline: live manifest, playback stalled → failed(not-started)
  *                 otherwise                      → failed(timeout)
+ *       no manifest at nothingLoadedDeadlineMs   → failed(timeout)
  * Duration never decides live: a live stream's getDuration() stays flat while it plays.
  */
-export function classifyAttempt(observation: PlayerObservation): AttemptVerdict {
+export interface ClassifyOptions {
+  /**
+   * A ready, live stream that never started becomes unverifiable(not-started), which the viewer can start
+   * themselves, instead of failed(not-started), which moves on. For the last source of a chain only.
+   */
+  readonly holdUnstarted?: boolean;
+}
+
+function unstarted(options: ClassifyOptions): AttemptVerdict {
+  return options.holdUnstarted ? { verdict: 'unverifiable', reason: 'not-started' } : failed({ kind: 'not-started' });
+}
+
+export function classifyAttempt(observation: PlayerObservation, options: ClassifyOptions = {}): AttemptVerdict {
   if (observation.transport === 'hls') {
     const { failure, manifest, progress, elapsedMs } = observation;
     if (failure?.kind === 'http') return failed({ kind: 'hls-http', status: failure.status });
     if (failure?.kind === 'fatal') return failed({ kind: 'hls-fatal', detail: failure.detail });
     if (manifest === 'vod') return { verdict: 'recording', video: null };
     if (manifest === 'live' && (progress === 'advancing' || progress === 'unchecked')) return { verdict: 'live', video: null };
+    if (manifest === 'unknown' && progress === 'stalled' && elapsedMs >= LIVE_VIDEO_TIMING.nothingLoadedDeadlineMs) {
+      return failed({ kind: 'timeout' });
+    }
     if (elapsedMs < LIVE_VIDEO_TIMING.verdictDeadlineMs) return PENDING;
-    return manifest === 'live' && progress === 'stalled' ? failed({ kind: 'not-started' }) : failed({ kind: 'timeout' });
+    return manifest === 'live' && progress === 'stalled' ? unstarted(options) : failed({ kind: 'timeout' });
   }
   if (observation.api === 'blocked') return { verdict: 'unverifiable', reason: 'player-api-blocked' };
 
@@ -220,15 +241,44 @@ export function classifyAttempt(observation: PlayerObservation): AttemptVerdict 
     return failed({ kind: 'channel-not-live' });
   }
 
+  if (!frameLoaded && readyAtMs === null && elapsedMs >= LIVE_VIDEO_TIMING.nothingLoadedDeadlineMs) {
+    return failed({ kind: 'timeout' });
+  }
+
   if (elapsedMs >= LIVE_VIDEO_TIMING.verdictDeadlineMs) {
     if (readyAtMs === null) {
       return frameLoaded ? { verdict: 'unverifiable', reason: 'player-api-silent' } : failed({ kind: 'timeout' });
     }
-    if (video?.videoId && video.isLive === true) return failed({ kind: 'not-started' });
+    if (video?.videoId && video.isLive === true) return unstarted(options);
     if (video?.videoId && video.isLive === undefined) return { verdict: 'unverifiable', reason: 'live-signal-missing' };
     return failed({ kind: 'timeout' });
   }
   return PENDING;
+}
+
+export interface ConnectingHint {
+  /** The player itself is up, so its own controls can be reached. */
+  readonly ready: boolean;
+  /** Ready and live on paper but not playing for tapToPlayMs: offer the viewer a play control. */
+  readonly tapToPlay: boolean;
+}
+
+/** What a panel may show while a verdict is still pending. Never decides live, failed or offline. */
+export function connectingHint(observation: PlayerObservation): ConnectingHint {
+  if (observation.transport === 'hls') {
+    const { manifest, progress, elapsedMs } = observation;
+    return {
+      ready: manifest !== 'unknown',
+      tapToPlay: manifest === 'live' && progress === 'stalled' && elapsedMs >= LIVE_VIDEO_TIMING.tapToPlayMs,
+    };
+  }
+  if (observation.api === 'blocked' || observation.readyAtMs === null) return { ready: false, tapToPlay: false };
+  const { video, durations, elapsedMs, readyAtMs } = observation;
+  return {
+    ready: true,
+    tapToPlay: !!video?.videoId && video.isLive !== false && durations.length === 0
+      && elapsedMs - readyAtMs >= LIVE_VIDEO_TIMING.tapToPlayMs,
+  };
 }
 
 export type SourceOrigin = 'builtin' | 'custom';
@@ -367,7 +417,9 @@ export type ChainState = ChainProgress & (
 export type ChainEvent =
   | { readonly type: 'verdict'; readonly verdict: SettledVerdict }
   | { readonly type: 'live-lost' }
-  | { readonly type: 'retry' };
+  | { readonly type: 'retry' }
+  /** The viewer started a held (unverified, not-started) stream: verify it again from the top of its clock. */
+  | { readonly type: 'resume' };
 
 export type ChainEffect =
   | { readonly type: 'mount'; readonly index: number }
@@ -437,12 +489,22 @@ export function startChain(parsed: ParsedSource, recentFailureKeys: ReadonlySet<
  *  connecting + silent player → built-in: next candidate or offline; user-added: unverified, keep
  *  connecting + blocked API or missing live signal → an untried HLS candidate, else unverified, keep
  *                               (the signal is missing for every YouTube video, so trying the next one cannot help)
+ *  connecting + not-started   → unverified, keep (the last source only; the viewer can start it)
+ *  unverified(not-started) + resume → connecting, same source (the viewer started it; verify again)
  *  live + live-lost           → re-resolve from the top once; again inside the relock window → offline(stream-ended)
  *  settled + retry            → start over (the caller clears failure memory)
  *  anything else              → unchanged, keep
  */
 export function advanceChain(state: ChainState, event: ChainEvent, parsed: ParsedSource, nowMs: number): ChainStep {
   const unchanged: ChainStep = { state, effect: KEEP };
+  if (event.type === 'resume') {
+    if (state.phase !== 'unverified' || state.reason !== 'not-started') return unchanged;
+    const { index } = state;
+    return {
+      state: { order: state.order, attempts: state.attempts.slice(0, -1), liveLostAtMs: state.liveLostAtMs, phase: 'connecting', index },
+      effect: KEEP,
+    };
+  }
   if (event.type === 'retry') return state.phase === 'connecting' ? unchanged : startChain(parsed, new Set());
 
   if (event.type === 'live-lost') {

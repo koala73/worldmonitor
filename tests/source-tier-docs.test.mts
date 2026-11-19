@@ -71,9 +71,10 @@ describe('published tier tables match the source tables', () => {
     );
   });
 
-  it('docs/signal-intelligence.mdx: every example resolves at its tier', () => {
-    const rows = tierTable(read('docs/signal-intelligence.mdx'), '### Source Tiers (Authority Ranking)');
-    assertExamplesResolve(rows, 0, /,/, 'docs/signal-intelligence.mdx');
+  it('docs/signal-intelligence/sources-context-and-aggregation.mdx: every example resolves at its tier', () => {
+    const page = 'docs/signal-intelligence/sources-context-and-aggregation.mdx';
+    const rows = tierTable(read(page), '### Source Tiers (Authority Ranking)');
+    assertExamplesResolve(rows, 0, /,/, page);
   });
 });
 

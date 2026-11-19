@@ -18,7 +18,7 @@ describe('authentication', () => {
     nock(BASE_URL, {
       reqheaders: {
         [AUTH_HEADER]: 'wm_0123456789abcdef0123456789abcdef01234567',
-        'user-agent': 'worldmonitor-zapier/1.1',
+        'user-agent': 'worldmonitor-zapier/1.2',
       },
     })
       .get(PATHS.countryRisk)

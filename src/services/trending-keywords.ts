@@ -13,6 +13,7 @@ import {
   DEFAULT_MIN_SPIKE_COUNT,
   DEFAULT_SPIKE_MULTIPLIER,
   MIN_SPIKE_SOURCE_COUNT,
+  MAX_TERM_TITLE_CHARS,
   MIN_TOKEN_LENGTH,
   ROLLING_WINDOW_MS,
   buildBaseTermCandidates,
@@ -42,6 +43,9 @@ interface StoredHeadline {
   link: string;
   publishedAt: number;
   ingestedAt: number;
+  // Lower-cased `source|title`, built once per headline: every term of a
+  // title shares this object instead of re-keying the title per term.
+  dedupeKey: string;
 }
 
 interface TermCandidate {
@@ -182,11 +186,22 @@ function getBlockedTermSet(config: TrendingConfig): Set<string> {
   ]);
 }
 
-function normalizeEntityType(type: string): string {
-  return type.replace(/^[BI]-/, '').trim().toUpperCase();
+function normalizeEntityType(type: unknown): string {
+  if (typeof type !== 'string') {
+    return '';
+  }
+
+  return type
+    .replace(/^[BI]-/i, '')
+    .trim()
+    .toUpperCase();
 }
 
-function normalizeMLEntityText(text: string): string {
+function normalizeMLEntityText(text: unknown): string {
+  if (typeof text !== 'string') {
+    return '';
+  }
+
   return text
     .replace(/^##/, '')
     .replace(/\s+/g, ' ')
@@ -210,16 +225,6 @@ function collectMLEntities(rawEntities: MLEntity[] | undefined): string[] {
   return entities;
 }
 
-function dedupeEntityTerms(entities: string[]): string[] {
-  const deduped = new Map<string, string>();
-  for (const entity of entities) {
-    const key = toTermKey(entity);
-    if (!key || deduped.has(key)) continue;
-    deduped.set(key, entity);
-  }
-  return Array.from(deduped.values());
-}
-
 async function extractMLEntitiesForTexts(texts: string[]): Promise<string[][]> {
   if (!mlWorker.isAvailable || texts.length === 0) {
     return texts.map(() => []);
@@ -234,22 +239,6 @@ async function extractMLEntitiesForTexts(texts: string[]): Promise<string[][]> {
     }
   }
   return entitiesByText;
-}
-
-export async function extractEntitiesWithML(text: string): Promise<string[]> {
-  const regexEntities = extractEntities(text);
-  if (!mlWorker.isAvailable) return dedupeEntityTerms(regexEntities);
-
-  try {
-    const mlEntitiesByText = await extractMLEntitiesForTexts([text]);
-    return dedupeEntityTerms([
-      ...regexEntities,
-      ...(mlEntitiesByText[0] ?? []),
-    ]);
-  } catch (error) {
-    console.debug('[TrendingKeywords] ML entity extraction failed, using regex entities only:', error);
-    return dedupeEntityTerms(regexEntities);
-  }
 }
 
 function headlineKey(headline: TrendingHeadlineInput): string {
@@ -306,9 +295,8 @@ function dedupeHeadlines(headlines: StoredHeadline[]): StoredHeadline[] {
   const seen = new Set<string>();
   const unique: StoredHeadline[] = [];
   for (const headline of headlines) {
-    const key = `${headline.source}|${headline.title}`.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
+    if (seen.has(headline.dedupeKey)) continue;
+    seen.add(headline.dedupeKey);
     unique.push(headline);
   }
   return unique;
@@ -350,6 +338,7 @@ function recordTermCandidates(
   blockedTerms: Set<string>
 ): boolean {
   let addedAny = false;
+  let stored: StoredHeadline | undefined;
 
   for (const [term, meta] of termCandidates) {
     if (blockedTerms.has(term)) continue;
@@ -370,13 +359,15 @@ function recordTermCandidates(
     }
 
     record.timestamps.push(now);
-    record.headlines.push({
+    stored ??= {
       title: headline.title,
       source: headline.source,
       link: headline.link ?? '',
       publishedAt: effectivePubDateMs(headline),
       ingestedAt: now,
-    });
+      dedupeKey: `${headline.source}|${headline.title}`.toLowerCase(),
+    };
+    record.headlines.push(stored);
     addedAny = true;
   }
 
@@ -553,7 +544,8 @@ async function enrichWithMLEntities(headlines: PendingMLEnrichmentHeadline[], in
   if (headlines.length === 0 || !mlWorker.isAvailable) return;
 
   try {
-    const texts = headlines.map(entry => entry.headline.title);
+    // Same bound as base-term extraction (buildBaseTermCandidates).
+    const texts = headlines.map(entry => entry.headline.title.slice(0, MAX_TERM_TITLE_CHARS));
     const mlEntitiesByText = await extractMLEntitiesForTexts(texts);
     const config = readConfig();
     const blockedTerms = getBlockedTermSet(config);
@@ -651,14 +643,6 @@ export function suppressTrendingTerm(term: string): TrendingConfig {
   const blocked = new Set(config.blockedTerms);
   blocked.add(toTermKey(term));
   return updateTrendingConfig({ blockedTerms: Array.from(blocked) });
-}
-
-export function unsuppressTrendingTerm(term: string): TrendingConfig {
-  const config = readConfig();
-  const normalized = toTermKey(term);
-  return updateTrendingConfig({
-    blockedTerms: config.blockedTerms.filter(entry => toTermKey(entry) !== normalized),
-  });
 }
 
 export function getTrackedTermCount(): number {

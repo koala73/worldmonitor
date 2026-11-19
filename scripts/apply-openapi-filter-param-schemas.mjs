@@ -20,10 +20,60 @@ function quotedList(values) {
 
 export const OPENAPI_FILTER_PARAM_SCHEMA_OVERRIDES = [
   {
+    path: '/api/displacement/v1/get-cross-border-movements',
+    method: 'get',
+    name: 'route',
+    schema: { type: 'string', maxLength: 120 },
+  },
+  {
     path: '/api/news/v1/list-country-headlines',
     method: 'get',
     name: 'country_codes',
     schema: { type: 'array', minItems: 1, maxItems: 250, items: { type: 'string' } },
+  },
+  // ListNewsPool: the request validator caps these (list_news_pool.proto).
+  {
+    path: '/api/news/v1/list-news-pool',
+    method: 'get',
+    name: 'languages',
+    schema: { type: 'array', maxItems: 8, items: { type: 'string' } },
+  },
+  {
+    path: '/api/news/v1/list-news-pool',
+    method: 'get',
+    name: 'editions',
+    schema: { type: 'array', maxItems: 8, items: { type: 'string' } },
+  },
+  {
+    path: '/api/news/v1/list-news-pool',
+    method: 'get',
+    name: 'category',
+    schema: { type: 'string', maxLength: 32 },
+  },
+  // ListSourceItems: the request validator caps these (list_source_items.proto).
+  {
+    path: '/api/news/v1/list-source-items',
+    method: 'get',
+    name: 'editions',
+    schema: { type: 'array', maxItems: 8, items: { type: 'string' } },
+  },
+  {
+    path: '/api/news/v1/list-source-items',
+    method: 'get',
+    name: 'category',
+    schema: { type: 'string', minLength: 1, maxLength: 32 },
+  },
+  {
+    path: '/api/news/v1/list-source-items',
+    method: 'get',
+    name: 'sources',
+    schema: { type: 'array', minItems: 1, maxItems: 24, items: { type: 'string', maxLength: 120 } },
+  },
+  {
+    path: '/api/news/v1/list-source-items',
+    method: 'get',
+    name: 'lang',
+    schema: { type: 'string', maxLength: 8 },
   },
   {
     path: '/api/infrastructure/v1/get-bootstrap-data',
@@ -236,6 +286,7 @@ function schemaLines(schema, indent = 18, name = 'schema') {
   if (Number.isInteger(schema.maxItems)) lines.push(`${pad}maxItems: ${schema.maxItems}`);
   if (Number.isInteger(schema.minItems)) lines.push(`${pad}minItems: ${schema.minItems}`);
   if (Number.isInteger(schema.minLength)) lines.push(`${pad}minLength: ${schema.minLength}`);
+  if (Number.isInteger(schema.maxLength)) lines.push(`${pad}maxLength: ${schema.maxLength}`);
   if (schema.items) lines.push(...schemaLines(schema.items, indent + 2, 'items'));
   return lines;
 }

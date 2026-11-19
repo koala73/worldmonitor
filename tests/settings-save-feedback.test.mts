@@ -32,18 +32,14 @@ function restoreGlobal(name: 'document' | 'localStorage' | 'requestAnimationFram
   else Object.defineProperty(globalThis, name, { configurable: true, value, writable: true });
 }
 
-type PreferenceChangeHandler = (
-  target: HTMLInputElement,
-  container: HTMLElement,
-  host: { isDesktopApp: boolean },
-) => boolean | Promise<boolean>;
+type PreferenceSectionId = 'display' | 'map' | 'ai' | 'video' | 'sync';
 
 interface PreferencesModule {
-  handlePreferenceChange: PreferenceChangeHandler;
-  renderPreferences: (host: {
+  renderPreferenceSection: (id: PreferenceSectionId, host: {
     isDesktopApp: boolean;
     onSettingSaved?: () => void;
   }) => {
+    html: string;
     attach: (container: HTMLElement) => () => void;
   };
 }
@@ -109,7 +105,7 @@ async function loadRealChangeLanguage(): Promise<ChangeLanguage> {
     ['i18next-browser-languagedetector', 'export default class LanguageDetector { addDetector(){} }'],
     ['@/bootstrap/sentry-defer', 'export function enqueueSentryCall(){}'],
     ['@/shared/language-tags', 'export function resolveLanguageTag(value){ return value; }'],
-    ['@/utils/i18n-url', 'export function readQueryLanguage(){} export function stripQueryLanguage(value){ return value; }'],
+    ['@/utils/i18n-url', 'export const EXPLICIT_LOCALE_KEY = "wm-locale-explicit"; export function readQueryLanguage(){} export function stripQueryLanguage(value){ return value; }'],
   ]);
   const module = await loadBundledModule<{ changeLanguage: ChangeLanguage }>({
     entryPoint: resolve(root, 'src/services/i18n.ts'),
@@ -133,13 +129,13 @@ async function loadPreferencesModule(): Promise<PreferencesModule> {
     ['@/services/i18n', 'export const LANGUAGES = []; export function getCurrentLanguageTag(){ return "en"; } export function changeLanguage(value){ return globalThis.__settingsChangeLanguage?.(value) ?? Promise.resolve(true); } export function t(key){ return key; }'],
     ['@/services/ai-flow-settings', 'export const STREAM_QUALITY_OPTIONS = []; export function getAiFlowSettings(){ return { cloudLlm: false, browserModel: false, mapNewsFlash: false, headlineMemory: false, badgeAnimation: false }; } export function getStreamQuality(){ return "auto"; } export function setStreamQuality(value){ globalThis.__settingsSavedQuality = value; } export function setAiFlowSetting(){}'],
     ['@/config/basemap', 'export const MAP_PROVIDER_OPTIONS = []; export const MAP_THEME_OPTIONS = { carto: [] }; export function getMapProvider(){ return "carto"; } export function setMapProvider(){} export function getMapTheme(){ return "dark"; } export function setMapTheme(){}'],
-    ['@/services/live-stream-settings', 'export const LIVE_MEDIA_IDLE_STOP_OPTIONS = [15, 30, 60, 120, 240, "never"]; export function getLiveStreamsAlwaysOn(){ return false; } export function setLiveStreamsAlwaysOn(){} export function getLiveMediaIdleStop(){ return 60; } export function setLiveMediaIdleStop(value){ globalThis.__settingsSavedIdleStop = value; } export function parseLiveMediaIdleStop(value){ return LIVE_MEDIA_IDLE_STOP_OPTIONS.find((option) => String(option) === value); } export function formatIdleStopMinutes(minutes){ return `${minutes} min`; }'],
+    ['@/services/live-stream-settings', 'export const LIVE_MEDIA_IDLE_STOP_OPTIONS = [15, 30, 60, 120, 240, "never"]; export function getLiveNewsAutoplay(){ return true; } export function setLiveNewsAutoplay(value){ globalThis.__settingsSavedNewsAutoplay = value; } export function getLiveStreamsAlwaysOn(){ return false; } export function setLiveStreamsAlwaysOn(){} export function getLiveMediaIdleStop(){ return 60; } export function setLiveMediaIdleStop(value){ globalThis.__settingsSavedIdleStop = value; } export function parseLiveMediaIdleStop(value){ return LIVE_MEDIA_IDLE_STOP_OPTIONS.find((option) => String(option) === value); } export function formatIdleStopMinutes(minutes){ return `${minutes} min`; }'],
     ['@/services/globe-render-settings', 'export const GLOBE_VISUAL_PRESET_OPTIONS = []; export function getGlobeVisualPreset(){ return "default"; } export function setGlobeVisualPreset(){}'],
     ['@/utils/theme-manager', 'export function getThemePreference(){ return "auto"; } export function setThemePreference(){}'],
     ['@/services/font-settings', 'export function getFontFamily(){ return "mono"; } export function setFontFamily(){}'],
     ['@/services/font-scale-settings', 'export const FONT_SCALE_CHANGED_EVENT = "font-scale-changed"; export const FONT_SCALE_STEPS = []; export function fontScaleLabel(value){ return String(value); } export function getFontScale(){ return 1; } export function parseFontScale(value){ const parsed = Number(value); return Number.isFinite(parsed) ? parsed : undefined; } export function setFontScale(){}'],
     ['@/utils/sanitize', 'export function escapeHtml(value){ return String(value); }'],
-    ['@/services/analytics', 'export function trackLanguageChange(){}'],
+    ['@/services/analytics', 'export function trackLanguageChange(){} export function track(){}'],
     ['@/utils/settings-persistence', 'export function exportSettings(){} export async function importSettings(){ return { keysImported: 0 }; }'],
     ['@/utils/cloud-prefs-sync', 'export function getSyncState(){ return "synced"; } export function getLastSyncAt(){ return null; } export async function syncNow(){} export function isCloudSyncEnabled(){ return false; }'],
     ['@/services/analysis-framework-store', 'export function loadFrameworkLibrary(){ return []; } export function saveImportedFramework(){} export function deleteImportedFramework(){} export function renameImportedFramework(){} export function getActiveFrameworkForPanel(){ return null; }'],
@@ -150,7 +146,7 @@ async function loadPreferencesModule(): Promise<PreferencesModule> {
     stubs,
     namespace: 'settings-stub',
     sourceFilter: /preferences-content\.ts$/,
-    transformSource: (contents) => `${contents}\nexport { handlePreferenceChange };`,
+    transformSource: (contents) => contents,
   });
 }
 
@@ -159,25 +155,53 @@ describe('settings save feedback', () => {
     const runtime = globalThis as typeof globalThis & {
       __settingsSavedQuality?: string;
       __settingsSavedIdleStop?: unknown;
+      __settingsSavedNewsAutoplay?: unknown;
     };
+    const originalWindow = globalThis.window;
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { addEventListener: () => undefined, dispatchEvent: () => true },
+      writable: true,
+    });
     try {
-      const { handlePreferenceChange } = await loadPreferencesModule();
-      const host = { isDesktopApp: false };
-      const container = {} as HTMLElement;
+      const { renderPreferenceSection } = await loadPreferencesModule();
+      let saved = 0;
+      const change = (section: PreferenceSectionId, target: Partial<HTMLInputElement>): boolean => {
+        let listener: ((event: Event) => void) | undefined;
+        const container = {
+          addEventListener: (type: string, handler: EventListenerOrEventListenerObject) => {
+            if (type === 'change' && typeof handler === 'function') listener = handler;
+          },
+          querySelector: () => null,
+        } as unknown as HTMLElement;
+        const before = saved;
+        const detach = renderPreferenceSection(section, { isDesktopApp: false, onSettingSaved: () => { saved += 1; } })
+          .attach(container);
+        assert.ok(listener, `${section} attaches a change listener`);
+        listener({ target } as unknown as Event);
+        detach();
+        return saved > before;
+      };
 
-      assert.equal(handlePreferenceChange({ id: 'us-stream-quality', value: 'hd720' } as HTMLInputElement, container, host), true);
+      assert.equal(change('video', { id: 'us-stream-quality', value: 'hd720' }), true);
       assert.equal(runtime.__settingsSavedQuality, 'hd720');
-      assert.equal(handlePreferenceChange({ id: 'us-live-media-idle-stop', value: 'never' } as HTMLInputElement, container, host), true);
+      assert.equal(change('video', { id: 'us-live-media-idle-stop', value: 'never' }), true);
       assert.equal(runtime.__settingsSavedIdleStop, 'never');
-      assert.equal(handlePreferenceChange({ id: 'us-live-media-idle-stop', value: '240' } as HTMLInputElement, container, host), true);
+      assert.equal(change('video', { id: 'us-live-media-idle-stop', value: '240' }), true);
       assert.equal(runtime.__settingsSavedIdleStop, 240);
-      assert.equal(handlePreferenceChange({ id: 'us-live-media-idle-stop', value: 'forever' } as HTMLInputElement, container, host), false);
+      assert.equal(change('video', { id: 'us-live-media-idle-stop', value: 'forever' }), false);
       assert.equal(runtime.__settingsSavedIdleStop, 240);
-      assert.equal(handlePreferenceChange({ id: 'us-font-scale', value: 'invalid' } as HTMLInputElement, container, host), false);
-      assert.equal(handlePreferenceChange({ id: 'unrelated-control' } as HTMLInputElement, container, host), false);
+      assert.equal(change('video', { id: 'us-live-news-autoplay', checked: false }), true);
+      assert.equal(runtime.__settingsSavedNewsAutoplay, false);
+      assert.equal(change('display', { id: 'us-font-scale', value: 'invalid' }), false);
+      assert.equal(change('display', { id: 'unrelated-control' }), false);
+      assert.equal(change('display', { id: 'us-stream-quality', value: 'hd1080' }), false, 'a control from another section is ignored');
+      assert.equal(runtime.__settingsSavedQuality, 'hd720');
     } finally {
       delete runtime.__settingsSavedQuality;
       delete runtime.__settingsSavedIdleStop;
+      delete runtime.__settingsSavedNewsAutoplay;
+      restoreGlobal('window', originalWindow);
     }
   });
 
@@ -194,10 +218,13 @@ describe('settings save feedback', () => {
     });
 
     try {
-      const { renderPreferences } = await loadPreferencesModule();
-      const { html } = renderPreferences({ isDesktopApp: false });
+      const { renderPreferenceSection } = await loadPreferencesModule();
+      const { html } = renderPreferenceSection('video', { isDesktopApp: false });
 
       const autoplayAt = html.indexOf('us-live-streams-always-on');
+      const newsAutoplayAt = html.indexOf('us-live-news-autoplay');
+      assert.ok(newsAutoplayAt > -1 && newsAutoplayAt < autoplayAt, 'the Live News toggle renders before the webcam toggle');
+      assert.match(html, /components\.insights\.liveNewsAutoplayLabel/);
       const selectOpen = '<select class="unified-settings-select" id="us-live-media-idle-stop" aria-labelledby="us-live-media-idle-stop-label">';
       const selectAt = html.indexOf(selectOpen);
       assert.ok(autoplayAt > -1, 'autoplay toggle renders');
@@ -253,8 +280,8 @@ describe('settings save feedback', () => {
       });
       runtime.__settingsChangeLanguage = () => pendingLanguage;
 
-      const { renderPreferences } = await loadPreferencesModule();
-      const detach = renderPreferences({
+      const { renderPreferenceSection } = await loadPreferencesModule();
+      const detach = renderPreferenceSection('display', {
         isDesktopApp: false,
         onSettingSaved: () => { savedCalls += 1; },
       }).attach(container);
@@ -427,7 +454,7 @@ describe('settings save feedback', () => {
     const eventHandlers = source('src/app/event-handlers.ts');
     const countryIntel = source('src/app/country-intel.ts');
 
-    assert.match(settings, /onSettingSaved:\s*\(\)\s*=>\s*showToast\(t\('modals\.settingsWindow\.saved'\)\)/);
+    assert.match(settings, /onSettingSaved:\s*\(\)\s*=>\s*\{\s*showToast\(t\('modals\.settingsWindow\.saved'\)\);/);
     assert.doesNotMatch(extractMethodBody(settings, 'private savePanelChanges()'), /showToast\(/);
     assert.doesNotMatch(settings, /function showToast\(/);
     assert.doesNotMatch(eventHandlers, /\n\s{2}showToast\(msg: string\): void/);

@@ -188,6 +188,11 @@ const server = createServer(async (req, res) => {
       });
     }
 
+    if (['/api/grade', '/api/board', '/api/recap', '/api/reveal', '/api/tts', '/api/avatar/token'].includes(url.pathname) &&
+        !access.hasRequestIntent(req)) {
+      return sendJson(res, 403, { error: 'Request intent required' });
+    }
+
     if (url.pathname === '/api/grade') {
       const headline = (url.searchParams.get('headline') || '').trim().slice(0, 300);
       if (!headline) return sendJson(res, 400, { error: 'headline required' });

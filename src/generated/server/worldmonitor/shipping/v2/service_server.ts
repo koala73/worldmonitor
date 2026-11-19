@@ -43,6 +43,22 @@ export interface RegisterWebhookRequest {
   eventType?: string;
   countries: string[];
   minLiveSignal?: number;
+  scope?: WebhookScope;
+}
+
+export interface WebhookScope {
+  keywords: string[];
+  categories: string[];
+  importanceFloor?: number;
+  severityFloor?: string;
+  countries: string[];
+  hazardTypes: string[];
+  minMagnitude?: number;
+  minAlertLevel?: string;
+  assetClasses: string[];
+  symbols: string[];
+  minAbsPct?: number;
+  direction?: string;
 }
 
 export interface RegisterWebhookResponse {
@@ -67,6 +83,7 @@ export interface WebhookSummary {
   eventType: string;
   countries: string[];
   minLiveSignal: number;
+  scope?: WebhookScope;
 }
 
 export interface FieldViolation {
@@ -166,7 +183,7 @@ export function createShippingV2ServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -209,7 +226,7 @@ export function createShippingV2ServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -246,7 +263,7 @@ export function createShippingV2ServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },

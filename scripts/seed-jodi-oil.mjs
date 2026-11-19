@@ -13,7 +13,6 @@ import {
   logSeedResult,
   withRetry,
   readSeedSnapshot,
-  readExistingSeedMeta,
 } from './_seed-utils.mjs';
 import {
   MAX_JODI_CONTENT_AGE_MIN,
@@ -31,6 +30,7 @@ import {
   monthPeriodEnd,
   shiftMonth,
 } from './shared/jodi-demand-change.mjs';
+import { CURRENT_FLOWS_WINDOW, PRE_CRISIS_WINDOW } from './shared/hormuz-crisis.js';
 
 loadEnvFile(import.meta.url);
 const require = createRequire(import.meta.url);
@@ -38,7 +38,10 @@ const JODI_MEASUREMENT_FIELDS = require('./shared/jodi-measurement-fields.json')
 
 export const CANONICAL_KEY = 'energy:jodi-oil:v1:_countries';
 export const COUNTRY_KEY_PREFIX = 'energy:jodi-oil:v1:';
-export const JODI_TTL = 70 * 24 * 3600; // 70 days: 2× 35d cadence so one missed monthly publish still serves last-good through the 40d STALE_SEED window (#7273)
+export const JODI_TTL = 70 * 24 * 3600; // 70 days: one missed monthly publish still serves last-good through the 40d STALE_SEED window (#7273)
+// Bump when the country payload changes shape: the energy-sources bundle
+// reseeds on the first tick after a deploy whose seed-meta lacks this version.
+export const JODI_OIL_SOURCE_VERSION = 'jodi-oil-v2';
 const META_KEY = 'seed-meta:energy:jodi-oil';
 const LOCK_DOMAIN = 'energy:jodi-oil';
 const LOCK_TTL_MS = 10 * 60 * 1000;
@@ -54,6 +57,34 @@ const SECONDARY_PRODUCTS = {
   RESFUEL: 'fuelOil',
   LPG: 'lpg',
 };
+
+// Published per country like the others, but kept out of SECONDARY_PRODUCTS:
+// that map is also the demand-change basket and the dataMonth test, which
+// downstream nowcasts pin to five products. Naphtha is 9-30% of refinery
+// output in JP, KR and TW and their largest product import.
+const YIELD_ONLY_PRODUCTS = {
+  NAPHTHA: 'naphtha',
+};
+
+const PUBLISHED_PRODUCTS = { ...SECONDARY_PRODUCTS, ...YIELD_ONLY_PRODUCTS };
+
+// Refinery yields are summed over a trailing window so a single noisy month
+// (Spain jet 1.1% in 2026-07) cannot set a country's yield.
+export const REFINERY_YIELD_WINDOW_MONTHS = 12;
+export const REFINERY_YIELD_MIN_MONTHS = 6;
+// JODI publishes China's crude refinery intake as the balance of its supply:
+// production + imports - exports - intake closes to within 0.2 kb/d in every
+// month, so it is not an observed intake. A month is "balanced" when the
+// residual is within the larger of 1 kb/d and 0.1% of intake; no other JODI
+// reporter balances in more than 5 of 12 months.
+const BALANCE_TOLERANCE_KBD = 1;
+const BALANCE_TOLERANCE_SHARE = 0.001;
+const BALANCING_MONTH_SHARE = 0.75;
+// Gross refinery output also counts NGL and other feedstocks, so output per
+// barrel of crude intake runs 1.0-1.35 for most refiners. Outside this band
+// (Canada 2.24, Lithuania 0.50) the reported crude intake does not describe
+// the output it is meant to feed.
+const PLAUSIBLE_OUTPUT_PER_INTAKE = [0.75, 1.5];
 
 function splitCsvLine(line) {
   const fields = [];
@@ -78,7 +109,8 @@ function splitCsvLine(line) {
   return fields;
 }
 
-export function parseCsv(text) {
+/** Rows of a JODI CSV; with `keep`, only the rows it accepts are kept. */
+export function parseCsv(text, keep = null) {
   const lines = text.split('\n');
   if (!lines.length) return [];
   const header = splitCsvLine(lines[0]);
@@ -91,7 +123,7 @@ export function parseCsv(text) {
     for (let j = 0; j < header.length; j++) {
       row[header[j]] = parts[j] ?? '';
     }
-    rows.push(row);
+    if (!keep || keep(row)) rows.push(row);
   }
   return rows;
 }
@@ -118,8 +150,9 @@ function rowsByMonth(allRows, iso2) {
 function pickMonthValue(monthRows, iso2, product, flow, isAnomalyCapped) {
   const r = monthRows.find(row => row.ENERGY_PRODUCT === product && row.FLOW_BREAKDOWN === flow);
   if (!r) return null;
-  const code = r.ASSESSMENT_CODE;
-  if (code === '3') return null;
+  // ASSESSMENT_CODE 3 means JODI has not assessed the value, not that it is
+  // missing: Saudi Arabia, Kazakhstan, Nigeria and Venezuela publish their
+  // crude exports under it. Absence is a non-numeric cell ('-', '..', 'x').
   const val = parseObsValue(r.OBS_VALUE);
   if (val === null) return null;
   if (isAnomalyCapped && iso2 !== 'US' && flow === 'TOTDEMO' && val > ANOMALY_DEMAND_KBD) return null;
@@ -220,6 +253,221 @@ function oilDemandChangeFromMonths(byMonth, iso2, dataMonth) {
   };
 }
 
+function crudeIntakeObservation(monthRows, iso2) {
+  // Same CRUDEOIL-then-TOTCRUDE preference as the published crude block, with
+  // every flow of the balance read from the product whose intake was used.
+  for (const product of ['CRUDEOIL', 'TOTCRUDE']) {
+    const intake = pickMonthValue(monthRows, iso2, product, 'REFINOBS', false);
+    if (intake === null) continue;
+    return {
+      intake,
+      production: pickMonthValue(monthRows, iso2, product, 'INDPROD', false),
+      imports: pickMonthValue(monthRows, iso2, product, 'TOTIMPSB', false),
+      exports: pickMonthValue(monthRows, iso2, product, 'TOTEXPSB', false),
+    };
+  }
+  return null;
+}
+
+const roundYield = (value) => Math.round(value * 10_000) / 10_000;
+
+/**
+ * Product refinery output per barrel of refinery intake, summed over the
+ * trailing REFINERY_YIELD_WINDOW_MONTHS ending at dataMonth.
+ *
+ * The denominator is crude refinery intake unless it is not credible: reported
+ * in fewer than REFINERY_YIELD_MIN_MONTHS months, a balancing item (China), or
+ * implausible against total output. Then total refinery output (TOTPRODS) is
+ * used, which makes each yield a share of output. A product needs
+ * REFINERY_YIELD_MIN_MONTHS months with both its output and the denominator,
+ * else its yield is null (the reader then says it is not measured). Returns
+ * null when neither denominator is usable.
+ */
+export function computeRefineryYields(byMonth, iso2, dataMonth) {
+  const startMonth = shiftMonth(dataMonth, -(REFINERY_YIELD_WINDOW_MONTHS - 1));
+  if (startMonth === null) return null;
+  const window = [];
+  for (let offset = REFINERY_YIELD_WINDOW_MONTHS - 1; offset >= 0; offset--) {
+    const month = shiftMonth(dataMonth, -offset);
+    const monthRows = byMonth.get(month) ?? [];
+    const crude = crudeIntakeObservation(monthRows, iso2);
+    const totalOutput = pickMonthValue(monthRows, iso2, 'TOTPRODS', 'REFGROUT', false);
+    window.push({
+      monthRows,
+      intake: crude && crude.intake > 0 ? crude : null,
+      totalOutput: totalOutput !== null && totalOutput > 0 ? totalOutput : null,
+    });
+  }
+
+  const intakeMonths = window.filter((m) => m.intake);
+  const balanceMonths = intakeMonths.filter((m) => m.intake.production !== null && m.intake.imports !== null && m.intake.exports !== null);
+  const balancedCount = balanceMonths.filter(({ intake: c }) => {
+    const residual = c.production + c.imports - c.exports - c.intake;
+    return Math.abs(residual) <= Math.max(BALANCE_TOLERANCE_KBD, c.intake * BALANCE_TOLERANCE_SHARE);
+  }).length;
+  const paired = intakeMonths.filter((m) => m.totalOutput !== null);
+  // Too few paired months cannot reject the intake: the total-output basis
+  // would then be too short to publish, and every yield would fall back.
+  const outputPerIntake = paired.length >= REFINERY_YIELD_MIN_MONTHS
+    ? paired.reduce((s, m) => s + m.totalOutput, 0) / paired.reduce((s, m) => s + m.intake.intake, 0)
+    : null;
+
+  let intakeIssue = null;
+  if (intakeMonths.length < REFINERY_YIELD_MIN_MONTHS) intakeIssue = 'unreported';
+  else if (balanceMonths.length >= REFINERY_YIELD_MIN_MONTHS && balancedCount >= balanceMonths.length * BALANCING_MONTH_SHARE) intakeIssue = 'balancing_item';
+  else if (outputPerIntake !== null && (outputPerIntake < PLAUSIBLE_OUTPUT_PER_INTAKE[0] || outputPerIntake > PLAUSIBLE_OUTPUT_PER_INTAKE[1])) intakeIssue = 'implausible_output_ratio';
+
+  const basis = intakeIssue === null ? 'crude_refinery_intake' : 'total_refinery_output';
+  const denominator = (m) => (basis === 'crude_refinery_intake' ? m.intake?.intake ?? null : m.totalOutput);
+  const months = window.filter((m) => denominator(m) !== null).length;
+  if (months < REFINERY_YIELD_MIN_MONTHS) return null;
+
+  const products = {};
+  for (const [productCode, productName] of Object.entries(PUBLISHED_PRODUCTS)) {
+    let output = 0;
+    let input = 0;
+    let count = 0;
+    for (const m of window) {
+      const d = denominator(m);
+      const out = pickMonthValue(m.monthRows, iso2, productCode, 'REFGROUT', false);
+      if (d === null || out === null || out < 0) continue;
+      output += out;
+      input += d;
+      count++;
+    }
+    const value = count >= REFINERY_YIELD_MIN_MONTHS ? output / input : null;
+    products[productName] = value !== null && value <= 1 ? roundYield(value) : null;
+  }
+
+  return { basis, intakeIssue, startMonth, endMonth: dataMonth, months, products };
+}
+
+const TRADE_FLOWS = { demandKbd: 'TOTDEMO', importsKbd: 'TOTIMPSB', exportsKbd: 'TOTEXPSB' };
+
+/**
+ * Per-product demand, imports and exports averaged over one window of months.
+ * A month without a numeric cell is absent, never zero. A flow needs at least
+ * half the window's months (rounded down, minimum one), else it is null.
+ * Returns null when no month in the window carries any product flow.
+ */
+function productTradeWindow(byMonth, iso2, months) {
+  const minMonths = Math.max(1, Math.floor(months.length / 2));
+  const monthRows = months.map((month) => byMonth.get(month) ?? []);
+  const covered = monthRows.filter((rows) => Object.keys(PUBLISHED_PRODUCTS).some((productCode) =>
+    Object.values(TRADE_FLOWS).some((flow) => pickMonthValue(rows, iso2, productCode, flow, true) !== null))).length;
+  if (covered === 0) return null;
+  const products = {};
+  for (const [productCode, productName] of Object.entries(PUBLISHED_PRODUCTS)) {
+    products[productName] = {};
+    for (const [field, flow] of Object.entries(TRADE_FLOWS)) {
+      const values = monthRows.map((rows) => pickMonthValue(rows, iso2, productCode, flow, true)).filter((v) => v !== null);
+      products[productName][field] = values.length >= minMonths
+        ? Math.round((values.reduce((s, v) => s + v, 0) / values.length) * 10) / 10
+        : null;
+    }
+  }
+  return { startMonth: months[0], endMonth: months[months.length - 1], months: covered, products };
+}
+
+/**
+ * Product trade for the shock model's two baselines (shared/hormuz-crisis.js):
+ * the pre-crisis months, and current flows = the latest CURRENT_FLOWS_WINDOW
+ * months ending at dataMonth, none before its earliest month.
+ */
+export function computeProductTrade(byMonth, iso2, dataMonth) {
+  const preMonths = [];
+  for (let m = PRE_CRISIS_WINDOW.startMonth; m <= PRE_CRISIS_WINDOW.endMonth; m = shiftMonth(m, 1)) preMonths.push(m);
+  const currentMonths = [];
+  for (let offset = CURRENT_FLOWS_WINDOW.months - 1; offset >= 0; offset--) {
+    const month = shiftMonth(dataMonth, -offset);
+    if (month !== null && month >= CURRENT_FLOWS_WINDOW.earliestMonth) currentMonths.push(month);
+  }
+  return {
+    preCrisisBaseline: productTradeWindow(byMonth, iso2, preMonths),
+    currentFlows: currentMonths.length > 0 ? productTradeWindow(byMonth, iso2, currentMonths) : null,
+  };
+}
+
+// Month-end closing stocks are filed in thousand barrels, not kb/d.
+const STOCK_FLOW = 'CLOSTLV';
+const STOCK_UNIT = 'KBBL';
+const isStockRow = (r) => r.FLOW_BREAKDOWN === STOCK_FLOW && r.UNIT_MEASURE === STOCK_UNIT;
+
+/**
+ * Latest month in which the country reported both crude and total-product
+ * closing stocks, in million barrels. Crude and products together are the
+ * scope IEA days of cover count; one without the other understates it, so a
+ * month needs both. Null when no month does.
+ */
+export function extractClosingStocks(allRows, iso2) {
+  const byMonth = new Map();
+  for (const r of allRows) {
+    if (r.REF_AREA !== iso2 || !r.TIME_PERIOD || !isStockRow(r)) continue;
+    const val = parseObsValue(r.OBS_VALUE);
+    if (val === null || val < 0) continue;
+    if (!byMonth.has(r.TIME_PERIOD)) byMonth.set(r.TIME_PERIOD, {});
+    byMonth.get(r.TIME_PERIOD)[r.ENERGY_PRODUCT] = val;
+  }
+  for (const month of [...byMonth.keys()].sort((a, b) => b.localeCompare(a))) {
+    const m = byMonth.get(month);
+    // A zero TOTCRUDE barrel stock is a placeholder: India files KBBL 0 beside
+    // 6,086 kt in the same row set.
+    const crude = m.CRUDEOIL ?? (m.TOTCRUDE > 0 ? m.TOTCRUDE : null);
+    const products = m.TOTPRODS ?? null;
+    if (crude === null || products === null || crude + products <= 0) continue;
+    return { month, crudeMb: crude / 1000, productsMb: products / 1000 };
+  }
+  return null;
+}
+
+// IEA counts days of cover against the previous calendar year's average net
+// imports of all oil: crude with NGL and feedstocks (TOTCRUDE), and products.
+const NET_IMPORTS_MIN_MONTHS = 9;
+
+const daysIn = (year, month) => new Date(Date.UTC(year, month, 0)).getUTCDate();
+
+/**
+ * Average net oil imports, kb/d, over one calendar year: crude (TOTCRUDE,
+ * else CRUDEOIL) plus total products, imports less exports, each month's
+ * rate weighted by its days. A month counts only when all four figures are
+ * reported. Null with fewer than NET_IMPORTS_MIN_MONTHS such months or a
+ * net-exporting year.
+ */
+export function computeNetOilImports(byMonth, iso2, year) {
+  let barrels = 0;
+  let days = 0;
+  let months = 0;
+  for (let m = 1; m <= 12; m++) {
+    const monthRows = byMonth.get(`${year}-${String(m).padStart(2, '0')}`);
+    if (!monthRows) continue;
+    const pick = (product, flow) => pickMonthValue(monthRows, iso2, product, flow, false);
+    const crudeCode = pick('TOTCRUDE', 'TOTIMPSB') !== null ? 'TOTCRUDE' : 'CRUDEOIL';
+    const values = [pick(crudeCode, 'TOTIMPSB'), pick(crudeCode, 'TOTEXPSB'), pick('TOTPRODS', 'TOTIMPSB'), pick('TOTPRODS', 'TOTEXPSB')];
+    if (values.some((v) => v === null)) continue;
+    const [crudeImp, crudeExp, prodImp, prodExp] = values;
+    barrels += (crudeImp - crudeExp + prodImp - prodExp) * daysIn(year, m);
+    days += daysIn(year, m);
+    months++;
+  }
+  if (months < NET_IMPORTS_MIN_MONTHS) return null;
+  const kbd = Math.round((barrels / days) * 10) / 10;
+  return kbd > 0 ? { year, kbd, months } : null;
+}
+
+/**
+ * Net oil imports for every calendar year up to `dataMonth`'s in the files,
+ * newest first; computeNetOilImports drops a year with fewer than 9 complete
+ * months. IEA's own data month decides which year its days count against, and
+ * it can lag or lead JODI's across a new year, so the reader picks.
+ */
+export function netOilImportsByYear(byMonth, iso2, dataMonth) {
+  const dataYear = Number(String(dataMonth).slice(0, 4));
+  const years = [...new Set([...byMonth.keys()].map((m) => Number(m.slice(0, 4))))]
+    .filter((y) => Number.isInteger(y) && y <= dataYear)
+    .sort((a, b) => b - a);
+  return years.map((y) => computeNetOilImports(byMonth, iso2, y)).filter(Boolean);
+}
+
 export function extractCountryData(allRows, iso2) {
   const byMonth = rowsByMonth(allRows, iso2);
 
@@ -228,12 +476,13 @@ export function extractCountryData(allRows, iso2) {
   let dataMonth = null;
   for (const month of sortedMonths) {
     const monthRows = byMonth.get(month);
-    const hasValidCode = monthRows.some(r => r.ASSESSMENT_CODE === '1' || r.ASSESSMENT_CODE === '2');
-    if (!hasValidCode) continue;
-    // Require at least one valid secondary-product row so a failed secondary
-    // download (crude-only month) never becomes the chosen dataMonth.
+    // A month counts only if it carries a number. Every JODI cell has an
+    // assessment code, including the '-' placeholders a non-reporting country
+    // (the UAE since 2019) files, so the code says nothing about presence.
+    // Require a usable secondary-product value so a failed secondary download
+    // (crude-only month) never becomes the chosen dataMonth.
     const hasSecondaryData = monthRows.some(
-      r => (r.ASSESSMENT_CODE === '1' || r.ASSESSMENT_CODE === '2') && r.ENERGY_PRODUCT in SECONDARY_PRODUCTS,
+      r => r.ENERGY_PRODUCT in SECONDARY_PRODUCTS && parseObsValue(r.OBS_VALUE) !== null,
     );
     if (hasSecondaryData) {
       dataMonth = month;
@@ -252,7 +501,7 @@ export function extractCountryData(allRows, iso2) {
   const seededAt = new Date().toISOString();
 
   const secondaryProducts = {};
-  for (const [prodCode, prodName] of Object.entries(SECONDARY_PRODUCTS)) {
+  for (const [prodCode, prodName] of Object.entries(PUBLISHED_PRODUCTS)) {
     secondaryProducts[prodName] = {
       demandKbd:    pickVal(prodCode, 'TOTDEMO',  true),
       refOutputKbd: pickVal(prodCode, 'REFGROUT', false),
@@ -291,7 +540,11 @@ export function extractCountryData(allRows, iso2) {
       importsKbd:        crudeImportsKbd,
       exportsKbd:        crudeExportsKbd,
     },
+    refineryYields: computeRefineryYields(byMonth, iso2, dataMonth),
+    productTrade: computeProductTrade(byMonth, iso2, dataMonth),
     demandChange: oilDemandChangeFromMonths(byMonth, iso2, dataMonth).change,
+    stocks: extractClosingStocks(allRows, iso2),
+    netOilImports: netOilImportsByYear(byMonth, iso2, dataMonth),
     seededAt,
   };
 }
@@ -318,21 +571,58 @@ export function assessChinaOilCoverage(countries, now = new Date()) {
   return assessChinaJodiCoverage(countries, now, hasOilMeasurements);
 }
 
-async function fetchCsv(url) {
-  const resp = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA, Accept: 'text/csv,text/plain,*/*' },
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!resp.ok) {
-    const err = new Error(`JODI CSV fetch failed: HTTP ${resp.status} for ${url}`);
-    // A missing static file does not appear during a 2s backoff, and this
-    // seeder now tries two naming conventions per year — retrying each 404
-    // three times would spend ~12s of the bundle's wall-clock budget just to
-    // rediscover that a year is not published under that name.
-    if (resp.status === 404) err.nonRetryable = true;
-    throw err;
+// The year files are 7-26 MB and jodidata.org serves about 1 MB/s per
+// connection, so a whole-request timeout cuts healthy downloads (30 s did,
+// for every 2026 file, on 2026-10-29). Abort when bytes stop arriving, or
+// past a budget that leaves the bundle section (600 s) room for one retry.
+const JODI_STALL_MS = 30_000;
+const JODI_DOWNLOAD_BUDGET_MS = 180_000;
+
+export async function fetchCsv(url, {
+  fetchImpl = (...args) => globalThis.fetch(...args),
+  stallMs = JODI_STALL_MS,
+  budgetMs = JODI_DOWNLOAD_BUDGET_MS,
+} = {}) {
+  const controller = new AbortController();
+  const budget = setTimeout(() => {
+    const err = new Error(`JODI CSV download exceeded ${budgetMs / 1000}s for ${url}`);
+    // A steady but slow transfer will not finish faster on a retry.
+    err.nonRetryable = true;
+    controller.abort(err);
+  }, budgetMs);
+  let stall = null;
+  const armStall = () => {
+    clearTimeout(stall);
+    stall = setTimeout(() => controller.abort(new Error(`JODI CSV download stalled ${stallMs / 1000}s for ${url}`)), stallMs);
+  };
+  try {
+    armStall();
+    const resp = await fetchImpl(url, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'text/csv,text/plain,*/*' },
+      signal: controller.signal,
+    });
+    if (!resp.ok) {
+      await resp.body?.cancel().catch(() => {});
+      const err = new Error(`JODI CSV fetch failed: HTTP ${resp.status} for ${url}`);
+      // A missing static file does not appear during a 2s backoff, and this
+      // seeder now tries two naming conventions per year — retrying each 404
+      // three times would spend ~12s of the bundle's wall-clock budget just to
+      // rediscover that a year is not published under that name.
+      if (resp.status === 404) err.nonRetryable = true;
+      throw err;
+    }
+    const chunks = [];
+    for await (const chunk of resp.body ?? []) {
+      armStall();
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks).toString('utf8');
+  } catch (err) {
+    throw controller.signal.aborted ? controller.signal.reason : err;
+  } finally {
+    clearTimeout(budget);
+    clearTimeout(stall);
   }
-  return resp.text();
 }
 
 export function mergeSourceRows(
@@ -341,18 +631,17 @@ export function mergeSourceRows(
   secondaryCurrent,
   secondaryPrior,
   secondaryLookback = '',
+  primaryLookback = '',
 ) {
   if (!secondaryCurrent && !secondaryPrior) {
     throw new Error('Both secondary JODI CSV files failed to download; product-level data unavailable');
   }
-  const allRows = [
-    ...(primaryCurrent ? parseCsv(primaryCurrent) : []),
-    ...(primaryPrior ? parseCsv(primaryPrior) : []),
-    ...(secondaryCurrent ? parseCsv(secondaryCurrent) : []),
-    ...(secondaryPrior ? parseCsv(secondaryPrior) : []),
-    ...(secondaryLookback ? parseCsv(secondaryLookback) : []),
-  ];
-  return allRows.filter(r => r.UNIT_MEASURE === 'KBD');
+  // Flows are kb/d; closing stocks are the one KBBL measure kept. Filtering
+  // while parsing keeps ~1 row in 5: building all six files' rows first held
+  // ~640 MB of heap, past the bundle's 1 GB container with its other costs.
+  const keep = r => r.UNIT_MEASURE === 'KBD' || isStockRow(r);
+  return [primaryCurrent, primaryPrior, secondaryCurrent, secondaryPrior, secondaryLookback, primaryLookback]
+    .flatMap(text => (text ? parseCsv(text, keep) : []));
 }
 
 /**
@@ -362,7 +651,9 @@ export function mergeSourceRows(
  * early in a year the newest usable month still sits in `priorYear` — whose
  * year-over-year comparison month lives one file further back. Without
  * `lookbackYear` the demand change is structurally unpublishable for months at
- * a time. Demand is a secondary-product measure, so only that file is needed.
+ * a time. Its primary (crude) file serves net oil imports: IEA days of cover
+ * count against the previous calendar year, which early in a year is
+ * `lookbackYear`.
  */
 export function jodiSourceYears(now = new Date()) {
   const currentYear = now.getFullYear();
@@ -424,7 +715,7 @@ export async function fetchYearCsv(kind, year, options = {}) {
 async function fetchAllRows() {
   const { currentYear, priorYear, lookbackYear } = jodiSourceYears();
 
-  const [primaryCurrent, primaryPrior, secondaryCurrent, secondaryPrior, secondaryLookback] =
+  const [primaryCurrent, primaryPrior, secondaryCurrent, secondaryPrior, secondaryLookback, primaryLookback] =
     await Promise.all([
       fetchYearCsv('primary', currentYear),
       fetchYearCsv('primary', priorYear),
@@ -432,6 +723,8 @@ async function fetchAllRows() {
       fetchYearCsv('secondary', priorYear),
       // Optional: its absence only withholds the demand change, never the seed.
       fetchYearCsv('secondary', lookbackYear),
+      // Optional: its absence only withholds net oil imports for that year.
+      fetchYearCsv('primary', lookbackYear),
     ]);
 
   for (const [label, result] of [
@@ -440,6 +733,7 @@ async function fetchAllRows() {
     [`secondary/${currentYear}`, secondaryCurrent],
     [`secondary/${priorYear}`, secondaryPrior],
     [`secondary/${lookbackYear}`, secondaryLookback],
+    [`primary/${lookbackYear}`, primaryLookback],
   ]) {
     if (!result.ok) console.warn(`  ${label} unavailable (tried ${result.attempted.length} names): ${result.error}`);
   }
@@ -462,6 +756,7 @@ async function fetchAllRows() {
     secondaryCurrent.text,
     secondaryPrior.text,
     secondaryLookback.text,
+    primaryLookback.text,
   );
 }
 
@@ -490,6 +785,29 @@ export function formatCoverageFailureReason({ countryCount }) {
 }
 
 /**
+ * JODI files only grow, so a run whose newest month is older than the one
+ * already published lost its current-year files. On 2026-10-29 every 2026
+ * download timed out and the run replaced an August 2026 snapshot with
+ * December 2025, which emptied every country's crude imports. Refuse, so the
+ * coverage-gate path keeps the last-good snapshot.
+ */
+function formatVintageRegressionReason(newestItemAt, publishedNewestItemAt) {
+  if (!Number.isFinite(newestItemAt) || !Number.isFinite(publishedNewestItemAt)) return null;
+  if (newestItemAt >= publishedNewestItemAt) return null;
+  const month = (ms) => new Date(ms).toISOString().slice(0, 7);
+  return `newest month ${month(newestItemAt)} is older than the published ${month(publishedNewestItemAt)}`;
+}
+
+/**
+ * The published seed-meta, read strictly. The vintage check above treats a
+ * missing record as a first publish, so a failed read must not look like one:
+ * after two retries it throws, and main() stops before writing anything.
+ */
+export function readPreviousOilMeta(read = readSeedSnapshot) {
+  return withRetry(() => read(META_KEY, { strict: true }), 2, 1000);
+}
+
+/**
  * Everything main() decides about a parsed snapshot, in one testable place:
  * whether it may publish, what China looks like, and the seed-meta record that
  * carries both to /api/health.
@@ -507,11 +825,10 @@ export function prepareOilPublish({ allRows, previousMeta = null, now = new Date
   // published. It also stops a null-only month from overwriting a country's
   // last-good record — the key simply is not rewritten and ages out instead.
   const countries = parsed.filter(hasOilMeasurements);
-  const refusalReason = validateCoverage(countries)
-    ? null
-    : formatCoverageFailureReason({ countryCount: countries.length });
-
   const contentMeta = jodiDatasetContentMeta(countries, hasOilMeasurements, now);
+  const refusalReason = validateCoverage(countries)
+    ? formatVintageRegressionReason(contentMeta?.newestItemAt, previousMeta?.newestItemAt)
+    : formatCoverageFailureReason({ countryCount: countries.length });
   return {
     parsedCount: parsed.length,
     countries,
@@ -520,6 +837,7 @@ export function prepareOilPublish({ allRows, previousMeta = null, now = new Date
     metaPayload: {
       fetchedAt: now.getTime(),
       recordCount: countries.length,
+      sourceVersion: JODI_OIL_SOURCE_VERSION,
       chinaDataMonth: chinaCoverage.dataMonth,
       chinaRow: buildChinaRowDiagnostic(
         chinaCoverage,
@@ -560,12 +878,12 @@ async function main() {
 
     console.log(`  Parsed ${allRows.length} KBD rows`);
 
-    const previousMeta = await readExistingSeedMeta('energy', 'jodi-oil');
+    const previousMeta = await readPreviousOilMeta();
     if (previousMeta?.chinaRow == null) {
-      // readExistingSeedMeta collapses "no prior record" and "read failed" into
-      // one null, so an ongoing gap re-dates to this run. Say so, or the reset
-      // is indistinguishable from a genuine new outage in the log.
-      console.warn('  China oil row: no previous record readable — dating any gap from this run');
+      // A missing record (or one written before chinaRow existed) re-dates an
+      // ongoing gap to this run. Say so, or the reset is indistinguishable from
+      // a genuine new outage in the log.
+      console.warn('  China oil row: no previous record — dating any gap from this run');
     }
     const { countries, parsedCount, chinaCoverage, refusalReason, metaPayload } = prepareOilPublish({
       allRows,

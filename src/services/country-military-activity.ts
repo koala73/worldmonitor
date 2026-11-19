@@ -1,12 +1,9 @@
-import { countryActivityQueries } from '../../shared/country-activity-query';
 import type { CountrySignalCounts } from '@/types';
 import { countryTermIndex } from '../../shared/country-headline-match';
 import { ME_STRIKE_BOUNDS, getCountryCentroid, hasCountryGeometry, isCoordinateInCountry, iso3ToIso2Code, nameToCountryCode } from './country-geometry';
-import { getNearbyInfrastructure, preloadInfrastructureTables } from './related-assets';
+import { getNearbyInfrastructure } from './related-assets';
 import { getCachedMilitaryBases } from './military-base-config';
-import { CountrySectionError } from './country-brief-error';
 import type { CountryBriefSource } from './country-brief-source';
-import type { MilitaryVessel } from '@/types';
 
 export const COUNTRY_ACTIVITY_BOUNDS: Record<string, { n: number; s: number; e: number; w: number }> = {
   ...ME_STRIKE_BOUNDS,
@@ -23,9 +20,7 @@ export const COUNTRY_ACTIVITY_BOUNDS: Record<string, { n: number; s: number; e: 
   BR: { n: 5.3, s: -33.8, e: -34.8, w: -73.9 },
 };
 
-const MAX_FLIGHT_PAGES = 8;
-
-type Observation = { lat: number; lon: number; operatorCountry: string };
+export type Observation = { lat: number; lon: number; operatorCountry: string; source?: string; eventAt?: string | null };
 export type CountryMilitarySignalCounts = Pick<CountrySignalCounts, 'militaryFlights' | 'militaryFlightsInCountry' | 'militaryVessels' | 'militaryVesselsInCountry'>;
 type ObservedMilitarySignalCounts = { [K in keyof CountryMilitarySignalCounts]: number };
 
@@ -82,63 +77,7 @@ export function projectCountryMilitaryActivity(code: string, country: string, fl
 }
 
 export async function loadHostCountryMilitaryActivity(source: CountryBriefSource, code: string, country: string, signal: AbortSignal) {
-  const [{ classifyMilitaryVessel }, { mapProtoToReport, mergeUSNIWithAIS }] = await Promise.all([import('./military-vessels'), import('./usni-fleet')]);
+  const { loadHostCountryMilitaryActivity: load } = await import('./country-qualified-military');
   signal.throwIfAborted();
-  const queries = countryActivityQueries(code);
-  const flightRead = async () => {
-    if (!queries.length) throw new Error('Country flight bounds unavailable');
-    const flights = new Map<string, Observation>();
-    let pagesRead = 0;
-    for (const box of queries) {
-      const seen = new Set<string>();
-      let cursor = '';
-      for (;;) {
-        if (pagesRead >= MAX_FLIGHT_PAGES) throw new Error('Country flight pagination incomplete');
-        pagesRead++;
-        const result = await source.military.listMilitaryFlights({ neLat: box.ne_lat, neLon: box.ne_lon, swLat: box.sw_lat, swLon: box.sw_lon, pageSize: 100, cursor, operator: 'MILITARY_OPERATOR_UNSPECIFIED', aircraftType: 'MILITARY_AIRCRAFT_TYPE_UNSPECIFIED' }, { signal });
-        for (const flight of result.flights) if (flight.location) flights.set(flight.id, { lat: flight.location.latitude, lon: flight.location.longitude, operatorCountry: flight.operatorCountry });
-        const next = result.pagination?.nextCursor;
-        if (!next) break;
-        if (seen.has(next) || pagesRead >= MAX_FLIGHT_PAGES) throw new Error('Country flight pagination incomplete');
-        seen.add(next);
-        cursor = next;
-      }
-    }
-    return flights.size ? [...flights.values()] : null;
-  };
-  const aisRead = async () => {
-    const vessels = new Map<string, MilitaryVessel>();
-    const result = await source.vessels.getVesselSnapshot({ neLat: 0, neLon: 0, swLat: 0, swLon: 0, includeCandidates: true, includeTankers: false }, { signal });
-    if (!result.dataAvailable || !result.snapshot || !result.snapshot.status?.connected || !Number.isFinite(result.snapshot.snapshotAt) || result.snapshot.snapshotAt <= 0 || Date.now() - result.snapshot.snapshotAt > 3_600_000 || result.snapshot.snapshotAt > Date.now() + 300_000) throw new Error('AIS snapshot unavailable or stale');
-    let invalidReports = 0;
-    for (const report of result.snapshot.candidateReports) {
-      const vessel = classifyMilitaryVessel(report);
-      if (!vessel) continue;
-      if (!Number.isFinite(report.timestamp) || report.timestamp <= 0 || report.timestamp > Date.now() + 300_000) { invalidReports++; continue; }
-      if (Date.now() - report.timestamp > 3_600_000) continue;
-      vessels.set(vessel.id, vessel);
-    }
-    return { vessels: [...vessels.values()], at: result.snapshot.snapshotAt, invalidReports };
-  };
-  const [flightResult, aisResult, fleetResult] = await Promise.allSettled([
-    flightRead(), aisRead(), source.military.getUSNIFleetReport({ forceRefresh: false }, { signal }).then(mapProtoToReport),
-  ]);
-  signal.throwIfAborted();
-  const denied = (result: PromiseSettledResult<unknown>) => result.status === 'rejected' && result.reason instanceof CountrySectionError && result.reason.state === 'locked';
-  const deniedSignalFields: Array<keyof CountryMilitarySignalCounts> = [];
-  if (denied(flightResult)) deniedSignalFields.push('militaryFlights', 'militaryFlightsInCountry');
-  if (denied(aisResult) || denied(fleetResult)) deniedSignalFields.push('militaryVessels', 'militaryVesselsInCountry');
-  const flights = flightResult.status === 'fulfilled' ? flightResult.value : null;
-  const ais = aisResult.status === 'fulfilled' ? aisResult.value : null;
-  const fleet = fleetResult.status === 'fulfilled' ? fleetResult.value : null;
-  const vessels = fleet ? mergeUSNIWithAIS(ais?.vessels ?? [], fleet).vessels : ais?.vessels ?? null;
-  await preloadInfrastructureTables();
-  signal.throwIfAborted();
-  const summary = projectCountryMilitaryActivity(code, country, flights, vessels);
-  if ((!ais || ais.invalidReports > 0 || !fleet) && summary.foreignPresence === false) summary.foreignPresence = null;
-  return { ...summary, deniedSignalFields, signalCounts: projectCountryMilitarySignalCounts(code, flights, vessels), coverage: flights && ais && !ais.invalidReports && fleet ? 'complete' as const : 'partial' as const, coverageNotes: [
-    flights ? 'Flight counts include observations licensed for redistribution through this connection.' : 'Flight observations unavailable or unconfirmed. This is not a zero activity count.',
-    ais ? `AIS snapshot ${new Date(ais.at).toISOString()}. Country counts use the relay candidate snapshot, bounded to 1,500 reports.${ais.invalidReports ? ` ${ais.invalidReports} military reports with invalid dates excluded; coverage is partial.` : ''}` : 'Live AIS observations unavailable. Current source coverage excludes AIS.',
-    fleet ? `USNI fleet report ${fleet.articleDate}. Reported regions and homeports are approximate locations, not live positions.` : 'USNI fleet roster unavailable.',
-  ] };
+  return load(source, code, country, signal);
 }

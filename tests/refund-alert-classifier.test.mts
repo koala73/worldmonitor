@@ -79,6 +79,19 @@ describe('classifyRefundAlert — no-op paths', () => {
     }
   });
 
+  it('no-ops when the active sub already has its cancellation scheduled at period end', () => {
+    // A Dodo portal cancel leaves the row `active` with
+    // `cancel_at_next_billing_date: true` until the period ends. Refunding that
+    // customer is not "refund without prior cancellation".
+    const decision = classifyRefundAlert({
+      ...ACTIVE_SUB,
+      subRawPayload: { recurring_pre_tax_amount: 3999, cancel_at_next_billing_date: true },
+      refundAmount: 3999,
+    });
+    assert.equal(decision.kind, 'no-op');
+    if (decision.kind === 'no-op') assert.equal(decision.reason, 'cancel-scheduled');
+  });
+
   it('no-ops when no subscription was found (one-time payment refund)', () => {
     const decision = classifyRefundAlert({
       subStatus: undefined,

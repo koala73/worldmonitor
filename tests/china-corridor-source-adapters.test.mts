@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES } from '../scripts/_portwatch-content-freshness.mjs';
+import { CHINA_COVERAGE_ENTRIES } from '../scripts/china-coverage-manifest.mjs';
 import { buildChinaCorridorSourceBundle } from '../server/worldmonitor/supply-chain/v1/china-corridor-source-adapters.ts';
 
 const ASSESSED_AT = '2026-07-25T12:00:00.000Z';
@@ -15,6 +16,19 @@ const justPastBudgetIso = new Date(assessedAtMs - BUDGET_MS - 1).toISOString();
 const frozenPastBudgetIso = new Date(assessedAtMs - BUDGET_MS - 36 * HOUR_MS).toISOString();
 
 describe('China corridor source adapters (#5578)', () => {
+  it('keeps CCFI transport fresh through three missed shipping ticks and warns before expiry', () => {
+    const entry = CHINA_COVERAGE_ENTRIES.find((row) => row.id === 'supply-chain.ccfi');
+    assert.equal(entry?.transport.maxAgeMin, 1140);
+    for (const [ageMin, expected] of [[720, 'fresh'], [1080, 'fresh'], [1140, 'fresh'], [1141, 'stale']] as const) {
+      const bundle = buildChinaCorridorSourceBundle({
+        shipping: { indices: [{ indexId: 'CCFI', currentValue: 900, unit: 'index' }] },
+        shippingMeta: { fetchedAt: assessedAtMs - ageMin * MINUTE_MS },
+      }, ASSESSED_AT);
+      const signal = bundle.families.trade.signals.find((row) => row.selectorId === 'supply_chain:shipping:v2:CCFI');
+      assert.equal(signal?.transportFreshness, expected, `CCFI at ${ageMin} minutes`);
+    }
+  });
+
   it('preserves missing PortWatch metrics instead of manufacturing zero values', () => {
     const bundle = buildChinaCorridorSourceBundle({
       portwatchChina: {

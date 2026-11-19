@@ -28,12 +28,22 @@
  *   OWASP LLM Top 10 – LLM01: Prompt Injection
  */
 
+// Every match ends at a '>', so it lies before the last '>'. Without that
+// bound, each unterminated '<system' rescans the rest of the input and a run
+// of them is quadratic; replaceRoleTags scans only the closed prefix.
+const ROLE_TAG_RE = /<\/?(system|user|assistant|prompt|context|instruction)\b[^>]*>/gi;
+
+function replaceRoleTags(s) {
+  const end = s.lastIndexOf('>') + 1;
+  return s.slice(0, end).replace(ROLE_TAG_RE, ' ') + s.slice(end);
+}
+
 const INJECTION_PATTERNS = [
   // Model-specific delimiter tokens
   /<\|(?:im_start|im_end|begin_of_text|end_of_text|eot_id|start_header_id|end_header_id)\|>/gi,
   /<\|(?:endoftext|fim_prefix|fim_middle|fim_suffix|pad)\|>/gi,
   /\[(?:INST|\/INST|SYS|\/SYS)\]/gi,
-  /<\/?(system|user|assistant|prompt|context|instruction)\b[^>]*>/gi,
+  ROLE_TAG_RE,
 
   // Leading whitespace stays on its line. Later runs follow mandatory tokens
   // so failed matches cannot repartition or repeatedly scan the same whitespace.
@@ -91,7 +101,7 @@ export function sanitizeForPrompt(input) {
 
   for (const pattern of INJECTION_PATTERNS) {
     pattern.lastIndex = 0;
-    s = s.replace(pattern, ' ');
+    s = pattern === ROLE_TAG_RE ? replaceRoleTags(s) : s.replace(pattern, ' ');
   }
 
   s = s.replace(/\s{2,}/g, ' ').trim();
@@ -143,7 +153,7 @@ const STRUCTURAL_PATTERNS = [
   /<\|(?:im_start|im_end|begin_of_text|end_of_text|eot_id|start_header_id|end_header_id)\|>/gi,
   /<\|(?:endoftext|fim_prefix|fim_middle|fim_suffix|pad)\|>/gi,
   /\[(?:INST|\/INST|SYS|\/SYS)\]/gi,
-  /<\/?(system|user|assistant|prompt|context|instruction)\b[^>]*>/gi,
+  ROLE_TAG_RE,
   /^[-=]{3,}$/gm,
 ];
 
@@ -164,7 +174,7 @@ export function sanitizeHeadline(input) {
   let s = input.replace(CONTROL_CHARS_RE, '');
   for (const pattern of STRUCTURAL_PATTERNS) {
     pattern.lastIndex = 0;
-    s = s.replace(pattern, ' ');
+    s = pattern === ROLE_TAG_RE ? replaceRoleTags(s) : s.replace(pattern, ' ');
   }
   return s.replace(/\s{2,}/g, ' ').trim();
 }

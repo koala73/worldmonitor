@@ -21,7 +21,7 @@ export function formatTime(date: Date): string {
   }
 }
 
-export { formatChange, formatPrice, getChangeClass, getHeatmapClass } from './market-format';
+export { formatChange, formatPrice, formatQuotePrice, getChangeClass, getHeatmapClass } from './market-format';
 
 export function debounce<T extends (...args: unknown[]) => void>(
   fn: T,
@@ -149,7 +149,7 @@ export function shuffle<T>(arr: T[]): T[] {
 }
 
 export { proxyUrl, fetchWithProxy, hasNoStoreCacheDirective, rssProxyUrl } from './proxy';
-export { buildMapUrl, parseMapUrlState, readDashboardSearchQuery, urlHasAsyncFlyTo, withUrlFragment } from './urlState';
+export { buildMapUrl, parseMapUrlState, readDashboardSearchQuery, urlHasAsyncFlyTo, withMapCentreOf, withUrlFragment, withoutVariantScopedUrlState } from './urlState';
 export { DASHBOARD_SEARCH_QUERY_MAX_CHARS } from './urlState';
 export { withTimeout, TimeoutError } from './with-timeout';
 export type { ParsedMapUrlState } from './urlState';

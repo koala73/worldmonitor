@@ -616,6 +616,93 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
 });
 
 describe('host allowlist, cache key, transport', () => {
+  it('distinguishes WFS exception causes without logging provider prose or secrets', async t => {
+    const logs = [];
+    t.mock.method(console, 'warn', value => logs.push(value));
+    const cases = [
+      ['java.sql.SQLSyntaxErrorException: ORA-00904: invalid identifier', ['ORA-00904', 'sql_syntax']],
+      ['java.sql.SQLTransientConnectionException: Cannot get a connection', ['database_connection']],
+      ['java.net.SocketTimeoutException: Read timed out', ['timeout']],
+      ['java.sql.SQLInvalidAuthorizationSpecException: ORA-01017: invalid username/password', ['ORA-01017', 'authorization']],
+      ['Could not resolve property: PRIVATE_COLUMN', ['invalid_property']],
+      ['Sorting is not supported for this feature source', ['unsupported_sort']],
+    ];
+    for (const [explanation, signals] of cases) {
+      const secrets = 'token=SECRET_TOKEN https://user:SECRET_PASSWORD@private.example/query?key=SECRET_KEY '
+        + 'SELECT * FROM PRIVATE_TABLE WHERE name=SECRET_NAME; 10.2.3.4 person@example.com';
+      await assert.rejects(fetchApprovedBcUrl(buildBcWfsUrl(), {
+        fetchFn: async () => new Response(`<ows:ExceptionReport><ows:Exception exceptionCode="NoApplicableCode">`
+          + `<ows:ExceptionText><![CDATA[${explanation}. ${secrets}]]></ows:ExceptionText>`
+          + '</ows:Exception></ows:ExceptionReport>', { status: 400 }),
+      }), /HTTP_400/);
+      assert.deepEqual(JSON.parse(logs.at(-1)).wfsDiagnostic, {
+        exceptionTextPresent: true, scanTruncated: false, signals,
+      });
+    }
+    assert.doesNotMatch(logs.join(''), /SECRET|PRIVATE|private\.example|10\.2\.3\.4|person@|SELECT|https:/);
+  });
+
+  it('bounds WFS diagnostic scanning and output even for malicious exception text', async t => {
+    const logs = [];
+    t.mock.method(console, 'warn', value => logs.push(value));
+    const text = '<ExceptionText>ORA-00904 ORA-00942 ORA-01017 ORA-01031 ORA-01722 ORA-03113 '
+      + 'ORA-03114 ORA-12154 ORA-12514 ORA-12541 SQLSyntaxErrorException SocketTimeoutException '
+      + 'SECRET\r\n\u001b[31m'.repeat(2000) + 'Could not resolve property SECRET_COLUMN</ExceptionText>';
+    await assert.rejects(fetchApprovedBcUrl(buildBcWfsUrl(), {
+      fetchFn: async () => new Response(text, { status: 400 }),
+    }), /HTTP_400/);
+    const diagnostic = JSON.parse(logs[0]).wfsDiagnostic;
+    assert.equal(diagnostic.exceptionTextPresent, true);
+    assert.equal(diagnostic.scanTruncated, true);
+    assert.equal(diagnostic.signals.length, 8);
+    assert.ok(diagnostic.signals.every(signal => /^ORA-\d{5}$/.test(signal)));
+    assert.ok(!diagnostic.signals.includes('invalid_property'), 'do not inspect beyond the bounded prefix');
+    assert.ok(Buffer.byteLength(logs[0]) < 1024);
+    assert.doesNotMatch(logs[0], /SECRET|\\u001b|\r|\n/);
+    await assert.rejects(fetchApprovedBcUrl(buildBcWfsUrl(), {
+      fetchFn: async () => new Response('<ExceptionText>'.padEnd(8192, ' ')
+        + 'SQLSyntaxErrorException SECRET_AFTER_SCAN_LIMIT</ExceptionText>', { status: 400 }),
+    }), /HTTP_400/);
+    assert.deepEqual(JSON.parse(logs.at(-1)).wfsDiagnostic, {
+      exceptionTextPresent: true, scanTruncated: true, signals: [],
+    });
+    assert.doesNotMatch(logs.at(-1), /SECRET/);
+  });
+
+  it('handles encoded, malformed and unknown WFS responses without exposing raw text', async t => {
+    const logs = [];
+    t.mock.method(console, 'warn', value => logs.push(value));
+    for (const [body, present, signals] of [
+      ['<ows:ExceptionText>SQLSyntaxErrorException ORA&#45;00904</ows:ExceptionText>', true, ['ORA-00904', 'sql_syntax']],
+      ['<ExceptionText>SocketTimeoutException SECRET_WITH_NO_CLOSING_TAG', true, ['timeout']],
+      ['<ExceptionText>SECRET_UNKNOWN_FAILURE &#999999999;</ExceptionText>', true, []],
+      ['<ExceptionText>ORA-99999 SECRET_UNKNOWN_CODE</ExceptionText>', true, []],
+      ['<ExceptionText/><ows:ExceptionText>SQLTimeoutException</ows:ExceptionText><ExceptionText>SQLTimeoutException</ExceptionText>', true, ['timeout']],
+      ['<ExceptionText-private>SQLTimeoutException</ExceptionText-private>', false, []],
+      ['<html>SECRET_PROXY_RESPONSE</html>', false, []],
+      ['<ExceptionText/>', false, []],
+    ]) {
+      await assert.rejects(fetchApprovedBcUrl(buildBcWfsUrl(), {
+        fetchFn: async () => new Response(body, { status: 400 }),
+      }), /HTTP_400/);
+      assert.deepEqual(JSON.parse(logs.at(-1)).wfsDiagnostic, {
+        exceptionTextPresent: present, scanTruncated: false, signals,
+      });
+    }
+    assert.doesNotMatch(logs.join(''), /SECRET|999999999/);
+  });
+
+  it('does not add WFS diagnostics to KML failures', async t => {
+    const logs = [];
+    t.mock.method(console, 'warn', value => logs.push(value));
+    await assert.rejects(fetchApprovedBcUrl(BC_FIRE_KML_URL, {
+      fetchFn: async () => new Response('<ExceptionText>ORA-00904 SECRET</ExceptionText>', { status: 400 }),
+    }), /HTTP_400/);
+    assert.equal(JSON.parse(logs[0]).request, 'kml');
+    assert.equal('wfsDiagnostic' in JSON.parse(logs[0]), false);
+    assert.doesNotMatch(logs[0], /ORA|SECRET/);
+  });
+
   it('reports bounded WFS failure fields without response prose or request secrets', async t => {
     const logs = [];
     t.mock.method(console, 'warn', value => logs.push(value));
@@ -625,7 +712,8 @@ describe('host allowlist, cache key, transport', () => {
       }), /HTTP_400/);
     }
     assert.deepEqual(JSON.parse(logs[0]), { event: 'bc_fire_request_failure', request: 'wfs',
-      startIndex: 1000, status: 400, exceptionCode: 'InvalidParameterValue', locator: 'sortBy' });
+      startIndex: 1000, status: 400, exceptionCode: 'InvalidParameterValue', locator: 'sortBy',
+      wfsDiagnostic: { exceptionTextPresent: true, scanTruncated: false, signals: [] } });
     assert.equal(JSON.parse(logs[1]).exceptionCode, null);
     assert.doesNotMatch(logs.join(''), /SECRET/);
   });
@@ -667,6 +755,62 @@ describe('host allowlist, cache key, transport', () => {
     assert.equal(data.fireDetections.find(row => row.id === 'fresh-firms').detectedAt, now);
     assert.equal(wfsCalls, 1, 'permanent HTTP 400 must not retry');
     assert.equal(canadianWildfireAfterPublish(data).freshnessMetaPatch.errorCode, 'BC_WILDFIRE_SOURCE_FAILED');
+  });
+
+  // BC's GeoServer answers some WFS pages with HTTP 400 NoApplicableCode
+  // carrying a server-side SocketTimeoutException. In production on
+  // 2026-11-08 BC failed this way on every other run and the next run
+  // succeeded, so health flapped to SEED_ERROR (Sentry WORLDMONITOR-1C1).
+  const wfsTimeout = () => new Response('<ows:ExceptionReport><ows:Exception exceptionCode="NoApplicableCode">'
+    + '<ows:ExceptionText>java.net.SocketTimeoutException: Read timed out</ows:ExceptionText>'
+    + '</ows:Exception></ows:ExceptionReport>', { status: 400 });
+
+  it('retries a WFS page once when the server reports its own timeout', async t => {
+    t.mock.method(console, 'warn', () => {});
+    const now = Date.parse('2026-09-13T02:20:00Z');
+    let wfsCalls = 0;
+    const result = await fetchBcFirePoints({ nowMs: now, wfsRetryDelayMs: 0, fetchFn: async url => {
+      if (new URL(url).pathname.includes('/kml/')) return new Response('<kml/>');
+      wfsCalls++;
+      return wfsCalls === 1 ? wfsTimeout() : new Response(geojson);
+    } });
+    assert.equal(wfsCalls, 2);
+    assert.equal(result._bcState, 'ok');
+    assert.equal(result._bcVia, 'wfs');
+    assert.ok(result._bcCount > 0);
+  });
+
+  it('still retries a timeout that the capped diagnostic signal list leaves out', async t => {
+    t.mock.method(console, 'warn', () => {});
+    // Eight ORA codes fill the logged signal cap before 'timeout' is listed.
+    const ora = ['ORA-00904', 'ORA-00942', 'ORA-01017', 'ORA-01031', 'ORA-01722', 'ORA-03113', 'ORA-03114', 'ORA-12154'];
+    let wfsCalls = 0;
+    const result = await fetchBcFirePoints({ nowMs: Date.parse('2026-09-13T02:20:00Z'), wfsRetryDelayMs: 0, fetchFn: async url => {
+      if (new URL(url).pathname.includes('/kml/')) return new Response('<kml/>');
+      wfsCalls++;
+      if (wfsCalls > 1) return new Response(geojson);
+      return new Response('<ows:ExceptionReport><ows:Exception exceptionCode="NoApplicableCode"><ows:ExceptionText>'
+        + `${ora.join(' ')} java.net.SocketTimeoutException: Read timed out</ows:ExceptionText>`
+        + '</ows:Exception></ows:ExceptionReport>', { status: 400 });
+    } });
+    assert.equal(wfsCalls, 2);
+    assert.equal(result._bcState, 'ok');
+  });
+
+  it('gives up on a WFS page after one timeout retry and keeps the retained rows', async t => {
+    t.mock.method(console, 'warn', () => {});
+    const now = Date.parse('2026-09-13T02:20:00Z');
+    const rows = parseBcFireGeoJson(geojson).fireDetections;
+    const previousSnapshot = { version: 1, fetchedAt: now - 600_000, fireDetections: rows };
+    let wfsCalls = 0;
+    const result = await fetchBcFirePoints({ previousSnapshot, nowMs: now, wfsRetryDelayMs: 0, fetchFn: async url => {
+      if (new URL(url).pathname.includes('/kml/')) return new Response('<kml/>');
+      wfsCalls++;
+      return wfsTimeout();
+    } });
+    assert.equal(wfsCalls, 2);
+    assert.equal(result._bcState, 'failed');
+    assert.deepEqual(result.fireDetections, rows);
   });
 
   it('replaces retained BC rows only after complete valid coverage, including a valid empty response', async () => {

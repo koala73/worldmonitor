@@ -54,6 +54,8 @@ import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard } from '../s
 import { __setForecastLlmCallOverrideForTests, __setRedisStoreForTests, buildHistorySnapshot, buildPublishedForecastPayload, runExtractionGate, runExtractionGateShadow } from '../scripts/seed-forecasts.mjs';
 import { CONFLICT_COUNT_SOURCE_FEED, CYBER_COUNT_SOURCE_FEED, HORIZON_MS, PROJECTION_HORIZONS, UNREST_COUNT_SOURCE_FEED, applyExtractionGate, attachResolutionSpecs, chokepointHardContract, evaluateExtractionShadow, horizonSampleToleranceMs, scoredHorizonKeys } from '../scripts/_forecast-resolution.mjs';
 import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
+import { buildProbabilityTrail } from '../scripts/_forecast-probability-trail.mjs';
+import { buildPublicForecastArchive } from '../scripts/_forecast-scorecard.mjs';
 import { GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION, GPS_ZONE_MIN_HEXES } from '../scripts/_gps-maritime-regions.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -61,6 +63,13 @@ const GRACE = JUDGED_EVIDENCE_GRACE_MS;
 const T0 = Date.parse('2026-07-07T00:00:00Z');
 const SEEDER_SOURCE = readFileSync(new URL('../scripts/seed-forecast-resolutions.mjs', import.meta.url), 'utf8');
 const ORIGINAL_FETCH = globalThis.fetch;
+
+function trackValues(flat) {
+  const track = Object.fromEntries(Array.from({ length: flat.length / 2 }, (_, i) => [flat[i * 2], flat[i * 2 + 1]]));
+  return ['title', 'description', 'link', 'url', 'source', 'publisher', 'domain',
+    'publishedAt', 'lastSeen', 'firstSeen', 'severity', 'currentScore', 'score'].map(field => track[field] ?? null);
+}
+
 const ORIGINAL_REDIS_ENV = {
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
@@ -127,6 +136,19 @@ function opened(history) {
 }
 
 describe('processResolutionCycle', () => {
+  it('copies a probability trajectory through real hard resolution into the public archive', () => {
+    const initial = snapshot(T0, [forecast()]);
+    const current = snapshot(T0 + DAY_MS, [forecast({ probability: 0.8 })]);
+    const probabilityTrail = buildProbabilityTrail(null, current, [initial]);
+    const result = processResolutionCycle(...opened([initial]), {
+      'supply_chain:chokepoints:v4': { chokepoints: [{ route: 'Strait of Hormuz', riskScore: HORMUZ_YES_SCORE }] },
+    }, T0 + DAY_MS, { probabilityTrail });
+    const archive = buildPublicForecastArchive(result.ledger, T0 + DAY_MS);
+    assert.equal(archive.rows[0].outcome, 'YES');
+    assert.equal(archive.rows[0].trajectory.length, 2);
+    assert.equal(archive.rows[0].probability, 0.62);
+    assert.equal(archive.rows[0].sourceFeed, 'chokepoints');
+  });
   describe('open-window calibration stays paired with the first emission (#8990)', () => {
     const FEEDS = { 'supply_chain:chokepoints:v4': { chokepoints: [{ route: 'Strait of Hormuz', riskScore: 40 }] } };
     const KEY = `fc-hormuz@${T0 + DAY_MS}`;
@@ -1131,7 +1153,7 @@ describe('processResolutionCycleWithJudges', () => {
         return {
           ok: true,
           json: async () => commands.map(([, key]) => ({
-            result: ['title', `Story ${key}`, 'description', 'Policy change context', 'publishedAt', String(T0 + 1)],
+            result: trackValues(['title', `Story ${key}`, 'description', 'Policy change context', 'publishedAt', String(T0 + 1)]),
           })),
         };
       }
@@ -1221,7 +1243,7 @@ describe('readDigestAccumulatorArchive', () => {
         return {
           ok: true,
           json: async () => pipelineCommands.map(([, key]) => ({
-            result: ['title', `Story ${key}`, 'description', 'Policy change context', 'publishedAt', String(T0 + 1)],
+            result: trackValues(['title', `Story ${key}`, 'description', 'Policy change context', 'publishedAt', String(T0 + 1)]),
           })),
         };
       }
@@ -1347,7 +1369,7 @@ describe('readDigestAccumulatorArchive', () => {
         return {
           ok: true,
           json: async () => [{
-            result: ['title', 'Unrelated market update', 'description', 'Markets were steady.', 'publishedAt', String(deadline + 1)],
+            result: trackValues(['title', 'Unrelated market update', 'description', 'Markets were steady.', 'publishedAt', String(deadline + 1)]),
           }],
         };
       }
@@ -1402,7 +1424,7 @@ describe('readDigestAccumulatorArchive', () => {
         return {
           ok: true,
           json: async () => commands.map(([, key]) => ({
-            result: ['title', `Story ${key}`, 'description', 'Policy change context', 'publishedAt', String(T0 + 1)],
+            result: trackValues(['title', `Story ${key}`, 'description', 'Policy change context', 'publishedAt', String(T0 + 1)]),
           })),
         };
       }
@@ -1443,7 +1465,7 @@ describe('readDigestAccumulatorArchive', () => {
         return {
           ok: true,
           json: async () => commands.map(() => ({
-            result: ['title', 'Story', 'description', 'Policy context', 'publishedAt', String(T0 + 1)],
+            result: trackValues(['title', 'Story', 'description', 'Policy context', 'publishedAt', String(T0 + 1)]),
           })),
         };
       }
@@ -1471,19 +1493,20 @@ describe('readDigestAccumulatorArchive', () => {
     }
   });
 
-  it('normalizes object-shaped HGETALL rows', async () => {
+  it('reads selected fields including legacy URL, publisher, timestamp, and score fallbacks', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       if (String(url).endsWith('/pipeline')) {
+        const commands = JSON.parse(init.body);
+        assert.equal(commands[0][0], 'HMGET');
+        assert.deepEqual(commands[0].slice(2), ['title', 'description', 'link', 'url', 'source', 'publisher', 'domain',
+          'publishedAt', 'lastSeen', 'firstSeen', 'severity', 'currentScore', 'score']);
         return {
           ok: true,
           json: async () => [{
-            result: {
-              title: 'Policy change passes',
-              description: 'The bill passed.',
-              publishedAt: String(T0 + 1),
-            },
+            result: trackValues(['title', 'Policy change passes', 'description', 'The bill passed.',
+              'url', 'https://example.test/policy', 'publisher', 'Wire', 'lastSeen', String(T0 + 1), 'score', '75']),
           }],
         };
       }
@@ -1498,6 +1521,10 @@ describe('readDigestAccumulatorArchive', () => {
     assert.equal(archive.items.length, 1);
     assert.equal(archive.items[0].hash, 'hash-1');
     assert.equal(archive.items[0].title, 'Policy change passes');
+    assert.equal(archive.items[0].url, 'https://example.test/policy');
+    assert.equal(archive.items[0].source, 'Wire');
+    assert.equal(archive.items[0].publishedAt, T0 + 1);
+    assert.equal(archive.items[0].currentScore, 75);
   });
 
   it('skips missing story-track rows but marks the archive incomplete', async () => {
@@ -1508,8 +1535,8 @@ describe('readDigestAccumulatorArchive', () => {
         return {
           ok: true,
           json: async () => [
-            { result: [] },
-            { result: ['title', 'Policy change passes', 'description', 'The bill passed.', 'publishedAt', String(T0 + 1)] },
+            { result: trackValues([]) },
+            { result: trackValues(['title', 'Policy change passes', 'description', 'The bill passed.', 'publishedAt', String(T0 + 1)]) },
           ],
         };
       }
@@ -1535,7 +1562,7 @@ describe('readDigestAccumulatorArchive', () => {
       if (String(url).endsWith('/pipeline')) {
         return {
           ok: true,
-          json: async () => [{ result: [] }],
+          json: async () => [{ result: trackValues([]) }],
         };
       }
       return {
@@ -1576,8 +1603,8 @@ describe('readDigestAccumulatorArchive', () => {
         return {
           ok: true,
           json: async () => [
-            { result: ['title', 'Policy change passes', 'description', 'The bill passed.', 'publishedAt', String(T0 + 1)] },
-            { error: 'ERR transient HGETALL failure' },
+            { result: trackValues(['title', 'Policy change passes', 'description', 'The bill passed.', 'publishedAt', String(T0 + 1)]) },
+            { error: 'ERR transient HMGET failure' },
           ],
         };
       }
@@ -1605,7 +1632,7 @@ describe('readDigestAccumulatorArchive', () => {
       if (String(url).endsWith('/pipeline')) {
         return {
           ok: true,
-          json: async () => [{ result: ['title', 'Only one row'] }],
+          json: async () => [{ result: trackValues(['title', 'Only one row']) }],
         };
       }
       return {

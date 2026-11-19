@@ -13,7 +13,7 @@ paths:
             tags:
                 - UnrestService
             summary: ListUnrestEvents
-            description: ListUnrestEvents retrieves protest, riot, and civil unrest events.
+            description: ListUnrestEvents returns protest events seeded from ACLED, plus GDELT location mentions marked as unverified, filterable by country and time range.
             operationId: ListUnrestEvents
             parameters:
                 - name: start
@@ -546,6 +546,9 @@ components:
                     items:
                         type: string
                         description: Source article URLs, when provided by the upstream feed.
+                hasPreciseLocation:
+                    type: boolean
+                    description: True when the source identifies a specific event location, such as ACLED geo_precision 1.
             required:
                 - id
             description: |-

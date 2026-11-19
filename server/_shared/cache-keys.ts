@@ -78,9 +78,13 @@ export const SIMULATION_PACKAGE_LATEST_KEY = 'forecast:simulation-package:latest
  * api/_cii-risk-cache-keys.js and scripts/_cii-risk-cache-keys.mjs aligned.
  */
 export const CII_RISK_SCORE_CACHE_KEYS = {
-  live: 'risk:scores:sebuf:v8',
-  stale: 'risk:scores:sebuf:stale:v8',
-  trendHistoryPrefix: 'risk:scores:sebuf:trend-history:v8',
+  live: 'risk:scores:sebuf:v14',
+  stale: 'risk:scores:sebuf:stale:v14',
+  trendHistoryPrefix: 'risk:scores:sebuf:trend-history:v14',
+  dailyHistoryPrefix: 'risk:scores:history:',
+  dailyHistoryIndex: 'risk:scores:history:index',
+  dailyHistoryMeta: 'seed-meta:intelligence:risk-scores-history',
+  dailyHistoryActivation: 'seed-activated:intelligence:risk-scores-history',
 } as const;
 export const CLIMATE_ANOMALIES_KEY = 'climate:anomalies:v2';
 export const CLIMATE_AIR_QUALITY_KEY = 'climate:air-quality:v1';
@@ -88,14 +92,24 @@ export const CLIMATE_ZONE_NORMALS_KEY = 'climate:zone-normals:v1';
 export const CLIMATE_CO2_MONITORING_KEY = 'climate:co2-monitoring:v1';
 export const CLIMATE_OCEAN_ICE_KEY = 'climate:ocean-ice:v1';
 export const CLIMATE_NEWS_KEY = 'climate:news-intelligence:v1';
+export const CLIMATE_RESERVOIR_LEVELS_KEY = 'climate:reservoir-levels:v1';
+export const ORBITAL_CATALOG_KEY = 'orbital:catalog:v1';
+export const ORBITAL_SITES_KEY = 'orbital:sites:v1';
+export const ORBITAL_SITE_KEY_PREFIX = 'orbital:site:v1:';
+/** Newest radar water-extent reading per reservoir site (scripts/seed-orbital-water-extent.mjs). */
+export const ORBITAL_WATER_EXTENT_LATEST_KEY = 'orbital:water-extent:latest:v1';
+export const ORBITAL_COUNTRY_KEY_PREFIX = 'orbital:country:v1:';
 export const HEALTH_AIR_QUALITY_KEY = 'health:air-quality:v1';
 export const CHINA_COVERAGE_HEALTH_KEY = 'health:china-coverage:v1';
 export const CHINA_MACRO_KEY = BOOTSTRAP_CACHE_KEYS.chinaMacro;
 export const CHINA_RELEASE_CALENDAR_KEY = BOOTSTRAP_CACHE_KEYS.chinaReleaseCalendar;
 export const CHINA_CORRIDOR_CONTROL_TOWERS_KEY =
   'supply_chain:china-corridor-control-towers:v1';
+// v2: the atmosphere family (#9722) changed the contribution count the wire
+// validator pins, so a v1 response cached across the deploy would fail every
+// client parse for its 15-minute TTL.
 export const CHINA_ACTIVITY_NOWCAST_KEY =
-  'economic:china:activity-nowcast:v1';
+  'economic:china:activity-nowcast:v2';
 export const CHINA_CORRIDOR_DIRECTIONAL_HISTORY_KEY =
   'economic:china:corridor-directional-history:v1';
 

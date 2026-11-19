@@ -18,7 +18,7 @@ The hard part is not finding bad news. The hard part is keeping different kinds 
 - health alerts and [disease outbreaks](https://www.worldmonitor.app/docs/panels/disease-outbreaks)
 - natural disasters
 - travel and security advisories
-- country instability and resilience context
+- [country instability](/blog/posts/country-instability-index-methodology-explained/) and resilience context
 - infrastructure or route disruptions that affect access
 
 WorldMonitor is not a replacement for field judgment, local partners, duty-of-care procedures, or official security channels. It is a situational-awareness layer: a way to put several public and operational signals into one workflow so the daily review is less ad hoc.

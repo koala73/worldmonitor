@@ -66,6 +66,10 @@ export async function listWebhooks(
         eventType: recordEventType(record),
         countries: Array.isArray(record.countries) ? record.countries : [],
         minLiveSignal: record.minLiveSignal ?? 0,
+        // Stored keys only (the event's own inputSchema properties, defaults
+        // applied). The generated type lists every repeated field, but proto3
+        // JSON omits empty repeated fields, so the wire shape is the same.
+        ...(record.scope ? { scope: record.scope as unknown as WebhookSummary['scope'] } : {}),
       });
     } catch {
       // skip malformed

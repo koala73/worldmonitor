@@ -35,8 +35,8 @@ describe('agent-auth WWW-Authenticate challenge (/agent/auth)', () => {
       body.authorization_server,
       'https://worldmonitor.app/.well-known/oauth-authorization-server',
     );
-    // Cloudflare 301s apex /auth.md to www; publish the URL that serves it.
-    assert.equal(body.skill, 'https://www.worldmonitor.app/auth.md');
+    // Apex /auth.md is exempt from the Cloudflare apex→www 301 (ARCHITECTURE.md §2).
+    assert.equal(body.skill, 'https://worldmonitor.app/auth.md');
   });
 
   it('derives resource_metadata from the request Host (www stays self-consistent)', async () => {

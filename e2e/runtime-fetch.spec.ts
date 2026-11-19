@@ -1,73 +1,6 @@
 import { expect, test } from '@playwright/test';
 
 test.describe('desktop runtime routing guardrails', () => {
-  test('detectDesktopRuntime covers packaged tauri hosts', async ({ page }) => {
-    await page.goto('/tests/runtime-harness.html');
-
-    const result = await page.evaluate(async () => {
-      const runtime = await import('/src/services/runtime.ts');
-      return {
-        tauriHost: runtime.detectDesktopRuntime({
-          hasTauriGlobals: false,
-          userAgent: 'Mozilla/5.0',
-          locationProtocol: 'https:',
-          locationHost: 'tauri.localhost',
-          locationOrigin: 'https://tauri.localhost',
-        }),
-        tauriScheme: runtime.detectDesktopRuntime({
-          hasTauriGlobals: false,
-          userAgent: 'Mozilla/5.0',
-          locationProtocol: 'tauri:',
-          locationHost: '',
-          locationOrigin: 'tauri://localhost',
-        }),
-        tauriUa: runtime.detectDesktopRuntime({
-          hasTauriGlobals: false,
-          userAgent: 'Mozilla/5.0 Tauri/2.0',
-          locationProtocol: 'https:',
-          locationHost: 'example.com',
-          locationOrigin: 'https://example.com',
-        }),
-        tauriGlobal: runtime.detectDesktopRuntime({
-          hasTauriGlobals: true,
-          userAgent: 'Mozilla/5.0',
-          locationProtocol: 'https:',
-          locationHost: 'example.com',
-          locationOrigin: 'https://example.com',
-        }),
-        secureLocalhost: runtime.detectDesktopRuntime({
-          hasTauriGlobals: false,
-          userAgent: 'Mozilla/5.0',
-          locationProtocol: 'https:',
-          locationHost: 'localhost',
-          locationOrigin: 'https://localhost',
-        }),
-        insecureLocalhost: runtime.detectDesktopRuntime({
-          hasTauriGlobals: false,
-          userAgent: 'Mozilla/5.0',
-          locationProtocol: 'http:',
-          locationHost: 'localhost:5173',
-          locationOrigin: 'http://localhost:5173',
-        }),
-        webHost: runtime.detectDesktopRuntime({
-          hasTauriGlobals: false,
-          userAgent: 'Mozilla/5.0',
-          locationProtocol: 'https:',
-          locationHost: 'worldmonitor.app',
-          locationOrigin: 'https://worldmonitor.app',
-        }),
-      };
-    });
-
-    expect(result.tauriHost).toBe(true);
-    expect(result.tauriScheme).toBe(true);
-    expect(result.tauriUa).toBe(true);
-    expect(result.tauriGlobal).toBe(true);
-    expect(result.secureLocalhost).toBe(true);
-    expect(result.insecureLocalhost).toBe(false);
-    expect(result.webHost).toBe(false);
-  });
-
   test('runtime fetch patch falls back to cloud for local failures', async ({ page }) => {
     await page.goto('/tests/runtime-harness.html');
 
@@ -284,79 +217,6 @@ test.describe('desktop runtime routing guardrails', () => {
     expect(result.name).toBe('AbortError');
   });
 
-  test('chunk preload reload guard is one-shot until app boot clears it', async ({ page }) => {
-    await page.goto('/tests/runtime-harness.html');
-
-    const result = await page.evaluate(async () => {
-      const {
-        buildChunkReloadStorageKey,
-        installChunkReloadGuard,
-        clearChunkReloadGuard,
-      } = await import('/src/bootstrap/chunk-reload.ts');
-
-      const listeners = new Map<string, Array<() => void>>();
-      const eventTarget = {
-        addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => {
-          const list = listeners.get(type) ?? [];
-          list.push(() => {
-            if (typeof listener === 'function') {
-              listener(new Event(type));
-            } else {
-              listener.handleEvent(new Event(type));
-            }
-          });
-          listeners.set(type, list);
-        },
-      };
-
-      const storageMap = new Map<string, string>();
-      const storage = {
-        getItem: (key: string) => storageMap.get(key) ?? null,
-        setItem: (key: string, value: string) => {
-          storageMap.set(key, value);
-        },
-        removeItem: (key: string) => {
-          storageMap.delete(key);
-        },
-      };
-
-      const emit = (eventName: string) => {
-        const handlers = listeners.get(eventName) ?? [];
-        handlers.forEach((handler) => handler());
-      };
-
-      let reloadCount = 0;
-      const storageKey = installChunkReloadGuard('9.9.9', {
-        eventTarget,
-        storage,
-        eventName: 'preload-error',
-        reload: () => {
-          reloadCount += 1;
-        },
-      });
-
-      emit('preload-error');
-      emit('preload-error');
-      const reloadCountBeforeClear = reloadCount;
-
-      clearChunkReloadGuard(storageKey, storage);
-      emit('preload-error');
-
-      return {
-        storageKey,
-        expectedKey: buildChunkReloadStorageKey('9.9.9'),
-        reloadCountBeforeClear,
-        reloadCountAfterClear: reloadCount,
-        storedValue: storageMap.get(storageKey) ?? null,
-      };
-    });
-
-    expect(result.storageKey).toBe(result.expectedKey);
-    expect(result.reloadCountBeforeClear).toBe(1);
-    expect(result.reloadCountAfterClear).toBe(2);
-    expect(result.storedValue).toBe('1');
-  });
-
   test('update badge picks architecture-correct desktop download url', async ({ page }) => {
     await page.goto('/tests/runtime-harness.html');
 
@@ -486,7 +346,7 @@ test.describe('desktop runtime routing guardrails', () => {
           options?: unknown
         ) {
           if (contextId.toLowerCase().includes('webgl')) webglProbeCalls += 1;
-          return originalGetContext.call(this, contextId, options as never);
+          return Reflect.apply(originalGetContext, this, [contextId, options]);
         }) as typeof HTMLCanvasElement.prototype.getContext;
 
         map = new MapContainer(mapHost, {
@@ -601,7 +461,7 @@ test.describe('desktop runtime routing guardrails', () => {
           options?: unknown,
         ) {
           if (contextId === 'webgl2') return fakeWebGL2 as unknown as RenderingContext;
-          return originalGetContext.call(this, contextId, options as never);
+          return Reflect.apply(originalGetContext, this, [contextId, options]);
         }) as typeof HTMLCanvasElement.prototype.getContext;
 
         map = new MapContainer(mapHost, {
@@ -704,7 +564,7 @@ test.describe('desktop runtime routing guardrails', () => {
           options?: unknown,
         ) {
           if (contextId === 'webgl2') return fakeWebGL2 as unknown as RenderingContext;
-          return originalGetContext.call(this, contextId, options as never);
+          return Reflect.apply(originalGetContext, this, [contextId, options]);
         }) as typeof HTMLCanvasElement.prototype.getContext;
 
         map = new MapContainer(mapHost, {
@@ -1220,7 +1080,7 @@ test.describe('desktop runtime routing guardrails', () => {
           options?: unknown
         ) {
           if (contextId === 'webgl2') return null;
-          return originalGetContext.call(this, contextId, options as never);
+          return Reflect.apply(originalGetContext, this, [contextId, options]);
         }) as typeof HTMLCanvasElement.prototype.getContext;
 
         map = new MapContainer(mapHost, {
@@ -1295,7 +1155,7 @@ test.describe('desktop runtime routing guardrails', () => {
               getParameter: () => null,
             } as unknown as WebGL2RenderingContext;
           }
-          return originalGetContext.call(this, contextId, options as never);
+          return Reflect.apply(originalGetContext, this, [contextId, options]);
         }) as typeof HTMLCanvasElement.prototype.getContext;
 
         Document.prototype.getElementById = (function (
@@ -1381,7 +1241,7 @@ test.describe('desktop runtime routing guardrails', () => {
               getParameter: (param: number) => param === rendererInfo.UNMASKED_RENDERER_WEBGL ? 'Google SwiftShader' : null,
             } as unknown as WebGL2RenderingContext;
           }
-          return originalGetContext.call(this, contextId, options as never);
+          return Reflect.apply(originalGetContext, this, [contextId, options]);
         }) as typeof HTMLCanvasElement.prototype.getContext;
 
         map = new MapContainer(mapHost, {

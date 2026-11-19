@@ -38,6 +38,7 @@ type PolicyPrimitive = number | string | boolean | bigint | symbol | null | unde
 interface PolicyFrame {
   filename?: string;
   function?: string;
+  lineno?: number;
 }
 interface PolicyException {
   type?: string;
@@ -57,7 +58,7 @@ export interface PolicyEvent {
 }
 
 const SAFE_MARKETING_PATH = /^\/(?:pro\/?)?$/;
-const SAFE_MARKETING_HASH = /^#(?:pricing|tiers|api|enterprise|enterprise-contact)$/i;
+const SAFE_MARKETING_HASH = /^#(?:pricing|tiers|api|enterprise|enterprise-contact|plan-proBusiness)$/i;
 const MAX_MARKETING_ORIGIN_LENGTH = 200;
 
 /**
@@ -503,6 +504,8 @@ const MODULE_LOAD_FAILURE =
  * infinitely, and suppressing this by message alone would hide it.
  */
 const STACK_OVERFLOW = /Maximum call stack size exceeded|too much recursion/i;
+/** Firefox's `onerror` message for `throw undefined` / `throw null`. */
+const BARE_PRIMITIVE_THROW = /^(?:Error: )?uncaught exception: (?:undefined|null)$/;
 /**
  * A fetch cancelled by a bare `AbortController.abort()`, in the engine's own
  * default wording. Deliberately NOT in `MARKETING_IGNORE_ERRORS`: this bundle
@@ -549,6 +552,14 @@ const MASKED_URL_FRAME = /^webkit-masked-url:/;
  */
 const CSP_EVAL_BLOCK = /unsafe-eval.*Content Security Policy|Content Security Policy.*unsafe-eval/;
 /**
+ * Chrome's refusal of a screen-capture request under the page's permission
+ * policy. No first-party code on either surface calls `getDisplayMedia`.
+ * Deliberately NOT in `MARKETING_IGNORE_ERRORS`: if this bundle ever adds
+ * screen capture, a refusal breaks that feature and must page, so only a frame
+ * gate may drop it.
+ */
+const DISPLAY_CAPTURE_BLOCKED = /^(?:NotAllowedError: )?Failed to execute 'getDisplayMedia' on 'MediaDevices': Access to the feature "display-capture" is disallowed by permission policy/;
+/**
  * Chrome's wording for a `<script>` whose inline source failed to parse when it
  * was inserted: the DOM call is prefixed onto the parse error. Deliberately NOT
  * in `MARKETING_IGNORE_ERRORS`: this bundle appends scripts too (turnstile.ts,
@@ -561,6 +572,8 @@ const APPEND_CHILD_PARSE_FAILURE = /^Failed to execute 'appendChild' on 'Node': 
  * own bundle could in principle produce one (a `JSON.parse` on a malformed API
  * body throws exactly these phrasings), so it must stay behind the frame gate.
  */
+/** JavaScriptCore's and SpiderMonkey's wording for a malformed numeric literal (`3foo`). */
+const NUMERIC_LITERAL_PARSE_FAILURE = /^(?:SyntaxError: )?No identifiers allowed directly after numeric literal$/;
 const PARSE_FAILURE = /^(?:Unexpected token|Unexpected identifier|Invalid or unexpected token|Unexpected end of (?:script|input))\b/;
 /**
  * The `action` tags our third-party-SDK loader call sites stamp on a capture.
@@ -686,6 +699,20 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // (WORLDMONITOR-103).
   if (!hasFirstParty && STACK_OVERFLOW.test(msg)) return null;
 
+  // Firefox's `onerror` wording for a script that throws a bare primitive
+  // (`throw undefined` / `throw null`). WORLDMONITOR-1CH is the shape: Firefox
+  // 159 / Windows at `/pro`, one synthesized frame on the document URL at line
+  // 0, no breadcrumbs. A primitive carries no stack, so the frame names no
+  // script at all. The dashboard drops the same signature (WORLDMONITOR-106);
+  // the two surfaces run separate Sentry clients.
+  //
+  // Licensed by a source invariant, not by the frame shape: no first-party
+  // source on this surface, inline HTML scripts included, throws a bare
+  // primitive, and `tests/pro-sentry-filter-policy.test.mts` pins that. Gated
+  // on `!hasFirstParty` so a stack that does name `/pro/assets/*.js` still
+  // reports, and `[object Object]` (a thrown object) is not matched.
+  if (!hasFirstParty && BARE_PRIMITIVE_THROW.test(msg)) return null;
+
   // A leaked fetch cancellation. WORLDMONITOR-11M is the shape: `AbortError:
   // The user aborted a request.` (`DOMException.code: 20`) on Chrome 151 /
   // macOS at `/`, via `onunhandledrejection` with zero frames.
@@ -758,6 +785,23 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // `src/bootstrap/sentry-init.ts`.
   if (!hasFirstParty && nonInfraFrames.some((f) => MASKED_URL_FRAME.test(f.filename ?? ''))) return null;
 
+  // A ReferenceError whose every frame is `<anonymous>`: an injected script
+  // naming a bare global it never defined. Sentry WORLDMONITOR-1E7 and -1E8
+  // are the shape: two sibling `is not defined` errors from one VivoBrowser /
+  // Android page load at `/`, each with a single `<anonymous>:1:1` frame.
+  // `<anonymous>` is the filename an engine gives code evaluated from a
+  // string, and no first-party source on this surface does that (no `eval`,
+  // `new Function`, or string-bodied timer; tests/pro-sentry-filter-policy
+  // .test.mts pins it across `pro-test/src`, its `shared/` leaves and the
+  // inline scripts). So a first-party ReferenceError always carries an asset
+  // or document frame. Keyed on that stack invariant rather than on the
+  // identifier, so the next injected global needs no entry of its own. Ports
+  // the dashboard's WORLDMONITOR-1A2 gate (`src/bootstrap/sentry-init.ts`),
+  // including its strictness: a blob:, filename-less or empty stack reports.
+  if (exceptionType === 'ReferenceError'
+      && frames.length > 0
+      && frames.every((f) => f.filename === '<anonymous>')) return null;
+
   // An injected script's `eval` refused by our CSP. WORLDMONITOR-129 is the
   // shape: `EvalError` on Edge 150 / Windows at `/pro`, an `onerror` capture
   // whose only frames are two `<anonymous>:1` entries, the filename V8 gives
@@ -776,6 +820,20 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // injection.
   if (nonInfraFrames.length === 0
       && CSP_EVAL_BLOCK.test(msg)
+      && frames.some((f) => f.filename === '<anonymous>')) return null;
+
+  // An injected snapshot script asking for screen capture. WORLDMONITOR-121 is
+  // the shape: Chrome 124 / Windows at `/`, an unhandled rejection whose only
+  // frames are `<anonymous>:1` and `window.__wpxTakeSnapshot` at
+  // `<anonymous>:183`, refused by our permission policy. It came back after
+  // five plain resolves: this bundle runs its own Sentry client, so the
+  // dashboard's filters never applied. Gated like the eval rule above, on the
+  // WHOLE stack being `<anonymous>` or infra, so a first-party caller (an asset
+  // frame, or the document URL for an inline script) still reports, and a
+  // frame with no filename keeps the event reporting.
+  if (nonInfraFrames.length === 0
+      && frames.every((f) => Boolean(f.filename?.trim()))
+      && DISPLAY_CAPTURE_BLOCKED.test(msg)
       && frames.some((f) => f.filename === '<anonymous>')) return null;
 
   // An injected script inserting a `<script>` whose inline source fails to
@@ -916,6 +974,25 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
       && /\bcontentWindow\b/.test(msg)
       && nonInfraFrames.length > 0
       && nonInfraFrames.every((f) => MARKETING_DOCUMENT_FRAME.test(f.filename ?? ''))) return null;
+
+  // An injected script that does not parse, attributed to line 1 of the
+  // document. Sentry WORLDMONITOR-10B's 2026-11-13 event is the shape:
+  // `SyntaxError: No identifiers allowed directly after numeric literal` on
+  // Firefox iOS 159 / iOS 18.7 at `/`, an `onerror` capture whose only frame
+  // is the document URL at line 1. The dashboard drops the same sentence
+  // behind its `!hasFirstParty` gate; that gate alone is not enough here,
+  // because this surface ships inline script that WebKit also attributes to
+  // the document URL. Line 1 is the licence: every marketing document opens
+  // with `<!doctype html>` on its own line (pinned by the test suite), so no
+  // inline script of ours can sit there. An inline parse failure of ours
+  // would also fire for every visitor on that engine, not as a one-off.
+  if ((excType === 'SyntaxError' || /^SyntaxError: /.test(msg))
+      && exceptionValues.length === 1
+      && !hasFirstParty
+      && NUMERIC_LITERAL_PARSE_FAILURE.test(msg)
+      && frames.every((f) => Boolean(f.filename?.trim()))
+      && nonInfraFrames.length > 0
+      && nonInfraFrames.every((f) => MARKETING_DOCUMENT_FRAME.test(f.filename ?? '') && f.lineno === 1)) return null;
 
   return event;
 }

@@ -1,7 +1,11 @@
 import { Panel } from './Panel';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
+import { MarketServiceClient } from '@/services/generated-rpc-clients';
 import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
+
+const getMarketClient = createLazyClient(() => new MarketServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
 interface BreadthSnapshot {
   date: string;
@@ -204,9 +208,7 @@ export class MarketBreadthPanel extends Panel {
 
   private async refreshFromRpc(): Promise<boolean> {
     try {
-      const { MarketServiceClient } = await import('@/generated/client/worldmonitor/market/v1/service_client');
-      const { getRpcBaseUrl } = await import('@/services/rpc-client');
-      const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
+      const client = getMarketClient();
       const resp = await client.getMarketBreadthHistory({});
       if (resp.unavailable) {
         if (!this.data) this.showError(t('common.noDataShort'), () => void this.fetchData());

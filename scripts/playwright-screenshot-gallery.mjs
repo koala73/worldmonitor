@@ -6,11 +6,12 @@
  *   node scripts/playwright-screenshot-gallery.mjs <results-dir> <output-dir>
  *   node scripts/playwright-screenshot-gallery.mjs --merge-history <existing-history.json> <output-dir>
  */
-import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, open, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const MAX_HISTORY = 100;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 export function escapeHtml(value) {
   return String(value)
@@ -298,6 +299,16 @@ export async function buildGallery({ resultsDir, outputDir, history = [], meta }
 
   const screenshots = [];
   for (const [index, file] of pngs.entries()) {
+    const handle = await open(file, 'r');
+    try {
+      const signature = Buffer.alloc(PNG_SIGNATURE.length);
+      const { bytesRead } = await handle.read(signature, 0, signature.length, 0);
+      if (bytesRead !== PNG_SIGNATURE.length || !signature.equals(PNG_SIGNATURE)) {
+        throw new Error(`Screenshot has an invalid PNG signature: ${file}`);
+      }
+    } finally {
+      await handle.close();
+    }
     const fileName = `${String(index + 1).padStart(3, '0')}-${sanitizeFileName(path.basename(file))}`;
     await copyFile(file, path.join(imageDir, fileName));
     screenshots.push({

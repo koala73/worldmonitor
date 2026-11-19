@@ -1,3 +1,5 @@
+import { SEED_LOCK_FENCED_SET_SCRIPT, SEED_LOCK_RENEW_SCRIPT } from '../../scripts/_seed-utils.mjs';
+
 export interface FakeRedisSortedSetEntry {
   member: string;
   score: number;
@@ -171,6 +173,22 @@ export function createRedisFetch(
         if (!redis.has(redisKey)) return new Response(JSON.stringify({ result: 0 }), { status: 200 });
         setExpiry(redisKey, ttlSeconds);
         return new Response(JSON.stringify({ result: 1 }), { status: 200 });
+      }
+      const evalScript = normalizedVerb === 'EVAL' ? String(command[1] ?? '') : '';
+      if (evalScript === SEED_LOCK_RENEW_SCRIPT || evalScript === SEED_LOCK_FENCED_SET_SCRIPT) {
+        // runSeed's lock fence (SM-122): act only while KEYS[1] holds ARGV[1].
+        const lockKey = String(command[3] ?? '');
+        const argv = command.slice(3 + Number(command[2] ?? 0)).map(String);
+        const current = redis.get(lockKey);
+        if (current !== argv[0]) {
+          return new Response(JSON.stringify({ result: [0, current ?? ''] }), { status: 200 });
+        }
+        setExpiryMs(lockKey, Number(argv[1]));
+        if (evalScript === SEED_LOCK_FENCED_SET_SCRIPT) {
+          const ttl = argv[3] === '' ? undefined : Number(argv[3]);
+          writeValue(String(command[4] ?? ''), argv[2] ?? '', ttl);
+        }
+        return new Response(JSON.stringify({ result: [1, ''] }), { status: 200 });
       }
       if (normalizedVerb === 'EVAL') {
         const keyArg = String(command[3] ?? '');

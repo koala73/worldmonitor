@@ -13,7 +13,7 @@ paths:
             tags:
                 - ResearchService
             summary: ListArxivPapers
-            description: ListArxivPapers retrieves recent papers from arXiv.
+            description: ListArxivPapers returns the newest arXiv papers in cs.AI, cs.CL and cs.CR, optionally filtered to one category, sorted by date, up to 100 per request.
             operationId: ListArxivPapers
             parameters:
                 - name: page_size
@@ -166,7 +166,7 @@ paths:
             tags:
                 - ResearchService
             summary: ListTrendingRepos
-            description: ListTrendingRepos retrieves trending repositories from GitHub.
+            description: ListTrendingRepos returns daily trending GitHub repositories for Python, JavaScript or TypeScript from OSSInsight, with GitHub search as a fallback.
             operationId: ListTrendingRepos
             parameters:
                 - name: page_size
@@ -312,7 +312,7 @@ paths:
             tags:
                 - ResearchService
             summary: ListHackernewsItems
-            description: ListHackernewsItems retrieves top stories from Hacker News.
+            description: ListHackernewsItems returns up to 30 Hacker News stories from the top, new, best, ask, show or job feed, read from the official Hacker News Firebase API.
             operationId: ListHackernewsItems
             parameters:
                 - name: page_size

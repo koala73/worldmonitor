@@ -15,6 +15,7 @@
 
 import { test, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
@@ -54,7 +55,7 @@ beforeEach(() => {
     originalSetTimeout(cb, ms >= 500 ? 0 : ms, ...args);
   // Route every Redis surface runSeed touches; the seed-meta SET is the one
   // that stays down for the whole run (timeout-flavored, like the incident).
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const u = String(url);
     const body = opts?.body ? JSON.parse(opts.body) : null;
     calls.push({ u, body });
@@ -64,7 +65,7 @@ beforeEach(() => {
       throw abortError();
     }
     return jsonResponse({ result: 'OK' });
-  };
+  });
   // Convert exits to throws so the test can inspect the exit code.
   process.exit = (code) => {
     const e = new Error(`__test_exit__:${code}`);
@@ -93,17 +94,95 @@ async function runWithExitTrap(fn) {
   }
 }
 
+test('persists receipt rewrite stamps when the retained forecast ledger exceeds 5 MiB', async () => {
+  const { MAX_SEEDED_VALUE_BYTES } = await import('../scripts/_seed-utils.mjs');
+  const { collectUnarchivedReceipts, markReceiptsArchived } = await import('../scripts/seed-forecast-resolutions.mjs');
+  const key = 'forecast:resolutions:v1';
+  const ledger = {
+    'forecast@1': {
+      status: 'resolved', outcome: 'VOID', resolvedAt: 1, receiptArchivedAt: 2,
+      evidence: { reason: 'resolver_envelope_bug', voidedAt: 3, original: 'x'.repeat(5 * 1024 * 1024) },
+    },
+  };
+  const stored = new Map();
+  const requestBytes = [];
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
+    const command = opts.body ? JSON.parse(opts.body) : null;
+    if (opts.body) requestBytes.push(Buffer.byteLength(opts.body));
+    if (String(url).includes('/get/')) return jsonResponse({ result: JSON.stringify(stored.get(key)) });
+    if (command?.[0] === 'SET' && !command[1].startsWith('seed-lock:')) stored.set(command[1], JSON.parse(command[2]));
+    if (String(url).endsWith('/pipeline')) return jsonResponse(command.map(() => ({ result: 1 })));
+    return jsonResponse({ result: 'OK' });
+  });
+  const { exitCode, threw } = await runWithExitTrap(() => runSeed('forecast', 'resolutions', key, async () => {
+    const queued = collectUnarchivedReceipts(ledger);
+    assert.equal(queued.length, 1);
+    markReceiptsArchived(ledger, [{ key: queued[0].key, objectKey: 'receipts/forecast.json', receiptHash: 'a'.repeat(64) }], 4);
+    return ledger;
+  }, {
+    maxPayloadBytes: MAX_SEEDED_VALUE_BYTES,
+    declareRecords: data => Object.keys(data).length,
+    sourceVersion: 'test-v1', schemaVersion: 1,
+  }));
+  assert.equal(threw, null, threw?.message);
+  assert.equal(exitCode, 0);
+  assert.deepEqual(stored.get(key).data, ledger);
+  assert.equal(stored.get(key).data['forecast@1'].receiptArchivedAt, 4);
+  assert.deepEqual(collectUnarchivedReceipts(stored.get(key).data), []);
+  assert.ok(requestBytes.every(bytes => bytes <= 10_000_000));
+});
+
 function metaSetAttempts(resource) {
   return calls.filter((c) =>
     Array.isArray(c.body) && c.body[0] === 'SET' && c.body[1] === `seed-meta:test:${resource}`,
   ).length;
 }
 
+test('forecast trail metadata failures preserve later dashboard and history publication', async () => {
+  const { FORECAST_EXTRA_KEYS } = await import('../scripts/seed-forecasts.mjs');
+  const trail = FORECAST_EXTRA_KEYS.find(key => key.key === 'forecast:probability-trail:v1');
+  const cases = ['http', 'command', 'transport'].flatMap(failure => [[failure, false], [failure, true]]);
+  for (const [failure, critical] of cases) {
+    const extra = critical ? { ...trail, metaCritical: true } : trail;
+    const events = [];
+    globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
+      const body = opts.body ? JSON.parse(opts.body) : null;
+      if (String(url).includes('/get/')) return jsonResponse({ result: JSON.stringify(CANONICAL_ENVELOPE) });
+      if (String(url).endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 1 })));
+      if (body?.[0] === 'SET') {
+        events.push(body[1]);
+        if (body[1] === trail.metaKey) {
+          if (failure === 'http') return new Response('unavailable', { status: 503 });
+          if (failure === 'command') return jsonResponse({ error: 'ERR unavailable' });
+          throw abortError();
+        }
+      }
+      return jsonResponse({ result: 'OK' });
+    });
+    const { exitCode, threw } = await runWithExitTrap(() => runSeed('test', 'trail-failure', 'test:trail-failure:v1',
+      async () => ({ items: [1], probabilityTrail: { generatedAt: Date.now(), forecasts: { id: {} } } }), {
+        ttlSeconds: 3600, declareRecords: data => data.items.length, sourceVersion: 'test', schemaVersion: 1,
+        publishTransform: data => ({ items: data.items }),
+        extraKeys: [extra, { key: 'test:dashboard:v1', transform: data => ({ items: data.items }) }],
+        afterPublish: async () => { events.push('resolver-history'); },
+      }));
+    if (critical) {
+      assert.ok(threw, `${failure} remains fatal for an explicitly critical metadata key`);
+      assert.equal(events.includes('resolver-history'), false);
+    } else {
+      assert.equal(threw, null, failure);
+      assert.equal(exitCode, 0, failure);
+      assert.ok(events.includes('test:dashboard:v1'), failure);
+      assert.ok(events.includes('resolver-history'), failure);
+    }
+  }
+});
+
 test('successful bundled run writes the dedicated completion marker last', async () => {
   const originalFetchForCompletion = globalThis.fetch;
   const events = [];
   process.env.WM_BUNDLE_COMPLETION_META_KEY = 'seed-completion:test:ordered';
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const u = String(url);
     const body = opts?.body ? JSON.parse(opts.body) : null;
     calls.push({ u, body });
@@ -111,7 +190,7 @@ test('successful bundled run writes the dedicated completion marker last', async
     if (u.endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 1 })));
     if (Array.isArray(body) && body[0] === 'SET') events.push(body[1]);
     return jsonResponse({ result: 'OK' });
-  };
+  });
 
   try {
     const { exitCode, threw } = await runWithExitTrap(() =>
@@ -156,14 +235,14 @@ test('successful bundled run writes the dedicated completion marker last', async
 test('validation skip never refreshes the dedicated completion marker', async () => {
   const originalFetchForCompletion = globalThis.fetch;
   process.env.WM_BUNDLE_COMPLETION_META_KEY = 'seed-completion:test:skip';
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const u = String(url);
     const body = opts?.body ? JSON.parse(opts.body) : null;
     calls.push({ u, body });
     if (u.includes('/get/')) return jsonResponse({ result: JSON.stringify(CANONICAL_ENVELOPE) });
     if (u.endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 1 })));
     return jsonResponse({ result: 'OK' });
-  };
+  });
 
   try {
     const { exitCode, threw } = await runWithExitTrap(() =>
@@ -189,7 +268,7 @@ test('validation skip never refreshes the dedicated completion marker', async ()
 test('completion marker write failure rejects the seed after retries', async () => {
   const originalFetchForCompletion = globalThis.fetch;
   process.env.WM_BUNDLE_COMPLETION_META_KEY = 'seed-completion:test:write-failure';
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const u = String(url);
     const body = opts?.body ? JSON.parse(opts.body) : null;
     calls.push({ u, body });
@@ -199,7 +278,7 @@ test('completion marker write failure rejects the seed after retries', async () 
       throw abortError();
     }
     return jsonResponse({ result: 'OK' });
-  };
+  });
 
   try {
     const { exitCode, threw } = await runWithExitTrap(() =>
@@ -305,13 +384,13 @@ test('validate-skip path reports rejection but does not complete when last-good 
   let completed = 0;
   let rejected = 0;
   const fetchWithCanonical = globalThis.fetch;
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const u = String(url);
     const body = opts?.body ? JSON.parse(opts.body) : null;
     if (u.includes('/get/')) return jsonResponse({ result: null });
     if (u.endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 0 })));
     return jsonResponse({ result: 'OK' });
-  };
+  });
 
   try {
     const { exitCode, threw } = await runWithExitTrap(() =>
@@ -345,7 +424,7 @@ test('validate-skip path reports rejection when only part of the preservation co
   let completed = 0;
   let rejected = 0;
   const fetchWithCanonical = globalThis.fetch;
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const u = String(url);
     const body = opts?.body ? JSON.parse(opts.body) : null;
     if (u.includes('/get/')) {
@@ -355,7 +434,7 @@ test('validate-skip path reports rejection when only part of the preservation co
       return jsonResponse(body.map((_command, index) => ({ result: index === 0 ? 1 : 0 })));
     }
     return jsonResponse({ result: 'OK' });
-  };
+  });
 
   try {
     const { exitCode, threw } = await runWithExitTrap(() =>
@@ -388,7 +467,7 @@ test('validate-skip path reports rejection when only part of the preservation co
 test('validate-skip hook diagnostics merge without re-anchoring canonical freshness', async () => {
   const originalFetchForHook = globalThis.fetch;
   const metaSets = [];
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const u = String(url);
     const decodedUrl = decodeURIComponent(u);
     const body = opts?.body ? JSON.parse(opts.body) : null;
@@ -409,7 +488,7 @@ test('validate-skip hook diagnostics merge without re-anchoring canonical freshn
       metaSets.push(JSON.parse(body[2]));
     }
     return jsonResponse({ result: 'OK' });
-  };
+  });
 
   try {
     const { exitCode, threw } = await runWithExitTrap(() =>
@@ -475,14 +554,14 @@ test('publish-success path logs the completion state returned by afterPublish', 
   const seedEvents = [];
   const originalLog = console.log;
   const metaFailureFetch = globalThis.fetch;
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const u = String(url);
     const body = opts?.body ? JSON.parse(opts.body) : null;
     calls.push({ u, body });
     if (u.includes('/get/')) return jsonResponse({ result: JSON.stringify(CANONICAL_ENVELOPE) });
     if (u.endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 1 })));
     return jsonResponse({ result: 'OK' });
-  };
+  });
   console.log = (...args) => {
     try {
       const event = JSON.parse(args[0]);

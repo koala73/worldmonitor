@@ -37,7 +37,8 @@
 // resources/read response shape (per MCP spec):
 //   { contents: [{ uri, mimeType, text }] }
 // where `text` is the JSON-stringified payload INCLUDING `cached_at` and
-// `stale`. mimeType is `application/json` for every resource here.
+// `stale`. mimeType is `application/json` for every data resource here; the
+// static agent guide is `text/markdown`.
 
 import type {
   McpAccessClass,
@@ -48,6 +49,7 @@ import type {
 } from '../types';
 import { TOOL_REGISTRY, toolAccess } from '../registry/index';
 import { dispatchToolsCall } from '../dispatch';
+import type { McpUsage } from '../usage';
 import { evaluateFreshness } from '../freshness';
 import type { McpBudget } from '../quota';
 import { readAccountAllowance } from '../_account-allowance';
@@ -55,6 +57,7 @@ import { rpcError, rpcOk, withMcpNoStore } from '../rpc';
 import { readJsonFromUpstash } from '../../_upstash-json.js';
 import { isAppOwnedRedisKey } from '../../_redis-key-ownership.js';
 import { CHOKEPOINT_SLUGS } from './slugs';
+import { AGENT_GUIDE, AGENT_GUIDE_RESOURCE_URI, CHATGPT_AGENT_GUIDE } from '../constants';
 
 // ---------------------------------------------------------------------------
 // Public resource freshness reader
@@ -87,6 +90,15 @@ export const PUBLIC_RESOURCE_REGISTRY: PublicResourceDef[] = [
     description: 'Write-age probe for the high-cadence stock market-data bootstrap pipeline. Returns ONLY the envelope (cached_at + stale) — no quote payload, no auth, no quota. It does not certify sector valuation completeness; use get_market_data for valuationCoverage, source status, and route diagnostics.',
     mimeType: 'application/json',
     read: readMarketFreshness,
+  },
+  {
+    // The full agent guide behind the 2 KB server instructions (see
+    // SERVER_INSTRUCTIONS_MAX_BYTES). Static documentation: no data, no auth.
+    uri: AGENT_GUIDE_RESOURCE_URI,
+    name: 'Agent Guide',
+    description: 'Full usage guide for this server: which tool fits which question, availability flags, access and weight metering, JMESPath limits, webcam and market-data semantics, and content-safety rules. Static text, anonymous and quota-free.',
+    mimeType: 'text/markdown',
+    read: async () => AGENT_GUIDE,
   },
 ];
 
@@ -285,6 +297,7 @@ export function isPublicResourceUri(uri: unknown): boolean {
 export async function buildPublicResourceResponse(
   body: { id?: unknown; params?: unknown },
   corsHeaders: Record<string, string>,
+  { informOnly = false }: { informOnly?: boolean } = {},
 ): Promise<Response> {
   const outerId = body.id ?? null;
   const params = body.params as { uri?: unknown } | null;
@@ -302,7 +315,8 @@ export async function buildPublicResourceResponse(
   // runtime. The current reader (readMarketFreshness) already catches internally.
   let text: string;
   try {
-    text = await def.read();
+    // An inform-only host (ChatGPT) reads the guide without plan billing copy.
+    text = informOnly && def.uri === AGENT_GUIDE_RESOURCE_URI ? CHATGPT_AGENT_GUIDE : await def.read();
   } catch {
     return rpcError(outerId, -32603, 'Internal error: resource reader failed', corsHeaders);
   }
@@ -352,6 +366,10 @@ export async function buildResourceResponse(
   // Forwarded so a denial raised inside the dispatcher carries the same
   // WWW-Authenticate as the equivalent tools/call (#6716).
   resourceMetadataUrl?: string,
+  // Forwarded so a quota denial names the same upgrade plan (#9144).
+  planKey?: string,
+  // Forwarded so the request's wm_api_usage row records the tool outcome (#9431).
+  usage?: McpUsage,
 ): Promise<Response> {
   const outerId = body.id ?? null;
   const params = body.params as { uri?: unknown } | null;
@@ -406,6 +424,9 @@ export async function buildResourceResponse(
     budget,
     freeAccountAllowance,
     resourceMetadataUrl,
+    undefined,
+    planKey,
+    usage,
   );
 
   // Parse the dispatched body. dispatched.json() is safe — the dispatcher

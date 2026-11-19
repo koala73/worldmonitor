@@ -1,6 +1,8 @@
 // App-serving hosts only; sibling vendor hosts do not inherit browser trust.
 // Keep aligned with convex/payments/returnUrlOrigin.ts and CORS parity tests.
 const APP_ORIGIN_PATTERN = /^https:\/\/(?:(?:www|app|api|tech|finance|commodity|happy|energy)\.)?worldmonitor\.app$/;
+const MAX_ORIGIN_BYTES = 300;
+const ORIGIN_ENCODER = new TextEncoder();
 
 export function isHostedAppOrigin(origin) {
   return typeof origin === 'string' && APP_ORIGIN_PATTERN.test(origin);
@@ -8,11 +10,6 @@ export function isHostedAppOrigin(origin) {
 
 const ALLOWED_ORIGIN_PATTERNS = [
   APP_ORIGIN_PATTERN,
-  // Vercel preview deployments under the "eliewm" team scope, e.g.
-  //   worldmonitor-git-<branch>-eliewm.vercel.app  (git-branch alias)
-  //   worldmonitor-<hash>-eliewm.vercel.app        (deployment URL)
-  // Tight on purpose: never a bare *.vercel.app (this is a security allowlist).
-  /^https:\/\/worldmonitor-[a-z0-9-]+-eliewm\.vercel\.app$/,
   /^https?:\/\/tauri\.localhost(:\d+)?$/,
   /^https?:\/\/[a-z0-9-]+\.tauri\.localhost(:\d+)?$/i,
   /^tauri:\/\/localhost$/,
@@ -31,20 +28,26 @@ const ALLOWED_HEADERS = [
   'X-Api-Key',
   'X-Widget-Key',
   'X-Pro-Key',
-  'X-WorldMonitor-Desktop-Timestamp',
-  'X-WorldMonitor-Desktop-Signature',
   'Idempotency-Key',
   'Mcp-Session-Id',
   'MCP-Protocol-Version',
+  // MCP 2026-07-28 request metadata headers (mirrored method / tool, prompt or resource name).
+  'Mcp-Method',
+  'Mcp-Name',
   'Last-Event-ID',
 ].join(', ');
 
 const EXPOSED_HEADERS = [
+  'Allow',
   'Mcp-Session-Id',
   'WWW-Authenticate',
   'Retry-After',
   'Idempotency-Key',
   'Idempotent-Replayed',
+  // Poll URL on a gateway 202 Accepted async job (#4810). The Worker stamps
+  // this list over every api.worldmonitor.app response, so it must be here
+  // for browser agents to read it, not only in server/cors.ts.
+  'Location',
   // Billing-verification denials (server/_shared/entitlement-check.ts) carry
   // the reason here alongside `Retry-After`. Docs advertise the header
   // (docs/usage-errors.mdx) but it was not exposed, so a cross-origin browser
@@ -85,6 +88,12 @@ const EXPOSED_HEADERS = [
   'Sunset',
 ].join(', ');
 
+function stripTrailingDnsDots(hostname) {
+  let end = hostname.length;
+  while (end > 0 && hostname[end - 1] === '.') end--;
+  return hostname.slice(0, end);
+}
+
 /**
  * Browsers occasionally emit the FQDN form of a hostname (trailing DNS dot),
  * e.g. `https://tech.worldmonitor.app.`. Allowlist patterns are anchored at `$`,
@@ -96,7 +105,7 @@ function originForAllowlistMatch(origin) {
   if (!origin) return '';
   try {
     const url = new URL(origin);
-    const host = url.hostname.replace(/\.+$/, '');
+    const host = stripTrailingDnsDots(url.hostname);
     if (!host || host === url.hostname) return origin;
     url.hostname = host;
     return url.origin;
@@ -116,7 +125,7 @@ function isWorldMonitorGoogleTranslateOrigin(origin) {
   try {
     const url = new URL(origin);
     if (url.protocol !== 'https:' || url.port !== '') return false;
-    const host = url.hostname.replace(/\.+$/, '');
+    const host = stripTrailingDnsDots(url.hostname);
     const suffix = '.translate.goog';
     if (!host.endsWith(suffix)) return false;
     const encoded = host.slice(0, -suffix.length);
@@ -128,10 +137,26 @@ function isWorldMonitorGoogleTranslateOrigin(origin) {
   }
 }
 
+/**
+ * A Vercel preview deployment trusts only its own hostnames: the deployment
+ * URL (VERCEL_URL) and the git-branch alias (VERCEL_BRANCH_URL). Never match
+ * previews by name pattern: `<project>.vercel.app` goes to whichever Vercel
+ * account claims the project name first, so `worldmonitor-*-eliewm.vercel.app`
+ * is registrable by anyone. Read at call time; production never matches.
+ * Keep in sync with server/cors.ts.
+ */
+function isOwnPreviewDeploymentOrigin(origin) {
+  if (process.env.VERCEL_ENV !== 'preview') return false;
+  return [process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL]
+    .some((host) => Boolean(host) && origin === `https://${host}`);
+}
+
 function isAllowedOrigin(origin) {
-  if (!origin) return false;
+  if (!origin || origin.length > MAX_ORIGIN_BYTES
+    || ORIGIN_ENCODER.encode(origin).byteLength > MAX_ORIGIN_BYTES) return false;
   if (isWorldMonitorGoogleTranslateOrigin(origin)) return true;
   const candidate = originForAllowlistMatch(origin);
+  if (isOwnPreviewDeploymentOrigin(candidate)) return true;
   return ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(candidate));
 }
 

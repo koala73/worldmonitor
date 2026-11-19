@@ -70,8 +70,14 @@ describe("checkout stamps a signed login email (#6335)", () => {
     });
 
     const metadata = capturedMetadata();
-    // Billing email remains a provider input; signed login identity is separate.
-    expect(vi.mocked(createDodoCheckoutSession).mock.calls[0][0]).not.toHaveProperty("customer");
+    // The login email also prefills Dodo's form, but stays editable there:
+    // the billing email is the buyer's choice, signed login identity is separate.
+    const payload = vi.mocked(createDodoCheckoutSession).mock.calls[0][0];
+    expect(payload.customer).toEqual({ email: "Fresh.Login@Example.com" });
+    expect(payload.feature_flags).toMatchObject({
+      allow_customer_editing_email: true,
+      allow_customer_editing_name: true,
+    });
     // Case is preserved: the signature covers the exact bytes, and the local
     // part of an address is case-sensitive per RFC 5321.
     expect(metadata.wm_login_email).toBe("Fresh.Login@Example.com");
@@ -122,6 +128,8 @@ describe("checkout stamps a signed login email (#6335)", () => {
     const metadata = capturedMetadata();
     expect(metadata.wm_login_email).toBeUndefined();
     expect(metadata.wm_login_email_sig).toBeUndefined();
+    // Dodo needs an email to create a customer, so nothing is prefilled.
+    expect(vi.mocked(createDodoCheckoutSession).mock.calls[0][0]).not.toHaveProperty("customer");
     // Attribution is unaffected — the webhook still resolves the buyer.
     expect(metadata.wm_user_id).toBe("user_no_email_claim");
     expect(await verifyUserId("user_no_email_claim", metadata.wm_user_id_sig)).toBe(true);
@@ -148,6 +156,57 @@ describe("checkout stamps a signed login email (#6335)", () => {
         Date.now(),
       ),
     ).toBe("valid");
+  });
+
+  test("the hosted form asks for less: name prefilled, minimal address, no phone", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.action(internal.payments.checkout.internalCreateCheckout, {
+      userId: "user_short_form",
+      email: "short.form@example.com",
+      name: "  Ada Lovelace  ",
+      productId: PRODUCT_ID,
+    });
+
+    const payload = vi.mocked(createDodoCheckoutSession).mock.calls[0][0];
+    expect(payload.customer).toEqual({ email: "short.form@example.com", name: "Ada Lovelace" });
+    expect(payload.minimal_address).toBe(true);
+    expect(payload.feature_flags).toEqual({
+      allow_discount_code: true,
+      allow_customer_editing_email: true,
+      allow_customer_editing_name: true,
+      allow_phone_number_collection: false,
+    });
+  });
+
+  test.each([
+    ["blank", "   "],
+    ["101-char", "n".repeat(101)],
+  ])("a %s name is left for the buyer to type", async (_label, name) => {
+    const t = convexTest(schema, modules);
+
+    await t.action(internal.payments.checkout.internalCreateCheckout, {
+      userId: "user_unusable_name",
+      email: "name.edge@example.com",
+      name,
+      productId: PRODUCT_ID,
+    });
+
+    expect(vi.mocked(createDodoCheckoutSession).mock.calls[0][0].customer)
+      .toEqual({ email: "name.edge@example.com" });
+  });
+
+  test("an unusable login email prefills nothing, even with a name", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.action(internal.payments.checkout.internalCreateCheckout, {
+      userId: "user_bad_email_with_name",
+      email: "not-an-email",
+      name: "Ada Lovelace",
+      productId: PRODUCT_ID,
+    });
+
+    expect(vi.mocked(createDodoCheckoutSession).mock.calls[0][0]).not.toHaveProperty("customer");
   });
 
   // The rejection case in the table below is 262 chars — far enough past the

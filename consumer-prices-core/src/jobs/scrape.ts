@@ -7,9 +7,6 @@ import { insertObservation } from '../db/queries/observations.js';
 import { upsertRetailerProduct } from '../db/queries/products.js';
 import { parseSize, unitPrice as calcUnitPrice } from '../normalizers/size.js';
 import { loadAllRetailerConfigs, loadRetailerConfig } from '../config/loader.js';
-import { initProviders, teardownAll } from '../acquisition/registry.js';
-import { GenericPlaywrightAdapter } from '../adapters/generic.js';
-import { ExaSearchAdapter } from '../adapters/exa-search.js';
 import { SearchAdapter, SearchTargetError } from '../adapters/search.js';
 import { ExaProvider } from '../acquisition/exa.js';
 import { FirecrawlProvider } from '../acquisition/firecrawl.js';
@@ -107,10 +104,8 @@ async function updateScrapeRun(
   }
 }
 
-// Pin disable + auto-recovery helpers extracted to ./scrape-pin-recovery.ts
-// for unit-testability (avoids pulling scrape.ts's heavy transitive deps —
-// exa-js, playwright, etc. — into the test environment).
 import { handleStaleOnInStock, handleStaleOnOutOfStock, handlePinError } from './scrape-pin-recovery.js';
+import { completedRetailersStatement, retailersToScrape } from './scrape-resume.js';
 
 export async function scrapeRetailer(slug: string) {
   const config = loadRetailerConfig(slug);
@@ -128,10 +123,8 @@ export async function scrapeRetailer(slug: string) {
   const exaKey = (process.env.EXA_API_KEYS || process.env.EXA_API_KEY || '').split(/[\n,]+/)[0].trim();
   const fcKey = process.env.FIRECRAWL_API_KEY ?? '';
 
-  if (config.adapter === 'search') {
-    if (!exaKey) throw new Error(`search adapter requires EXA_API_KEY / EXA_API_KEYS (retailer: ${slug})`);
-    if (!fcKey) throw new Error(`search adapter requires FIRECRAWL_API_KEY (retailer: ${slug})`);
-  }
+  if (!exaKey) throw new Error(`search adapter requires EXA_API_KEY / EXA_API_KEYS (retailer: ${slug})`);
+  if (!fcKey) throw new Error(`search adapter requires FIRECRAWL_API_KEY (retailer: ${slug})`);
 
   const runId = await createScrapeRun(retailerId);
   logger.info(`Run ${runId} started for ${slug}`);
@@ -161,12 +154,7 @@ export async function scrapeRetailer(slug: string) {
   }
   logger.info(`${slug}: ${activePins.size} active pins + ${recoveryAdded} recovery probes (${pinnedUrls.size} total)`);
 
-  const adapter =
-    config.adapter === 'search'
-      ? new SearchAdapter(new ExaProvider(exaKey), new FirecrawlProvider(fcKey))
-      : config.adapter === 'exa-search'
-      ? new ExaSearchAdapter(exaKey, process.env.FIRECRAWL_API_KEY)
-      : new GenericPlaywrightAdapter();
+  const adapter = new SearchAdapter(new ExaProvider(exaKey), new FirecrawlProvider(fcKey));
   const ctx: AdapterContext = { config, runId, logger, retailerId, pinnedUrls };
 
   const targets = await adapter.discoverTargets(ctx);
@@ -267,12 +255,10 @@ export async function scrapeRetailer(slug: string) {
 
         let discoveredMatch: Parameters<typeof upsertProductMatch>[0] | undefined;
 
-        // For search-based adapters: auto-create product → basket match.
-        // Skip only when the pin URL was used directly — the match already exists.
-        // Allow when this is a fresh Exa discovery (including Exa fallback from a broken pin).
+        // Skip only when the pin URL was used directly. That match row already exists.
+        // A fresh Exa discovery, including fallback from a broken pin, still creates one.
         if (
           !wasDirectHit &&
-          (config.adapter === 'exa-search' || config.adapter === 'search') &&
           product.rawPayload.basketSlug &&
           product.rawPayload.canonicalName
         ) {
@@ -314,7 +300,7 @@ export async function scrapeRetailer(slug: string) {
           }
         }
 
-        const parsed = parseSize(product.rawSizeText);
+        const parsed = product.normalizedSize ?? parseSize(product.rawSizeText);
         const up = parsed ? calcUnitPrice(product.price, parsed) : null;
         const observation = {
           retailerProductId: productId,
@@ -434,19 +420,6 @@ export async function scrapeRetailer(slug: string) {
     ? 'failed'
     : resolveRunStatus(errorsCount, pagesSucceeded, budgetExhausted);
   const failureReasonsJson = failureReasons.toJSON();
-  await updateScrapeRun(
-    runId,
-    status,
-    pagesAttempted,
-    pagesSucceeded,
-    errorsCount,
-    rejectedCount,
-    failureReasonsJson,
-  );
-  logger.info(
-    `Run ${runId} finished: ${status} (${pagesSucceeded}/${pagesAttempted} pages, rejected=${rejectedCount}, reasons=${JSON.stringify(failureReasonsJson)})`,
-  );
-
   const parseSuccessRate = pagesAttempted > 0 ? (pagesSucceeded / pagesAttempted) * 100 : 0;
   const isSuccess = status === 'completed' || status === 'partial';
   await query(
@@ -461,17 +434,33 @@ export async function scrapeRetailer(slug: string) {
     [retailerId, isSuccess ? new Date() : null, status, Math.round(parseSuccessRate * 100) / 100],
   );
 
+  // The terminal status goes last: a later tick skips this retailer once it is
+  // written (scrape-resume.ts), so health must already be saved by then.
+  await updateScrapeRun(
+    runId,
+    status,
+    pagesAttempted,
+    pagesSucceeded,
+    errorsCount,
+    rejectedCount,
+    failureReasonsJson,
+  );
+  logger.info(
+    `Run ${runId} finished: ${status} (${pagesSucceeded}/${pagesAttempted} pages, rejected=${rejectedCount}, reasons=${JSON.stringify(failureReasonsJson)})`,
+  );
+
 }
 
 export async function scrapeAll() {
-  // initProviders is required for GenericPlaywrightAdapter (playwright/p0 adapters use the
-  // registry via fetchWithFallback). SearchAdapter and ExaSearchAdapter construct their own
-  // provider instances directly from env vars and bypass the registry.
-  initProviders(process.env as Record<string, string>);
-  // Iterate ALL configs (including disabled) so getOrCreateRetailer syncs active=false to DB.
-  // scrapeRetailer() returns early after the upsert for disabled retailers.
-  const configs = loadAllRetailerConfigs();
-  logger.info(`Syncing ${configs.length} retailers (${configs.filter((c) => c.enabled).length} enabled)`);
+  // Disabled configs stay in the queue so getOrCreateRetailer can set active=false.
+  const allConfigs = loadAllRetailerConfigs();
+  const completedStatement = completedRetailersStatement();
+  const completed = await query<{ slug: string }>(completedStatement.sql, completedStatement.params);
+  const configs = retailersToScrape(allConfigs, new Set(completed.rows.map((row) => row.slug)));
+  logger.info(
+    `Syncing ${configs.length} retailers (${configs.filter((c) => c.enabled).length} enabled to scrape, ` +
+      `${allConfigs.length - configs.length} already finished this cycle)`,
+  );
 
   // Run retailers in parallel: each hits a different domain so rate limits don't conflict.
   // Cap at 5 concurrent to avoid saturating Firecrawl's global request limits.
@@ -488,19 +477,12 @@ export async function scrapeAll() {
     }
   });
   await Promise.all(workers);
-
-  await teardownAll();
 }
 
 async function main() {
   try {
     if (process.argv[2]) {
-      initProviders(process.env as Record<string, string>);
-      try {
-        await scrapeRetailer(process.argv[2]);
-      } finally {
-        await teardownAll();
-      }
+      await scrapeRetailer(process.argv[2]);
     } else {
       await scrapeAll();
     }
@@ -508,17 +490,12 @@ async function main() {
     console.error('[scrape] fatal:', err);
     process.exitCode = 1;
   } finally {
-    // Race closePool against a 5s timeout — mirrors the teardown() fix in playwright.ts.
-    // Without a bound, a hung pg pool would keep main() pending indefinitely,
-    // delaying process.exit() and stalling the && chain (aggregate, publish).
+    // Without a bound, a hung pg pool would keep main() pending indefinitely.
     const poolTimeout = new Promise<void>(r => setTimeout(r, 5000));
     await Promise.race([closePool().catch(() => {}), poolTimeout]);
   }
 }
 
-// process.exit() is required to flush lingering Playwright/Chromium handles
-// that would otherwise prevent the process from exiting naturally.
-// process.exitCode preserves failure signaling set in the catch block above.
 const __runStartedAt = Date.now();
 main()
   .then(() => {

@@ -51,15 +51,47 @@ const {
 const xNewsAccounts = require('./lib/x-news-accounts.cjs');
 const { SAUDI_CIVIL_DEFENSE, MAX_POST_CHARS, publishSaudiCivilDefenseAlerts } = require('./lib/saudi-civil-defense-alerts.cjs');
 const { publishChokepointDisruptionAlerts } = require('./lib/chokepoint-disruption-alerts.cjs');
+const notifyPolicy = require('./lib/notification-publish-policy.cjs');
+// Loaded defensively: the gazetteer validates its data files at require time,
+// and a bad regenerated data file must disable only this feed, not the relay.
+let middleEastStrikes = null;
+try {
+  middleEastStrikes = require('./lib/middle-east-strikes.cjs');
+} catch (e) {
+  console.error('[MiddleEastStrikes] Module failed to load — strike feed disabled:', e?.message || e);
+}
+// v2 strike rules (CII v15 B3) in shadow: own keys, own loop; v14 never reads them.
+let middleEastStrikesV2 = null;
+try {
+  middleEastStrikesV2 = require('./lib/middle-east-strikes-v2.cjs');
+} catch (e) {
+  console.error('[MiddleEastStrikesV2] Module failed to load — v2 strike tally disabled:', e?.message || e);
+}
 const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
 const { createXPollCycle, xPollSlot } = require('./lib/x-poll-cycle.cjs');
+const { accumulateTickerMentions, rankTickers } = require('./lib/wsb-tickers.cjs');
 const { createGuardedLookup, SSRF_BLOCKED_ERROR_CODE } = require('./lib/notification-webhook-ssrf.cjs');
+// API fan-out of rss_alert / market_alert queue messages to the Shipping v2
+// webhook worker (news.breaking, market.move in shared/event-triggers.json).
+const {
+  API_FANOUT_EVENT_TYPES,
+  API_FANOUT_LIST_CAP,
+  API_FANOUT_LIST_KEY,
+  API_FANOUT_LIST_TTL_SECONDS,
+  API_FANOUT_TEE_SCRIPT,
+  occurrenceEventIdFor,
+} = require('./lib/occurrence-events.cjs');
 const {
   createXPostBudget,
-  DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+  X_SHARED_COVERAGE_MODEL,
   xPostBudgetServiceStatus,
 } = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
+const { newsStoryKey, newsStoryKeyLoadError, newsPublisherCoverageKey, reachesRealtimeRules, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
+if (newsStoryKeyLoadError()) {
+  // Alerts still publish, on the exact-title identity; a repeated headline can alert twice.
+  console.warn('[Notify] News story key unavailable, falling back to exact-title dedup:', newsStoryKeyLoadError().message);
+}
 const {
   buildClassifyDigestUrl,
   classifyDigestTransport,
@@ -68,7 +100,25 @@ const {
   shouldWriteClassifySeedMeta,
   CLASSIFY_DIGEST_RETRY_DELAYS_MS,
   classifyDigestRetryDecision,
+  DIGEST_BUILD_WATCH_INTERVAL_MS,
+  DIGEST_BUILD_RETRY_MS,
+  digestBuildStampKey,
+  digestBuildStampMs,
+  editionsWithUnclassifiedBuild,
+  buildPassEditions,
+  alertLatency,
+  formatAlertLatency,
 } = require('./lib/classify-digest-request.cjs');
+const {
+  DIGEST_WARM_ACTIVATION_KEY,
+  DIGEST_WARM_HEARTBEAT_KEY,
+  DIGEST_WARM_HEARTBEAT_TTL_SECONDS,
+  DIGEST_WARM_INTERVAL_MS,
+  fetchDigestWarmCell,
+  runDigestWarmCycle,
+  shouldPublishDigestWarmHeartbeat,
+  summarizeDigestWarmCycle,
+} = require('./lib/news-digest-warm.cjs');
 const {
   YahooQuoteSummaryClient,
   buildSectorSeedMeta,
@@ -81,6 +131,7 @@ const {
   buildDedupMaterial,
   classifySetNxResult,
   recordDedupOutcome,
+  releaseFailOpenFallback,
 } = require('./shared/notification-dedup.cjs');
 const {
   AVIATION_MIN_SERVED_COVERAGE,
@@ -91,17 +142,31 @@ const {
 } = require('./_ingestion-coverage.cjs');
 const { maintainClosedMarketEquityKeys: maintainClosedMarketEquityKeysWithDeps } = require('./shared/closed-market-equity-maintenance.cjs');
 const { recordPizzintHistory } = require('./shared/pizzint-history.cjs');
+const { aggregateStates: aggregateAirTrafficStates, gapPoint: airTrafficGapPoint, binStart: airTrafficBinStart, BIN_MS: AIR_TRAFFIC_BIN_MS } = require('./shared/air-traffic-aggregate.cjs');
+const { recordTrafficPoint, isOkPointValue: isOkAirTrafficPoint, dayKeyFor: airTrafficDayKey, SERIES: AIR_TRAFFIC_SERIES } = require('./shared/air-traffic-history.cjs');
+const airTrafficDetector = require('./shared/air-traffic-detector.cjs');
+const { CONUS_BOX: AIR_TRAFFIC_CONUS_BOX, EUROPE_BOX: AIR_TRAFFIC_EUROPE_BOX } = require('./shared/air-traffic-regions.cjs');
+const {
+  stateRowsFromAreas: wingbitsTrafficStateRows,
+  buildWingbitsViewportAreas,
+  WINGBITS_MAX_BOX_NM,
+  WINGBITS_MAX_VIEWPORT_AREAS,
+} = require('./shared/wingbits-traffic.cjs');
 const { pizzintVenuePoint } = require('./shared/pizzint-location.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = require('./shared/market-quote-refresh.cjs');
+const { PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose } = require('./shared/yahoo-closed-session.cjs');
+const { SPARKLINE_HISTORY_QUERY, SPARKLINE_HISTORY_RETRY_SECONDS, buildQuoteSparkline, capQuoteSparklines } = require('./shared/quote-sparkline.cjs');
+const { crudeOilQuoteProvenance } = require('./shared/oil-quote-provenance.cjs');
 // ESM module loaded via require(esm) (Node >= 22.12; relay image is node:24).
 // Same implementation the RPC handler scores with — see the module header for
 // why it lives in shared/ rather than beside the other scoring helpers.
-const { detectTrafficAnomaly } = require('../shared/chokepoint-traffic-anomaly.js');
+const { detectTrafficAnomaly, summarizePortwatchHistory } = require('../shared/chokepoint-traffic-anomaly.js');
 const { CHOKEPOINT_THREAT_LEVELS } = require('../shared/chokepoint-threat-levels.js');
 const { classifyVesselType } = require('../shared/ais-vessel-type.js');
 const { readTransitWindow } = require('../shared/chokepoint-transit-window.js');
-const { createTransitTracker } = require('../shared/chokepoint-transit-tracker.js');
+const { createDurableTransitTracker } = require('../shared/chokepoint-transit-store.js');
+const { CHOKEPOINT_TRANSIT_GATES } = require('../shared/chokepoint-transit-gates.js');
 const { CORRIDOR_RISK_NAME_MAP, deriveCorridorRiskLevel } = require('../shared/corridor-risk.js');
 // AIS upstream reconnect policy: failure classification (transport | auth |
 // rate-limit), the throttle ceiling escalation, and the silence verdict. Pure and
@@ -121,6 +186,11 @@ const chinaCountryStockIndexHelpersPromise = import('./_country-stock-index.mjs'
 // turns the null into a loud, monitor-visible failure (see below).
 const weatherAlertSelectPromise = import('./_weather-alert-select.mjs').catch((e) => {
   console.error('[Weather] location helper failed to load:', e?.message || e);
+  return null;
+});
+// Cross-wording corroboration (#10977). A failed load means no boost.
+const newsCorroborationPromise = import('./lib/news-corroboration.mjs').catch((e) => {
+  console.error('[news-corroboration] module failed to load:', e?.message || e);
   return null;
 });
 const parseProxyUrl = parseProxyConfig;
@@ -151,6 +221,14 @@ const AISSTREAM_URL = RELAY_TEST_MODE && process.env.AISSTREAM_URL
   : 'wss://stream.aisstream.io/v0/stream';
 const API_KEY = process.env.AISSTREAM_API_KEY || process.env.VITE_AISSTREAM_API_KEY;
 const PORT = process.env.PORT || 3004;
+// Unset = every interface, which Railway and the Docker network need. A native
+// install with no container boundary sets RELAY_BIND_HOST=127.0.0.1.
+const RELAY_BIND_HOST = (process.env.RELAY_BIND_HOST || '').trim() || undefined;
+// Self-requests must reach the bound address; `localhost` may resolve to the
+// other address family than a specific RELAY_BIND_HOST.
+const RELAY_SELF_HOST = !RELAY_BIND_HOST || RELAY_BIND_HOST === '0.0.0.0' || RELAY_BIND_HOST === '::'
+  ? 'localhost'
+  : (RELAY_BIND_HOST.includes(':') ? `[${RELAY_BIND_HOST}]` : RELAY_BIND_HOST);
 // Actual bound port, resolved at listen time. Self-requests must use this:
 // with PORT=0 (ephemeral bind, used by tests) the env value is not the port
 // the server listens on, and `http://localhost:0` fails outright.
@@ -435,8 +513,13 @@ function upstashGet(key, onFailure, timeoutMs = 5000) {
         resp.resume();
         return fail(`HTTP ${resp.statusCode}`);
       }
+      // Decode across chunks, so a multi-byte character split by the network
+      // stays whole, and settle when the body breaks off.
+      resp.setEncoding('utf8');
       let data = '';
       resp.on('data', (chunk) => { data += chunk; });
+      resp.on('error', (e) => fail((e && e.message) || e));
+      resp.on('aborted', () => fail('response aborted'));
       resp.on('end', () => {
         try {
           const parsed = JSON.parse(data);
@@ -474,6 +557,8 @@ function upstashSet(key, value, ttlSeconds) {
     }, (resp) => {
       let data = '';
       resp.on('data', (chunk) => { data += chunk; });
+      resp.on('error', () => resolve(false));
+      resp.on('aborted', () => resolve(false));
       resp.on('end', () => {
         try {
           const parsed = JSON.parse(data);
@@ -550,6 +635,46 @@ function upstashMGet(keys) {
   });
 }
 
+// Runs an Upstash /pipeline body. Resolves to the per-command result array, or
+// null when the request fails.
+// `deadlineMs` bounds the whole request; `timeoutMs` only an idle socket.
+function upstashPipeline(commands, { timeoutMs = 10000, deadlineMs } = {}) {
+  return new Promise((settle) => {
+    let deadline = null;
+    const resolve = (value) => { clearTimeout(deadline); settle(value); };
+    if (!UPSTASH_ENABLED || commands.length === 0) return resolve(null);
+    const url = new URL('/pipeline', UPSTASH_REDIS_REST_URL);
+    const req = UPSTASH_HTTP_MODULE.request(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: timeoutMs,
+    }, (resp) => {
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        resp.resume();
+        return resolve(null);
+      }
+      resp.setEncoding('utf8');
+      let data = '';
+      resp.on('data', (chunk) => { data += chunk; });
+      resp.on('error', () => resolve(null));
+      resp.on('aborted', () => resolve(null));
+      resp.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          resolve(Array.isArray(parsed) ? parsed : null);
+        } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+    if (deadlineMs) deadline = setTimeout(() => { req.destroy(); resolve(null); }, deadlineMs);
+    req.end(JSON.stringify(commands));
+  });
+}
+
 function upstashLpush(key, value) {
   return new Promise((resolve) => {
     if (!UPSTASH_ENABLED) return resolve(false);
@@ -572,6 +697,9 @@ function upstashLpush(key, value) {
           resolve(typeof parsed?.result === 'number' && parsed.result > 0);
         } catch { resolve(false); }
       });
+      // A connection dropped mid-body emits close without end. A complete
+      // response has already resolved from end, so this is then a no-op.
+      resp.on('close', () => resolve(false));
     });
     req.on('error', () => resolve(false));
     req.on('timeout', () => { req.destroy(); resolve(false); });
@@ -601,6 +729,8 @@ function upstashSetNx(key, value, ttlSeconds) {
           resolve(classifySetNxResult(parsed?.result));
         } catch { resolve('error'); }
       });
+      // Settles a response cut off mid-body; a no-op after end.
+      resp.on('close', () => resolve('error'));
     });
     req.on('error', () => resolve('error'));
     req.on('timeout', () => { req.destroy(); resolve('error'); });
@@ -707,6 +837,8 @@ function upstashDel(key) {
       resp.on('end', () => {
         try { resolve(JSON.parse(data)?.result === 1); } catch { resolve(false); }
       });
+      // Settles a response cut off mid-body; a no-op after end.
+      resp.on('close', () => resolve(false));
     });
     req.on('error', () => resolve(false));
     req.on('timeout', () => { req.destroy(); resolve(false); });
@@ -858,9 +990,10 @@ function normalizeNotificationCountryCode(raw) {
   return countryNameToIso2(raw) ?? undefined;
 }
 
-function marketAlertCoalesceKey(assetClass, identifier, direction, severity) {
+function marketAlertCoalesceKey(assetClass, identifier, direction, severity, session) {
   const stableIdentifier = String(identifier || 'unknown').trim().toLowerCase();
-  return `market:${assetClass}:${stableIdentifier}:${direction}:${severity}`;
+  const sessionSuffix = session ? `:${session}` : '';
+  return `market:${assetClass}:${stableIdentifier}:${direction}:${severity}${sessionSuffix}`;
 }
 
 function nwsVtec(p) {
@@ -868,7 +1001,84 @@ function nwsVtec(p) {
   return vtec;
 }
 
-async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800 }) {
+/**
+ * Second copy of a queued rss_alert / market_alert message for API-key webhook
+ * subscribers. The notification relay RPOPs wm:events:queue destructively, so
+ * the Shipping v2 worker drains its own list (wm:events:api:v1). One Lua round
+ * trip pushes, caps and expires it; a failure here never touches the queue
+ * publish that already succeeded, it only loses the event for API tenants.
+ */
+function teeApiFanout(eventType, msg) {
+  if (!UPSTASH_ENABLED) return;
+  upstashEval(API_FANOUT_TEE_SCRIPT, [API_FANOUT_LIST_KEY], [msg, API_FANOUT_LIST_CAP, API_FANOUT_LIST_TTL_SECONDS])
+    .then((result) => {
+      if (Number(result) !== 1) console.warn(`[Notify] API fan-out tee did not confirm (${eventType})`);
+    })
+    .catch((e) => console.warn(`[Notify] API fan-out tee failed (${eventType}):`, e?.message || e));
+}
+
+/** Quote fields the market.move webhook payload carries; the title stays the human line. */
+function marketMoveFields(assetClass, q) {
+  return {
+    assetClass,
+    symbol: String(q.symbol || q.name || '').toUpperCase(),
+    name: String(q.name || q.symbol || ''),
+    price: Number.isFinite(q.price) ? q.price : null,
+    changePct: q.change,
+    direction: q.change < 0 ? 'down' : 'up',
+  };
+}
+
+// Dedup claims this process took, whose queue write failed and whose rollback
+// DEL failed too (key -> expiry ms). Redis still holds the claim although
+// nothing was queued; without this, every later copy reads it as a duplicate
+// and the alert is lost for the claim's whole TTL.
+const unreleasedDedupClaims = new Map();
+const MAX_UNRELEASED_DEDUP_CLAIMS = 1_000;
+
+function holdsUnreleasedDedupClaim(key) {
+  const expiresAt = unreleasedDedupClaims.get(key);
+  if (expiresAt == null) return false;
+  if (expiresAt > Date.now()) return true;
+  unreleasedDedupClaims.delete(key);
+  return false;
+}
+
+function rememberUnreleasedDedupClaim(key, ttlSeconds) {
+  if (unreleasedDedupClaims.size >= MAX_UNRELEASED_DEDUP_CLAIMS) {
+    const now = Date.now();
+    for (const [k, expiresAt] of unreleasedDedupClaims) if (expiresAt <= now) unreleasedDedupClaims.delete(k);
+    if (unreleasedDedupClaims.size >= MAX_UNRELEASED_DEDUP_CLAIMS) {
+      unreleasedDedupClaims.delete(unreleasedDedupClaims.keys().next().value);
+    }
+  }
+  unreleasedDedupClaims.set(key, Date.now() + ttlSeconds * 1000);
+}
+
+// Publishes in flight per dedup key (key -> settled promise of the last one).
+// Callers publish without awaiting, so two same-key publishes race: the second
+// sees the first's claim and stops, and if the first's queue write then fails
+// and rolls the claim back, neither is queued. A claim kept in
+// unreleasedDedupClaims races the other way: both calls take it again and both
+// queue. Run in order, each sees the outcome of the one before it.
+const dedupKeyPublishes = new Map();
+
+function inDedupKeyOrder(key, publish) {
+  const prior = dedupKeyPublishes.get(key) ?? Promise.resolve();
+  const run = prior.then(() => publish());
+  const settled = run.then(() => {}, () => {});
+  dedupKeyPublishes.set(key, settled);
+  settled.then(() => { if (dedupKeyPublishes.get(key) === settled) dedupKeyPublishes.delete(key); });
+  return run;
+}
+
+// Test seam only: wait until no publish is in flight, so a test can assert that
+// an alert was not queued without guessing how long a publish takes.
+async function settleNotificationPublishes() {
+  while (dedupKeyPublishes.size > 0) await Promise.all(dedupKeyPublishes.values());
+}
+
+async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800, storyKey, onQueued }) {
   try {
     // Include variant in dedup key so each variant can independently publish the same title
     // (e.g. finance and world users both receive an alert for the same headline).
@@ -877,36 +1087,82 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
     // event collapse at the publisher (queue stays clean) instead of N times
     // per recipient at the relay.
     const variantSuffix = variant ? `:${variant}` : '';
+    // storyKey (news alerts, lib/news-story-key.cjs) replaces the title here
+    // only. Unlike coalesceKey it is not in the payload, so the relay's
+    // per-user dedup still keys on the title, as for browser-submitted alerts.
+    // A story claim is held for a day, so it hashes with SHA-256: distinct
+    // headlines collide on the 32-bit notifySimpleHash and would silence each
+    // other for the whole window.
     const dedupMaterial = buildDedupMaterial(eventType, payload?.title, payload?.coalesceKey);
-    const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(dedupMaterial)}`;
-    const dedupResult = await upstashSetNx(dedupKey, '1', dedupTtl);
-    const dedupDecision = recordDedupOutcome(dedupResult, {
-      surface: 'ais-relay',
-      eventType,
-      severity,
-      fallbackKey: dedupKey,
-      fallbackTtlSeconds: dedupTtl,
-      emitTelemetry: recordNotificationDedupSetNxError,
+    const dedupHash = storyKey
+      ? `story-${crypto.createHash('sha256').update(storyKey).digest('hex').slice(0, 32)}`
+      : notifySimpleHash(dedupMaterial);
+    const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${dedupHash}`;
+    return await inDedupKeyOrder(dedupKey, async () => {
+      let dedupResult = await upstashSetNx(dedupKey, '1', dedupTtl);
+      // The existing claim is ours and was never queued: take it again.
+      if (dedupResult === 'duplicate' && holdsUnreleasedDedupClaim(dedupKey)) dedupResult = 'new';
+      const dedupDecision = recordDedupOutcome(dedupResult, {
+        surface: 'ais-relay',
+        eventType,
+        severity,
+        fallbackKey: dedupKey,
+        fallbackTtlSeconds: dedupTtl,
+        emitTelemetry: recordNotificationDedupSetNxError,
+      });
+      // Returns true once the event is queued or was already queued; callers
+      // that keep their own edge state retry on false.
+      const publishedAt = Date.now();
+      const fanout = API_FANOUT_EVENT_TYPES.has(eventType);
+      // Stable per-story / per-move id for API subscribers (occurrence-events.cjs).
+      // The relay ignores it; it rides along in the queue message unchanged.
+      if (fanout && payload && typeof payload === 'object' && !payload.eventId) {
+        const eventId = occurrenceEventIdFor(eventType, payload, publishedAt);
+        if (eventId) payload = { ...payload, eventId };
+      }
+      const msg = JSON.stringify({ eventType, payload, severity: dedupDecision.severity, ...(variant ? { variant } : {}), publishedAt });
+      if (!dedupDecision.shouldPublish) {
+        if (!dedupDecision.isDuplicate) return false;
+        console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
+        // A repeat of an alerted story still goes to API webhook subscribers,
+        // on the title identity they had before the story key. Each one filters
+        // by its own importance floor, severity and keywords, so the sighting
+        // that claimed the story may be one a subscriber rejected, and this one
+        // the first it accepts.
+        if (storyKey && fanout) {
+          const titleKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(dedupMaterial)}`;
+          const titleClaim = await upstashSetNx(titleKey, '1', 1800);
+          if (titleClaim !== 'duplicate' && titleClaim !== 'disabled') teeApiFanout(eventType, msg);
+        }
+        return true;
+      }
+      const ok = await upstashLpush('wm:events:queue', msg);
+      if (ok) {
+        unreleasedDedupClaims.delete(dedupKey);
+        if (fanout) teeApiFanout(eventType, msg);
+        console.log(`[Notify] Queued ${dedupDecision.severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
+        // Only here is the event new in the queue: a dedup hit above also
+        // returns true, and a failed LPUSH returns false below.
+        if (onQueued) {
+          try { onQueued(Date.now()); } catch (e) { console.warn('[Notify] onQueued error:', e?.message || e); }
+        }
+        return true;
+      } else {
+        // Rollback the dedup key so the next poll cycle can retry — avoids silent
+        // suppression for the full dedupTtl when a transient LPUSH fails.
+        console.warn(`[Notify] LPUSH failed for ${eventType} — rolling back dedup key`);
+        // Awaited so a publish queued behind this one (inDedupKeyOrder)
+        // claims after the rollback, not before it.
+        const released = await upstashDel(dedupKey).catch(() => false);
+        // false also covers an absent key, which costs at most one re-claim.
+        if (released) unreleasedDedupClaims.delete(dedupKey);
+        else rememberUnreleasedDedupClaim(dedupKey, dedupTtl);
+        // During a SET NX outage the claim is an in-process reservation; drop
+        // it too, or it suppresses the story for the rest of its TTL.
+        if (dedupDecision.action === 'fail_open') releaseFailOpenFallback(dedupKey);
+        return false;
+      }
     });
-    // Returns true once the event is queued or was already queued; callers
-    // that keep their own edge state retry on false.
-    if (!dedupDecision.shouldPublish) {
-      if (!dedupDecision.isDuplicate) return false;
-      console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
-      return true;
-    }
-    const msg = JSON.stringify({ eventType, payload, severity: dedupDecision.severity, ...(variant ? { variant } : {}), publishedAt: Date.now() });
-    const ok = await upstashLpush('wm:events:queue', msg);
-    if (ok) {
-      console.log(`[Notify] Queued ${dedupDecision.severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
-      return true;
-    } else {
-      // Rollback the dedup key so the next poll cycle can retry — avoids silent
-      // suppression for the full dedupTtl when a transient LPUSH fails.
-      console.warn(`[Notify] LPUSH failed for ${eventType} — rolling back dedup key`);
-      upstashDel(dedupKey).catch(() => {});
-      return false;
-    }
   } catch (e) {
     console.warn(`[Notify] publishNotificationEvent error (${eventType}):`, e?.message || e);
     return false;
@@ -1166,9 +1422,18 @@ const telegramState = {
   cursorByHandle: Object.create(null),
   items: [],
   lastPollAt: 0,
+  lastSuccessfulPollAt: 0,
   lastError: null,
   startedAt: Date.now(),
 };
+
+// The feed lives in process memory and a new container waits
+// TELEGRAM_STARTUP_DELAY_MS before polling, so every deploy served an empty
+// feed for minutes and blanked the panel for every open dashboard. Each good
+// poll snapshots the items; a starting container serves that snapshot until
+// its own first poll. The TTL bounds how old a restored feed can be.
+const TELEGRAM_ITEMS_SNAPSHOT_KEY = 'intelligence:telegram-feed:items:v1';
+const TELEGRAM_ITEMS_SNAPSHOT_TTL_SECONDS = 1800;
 
 const TELEGRAM_RESOLVE_CACHE_TTL_MS = 60 * 60 * 1000;
 const TELEGRAM_CHANNEL_CACHE_TTL_MS = 30_000;
@@ -2086,6 +2351,10 @@ async function pollTelegramOnce() {
         if (!msg.message) { mediaSkipped++; continue; }
         const item = normalizeTelegramMessage(msg, channel);
         newItems.push(item);
+        // The 200-item feed buffer turns over in ~90 minutes; strike candidates
+        // are captured here so none age out before the 10-minute extractor runs.
+        noteMiddleEastStrikeItem(item);
+        noteMiddleEastStrikeItemV2(item);
         if (!telegramState.cursorByHandle[handle] || msg.id > telegramState.cursorByHandle[handle]) {
           telegramState.cursorByHandle[handle] = msg.id;
         }
@@ -2133,11 +2402,19 @@ async function pollTelegramOnce() {
   }
 
   telegramState.lastPollAt = Date.now();
+  // lastPollAt advances on every cycle, including one that a FLOOD_WAIT or a
+  // dead session ended with zero channels read. Freshness consumers (the
+  // Middle East strike feed's seed-meta gate) need the last cycle that read data.
+  if (channelsPolled > 0) telegramState.lastSuccessfulPollAt = telegramState.lastPollAt;
   const elapsed = ((Date.now() - pollStart) / 1000).toFixed(1);
   console.log(`[Relay] Telegram poll: ${channelsPolled}/${channels.length} channels, ${newItems.length} new msgs, ${telegramState.items.length} total, ${channelsFailed} errors, ${mediaSkipped} media-only skipped (${elapsed}s)`);
 
   if (channelsPolled > 0) {
     const rc = telegramState.items.length;
+    upstashSet(TELEGRAM_ITEMS_SNAPSHOT_KEY, {
+      savedAt: new Date(telegramState.lastPollAt).toISOString(),
+      items: telegramState.items,
+    }, TELEGRAM_ITEMS_SNAPSHOT_TTL_SECONDS).catch(() => {});
     // Data key TTL must outlive maxStaleMin (10 min = 600s) by enough
     // buffer so health sees hasData=true + stale seed-meta → STALE_SEED.
     // If both keys expire together, health jumps straight to EMPTY and
@@ -2176,9 +2453,28 @@ function guardedTelegramPoll() {
     });
 }
 
+async function restoreTelegramSnapshot() {
+  const snapshot = await upstashGet(TELEGRAM_ITEMS_SNAPSHOT_KEY);
+  const savedAt = Date.parse(snapshot?.savedAt);
+  // Keep only feed-item shapes: the topic/channel filters and the poll merge
+  // read fields on every entry, and a bad one would sit there until TTL.
+  const items = Array.isArray(snapshot?.items)
+    ? snapshot.items.filter(item => item && typeof item === 'object' && typeof item.id === 'string' && item.id)
+    : [];
+  if (!items.length || !Number.isFinite(savedAt)) return;
+  // A poll that finished first holds fresher items; never overwrite it.
+  if (telegramState.lastPollAt || telegramState.items.length) return;
+  telegramState.items = items.slice(0, TELEGRAM_MAX_FEED_ITEMS);
+  // updatedAt reports when these posts were polled. lastSuccessfulPollAt stays
+  // 0: it gates the strike feed's freshness and no poll has run here yet.
+  telegramState.lastPollAt = savedAt;
+  console.log(`[Relay] Telegram feed restored ${telegramState.items.length} items from snapshot saved ${snapshot.savedAt}`);
+}
+
 function startTelegramPollLoop() {
   if (!TELEGRAM_ENABLED) return;
   loadTelegramChannels();
+  restoreTelegramSnapshot().catch((e) => console.warn('[Relay] Telegram snapshot restore failed:', e?.message || e));
   if (TELEGRAM_STARTUP_DELAY_MS > 0) {
     console.log(`[Relay] Telegram connect delayed ${TELEGRAM_STARTUP_DELAY_MS}ms (waiting for old container to disconnect)`);
     setTimeout(() => {
@@ -2208,7 +2504,11 @@ const X_POLL_INTERVAL_MS = 15 * 60 * 1000;
 // cycle with no error anywhere. Coerce non-numeric env values to the default.
 const X_MAX_FEED_ITEMS = Math.max(50, Number(process.env.X_MAX_FEED_ITEMS) || xNewsAccounts.DEFAULT_MAX_FEED_ITEMS);
 const X_MAX_TEXT_CHARS = Math.max(200, Number(process.env.X_MAX_TEXT_CHARS) || 800);
-const X_TRACK_A_ACCOUNT_BUDGET = 64;
+// Reviewed enabled-registry ceiling. Post spend stays one List page per slot
+// (96 slots of 5 Posts) plus one 25-Post deletion audit, so member count does
+// not add Post reads. Raise this only after re-checking that math. It is not
+// the live List size: the List still has to match this registry exactly.
+const X_TRACK_A_ACCOUNT_BUDGET = 65;
 const X_FEED_CACHE_KEY = 'intelligence:x-feed:v1';
 const X_FEED_META_KEY = 'seed-meta:intelligence:x-feed:v1';
 const X_FEED_POLL_STATE_KEY = 'intelligence:x-feed:poll-state:v1';
@@ -2225,7 +2525,7 @@ const X_FEED_POLL_LOCK_TTL_SECONDS = 120;
 const X_POLL_STUCK_AFTER_MS = 60_000;
 const xPostBudget = createXPostBudget({
   evalCommand: upstashEval,
-  dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+  ...X_SHARED_COVERAGE_MODEL,
 });
 
 const xState = {
@@ -2899,38 +3199,51 @@ async function startOrefPollLoop() {
 const UCDP_ACCESS_TOKEN = (process.env.UCDP_ACCESS_TOKEN || process.env.UC_DP_KEY || '').trim();
 const UCDP_REDIS_KEY = 'conflict:ucdp-events:v1';
 const UCDP_PAGE_SIZE = 1000;
-const UCDP_MAX_PAGES = 6;
-// GED Candidate discovery/fetch/merge is shared with scripts/seed-ucdp-events.mjs
-// so the two UCDP writers cannot drift (they already had, on discovery
-// concurrency and probe timeout).
+// The trailing-window fetch (annual release by date, then every monthly
+// candidate release) is shared with scripts/seed-ucdp-events.mjs so the two
+// UCDP writers cannot drift (they already had, on discovery concurrency and
+// probe timeout).
 const {
-  CANDIDATE_MAX_PAGES: UCDP_CANDIDATE_MAX_PAGES,
+  ANNUAL_LOOKBACK_MS: UCDP_ANNUAL_LOOKBACK_MS,
+  ANNUAL_WINDOW_MAX_PAGES: UCDP_ANNUAL_WINDOW_MAX_PAGES,
   discoverCandidateVersion: ucdpDiscoverCandidateVersion,
-  fetchCandidatePages: ucdpFetchCandidatePages,
   capWithAnnualFloor: ucdpCapWithAnnualFloor,
   candidateContentMeta: ucdpCandidateContentMeta,
+  annualReleaseEndMs: ucdpAnnualReleaseEndMs,
+  currentCandidateVersion,
+  fetchAnnualWindow: ucdpFetchAnnualWindow,
+  fetchCandidateWindow: ucdpFetchCandidateWindow,
+  keepLastGoodUcdpWindow: ucdpKeepLastGoodWindow,
+  summarizeUcdpWindow: ucdpSummarizeWindow,
+  ucdpLocatedCountry,
+  hasPreciseUcdpLocation,
 } = require('./shared/ucdp-candidate.cjs');
-const UCDP_MAX_EVENTS = 2000; // Default capacity. Complete candidate rows plus the annual floor take precedence.
-// CII accepts two years, but these newest annual pages and the candidate release
-// only cover a 365-day trailing slice. Candidate rows can exceed the default cap.
+// The capped `events` slice for the map, the RPC and MCP. The CII reads the
+// whole window from `countryDays` instead.
+const UCDP_MAX_EVENTS = 2000; // Default capacity. The newest candidate release plus the annual floor take precedence.
+// The trailing window both writers fetch and aggregate. The CII's UCDP term
+// assumes exactly this window (CII_UCDP_WINDOW_DAYS; tests pin them together).
 const UCDP_TRAILING_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
 const UCDP_POLL_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const UCDP_TTL_SECONDS = 86400; // 24h safety net
 const UCDP_VIOLENCE_TYPE_MAP = { 1: 'UCDP_VIOLENCE_TYPE_STATE_BASED', 2: 'UCDP_VIOLENCE_TYPE_NON_STATE', 3: 'UCDP_VIOLENCE_TYPE_ONE_SIDED' };
 
-function ucdpFetchPage(version, page, timeoutMs = 30000) {
+function ucdpFetchPage(version, page, timeoutMs = 30000, query = {}) {
   return new Promise((resolve, reject) => {
     const pageUrl = new URL(`https://ucdpapi.pcr.uu.se/api/gedevents/${version}?pagesize=${UCDP_PAGE_SIZE}&page=${page}`);
+    for (const [name, value] of Object.entries(query || {})) pageUrl.searchParams.set(name, String(value));
     const headers = { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' };
     if (UCDP_ACCESS_TOKEN) headers['x-ucdp-access-token'] = UCDP_ACCESS_TOKEN;
-    const req = https.request(pageUrl, { method: 'GET', headers, timeout: timeoutMs }, (resp) => {
+    const req = https.request(pageUrl, { signal: AbortSignal.timeout(timeoutMs), method: 'GET', headers, timeout: timeoutMs }, (resp) => {
       if (resp.statusCode === 401 || resp.statusCode === 403) {
         resp.resume();
         return reject(new Error(`UCDP ${version} page ${page}: HTTP ${resp.statusCode} — API token required (set UCDP_ACCESS_TOKEN env var)`));
       }
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         resp.resume();
-        return reject(new Error(`UCDP ${version} page ${page}: HTTP ${resp.statusCode}`));
+        // The status rides on the error: the window fetch tells an unpublished
+        // release (400/404) from a failed one.
+        return reject(Object.assign(new Error(`UCDP ${version} page ${page}: HTTP ${resp.statusCode}`), { status: resp.statusCode }));
       }
       let data = '';
       resp.on('data', (chunk) => { data += chunk; });
@@ -3002,75 +3315,80 @@ async function ucdpDiscoverVersion() {
 
 async function seedUcdpEvents() {
   try {
-    const { version, page0 } = await ucdpDiscoverVersion();
-    const totalPages = Math.max(1, Number(page0?.TotalPages) || 1);
-    const newestPage = totalPages - 1;
-    console.log(`[UCDP] Version ${version}, ${totalPages} total pages`);
+    const { version } = await ucdpDiscoverVersion();
+    const nowMs = Date.now();
+    console.log(`[UCDP] Version ${version}`);
 
-    const FAILED = Symbol('failed');
-    const fetches = [];
-    for (let offset = 0; offset < UCDP_MAX_PAGES && (newestPage - offset) >= 0; offset++) {
-      const pg = newestPage - offset;
-      fetches.push(pg === 0 ? Promise.resolve(page0) : ucdpFetchPage(version, pg).catch((err) => {
-        console.warn(`[UCDP] page ${pg}: ${err.message || err}`);
-        return FAILED;
-      }));
-    }
-    const pageResults = await Promise.all(fetches);
-
-    const allEvents = [];
+    // The annual release's part of the trailing window, by date: its pages are
+    // not in date order, so "the newest pages" never meant the newest events.
+    const fetchLogged = (v, pg, timeoutMs, query) => ucdpFetchPage(v, pg, timeoutMs, query).catch((err) => {
+      console.warn(`[UCDP] page ${pg} of ${v}: ${err.message || err}`);
+      throw err;
+    });
+    const annual = await ucdpFetchAnnualWindow(fetchLogged, version, { nowMs });
+    const annualIds = new Set(annual.events.filter((event) => event?.id != null).map((event) => String(event.id)));
+    const allEvents = [...annual.events];
+    const failedPages = annual.failedPages;
     let latestMs = NaN;
-    let failedPages = 0;
-    for (const raw of pageResults) {
-      if (raw === FAILED) { failedPages++; continue; }
-      const events = Array.isArray(raw?.Result) ? raw.Result : [];
-      allEvents.push(...events);
-      for (const e of events) {
-        const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
-        if (Number.isFinite(ms) && (!Number.isFinite(latestMs) || ms > latestMs)) latestMs = ms;
-      }
+    for (const e of annual.events) {
+      const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
+      if (Number.isFinite(ms) && (!Number.isFinite(latestMs) || ms > latestMs)) latestMs = ms;
     }
+    if (annual.truncated) console.warn(`[UCDP] annual ${version}: ${annual.totalPages} window pages exceed cap ${UCDP_ANNUAL_WINDOW_MAX_PAGES}`);
+    console.log(`[UCDP] annual ${version} ${annual.startDate}..${annual.endDate}: ${allEvents.length} events, ${failedPages} failed pages`);
 
-    // If no events from newest pages, extend existing cache TTL instead of overwriting
-    // with stale/empty data. This preserves the last known good payload.
+    // If the annual window failed entirely, extend the existing cache TTL instead
+    // of overwriting with stale/empty data. This preserves the last known good payload.
     if (allEvents.length === 0 && failedPages > 0) {
-      console.warn(`[UCDP] All ${failedPages} newest pages failed, extending existing key TTL (preserving last good data)`);
+      console.warn(`[UCDP] All ${failedPages} annual pages failed, extending existing key TTL (preserving last good data)`);
       try { await upstashExpire(UCDP_REDIS_KEY, UCDP_TTL_SECONDS); } catch {}
       // Do NOT update seed-meta: health should reflect actual data freshness, not this failed attempt
       return;
     }
 
-    // Merge the newest GED Candidate release on top of the annual base (ADD,
-    // never replace — a candidate alone is ~1.8k events vs the annual's ~418k).
-    // The annual base is already in allEvents; append candidate events and dedupe
-    // by id so a candidate's revision of an event also present in the annual
-    // release wins (it's the fresher record).
+    // Merge every GED Candidate release after the annual year on top of the
+    // annual base (ADD, never replace). Each candidate release holds one month,
+    // so every month since the annual year is fetched
+    // (scripts/shared/ucdp-candidate.cjs). Releases are appended oldest first
+    // and deduped by id below, so a later release's revision of an event wins.
     let candidateVersion = null;
     let candidateComplete = false;
+    let windowReleases = [version];
+    let missingReleases = [];
+    let unpublishedReleases = [];
+    let unpublishedMonths = [];
     const candidateIds = new Set();
     try {
       const candidate = await ucdpDiscoverCandidateVersion(ucdpFetchPage);
       if (candidate) {
-        const merged = await ucdpFetchCandidatePages(ucdpFetchPage, candidate);
-        // Only claim the candidate version once the release was fetched whole.
-        // A partial fetch published as `26.0.6` is indistinguishable from a
-        // complete one downstream, which is how a silently degraded merge would
-        // look healthy.
-        candidateComplete = merged.complete && !merged.truncated;
-        candidateVersion = candidateComplete ? candidate.version : `${candidate.version}+partial`;
-        if (merged.failedPages > 0) {
-          console.warn(`[UCDP] candidate ${candidate.version}: ${merged.failedPages} page(s) failed — publishing as partial`);
+        const fromMs = Math.max(ucdpAnnualReleaseEndMs(version) + 1, nowMs - UCDP_ANNUAL_LOOKBACK_MS);
+        const merged = await ucdpFetchCandidateWindow(fetchLogged, candidate, { fromMs, throughVersion: currentCandidateVersion(nowMs) });
+        // Only claim the candidate version once every release of the window
+        // was fetched whole. A partial window published as `26.0.6` is
+        // indistinguishable from a complete one downstream, which is how a
+        // silently degraded merge would look healthy.
+        candidateComplete = merged.complete;
+        candidateVersion = candidateComplete ? merged.newestVersion : `${merged.newestVersion}+partial`;
+        missingReleases = merged.missingReleases;
+        unpublishedReleases = merged.unpublishedReleases;
+        unpublishedMonths = merged.unpublishedMonths;
+        if (unpublishedReleases.length) console.log(`[UCDP] Not published yet: ${unpublishedReleases.join(', ')}`);
+        windowReleases = [version, ...merged.releases.map((r) => r.version)];
+        if (!candidateComplete) {
+          console.warn(`[UCDP] candidate window ${merged.releases[0].version}..${merged.newestVersion}: incomplete (missing: ${missingReleases.join(', ') || 'none'}; failed or truncated pages)`);
         }
-        if (merged.truncated) {
-          console.warn(`[UCDP] candidate ${candidate.version}: ${merged.totalPages} pages exceeds cap ${UCDP_CANDIDATE_MAX_PAGES} — ${merged.totalPages - UCDP_CANDIDATE_MAX_PAGES} page(s) dropped`);
+        for (const release of merged.releases) {
+          for (const e of release.events) {
+            const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
+            if (Number.isFinite(ms) && (!Number.isFinite(latestMs) || ms > latestMs)) latestMs = ms;
+          }
+          allEvents.push(...release.events);
         }
-        for (const e of merged.events) {
+        // The capped `events` slice keeps the newest release whole, as before.
+        for (const e of merged.releases[merged.releases.length - 1].events) {
           if (e?.id != null) candidateIds.add(String(e.id));
-          const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
-          if (Number.isFinite(ms) && (!Number.isFinite(latestMs) || ms > latestMs)) latestMs = ms;
         }
-        allEvents.push(...merged.events);
-        console.log(`[UCDP] Merged candidate ${candidateVersion}: +${merged.events.length} events`);
+        console.log(`[UCDP] Merged candidates ${merged.releases.map((r) => r.version).join(', ')}: +${merged.releases.reduce((n, r) => n + r.events.length, 0)} events`);
       }
     } catch (err) {
       console.warn(`[UCDP] Candidate merge skipped: ${err.message || err}`);
@@ -3095,6 +3413,8 @@ async function seedUcdpEvents() {
       dateEnd: Date.parse(e.date_end) || 0,
       location: { latitude: Number(e.latitude) || 0, longitude: Number(e.longitude) || 0 },
       country: e.country || '',
+      hasPreciseLocation: hasPreciseUcdpLocation(e),
+      locationName: (e.where_coordinates || '').substring(0, 200),
       sideA: (e.side_a || '').substring(0, 200),
       sideB: (e.side_b || '').substring(0, 200),
       deathsBest: Number(e.best) || 0,
@@ -3104,8 +3424,8 @@ async function seedUcdpEvents() {
       sourceOriginal: (e.source_original || '').substring(0, 300),
     })).sort((a, b) => b.dateStart - a.dateStart);
 
-    // Keep monthly candidate aggregates and the annual conflict-floor history.
-    const capped = ucdpCapWithAnnualFloor(mapped, (e) => candidateIds.has(e.id), UCDP_MAX_EVENTS);
+    // Keep the newest candidate release and the annual conflict history.
+    const capped = ucdpCapWithAnnualFloor(mapped, (e) => candidateIds.has(e.id), UCDP_MAX_EVENTS, undefined, (e) => annualIds.has(e.id));
 
     // Partial success but 0 events after filtering: extend TTL, don't overwrite
     if (capped.length === 0) {
@@ -3114,7 +3434,41 @@ async function seedUcdpEvents() {
       return;
     }
 
-    const payload = { events: capped, fetchedAt: Date.now(), version, candidateVersion, candidateComplete, annualFailedPages: failedPages, totalRaw: allEvents.length, filteredCount: capped.length };
+    // The whole window, aggregated per country and day, for the CII (the capped
+    // `events` slice is the map's, the RPC's and MCP's).
+    const windowStartMs = latestMs - UCDP_TRAILING_WINDOW_MS;
+    // Aggregated by where each event happened (ucdpLocatedCountry), not UCDP's country code.
+    const located = filtered.map((e) => ({ country: ucdpLocatedCountry(e), dateStart: Date.parse(e.date_start) || 0, deathsBest: Number(e.best) || 0, sideA: e.side_a, sideB: e.side_b }));
+    const summary = ucdpSummarizeWindow(located, { startMs: windowStartMs, endMs: latestMs });
+    if (summary.gapMonths.length) console.warn(`[UCDP] Window has empty months before later data: ${summary.gapMonths.join(', ')}`);
+    const window = {
+      startMs: windowStartMs,
+      endMs: latestMs,
+      months: summary.months,
+      gapMonths: summary.gapMonths,
+      // Months after the newest data that UCDP has not published yet: the frontier, never a gap.
+      upstreamGapMonths: unpublishedMonths,
+      complete: candidateComplete && failedPages === 0 && !annual.truncated && summary.gapMonths.length === 0,
+      releases: windowReleases,
+      missingReleases,
+      unpublishedReleases,
+    };
+
+    // Never replace a complete window with an incomplete one that reaches no further. No seed-meta
+    // write: health should reflect the age of the data actually served.
+    const keepCached = await ucdpKeepLastGoodWindow(async () => {
+      let readFailure = null;
+      const cached = await envelopeRead(UCDP_REDIS_KEY, (reason) => { readFailure = reason; });
+      if (readFailure) throw new Error(readFailure);
+      return cached;
+    }, window);
+    if (keepCached) {
+      console.warn(`[UCDP] Window refresh cannot replace the cached frontier, extending existing key TTL (preserving last good data)`);
+      try { await upstashExpire(UCDP_REDIS_KEY, UCDP_TTL_SECONDS); } catch {}
+      return;
+    }
+
+    const payload = { events: capped, fetchedAt: Date.now(), version, candidateVersion, candidateComplete, annualFailedPages: failedPages, totalRaw: allEvents.length, filteredCount: capped.length, countryDays: summary.countryDays, partyMonths: summary.partyMonths, dailyTotals: summary.dailyTotals, window };
     const ok = await envelopeWrite(UCDP_REDIS_KEY, payload, UCDP_TTL_SECONDS, { recordCount: capped.length, sourceVersion: 'ucdp' });
     // Content-age trio: api/health.js treats the presence of maxContentAgeMin as
     // the opt-in signal and reports STALE_CONTENT once the newest event outruns
@@ -3127,9 +3481,28 @@ async function seedUcdpEvents() {
       candidateVersion,
       candidateComplete,
       annualFailedPages: failedPages,
+      windowComplete: window.complete,
+      windowGapMonths: window.gapMonths,
       ...ucdpCandidateContentMeta(capped),
     }, 604800);
     console.log(`[UCDP] Seeded ${capped.length} events (raw: ${allEvents.length}, candidate: ${candidateVersion || 'none'}, failed pages: ${failedPages}, redis: ${ok ? 'OK' : 'FAIL'})`);
+    // The bootstrap tier hydrates from the compact projection, which health
+    // watches under its own seed-meta. The backup cron skips while the canonical
+    // seed-meta above is fresh, so this writer must refresh the projection too or
+    // it ages past its budget between backup runs (Sentry WORLDMONITOR-1DC).
+    // Best-effort, like the backup cron: the canonical key is already published.
+    if (ok) {
+      try {
+        const { compactUcdpDashboardPayload, UCDP_BOOTSTRAP_KEY, UCDP_BOOTSTRAP_META_KEY } = await import('./_ucdp-dashboard.mjs');
+        const compact = compactUcdpDashboardPayload(payload);
+        if (!await upstashSet(UCDP_BOOTSTRAP_KEY, compact, UCDP_TTL_SECONDS)) throw new Error('projection SET failed');
+        if (!await upstashSet(UCDP_BOOTSTRAP_META_KEY, { fetchedAt: Date.now(), recordCount: compact.events.length }, 604800)) {
+          throw new Error('projection seed-meta SET failed');
+        }
+      } catch (err) {
+        console.warn(`[UCDP] Compact projection write failed: ${err?.message || err}`);
+      }
+    }
     const newConflicts = capped.filter(e => e.deathsBest >= 10 && !ucdpPrevAlertedIds.has(e.id)).sort((a, b) => b.deathsBest - a.deathsBest);
     for (const e of newConflicts.slice(0, 2)) {
       ucdpPrevAlertedIds.add(e.id);
@@ -3214,7 +3587,7 @@ async function seedSatelliteTLEs() {
       try {
         text = await new Promise((resolve, reject) => {
           const url = new URL(`https://celestrak.org/NORAD/elements/gp.php?GROUP=${group}&FORMAT=tle`);
-          const req = https.request(url, { method: 'GET', headers: { 'User-Agent': CHROME_UA }, timeout: 15000 }, (resp) => {
+          const req = https.request(url, { signal: AbortSignal.timeout(15000), method: 'GET', headers: { 'User-Agent': CHROME_UA }, timeout: 15000 }, (resp) => {
             if (resp.statusCode < 200 || resp.statusCode >= 300) {
               resp.resume();
               return reject(new Error(`CelesTrak ${group}: HTTP ${resp.statusCode}`));
@@ -3353,7 +3726,14 @@ function _parseYahooChartJson(body) {
         .filter((value) => value != null)
         .map((value) => (value !== 0 ? Number(value.toPrecision(7)) : value))
       : [];
-    return { price, change, sparkline };
+    return {
+      price,
+      change,
+      sparkline,
+      awaitingSessionOpen: awaitsSessionOpen(data),
+      lastTradeAt: meta.regularMarketTime,
+      chart: data,
+    };
   } catch { return null; }
 }
 
@@ -3368,6 +3748,7 @@ function _fetchYahooChartNoProxy(symbol, query = '') {
   return new Promise((resolve) => {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}${query}`;
     const req = https.get(url, {
+      signal: AbortSignal.timeout(10000),
       headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
       timeout: 10000,
     }, (resp) => {
@@ -3385,7 +3766,56 @@ function _fetchYahooChartNoProxy(symbol, query = '') {
   });
 }
 
+// A rolled chart's previous close stays the same until the next trade, so one
+// daily-chart request per symbol covers a whole weekend of 5-minute cycles.
+const _previousSessionCloses = new Map();
+
+async function _withPreviousSessionChange(symbol, quote) {
+  let cached = _previousSessionCloses.get(symbol);
+  if (cached?.lastTradeAt !== quote.lastTradeAt) {
+    await sleep(150);
+    const daily = await _fetchYahooChartOnce(symbol, PREVIOUS_SESSION_CHART_QUERY);
+    const close = previousSessionClose(daily?.chart, quote.lastTradeAt);
+    if (!close) return quote;
+    cached = { lastTradeAt: quote.lastTradeAt, close };
+    _previousSessionCloses.set(symbol, cached);
+  }
+  return { ...quote, change: ((quote.price - cached.close) / cached.close) * 100 };
+}
+
+// History bars before the default chart's first bar never change, so one
+// history request per symbol per session covers every 5-minute cycle. After a
+// failed request the symbol waits SPARKLINE_HISTORY_RETRY_SECONDS.
+const _sparklineHistories = new Map();
+const _sparklineHistoryFailedAt = new Map();
+
+async function _commoditySparkline(symbol, quote) {
+  const firstBarAt = quote.chart?.chart?.result?.[0]?.timestamp?.[0] ?? quote.lastTradeAt;
+  const cacheable = Number.isFinite(firstBarAt);
+  let cached = cacheable ? _sparklineHistories.get(symbol) : null;
+  if (!cached || cached.firstBarAt !== firstBarAt) {
+    const backingOff = Date.now() - (_sparklineHistoryFailedAt.get(symbol) ?? -Infinity) < SPARKLINE_HISTORY_RETRY_SECONDS * 1000;
+    let history = null;
+    if (!backingOff) {
+      await sleep(150);
+      history = await _fetchYahooChartOnce(symbol, SPARKLINE_HISTORY_QUERY);
+      if (history) _sparklineHistoryFailedAt.delete(symbol);
+      else _sparklineHistoryFailedAt.set(symbol, Date.now());
+    }
+    cached = { firstBarAt, chart: history?.chart ?? null };
+    if (history && cacheable) _sparklineHistories.set(symbol, cached);
+    if (!history) logThrottled('warn', `market-sparkline-history:${symbol}`, `[Market] ${symbol} sparkline history unavailable; publishing today's bars only`);
+  }
+  const { sparkline, ...labels } = buildQuoteSparkline(quote.chart, cached.chart);
+  return { sparkline: sparkline.map((value) => (value !== 0 ? Number(value.toPrecision(7)) : value)), ...labels };
+}
+
 function fetchYahooChartDirect(symbol, query = '') {
+  return _fetchYahooChartOnce(symbol, query)
+    .then((quote) => (!query && quote?.awaitingSessionOpen ? _withPreviousSessionChange(symbol, quote) : quote));
+}
+
+function _fetchYahooChartOnce(symbol, query = '') {
   return _fetchYahooChartNoProxy(symbol, query).then((result) => {
     if (result) return result;
     if (!PROXY_URL) return null;
@@ -3449,6 +3879,7 @@ function fetchFinnhubQuoteDirect(symbol, apiKey) {
   return new Promise((resolve) => {
     const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}`;
     const req = https.get(url, {
+      signal: AbortSignal.timeout(10000),
       headers: { 'User-Agent': CHROME_UA, Accept: 'application/json', 'X-Finnhub-Token': apiKey },
       timeout: 10000,
     }, (resp) => {
@@ -3462,7 +3893,7 @@ function fetchFinnhubQuoteDirect(symbol, apiKey) {
         try {
           const data = JSON.parse(body);
           if (data.c === 0 && data.h === 0 && data.l === 0) return resolve(null);
-          resolve({ price: data.c, changePercent: data.dp });
+          resolve({ price: data.c, changePercent: data.dp, lastTradeAt: data.t });
         } catch { resolve(null); }
       });
     });
@@ -3517,6 +3948,8 @@ async function writeChinaCountryStockIndex() {
 async function seedMarketQuotes() {
   const previousPayloadPromise = envelopeRead('market:stocks-bootstrap:v1');
   const freshQuotes = [];
+  // Last trade (unix seconds) per fresh quote: a move's session key (#10873).
+  const lastTradeAtBySymbol = new Map();
   const finnhubSymbols = MARKET_SYMBOLS.filter((s) => !YAHOO_ONLY.has(s));
   const yahooSymbols = MARKET_SYMBOLS.filter((s) => YAHOO_ONLY.has(s));
 
@@ -3526,7 +3959,10 @@ async function seedMarketQuotes() {
       const r = results[i];
       const symbol = finnhubSymbols[i];
       const meta = MARKET_META.get(symbol);
-      if (r) freshQuotes.push({ symbol, name: meta?.name || symbol, display: meta?.display || symbol, price: r.price, change: r.changePercent, sparkline: [] });
+      if (r) {
+        freshQuotes.push({ symbol, name: meta?.name || symbol, display: meta?.display || symbol, price: r.price, change: r.changePercent, sparkline: [] });
+        lastTradeAtBySymbol.set(symbol, r.lastTradeAt);
+      }
     }
   }
 
@@ -3549,7 +3985,10 @@ async function seedMarketQuotes() {
     if (freshQuotes.some((q) => q.symbol === s)) continue;
     const yahoo = await fetchYahooChartDirect(s);
     const meta = MARKET_META.get(s);
-    if (yahoo) freshQuotes.push({ symbol: s, name: meta?.name || s, display: meta?.display || s, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
+    if (yahoo) {
+      freshQuotes.push({ symbol: s, name: meta?.name || s, display: meta?.display || s, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
+      lastTradeAtBySymbol.set(s, yahoo.lastTradeAt);
+    }
     await sleep(150);
   }
 
@@ -3560,7 +3999,7 @@ async function seedMarketQuotes() {
 
   const previousPayload = await previousPayloadPromise;
   const previousQuotes = Array.isArray(previousPayload?.quotes) ? previousPayload.quotes : [];
-  const quotes = mergeLastGoodQuotes(MARKET_SYMBOLS, freshQuotes, previousQuotes);
+  const quotes = capQuoteSparklines(mergeLastGoodQuotes(MARKET_SYMBOLS, freshQuotes, previousQuotes));
   const retainedCount = quotes.length - freshQuotes.length;
   const yahooSuccessCount = freshQuotes.length - freshCountBeforeYahoo;
   const coveredByYahoo = finnhubSymbols.every((s) => quotes.some((q) => q.symbol === s));
@@ -3590,21 +4029,26 @@ async function seedMarketQuotes() {
   }
   _lastEquityQuoteCount = quotes.length;
   console.log(`[Market] Seeded ${quotes.length}/${MARKET_SYMBOLS.length} quotes (${freshQuotes.length} fresh, ${retainedCount} retained; Yahoo ${yahooSuccessCount}/${allYahoo.length}, cadence ${MARKET_YAHOO_REFRESH_INTERVAL_MS / 60000}min; redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
-  const movingStocks = quotes.filter(q => Math.abs(q.change ?? 0) >= 5).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
+  // Fresh quotes only (#10873): a retained quote is a move already published
+  // when it was fresh, and without a trade time its session key would roll daily.
+  const movingStocks = quotes.filter(q => lastTradeAtBySymbol.has(q.symbol) && Math.abs(q.change ?? 0) >= 5).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
   for (const q of movingStocks.slice(0, 3)) {
     const pct = Math.round(q.change);
     const dir = q.change < 0 ? 'decline' : 'surge';
-    const severity = Math.abs(q.change) >= 10 ? 'critical' : 'high';
+    // A single stock is at most high; only an index move is critical (#10873).
+    const severity = notifyPolicy.marketMoveSeverity({ assetClass: 'equity', symbol: q.symbol, changePct: q.change });
+    if (!severity) continue;
     publishNotificationEvent({
       eventType: 'market_alert',
       payload: {
         title: `${q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`,
         source: 'Equity Market',
-        coalesceKey: marketAlertCoalesceKey('equity', q.symbol, dir, severity),
+        coalesceKey: marketAlertCoalesceKey('equity', q.symbol, dir, severity, notifyPolicy.marketMoveSessionKey('equity', lastTradeAtBySymbol.get(q.symbol))),
+        ...marketMoveFields('equity', q),
       },
       severity,
       variant: undefined,
-      dedupTtl: 3600,
+      dedupTtl: notifyPolicy.marketMoveDedupTtlSeconds('equity'),
     }).catch(e => console.warn('[Notify] Market stock publish error:', e?.message));
   }
   return quotes.length;
@@ -3613,10 +4057,17 @@ async function seedMarketQuotes() {
 async function seedCommodityQuotes() {
   const quotes = [];
   const missing = [];
+  // Last trade (unix seconds) per quote: a move's session key (#10873).
+  const lastTradeAtBySymbol = new Map();
+  const toQuote = async (symbol, meta, yahoo) => (lastTradeAtBySymbol.set(symbol, yahoo.lastTradeAt), {
+    symbol, name: meta.name, display: meta.display, price: yahoo.price, change: yahoo.change,
+    ...(await _commoditySparkline(symbol, yahoo)),
+    ...crudeOilQuoteProvenance(symbol, 'Yahoo Finance', 'futures', yahoo.lastTradeAt * 1000),
+  });
   for (const s of COMMODITY_SYMBOLS) {
     const meta = COMMODITY_META.get(s) || { name: s, display: s };
     const yahoo = await fetchYahooChartDirect(s);
-    if (yahoo) quotes.push({ symbol: s, name: meta.name, display: meta.display, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
+    if (yahoo) quotes.push(await toQuote(s, meta, yahoo));
     else missing.push(s);
     await sleep(150);
   }
@@ -3626,7 +4077,7 @@ async function seedCommodityQuotes() {
     for (const s of missing) {
       const meta = COMMODITY_META.get(s);
       const yahoo = await fetchYahooChartDirect(s);
-      if (yahoo) quotes.push({ symbol: s, name: meta.name, display: meta.display, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
+      if (yahoo) quotes.push(await toQuote(s, meta, yahoo));
       await sleep(200);
     }
   }
@@ -3657,17 +4108,20 @@ async function seedCommodityQuotes() {
   for (const q of movingCommodities.slice(0, 3)) {
     const pct = Math.round(q.change);
     const dir = q.change < 0 ? 'decline' : 'surge';
-    const severity = Math.abs(q.change) >= 10 ? 'critical' : 'high';
+    // VIX swings 10%+ routinely, so it is never critical (#10873).
+    const severity = notifyPolicy.marketMoveSeverity({ assetClass: 'commodity', symbol: q.symbol, changePct: q.change });
+    if (!severity) continue;
     publishNotificationEvent({
       eventType: 'market_alert',
       payload: {
         title: `${q.name || q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`,
         source: 'Commodity Market',
-        coalesceKey: marketAlertCoalesceKey('commodity', q.symbol || q.name, dir, severity),
+        coalesceKey: marketAlertCoalesceKey('commodity', q.symbol || q.name, dir, severity, notifyPolicy.marketMoveSessionKey('commodity', lastTradeAtBySymbol.get(q.symbol))),
+        ...marketMoveFields('commodity', q),
       },
       severity,
       variant: undefined,
-      dedupTtl: 3600,
+      dedupTtl: notifyPolicy.marketMoveDedupTtlSeconds('commodity'),
     }).catch(e => console.warn('[Notify] Commodity publish error:', e?.message));
   }
   return quotes.length;
@@ -3830,7 +4284,7 @@ async function seedEtfFlows() {
     try {
       const raw = await new Promise((resolve) => {
         const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=5d&interval=1d`;
-        const req = https.get(url, { headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' }, timeout: 10000 }, (resp) => {
+        const req = https.get(url, { signal: AbortSignal.timeout(10000), headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' }, timeout: 10000 }, (resp) => {
           if (resp.statusCode !== 200) { resp.resume(); return resolve(null); }
           let body = '';
           resp.on('data', (chunk) => { body += chunk; });
@@ -3999,17 +4453,19 @@ async function seedCryptoQuotes() {
   for (const q of movingCrypto.slice(0, 3)) {
     const pct = Math.round(q.change);
     const dir = q.change < 0 ? 'decline' : 'surge';
-    const severity = Math.abs(q.change) >= 20 ? 'critical' : 'high';
+    const severity = notifyPolicy.marketMoveSeverity({ assetClass: 'crypto', symbol: q.symbol, changePct: q.change });
+    if (!severity) continue;
     publishNotificationEvent({
       eventType: 'market_alert',
       payload: {
         title: `${q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`,
         source: 'Crypto Market',
         coalesceKey: marketAlertCoalesceKey('crypto', q.symbol || q.name, dir, severity),
+        ...marketMoveFields('crypto', q),
       },
       severity,
       variant: undefined,
-      dedupTtl: 3600,
+      dedupTtl: notifyPolicy.marketMoveDedupTtlSeconds('crypto'),
     }).catch(e => console.warn('[Notify] Crypto publish error:', e?.message));
   }
   return quotes.length;
@@ -4358,7 +4814,7 @@ function cyberToProto(t) {
 
 function cyberHttpGetJson(url, reqHeaders, timeoutMs) {
   return new Promise((resolve) => {
-    const req = https.get(url, { headers: { 'User-Agent': CHROME_UA, ...reqHeaders }, timeout: timeoutMs || 10000 }, (resp) => {
+    const req = https.get(url, { signal: AbortSignal.timeout(timeoutMs || 10000), headers: { 'User-Agent': CHROME_UA, ...reqHeaders }, timeout: timeoutMs || 10000 }, (resp) => {
       if (resp.statusCode < 200 || resp.statusCode >= 300) { resp.resume(); return resolve(null); }
       const chunks = [];
       resp.on('data', (c) => chunks.push(c));
@@ -4370,7 +4826,7 @@ function cyberHttpGetJson(url, reqHeaders, timeoutMs) {
 }
 function cyberHttpGetText(url, reqHeaders, timeoutMs) {
   return new Promise((resolve) => {
-    const req = https.get(url, { headers: { 'User-Agent': CHROME_UA, ...reqHeaders }, timeout: timeoutMs || 10000 }, (resp) => {
+    const req = https.get(url, { signal: AbortSignal.timeout(timeoutMs || 10000), headers: { 'User-Agent': CHROME_UA, ...reqHeaders }, timeout: timeoutMs || 10000 }, (resp) => {
       if (resp.statusCode < 200 || resp.statusCode >= 300) { resp.resume(); return resolve(null); }
       const chunks = [];
       resp.on('data', (c) => chunks.push(c));
@@ -4612,7 +5068,9 @@ async function seedCyberThreats() {
       publishNotificationEvent({
         eventType: 'cyber_threat',
         payload: { title: `${typeLabel}: ${t.indicator?.slice(0, 50)}${familyTag}`, source: t.source || 'Cyber Intel', ...(countryCode ? { countryCode } : {}) },
-        severity: t.severity === 'critical' ? 'critical' : 'high',
+        // One indicator (an IP, a URL) is never a realtime-critical event; the
+        // feed's own 'critical' becomes high (#10873, #3936).
+        severity: 'high',
         variant: undefined,
         dedupTtl: 43200,
       }).catch(err => console.warn('[Notify] Cyber publish error:', err?.message));
@@ -4642,12 +5100,27 @@ async function startCyberThreatsSeedLoop() {
 // AI Classification Seed — batch-classify digest titles via LLM → Redis
 // Clients get pre-classified items from digest, zero classify-event RPCs
 // ─────────────────────────────────────────────────────────────
+// The whole-pass cadence: threat summary and seed-meta. An alert does not wait
+// for it; the build watch (checkDigestBuilds) classifies an edition as soon as
+// its digest is rebuilt.
 const CLASSIFY_SEED_INTERVAL_MS = 15 * 60 * 1000;
 const CLASSIFY_CACHE_TTL = 86400;
 const CLASSIFY_SKIP_TTL = 1800;
 const CLASSIFY_BATCH_SIZE = 50;
-const CLASSIFY_VARIANTS = ['full', 'tech', 'finance', 'happy', 'commodity'];
-const CLASSIFY_VARIANT_STAGGER_MS = 3 * 60 * 1000;
+// Every edition the news digest serves, generated from shared/news-catalog.json
+// (scripts/generate-browser-news-catalog.mjs), so a new edition is classified
+// without a relay edit.
+const CLASSIFY_VARIANTS = requireShared('news-digest-editions.json');
+// The waits between editions total CLASSIFY_STAGGER_TOTAL_MS whatever the
+// edition count, leaving the rest of the 15-minute interval for classify work;
+// a fixed per-edition wait would overrun the interval as editions are added and
+// the in-flight guard would then skip every other cycle. Zero under
+// RELAY_TEST_MODE so the /__test/seed-classify seam runs a full cycle in
+// milliseconds.
+const CLASSIFY_STAGGER_TOTAL_MS = 12 * 60 * 1000;
+const CLASSIFY_VARIANT_STAGGER_MS = RELAY_TEST_MODE
+  ? 0
+  : Math.floor(CLASSIFY_STAGGER_TOTAL_MS / Math.max(1, CLASSIFY_VARIANTS.length - 1));
 
 // Relay gates — active only when RELAY_GATES_READY=1 (see Appendix E of docs/internal/news-alerts-enhancements-from-trendradar.md).
 // When the flag is set the relay becomes the sole authoritative source of rss_alert events and
@@ -4658,11 +5131,6 @@ const RELAY_RECENCY_MS = 15 * 60 * 1000; // 15 min — matches client-side recen
 // ── Importance score parity with digest ──────────────────────────────────────
 // Source-tier data loaded via requireShared('source-tiers.json'), which resolves
 // to either repo-root shared/ OR scripts/shared/ depending on packaging root.
-// Both copies are enforced byte-identical by tests/edge-functions.test.mjs
-// ('scripts/shared/ stays in sync with shared/') and cross-checked in
-// tests/importance-score-parity.test.mjs.
-// Formula constants + computeImportanceScore mirror list-feed-digest.ts; parity
-// is enforced by tests/importance-score-parity.test.mjs.
 const RELAY_SOURCE_TIERS = {
   ...requireShared('source-tiers.json'),
   ...requireShared('x-account-source-tiers.json'),
@@ -4769,6 +5237,25 @@ function relayEntityCorroborationScore(count) {
 // exercised in tests/importance-score-parity.test.mjs "unknown severity" case.
 // Caller responsibility: pass defined values; relay publish site defaults
 // corroborationCount → 1 and publishedAt → Date.now() when upstream omits them.
+// Publisher families the digest saw carry each headline in the last day, over
+// every build and edition (#10977), in one short read. A title without a
+// history falls back to the build's own count.
+async function readObservedPublishers(titles) {
+  if (titles.length === 0) return new Map();
+  const now = Date.now();
+  const keyed = titles.map((title) => [title, newsPublisherCoverageKey(title)]).filter(([, key]) => key);
+  const rows = await upstashPipeline(
+    keyed.map(([, key]) => ['ZRANGEBYSCORE', key, `(${now - NEWS_STORY_DEDUP_TTL_SECONDS * 1000}`, now]),
+    { deadlineMs: 1500 },
+  );
+  const observed = new Map();
+  keyed.forEach(([title], i) => {
+    const families = rows?.[i]?.result;
+    if (Array.isArray(families)) observed.set(title, families.filter((family) => typeof family === 'string' && family));
+  });
+  return observed;
+}
+
 function relayComputeImportanceScore(level, source, corroborationCount, publishedAt, context = {}) {
   const tier = relayGetSourceTier(source);
   const tierScore = tier === 1 ? 100 : tier === 2 ? 75 : tier === 3 ? 50 : 25;
@@ -4834,7 +5321,14 @@ Focus: geopolitical events, conflicts, disasters, diplomacy.
 Classify by real-world event severity, not headline sentiment.`;
 
 const NEWS_THREAT_SUMMARY_KEY = 'news:threat:summary:v1';
-const NEWS_THREAT_SUMMARY_TTL = 1200; // 20 min — aligns with relay cadence
+// The cycle publishes only at its end, about 12 minutes after it starts (four
+// 3-minute variant staggers), and a restart discards the cycle in flight. So
+// the first write after a restart lands at least 27 minutes after the last
+// one; on 2026-10-21 three deploys in 40 minutes left a 48-minute gap, and the
+// old 20-minute TTL expired the key twice. Two hours outlasts that, and stays
+// above the 60-minute health budget (api/health.js SEED_META.newsThreatSummary)
+// so health reads STALE_SEED before the payload can vanish.
+const NEWS_THREAT_SUMMARY_TTL = 2 * 60 * 60;
 
 // Country name → ISO2 for threat summary geo-attribution (inline to avoid ESM import)
 const THREAT_COUNTRY_NAME_TO_ISO2 = {
@@ -4880,6 +5374,7 @@ const THREAT_COUNTRY_NAME_TO_ISO2 = {
   'tel aviv':'IL','gaza':'PS','damascus':'SY','sanaa':'YE','houthi':'YE',
   'kremlin':'RU','pentagon':'US','nato':'','irgc':'IR','hezbollah':'LB',
   'hamas':'PS','taliban':'AF','riyadh':'SA','ankara':'TR',
+  'saudi':'SA','houthis':'YE',
 };
 // Sort by name length desc so longer multi-word names match first (used for tie-breaking same position)
 const THREAT_COUNTRY_NAME_ENTRIES = Object.entries(THREAT_COUNTRY_NAME_TO_ISO2)
@@ -4909,6 +5404,68 @@ function matchCountryNamesInText(text) {
   }
   return [];
 }
+
+// City and region names -> ISO2 (scripts/build-news-places.mjs), longest phrase first.
+const NEWS_PLACES = require('./shared/news-places.json');
+const NEWS_PLACE_MAX_WORDS = 4;
+// Mirrors stripPublisherSuffix in scripts/shared/geo-extract.mjs.
+const THREAT_PUBLISHER_CREDIT_WORDS = /\b(?:post|times|news|journal|herald|tribune|guardian|telegraph|gazette|press|reuters|bloomberg|jazeera|bbc|cnn|nbc|cbs|npr|afp|tv|television|radio|daily|weekly|observer|independent|monitor|chronicle|express|mail|standard|insider|magazine|media|network|wire|agency|today|online)\b|\.(?:com|org|net|gov)\b/i;
+const THREAT_CREDIT_TAIL_CHARS = 120;
+// Every country a lowercased, diacritic-free text names. Place phrases resolve first and are
+// blanked, so "new mexico" is US, not MX; country names are then blanked as they match, so
+// "sudan" cannot also fire inside "south sudan".
+function countriesNamedInText(lower) {
+  const tokens = [...lower.matchAll(/[a-z]+/g)];
+  const found = [];
+  let rest = lower;
+  for (let i = 0; i < tokens.length; i++) {
+    for (let n = Math.min(NEWS_PLACE_MAX_WORDS, tokens.length - i); n >= 1; n--) {
+      const iso2 = NEWS_PLACES[tokens.slice(i, i + n).map((t) => t[0]).join(' ')];
+      if (!iso2) continue;
+      if (!found.includes(iso2)) found.push(iso2);
+      const end = tokens[i + n - 1].index + tokens[i + n - 1][0].length;
+      rest = rest.slice(0, tokens[i].index) + ' '.repeat(end - tokens[i].index) + rest.slice(end);
+      i += n - 1;
+      break;
+    }
+  }
+  for (const { iso2, regex } of THREAT_COUNTRY_NAME_ENTRIES) {
+    if (!regex.test(rest)) continue;
+    if (!found.includes(iso2)) found.push(iso2);
+    rest = rest.replace(new RegExp(regex.source, 'gi'), (m) => ' '.repeat(m.length));
+  }
+  return found;
+}
+
+// The threat summary feeds CII's information score, where a headline that names no
+// attack target still says something about every country it mentions: "Saudi Arabia
+// intercepts missile near Red Sea oil hub" has no target and used to count for nobody.
+// Alert routing keeps the strict single-country rule above.
+function threatSummaryCountries(text) {
+  const affected = matchCountryNamesInText(text);
+  if (affected.length > 0) return affected;
+  return countriesNamedInHeadline(text);
+}
+
+// Every country a raw headline names, after US/UK expansion, diacritic folding
+// and dropping a trailing outlet credit.
+function countriesNamedInHeadline(text) {
+  // Uppercase US/UK are the countries; lowercase "us" stays the pronoun.
+  let lower = text.replace(/\bU\.S\.(?:A\.)?/g, 'United States ').replace(/\bU\.K\./g, 'United Kingdom ')
+    .replace(/\bUS\b/g, 'United States').replace(/\bUK\b/g, 'United Kingdom')
+    .normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+  // Drop a trailing " - The Washington Post" credit so the outlet's country is not counted.
+  const tailStart = Math.max(0, lower.length - THREAT_CREDIT_TAIL_CHARS);
+  const credit = /\s[-–—|]\s+([^-–—|]+)$/.exec(lower.slice(tailStart));
+  if (credit) {
+    const tail = credit[1].trim();
+    const isCredit = tail.split(/\s+/).length <= 6
+      && (THREAT_PUBLISHER_CREDIT_WORDS.test(tail) || countriesNamedInText(tail).length === 0);
+    if (isCredit) lower = lower.slice(0, tailStart + credit.index);
+  }
+  return countriesNamedInText(lower);
+}
+
 
 // v5 (2026-04-28): bumped from v4 in lockstep with
 // server/worldmonitor/intelligence/v1/_shared.ts and
@@ -4942,7 +5499,7 @@ const CLASSIFY_LLM_PROVIDERS = [
       if (apiKey) h.Authorization = `Bearer ${apiKey}`;
       return h;
     },
-    extraBody: { think: false },
+    extraBody: { reasoning_effort: 'none' },
     timeout: 30000,
   },
   {
@@ -4981,24 +5538,27 @@ const CLASSIFY_LLM_PROVIDERS = [
   },
 ];
 
-function classifyFetchLlmSingle(titles, _apiKey, apiUrl, model, headers, extraBody, timeout, maxTextChars = 200) {
+// options.systemPrompt / options.maxTokensPerItem let another index-aligned
+// classifier (the Middle East strike extractor) reuse this provider chain.
+function classifyFetchLlmSingle(titles, _apiKey, apiUrl, model, headers, extraBody, timeout, maxTextChars = 200, options = {}) {
   return new Promise((resolve) => {
     const sanitized = titles.map((t) => t.replace(/[\n\r]/g, ' ').replace(/\|/g, '/').slice(0, maxTextChars).trim());
     const prompt = sanitized.map((t, i) => `${i}|${t}`).join('\n');
     const bodyStr = JSON.stringify({
       model,
       messages: [
-        { role: 'system', content: CLASSIFY_SYSTEM_PROMPT },
+        { role: 'system', content: options.systemPrompt || CLASSIFY_SYSTEM_PROMPT },
         { role: 'user', content: prompt },
       ],
       temperature: 0,
-      max_tokens: titles.length * 40,
+      max_tokens: titles.length * (options.maxTokensPerItem || 40),
       ...extraBody,
     });
 
     const parsed = new URL(apiUrl);
     const transport = parsed.protocol === 'http:' ? http : https;
     const req = transport.request(parsed, {
+      signal: AbortSignal.timeout(timeout),
       method: 'POST',
       headers: { ...headers, 'Content-Length': Buffer.byteLength(bodyStr) },
       timeout,
@@ -5026,7 +5586,7 @@ function classifyFetchLlmSingle(titles, _apiKey, apiUrl, model, headers, extraBo
   });
 }
 
-async function classifyFetchLlm(titles, maxTextChars = 200) {
+async function classifyFetchLlm(titles, maxTextChars = 200, options = {}) {
   for (const provider of CLASSIFY_LLM_PROVIDERS) {
     const envVal = process.env[provider.envKey];
     if (!envVal) continue;
@@ -5035,11 +5595,11 @@ async function classifyFetchLlm(titles, maxTextChars = 200) {
     const model = typeof provider.model === 'function' ? provider.model() : provider.model;
     const headers = provider.headers(envVal);
 
-    const result = await classifyFetchLlmSingle(titles, envVal, apiUrl, model, headers, provider.extraBody || {}, provider.timeout, maxTextChars);
+    const result = await classifyFetchLlmSingle(titles, envVal, apiUrl, model, headers, provider.extraBody || {}, provider.timeout, maxTextChars, options);
     if (result) {
       return result;
     }
-    console.warn(`[Classify] ${provider.name} failed, trying next provider...`);
+    console.warn(`[${options.label || 'Classify'}] ${provider.name} failed, trying next provider...`);
   }
   return null;
 }
@@ -5056,6 +5616,87 @@ const observeJevShadow = jevShadow.createShadowObserver({
 
 let classifyInFlight = false;
 
+// One edition is classified at a time, whether the 15-minute cycle or the
+// build watch asks. Two passes reading the same headline before either has
+// cached its label would both pay the LLM for it.
+let classifyQueue = Promise.resolve();
+function runClassifyExclusive(task) {
+  const run = classifyQueue.then(task);
+  classifyQueue = run.catch(() => {});
+  return run;
+}
+
+// Edition -> build time (ms) of the newest digest body the relay classified.
+// In memory only: a restarted relay reads every edition once. Recorded by the
+// caller once a pass has finished, so a pass that threw leaves the build new.
+const classifiedDigestBuildAt = new Map();
+// Edition -> earliest time the build watch may read it again after a failed
+// read. Short under RELAY_TEST_MODE so the retry is testable.
+const digestBuildRetryAt = new Map();
+const DIGEST_BUILD_RETRY_DELAY_MS = RELAY_TEST_MODE ? 300 : DIGEST_BUILD_RETRY_MS;
+function noteClassifiedDigestBuild(variant, builtAt) {
+  if (Number.isFinite(builtAt) && builtAt > (classifiedDigestBuildAt.get(variant) ?? 0)) {
+    classifiedDigestBuildAt.set(variant, builtAt);
+  }
+}
+
+// One sample per alert the classify pass put in the queue, so the delay can be
+// measured per stage after the fact (scripts/report-alert-latency.mjs). Called
+// from publishNotificationEvent's onQueued, never for a dedup hit or a failed
+// LPUSH.
+const ALERT_LATENCY_KEY = 'relay:alert-latency:v1';
+const ALERT_LATENCY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+function recordAlertLatency(latency, { severity, importanceScore, variant, source }) {
+  const line = formatAlertLatency(latency, { severity, importanceScore, variant, source });
+  if (latency.overBudget) console.warn(line);
+  else console.log(line);
+  const ts = Date.now();
+  const member = JSON.stringify({ ts, severity, importanceScore, variant, source, ...latency });
+  upstashPipeline([
+    ['ZADD', ALERT_LATENCY_KEY, String(ts), member],
+    ['ZREMRANGEBYSCORE', ALERT_LATENCY_KEY, '-inf', String(ts - ALERT_LATENCY_RETENTION_MS)],
+    ['EXPIRE', ALERT_LATENCY_KEY, String(Math.round((2 * ALERT_LATENCY_RETENTION_MS) / 1000))],
+  ]).catch(() => {});
+}
+
+// Embedding and model checks per classify cycle, so a story that floods every
+// feed cannot add minutes. A copy left unchecked gets no boost.
+const CROSS_WORDING_MAX_CHECKS = 8;
+let crossWordingChecksLeft = CROSS_WORDING_MAX_CHECKS;
+
+// Publisher families of the other wordings of each critical copy under the
+// realtime bar (#10977). High copies only corroborate; they are never boosted.
+async function crossWordingFamilies(chunk, acceptedLevels, allTitles, observedPublishers) {
+  const sightings = [];
+  const candidates = [];
+  chunk.forEach((title, i) => {
+    const level = acceptedLevels.get(i);
+    const meta = allTitles.get(title);
+    if (!meta || meta.fromX || (level !== 'critical' && level !== 'high')) return;
+    // The digest's families name the publisher behind a topic feed's copy.
+    const families = observedPublishers.get(title);
+    sightings.push({ title, source: meta.source, level, families });
+    if (level !== 'critical') return;
+    if (shouldDropRelaySourceForTier(RELAY_GATES_READY, meta.source, RELAY_TIER4_SOURCES)) return;
+    if (RELAY_GATES_READY && meta.publishedAt && Date.now() - meta.publishedAt > RELAY_RECENCY_MS) return;
+    const count = Math.max(meta.corroborationCount ?? 1, families?.length ?? 0);
+    const score = relayComputeImportanceScore(level, meta.source, count, meta.publishedAt ?? Date.now(), {
+      title, classSource: 'llm', entityCorroborationCount: 0,
+    });
+    if (!reachesRealtimeRules(level, score)) candidates.push({ title, source: meta.source, families });
+  });
+  const corroboration = await newsCorroborationPromise;
+  if (!corroboration || sightings.length === 0) return new Map();
+  // Recorded first, so two wordings in one batch can match each other.
+  await corroboration.recordSightings(sightings);
+  const checked = candidates.slice(0, Math.max(0, crossWordingChecksLeft));
+  crossWordingChecksLeft -= checked.length;
+  if (checked.length < candidates.length) {
+    console.log(`[news-corroboration] ${JSON.stringify({ unchecked: candidates.length - checked.length, reason: 'budget' })}`);
+  }
+  return corroboration.crossWordingFamilies(checked);
+}
+
 async function seedClassifyForVariant(variant, seenTitles) {
   const digestUrl = buildClassifyDigestUrl(variant);
   const transport = classifyDigestTransport(digestUrl) === 'http' ? http : https;
@@ -5065,6 +5706,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
     try {
       const resp = await new Promise((resolve, reject) => {
         const req = transport.get(digestUrl, {
+          signal: AbortSignal.timeout(15000),
           headers: buildClassifyDigestHeaders({
             userAgent: CHROME_UA,
             relayKey: RELAY_API_KEY,
@@ -5085,11 +5727,9 @@ async function seedClassifyForVariant(variant, seenTitles) {
         console.warn(formatClassifyDigestFetchFailure(resp.statusCode, RELAY_API_KEY));
         return { total: 0, classified: 0, skipped: 0, fetchFailed: true };
       }
-      const body = await new Promise((resolve) => {
-        let d = '';
-        resp.on('data', (c) => { d += c; });
-        resp.on('end', () => resolve(d));
-      });
+      let body = '';
+      resp.setEncoding('utf8');
+      for await (const chunk of resp) body += chunk;
       digest = JSON.parse(body);
       break;
     } catch (e) {
@@ -5111,8 +5751,11 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // #7084: stale RSS titles already had their alert pass when served fresh.
   // Exclude only those digest-derived candidates; fresh X candidates remain
   // eligible because they are an independent input to the combined pass.
-  if (isStaleDigestReplay(digest)) {
-    console.log(`[Classify] digest is a stale replay (${digest.coverage.staleReason || 'unknown'}, ${digest.coverage.staleAgeSeconds ?? 0}s) — skipping digest-derived candidates for ${variant}`);
+  // The digest API answers 200 with `coverage.state: 'unavailable'` and no
+  // categories when it has no digest to serve; that is no news, not quiet news.
+  const staleReplay = isStaleDigestReplay(digest) || digest?.coverage?.state === 'unavailable';
+  if (staleReplay) {
+    console.log(`[Classify] digest is a stale replay or unavailable (${digest.coverage.staleReason || 'unknown'}, ${digest.coverage.staleAgeSeconds ?? 0}s) — skipping digest-derived candidates for ${variant}`);
   }
 
   // Map of title → item metadata; recency gate: skip articles older than 6h.
@@ -5126,17 +5769,76 @@ async function seedClassifyForVariant(variant, seenTitles) {
     classifyNow,
     RECENCY_GATE_MS,
   );
-  const allTitles = buildClassifyCandidateMap(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS);
-  if (allTitles.size === 0) return { total: 0, classified: 0, skipped: 0 };
+  // #10978: fresh items the digest's category cap kept off the dashboard can
+  // still alert. The digest build writes them beside the served body.
+  const alertPool = staleReplay ? null : await upstashGet(`news:alert-pool:v1:${variant}`);
+  // The served digest drops operator-revoked URLs when it is read; the pool
+  // comes straight from Redis, so check it here. An unreadable set skips it.
+  let poolItems = [];
+  // The first read of an edition's pool is a backlog up to 6 h old. Its
+  // headlines are recorded before any is labelled and never alert from the
+  // pool, however late their labels land. The record has no expiry, so a
+  // restart does not start over.
+  const poolBacklogKey = `classify:alert-pool-warm:v1:${variant}`;
+  let poolBacklog = null;
+  // Every backlog headline has aged out of the pool once its window has passed
+  // since the record, so a later article with the same headline can alert.
+  let poolBacklogUntil = 0;
+  if (Array.isArray(alertPool?.items) && alertPool.items.length > 0) {
+    const rows = await upstashPipeline([['SMEMBERS', 'news:digest:revoked-urls:v1'], ['GET', poolBacklogKey]]);
+    const urls = Array.isArray(rows?.[0]?.result) ? new Set(rows[0].result) : null;
+    const backlogRead = rows?.[1] && !rows[1].error;
+    if (urls && backlogRead) poolItems = alertPool.items.filter((item) => typeof item?.link !== 'string' || !urls.has(item.link));
+    else console.warn(`[Classify] revocation set or pool backlog unreadable — skipping the alert pool for ${variant}`);
+    try {
+      const stored = JSON.parse(rows?.[1]?.result ?? 'null');
+      if (Array.isArray(stored?.backlog)) {
+        poolBacklog = new Set(stored.backlog);
+        poolBacklogUntil = Number(stored.recordedAt) + RECENCY_GATE_MS;
+      }
+    } catch { /* an unreadable record is recorded again below */ }
+  }
+  const allTitles = buildClassifyCandidateMap(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS, undefined, poolItems);
+  // #10978: a pool headline keeps its own label per edition. The relay
+  // publishes only on a fresh label, so a shared one written from one
+  // edition's pool would stop an edition that serves the headline from alerting.
+  const classifyKeyFor = (t) => (allTitles.get(t)?.fromPool ? `${classifyCacheKey(t)}:pool:${variant}` : classifyCacheKey(t));
+  const poolTitles = [...allTitles.keys()].filter((t) => allTitles.get(t).fromPool);
+  if (!poolBacklog && poolTitles.length > 0) {
+    const backlog = poolTitles.map((t) => classifyKeyFor(t));
+    const written = await upstashPipeline([['SET', poolBacklogKey, JSON.stringify({ recordedAt: classifyNow, backlog })]]);
+    if (written?.[0]?.result === 'OK') {
+      poolBacklog = new Set(backlog);
+      poolBacklogUntil = classifyNow + RECENCY_GATE_MS;
+      console.log(`[Classify] alert pool for ${variant}: recorded ${backlog.length} backlog headline(s) that will not alert`);
+    } else {
+      // Labelling them now would make them the backlog without a record of it.
+      for (const t of poolTitles) allTitles.delete(t);
+      console.warn(`[Classify] pool backlog not recorded — skipping the alert pool for ${variant}`);
+    }
+  }
+  // The build this pass read, returned so the caller can record it once the
+  // pass has finished. A stale replay or an unavailable digest is not a build:
+  // the next real one must still trigger the watch.
+  const digestBuildAt = staleReplay ? Number.NaN : Date.parse(digest.generatedAt ?? '');
+  if (allTitles.size === 0) return { total: 0, classified: 0, skipped: 0, staleReplay, digestBuildAt };
 
   const titleArr = [...allTitles.keys()];
-  const cacheKeys = titleArr.map((t) => classifyCacheKey(t));
+  const cacheKeys = titleArr.map((t) => classifyKeyFor(t));
 
   const cached = await upstashMGet(cacheKeys);
   const misses = [];
   // byCountry accumulates threat counts while title+level are in scope
   const byCountry = {};
   const emptyLevel = () => ({ critical: 0, high: 0, medium: 0, low: 0, info: 0 });
+  // Country-naming titles with no usable label (a cached `_skip`, an unreadable
+  // entry, or one the LLM skipped below), so an empty byCountry cannot be read
+  // as a quiet cycle. A title that names no country cannot change byCountry.
+  let unlabelled = 0;
+  // Pool headlines (#10978) are not on the dashboard, so they stay out of the
+  // country threat summary.
+  const inSummary = (title) => !allTitles.get(title)?.fromPool;
+  const countUnlabelled = (title) => { if (inSummary(title) && threatSummaryCountries(title).length > 0) unlabelled++; };
 
   for (let i = 0; i < titleArr.length; i++) {
     const hit = cached[i];
@@ -5146,21 +5848,22 @@ async function seedClassifyForVariant(variant, seenTitles) {
     }
     // Attribute cached hits while we still have the title
     let parsed = hit;
-    if (typeof hit === 'string') { try { parsed = JSON.parse(hit); } catch { continue; } }
+    if (typeof hit === 'string') { try { parsed = JSON.parse(hit); } catch { countUnlabelled(titleArr[i]); continue; } }
     const level = parsed?.level;
-    if (!CLASSIFY_VALID_LEVELS.includes(level)) continue;
-    if (seenTitles.has(titleArr[i])) continue;
+    if (!CLASSIFY_VALID_LEVELS.includes(level)) { countUnlabelled(titleArr[i]); continue; }
+    if (!inSummary(titleArr[i]) || seenTitles.has(titleArr[i])) continue;
     seenTitles.add(titleArr[i]);
-    for (const code of matchCountryNamesInText(titleArr[i])) {
+    for (const code of threatSummaryCountries(titleArr[i])) {
       if (!byCountry[code]) byCountry[code] = emptyLevel();
       byCountry[code][level]++;
     }
   }
 
-  if (misses.length === 0) return { total: titleArr.length, classified: 0, skipped: 0, byCountry };
+  if (misses.length === 0) return { total: titleArr.length, classified: 0, skipped: 0, byCountry, staleReplay, unlabelled, digestBuildAt };
 
   let classified = 0;
   let skipped = 0;
+  const alertGateDrops = { tier4: 0, recency: 0 };
   const shadow = { asked: 0, answered: 0, agreed: 0, alertFlips: 0 };
 
   for (let b = 0; b < misses.length; b += CLASSIFY_BATCH_SIZE) {
@@ -5169,12 +5872,22 @@ async function seedClassifyForVariant(variant, seenTitles) {
 
     if (!Array.isArray(llmResult)) {
       for (const title of chunk) {
-        await upstashSet(classifyCacheKey(title), { level: '_skip', timestamp: Date.now() }, CLASSIFY_SKIP_TTL);
+        await upstashSet(classifyKeyFor(title), { level: '_skip', timestamp: Date.now() }, CLASSIFY_SKIP_TTL);
         skipped++;
+        countUnlabelled(title);
       }
       continue;
     }
 
+    // Only titles that can alert: labelled critical or high, from a digest feed.
+    const acceptedLevels = new Map();
+    for (const entry of llmResult) {
+      if (typeof entry?.i === 'number' && !acceptedLevels.has(entry.i)
+        && CLASSIFY_VALID_LEVELS.includes(entry.l) && CLASSIFY_VALID_CATEGORIES.includes(entry.c)) acceptedLevels.set(entry.i, entry.l);
+    }
+    const observedPublishers = await readObservedPublishers(chunk.filter((title, i) =>
+      !allTitles.get(title)?.fromX && ['critical', 'high'].includes(acceptedLevels.get(i))));
+    const crossWording = await crossWordingFamilies(chunk, acceptedLevels, allTitles, observedPublishers);
     const classifiedSet = new Set();
     const labelled = [];
     for (const entry of llmResult) {
@@ -5185,13 +5898,13 @@ async function seedClassifyForVariant(variant, seenTitles) {
       const category = CLASSIFY_VALID_CATEGORIES.includes(entry?.c) ? entry.c : null;
       if (!level || !category) continue;
       classifiedSet.add(idx);
-      await upstashSet(classifyCacheKey(chunk[idx]), { level, category, timestamp: Date.now() }, CLASSIFY_CACHE_TTL);
+      await upstashSet(classifyKeyFor(chunk[idx]), { level, category, timestamp: Date.now() }, CLASSIFY_CACHE_TTL);
       classified++;
       labelled.push({ title: chunk[idx], level });
       // Attribute newly classified title to country stats (global dedup via seenTitles)
-      if (!seenTitles.has(chunk[idx])) {
+      if (inSummary(chunk[idx]) && !seenTitles.has(chunk[idx])) {
         seenTitles.add(chunk[idx]);
-        for (const code of matchCountryNamesInText(chunk[idx])) {
+        for (const code of threatSummaryCountries(chunk[idx])) {
           if (!byCountry[code]) byCountry[code] = emptyLevel();
           byCountry[code][level]++;
         }
@@ -5205,6 +5918,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
           corroborationCount: 1,
           link: '',
         };
+        if (meta.fromPool && classifyNow < poolBacklogUntil && poolBacklog?.has(classifyKeyFor(chunk[idx]))) continue;
         // Relay gates: when RELAY_GATES_READY is set the relay enforces source tier and
         // recency checks that the client path previously handled.
         // Explicit tier-4 keys only — unlisted names (including platform source
@@ -5212,18 +5926,32 @@ async function seedClassifyForVariant(variant, seenTitles) {
         // them to 4. Any future Telegram alert path must use the public display
         // label from shared/telegram-channel-trust.ts (#6600). #6654 should do
         // the same for X account labels rather than a generic "x" platform key.
-        if (shouldDropRelaySourceForTier(RELAY_GATES_READY, meta.source, RELAY_TIER4_SOURCES)) continue;
+        if (shouldDropRelaySourceForTier(RELAY_GATES_READY, meta.source, RELAY_TIER4_SOURCES)) {
+          alertGateDrops.tier4++;
+          continue;
+        }
         if (RELAY_GATES_READY) {
           const ageMs = Date.now() - (meta.publishedAt ?? 0);
-          if (meta.publishedAt && ageMs > RELAY_RECENCY_MS) continue;
+          if (meta.publishedAt && ageMs > RELAY_RECENCY_MS) {
+            alertGateDrops.recency++;
+            continue;
+          }
         }
         // Recompute importanceScore from the post-LLM level. Publishing the
         // digest's pre-LLM keyword-based score would leak a stale value —
         // see docs/internal/scoringDiagnostic.md §2.
+        // This build counts every wording; the history counts this headline
+        // across builds and editions. Neither contains the other.
+        const corroborationCount = Math.max(
+          meta.corroborationCount ?? 1,
+          meta.fromX ? 0 : (observedPublishers.get(chunk[idx])?.length ?? 0),
+          level === 'critical' ? (crossWording.get(chunk[idx])?.families.length ?? 0) : 0,
+        );
+        const corroboratedBy = level === 'critical' ? crossWording.get(chunk[idx])?.families : undefined;
         const importanceScore = relayComputeImportanceScore(
           level,
           meta.source,
-          meta.corroborationCount ?? 1,
+          corroborationCount,
           meta.publishedAt ?? Date.now(),
           {
             title: chunk[idx],
@@ -5234,7 +5962,20 @@ async function seedClassifyForVariant(variant, seenTitles) {
             entityCorroborationCount: 0,
           },
         );
+        const titleCountryCodes = matchCountryNamesInText(chunk[idx]);
+        // The one country the title names anywhere, not the affected target
+        // countryCodes keeps ("Russia attacks Ukraine" names two).
+        const primaryCountryCode = notifyPolicy.primaryNewsCountryCode(countriesNamedInHeadline(chunk[idx]));
+        // One alert per story per day, not per title string: a second
+        // publisher carrying an alerted headline is the same story.
+        const storyKey = newsStoryKey(chunk[idx], { severity: level, importanceScore, primaryCountryCode });
+        // An X post has no digest build behind it.
+        const alertBuildAt = meta.fromX ? undefined : digestBuildAt;
         publishNotificationEvent({
+          onQueued: (queuedAt) => recordAlertLatency(
+            alertLatency({ publishedAt: meta.publishedAt, firstSeen: meta.firstSeen, buildAt: alertBuildAt, queuedAt }),
+            { severity: level, importanceScore, variant, source: meta.source },
+          ),
           eventType: 'rss_alert',
           payload: {
             title: chunk[idx],
@@ -5242,18 +5983,33 @@ async function seedClassifyForVariant(variant, seenTitles) {
             link: meta.link,
             publishedAt: meta.publishedAt,
             importanceScore,
+            // This build's count. A held alert re-reads the history when it is
+            // rendered (refreshPublisherCounts), so expired sightings drop out.
             corroborationCount: meta.corroborationCount ?? 1,
+            // Read by API webhook subscribers (news.breaking scope). Plural on
+            // purpose: the relay scopes rules on payload.countryCode and keeps
+            // rss_alert permissive-unattributed, so a singular field here would
+            // start silencing country-scoped Slack rules.
+            category,
+            countryCodes: titleCountryCodes,
+            // The one country the headline names, read by the relay's tier
+            // gate (#10873). Deliberately not the singular field the relay scopes on (see above).
+            ...(primaryCountryCode ? { primaryCountryCode } : {}),
+            // The publisher families other wordings added, for the miss audit.
+            ...(corroboratedBy ? { corroboratedBy } : {}),
           },
           severity: level,
           variant,
+          ...(storyKey ? { storyKey, dedupTtl: NEWS_STORY_DEDUP_TTL_SECONDS } : {}),
         }).catch(e => console.warn('[Notify] Classify publish error:', e?.message));
       }
     }
 
     for (let i = 0; i < chunk.length; i++) {
       if (!classifiedSet.has(i)) {
-        await upstashSet(classifyCacheKey(chunk[i]), { level: '_skip', timestamp: Date.now() }, CLASSIFY_SKIP_TTL);
+        await upstashSet(classifyKeyFor(chunk[i]), { level: '_skip', timestamp: Date.now() }, CLASSIFY_SKIP_TTL);
         skipped++;
+        countUnlabelled(chunk[i]);
       }
     }
 
@@ -5264,15 +6020,19 @@ async function seedClassifyForVariant(variant, seenTitles) {
     }
   }
 
+  if (skipped > 0 || alertGateDrops.tier4 > 0 || alertGateDrops.recency > 0) {
+    console.log(`[Classify] Alert gate drops ${variant}: tier4=${alertGateDrops.tier4} recency=${alertGateDrops.recency} classifier_skip=${skipped}`);
+  }
   if (shadow.asked > 0) {
     console.log(`[Classify] Jev shadow ${variant}: asked ${shadow.asked}, answered ${shadow.answered}, agreed ${shadow.agreed}, alert flips ${shadow.alertFlips}`);
   }
-  return { total: titleArr.length, classified, skipped, byCountry };
+  return { total: titleArr.length, classified, skipped, byCountry, staleReplay, unlabelled, digestBuildAt };
 }
 
 async function seedClassify() {
   if (classifyInFlight) return;
   classifyInFlight = true;
+  crossWordingChecksLeft = CROSS_WORDING_MAX_CHECKS;
   const t0 = Date.now();
   try {
     const hasAnyProvider = CLASSIFY_LLM_PROVIDERS.some((p) => !!process.env[p.envKey]);
@@ -5306,14 +6066,22 @@ async function seedClassify() {
     let totalSkipped = 0;
     let fetchOk = 0;
     let fetchFailed = 0;
+    let staleReplays = 0;
+    let unlabelled = 0;
+    let variantErrors = 0;
     const mergedByCountry = {};
     const seenTitles = new Set();
     for (let v = 0; v < CLASSIFY_VARIANTS.length; v++) {
       if (v > 0) await new Promise((r) => setTimeout(r, CLASSIFY_VARIANT_STAGGER_MS));
       try {
-        const stats = await seedClassifyForVariant(CLASSIFY_VARIANTS[v], seenTitles);
+        const stats = await runClassifyExclusive(() => seedClassifyForVariant(CLASSIFY_VARIANTS[v], seenTitles));
+        noteClassifiedDigestBuild(CLASSIFY_VARIANTS[v], stats.digestBuildAt);
+        // The cycle just read this edition, so the watch need not keep waiting.
+        if (!stats.fetchFailed) digestBuildRetryAt.delete(CLASSIFY_VARIANTS[v]);
         if (stats.fetchFailed) fetchFailed += 1;
         else fetchOk += 1;
+        if (stats.staleReplay) staleReplays += 1;
+        unlabelled += stats.unlabelled || 0;
         totalClassified += stats.classified;
         totalSkipped += stats.skipped;
         console.log(`[Classify] ${CLASSIFY_VARIANTS[v]}: ${stats.total} titles, ${stats.classified} classified, ${stats.skipped} skipped`);
@@ -5324,6 +6092,7 @@ async function seedClassify() {
           }
         }
       } catch (e) {
+        variantErrors += 1;
         console.warn(`[Classify] ${CLASSIFY_VARIANTS[v]} error:`, e?.message || e);
       }
     }
@@ -5333,10 +6102,25 @@ async function seedClassify() {
       return;
     }
 
-    await upstashSet('seed-meta:news:threat-summary', { fetchedAt: Date.now(), recordCount: Object.keys(mergedByCountry).length }, 604800);
-    if (Object.keys(mergedByCountry).length > 0) {
-      await envelopeWrite(NEWS_THREAT_SUMMARY_KEY, { byCountry: mergedByCountry, generatedAt: Date.now() }, NEWS_THREAT_SUMMARY_TTL, { recordCount: Object.keys(mergedByCountry).length, sourceVersion: 'news-threat-summary' });
-      console.log(`[Classify] Threat summary written for ${Object.keys(mergedByCountry).length} countries`);
+    // Written on every cycle that reached a digest, including one where no
+    // headline named a country (`byCountry: {}`): the CII reads an empty summary
+    // as a quiet input and a missing one as a dead input. An empty result is
+    // quiet only when every headline was fetched fresh and labelled: after a
+    // failed digest fetch, a variant that threw, a stale or unavailable digest
+    // (headlines skipped above) or country-naming titles the LLM could not
+    // label, the countries it would have named are unknown, so the last summary stays and its seed-meta ages. seed-meta advances only
+    // after the payload lands, so health never vouches for a missing key.
+    const threatCountryCount = Object.keys(mergedByCountry).length;
+    const threatSummaryAt = Date.now();
+    const threatSummaryDegraded = threatCountryCount === 0 && (fetchFailed > 0 || variantErrors > 0 || staleReplays > 0 || unlabelled > 0);
+    const threatSummaryWritten = !threatSummaryDegraded && await envelopeWrite(NEWS_THREAT_SUMMARY_KEY, { byCountry: mergedByCountry, generatedAt: threatSummaryAt }, NEWS_THREAT_SUMMARY_TTL, { fetchedAt: threatSummaryAt, recordCount: threatCountryCount, zeroOk: true, sourceVersion: 'news-threat-summary' });
+    if (threatSummaryWritten) {
+      await upstashSet('seed-meta:news:threat-summary', { fetchedAt: threatSummaryAt, recordCount: threatCountryCount }, 604800);
+      console.log(`[Classify] Threat summary written for ${threatCountryCount} countries`);
+    } else if (threatSummaryDegraded) {
+      console.warn(`[Classify] No country matches from a degraded cycle (${fetchFailed} digest fetch failure(s), ${variantErrors} variant error(s), ${staleReplays} stale replay(s), ${unlabelled} unlabelled title(s)) — keeping the last threat summary`);
+    } else {
+      console.warn('[Classify] Threat summary write failed — seed-meta:news:threat-summary not advanced');
     }
 
     await upstashSet('seed-meta:classify', { fetchedAt: Date.now(), recordCount: totalClassified }, 604800);
@@ -5348,6 +6132,70 @@ async function seedClassify() {
   }
 }
 
+// ── Build watch ──────────────────────────────────────────────────────────────
+// Classifies an edition as soon as the digest handler records a new build for
+// it, instead of leaving the headline for the next 15-minute cycle. The cycle
+// above still runs: it owns the threat summary and seed-meta, and it is the
+// fallback if the stamps stop arriving. A build pass publishes neither.
+let digestBuildWatchInFlight = false;
+
+async function checkDigestBuilds() {
+  if (digestBuildWatchInFlight) return [];
+  digestBuildWatchInFlight = true;
+  try {
+    if (!CLASSIFY_LLM_PROVIDERS.some((p) => !!process.env[p.envKey])) return [];
+    const rows = await upstashPipeline([['MGET', ...CLASSIFY_VARIANTS.map(digestBuildStampKey)]]);
+    const values = Array.isArray(rows?.[0]?.result) ? rows[0].result : [];
+    const stamps = new Map(CLASSIFY_VARIANTS.map((variant, i) => [variant, digestBuildStampMs(values[i])]));
+    const now = Date.now();
+    const rebuilt = editionsWithUnclassifiedBuild({
+      editions: CLASSIFY_VARIANTS,
+      stamps,
+      classifiedAt: classifiedDigestBuildAt,
+      now,
+      retryAt: digestBuildRetryAt,
+    });
+    // A build pass is its own cycle, unless it runs between a classify cycle's editions.
+    if (!classifyInFlight) crossWordingChecksLeft = CROSS_WORDING_MAX_CHECKS;
+    const editions = [];
+    const summary = [];
+    for (const variant of buildPassEditions(CLASSIFY_VARIANTS, rebuilt, { now, retryAt: digestBuildRetryAt })) {
+      editions.push(variant);
+      let stats = null;
+      try {
+        stats = await runClassifyExclusive(() => seedClassifyForVariant(variant, new Set()));
+        summary.push(`${variant} ${stats.classified}/${stats.total}${stats.fetchFailed ? ' fetch failed' : ''}`);
+      } catch (e) {
+        summary.push(`${variant} error`);
+        console.warn(`[Classify] build pass ${variant} error:`, e?.message || e);
+      }
+      if (stats && !stats.fetchFailed) {
+        // The pass finished on a digest it could read. A stale replay counts:
+        // the build behind the stamp was not published, so reading again
+        // before the next build would serve the same replay.
+        noteClassifiedDigestBuild(variant, stats.digestBuildAt);
+        if (rebuilt.includes(variant)) noteClassifiedDigestBuild(variant, stamps.get(variant));
+        digestBuildRetryAt.delete(variant);
+      } else {
+        // The read failed or the pass threw: a rebuilt edition's build stays
+        // new, and the edition is left alone for a while so a failing API is
+        // not re-read on every check. That holds for `full` read only for
+        // ordering too. The cycle still covers it meanwhile.
+        digestBuildRetryAt.set(variant, Date.now() + DIGEST_BUILD_RETRY_DELAY_MS);
+        // Without `full` the rest of the pass would take its claim on a shared
+        // headline. They stay new and run once `full` can be read again.
+        if (variant === CLASSIFY_VARIANTS[0]) break;
+      }
+    }
+    if (editions.length > 0) {
+      console.log(`[Classify] build pass (rebuilt: ${rebuilt.join(',')}) classified/titles: ${summary.join(', ')}`);
+    }
+    return editions;
+  } finally {
+    digestBuildWatchInFlight = false;
+  }
+}
+
 async function startClassifySeedLoop() {
   if (!UPSTASH_ENABLED) {
     console.log('[Classify] Disabled (no Upstash Redis)');
@@ -5356,6 +6204,380 @@ async function startClassifySeedLoop() {
   const activeProviders = CLASSIFY_LLM_PROVIDERS.filter((p) => !!process.env[p.envKey]).map((p) => p.name);
   console.log(`[Classify] Seed loop starting (interval ${CLASSIFY_SEED_INTERVAL_MS / 1000 / 60}min, providers:${activeProviders.length ? activeProviders.join(',') : 'none'})`);
   startBootSeedLoop('Classify', 'seed-meta:classify', CLASSIFY_SEED_INTERVAL_MS, seedClassify, (e) => console.warn('[Classify] Initial seed error:', e?.message || e), (e) => console.warn('[Classify] Seed error:', e?.message || e));
+}
+
+// Not a boot-seed loop: a check costs one Redis MGET, and a pass reads digests
+// the API already holds and sends the LLM only headlines it has not labelled,
+// so a restart has nothing to re-buy and no seed-meta to gate on.
+function startDigestBuildWatch() {
+  if (!UPSTASH_ENABLED) return;
+  console.log(`[Classify] Build watch starting (every ${DIGEST_BUILD_WATCH_INTERVAL_MS / 1000}s)`);
+  setInterval(() => {
+    checkDigestBuilds().catch((e) => console.warn('[Classify] Build watch error:', e?.message || e));
+  }, DIGEST_BUILD_WATCH_INTERVAL_MS).unref?.();
+}
+
+// ─────────────────────────────────────────────────────────────
+// News digest warm cycle — requests every (edition, language) digest the
+// catalog places a feed in, so every catalog feed is fetched whether or not a
+// reader requests its language (scripts/lib/news-digest-warm.cjs).
+// ─────────────────────────────────────────────────────────────
+const DIGEST_WARM_CELLS = requireShared('news-digest-warm-cells.json');
+let digestWarmInFlight = false;
+
+async function seedDigestWarm() {
+  if (digestWarmInFlight) {
+    console.log('[DigestWarm] Previous cycle still running, skipping');
+    return;
+  }
+  digestWarmInFlight = true;
+  const startedAt = Date.now();
+  try {
+    const results = await runDigestWarmCycle(DIGEST_WARM_CELLS, {
+      fetchCell: (cell) => fetchDigestWarmCell(cell, { userAgent: CHROME_UA, relayKey: RELAY_API_KEY }),
+    });
+    const summary = summarizeDigestWarmCycle(results, { fetchedAt: Date.now(), durMs: Date.now() - startedAt });
+    console.log(
+      `[DigestWarm] ${summary.cells} cells: ${summary.fresh} fresh, ${summary.stale} stale, ${summary.failed} failed ` +
+        `in ${Math.round(summary.durMs / 1000)}s${summary.failures.length ? ` (${summary.failures.join(', ')})` : ''}`,
+    );
+    if (!shouldPublishDigestWarmHeartbeat(summary)) {
+      console.warn(`[DigestWarm] Fewer than half the cells served news${RELAY_API_KEY ? '' : ' (WORLDMONITOR_RELAY_KEY not set)'} — heartbeat not written`);
+      return;
+    }
+    if (!await upstashSet(DIGEST_WARM_HEARTBEAT_KEY, summary, DIGEST_WARM_HEARTBEAT_TTL_SECONDS)) return;
+    // Durable, no TTL: health reads the probe as pending until the first
+    // healthy cycle and strict afterwards (api/health.js ACTIVATION_MARKERS).
+    await upstashEval("return redis.call('SET', KEYS[1], ARGV[1])", [DIGEST_WARM_ACTIVATION_KEY], [String(summary.fetchedAt)]);
+  } finally {
+    digestWarmInFlight = false;
+  }
+}
+
+function startDigestWarmLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[DigestWarm] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[DigestWarm] Warm loop starting (${DIGEST_WARM_CELLS.length} cells, interval ${DIGEST_WARM_INTERVAL_MS / 1000 / 60}min)`);
+  startBootSeedLoop('DigestWarm', DIGEST_WARM_HEARTBEAT_KEY, DIGEST_WARM_INTERVAL_MS, seedDigestWarm, (e) => console.warn('[DigestWarm] Initial cycle error:', e?.message || e), (e) => console.warn('[DigestWarm] Cycle error:', e?.message || e));
+}
+
+// ─────────────────────────────────────────────────────────────
+// Middle East strike feed — Telegram + GDELT -> conflict:iran-events:v1
+// (logic and tests: scripts/lib/middle-east-strikes.cjs). Replaces the manual
+// LiveUAMap dump. Off unless IRAN_EVENTS_ENABLED=true, the same switch every
+// reader of the key honours (api/health.js, api/bootstrap.js, ...).
+// ─────────────────────────────────────────────────────────────
+const MIDDLE_EAST_STRIKES_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
+const MIDDLE_EAST_STRIKES_INTERVAL_MS = 10 * 60 * 1000;
+// Canonical outlives the 72h window it carries; health's 45-minute seed-meta
+// budget (api/health.js SEED_META.iranEvents) is what alarms on a dead loop.
+const MIDDLE_EAST_STRIKES_CANONICAL_TTL_S = 72 * 3600;
+const MIDDLE_EAST_STRIKES_STORE_TTL_S = 4 * 24 * 3600;
+const MIDDLE_EAST_STRIKES_META_TTL_S = 7 * 24 * 3600;
+// The 30-day strike-pressure tally (CII v12) outlives its window by 5 days, so
+// a relay outage shorter than that loses no history.
+const MIDDLE_EAST_STRIKE_PRESSURE_TTL_S = 35 * 24 * 3600;
+const MIDDLE_EAST_STRIKES_PENDING_MAX = 1000;
+const MIDDLE_EAST_STRIKES_PENDING_MAX_AGE_MS = 12 * 3600 * 1000;
+const MIDDLE_EAST_STRIKES_DONE_MAX = 5000;
+const middleEastStrikePending = new Map();
+// Posts already classified (strike or not): the feed buffer re-offers them
+// every cycle for ~90 minutes, and each re-offer would cost a cache read.
+const middleEastStrikeDone = new Set();
+const MIDDLE_EAST_STRIKES_MAX_MISSES = 3;
+const middleEastStrikeMisses = new Map();
+let middleEastStrikesInFlight = false;
+let middleEastGdeltBulkPromise = null;
+
+function noteMiddleEastStrikeItem(item) {
+  if (!MIDDLE_EAST_STRIKES_ENABLED || !middleEastStrikes || !item?.id || middleEastStrikePending.has(item.id) || middleEastStrikeDone.has(item.id)) return;
+  if (!middleEastStrikes.prefilterStrikeText(item.text)) return;
+  middleEastStrikePending.set(item.id, item);
+  while (middleEastStrikePending.size > MIDDLE_EAST_STRIKES_PENDING_MAX) {
+    const evicted = middleEastStrikePending.keys().next().value;
+    middleEastStrikePending.delete(evicted);
+    middleEastStrikeMisses.delete(evicted);
+  }
+}
+
+async function loadMiddleEastStrikeGdelt(processed) {
+  // Lazy and caught: a missing module degrades to a Telegram-only cycle
+  // instead of an unhandled rejection at relay start.
+  middleEastGdeltBulkPromise ??= import('./_conflict-gdelt-bulk.mjs');
+  let bulk;
+  try {
+    bulk = await middleEastGdeltBulkPromise;
+  } catch (e) {
+    middleEastGdeltBulkPromise = null; // a cached rejection would disable GDELT until restart
+    console.warn('[MiddleEastStrikes] GDELT module failed to load:', e?.message || e);
+    return { candidates: [], processed, errors: [String(e?.message || e)], fetched: 0 };
+  }
+  try {
+    return await middleEastStrikes.fetchGdeltStrikeCandidates({ bulk, processed });
+  } catch (e) {
+    console.warn('[MiddleEastStrikes] GDELT backstop unavailable:', e?.message || e);
+    return { candidates: [], processed, errors: [String(e?.message || e)], fetched: 0 };
+  }
+}
+
+async function seedMiddleEastStrikes() {
+  if (middleEastStrikesInFlight) return;
+  middleEastStrikesInFlight = true;
+  const t0 = Date.now();
+  try {
+    for (const item of telegramState.items) noteMiddleEastStrikeItem(item);
+    for (const [id, item] of middleEastStrikePending) {
+      const ts = Date.parse(item.ts);
+      if (!Number.isFinite(ts) || t0 - ts > MIDDLE_EAST_STRIKES_PENDING_MAX_AGE_MS) { middleEastStrikePending.delete(id); middleEastStrikeMisses.delete(id); }
+    }
+    const pendingItems = [...middleEastStrikePending.values()];
+    const { status, doneIds, result, pressureStatus } = await middleEastStrikes.publishStrikeCycle({
+      now: t0,
+      pendingItems,
+      readStore: async () => {
+        let ok = true;
+        const value = await upstashGet(middleEastStrikes.STORE_KEY, () => { ok = false; });
+        return { ok, value };
+      },
+      writeStore: (store) => upstashSet(middleEastStrikes.STORE_KEY, store, MIDDLE_EAST_STRIKES_STORE_TTL_S),
+      writeCanonical: (payload, recordCount) => envelopeWrite(middleEastStrikes.CANONICAL_KEY, payload, MIDDLE_EAST_STRIKES_CANONICAL_TTL_S, {
+        recordCount,
+        sourceVersion: middleEastStrikes.SOURCE_VERSION,
+        zeroOk: true,
+      }),
+      writeSeedMeta: (meta) => upstashSet(middleEastStrikes.SEED_META_KEY, meta, MIDDLE_EAST_STRIKES_META_TTL_S),
+      readCache: (key) => upstashGet(key),
+      writeCache: (key, value, ttl) => upstashSet(key, value, ttl),
+      classify: (texts) => classifyFetchLlm(texts, middleEastStrikes.CLASSIFY_MAX_TEXT_CHARS, {
+        systemPrompt: middleEastStrikes.STRIKE_CLASSIFIER_PROMPT,
+        maxTokensPerItem: 60,
+        label: 'MiddleEastStrikes',
+      }),
+      loadGdelt: loadMiddleEastStrikeGdelt,
+      telegramPolledAt: telegramState.lastSuccessfulPollAt,
+      readPressure: async () => {
+        let ok = true;
+        const value = await upstashGet(middleEastStrikes.PRESSURE_KEY, () => { ok = false; });
+        return { ok, value };
+      },
+      writePressure: (pressure) => upstashSet(middleEastStrikes.PRESSURE_KEY, pressure, MIDDLE_EAST_STRIKE_PRESSURE_TTL_S),
+      writePressureMeta: async (meta) => {
+        if (!await upstashSet(middleEastStrikes.PRESSURE_SEED_META_KEY, meta, MIDDLE_EAST_STRIKES_META_TTL_S)) return false;
+        // Durable, no TTL: health reads the key as pending until the first
+        // healthy tally publish and strict afterwards (api/health.js ACTIVATION_MARKERS).
+        await upstashEval("return redis.call('SET', KEYS[1], ARGV[1])", [middleEastStrikes.PRESSURE_ACTIVATION_KEY], [String(t0)]);
+        return true;
+      },
+    });
+    for (const id of doneIds) {
+      middleEastStrikePending.delete(id);
+      middleEastStrikeMisses.delete(id);
+      middleEastStrikeDone.add(id);
+    }
+    // A post the classifier keeps answering around (it answers the batch but
+    // never this index) is dropped after a few cycles, so one poison post
+    // cannot hold the feed unhealthy. A dead provider chain is not counted:
+    // those posts wait for the classifier to come back.
+    if (result && !result.classifierFailed) {
+      for (const item of result.pending) {
+        const misses = (middleEastStrikeMisses.get(item.id) || 0) + 1;
+        if (misses < MIDDLE_EAST_STRIKES_MAX_MISSES) {
+          middleEastStrikeMisses.set(item.id, misses);
+          continue;
+        }
+        console.warn(`[MiddleEastStrikes] Dropping ${item.id}: unclassified after ${misses} answered cycles`);
+        middleEastStrikePending.delete(item.id);
+        middleEastStrikeMisses.delete(item.id);
+        middleEastStrikeDone.add(item.id);
+      }
+    }
+    while (middleEastStrikeDone.size > MIDDLE_EAST_STRIKES_DONE_MAX) {
+      middleEastStrikeDone.delete(middleEastStrikeDone.values().next().value);
+    }
+    if (!result) {
+      console.warn(`[MiddleEastStrikes] ${status} — cycle skipped, seed-meta not advanced`);
+      return;
+    }
+    const s = result.stats;
+    const summary = `${s.events} events, ${s.prefiltered} posts (${s.cacheHits} cached, ${s.classified} classified, ${s.retry} retry), ${s.gdeltCandidates} GDELT clusters from ${s.gdeltExportsFetched} exports, ${s.storeCandidates} stored, telegramLive=${s.telegramLive}, pressure=${pressureStatus}`;
+    if (status === 'ok') console.log(`[MiddleEastStrikes] ${summary} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    else console.warn(`[MiddleEastStrikes] ${status} — seed-meta not advanced; ${summary}`);
+  } catch (e) {
+    console.warn('[MiddleEastStrikes] Seed error:', e?.message || e);
+  } finally {
+    middleEastStrikesInFlight = false;
+  }
+}
+
+function startMiddleEastStrikesLoop() {
+  if (!MIDDLE_EAST_STRIKES_ENABLED) {
+    console.log('[MiddleEastStrikes] Disabled (IRAN_EVENTS_ENABLED is not true)');
+    return;
+  }
+  if (!middleEastStrikes) {
+    console.error('[MiddleEastStrikes] Disabled (module failed to load; see the startup error) — health will report STALE');
+    return;
+  }
+  if (!UPSTASH_ENABLED) {
+    console.log('[MiddleEastStrikes] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[MiddleEastStrikes] Loop starting (interval ${MIDDLE_EAST_STRIKES_INTERVAL_MS / 60000}min)`);
+  startBootSeedLoop('MiddleEastStrikes', middleEastStrikes.SEED_META_KEY, MIDDLE_EAST_STRIKES_INTERVAL_MS, seedMiddleEastStrikes,
+    (e) => console.warn('[MiddleEastStrikes] Initial seed error:', e?.message || e),
+    (e) => console.warn('[MiddleEastStrikes] Seed error:', e?.message || e));
+}
+
+// ─────────────────────────────────────────────────────────────
+// v2 strike tally in shadow (CII v15 Stage B3) — Telegram + GDELT ->
+// conflict:iran-events:v2 and conflict:strike-pressure:v2
+// (logic and tests: scripts/lib/middle-east-strikes-v2.cjs).
+// The v1 loop above keeps writing conflict:iran-events:v1 and
+// conflict:strike-pressure:v1, which the live v14 scorer reads with no version
+// check, so the v2 rules run beside it on their own keys and their own
+// classifier cache. This loop has its own pending and done sets: a v2 classifier
+// failure keeps its posts waiting here without touching the v1 feed. It
+// accumulates v2 days for the v15 calibration captures; delete it when cii-v15
+// merges. Same switch as v1 (IRAN_EVENTS_ENABLED).
+// ─────────────────────────────────────────────────────────────
+const middleEastStrikeV2Pending = new Map();
+const middleEastStrikeV2Done = new Set();
+const middleEastStrikeV2Misses = new Map();
+let middleEastStrikesV2InFlight = false;
+
+function noteMiddleEastStrikeItemV2(item) {
+  if (!MIDDLE_EAST_STRIKES_ENABLED || !middleEastStrikesV2 || !item?.id || middleEastStrikeV2Pending.has(item.id) || middleEastStrikeV2Done.has(item.id)) return;
+  if (!middleEastStrikesV2.prefilterStrikeText(item.text)) return;
+  middleEastStrikeV2Pending.set(item.id, item);
+  while (middleEastStrikeV2Pending.size > MIDDLE_EAST_STRIKES_PENDING_MAX) {
+    const evicted = middleEastStrikeV2Pending.keys().next().value;
+    middleEastStrikeV2Pending.delete(evicted);
+    middleEastStrikeV2Misses.delete(evicted);
+  }
+}
+
+async function loadMiddleEastStrikeGdeltV2(processed) {
+  middleEastGdeltBulkPromise ??= import('./_conflict-gdelt-bulk.mjs');
+  let bulk;
+  try {
+    bulk = await middleEastGdeltBulkPromise;
+  } catch (e) {
+    middleEastGdeltBulkPromise = null;
+    console.warn('[MiddleEastStrikesV2] GDELT module failed to load:', e?.message || e);
+    return { candidates: [], processed, errors: [String(e?.message || e)], fetched: 0 };
+  }
+  try {
+    return await middleEastStrikesV2.fetchGdeltStrikeCandidates({ bulk, processed });
+  } catch (e) {
+    console.warn('[MiddleEastStrikesV2] GDELT backstop unavailable:', e?.message || e);
+    return { candidates: [], processed, errors: [String(e?.message || e)], fetched: 0 };
+  }
+}
+
+async function seedMiddleEastStrikesV2() {
+  if (middleEastStrikesV2InFlight) return;
+  middleEastStrikesV2InFlight = true;
+  const t0 = Date.now();
+  try {
+    for (const item of telegramState.items) noteMiddleEastStrikeItemV2(item);
+    for (const [id, item] of middleEastStrikeV2Pending) {
+      const ts = Date.parse(item.ts);
+      if (!Number.isFinite(ts) || t0 - ts > MIDDLE_EAST_STRIKES_PENDING_MAX_AGE_MS) { middleEastStrikeV2Pending.delete(id); middleEastStrikeV2Misses.delete(id); }
+    }
+    const pendingItems = [...middleEastStrikeV2Pending.values()];
+    const { status, doneIds, result, pressureStatus } = await middleEastStrikesV2.publishStrikeCycle({
+      now: t0,
+      pendingItems,
+      readStore: async () => {
+        let ok = true;
+        const value = await upstashGet(middleEastStrikesV2.STORE_KEY, () => { ok = false; });
+        return { ok, value };
+      },
+      writeStore: (store) => upstashSet(middleEastStrikesV2.STORE_KEY, store, MIDDLE_EAST_STRIKES_STORE_TTL_S),
+      writeCanonical: (payload, recordCount) => envelopeWrite(middleEastStrikesV2.CANONICAL_KEY, payload, MIDDLE_EAST_STRIKES_CANONICAL_TTL_S, {
+        recordCount,
+        sourceVersion: middleEastStrikesV2.SOURCE_VERSION,
+        zeroOk: true,
+      }),
+      writeSeedMeta: (meta) => upstashSet(middleEastStrikesV2.SEED_META_KEY, meta, MIDDLE_EAST_STRIKES_META_TTL_S),
+      readCache: (key) => upstashGet(key),
+      writeCache: (key, value, ttl) => upstashSet(key, value, ttl),
+      classify: (texts) => classifyFetchLlm(texts, middleEastStrikesV2.CLASSIFY_MAX_TEXT_CHARS, {
+        systemPrompt: middleEastStrikesV2.STRIKE_CLASSIFIER_PROMPT,
+        maxTokensPerItem: middleEastStrikesV2.CLASSIFY_MAX_TOKENS_PER_ITEM,
+        label: 'MiddleEastStrikesV2',
+      }),
+      loadGdelt: loadMiddleEastStrikeGdeltV2,
+      telegramPolledAt: telegramState.lastSuccessfulPollAt,
+      readPressure: async () => {
+        let ok = true;
+        const value = await upstashGet(middleEastStrikesV2.PRESSURE_KEY, () => { ok = false; });
+        return { ok, value };
+      },
+      writePressure: (pressure) => upstashSet(middleEastStrikesV2.PRESSURE_KEY, pressure, MIDDLE_EAST_STRIKE_PRESSURE_TTL_S),
+      writePressureMeta: async (meta) => {
+        if (!await upstashSet(middleEastStrikesV2.PRESSURE_SEED_META_KEY, meta, MIDDLE_EAST_STRIKES_META_TTL_S)) return false;
+        // Durable, no TTL: health reads the key as pending until the first
+        // healthy v2 tally publish and strict afterwards (api/health.js ACTIVATION_MARKERS).
+        // A failed marker write reports the publish as failed; the next healthy tick rewrites it.
+        return await upstashEval("return redis.call('SET', KEYS[1], ARGV[1])", [middleEastStrikesV2.PRESSURE_ACTIVATION_KEY], [String(t0)]) === 'OK';
+      },
+    });
+    for (const id of doneIds) {
+      middleEastStrikeV2Pending.delete(id);
+      middleEastStrikeV2Misses.delete(id);
+      middleEastStrikeV2Done.add(id);
+    }
+    if (result && !result.classifierFailed) {
+      for (const item of result.pending) {
+        const misses = (middleEastStrikeV2Misses.get(item.id) || 0) + 1;
+        if (misses < MIDDLE_EAST_STRIKES_MAX_MISSES) {
+          middleEastStrikeV2Misses.set(item.id, misses);
+          continue;
+        }
+        console.warn(`[MiddleEastStrikesV2] Dropping ${item.id}: unclassified after ${misses} answered cycles`);
+        middleEastStrikeV2Pending.delete(item.id);
+        middleEastStrikeV2Misses.delete(item.id);
+        middleEastStrikeV2Done.add(item.id);
+      }
+    }
+    while (middleEastStrikeV2Done.size > MIDDLE_EAST_STRIKES_DONE_MAX) {
+      middleEastStrikeV2Done.delete(middleEastStrikeV2Done.values().next().value);
+    }
+    if (!result) {
+      console.warn(`[MiddleEastStrikesV2] ${status} — cycle skipped, seed-meta not advanced`);
+      return;
+    }
+    const s = result.stats;
+    const summary = `${s.events} events, ${s.prefiltered} posts (${s.cacheHits} cached, ${s.classified} classified, ${s.retry} retry), ${s.gdeltCandidates} GDELT clusters from ${s.gdeltExportsFetched} exports, ${s.storeCandidates} stored, telegramLive=${s.telegramLive}, pressure=${pressureStatus}`;
+    if (status === 'ok') console.log(`[MiddleEastStrikesV2] ${summary} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    else console.warn(`[MiddleEastStrikesV2] ${status} — seed-meta not advanced; ${summary}`);
+  } catch (e) {
+    console.warn('[MiddleEastStrikesV2] Seed error:', e?.message || e);
+  } finally {
+    middleEastStrikesV2InFlight = false;
+  }
+}
+
+function startMiddleEastStrikesV2Loop() {
+  if (!MIDDLE_EAST_STRIKES_ENABLED) {
+    console.log('[MiddleEastStrikesV2] Disabled (IRAN_EVENTS_ENABLED is not true)');
+    return;
+  }
+  if (!middleEastStrikesV2) {
+    console.error('[MiddleEastStrikesV2] Disabled (module failed to load; see the startup error) — health will report STALE');
+    return;
+  }
+  if (!UPSTASH_ENABLED) {
+    console.log('[MiddleEastStrikesV2] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[MiddleEastStrikesV2] Loop starting (interval ${MIDDLE_EAST_STRIKES_INTERVAL_MS / 60000}min)`);
+  startBootSeedLoop('MiddleEastStrikesV2', middleEastStrikesV2.SEED_META_KEY, MIDDLE_EAST_STRIKES_INTERVAL_MS, seedMiddleEastStrikesV2,
+    (e) => console.warn('[MiddleEastStrikesV2] Initial seed error:', e?.message || e),
+    (e) => console.warn('[MiddleEastStrikesV2] Seed error:', e?.message || e));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -5461,9 +6683,6 @@ function theaterDetectAircraftType(callsign) {
   return 'unknown';
 }
 
-const WINGBITS_MAX_BOX_NM = 2000;
-const WINGBITS_VIEWPORT_TILE_DEGREES = 30;
-const WINGBITS_MAX_VIEWPORT_AREAS = 36;
 
 const POSTURE_THEATERS = [
   { id: 'iran-theater', bounds: { north: 42, south: 20, east: 65, west: 30 }, thresholds: { elevated: 8, critical: 20 }, strikeIndicators: { minTankers: 2, minAwacs: 1, minFighters: 5 } },
@@ -5508,33 +6727,6 @@ function wingbitsIndexLookupCallsign(callsign) {
   return results;
 }
 
-function buildWingbitsViewportAreas(south, west, north, east) {
-  const latTiles = Math.max(1, Math.ceil((north - south) / WINGBITS_VIEWPORT_TILE_DEGREES));
-  const lonTiles = Math.max(1, Math.ceil((east - west) / WINGBITS_VIEWPORT_TILE_DEGREES));
-  if (latTiles * lonTiles > WINGBITS_MAX_VIEWPORT_AREAS) return null;
-
-  const areas = [];
-  for (let latIndex = 0; latIndex < latTiles; latIndex += 1) {
-    const tileSouth = south + latIndex * WINGBITS_VIEWPORT_TILE_DEGREES;
-    const tileNorth = Math.min(north, tileSouth + WINGBITS_VIEWPORT_TILE_DEGREES);
-    for (let lonIndex = 0; lonIndex < lonTiles; lonIndex += 1) {
-      const tileWest = west + lonIndex * WINGBITS_VIEWPORT_TILE_DEGREES;
-      const tileEast = Math.min(east, tileWest + WINGBITS_VIEWPORT_TILE_DEGREES);
-      const centerLat = (tileSouth + tileNorth) / 2;
-      const centerLon = (tileWest + tileEast) / 2;
-      areas.push({
-        alias: `viewport-${latIndex}-${lonIndex}`,
-        by: 'box',
-        la: centerLat,
-        lo: centerLon,
-        w: Math.max(1, Math.min((tileEast - tileWest) * 60 * Math.cos(centerLat * Math.PI / 180), WINGBITS_MAX_BOX_NM)),
-        h: Math.max(1, Math.min((tileNorth - tileSouth) * 60, WINGBITS_MAX_BOX_NM)),
-        unit: 'nm',
-      });
-    }
-  }
-  return areas;
-}
 
 async function handleWingbitsTrackRequest(req, res) {
   const apiKey = process.env.WINGBITS_API_KEY;
@@ -5741,8 +6933,8 @@ async function handleWingbitsTrackRequest(req, res) {
 async function fetchTheaterFlightsFromOpenSky() {
   const seenIds = new Set();
   const allFlights = [];
-  const resp = await fetch(`http://localhost:${relayBoundPort}/opensky`, {
-    headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { 'x-relay-key': RELAY_SHARED_SECRET } : {}) },
+  const resp = await fetch(`http://${RELAY_SELF_HOST}:${relayBoundPort}/opensky`, {
+    headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { [RELAY_AUTH_HEADER]: RELAY_SHARED_SECRET } : {}) },
     signal: AbortSignal.timeout(20_000),
   });
   if (!resp.ok) throw new Error(`OpenSky proxy ${resp.status} for GLOBAL`);
@@ -6056,6 +7248,355 @@ async function seedTheaterPosture() {
   }
 }
 
+// National civil air traffic series (docs/plans/2026-11-14-001-feat-national-air-traffic-signal-plan.md).
+// One global /states/all per 5-minute bin, through this relay's own /opensky
+// proxy so the account cooldown, cache and request queue stay in one place. A
+// bbox-less query costs 4 credits, so the loop adds 1,152 credits a day, plus
+// the retries of failed attempts.
+// The test preload runs Date.now this many times faster than timers. Only test
+// mode reads it, so production waits are always the real time left.
+const AIR_TRAFFIC_CLOCK_RATE = RELAY_TEST_MODE
+  ? Math.max(1, Number(process.env.RELAY_TEST_CLOCK_RATE) || 1)
+  : 1;
+const AIR_TRAFFIC_START_DELAY_MS = process.env.AIR_TRAFFIC_START_DELAY_MS !== undefined
+  ? Math.max(0, Number(process.env.AIR_TRAFFIC_START_DELAY_MS) || 0)
+  : 30_000;
+// Each tick starts this far into its bin, so every bin gets the same room for
+// retries and setInterval drift can never carry a tick past a bin boundary.
+const AIR_TRAFFIC_BIN_OFFSET_MS = Number.isFinite(Number(process.env.AIR_TRAFFIC_BIN_OFFSET_MS))
+  ? Math.min(AIR_TRAFFIC_BIN_MS - 1, Math.max(0, Number(process.env.AIR_TRAFFIC_BIN_OFFSET_MS)))
+  : 20_000;
+// Proxy failures (tunnel timeout, a body cut mid-stream) are transient; one
+// more attempt in the same bin usually succeeds. The wait outlasts the /opensky
+// negative cache (OPENSKY_NEGATIVE_CACHE_TTL_MS, declared further down) so a
+// retry reaches upstream instead of the cached failure.
+const AIR_TRAFFIC_MAX_ATTEMPTS = Math.max(1, Number(process.env.AIR_TRAFFIC_MAX_ATTEMPTS) || 3);
+const AIR_TRAFFIC_RETRY_DELAY_MS = Number.isFinite(Number(process.env.AIR_TRAFFIC_RETRY_DELAY_MS))
+  ? Math.max(0, Number(process.env.AIR_TRAFFIC_RETRY_DELAY_MS))
+  : (Number(process.env.OPENSKY_NEGATIVE_CACHE_TTL_MS) || 30_000) + 5_000;
+// Longer than the proxy's own worst case (15s tunnel plus 15s request), so the
+// loop never abandons a fetch the proxy would still have answered.
+const AIR_TRAFFIC_ATTEMPT_TIMEOUT_MS = Number(process.env.AIR_TRAFFIC_ATTEMPT_TIMEOUT_MS) || 40_000;
+// The proxy answers 200 with an empty states array when it is rate-limited or
+// serving a negative or stale cache entry. Only these X-Cache values carry a
+// fresh upstream snapshot; everything else is a gap, never a zero count.
+const AIR_TRAFFIC_FRESH_CACHE_STATES = new Set(['MISS', 'HIT', 'DEDUP']);
+// A HIT can be a snapshot another caller fetched up to a cache TTL ago. Past
+// this age it describes an earlier bin, so it is a gap, not this bin's count.
+const AIR_TRAFFIC_MAX_SNAPSHOT_AGE_MS = 180_000;
+
+async function fetchAirTrafficStates(fetchedAt) {
+  const resp = await fetch(`http://${RELAY_SELF_HOST}:${relayBoundPort}/opensky`, {
+    headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { [RELAY_AUTH_HEADER]: RELAY_SHARED_SECRET } : {}) },
+    signal: AbortSignal.timeout(AIR_TRAFFIC_ATTEMPT_TIMEOUT_MS),
+  });
+  const cacheState = resp.headers.get('x-cache') || 'NONE';
+  if (!resp.ok) return { gap: `http ${resp.status}` };
+  if (!AIR_TRAFFIC_FRESH_CACHE_STATES.has(cacheState)) return { gap: `cache ${cacheState}` };
+  let data;
+  try { data = await resp.json(); } catch { data = null; }
+  if (!Array.isArray(data?.states)) {
+    console.warn(`[AirTraffic] Malformed OpenSky body (states is ${data?.states === null ? 'null' : typeof data?.states}); recording a gap`);
+    return { gap: 'malformed' };
+  }
+  const snapshotMs = Number(data.time) * 1000;
+  if (!Number.isFinite(snapshotMs) || fetchedAt - snapshotMs > AIR_TRAFFIC_MAX_SNAPSHOT_AGE_MS) return { gap: 'stale' };
+  return { states: data.states };
+}
+
+async function attemptAirTrafficPoint(fetchedAt) {
+  try {
+    const snapshot = await fetchAirTrafficStates(fetchedAt);
+    if (snapshot.gap) return { gapReason: snapshot.gap };
+    const point = aggregateAirTrafficStates(snapshot.states, fetchedAt);
+    // A global snapshot with no positioned aircraft is a degraded feed, not a
+    // grounded world.
+    if (point.statesTotal === 0) return { gapReason: 'empty' };
+    return { point };
+  } catch (e) {
+    return { gapReason: e?.name === 'TimeoutError' ? 'timeout' : (e?.message || String(e)) };
+  }
+}
+
+// One tick for one source: skip a bin already recorded, then up to
+// AIR_TRAFFIC_MAX_ATTEMPTS attempts that each start inside the bin, then write
+// a point or a gap into that source's own series.
+async function seedTrafficSeries({ label, series, attempt }) {
+  const t = airTrafficBinStart(Date.now());
+  const bin = new Date(t).toISOString();
+  const existing = await upstashPipeline([['HGET', airTrafficDayKey(t, series), String(t)]]);
+  if (isOkAirTrafficPoint(existing?.[0]?.result)) {
+    console.log(`[${label}] t=${bin} already recorded; skipping fetch`);
+    return t;
+  }
+  let result = null;
+  let fetchedAt = Date.now();
+  let attempts = 0;
+  // Every attempt starts inside bin t, so a retry can only fill this bin.
+  while (attempts < AIR_TRAFFIC_MAX_ATTEMPTS && airTrafficBinStart(fetchedAt) === t) {
+    attempts += 1;
+    result = await attempt(fetchedAt);
+    if (result.point) break;
+    if (attempts >= AIR_TRAFFIC_MAX_ATTEMPTS) break;
+    console.warn(`[${label}] Attempt ${attempts} for t=${bin} failed (${result.gapReason}); retrying in ${Math.round(AIR_TRAFFIC_RETRY_DELAY_MS / 1000)}s`);
+    await new Promise((resolve) => setTimeout(resolve, AIR_TRAFFIC_RETRY_DELAY_MS));
+    fetchedAt = Date.now();
+  }
+  // The skip check can run past the end of the bin, leaving no attempt that
+  // could describe it. The bin is still written, as a gap, never left missing.
+  if (!result) result = { gapReason: 'bin ended' };
+  const point = result.point || airTrafficGapPoint(t);
+  await recordTrafficPoint(point, upstashPipeline, result.point ? fetchedAt : t, series);
+  if (point.status === 'ok') {
+    const counts = {
+      us: point.usSeen, usAirborne: point.usAirborne, usLowClimbing: point.usLowClimbing,
+      usLowClimbingAirline: point.usLowClimbingAirline, eu: point.euAirborne,
+    };
+    for (const name of ['usLowClimbing', 'usLowClimbingAirline']) if (!series.measures.includes(name)) delete counts[name];
+    const fields = Object.entries(counts).map(([name, value]) => `${name}=${value}`).join(' ');
+    console.log(`[${label}] t=${bin} status=ok ${fields} hubs=${Object.keys(point.hubs).length} attempts=${attempts}`);
+  } else {
+    console.log(`[${label}] t=${bin} status=gap reason=${result.gapReason} attempts=${attempts}`);
+  }
+  return t;
+}
+
+async function seedAirTrafficPoint() {
+  // The bin this tick recorded, which may have ended while it was fetching.
+  const t = await seedTrafficSeries({ label: 'AirTraffic', series: AIR_TRAFFIC_SERIES.opensky, attempt: attemptAirTrafficPoint });
+  await runAirTrafficDetector(t);
+}
+
+// ── National departure-collapse detector (scripts/shared/air-traffic-detector.cjs)
+// Baseline days are past and immutable, so each UTC day hash is read once and
+// kept, trimmed to the fields the detector reads. One key holds every market's
+// state, keyed by market code.
+const AIR_TRAFFIC_DETECTOR_STATE_KEY = 'aviation:traffic:detector:v2';
+// The US-only state before markets. Read while v2 is absent, so a collapse
+// active across the upgrade keeps its onset and still gets its recovery.
+const AIR_TRAFFIC_DETECTOR_LEGACY_STATE_KEY = 'aviation:traffic:detector:v1';
+const AIR_TRAFFIC_DETECTOR_STATE_TTL_SECONDS = 7 * 86400;
+const AIR_TRAFFIC_DETECTOR_MAX_WINDOW = Math.max(...airTrafficDetector.MARKETS.map((m) => m.window));
+const airTrafficDetectorDays = new Map();
+const DETECTOR_FIELDS = ['usSeen', 'usAirborne', 'euAirborne', airTrafficDetector.SIGNAL];
+
+function trimDetectorPoint(raw) {
+  try {
+    const p = JSON.parse(raw);
+    if (p?.status !== 'ok') return null;
+    const markets = p.markets && typeof p.markets === 'object'
+      ? Object.fromEntries(Object.entries(p.markets).map(([code, m]) => [code, { seen: m?.seen, dep: m?.dep }]))
+      : undefined;
+    return { status: 'ok', ...Object.fromEntries(DETECTOR_FIELDS.map((f) => [f, p[f]])), markets };
+  } catch { return null; }
+}
+
+// UTC days holding the baseline bins of bin t: each prior week's local day,
+// padded a day either side for the US and Europe offsets.
+function detectorBaselineDays(t) {
+  const days = new Set();
+  for (let w = 1; w <= airTrafficDetector.BASELINE_WEEKS; w += 1) {
+    for (const d of [-1, 0, 1]) days.add(new Date(t - w * 7 * 86_400_000 + d * 86_400_000).toISOString().slice(0, 10));
+  }
+  return [...days];
+}
+
+async function loadDetectorBaseline(t) {
+  const wanted = detectorBaselineDays(t);
+  for (const day of airTrafficDetectorDays.keys()) if (!wanted.includes(day)) airTrafficDetectorDays.delete(day);
+  const missing = wanted.filter((day) => !airTrafficDetectorDays.has(day));
+  if (missing.length === 0) return true;
+  const prefix = AIR_TRAFFIC_SERIES.opensky.prefix;
+  const results = await upstashPipeline(missing.map((day) => ['HGETALL', `${prefix}:${day}`]));
+  // A failed command must not be cached as an empty day, or the detector stays
+  // at insufficient-baseline until the day leaves the window.
+  if (!Array.isArray(results) || results.length !== missing.length || !results.every((r) => Array.isArray(r?.result))) return false;
+  missing.forEach((day, i) => {
+    const flat = results[i].result;
+    const points = new Map();
+    for (let j = 0; j + 1 < flat.length; j += 2) {
+      const point = trimDetectorPoint(flat[j + 1]);
+      if (point) points.set(Number(flat[j]), point);
+    }
+    airTrafficDetectorDays.set(day, points);
+  });
+  return true;
+}
+
+const detectorPoint = (bin) => airTrafficDetectorDays.get(new Date(bin).toISOString().slice(0, 10))?.get(bin);
+
+async function runAirTrafficDetector(t) {
+  try {
+    // The bins before t that the widest market window reads.
+    const recentBins = Array.from({ length: AIR_TRAFFIC_DETECTOR_MAX_WINDOW - 1 }, (_, i) => t - (i + 1) * 300_000);
+    const [stateRes, legacyRes, pointRes, wingbitsRes, ...recentRes] = (await upstashPipeline([
+      ['GET', AIR_TRAFFIC_DETECTOR_STATE_KEY],
+      ['GET', AIR_TRAFFIC_DETECTOR_LEGACY_STATE_KEY],
+      ['HGET', airTrafficDayKey(t, AIR_TRAFFIC_SERIES.opensky), String(t)],
+      ['HGET', airTrafficDayKey(t, AIR_TRAFFIC_SERIES.wingbits), String(t)],
+      ...recentBins.map((bin) => ['HGET', airTrafficDayKey(bin, AIR_TRAFFIC_SERIES.opensky), String(bin)]),
+    ])) || [];
+    // A failed read must not stand in for no state: during a collapse, the
+    // next bin would start from normal and the recovery would never be sent.
+    const answered = (res) => res && !res.error && 'result' in res;
+    if (!answered(stateRes) || !answered(pointRes) || (stateRes.result === null && !answered(legacyRes))) {
+      console.warn('[AirTrafficDetector] state read failed; skipping this bin');
+      return;
+    }
+    if (!(await loadDetectorBaseline(t))) {
+      console.warn('[AirTrafficDetector] baseline read failed; skipping this bin');
+      return;
+    }
+    let states = {};
+    try {
+      const isObject = (v) => v && typeof v === 'object' && !Array.isArray(v);
+      if (stateRes.result !== null) {
+        const parsed = JSON.parse(stateRes.result);
+        states = isObject(parsed) ? parsed : {};
+      } else if (legacyRes.result !== null) {
+        const legacy = JSON.parse(legacyRes.result);
+        states = isObject(legacy) ? { US: legacy } : {};
+      }
+    } catch {
+      // Only this relay writes the key. A value it cannot parse would stop the
+      // detector until the TTL if skipped, so it starts over, loudly.
+      console.warn('[AirTrafficDetector] stored state is unreadable; starting from normal');
+      states = {};
+    }
+    const lastT = Math.max(0, ...Object.values(states).map((s) => (Number.isFinite(s?.lastT) ? s.lastT : 0)));
+    const bin = new Date(t).toISOString();
+    if (lastT > t) {
+      // A slow tick finished after the next bin's tick evaluated, and the run
+      // only moves forward.
+      console.log(`[AirTrafficDetector] t=${bin} skipped: ${new Date(lastT).toISOString()} already evaluated`);
+      return;
+    }
+    const parse = (raw) => { try { return raw ? JSON.parse(raw) : undefined; } catch { return undefined; } };
+    const point = parse(pointRes.result);
+    const wingbits = parse(wingbitsRes?.result);
+    const recent = new Map(recentBins.map((bin, i) => [bin, trimDetectorPoint(recentRes[i]?.result)]));
+    const getPoint = (bin) => recent.get(bin) ?? detectorPoint(bin);
+    const fmt = (v) => (Number.isFinite(v) ? v.toFixed(2) : '-');
+    const next = { ...states };
+    for (const market of airTrafficDetector.MARKETS) {
+      const result = airTrafficDetector.evaluateCollapse(states[market.code] || null, {
+        t, point, wingbits, market, getPoint,
+        peakBaseline: airTrafficDetector.peakBaselineFor(t, detectorPoint, market),
+      });
+      const s = result.state;
+      console.log(`[AirTrafficDetector] t=${bin} market=${market.code} verdict=${s.verdict} state=${s.state} ratio=${fmt(s.ratio)} control=${fmt(s.control)} coverage=${fmt(s.coverage)}${s.coverageAgainst ? `(${s.coverageAgainst})` : ''}`);
+      if (result.event) {
+        const { event } = result;
+        const onset = new Date(event.onset).toISOString().slice(11, 16);
+        console.log(`[AirTraffic] ${market.code} ${event.kind === 'collapse' ? 'collapse entered' : 'collapse ended'} ratio=${event.ratio.toFixed(2)} onset=${onset}Z`);
+        // The market's state moves only once its event is queued, so a failed
+        // publish is retried on the next bin, which still meets the condition.
+        if (!(await publishNotificationEvent(airTrafficDetector.buildCollapseNotification(event)))) continue;
+      }
+      next[market.code] = s;
+    }
+    await upstashSet(AIR_TRAFFIC_DETECTOR_STATE_KEY, next, AIR_TRAFFIC_DETECTOR_STATE_TTL_SECONDS);
+  } catch (e) {
+    console.warn('[AirTrafficDetector] error:', e?.message || e);
+  }
+}
+
+// Sleeps until Date.now reaches targetMs, rechecking after each timer so a
+// timer that fires early cannot start a tick in the wrong bin.
+function sleepUntilAirTrafficTime(targetMs) {
+  return new Promise((resolve) => {
+    const step = () => {
+      const remaining = targetMs - Date.now();
+      if (remaining <= 0) return resolve();
+      setTimeout(step, Math.max(1, Math.ceil(remaining / AIR_TRAFFIC_CLOCK_RATE))).unref?.();
+    };
+    step();
+  });
+}
+
+async function runAirTrafficLoop(seedFn, label) {
+  // The first tick fills the current bin at once (it skips a bin already
+  // recorded); every later tick starts at the same offset into its own bin.
+  for (;;) {
+    seedFn().catch((e) => console.warn(`[${label}] Tick error:`, e?.message || e));
+    await sleepUntilAirTrafficTime(airTrafficBinStart(Date.now()) + AIR_TRAFFIC_BIN_MS + AIR_TRAFFIC_BIN_OFFSET_MS);
+  }
+}
+
+function startAirTrafficLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[AirTraffic] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[AirTraffic] loop starting (one tick ${AIR_TRAFFIC_BIN_OFFSET_MS / 1000}s into each 5-minute bin, up to ${AIR_TRAFFIC_MAX_ATTEMPTS} attempts, first tick in ${AIR_TRAFFIC_START_DELAY_MS / 1000}s)`);
+  // Same startup delay as the theater loop, so the /opensky proxy is serving.
+  setTimeout(() => {
+    runAirTrafficLoop(seedAirTrafficPoint, 'AirTraffic').catch((e) => console.warn('[AirTraffic] Loop stopped:', e?.message || e));
+  }, AIR_TRAFFIC_START_DELAY_MS).unref?.();
+}
+
+// A second, independent series from the Wingbits receiver network, kept in its
+// own keys. It never fills an OpenSky gap: the two networks see different
+// aircraft, so a ratio across them is meaningless. Read side by side, a drop in
+// both is a real event and a drop in one is that feed. One POST covers the
+// CONUS and Europe boxes, so a bin costs one request on the key the map
+// viewport and theater loop already use.
+const WINGBITS_TRAFFIC_AREAS = [['us', AIR_TRAFFIC_CONUS_BOX], ['eu', AIR_TRAFFIC_EUROPE_BOX]]
+  .flatMap(([region, box]) => buildWingbitsViewportAreas(box.south, box.west, box.north, box.east)
+    .map((area) => ({ ...area, alias: `${region}-${area.alias}` })));
+
+function sameAliases(areas, requested) {
+  const answered = areas.map((area) => area?.alias).sort();
+  const asked = requested.map((area) => area.alias).sort();
+  return answered.length === asked.length && answered.every((alias, i) => alias === asked[i]);
+}
+
+async function attemptWingbitsTrafficPoint(fetchedAt) {
+  try {
+    const resp = await fetch('https://customer-api.wingbits.com/v1/flights', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.WINGBITS_API_KEY, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+      body: JSON.stringify(WINGBITS_TRAFFIC_AREAS),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!resp.ok) return { gapReason: `http ${resp.status}` };
+    let areas;
+    try { areas = await resp.json(); } catch { areas = null; }
+    // Reports in a response whose body finishes after the bin ends describe the
+    // next bin, so they cannot be dated to this one.
+    if (airTrafficBinStart(Date.now()) !== airTrafficBinStart(fetchedAt)) return { gapReason: 'bin ended' };
+    // Every requested area must answer exactly once, or the point would
+    // undercount and read as a drop.
+    if (!Array.isArray(areas) || !sameAliases(areas, WINGBITS_TRAFFIC_AREAS)) return { gapReason: 'malformed' };
+    let rows;
+    try { rows = wingbitsTrafficStateRows(areas, Date.now()); } catch { return { gapReason: 'malformed' }; }
+    const point = aggregateAirTrafficStates(rows, fetchedAt);
+    if (point.statesTotal === 0) return { gapReason: 'empty' };
+    return { point };
+  } catch (e) {
+    return { gapReason: e?.name === 'TimeoutError' ? 'timeout' : (e?.message || String(e)) };
+  }
+}
+
+function seedWingbitsTrafficPoint() {
+  return seedTrafficSeries({ label: 'AirTrafficWingbits', series: AIR_TRAFFIC_SERIES.wingbits, attempt: attemptWingbitsTrafficPoint });
+}
+
+function startWingbitsTrafficLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[AirTrafficWingbits] Disabled (no Upstash Redis)');
+    return;
+  }
+  if (!process.env.WINGBITS_API_KEY) {
+    console.log('[AirTrafficWingbits] Disabled (WINGBITS_API_KEY not set)');
+    return;
+  }
+  console.log(`[AirTrafficWingbits] loop starting (${WINGBITS_TRAFFIC_AREAS.length} areas in one request, up to ${AIR_TRAFFIC_MAX_ATTEMPTS} attempts)`);
+  setTimeout(() => {
+    runAirTrafficLoop(seedWingbitsTrafficPoint, 'AirTrafficWingbits').catch((e) => console.warn('[AirTrafficWingbits] Loop stopped:', e?.message || e));
+  }, AIR_TRAFFIC_START_DELAY_MS).unref?.();
+}
+
 function startTheaterPostureSeedLoop() {
   if (!UPSTASH_ENABLED) {
     console.log('[TheaterPosture] Disabled (no Upstash Redis)');
@@ -6152,9 +7693,13 @@ function startCiiWarmPingLoop() {
 // Chokepoint Status Warm-Ping — keeps supply_chain:chokepoints:v4
 // fresh so health.js does not report STALE_SEED. The RPC handler
 // (get-chokepoint-status.ts) writes seed-meta on every live fetch.
-// Interval matches health.js maxStaleMin (60 min) with a 2× margin.
+// The handler reads only Redis, so a tick costs one function call. Each tick
+// also runs the disruption-alert check, which has its own 12 h cooldown.
 // ─────────────────────────────────────────────────────────────
-const CHOKEPOINT_WARM_PING_INTERVAL_MS = 30 * 60 * 1000; // 30 min
+// One minute past the 300 s status-key TTL: the boot tick writes the key a few
+// seconds after the interval starts, so a 5-minute tick could land just before
+// expiry and re-read the cached reading on every other tick.
+const CHOKEPOINT_WARM_PING_INTERVAL_MS = 6 * 60 * 1000;
 const CHOKEPOINT_RPC_URL = 'https://api.worldmonitor.app/api/supply-chain/v1/get-chokepoint-status';
 
 async function seedChokepointWarmPing() {
@@ -6174,7 +7719,7 @@ async function seedChokepointWarmPing() {
     console.log(`[Chokepoints] Warm-ping OK: ${count} chokepoints`);
     // seed-meta is written by the RPC handler when it fetches fresh data;
     // no direct write needed here.
-    // The status key's 5-min TTL rarely outlives a 30-min tick, so the alert
+    // The status key has a 5-min TTL, shorter than the tick, so the alert
     // check reads the response, not Redis.
     const alerts = await publishChokepointDisruptionAlerts(data, {
       now: Date.now,
@@ -6445,18 +7990,22 @@ async function seedWeatherAlerts() {
     // are unit-testable without booting the relay.
     const distinctFamilyAlerts = selectWeatherNotificationAlerts(alerts);
     for (const a of distinctFamilyAlerts) {
-      // The SAME family key the selector partitioned by. Publishing a narrower
+      // The SAME family key the selector partitioned by, plus the severity
+      // band so an upgrade to Extreme is not swallowed by the earlier Severe
+      // alert's lifetime-long dedup (#10873). Publishing a narrower
       // key (VTEC only) let publishNotificationEvent fall back to its global
       // `weather_alert:<title>` dedup hash for every VTEC-less SWIC/ECCC
       // alert, so two countries sharing a generic WMO title ("Heavy rain",
       // "Forestfire") collided on SET NX and only the first survived —
       // recreating the #7243 starvation one layer below the selector.
-      const coalesceKey = weatherAlertFamilyKey(a);
+      const coalesceKey = notifyPolicy.weatherAlertCoalesceKey(weatherAlertFamilyKey(a), a.severity);
       const countryCode = weatherAlertNotifyCountryCode(a);
       publishNotificationEvent({
         eventType: 'weather_alert',
         payload: {
-          title: a.headline || a.event || 'Weather alert',
+          // What · where · until (#10873): a bare WMO "Wind" or "CAP Alert"
+          // named neither the place nor the country.
+          title: notifyPolicy.weatherAlertNotifyTitle(a),
           source: weatherAlertNotifySource(a),
           ...(countryCode ? { countryCode } : {}),
           ...(coalesceKey ? { coalesceKey } : {}),
@@ -6464,6 +8013,9 @@ async function seedWeatherAlerts() {
         },
         severity: a.severity === 'Extreme' ? 'critical' : 'high',
         variant: undefined,
+        // Until the alert expires: the 30-minute default re-sent an active
+        // alert on every seed tick.
+        dedupTtl: notifyPolicy.weatherAlertDedupTtlSeconds(a),
       }).catch(e => console.warn('[Notify] Weather publish error:', e?.message));
     }
   } catch (e) {
@@ -6781,6 +8333,7 @@ function techEventsParseRSS(rssText) {
 function techEventsFetchUrl(url) {
   return new Promise((resolve) => {
     const request = https.get(url, {
+      signal: AbortSignal.timeout(15000),
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         Accept: 'text/calendar, application/rss+xml, application/xml, text/xml, */*',
@@ -6890,10 +8443,7 @@ const WB_TTL_SECONDS = 7 * 24 * 3600; // 7 days
 const WB_BOOTSTRAP_KEY = 'economic:worldbank-techreadiness:v1';
 const WB_PROGRESS_KEY = 'economic:worldbank-progress:v1';
 const WB_RENEWABLE_KEY = 'economic:worldbank-renewable:v1';
-const { buildWorldBankTechObservations } = require('./_wb-tech-readiness-projection.cjs');
-
-const WB_WEIGHTS = { internet: 30, mobile: 15, broadband: 20, rdSpend: 35 };
-const WB_NORMALIZE_MAX = { internet: 100, mobile: 150, broadband: 50, rdSpend: 5 };
+const { computeWorldBankTechRankings: wbComputeRankings } = require('./_wb-tech-readiness-projection.cjs');
 
 const WB_INDICATORS = [
   { key: 'internet',  id: 'IT.NET.USER.ZS', dateRange: '2019:2024' },
@@ -6919,6 +8469,7 @@ const WB_RENEWABLE_REGION_NAMES = {
 function wbFetchJson(url) {
   return new Promise((resolve, reject) => {
     const req = https.get(url, {
+      signal: AbortSignal.timeout(30000),
       headers: { 'User-Agent': 'WorldMonitor-Seed/1.0', Accept: 'application/json' },
       timeout: 30000,
     }, (resp) => {
@@ -6963,43 +8514,6 @@ async function wbFetchIndicator(indicatorId, dateRange) {
     }
   }
   return latestByCountry;
-}
-
-function wbNormalize(val, max) {
-  if (val === undefined || val === null) return null;
-  return Math.min(100, (val / max) * 100);
-}
-
-function wbComputeRankings(indicatorData) {
-  const allCountries = new Set();
-  for (const data of Object.values(indicatorData)) {
-    Object.keys(data).forEach(c => allCountries.add(c));
-  }
-  const scores = [];
-  for (const cc of allCountries) {
-    const components = {
-      internet:  wbNormalize(indicatorData.internet[cc]?.value, WB_NORMALIZE_MAX.internet),
-      mobile:    wbNormalize(indicatorData.mobile[cc]?.value, WB_NORMALIZE_MAX.mobile),
-      broadband: wbNormalize(indicatorData.broadband[cc]?.value, WB_NORMALIZE_MAX.broadband),
-      rdSpend:   wbNormalize(indicatorData.rdSpend[cc]?.value, WB_NORMALIZE_MAX.rdSpend),
-    };
-    let totalWeight = 0, weightedSum = 0;
-    for (const [key, weight] of Object.entries(WB_WEIGHTS)) {
-      if (components[key] !== null) { weightedSum += components[key] * weight; totalWeight += weight; }
-    }
-    const score = totalWeight > 0 ? weightedSum / totalWeight : 0;
-    const name = indicatorData.internet[cc]?.name || indicatorData.mobile[cc]?.name || cc;
-    const observations = buildWorldBankTechObservations({
-      internet: indicatorData.internet[cc],
-      mobile: indicatorData.mobile[cc],
-      broadband: indicatorData.broadband[cc],
-      rdSpend: indicatorData.rdSpend[cc],
-    });
-    scores.push({ country: cc, countryName: name, score: Math.round(score * 10) / 10, rank: 0, components, observations });
-  }
-  scores.sort((a, b) => b.score - a.score);
-  scores.forEach((s, i) => { s.rank = i + 1; });
-  return scores;
 }
 
 async function wbFetchProgress() {
@@ -7075,7 +8589,7 @@ async function seedWorldBank() {
       console.log(`[WB]   ${id}: ${Object.keys(indicatorData[key]).length} countries`);
     }
     const rankings = wbComputeRankings(indicatorData);
-    console.log(`[WB] Rankings: ${rankings.length} countries`);
+    console.log(`[WB] Rankings: ${rankings.filter(entry => entry.rank !== null).length}/${rankings.length} countries ranked`);
 
     console.log('[WB] Fetching progress indicators...');
     const progressData = await wbFetchProgress();
@@ -7213,17 +8727,10 @@ async function seedCorridorRisk() {
     await upstashSet('seed-meta:supply_chain:corridorrisk', { fetchedAt: Date.now(), recordCount: Object.keys(result).length }, 604800);
     console.log(`[CorridorRisk] Seeded ${Object.keys(result).length} corridors (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     seedTransitSummaries().catch(e => console.warn('[TransitSummary] Post-CorridorRisk seed error:', e?.message || e));
-    for (const [corridorId, c] of Object.entries(result)) {
-      if (c.riskScore < 50) continue;
-      const label = corridorId.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
-      publishNotificationEvent({
-        eventType: 'corridor_risk',
-        payload: { title: `${label}: risk score ${c.riskScore}`, source: 'Corridor Risk' },
-        severity: c.riskScore >= 70 ? 'critical' : 'high',
-        variant: undefined,
-        dedupTtl: 3600,
-      }).catch(err => console.warn('[Notify] CorridorRisk publish error:', err?.message));
-    }
+    // No corridor_risk alert: the feed's score sits at its 85 ceiling with
+    // 100% disruption on every corridor, so a band crossing carried no news
+    // and paged every subscriber for all five corridors. chokepoint_disruption
+    // (#9217) alerts on measured transits instead.
   } catch (e) {
     console.warn('[CorridorRisk] Seed error:', e?.message || e);
   } finally {
@@ -7375,14 +8882,11 @@ async function seedShippingStress() {
     const ok = await envelopeWrite(SHIPPING_STRESS_REDIS_KEY, payload, SHIPPING_STRESS_TTL, { recordCount: results.length, sourceVersion: 'shipping-stress' });
     await upstashSet('seed-meta:supply_chain:shipping_stress', { fetchedAt: Date.now(), recordCount: results.length }, 604800);
     console.log(`[ShippingStress] Seeded ${results.length} carriers score=${stressScore}/${stressLevel} (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-    if (stressScore >= 75) {
-      publishNotificationEvent({
-        eventType: 'shipping_stress',
-        payload: { title: `Global shipping stress: score ${stressScore}/100 (${stressLevel})`, source: 'Shipping Index' },
-        severity: stressScore >= 90 ? 'critical' : 'high',
-        variant: undefined,
-        dedupTtl: 7200,
-      }).catch(err => console.warn('[Notify] ShippingStress publish error:', err?.message));
+    // Keyed on the band for a day (#10873), not on the title's live score.
+    const stressNotification = notifyPolicy.shippingStressNotification(stressScore, stressLevel);
+    if (stressNotification) {
+      publishNotificationEvent({ ...stressNotification, variant: undefined })
+        .catch(err => console.warn('[Notify] ShippingStress publish error:', err?.message));
     }
   } catch (e) {
     console.warn('[ShippingStress] Seed error:', e?.message || e, '— extending TTL, retrying in 20min');
@@ -7783,18 +9287,6 @@ const WSB_TICKERS_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3h — same cadence ratio
 const WSB_TICKERS_RETRY_MS = 20 * 60 * 1000;
 const WSB_SUBREDDITS = ['wallstreetbets', 'stocks', 'investing'];
 
-// $-prefixed: case-insensitive ($nvda, $NVDA, $BRK.B). Bare: uppercase only (NVDA, BRK.B).
-// $-prefixed tickers skip whitelist validation (strong signal). Bare uppercase validated against known set.
-const DOLLAR_TICKER_REGEX = /\$([a-zA-Z]{1,5}(?:[.-][a-zA-Z]{1,2})?)\b/g;
-const BARE_TICKER_REGEX = /\b([A-Z]{1,5}(?:[.-][A-Z]{1,2})?)\b/g;
-const TICKER_BLACKLIST = new Set([
-  'I','A','ALL','FOR','THE','CEO','GDP','IPO','SEC','FDA','IMF','ETF','ATH',
-  'DD','YOLO','FOMO','FUD','HODL','WSB','USA','EU','UK','AI','EV','IT','OR',
-  'AM','PM','ON','BE','SO','GO','AT','TO','UP','NO','IF','AS','BY','AN','DO',
-  'IN','OF','IS','HAS','NEW','CFO','CTO','IRS','FBI','CIA','UN','WHO',
-  'IMO','PSA','FYI','TL','DR','OP','OC','US','ER','RE','VS',
-]);
-
 let wsbTickersInFlight = false;
 let wsbTickersRetryTimer = null;
 let wsbTickerSetCache = null;
@@ -7820,41 +9312,6 @@ async function fetchWsbRedditHot(subreddit) {
   return posts;
 }
 
-function normalizeTicker(raw) {
-  // BRK.B → BRK-B (Yahoo Finance uses dash, Reddit uses dot)
-  return raw.toUpperCase().replace(/\./g, '-');
-}
-
-function extractTickers(text, knownTickers) {
-  const found = new Set();
-  if (!text) return found;
-  let m;
-
-  // $-prefixed tickers: strong signal, skip whitelist validation (only blacklist)
-  DOLLAR_TICKER_REGEX.lastIndex = 0;
-  while ((m = DOLLAR_TICKER_REGEX.exec(text)) !== null) {
-    const sym = normalizeTicker(m[1] || '');
-    if (!sym || sym.length < 1) continue;
-    if (TICKER_BLACKLIST.has(sym)) continue;
-    found.add(sym);
-  }
-
-  // Bare uppercase: high false-positive risk, REQUIRE known ticker set
-  // When knownTickers is empty (bootstrap unavailable), skip bare matching entirely
-  if (knownTickers.size > 0) {
-    BARE_TICKER_REGEX.lastIndex = 0;
-    while ((m = BARE_TICKER_REGEX.exec(text)) !== null) {
-      const sym = normalizeTicker(m[1] || '');
-      if (!sym || sym.length < 1) continue;
-      if (TICKER_BLACKLIST.has(sym)) continue;
-      if (!knownTickers.has(sym)) continue;
-      found.add(sym);
-    }
-  }
-
-  return found;
-}
-
 async function seedWsbTickers() {
   if (wsbTickersInFlight) { console.log('[WsbTickers] Skipped (in-flight)'); return; }
   wsbTickersInFlight = true;
@@ -7873,39 +9330,7 @@ async function seedWsbTickers() {
     for (const sub of WSB_SUBREDDITS) {
       await new Promise(r => setTimeout(r, 500));
       const posts = await fetchWsbRedditHot(sub);
-      for (const p of posts) {
-        postsScanned++;
-        const text = `${p.title || ''} ${p.selftext || ''}`;
-        const tickers = extractTickers(text, knownTickers);
-        for (const sym of tickers) {
-          let entry = tickerMap.get(sym);
-          if (!entry) {
-            entry = {
-              symbol: sym,
-              mentionCount: 0,
-              postIds: new Set(),
-              totalScore: 0,
-              upvoteRatioSum: 0,
-              topPost: null,
-              subreddits: new Set(),
-            };
-            tickerMap.set(sym, entry);
-          }
-          entry.mentionCount++;
-          entry.postIds.add(p.id);
-          entry.totalScore += (p.score || 0);
-          entry.upvoteRatioSum += (p.upvote_ratio || 0);
-          entry.subreddits.add(sub);
-          if (!entry.topPost || (p.score || 0) > entry.topPost.score) {
-            entry.topPost = {
-              title: String(p.title || '').slice(0, 300),
-              url: `https://reddit.com${p.permalink || ''}`,
-              score: p.score || 0,
-              subreddit: sub,
-            };
-          }
-        }
-      }
+      postsScanned += accumulateTickerMentions(tickerMap, posts, sub, knownTickers);
     }
 
     if (tickerMap.size === 0) {
@@ -7915,26 +9340,7 @@ async function seedWsbTickers() {
       return;
     }
 
-    const tickers = [];
-    for (const [, entry] of tickerMap) {
-      const uniquePosts = entry.postIds.size;
-      const avgUpvoteRatio = uniquePosts > 0 ? Math.round((entry.upvoteRatioSum / uniquePosts) * 100) / 100 : 0;
-      const ageFactor = 1; // all posts are "hot" (recent)
-      const velocityScore = Math.round(Math.log1p(entry.totalScore) * entry.mentionCount * ageFactor * 10) / 10;
-      tickers.push({
-        symbol: entry.symbol,
-        mentionCount: entry.mentionCount,
-        uniquePosts,
-        totalScore: entry.totalScore,
-        avgUpvoteRatio,
-        topPost: entry.topPost,
-        subreddits: [...entry.subreddits],
-        velocityScore,
-      });
-    }
-
-    tickers.sort((a, b) => b.velocityScore - a.velocityScore);
-    const top = tickers.slice(0, 50);
+    const top = rankTickers(tickerMap);
     const payload = { tickers: top, fetchedAt: Date.now(), subredditsScanned: WSB_SUBREDDITS.length, postsScanned };
     const writeOk = await envelopeWrite(WSB_TICKERS_REDIS_KEY, payload, WSB_TICKERS_TTL, { recordCount: top.length, sourceVersion: 'wsb-tickers' });
     if (writeOk) {
@@ -8197,6 +9603,15 @@ let pizzintSeedInFlight = false;
 // Each sustained venue contributes min(25, excess percent / 5) index points.
 // Sum thresholds 25/50/70/85 map to DEFCON 4/3/2/1; otherwise DEFCON 5.
 // See docs/algorithms.mdx. This is a venue-activity index, not military readiness.
+// An open zero is a sensor gap, not an empty shop, unless the baseline is small.
+function pizzintNoLiveSignal(location) {
+  const live = location.currentPopularity;
+  const forecast = location.forecastPopularity;
+  return (!location.isClosedNow && location.dataFreshness !== 'DATA_FRESHNESS_FRESH')
+    || !Number.isFinite(live) || live < 0
+    || (!location.isClosedNow && live === 0 && (forecast >= 20 || !(forecast > 0)));
+}
+
 function scorePizzintLocations(locations, previous, now) {
   const gap = now - (previous?.updatedAt || 0);
   const priorLocations = Array.isArray(previous?.locations) ? previous.locations : [];
@@ -8205,8 +9620,7 @@ function scorePizzintLocations(locations, previous, now) {
     const live = location.currentPopularity;
     const forecast = location.forecastPopularity;
     location.hasBaseline = Number.isFinite(forecast) && forecast > 0;
-    location.noLiveSignal = !Number.isFinite(live) || live < 0
-      || (!location.isClosedNow && live === 0 && (forecast >= 20 || !(forecast > 0)));
+    location.noLiveSignal = pizzintNoLiveSignal(location);
     const delta = location.hasBaseline ? Math.max(0, live - forecast) : 0;
     const observedAt = Date.parse(location.recordedAt);
     const candidate = !location.isClosedNow && !location.noLiveSignal
@@ -8267,7 +9681,10 @@ async function pollPizzintBestTimeVenue(apiKey, venue) {
     });
     if (!resp.ok) {
       try { await resp.body?.cancel(); } catch { /* Keep the HTTP outcome if cleanup fails. */ }
-      return { outcome: 'http' };
+      // The status is the only diagnostic worth keeping: a 400/401 means the
+      // key is wrong, a 429 means the plan budget is spent, a 5xx is BestTime
+      // itself. The body is dropped unread (it can echo the key).
+      return { outcome: 'http', status: resp.status };
     }
     let reply;
     try {
@@ -8310,12 +9727,14 @@ function pizzintBestTimePlaceholder(venue, reply) {
 async function fetchPizzintBestTimeLocations(apiKey) {
   const polls = await Promise.all(PIZZINT_BESTTIME_VENUES.map(venue => pollPizzintBestTimeVenue(apiKey, venue)));
   const counts = { accepted: 0, unavailable: 0, invalid: 0, http: 0, timeout: 0, transport: 0, json: 0 };
+  const httpStatuses = new Map();
   const locations = [];
   const published = [];
   const historyLocations = [];
   PIZZINT_BESTTIME_VENUES.forEach((venue, i) => {
-    const { outcome, location, reply } = polls[i];
+    const { outcome, location, reply, status } = polls[i];
     counts[outcome]++;
+    if (outcome === 'http') httpStatuses.set(status, (httpStatuses.get(status) || 0) + 1);
     if (location) {
       locations.push(location);
       published.push(location);
@@ -8335,11 +9754,17 @@ async function fetchPizzintBestTimeLocations(apiKey) {
       noLiveSignal: true,
     });
   });
-  const summary = Object.entries(counts).map(([category, count]) => `${category}=${count}`).join(' ');
+  // http=3 alone cannot tell a bad key (400/401) from a spent plan budget
+  // (429) or a BestTime outage (5xx); the status histogram can.
+  const summary = Object.entries(counts).map(([category, count]) => (
+    category === 'http' && count > 0
+      ? `http=${count}(${[...httpStatuses].sort(([a], [b]) => a - b).map(([code, n]) => `${code}x${n}`).join(',')})`
+      : `${category}=${count}`
+  )).join(' ');
   // Every venue answered cleanly; with no accepted reading, all reported unavailable.
   const answered = counts.accepted + counts.unavailable === PIZZINT_BESTTIME_VENUES.length;
   if (locations.length === 0) {
-    console.warn(`[PizzINT] BestTime fallback: no live readings (0/${PIZZINT_BESTTIME_VENUES.length} venues); ${summary}; preserving last good observation`);
+    console.warn(`[PizzINT] BestTime fallback: no live readings (0/${PIZZINT_BESTTIME_VENUES.length} venues); ${summary}`);
     return historyLocations.length ? { locations, published, historyLocations, answered } : null;
   }
   console.log(`[PizzINT] BestTime fallback: ${locations.length}/${PIZZINT_BESTTIME_VENUES.length} venues live; ${summary}`);
@@ -8353,10 +9778,9 @@ function pizzintLastLiveAt(meta) {
 }
 
 // A clean poll with no usable live reading is quiet hours, not an outage: advance the
-// heartbeat without touching the live payload. api/health.js lists pizzint in
-// EMPTY_DATA_OK_KEYS, so the expired payload then reads OK while this runs, and
-// STALE_SEED once it stops (provider errors, a dead loop, or 24h without a live
-// reading).
+// heartbeat. api/health.js lists pizzint in EMPTY_DATA_OK_KEYS, so a missing payload
+// then reads OK while this runs, and STALE_SEED once it stops (provider errors, a
+// dead loop, or 24h without a live reading).
 // Also used for a publication without a live signal. Returns false only when the
 // write itself fails; a heartbeat withheld by the cap is not a failure.
 async function recordPizzintQuietPoll(recordCount = 0) {
@@ -8366,6 +9790,22 @@ async function recordPizzintQuietPoll(recordCount = 0) {
   return upstashSet(PIZZINT_SEED_META_KEY, { fetchedAt: now, recordCount, lastLiveAt }, 604800);
 }
 
+// A poll with nothing new to publish keeps the last reading, it and every venue row
+// marked stale under its own updatedAt, until it is PIZZINT_QUIET_MAX_MS old. Each
+// write lasts at most one seed TTL, so a stopped loop still lets it expire. Returns
+// the outcome for the log.
+async function keepLastPizzintReading() {
+  const stored = await upstashGet(PIZZINT_REDIS_KEY);
+  const reading = stored?.data?.pizzint;
+  const age = Date.now() - reading?.updatedAt;
+  if (!(age >= 0 && age < PIZZINT_QUIET_MAX_MS)) return 'no reading from the last 24h to keep';
+  const at = new Date(reading.updatedAt).toISOString();
+  const locations = (reading.locations || []).map(l => ({ ...l, dataFreshness: 'DATA_FRESHNESS_STALE' }));
+  const kept = { ...stored, data: { ...stored.data, pizzint: { ...reading, dataFreshness: 'DATA_FRESHNESS_STALE', locations } } };
+  const ttl = Math.min(PIZZINT_SEED_TTL, Math.ceil((PIZZINT_QUIET_MAX_MS - age) / 1000));
+  return await upstashSet(PIZZINT_REDIS_KEY, kept, ttl) ? `kept the ${at} reading, marked stale` : `failed to keep the ${at} reading`;
+}
+
 async function seedPizzint() {
   if (pizzintSeedInFlight) return;
   pizzintSeedInFlight = true;
@@ -8373,6 +9813,7 @@ async function seedPizzint() {
   let archive;
   try {
     let raw = null;
+    let primaryAnswered = false;
     try {
       const resp = await fetch(PIZZINT_API, {
         headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
@@ -8382,10 +9823,11 @@ async function seedPizzint() {
         console.warn(`[PizzINT] Seed failed: HTTP ${resp.status}`);
       } else {
         raw = await resp.json();
+        primaryAnswered = raw.success === true && Array.isArray(raw.data);
         if (!raw.success || !Array.isArray(raw.data) || raw.data.length === 0) {
           const reason = !raw.success ? 'unsuccessful_response'
             : !Array.isArray(raw.data) ? 'non_array_data' : 'empty_array';
-          console.warn(`[PizzINT] No data in API response (${reason}); preserving last good observation`);
+          console.warn(`[PizzINT] No data in API response (${reason})`);
           raw = null;
         }
       }
@@ -8393,14 +9835,31 @@ async function seedPizzint() {
       console.warn(`[PizzINT] Seed failed: ${e?.name || 'Error'}`);
       raw = null;
     }
-    // Stale numbers and open zero/zero rows cannot supply a usable primary signal.
-    // Keep fresh closed zeros valid, as in the existing scorer/publication contract.
+    // Only a fresh, positive PizzINT reading outranks BestTime. Stale numbers, open
+    // zeros and closed rows (0 until 2026-11, null since) carry no live busyness, so
+    // BestTime is still asked. PizzINT's fresh closed rows are published only when
+    // BestTime has no live reading either.
     const hasPrimaryReading = raw?.data.some(d => d.data_freshness === 'fresh'
-      && Number.isFinite(d.current_popularity) && d.current_popularity >= 0
-      && (d.current_popularity > 0 || d.is_closed_now));
+      && Number.isFinite(d.current_popularity) && d.current_popularity > 0);
     const besttimeKey = hasPrimaryReading ? '' : (process.env.BESTTIME_API_KEY_PRIVATE || '');
-    const fallback = besttimeKey ? await fetchPizzintBestTimeLocations(besttimeKey) : null;
-    if (!raw && !fallback) return;
+    const besttime = besttimeKey ? await fetchPizzintBestTimeLocations(besttimeKey) : null;
+    // PizzINT's CDN can serve an hour-old response still labelled fresh, so a closed
+    // row is fresh only if it was recorded within one polling interval of now (either
+    // way: PizzINT's clock runs about 0.1 s ahead of ours).
+    const freshRow = d => d.data_freshness === 'fresh'
+      && (!d.is_closed_now || Math.abs(Date.now() - Date.parse(d.recorded_at)) <= PIZZINT_SEED_INTERVAL_MS);
+    const hasFreshClosed = raw?.data.some(d => d.is_closed_now && freshRow(d));
+    if (!besttime && !hasPrimaryReading && !hasFreshClosed) {
+      if (!besttimeKey && raw?.data.some(freshRow)) await recordPizzintQuietPoll();
+      console.log(`[PizzINT] No live reading; ${await keepLastPizzintReading()}`);
+      return;
+    }
+    // A BestTime row the scorer would call no live signal must not displace them.
+    const besttimeLive = besttime?.locations.some(l => !pizzintNoLiveSignal(l));
+    const fallback = besttimeLive || !hasFreshClosed ? besttime : null;
+    // The heartbeat needs every polled provider to have answered cleanly; a BestTime
+    // that answered no venue at all returns null.
+    const answered = primaryAnswered && (!besttimeKey || besttime?.answered === true);
 
     const locations = fallback?.locations || raw.data.map((d) => ({
       placeId: d.place_id || '',
@@ -8415,7 +9874,7 @@ async function seedPizzint() {
         ? d.current_popularity * 100 / d.percentage_of_usual : 0,
       dataSource: d.data_source || '',
       recordedAt: d.recorded_at || '',
-      dataFreshness: d.data_freshness === 'fresh' ? 'DATA_FRESHNESS_FRESH' : 'DATA_FRESHNESS_STALE',
+      dataFreshness: freshRow(d) ? 'DATA_FRESHNESS_FRESH' : 'DATA_FRESHNESS_STALE',
       isClosedNow: !!d.is_closed_now,
       ...(pizzintVenuePoint(d) ?? { lat: 0, lng: 0 }),
     }));
@@ -8425,8 +9884,8 @@ async function seedPizzint() {
     const published = fallback?.published || locations;
     const adjusted = scorePizzintLocations(published, previous?.pizzint, Date.now());
     archive = recordPizzintHistory({
-      provider: fallback ? 'besttime' : 'pizzint',
-      locations: fallback?.historyLocations || locations,
+      provider: besttime ? 'besttime' : 'pizzint',
+      locations: besttime?.historyLocations || locations,
       capturedAt: new Date(Date.now()).toISOString(),
     }, upstashEval).catch((e) => {
       // A FIXED vocabulary, never the raw message: upstream error text can carry
@@ -8441,16 +9900,12 @@ async function seedPizzint() {
         : e?.message === 'history_write_failed' ? 'write_rejected' : 'unknown';
       console.warn('[PizzINT] History archive failed:', category);
     });
-    if (locations.length === 0) {
-      // BestTime reported every venue as having no live data right now.
-      if (!fallback || fallback.answered) await recordPizzintQuietPoll();
-      return;
-    }
     if (locations.every(l => l.noLiveSignal)) {
-      console.warn('[PizzINT] No live signals; preserving last good observation');
-      // The provider still answered every venue cleanly (e.g. a closing venue
-      // reading 0), so the source is healthy; the 24h lastLiveAt cap catches dead sensors.
-      if (!fallback || fallback.answered) await recordPizzintQuietPoll();
+      // Every provider may still have answered cleanly (no venue reporting, or a
+      // closing venue reading 0), so the source is healthy; the 24h lastLiveAt cap
+      // catches dead sensors.
+      if (answered) await recordPizzintQuietPoll();
+      console.log(`[PizzINT] No live reading; ${await keepLastPizzintReading()}`);
       return;
     }
     const openLocations = published.filter((l) => !l.isClosedNow && !l.noLiveSignal);
@@ -8488,7 +9943,7 @@ async function seedPizzint() {
     const hasLiveSignal = published.some((l) => !l.noLiveSignal && !l.isClosedNow && l.dataFreshness === 'DATA_FRESHNESS_FRESH');
     const ok2 = ok1 && (hasLiveSignal
       ? await upstashSet(PIZZINT_SEED_META_KEY, { fetchedAt: Date.now(), recordCount: locations.length, lastLiveAt: Date.now() }, 604800)
-      : !fallback || fallback.answered ? await recordPizzintQuietPoll(locations.length) : true);
+      : answered ? await recordPizzintQuietPoll(locations.length) : true);
     console.log(`[PizzINT] Seeded ${locations.length} locations (open:${openLocations.length} spikes:${activeSpikes} defcon:${defconLevel} redis:${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
     console.warn('[PizzINT] Seed error:', e?.message || e);
@@ -8670,10 +10125,8 @@ function brotliSyncBuffer(body) {
 
 function getClientIp(req, isPublic = false) {
   if (isPublic) {
-    // Public routes: only trust CF-Connecting-IP (set by Cloudflare, not spoofable).
-    // x-real-ip is excluded — client-spoofable on unauthenticated endpoints.
-    const cfIp = req.headers['cf-connecting-ip'];
-    if (typeof cfIp === 'string' && cfIp.trim()) return cfIp.trim();
+    // Direct-origin callers can forge forwarding headers. None is authenticated
+    // here, so public callers must share their socket peer's bucket.
     return req.socket?.remoteAddress || 'unknown';
   }
   // Authenticated routes: x-real-ip is safe because auth token validates the caller
@@ -9364,20 +10817,21 @@ const CHOKEPOINTS = [
 const chokepointCrossings = new Map();
 const TRANSIT_COOLDOWN_MS = 30 * 60 * 1000;
 const TRANSIT_WINDOW_MS = 24 * 60 * 60 * 1000;
-const MIN_DWELL_MS = 5 * 60 * 1000;
-// How long zone membership outlives a vessel's last report inside the zone.
-// It must exceed DENSITY_WINDOW: the vessel table drops a vessel after 30
-// silent minutes, and an exit reported after that gap is still an exit.
-const TRANSIT_MAX_EXIT_GAP_MS = 6 * 60 * 60 * 1000;
+// How long a gate sighting waits for the opposite gate. It covers the slowest
+// gate-to-gate passage (about 180 nm at Malacca and the Cape) and must exceed
+// DENSITY_WINDOW: the vessel table drops a vessel after 30 silent minutes.
+const TRANSIT_MAX_GATE_GAP_MS = 18 * 60 * 60 * 1000;
 const CHOKEPOINT_TRANSIT_KEY = 'supply_chain:chokepoint_transits:v1';
 const CHOKEPOINT_TRANSIT_TTL = 3600; // 1h — 6x interval; survives ~5 consecutive missed pings
-const transitTracker = createTransitTracker({
-  zones: CHOKEPOINTS,
-  minDwellMs: MIN_DWELL_MS,
+const transitTracker = createDurableTransitTracker({
+  gates: CHOKEPOINT_TRANSIT_GATES,
+  maxTransitMs: TRANSIT_MAX_GATE_GAP_MS,
   cooldownMs: TRANSIT_COOLDOWN_MS,
-  maxExitGapMs: TRANSIT_MAX_EXIT_GAP_MS,
-  crossings: chokepointCrossings,
+  evaluate: upstashEval,
 });
+setInterval(() => {
+  transitTracker.flush(Date.now()).catch(error => console.warn('[Transit] Gate persistence failed:', error.message));
+}, 10_000).unref?.();
 
 // Dark-ship (AIS gap) count envelope — the trusted producer behind the
 // temporal anomalies `ais_gaps` count source (#7574). Written on its own
@@ -10073,10 +11527,12 @@ setInterval(() => {
 
 async function seedChokepointTransits() {
   const now = Date.now();
+  const unavailable = await transitTracker.flush(now);
+  if (unavailable.size) console.warn(`[Transit] Capacity-limited waterways: ${[...unavailable].join(', ')}`);
   const window = await readTransitWindow(chokepointCrossings, now, upstashEval);
   const transits = {};
   for (const cp of CHOKEPOINTS) {
-    const recent = window.get(cp.name) || [];
+    const recent = unavailable.has(cp.name) ? [] : window.get(cp.name) || [];
     // An empty observed window cannot establish zero traffic.
     transits[cp.name] = {
       tanker: recent.filter(c => c.type === 'tanker').length,
@@ -10093,7 +11549,10 @@ async function seedChokepointTransits() {
   const payload = { transits, transitCoverage, fetchedAt: now };
   const ok = await envelopeWrite(CHOKEPOINT_TRANSIT_KEY, payload, CHOKEPOINT_TRANSIT_TTL, { recordCount: covered, sourceVersion: 'chokepoint-transits' });
   if (!ok) throw new Error('Transit count publication failed');
-  await upstashSet('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: now, recordCount: covered, transitCoverage }, 604800);
+  // Health names the measurable straits from this transitCoverage, so a dropped
+  // write must fail the tick instead of leaving the previous coverage in place.
+  const metaOk = await upstashSet('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: now, recordCount: covered, transitCoverage }, 604800);
+  if (!metaOk) throw new Error('Transit coverage metadata write failed');
   console.log(`[Transit] Seeded ${covered}/${canonical.length} measured chokepoints (missing: ${missing.join(', ')})`);
 }
 
@@ -10180,7 +11639,15 @@ async function seedTransitSummaries() {
 
   const now = Date.now();
   const summaries = {};
-  const window = await readTransitWindow(chokepointCrossings, now, upstashEval);
+  let window;
+  try {
+    const unavailable = await transitTracker.flush(now);
+    if (unavailable.size) console.warn(`[Transit] Capacity-limited waterways: ${[...unavailable].join(', ')}`);
+    window = await readTransitWindow(chokepointCrossings, now, upstashEval);
+    for (const name of unavailable) window.delete(name);
+  } catch (error) {
+    console.warn('[TransitSummary] Publishing PortWatch data with AIS counts unavailable:', error?.message || error);
+  }
   // Iterate the canonical chokepoint ID set rather than whatever pw happens to
   // carry today. If seed-portwatch dropped 3 of 13 (flaky ArcGIS), those 3
   // would otherwise vanish from summaries and the RPC would render zero-state
@@ -10204,13 +11671,17 @@ async function seedTransitSummaries() {
     const threatLevel = CHOKEPOINT_THREAT_LEVELS[cpId] || 'normal';
     const history = cpData?.history ?? [];
     const anomaly = detectTrafficAnomaly(history, threatLevel);
+    // The official IMF PortWatch figures: latest published day, trailing
+    // 7-day mean, and the seeder's year-earlier baseline. Null when PortWatch
+    // has nothing for this chokepoint -- never a zero-fill.
+    const official = summarizePortwatchHistory(history, cpData?.baseline);
 
     // Get relay transit counts for this chokepoint
     let relayTransit = null;
     for (const [relayName, canonicalId] of Object.entries(RELAY_NAME_TO_ID)) {
       if (canonicalId === cpId) {
-        const recent = window.get(relayName) || [];
-        if (recent.length > 0) {
+        const recent = window?.get(relayName);
+        if (recent?.length) {
           relayTransit = {
             tanker: recent.filter(c => c.type === 'tanker').length,
             cargo: recent.filter(c => c.type === 'cargo').length,
@@ -10236,6 +11707,12 @@ async function seedTransitSummaries() {
       todayCargo: relayTransit?.cargo ?? null,
       todayOther: relayTransit?.other ?? null,
       wowChangePct: cpData?.wowChangePct ?? 0,
+      officialLatestDate: official.latestDate,
+      officialLatestTotal: official.latestTotal,
+      officialAvg7d: official.avg7d,
+      baselineAvgDaily: official.baselineAvgDaily,
+      baselineFrom: official.baselineFrom,
+      baselineTo: official.baselineTo,
       riskLevel: cr?.riskLevel ?? '',
       incidentCount7d: cr?.incidentCount7d ?? 0,
       disruptionPct: cr?.disruptionPct ?? 0,
@@ -10317,7 +11794,7 @@ async function ucdpRelayFetchPage(version, page) {
   const url = `https://ucdpapi.pcr.uu.se/api/gedevents/${version}?pagesize=${UCDP_PAGE_SIZE}&page=${page}`;
 
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: { Accept: 'application/json' }, timeout: UCDP_FETCH_TIMEOUT }, (res) => {
+    const req = https.get(url, { signal: AbortSignal.timeout(UCDP_FETCH_TIMEOUT), headers: { Accept: 'application/json' }, timeout: UCDP_FETCH_TIMEOUT }, (res) => {
       if (res.statusCode !== 200) {
         res.resume();
         return reject(new Error(`UCDP API ${res.statusCode} (v${version} p${page})`));
@@ -10805,6 +12282,7 @@ function _attemptOpenSkyTokenFetch(clientId, clientSecret) {
     return _openskyProxyConnect('auth.opensky-network.org', 443).then((tlsSocket) => {
       return new Promise((resolve) => {
         const req = https.request({
+          signal: AbortSignal.timeout(10000),
           // tlsSocket is ALREADY a TLS connection to the target — proxyConnectTunnel
           // does tls.connect() through the CONNECT tunnel. Reuse it via
           // createConnection (NOT `socket:`): `socket:` makes https.request wrap it
@@ -10845,6 +12323,7 @@ function _attemptOpenSkyTokenFetch(clientId, clientSecret) {
 
   return new Promise((resolve) => {
     const req = https.request({
+      signal: AbortSignal.timeout(10000),
       hostname: 'auth.opensky-network.org',
       port: 443,
       family: 4,
@@ -10956,6 +12435,7 @@ function _openskyRawFetch(url, token) {
     return _openskyProxyConnect(parsed.hostname, 443, 15000).then((tlsSocket) => {
       return new Promise((resolve) => {
         const request = https.get({
+          signal: AbortSignal.timeout(15000),
           // Reuse the already-TLS tunnel socket via createConnection, not `socket:`
           // — passing an already-TLS socket as `socket:` double-wraps TLS and throws
           // EPROTO "wrong version number", failing every OpenSky states fetch. See #5074.
@@ -10981,6 +12461,7 @@ function _openskyRawFetch(url, token) {
 
   return new Promise((resolve) => {
     const request = https.get(url, {
+      signal: AbortSignal.timeout(15000),
       family: 4,
       headers: reqHeaders,
       agent: httpsKeepAliveAgent,
@@ -11239,6 +12720,57 @@ async function handleOpenSkyRequest(req, res, PORT) {
   }
 }
 
+async function handleWitsRequest(req, res) {
+  const responseHeaders = {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store',
+    'CDN-Cache-Control': 'no-store',
+  };
+  if (req.method !== 'GET') {
+    return safeEnd(res, 405, { ...responseHeaders, Allow: 'GET' }, JSON.stringify({ error: 'Method not allowed' }));
+  }
+
+  const params = new URL(req.url, 'http://localhost').searchParams;
+  const upstreamPath = params.get('path') || '';
+  const rows = /^\/API\/V1\/SDMX\/V21\/datasource\/TRN\/reporter\/\d{3}\/partner\/(all|000)\/product\/\d{6}\/year\/(\d{1,4})\/datatype\/(reported|aveestimated)$/.exec(upstreamPath);
+  const validRows = rows && Number(rows[2]) >= 1 && Number(rows[2]) <= 2100
+    && (rows[3] === 'reported' ? rows[1] === 'all' : rows[1] === '000');
+  const validMetadata = /^\/API\/V1\/wits\/datasource\/trn\/(dataavailability\/country\/\d{3}\/year\/all|country\/all)$/.test(upstreamPath);
+  if (params.size !== 1 || (!validRows && !validMetadata)) {
+    return safeEnd(res, 400, responseHeaders, JSON.stringify({ error: 'Invalid WITS path' }));
+  }
+
+  try {
+    const upstreamUrl = new URL('https://wits.worldbank.org');
+    upstreamUrl.pathname = upstreamPath;
+    const upstream = await fetch(upstreamUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        Accept: 'application/xml,text/xml;q=0.9,*/*;q=0.1',
+      },
+      redirect: 'error',
+      signal: AbortSignal.timeout(9000),
+    });
+    const chunks = [];
+    let size = 0;
+    if (upstream.body) {
+      for await (const chunk of upstream.body) {
+        size += chunk.length;
+        if (size > 4 * 1024 * 1024) throw new Error('WITS response too large');
+        chunks.push(chunk);
+      }
+    }
+    return safeEnd(res, upstream.status, {
+      ...responseHeaders,
+      'Content-Type': upstream.headers.get('content-type') || 'application/xml',
+    }, Buffer.concat(chunks));
+  } catch (error) {
+    const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
+    return safeEnd(res, timedOut ? 504 : 502, responseHeaders,
+      JSON.stringify({ error: timedOut ? 'WITS request timed out' : 'WITS request failed' }));
+  }
+}
+
 // ── World Bank proxy (World Bank blocks Vercel edge IPs with 403) ──
 const worldbankCache = new Map(); // key: query string → { data, timestamp }
 const WORLDBANK_CACHE_TTL_MS = 30 * 60 * 1000; // 30 min — data rarely changes
@@ -11347,6 +12879,8 @@ function handleWorldBankRequest(req, res) {
   console.log('[Relay] World Bank request (MISS):', indicator);
 
   const request = https.get(wbUrl, {
+
+    signal: AbortSignal.timeout(15000),
     headers: {
       'Accept': 'application/json',
       'User-Agent': 'Mozilla/5.0 (compatible; WorldMonitor/1.0; +https://worldmonitor.app)',
@@ -11530,6 +13064,7 @@ function fetchPolymarketUpstream(cacheKey, endpoint, params, tag) {
         }
       }
       const request = https.get(gammaUrl, {
+        signal: AbortSignal.timeout(10000),
         headers: { 'Accept': 'application/json', 'User-Agent': CHROME_UA },
         timeout: 10000,
       }, (response) => {
@@ -11654,7 +13189,8 @@ function handlePolymarketRequest(req, res) {
     polymarketInflight.set(cacheKey, inflight);
   }
 
-  inflight.then((data) => {
+  // Returned so a throw while serving reaches the router's catch instead of going unhandled.
+  return inflight.then((data) => {
     if (data) {
       sendCompressed(req, res, 200, {
         'Content-Type': 'application/json',
@@ -11787,6 +13323,8 @@ function handleYahooChartRequest(req, res) {
   }
 
   const yahooReq = https.get(yahooUrl, {
+
+    signal: AbortSignal.timeout(10000),
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
     timeout: 10000,
   }, (upstream) => {
@@ -11935,6 +13473,7 @@ function handleAviationStackRequest(req, res) {
 
   const apiUrl = `https://api.aviationstack.com/v1/flights?${params}`;
   const apiReq = https.get(apiUrl, {
+    signal: AbortSignal.timeout(10000),
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
     timeout: 10000,
   }, (upstream) => {
@@ -12004,6 +13543,9 @@ function fetchViaProxy(targetUrl, proxy) {
 const ICAO_API_KEY = process.env.ICAO_API_KEY;
 const notamCache = { data: null, ts: 0 };
 const NOTAM_CACHE_TTL = 30 * 60 * 1000; // 30 min
+// Comma-separated ICAO location indicators. The value is pasted into the ICAO
+// query string after the API key, so nothing else may get through.
+const NOTAM_LOCATIONS_RE = /^[A-Z0-9]{4}(?:,[A-Z0-9]{4}){0,199}$/;
 
 function handleNotamProxyRequest(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
@@ -12011,6 +13553,10 @@ function handleNotamProxyRequest(req, res) {
   if (!locations) {
     return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
       JSON.stringify({ error: 'Missing locations parameter' }));
+  }
+  if (!NOTAM_LOCATIONS_RE.test(locations)) {
+    return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'Invalid locations parameter' }));
   }
   if (!ICAO_API_KEY) {
     return sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
@@ -12029,6 +13575,8 @@ function handleNotamProxyRequest(req, res) {
   const apiUrl = `https://dataservices.icao.int/api/notams-realtime-list?api_key=${ICAO_API_KEY}&format=json&locations=${locations}`;
 
   const request = https.get(apiUrl, {
+
+    signal: AbortSignal.timeout(25000),
     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' },
     timeout: 25000,
   }, (upstream) => {
@@ -12111,7 +13659,24 @@ function getCorsOrigin(req) {
   return '';
 }
 
-const server = http.createServer(async (req, res) => {
+// A throw that escapes a request (the router's own awaits, or an async route
+// handler) would otherwise be an unhandled rejection, which exits the relay on
+// Node 24 and takes every route and the AIS stream down with it. Route handlers
+// are dispatched with `return` so this one catch covers them.
+const server = http.createServer((req, res) => handleRelayRequest(req, res)
+  .catch((err) => handleRelayRequestFailure(res, err)));
+
+function handleRelayRequestFailure(res, err) {
+  console.error('[Relay] request handler failed:', err?.name || 'Error', err?.message || '');
+  // A half-written body must not be ended as if complete: cut the socket so the client sees the failure.
+  if (res.headersSent) {
+    if (!res.writableEnded) res.destroy();
+    return;
+  }
+  safeEnd(res, 500, {}, '');
+}
+
+async function handleRelayRequest(req, res) {
   const pathname = (req.url || '/').split('?')[0];
   const corsOrigin = getCorsOrigin(req);
   // Always emit Vary: Origin on /rss (browser-direct via CDN) to prevent
@@ -12143,7 +13708,7 @@ const server = http.createServer(async (req, res) => {
   // prevention (rate limiting), not data protection. Cloudflare WAF provides edge-level protection.
   const isPublicRoute = pathname === '/health' || pathname === '/' || isRssRoute || pathname.startsWith('/widget-agent');
   if (!isPublicRoute) {
-    const authorized = pathname === '/status'
+    const authorized = pathname === '/status' || pathname === '/wits'
       ? Boolean(RELAY_SHARED_SECRET) && isAuthorizedRequest(req)
       : isAuthorizedRequest(req);
     if (!authorized) {
@@ -12385,6 +13950,22 @@ const server = http.createServer(async (req, res) => {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
     }, JSON.stringify(getRelayRollingMetrics()));
+  } else if (pathname === '/__test/seed-classify' && RELAY_TEST_MODE) {
+    // Test-only seam, same contract as /__test/seed-theater-posture: run one
+    // classify cycle on request, and answer once its alert publishes settle.
+    await seedClassify();
+    await settleNotificationPublishes();
+    return sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+    }, JSON.stringify({ ok: true }));
+  } else if (pathname === '/__test/classify-build-watch' && RELAY_TEST_MODE) {
+    // Test-only seam: one build-watch check on request.
+    const editions = await checkDigestBuilds();
+    return sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+    }, JSON.stringify({ ok: true, editions }));
   } else if (pathname === '/__test/seed-theater-posture' && RELAY_TEST_MODE) {
     // Test-only seam: background seed loops are disabled in RELAY_TEST_MODE,
     // so tests trigger a single theater-posture cycle explicitly.
@@ -12502,6 +14083,7 @@ const server = http.createServer(async (req, res) => {
       const apiResult = await new Promise((resolve) => {
         const start = Date.now();
         const apiReq = https.get('https://opensky-network.org/api/states/all?lamin=47&lomin=5&lamax=48&lomax=6', {
+          signal: AbortSignal.timeout(15000),
           family: 4,
           headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
           timeout: 15000,
@@ -12846,6 +14428,11 @@ const server = http.createServer(async (req, res) => {
             'Accept': 'application/rss+xml, application/xml, text/xml, */*',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.9',
+            // Smartraveller's Akamai edge never answers a request without
+            // Accept-Encoding (the relay logged `read ETIMEDOUT` on every miss).
+            // gzip only: the body handler below decodes gzip and deflate, and
+            // gzip is the one every server that compresses supports.
+            'Accept-Encoding': 'gzip',
             ...conditionalHeaders,
           },
           timeout: 15000,
@@ -13056,36 +14643,38 @@ const server = http.createServer(async (req, res) => {
       }));
     }
   } else if (pathname.startsWith('/ucdp-events')) {
-    handleUcdpEventsRequest(req, res);
+    return handleUcdpEventsRequest(req, res);
   } else if (pathname.startsWith('/wingbits/track')) {
-    handleWingbitsTrackRequest(req, res);
+    return handleWingbitsTrackRequest(req, res);
   } else if (pathname.startsWith('/opensky')) {
-    handleOpenSkyRequest(req, res, PORT);
+    return handleOpenSkyRequest(req, res, PORT);
   } else if (pathname.startsWith('/worldbank')) {
-    handleWorldBankRequest(req, res);
+    return handleWorldBankRequest(req, res);
+  } else if (pathname === '/wits') {
+    return handleWitsRequest(req, res);
   } else if (pathname.startsWith('/polymarket')) {
-    handlePolymarketRequest(req, res);
+    return handlePolymarketRequest(req, res);
   } else if (pathname === '/yahoo-chart') {
-    handleYahooChartRequest(req, res);
+    return handleYahooChartRequest(req, res);
   } else if (pathname === '/crypto-quotes') {
-    handleCryptoQuotesRequest(req, res);
+    return handleCryptoQuotesRequest(req, res);
   } else if (pathname === '/notam') {
-    handleNotamProxyRequest(req, res);
+    return handleNotamProxyRequest(req, res);
   } else if (pathname === '/aviationstack') {
-    handleAviationStackRequest(req, res);
+    return handleAviationStackRequest(req, res);
   } else if (pathname === '/google-flights/search') {
-    handleGoogleFlightsSearch(req, res);
+    return handleGoogleFlightsSearch(req, res);
   } else if (pathname === '/google-flights/search-dates') {
-    handleGoogleFlightsDates(req, res);
+    return handleGoogleFlightsDates(req, res);
   } else if (pathname === '/widget-agent/health' && req.method === 'GET') {
-    handleWidgetAgentHealthRequest(req, res);
+    return handleWidgetAgentHealthRequest(req, res);
   } else if (pathname === '/widget-agent' && req.method === 'POST') {
-    handleWidgetAgentRequest(req, res);
+    return handleWidgetAgentRequest(req, res);
   } else {
     res.writeHead(404);
     res.end();
   }
-});
+}
 
 // ─── Google Flights ───────────────────────────────────────────────────────────
 //
@@ -14134,6 +15723,10 @@ async function handleWidgetAgentRequest(req, res) {
   } catch {
     return safeEnd(res, 400, {}, '');
   }
+  // Valid JSON need not be an object: reading .tier off null throws.
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return safeEnd(res, 400, {}, '');
+  }
 
   const rawTier = body.tier;
   if (rawTier !== undefined && rawTier !== 'basic' && rawTier !== 'pro') {
@@ -14250,7 +15843,11 @@ async function handleWidgetAgentRequest(req, res) {
 
   try {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
-    const client = new Anthropic({ apiKey: WIDGET_ANTHROPIC_KEY });
+    // The widget deadline and cancellation own recovery; SDK retries would
+    // replay billed turns and can sleep beyond the remaining request budget.
+    // Turns are non-streaming, so headers arrive only after generation: the
+    // client timeout must cover the whole request budget, not a fixed minute.
+    const client = new Anthropic({ apiKey: WIDGET_ANTHROPIC_KEY, timeout: timeoutMs, maxRetries: 0 });
 
     const messages = [
       ...conversationHistory
@@ -15039,10 +16636,10 @@ function connectUpstream() {
 
 const wss = new WebSocketServer({ server });
 
-server.listen(PORT, () => {
+server.listen(PORT, RELAY_BIND_HOST, () => {
   const listeningPort = server.address()?.port || PORT;
   relayBoundPort = listeningPort;
-  console.log(`[Relay] WebSocket relay on port ${listeningPort} (OpenSky route: ${OPENSKY_ROUTE}${OPENSKY_ROUTE_REQUESTED !== OPENSKY_ROUTE ? ` — "${OPENSKY_ROUTE_REQUESTED}" requested but unconfigured` : ''})`);
+  console.log(`[Relay] WebSocket relay on port ${listeningPort}, host ${server.address()?.address} (OpenSky route: ${OPENSKY_ROUTE}${OPENSKY_ROUTE_REQUESTED !== OPENSKY_ROUTE ? ` — "${OPENSKY_ROUTE_REQUESTED}" requested but unconfigured` : ''})`);
   if (RELAY_TEST_MODE) {
     if (process.env.RELAY_TEST_THEATER_VESSEL === '1') {
       candidateReports.set('test-military-vessel', {
@@ -15063,6 +16660,9 @@ server.listen(PORT, () => {
       console.log('[Relay] Test mode: starting the Telegram poll loop on request');
       startTelegramPollLoop();
     }
+    // Same opt-in seam for scripts/ais-relay-air-traffic.test.cjs.
+    if (process.env.RELAY_TEST_AIR_TRAFFIC_LOOP === 'true') startAirTrafficLoop();
+    if (process.env.RELAY_TEST_WINGBITS_TRAFFIC_LOOP === 'true') startWingbitsTrafficLoop();
     console.log('[Relay] Test mode enabled — background seed loops are disabled');
     return;
   }
@@ -15085,8 +16685,14 @@ server.listen(PORT, () => {
   startChokepointWarmPingLoop();
   startCableHealthWarmPingLoop();
   startClassifySeedLoop();
+  startDigestBuildWatch();
+  startDigestWarmLoop();
+  startMiddleEastStrikesLoop();
+  startMiddleEastStrikesV2Loop();
   startServiceStatusesSeedLoop();
   startTheaterPostureSeedLoop();
+  startAirTrafficLoop();
+  startWingbitsTrafficLoop();
 
   startWeatherSeedLoop();
   startSpendingSeedLoop();
@@ -15185,6 +16791,7 @@ async function gracefulShutdown(signal) {
     // already silent, and the process is about to exit regardless.
     try { upstreamSocket.terminate(); } catch {}
   }
+  await transitTracker.flush(Date.now()).catch(error => console.warn('[Transit] Shutdown gate flush failed:', error.message));
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 12_000);
 }

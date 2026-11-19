@@ -66,6 +66,8 @@ const INVITEE = {
 };
 
 const fetchCalls: string[] = [];
+// When set, a pipeline that deletes a brief envelope answers that DEL with an error.
+let failBriefEnvelopeDelete = false;
 
 function hostnameOf(urlLike: string): string | null {
   try {
@@ -107,16 +109,23 @@ async function makeT() {
       return new Response("gone", { status: 404 });
     }
     if (url.includes("upstash.test")) {
+      if (body.startsWith('["SCAN",')) return Response.json({ result: ["0", []] });
       if (url.includes("/get/")) {
         return Response.json({
           result: JSON.stringify({ issueSlot: "2026-09-21-1200" }),
         });
       }
-      return Response.json(
-        url.includes("/pipeline")
-          ? [{ result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }]
-          : { result: "OK" },
-      );
+      if (url.includes("/zrange/")) {
+        return Response.json({ result: ["2026-09-14-1200", "2026-09-21-1200"] });
+      }
+      if (url.includes("/pipeline")) {
+        const commands = JSON.parse(body || "[]") as string[][];
+        return Response.json(commands.map((cmd) =>
+          failBriefEnvelopeDelete && cmd[0] === "DEL" && /^brief:user_deletion_a:/.test(String(cmd[1]))
+            ? { error: "ERR simulated" }
+            : { result: 1 }));
+      }
+      return Response.json({ result: "OK" });
     }
     return new Response(`unexpected fetch ${url}`, { status: 500 });
   });
@@ -130,6 +139,7 @@ afterEach(() => {
   dodoUpdateMock.mockReset();
   vi.unstubAllGlobals();
   fetchCalls.length = 0;
+  failBriefEnvelopeDelete = false;
   delete process.env.CLERK_SECRET_KEY;
   delete process.env.DODO_API_KEY;
   delete process.env.UPSTASH_REDIS_REST_URL;
@@ -154,6 +164,17 @@ async function seedUser(
       localePrimary: "en",
       firstSeenAt: now,
       lastSeenAt: now,
+      // About-you answers and their free text live on this row, so deleting
+      // it is what erases them (KTD1).
+      aboutYou: {
+        version: 1,
+        primaryUse: "markets",
+        usageContext: "work",
+        alternative: "a terminal my employer pays for",
+        firstAnsweredAt: now,
+        updatedAt: now,
+        answerSurface: "dashboard",
+      },
     });
   });
 }
@@ -224,6 +245,21 @@ async function seedPersonalRow(
       normalizedEmail: email.toLowerCase(),
       reason: "bounce",
       suppressedAt: now,
+    });
+    await ctx.db.insert("agentFeedback", {
+      kind: "bug",
+      surfaceType: "mcp_tool",
+      surfaceName: "get_market_data",
+      summary: "Quotes are empty",
+      redacted: false,
+      fingerprint: "f".repeat(64),
+      retryKey: "e".repeat(64),
+      reporterKey: `principal:${userId}`,
+      authKind: "keyed",
+      principalId: userId,
+      status: "received",
+      receivedAt: now,
+      updatedAt: now,
     });
   });
 }
@@ -407,6 +443,9 @@ describe("account deletion — Convex cascade", () => {
     expect(await rowsForUser(t, "entitlements", USER_A.subject)).toHaveLength(0);
     expect(await rowsForUser(t, "followedCountries", USER_A.subject)).toHaveLength(0);
     expect(await rowsForUser(t, "customers", USER_A.subject)).toHaveLength(0);
+    const feedbackPrincipals = await t.run(async (ctx) =>
+      (await ctx.db.query("agentFeedback").collect()).map((r) => r.principalId));
+    expect(feedbackPrincipals).toEqual([USER_B.subject]);
 
     expect(await rowsForUser(t, "users", USER_B.subject)).toHaveLength(1);
     expect(await rowsForUser(t, "userPreferences", USER_B.subject)).toHaveLength(1);
@@ -538,6 +577,15 @@ describe("account deletion — business seats", () => {
         acceptedAt: now,
         expiresAt: now + 14 * 24 * 60 * 60 * 1000,
       });
+      await ctx.db.insert("teamDashboards", {
+        teamKey: "business:sub_owner_keep",
+        variant: "full",
+        name: "Ops wall",
+        layout: { panels: [{ key: "live-news", on: true }] },
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+      });
     });
 
     await t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
@@ -556,6 +604,8 @@ describe("account deletion — business seats", () => {
       status: "active",
     });
     expect(await rowsForUser(t, "users", OWNER.subject)).toHaveLength(1);
+    // A seat holder leaving does not take the team's dashboards with them.
+    expect(await t.run(async (ctx) => ctx.db.query("teamDashboards").collect())).toHaveLength(1);
   });
 
   test("owner delete removes grants and retains the owner subscription evidence", async () => {
@@ -584,6 +634,17 @@ describe("account deletion — business seats", () => {
         createdAt: now,
         expiresAt: now + 14 * 24 * 60 * 60 * 1000,
       });
+      for (const teamKey of ["business:sub_owner_erase", "business:sub_someone_else"]) {
+        await ctx.db.insert("teamDashboards", {
+          teamKey,
+          variant: "full",
+          name: "Ops wall",
+          layout: { panels: [{ key: "live-news", on: true }] },
+          version: 1,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
       await ctx.db.insert("dunningEmails", {
         dodoSubscriptionId: "sub_owner_erase",
         step: "dunning_day0",
@@ -614,6 +675,126 @@ describe("account deletion — business seats", () => {
     const dunning = await t.run(async (ctx) => ctx.db.query("dunningEmails").collect());
     expect(dunning[0]?.email).toBe(OWNER.email);
     expect(await rowsForUser(t, "users", INVITEE.subject)).toHaveLength(1);
+    // The team ends with the owner's account, so its shared dashboards go too;
+    // another team's are untouched.
+    const dashboards = await t.run(async (ctx) => ctx.db.query("teamDashboards").collect());
+    expect(dashboards.map((d) => d.teamKey)).toEqual(["business:sub_someone_else"]);
+  });
+});
+
+describe("account deletion — enterprise accounts", () => {
+  test("deleting a member removes their member row and leaves the account and other members", async () => {
+    const t = await makeT();
+    await seedUser(t, INVITEE);
+    await seedUser(t, OWNER);
+    const now = Date.now();
+    const { accountId } = await t.mutation(internal.enterpriseAccounts.createAccount, {
+      name: "Hexion",
+      contractStart: now - 24 * 60 * 60 * 1000,
+      contractEnd: now + 365 * 24 * 60 * 60 * 1000,
+      dailyRequestAllowance: 50_000,
+      perMinuteBurst: 300,
+      monthlyInputTokens: 50_000_000,
+      monthlyOutputTokens: 5_000_000,
+      overagePerThousandRequestsUsd: 2,
+      overagePerMillionInputTokensUsd: 4,
+      overagePerMillionOutputTokensUsd: 20,
+      seatCap: 5,
+      allowedProviders: ["anthropic"],
+    });
+    await t.mutation(internal.enterpriseAccounts.addMemberByUserId, { accountId, userId: INVITEE.subject });
+    await t.mutation(internal.enterpriseAccounts.addMemberByUserId, { accountId, userId: OWNER.subject });
+
+    await t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
+      userId: INVITEE.subject,
+      source: "support",
+    });
+    await drainErase(t);
+
+    const members = await t.run(async (ctx) => ctx.db.query("enterpriseMembers").collect());
+    expect(members.map((m) => m.userId)).toEqual([OWNER.subject]);
+    const accounts = await t.run(async (ctx) => ctx.db.query("enterpriseAccounts").collect());
+    expect(accounts.map((a) => a._id)).toEqual([accountId]);
+  });
+});
+
+describe("account deletion — enterprise invites", () => {
+  test("self-delete erases Enterprise invites addressed to the caller's verified email", async () => {
+    const t = await makeT();
+    await seedUser(t, INVITEE);
+    const now = Date.now();
+    const { accountId } = await t.mutation(internal.enterpriseAccounts.createAccount, {
+      name: "Hexion",
+      contractStart: now - 24 * 60 * 60 * 1000,
+      contractEnd: now + 365 * 24 * 60 * 60 * 1000,
+      dailyRequestAllowance: 10_000,
+      perMinuteBurst: 300,
+      monthlyInputTokens: 15_000_000,
+      monthlyOutputTokens: 3_000_000,
+      overagePerThousandRequestsUsd: 3,
+      overagePerMillionInputTokensUsd: 4,
+      overagePerMillionOutputTokensUsd: 20,
+      seatCap: 5,
+      allowedProviders: ["anthropic"],
+    });
+    await t.run(async (ctx) => {
+      for (const email of [INVITEE.email.toLowerCase(), "someone.else@acme.test"]) {
+        await ctx.db.insert("enterpriseMembers", {
+          accountId,
+          email,
+          status: "pending",
+          role: "member",
+          invitedAt: now,
+          inviteExpiresAt: now + 14 * 24 * 60 * 60 * 1000,
+          updatedAt: now,
+        });
+      }
+    });
+
+    await t.withIdentity(INVITEE).action(api.accountDeletion.erase.requestAccountDeletion, {});
+    await drainErase(t);
+
+    const left = await t.run(async (ctx) => ctx.db.query("enterpriseMembers").collect());
+    expect(left.map((m) => m.email)).toEqual(["someone.else@acme.test"]);
+  });
+
+  test("an address match alone never erases a seat another user holds", async () => {
+    const t = await makeT();
+    await seedUser(t, INVITEE);
+    const now = Date.now();
+    const { accountId } = await t.mutation(internal.enterpriseAccounts.createAccount, {
+      name: "Acme",
+      contractStart: now - 24 * 60 * 60 * 1000,
+      contractEnd: now + 365 * 24 * 60 * 60 * 1000,
+      dailyRequestAllowance: 10_000,
+      perMinuteBurst: 300,
+      monthlyInputTokens: 15_000_000,
+      monthlyOutputTokens: 3_000_000,
+      overagePerThousandRequestsUsd: 3,
+      overagePerMillionInputTokensUsd: 4,
+      overagePerMillionOutputTokensUsd: 20,
+      seatCap: 5,
+      allowedProviders: ["anthropic"],
+    });
+    await t.run(async (ctx) => {
+      // Accepted by an earlier holder of the address, who still holds the seat.
+      await ctx.db.insert("enterpriseMembers", {
+        accountId,
+        email: INVITEE.email.toLowerCase(),
+        userId: "user_previous_holder",
+        status: "active",
+        role: "member",
+        invitedAt: now,
+        joinedAt: now,
+        updatedAt: now,
+      });
+    });
+
+    await t.withIdentity(INVITEE).action(api.accountDeletion.erase.requestAccountDeletion, {});
+    await drainErase(t);
+
+    const left = await t.run(async (ctx) => ctx.db.query("enterpriseMembers").collect());
+    expect(left.map((m) => m.userId)).toEqual(["user_previous_holder"]);
   });
 });
 
@@ -671,8 +852,58 @@ describe("account deletion — external side effects", () => {
     expect(fetchCalls.some((call) => call.includes("entitlements:test:user_deletion_a"))).toBe(true);
     expect(fetchCalls.some((call) => call.includes(`pro-mcp-token-neg:${String(tokenId)}`))).toBe(true);
     expect(fetchCalls.some((call) => call.includes("brief:latest:user_deletion_a"))).toBe(true);
+    expect(fetchCalls.some((call) => call.includes("wm:notif:sent:v1:user_deletion_a"))).toBe(true);
     expect(fetchCalls.some((call) => call.includes("brief:user_deletion_a:2026-09-21-1200"))).toBe(true);
+    const pipeline = fetchCalls.find((call) => call.includes("brief:l10n:user_deletion_a:2026-09-21-1200"));
+    const commands = JSON.parse(pipeline?.slice(pipeline.indexOf("[")) ?? "[]") as string[][];
+    const delIndex = (key: string) => commands.findIndex((cmd) => cmd[0] === "DEL" && cmd[1] === key);
+    expect(delIndex("brief:l10n:user_deletion_a:2026-09-21-1200")).toBeGreaterThanOrEqual(0);
+    expect(delIndex("brief:user_deletion_a:2026-09-21-1200")).toBeGreaterThanOrEqual(0);
+    // Every slot in the per-user index is deleted, not only the latest one.
+    expect(fetchCalls.some((call) => call.includes("/zrange/brief:slots:user_deletion_a/0/"))).toBe(true);
+    expect(delIndex("brief:user_deletion_a:2026-09-14-1200")).toBeGreaterThanOrEqual(0);
+    expect(delIndex("brief:l10n:user_deletion_a:2026-09-14-1200")).toBeGreaterThanOrEqual(0);
+    // The index and the pointer go in a later request, once every slot delete
+    // succeeded, so a failed slot delete leaves a retry able to find the slot.
+    expect(delIndex("brief:latest:user_deletion_a")).toBe(-1);
+    expect(delIndex("brief:slots:user_deletion_a")).toBe(-1);
+    const later = fetchCalls.slice(fetchCalls.indexOf(pipeline!) + 1);
+    expect(later.some((call) => call.includes('"DEL","brief:slots:user_deletion_a"'))).toBe(true);
+    expect(later.some((call) => call.includes('"DEL","brief:latest:user_deletion_a"'))).toBe(true);
     expect(await t.query(internal.mcpProTokens.validateProMcpToken, { tokenId })).toBeNull();
+  });
+
+  test("erase marks the account erased before it reads the brief slot index", async () => {
+    // A digest compose re-reads this marker after its envelope write: either it
+    // sees the marker and removes what it wrote, or this index read sees its slot.
+    const t = await makeT();
+    await seedUser(t, USER_A);
+    await t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
+      userId: USER_A.subject,
+      source: "support",
+    });
+    await drainErase(t);
+    const marker = fetchCalls.findIndex((call) => call.includes('"SET","brief:erased:user_deletion_a","1","EX","86400"'));
+    const indexRead = fetchCalls.findIndex((call) => call.includes("/zrange/brief:slots:user_deletion_a/0/"));
+    const pointerRead = fetchCalls.findIndex((call) => call.includes("/get/brief:latest:user_deletion_a"));
+    expect(marker).toBeGreaterThanOrEqual(0);
+    expect(marker).toBeLessThan(indexRead);
+    expect(marker).toBeLessThan(pointerRead);
+  });
+
+  test("a failed brief delete keeps the slot index and pointer so a retry finds the brief", async () => {
+    const t = await makeT();
+    await seedUser(t, USER_A);
+    failBriefEnvelopeDelete = true;
+    await t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
+      userId: USER_A.subject,
+      source: "support",
+    }).catch(() => {});
+    await drainErase(t);
+    expect(fetchCalls.some((call) => call.includes('"DEL","brief:user_deletion_a:2026-09-21-1200"'))).toBe(true);
+    expect(fetchCalls.some((call) => call.includes('"DEL","brief:slots:user_deletion_a"'))).toBe(false);
+    expect(fetchCalls.some((call) => call.includes('"DEL","brief:latest:user_deletion_a"'))).toBe(false);
+    expect((await deletionRow(t, USER_A.subject))?.status).not.toBe("complete");
   });
 
   test("Dodo timeout records last error and retries without double-cancel", async () => {
@@ -915,6 +1146,12 @@ describe("webhook deletions record and can repair the email-keyed gap", () => {
       { userId: USER_A.subject },
     );
     expect(row?.emailKeyedSkipped).toBeUndefined();
+    // The operator-supplied address is proof for the sweep, not data to keep:
+    // markExternalComplete already ran, so nothing else will clear it.
+    const stored = await t.run((ctx) => ctx.db.query("accountDeletions")
+      .withIndex("by_userId", (q) => q.eq("userId", USER_A.subject)).unique());
+    expect(stored?.status).toBe("complete");
+    expect(stored?.verifiedEmail).toBeUndefined();
   });
 
   test("the repair command refuses an empty email and reports an unknown subject", async () => {
@@ -985,6 +1222,7 @@ describe("account deletion registry is enforced, not documentation", () => {
   const DEDICATED_DELETE_STEPS = new Set([
     "followedCountries",          // eraseFollows: also decrements country aggregates
     "businessProGrants",          // eraseGrants: owner vs invitee, recomputes seats
+    "teamDashboards",             // eraseOwnedTeamDashboards: the owner's business teams only
     "proActivationPresentations", // anonymizeBilling: swept alongside billing rows
     "registrations",              // eraseEmailKeyed: verified-email keyed
     "contactMessages",            // eraseEmailKeyed: verified-email keyed

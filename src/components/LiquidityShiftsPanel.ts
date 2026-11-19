@@ -1,20 +1,12 @@
-import type { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { Panel } from './Panel';
+import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
+import { MarketServiceClient } from '@/services/generated-rpc-clients';
 import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { formatChange, getChangeClass } from '@/utils';
 import { proFreshRpcFetch } from '@/services/premium-fetch';
 
-let _client: MarketServiceClient | null = null;
-
-async function getMarketClient(): Promise<MarketServiceClient> {
-  if (!_client) {
-    const { MarketServiceClient } = await import('@/generated/client/worldmonitor/market/v1/service_client');
-    const { getRpcBaseUrl } = await import('@/services/rpc-client');
-    _client = new MarketServiceClient(getRpcBaseUrl(), { fetch: proFreshRpcFetch });
-  }
-  return _client;
-}
+const getMarketClient = createLazyClient(() => new MarketServiceClient(getRpcBaseUrl(), { fetch: proFreshRpcFetch }));
 
 const TOP_STOCKS = ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA'];
 const COT_PRIORITY = ['CL', 'GC', 'SI', 'ES', 'NQ'];
@@ -63,7 +55,7 @@ export class LiquidityShiftsPanel extends Panel {
   public async fetchData(): Promise<boolean> {
     this.showLoading();
     try {
-      const client = await getMarketClient();
+      const client = getMarketClient();
       const [cotResp, stocksResp] = await Promise.all([
         client.getCotPositioning({}),
         client.listMarketQuotes({ symbols: TOP_STOCKS }),

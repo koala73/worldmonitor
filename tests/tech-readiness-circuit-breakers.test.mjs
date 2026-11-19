@@ -377,7 +377,7 @@ describe('TechReadinessPanel — empty/error retry UX', () => {
       'empty result must not write count badge 0 before showSoftRefreshing()',
     );
     assert.match(panelSrc, /this\.hideCountBadge\(\);[\s\S]*?this\.setSafeContent\(unsafeRawHtml\(`\s*<div class="panel-soft-empty"/);
-    assert.match(panelSrc, /this\.showCountBadge\(this\.rankings\.length\);/);
+    assert.match(panelSrc, /this\.showCountBadge\(ranked\);/);
   });
 
   it('resets retry budget only on external refreshes, not scheduled retries', () => {

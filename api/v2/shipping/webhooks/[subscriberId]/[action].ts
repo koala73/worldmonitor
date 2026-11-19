@@ -18,6 +18,7 @@ import { validateUserApiKey } from '../../../../../server/_shared/user-api-key';
 import { checkFailClosedScopedIpRateLimit } from '../../../../../server/_shared/rate-limit';
 import { resolvePremiumCallerIdentity } from '../../../../../server/_shared/premium-check';
 import { runRedisPipeline } from '../../../../../server/_shared/redis';
+import { stripTrailingSlashes } from '../../../../../shared/strip-trailing-slashes.js';
 import {
   ALL_INDEX_KEY,
   WEBHOOK_TTL,
@@ -38,7 +39,7 @@ export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
-      headers: { ...cors, 'Content-Type': 'application/json' },
+      headers: { ...cors, 'Content-Type': 'application/json', Allow: 'POST, OPTIONS' },
     });
   }
 
@@ -84,7 +85,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   const url = new URL(req.url);
-  const parts = url.pathname.replace(/\/+$/, '').split('/');
+  const parts = stripTrailingSlashes(url.pathname).split('/');
   const action = parts[parts.length - 1];
   const subscriberId = parts[parts.length - 2];
 
@@ -109,6 +110,7 @@ export default async function handler(req: Request): Promise<Response> {
   let ownerHash: string | null = null;
   let newSecret: string | null = null;
   for (let attempt = 0; attempt < PERSIST_ATTEMPTS; attempt += 1) {
+    if (attempt > 0) await new Promise(resolve => setTimeout(resolve, Math.min(500, 50 * 2 ** (attempt - 1)) * (0.5 + Math.random() * 0.5)));
     const read = await readRecord(subscriberId);
     if (read === 'unavailable') return json(503, { error: 'Service temporarily unavailable' });
     if (!read) return json(404, { error: 'Webhook not found' });
@@ -148,6 +150,8 @@ const PERSIST_SCRIPT = [
   "redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])",
   "redis.call('SADD', KEYS[2], ARGV[4])",
   "redis.call('EXPIRE', KEYS[2], ARGV[3])",
+  "redis.call('SADD', KEYS[4], ARGV[4])",
+  "redis.call('EXPIRE', KEYS[4], ARGV[3])",
   "redis.call('SADD', KEYS[3], ARGV[4])",
   'return 1',
 ].join(' ');
@@ -170,8 +174,9 @@ async function persistWebhook(
   ownerTag: string,
 ): Promise<'stored' | 'conflict' | 'unavailable'> {
   const [row] = await runRedisPipeline([[
-    'EVAL', PERSIST_SCRIPT, '3',
+    'EVAL', PERSIST_SCRIPT, '4',
     webhookKey(subscriberId), ownerIndexKey(ownerTag), ALL_INDEX_KEY,
+    ownerIndexKey(record.quotaTag || ownerTag),
     expectedRaw, JSON.stringify(record), String(WEBHOOK_TTL), subscriberId,
   ]]);
   if (!row || row.error) return 'unavailable';

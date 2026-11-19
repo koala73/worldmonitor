@@ -44,7 +44,7 @@ World Monitor puts these feeds alongside your intelligence data so you can cross
 
 ### Asia-Pacific
 
-- **Taipei** for Taiwan Strait tension monitoring
+- **Taipei** for [Taiwan Strait](https://www.worldmonitor.app/crises/taiwan-strait-tensions/) tension monitoring
 - **Shanghai** for Chinese economic activity indicators
 - **Tokyo**, **Seoul**, and **Sydney** for regional coverage
 
@@ -72,7 +72,7 @@ The real power isn't the webcams alone. It's combining them with World Monitor's
 
 **Scenario: Unrest in Tehran**
 
-1. CII (Country Instability Index) for Iran spikes
+1. CII (Country [Instability Index](/blog/posts/country-instability-index-methodology-explained/)) for Iran spikes
 2. Telegram OSINT channels report protests
 3. Switch to webcam panel, filter to Iran region
 4. Tehran camera shows unusual crowd activity

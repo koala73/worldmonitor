@@ -32,8 +32,7 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
-const CLIENT_FEEDS = resolve(ROOT, 'src/config/feeds.ts');
-const SERVER_FEEDS = resolve(ROOT, 'server/worldmonitor/news/v1/_feeds.ts');
+const NEWS_CATALOG = resolve(ROOT, 'shared/news-catalog.json');
 const SOURCE_TIERS = resolve(ROOT, 'shared/source-tiers.json');
 
 /**
@@ -51,54 +50,41 @@ const NON_PUBLISHER_HOSTS = new Set([
 ]);
 
 /**
- * Every publisher host a feed entry points at.
+ * The publisher host a feed URL points at.
  *
  * A Google News URL is only evidence of a publisher when the query is
  * `site:`-scoped; a bare keyword query returns the open web and identifies
- * nobody. Locale-keyed `url: { en: ..., fr: ... }` entries contribute every
- * locale's host, because they are all one label.
+ * nobody.
  */
-function publisherHostsFor(urlExpr) {
-  const hosts = new Set();
-  for (const m of urlExpr.matchAll(/(['"`])(https?:\/\/(?:\\.|(?!\1)[\s\S])*?)\1/g)) {
-    let url;
-    try {
-      url = new URL(m[2]);
-    } catch {
-      continue;
-    }
-    const host = url.hostname.replace(/^www\./, '');
-    if (!NON_PUBLISHER_HOSTS.has(host)) {
-      hosts.add(host);
-      continue;
-    }
-    const query = decodeURIComponent(url.searchParams.get('q') ?? '').replace(/\+/g, ' ');
-    const site = query.match(/site:([A-Za-z0-9.-]+)/);
-    if (site) hosts.add(site[1].replace(/^www\./, ''));
+function publisherHostFor(href) {
+  let url;
+  try {
+    url = new URL(href);
+  } catch {
+    return null;
   }
-  // The server config wraps Google News in gn()/gnLocale() helpers whose
-  // argument is the bare query, not a URL.
-  for (const m of urlExpr.matchAll(/\bgn(?:Locale)?\(\s*(['"`])([\s\S]*?)\1/g)) {
-    const site = m[2].match(/site:([A-Za-z0-9.-]+)/);
-    if (site) hosts.add(site[1].replace(/^www\./, ''));
-  }
-  return hosts;
+  const host = url.hostname.replace(/^www\./, '');
+  if (!NON_PUBLISHER_HOSTS.has(host)) return host;
+  const query = decodeURIComponent(url.searchParams.get('q') ?? '').replace(/\+/g, ' ');
+  const site = query.match(/site:([A-Za-z0-9.-]+)/);
+  return site ? site[1].replace(/^www\./, '') : null;
 }
 
-/** name -> Set<publisher host>, across both feed configs. */
+/**
+ * name -> Set<publisher host>, across the server and browser URLs of every
+ * catalog feed. Locale-keyed browser URLs contribute every locale's host,
+ * because they are all one label.
+ */
 function collectFeedLabels() {
   const labels = new Map();
-  for (const file of [CLIENT_FEEDS, SERVER_FEEDS]) {
-    const src = readFileSync(file, 'utf-8');
-    for (const m of src.matchAll(/\bname:\s*'((?:[^'\\]|\\.)*)'/g)) {
-      const name = m[1].replace(/\\'/g, "'");
-      // Scan forward to this entry's `url:`; 600 chars spans a multiline
-      // locale-keyed url object without reaching the next entry's name.
-      const window = src.slice(m.index, m.index + 600);
-      const urlMatch = window.match(/\burl:\s*([\s\S]*?)(?:,\s*$|}\s*[,\]])/m);
-      if (!labels.has(name)) labels.set(name, new Set());
-      if (!urlMatch) continue;
-      for (const host of publisherHostsFor(urlMatch[1])) labels.get(name).add(host);
+  for (const feed of JSON.parse(readFileSync(NEWS_CATALOG, 'utf-8')).feeds) {
+    if (!labels.has(feed.name)) labels.set(feed.name, new Set());
+    for (const value of [feed.url, feed.browser?.url]) {
+      const hrefs = typeof value === 'string' ? [value] : Object.values(value ?? {});
+      for (const href of hrefs) {
+        const host = publisherHostFor(href);
+        if (host) labels.get(feed.name).add(host);
+      }
     }
   }
   for (const name of Object.keys(JSON.parse(readFileSync(SOURCE_TIERS, 'utf-8')))) {
@@ -129,8 +115,14 @@ describe('publisher-families map data', () => {
     // Cross-host families are legitimate but must be deliberate, so each one is
     // named with the reason it spans hosts.
     const CROSS_HOST_FAMILIES = {
+      matichon: 'Khaosod and Matichon share Matichon Group: https://www.khaosod.co.th/about-us',
+      "n1-danas": "Common publisher group across its news brands: https://n1info.rs/english/news/united-media-takes-over-belgarde-danas-daily/",
+      "alpha-media-zimbabwe": "Common publisher group across its news brands: https://www.newsday.co.zw/theindependent/terms-and-conditions",
+      "rjr-gleaner": "Common publisher group across its news brands: https://rjrgleanergroup.com/about/",
+      "guardian-media-tt": "Common publisher group across its news brands: https://guardianmedia.co.tt/about-us/",
       bbc: 'feeds.bbci.co.uk for the English editions, bbc.com for Afrique/Mundo',
       dw: 'rss.dw.com feed subdomain alongside dw.com — one Deutsche Welle newsroom',
+      ukrinform: 'ukrinform.net for the English edition, ukrinform.ua for the Ukrainian one — one national news agency',
       bloomberg: 'bloomberg.com plus tier-only "Bloomberg" and a Google News keyword feed',
       'hacker-news': 'hnrss.org plus news.ycombinator.com ("YC News" is the HN front page)',
       reuters: 'reuters.com plus tier-only "Reuters" and a Google News keyword feed',
@@ -143,6 +135,11 @@ describe('publisher-families map data', () => {
       ndtv: 'both labels arrive via feedburner, which identifies no publisher',
       pivot: 'one show across a tier-only label and a megaphone.fm feed',
       'sightline-media': 'defensenews.com and militarytimes.com — two Sightline Media Group titles, one owner',
+      aljazeera: 'Arabic and English services of the Al Jazeera Media Network',
+      'al-arabiya': 'alarabiya.net Arabic feed and english.alarabiya.net English edition — one Al Arabiya newsroom',
+      rferl: 'Language services of Radio Free Europe/Radio Liberty',
+      'grupo-globo': 'g1.globo.com and oglobo.globo.com are Grupo Globo titles under one owner',
+      'groupe-le-monde': 'Le Monde Libre controls Le Monde, Courrier international and Le Nouvel Obs: https://en.wikipedia.org/wiki/Groupe_Le_Monde',
     };
 
     const offenders = [];
@@ -228,19 +225,46 @@ describe('publisher-families map data', () => {
     assert.deepEqual(colliding, [], 'a curated id starting with "label:" can collide with an unmapped label');
   });
 
-  it('gives every family a publisher display name and at least two labels', () => {
+  it('gives every family a publisher name and useful label or domain normalization', () => {
     // #8398: domain-only families (labels: []) declare an article-host
     // allowance without folding any label — the ingest/relay link gates
     // need wsj.com for Dow Jones delivery-host feeds, but the label must
     // NOT merge (that would understate corroboration). Exempt from the
     // two-label minimum: that rule targets label folding, and an empty
     // label list cannot merge anything.
-    const DOMAIN_ONLY_FAMILIES = new Set(['wsj', 'miit']);
+    const DOMAIN_ONLY_FAMILIES = new Set([
+      'wsj',
+      'miit',
+      'abc-news',
+      'ars-technica',
+      'axios',
+      'business-wire',
+      'die-zeit',
+      'el-mundo',
+      'el-pais',
+      'fast-company',
+      'fox-business',
+      'fox-news',
+      'infoq',
+      'nbc-news',
+      'news24',
+      'nos',
+      'the-hacker-news',
+    ]);
     for (const [familyId, entry] of Object.entries(PUBLISHER_FAMILIES)) {
       assert.equal(typeof entry.publisher, 'string', `${familyId} has no publisher name`);
       assert.ok(entry.publisher.length > 0, `${familyId} has an empty publisher name`);
       if (DOMAIN_ONLY_FAMILIES.has(familyId)) {
         assert.deepEqual(entry.labels, [], `${familyId} must stay domain-only (no label folding)`);
+        continue;
+      }
+      // These single-source families unify RSS labels with URL-only country
+      // evidence. Without the mapping, the same publisher could corroborate itself.
+      if (entry.labels.length === 1 && PUBLISHER_FAMILY_DOMAIN_TABLE[familyId]?.length) {
+        assert.equal(entry.labels.length, 1);
+        for (const domain of PUBLISHER_FAMILY_DOMAIN_TABLE[familyId]) {
+          assert.equal(publisherFamilyForDomain(domain), publisherFamilyFor(entry.labels[0]));
+        }
         continue;
       }
       assert.ok(
@@ -372,4 +396,23 @@ describe('publisher-families resolution', () => {
     assert.equal(countPublisherFamilies('Reuters World'), 0);
     assert.deepEqual([...publisherFamiliesFor(undefined)], []);
   });
+});
+
+it('counts a direct publisher feed and its Google News origin as one publisher (#10937)', () => {
+  // These feeds left Google News, whose trusted <source> named the outlet.
+  // A Google News query elsewhere can still carry the same article under that
+  // origin name, so the direct label must resolve to the same family.
+  for (const [label, origin] of [
+    ['CNN World', 'CNN'],
+    ['Kyiv Independent', 'The Kyiv Independent'],
+    ['NV EN', 'The New Voice of Ukraine'],
+  ]) {
+    assert.equal(publisherFamilyFor(label), publisherFamilyFor(origin), label);
+    assert.equal(countPublisherFamilies([label, origin]), 1, label);
+  }
+});
+
+it('counts Matichon and Khaosod English as one publisher', () => {
+  assert.equal(publisherFamilyFor('Matichon'), publisherFamilyFor('Khaosod English'));
+  assert.equal(countPublisherFamilies(['Matichon', 'Khaosod English']), 1);
 });

@@ -29,7 +29,7 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
       </api/health?compact=1>; rel="status"; type="application/json",
       </.well-known/oauth-protected-resource>; rel="...oauth-protected-resource",
       </.well-known/oauth-authorization-server>; rel="...oauth-authorization-server",
-      </.well-known/mcp/server-card.json>; rel="mcp-server-card"; anchor="/mcp",
+      </.well-known/mcp/server-card.json>; rel="mcp-server-card"; anchor="https://worldmonitor.app/mcp",
       </.well-known/mcp/docs-server-card.json>; rel="mcp-server-card"; anchor="/docs/mcp",
       </.well-known/agent-skills/index.json>; rel="agent-skills-index"; type="application/json"
 ```
@@ -90,7 +90,7 @@ A second, separate MCP server for the documentation itself (card at `/.well-know
 
 ### Markdown twins — `<any-page>.md`
 
-Every page on the site has an agent-readable markdown twin: append `.md` to the path (`/pricing.md`, `/countries/tw.md`, `/home.md` for the front page). Curated twins are static and cached `public, max-age=3600` with `Access-Control-Allow-Origin: *`; everything else is rendered on demand by the twin service, which asks the sibling page for `text/markdown` and serves what it gets back (HTML becomes heading-led markdown, JSON becomes a fenced block, output capped at 512 KB). The twin follows same-origin redirects and inherits the target's status, so a `.md` path with no page behind it answers `404`, not a stub. A twin carrying a document sends `Link: <sibling>; rel="canonical"` naming the HTML page; anything else sends `X-Robots-Tag: noindex` and no canonical. `GET`/`HEAD` on `.md` twins bypasses the API bot gate, so plain `curl` works without a browser User-Agent.
+Every page on the site has an agent-readable markdown twin: append `.md` to the path (`/pricing.md`, `/countries/tw.md`, `/home.md` for the front page). Curated twins are static and cached `public, max-age=3600` with `Access-Control-Allow-Origin: *`; everything else is rendered on demand by the twin service, which asks the sibling page for `text/markdown` and serves what it gets back (HTML becomes heading-led markdown, JSON becomes a fenced block, output capped at 512 KB). The twin follows same-origin redirects and inherits the target's status, so a `.md` path with no page behind it answers `404`, not a stub. A twin carrying a document sends `Link: <sibling>; rel="canonical"` naming the HTML page; anything else sends `X-Robots-Tag: noindex` and no canonical. A twin of an API route (`/api/<service>/v1/<rpc>.md`) is the anonymous rendering of that route: it runs the route's origin check, auth and per-IP rate limits for the caller, answers with the route's own CORS rather than `*`, and carries the route's own `Cache-Control` (`no-store` whenever the route forbids shared caching). Credentials are never forwarded, so a route that needs a key answers `401` on its twin too. Declared AI crawlers may read `/api/**/*.md` twins past the API bot gate; other scripts meet the same gate as the route itself. Of the unversioned API functions only `/api/health`, `/api/version` and `/api/product-catalog` have twins.
 
 ## Agent walkthroughs
 
@@ -152,6 +152,8 @@ curl -s https://api.worldmonitor.app/api/resilience/v1/get-resilience-ranking \
 PRO subscribers get a key from [worldmonitor.app/pro](https://www.worldmonitor.app/pro). See [Authentication](/usage-auth).
 
 ### Drop-in agent skills
+
+MCP `skills/list` returns a bounded catalog in one complete response, with no continuation cursor, to meet the platform publishing limit across the entire catalog. Existing skill URIs remain readable through `skills/get` and `resources/read`. The well-known index below and the plugin package contain the full recipe collection.
 
 `/.well-known/agent-skills/index.json` lists pre-packaged skills — each is a self-contained recipe an agent can ingest without reading the OpenAPI. Useful for narrow tasks where you'd rather hand the agent "fetch a country brief" than "read the OpenAPI specs and figure it out." See the [Agent Skills Catalog](/agent-skills) for a human-readable list of every recipe. The catalog spans country briefs, risk and resilience, chokepoints, markets, cyber, sanctions, aviation, military flights, maritime traffic, energy shocks, trade flows, unrest, webcams, climate hazards, health alerts, and forecasts.
 

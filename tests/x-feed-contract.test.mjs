@@ -379,6 +379,32 @@ describe('server listXFeed relay normalization', () => {
     assert.equal(response.posts[0].permalink, '');
     assert.doesNotMatch(JSON.stringify(response), /should not leak/);
   });
+
+  it('replaces relay fetch exceptions with a fixed error string in the server RPC path', async () => {
+    process.env.WS_RELAY_URL = 'https://relay.example.com';
+    process.env.RELAY_SHARED_SECRET = 'test-secret';
+    globalThis.fetch = async () => {
+      throw new Error('getaddrinfo ENOTFOUND relay.internal.example key=synthetic-secret');
+    };
+
+    const response = await listXFeed(/** @type {any} */ ({}), { limit: 25, topic: '', account: '' });
+    assert.deepEqual(response, { enabled: false, posts: [], count: 0, error: 'Relay request failed' });
+    assert.doesNotMatch(JSON.stringify(response), /synthetic-secret|relay\.internal/);
+  });
+
+  it('reports relay timeouts as Relay timeout without the exception text in the server RPC path', async () => {
+    process.env.WS_RELAY_URL = 'https://relay.example.com';
+    process.env.RELAY_SHARED_SECRET = 'test-secret';
+    globalThis.fetch = async () => {
+      const error = new Error('The operation timed out reaching relay.internal.example');
+      error.name = 'TimeoutError';
+      throw error;
+    };
+
+    const response = await listXFeed(/** @type {any} */ ({}), { limit: 25, topic: '', account: '' });
+    assert.equal(response.error, 'Relay timeout');
+    assert.doesNotMatch(JSON.stringify(response), /relay\.internal/);
+  });
 });
 
 describe('api/x-feed caller admission', () => {

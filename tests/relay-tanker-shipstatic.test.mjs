@@ -1,203 +1,180 @@
-// Static-analysis regression tests for the relay's tanker-classification
-// dependency on ShipStaticData (AIS Type 5).
+// Runtime proof that the relay classifies tankers from ShipStaticData (#8690,
+// replacing the source-text checks this file used to hold).
 //
-// Background: AISStream's PositionReport messages do NOT carry ShipType in
-// MetaData. PR #3402 shipped tanker capture predicated on `meta.ShipType`,
-// which evaluated to NaN on every PositionReport, so tankerReports stayed
-// permanently empty and the live-tanker layer rendered zero vessels on
-// energy.worldmonitor.app.
+// Background: AISStream PositionReport frames carry no ShipType, so a relay
+// that classified from `meta.ShipType` alone never captured a tanker (#3402).
+// The fix caches ShipType and ShipName per MMSI from ShipStaticData (AIS Type
+// 5) and resolves each PositionReport through that cache.
 //
-// These tests pin the fix shape so a regression can't flip the relay back
-// to PositionReport-only and silently re-empty the tanker layer:
-//   1. AISStream subscription includes ShipStaticData in FilterMessageTypes.
-//   2. Relay dispatches ShipStaticData → processShipStaticDataForMeta.
-//   3. Tanker capture predicate falls back to vesselMeta cache when the
-//      position-report meta lacks ShipType.
+// scripts/ais-relay.cjs starts servers on import, so the vessel-aggregate
+// region is evaluated in a vm context with its outer constants and the
+// chokepoint/transit collaborators stubbed; the functions under test and the
+// Maps they write are read back from that context. One text check stays, with
+// its reason: the AISStream subscription message is a wire contract sent to a
+// third party, and the WebSocket handler that dispatches on MessageType cannot
+// be evaluated without a live socket.
 
-import { strict as assert } from 'node:assert';
-import { describe, test } from 'node:test';
+import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
+import { describe, it } from 'node:test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const RELAY = readFileSync(
-  resolve(__dirname, '..', 'scripts', 'ais-relay.cjs'),
-  'utf-8',
-);
+const RELAY = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
 
-describe('ais-relay — tanker classification depends on ShipStaticData', () => {
-  test('AISStream subscription requests both PositionReport AND ShipStaticData', () => {
-    // Without ShipStaticData, ShipType is never populated and tanker capture
-    // fails on every position report.
-    assert.match(
-      RELAY,
-      /FilterMessageTypes:\s*\[\s*['"]PositionReport['"]\s*,\s*['"]ShipStaticData['"]\s*\]/,
-      'AISStream subscription must request both PositionReport and ShipStaticData',
-    );
+function vesselRegion() {
+  const start = RELAY.indexOf('const MAX_VESSEL_META = 50000;');
+  const cleanup = RELAY.indexOf('function cleanupAggregates()');
+  const end = RELAY.indexOf('\nfunction ', cleanup + 10);
+  assert.ok(start > -1 && cleanup > start && end > cleanup, 'vessel aggregate region markers must exist in scripts/ais-relay.cjs');
+  return RELAY.slice(start, end);
+}
+
+function harness({ now = 1_700_000_000_000 } = {}) {
+  const clock = { now };
+  const api = runInNewContext(`${vesselRegion()}\n({ processShipStaticDataForMeta, processPositionReportForSnapshot, cleanupAggregates, vesselMeta, tankerReports, candidateReports, vessels, VESSEL_META_TTL_MS, MAX_VESSEL_META })`, {
+    console: { log() {}, warn() {}, error() {} },
+    Date: { now: () => clock.now },
+    Math, Number, String, Map, Set, Array, JSON, Object,
+    setInterval: () => ({ unref() {} }),
+    clearInterval() {},
+    createDurableTransitTracker: () => ({ observe() {}, prune() {} }),
+    CHOKEPOINT_TRANSIT_GATES: [],
+    upstashEval: async () => null,
+    classifyVesselType: () => 'other',
+    GRID_SIZE: 1,
+    DENSITY_WINDOW: 30 * 60 * 1000,
+    GAP_THRESHOLD: 60 * 60 * 1000,
+    MAX_VESSELS: 10_000,
+    MAX_VESSEL_HISTORY: 10_000,
+    MAX_DENSITY_CELLS: 10_000,
+    MAX_CANDIDATE_REPORTS: 10_000,
+    CANDIDATE_RETENTION_MS: 30 * 60 * 1000,
+    MAX_TANKER_REPORTS_PER_RESPONSE: 10_000,
+  });
+  return { ...api, clock };
+}
+
+const staticFrame = (mmsi, type, extra = {}) => ({
+  MetaData: { MMSI: mmsi, ShipName: 'META NAME' },
+  Message: { ShipStaticData: { Type: type, Name: 'STATIC NAME', ...extra } },
+});
+const positionFrame = (mmsi, meta = {}) => ({
+  MetaData: { MMSI: mmsi, ShipName: '', latitude: 25.2, longitude: 55.3, ...meta },
+  Message: { PositionReport: { Latitude: 25.2, Longitude: 55.3, TrueHeading: 90, Sog: 12, Cog: 91 } },
+});
+
+describe('ShipStaticData meta cache', () => {
+  it('caches ShipType and name per MMSI from the message body', () => {
+    const h = harness();
+    assert.equal(h.processShipStaticDataForMeta(staticFrame('211123401', 85)), true);
+    assert.deepEqual({ ...h.vesselMeta.get('211123401') }, { shipType: 85, shipName: 'STATIC NAME', lastSeen: h.clock.now });
   });
 
-  test('relay dispatches ShipStaticData → processShipStaticDataForMeta', () => {
-    assert.match(
-      RELAY,
-      /MessageType\s*===\s*['"]ShipStaticData['"]/,
-      'relay must branch on MessageType === ShipStaticData',
-    );
-    assert.match(
-      RELAY,
-      /processShipStaticDataForMeta\s*\(/,
-      'relay must invoke processShipStaticDataForMeta on Type 5 frames',
-    );
+  it('falls back to the body UserID when the wrapper carries no MMSI', () => {
+    const h = harness();
+    const frame = { MetaData: {}, Message: { ShipStaticData: { Type: 80, UserID: 211123402 } } };
+    assert.equal(h.processShipStaticDataForMeta(frame), true);
+    assert.equal(h.vesselMeta.get('211123402')?.shipType, 80);
+    assert.equal(h.processShipStaticDataForMeta({ MetaData: {}, Message: { ShipStaticData: { Type: 80 } } }), false);
   });
 
-  test('vesselMeta cache is declared and populated by ShipStaticData handler', () => {
-    assert.match(RELAY, /const\s+vesselMeta\s*=\s*new Map\(\)/);
-    assert.match(
-      RELAY,
-      /vesselMeta\.set\([^)]+,\s*\{[^}]*shipType/,
-      'processShipStaticDataForMeta must write shipType into vesselMeta',
-    );
+  it('rejects "not available" and malformed types without downgrading a cached tanker', () => {
+    const h = harness();
+    h.processShipStaticDataForMeta(staticFrame('211123403', 85));
+    for (const type of [0, -1, null, undefined, 'tanker', Number.NaN]) {
+      assert.equal(h.processShipStaticDataForMeta(staticFrame('211123403', type)), false, `type ${String(type)}`);
+    }
+    assert.equal(h.vesselMeta.get('211123403')?.shipType, 85);
+    assert.equal(h.processShipStaticDataForMeta({ MetaData: { MMSI: '1' }, Message: {} }), false);
+  });
+});
+
+describe('PositionReport classification through the cache', () => {
+  it('captures a tanker whose position report carries no ShipType once static data was seen', () => {
+    const h = harness();
+    h.processShipStaticDataForMeta(staticFrame('211123410', 85));
+    assert.equal(h.processPositionReportForSnapshot(positionFrame('211123410')), true);
+    const tanker = h.tankerReports.get('211123410');
+    assert.ok(tanker, 'the tanker layer must receive the vessel');
+    assert.equal(tanker.shipType, 85);
+    assert.equal(tanker.name, 'STATIC NAME', 'the cached static name fills an empty position-report name');
+    assert.equal(h.vessels.get('211123410')?.shipType, 85, 'the vessels record carries the resolved type too');
   });
 
-  test('processShipStaticDataForMeta reads ShipType from sd.Type (NOT meta.ShipType)', () => {
-    // Pre-fix root cause was reading from meta.ShipType which AISStream
-    // never populates on PositionReport. ShipStaticData puts ShipType under
-    // the message body as `Type` (capital T), not the wrapper MetaData. A
-    // typo regression (e.g., `Number(sd.Typ)`, `Number(sd.shipType)`,
-    // `Number(meta.ShipType)`) would re-empty the tanker layer silently —
-    // the tests in this file depend on the FIELD NAME being correct, so
-    // pin it explicitly.
-    assert.match(
-      RELAY,
-      /Number\(sd\.Type\)/,
-      'shipType must be parsed from sd.Type (the message-body field)',
-    );
-    assert.match(
-      RELAY,
-      /sd\.Name/,
-      'shipName should fall back to sd.Name from the message body',
-    );
+  it('captures nothing for an uncached vessel and does not invent a type', () => {
+    const h = harness();
+    assert.equal(h.processPositionReportForSnapshot(positionFrame('211123411')), true);
+    assert.equal(h.tankerReports.has('211123411'), false);
+    assert.equal(h.vessels.get('211123411')?.shipType, undefined);
   });
 
-  test('processShipStaticDataForMeta accepts MMSI from meta.MMSI OR sd.UserID', () => {
-    // AISStream's ShipStaticData payload mirrors MMSI as UserID on the
-    // message body. Defense in depth against a wrapper-schema variant
-    // that omits MetaData.MMSI on Type 5 frames — without the fallback,
-    // such a frame would early-return and silently re-empty vesselMeta.
-    assert.match(
-      RELAY,
-      /String\(\s*meta\.MMSI\s*\|\|\s*sd\.UserID\s*\|\|\s*['"]['"]?\s*\)/,
-      'MMSI extraction must fall back to sd.UserID',
-    );
+  it('updates a tracked tanker when another position report arrives', () => {
+    const h = harness();
+    const mmsi = '211123416';
+    h.processShipStaticDataForMeta(staticFrame(mmsi, 85));
+    assert.equal(h.processPositionReportForSnapshot(positionFrame(mmsi)), true);
+
+    h.clock.now += 60_000;
+    const next = positionFrame(mmsi);
+    next.Message.PositionReport.Longitude = 55.4;
+    assert.equal(h.processPositionReportForSnapshot(next), true);
+    const tanker = h.tankerReports.get(mmsi);
+    assert.equal(tanker.shipType, 85);
+    assert.equal(tanker.name, 'STATIC NAME');
+    assert.equal(tanker.lon, 55.4);
+    assert.equal(tanker.timestamp, h.clock.now);
+    assert.equal(h.tankerReports.size, 1);
   });
 
-  test('tanker capture falls back to vesselMeta when position-report meta lacks ShipType', () => {
-    // Scope the order assertion to the body of processPositionReportForSnapshot
-    // so a future change adding an earlier vesselMeta.get(...) elsewhere in
-    // the file can't satisfy the order check while removing the in-tanker-path
-    // lookup. The body extends until the next top-level function declaration.
-    const fnStart = RELAY.indexOf('function processPositionReportForSnapshot');
-    assert.ok(fnStart > -1, 'processPositionReportForSnapshot must exist');
-    // Find next top-level `function ` after the start (matches column-0 `function`)
-    const nextFnRel = RELAY.slice(fnStart + 1).search(/\nfunction\s/);
-    const fnEnd = nextFnRel > -1 ? fnStart + 1 + nextFnRel : RELAY.length;
-    const fnBody = RELAY.slice(fnStart, fnEnd);
-    const cacheLookupIdx = fnBody.indexOf('vesselMeta.get(mmsi)');
-    const tankerSetIdx = fnBody.indexOf('tankerReports.set(mmsi');
-    assert.ok(cacheLookupIdx > -1, 'vesselMeta.get(mmsi) must appear inside processPositionReportForSnapshot');
-    assert.ok(tankerSetIdx > -1, 'tankerReports.set(mmsi) must appear inside processPositionReportForSnapshot');
-    assert.ok(
-      cacheLookupIdx < tankerSetIdx,
-      'vesselMeta lookup must precede tanker insertion so the fallback informs the predicate',
-    );
+  it('keeps non-tanker types out of the tanker layer and lets wrapper ShipType win over the cache', () => {
+    const h = harness();
+    h.processShipStaticDataForMeta(staticFrame('211123412', 70));
+    h.processPositionReportForSnapshot(positionFrame('211123412'));
+    assert.equal(h.tankerReports.has('211123412'), false, 'cargo (70) is not a tanker');
+    assert.equal(h.vessels.get('211123412')?.shipType, 70);
+
+    h.processShipStaticDataForMeta(staticFrame('211123413', 70));
+    h.processPositionReportForSnapshot(positionFrame('211123413', { ShipType: 89 }));
+    assert.equal(h.tankerReports.get('211123413')?.shipType, 89, 'an explicit wrapper type is authoritative');
   });
 
-  test('vesselMeta has TTL eviction AND hard size cap so it cannot grow unbounded', () => {
-    assert.match(RELAY, /VESSEL_META_TTL_MS/);
-    assert.match(
-      RELAY,
-      /vesselMeta\.delete\(/,
-      'cleanup must delete stale vesselMeta entries',
-    );
-    // PR #3410 review (Greptile P1): every peer Map in cleanupAggregates
-    // (tankerReports, candidateReports, densityGrid, vesselHistory) follows
-    // its TTL loop with an evictMapByTimestamp hard cap. vesselMeta must
-    // match that pattern — TTL alone is insufficient against a hostile or
-    // buggy upstream flooding unique MMSIs faster than the TTL drains them.
-    assert.match(RELAY, /MAX_VESSEL_META/);
-    assert.match(
-      RELAY,
-      /evictMapByTimestamp\(\s*vesselMeta\s*,/,
-      'vesselMeta must have a hard size cap via evictMapByTimestamp',
-    );
+  it('feeds the resolved type into the military-candidate arm', () => {
+    const h = harness();
+    h.processShipStaticDataForMeta(staticFrame('211123414', 35));
+    h.processPositionReportForSnapshot(positionFrame('211123414'));
+    assert.equal(h.candidateReports.get('211123414')?.shipType, 35, 'type 35 (military ops) must be a candidate from the cache alone');
+    h.processPositionReportForSnapshot(positionFrame('211123415'));
+    assert.equal(h.candidateReports.has('211123415'), false);
+  });
+});
+
+describe('vesselMeta retention', () => {
+  it('drops entries past the TTL and keeps fresh ones', () => {
+    const h = harness();
+    h.processShipStaticDataForMeta(staticFrame('211123420', 85));
+    h.clock.now += h.VESSEL_META_TTL_MS + 1;
+    h.processShipStaticDataForMeta(staticFrame('211123421', 85));
+    h.cleanupAggregates();
+    assert.equal(h.vesselMeta.has('211123420'), false, 'expired static data is evicted');
+    assert.equal(h.vesselMeta.has('211123421'), true);
   });
 
-  test('processShipStaticDataForMeta rejects shipType <= 0 (AIS code 0 = "Not available")', () => {
-    // Number(null) === 0, which is finite. Without the > 0 gate, a Type 5
-    // frame with Type=null after a valid Type=85 would overwrite the
-    // cached tanker as shipType=0, downgrading classification on the next
-    // PositionReport. Pin the gate so a refactor can't accidentally drop it.
-    assert.match(
-      RELAY,
-      /!Number\.isFinite\(shipType\)\s*\|\|\s*shipType\s*<=\s*0/,
-      'shipType must be guarded against <= 0 in processShipStaticDataForMeta',
-    );
+  it('caps the cache by evicting the oldest entries, so a flood of MMSIs cannot grow it unbounded', () => {
+    const h = harness();
+    for (let i = 0; i < h.MAX_VESSEL_META + 5; i += 1) {
+      h.clock.now += 1;
+      h.processShipStaticDataForMeta(staticFrame(String(300123000 + i), 80));
+    }
+    h.cleanupAggregates();
+    assert.equal(h.vesselMeta.size, h.MAX_VESSEL_META);
+    assert.equal(h.vesselMeta.has('300123000'), false, 'the oldest entry goes first');
+    assert.equal(h.vesselMeta.has(String(300123000 + h.MAX_VESSEL_META + 4)), true);
   });
+});
 
-  test('vessels record uses effectiveShipType (NOT raw meta.ShipType)', () => {
-    // Without this, classifyVesselType(vessel?.shipType) at the chokepoint
-    // transit logging site always returns 'other' because meta.ShipType
-    // is permanently undefined on PositionReport. Same root cause as the
-    // tanker layer being empty — needs the same vesselMeta fallback.
-    const fnStart = RELAY.indexOf('function processPositionReportForSnapshot');
-    const nextFnRel = RELAY.slice(fnStart + 1).search(/\nfunction\s/);
-    const fnEnd = nextFnRel > -1 ? fnStart + 1 + nextFnRel : RELAY.length;
-    const fnBody = RELAY.slice(fnStart, fnEnd);
-    // The vessels.set call must reference effectiveShipType, not meta.ShipType
-    const vesselsSetMatch = fnBody.match(/vessels\.set\(\s*mmsi\s*,\s*\{[^}]*shipType:\s*([^,\n}]+)/);
-    assert.ok(vesselsSetMatch, 'vessels.set must include a shipType field');
-    assert.match(
-      vesselsSetMatch[1].trim(),
-      /^effectiveShipType\b/,
-      `vessels.set shipType must be effectiveShipType (was: ${vesselsSetMatch[1].trim()})`,
-    );
-  });
-
-  test('isLikelyMilitaryCandidate accepts a resolved-shipType override', () => {
-    // PositionReport callers must pass effectiveShipType so the type-based
-    // military arms (35/55/50-59) actually fire. Without the override, the
-    // classifier falls back to NAVAL_PREFIX_RE + MMSI suffix only.
-    assert.match(
-      RELAY,
-      /function\s+isLikelyMilitaryCandidate\s*\(\s*meta\s*,\s*resolvedShipType\s*\)/,
-      'isLikelyMilitaryCandidate must accept a resolvedShipType parameter',
-    );
-    // The PositionReport call site must pass it through
-    const fnStart = RELAY.indexOf('function processPositionReportForSnapshot');
-    const nextFnRel = RELAY.slice(fnStart + 1).search(/\nfunction\s/);
-    const fnEnd = nextFnRel > -1 ? fnStart + 1 + nextFnRel : RELAY.length;
-    const fnBody = RELAY.slice(fnStart, fnEnd);
-    assert.match(
-      fnBody,
-      /isLikelyMilitaryCandidate\(\s*meta\s*,\s*effectiveShipType\s*\)/,
-      'PositionReport must invoke isLikelyMilitaryCandidate with effectiveShipType',
-    );
-  });
-
-  test('candidateReports record uses effectiveShipType', () => {
-    // Same fix as vessels.set — military candidate snapshots had shipType
-    // permanently undefined, so any downstream consumer that filtered
-    // candidates by ship type was broken too.
-    const fnStart = RELAY.indexOf('function processPositionReportForSnapshot');
-    const nextFnRel = RELAY.slice(fnStart + 1).search(/\nfunction\s/);
-    const fnEnd = nextFnRel > -1 ? fnStart + 1 + nextFnRel : RELAY.length;
-    const fnBody = RELAY.slice(fnStart, fnEnd);
-    const candSetMatch = fnBody.match(/candidateReports\.set\(\s*mmsi\s*,\s*\{[^}]*shipType:\s*([^,\n}]+)/);
-    assert.ok(candSetMatch, 'candidateReports.set must include a shipType field');
-    assert.match(
-      candSetMatch[1].trim(),
-      /^effectiveShipType\b/,
-      `candidateReports.set shipType must be effectiveShipType (was: ${candSetMatch[1].trim()})`,
-    );
+describe('AISStream wire contract (text, see header)', () => {
+  it('subscribes to PositionReport and ShipStaticData and dispatches static frames to the cache', () => {
+    assert.match(RELAY, /FilterMessageTypes:\s*\[\s*['"]PositionReport['"]\s*,\s*['"]ShipStaticData['"]\s*\]/);
+    assert.match(RELAY, /MessageType\s*===\s*['"]ShipStaticData['"][\s\S]{0,400}processShipStaticDataForMeta\(parsed\)/);
   });
 });

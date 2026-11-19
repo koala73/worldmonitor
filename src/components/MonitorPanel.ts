@@ -6,9 +6,36 @@ import { generateId, formatTime, getCSSColor } from '@/utils';
 import { validateUrl } from '@/utils/sanitize';
 import { h, replaceChildren } from '@/utils/dom-utils';
 
+// These scripts do not separate words with spaces (Korean attaches particles
+// to nouns), so keyword endpoints in them do not require word boundaries.
+// Their characters never block a match ("G7" in "G7サミット").
+const UNSPACED_SCRIPTS = '\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}\\p{Script=Thai}\\p{Script=Lao}\\p{Script=Khmer}\\p{Script=Myanmar}';
+const UNSPACED_SCRIPT = new RegExp(`[${UNSPACED_SCRIPTS}]`, 'u');
+// `\b` only knows ASCII word characters, so the boundary is spelled out to
+// cover letters and digits of every other script.
+const WORD_CHAR = `(?![${UNSPACED_SCRIPTS}])[\\p{L}\\p{M}\\p{N}_]`;
+const REGEX_SPECIAL_CHARS = /[.*+?^${}()|[\]\\]/g;
+
+function keywordPattern(keyword: string): RegExp {
+  const escaped = keyword.replace(REGEX_SPECIAL_CHARS, '\\$&');
+  const characters = Array.from(keyword);
+  const start = UNSPACED_SCRIPT.test(characters[0] ?? '') ? '' : `(?<!${WORD_CHAR})`;
+  const end = UNSPACED_SCRIPT.test(characters[characters.length - 1] ?? '') ? '' : `(?!${WORD_CHAR})`;
+  return new RegExp(`${start}${escaped}${end}`, 'iu');
+}
+
 export class MonitorPanel extends Panel {
   private monitors: Monitor[] = [];
   private onMonitorsChange?: (monitors: Monitor[]) => void;
+  private readonly input = h('input', {
+    type: 'text',
+    className: 'monitor-input',
+    id: 'monitorKeywords',
+    placeholder: t('components.monitor.placeholder'),
+    onKeypress: (e: Event) => { if ((e as KeyboardEvent).key === 'Enter') this.addMonitor(); },
+  }) as HTMLInputElement;
+  private readonly monitorsList = h('div', { id: 'monitorsList' });
+  private readonly monitorsResults = h('div', { id: 'monitorsResults' });
 
   constructor(initialMonitors: Monitor[] = []) {
     super({ id: 'monitors', title: t('panels.monitors'), infoTooltip: t('components.monitors.infoTooltip') });
@@ -17,33 +44,22 @@ export class MonitorPanel extends Panel {
   }
 
   private renderInput(): void {
-    const input = h('input', {
-      type: 'text',
-      className: 'monitor-input',
-      id: 'monitorKeywords',
-      placeholder: t('components.monitor.placeholder'),
-      onKeypress: (e: Event) => { if ((e as KeyboardEvent).key === 'Enter') this.addMonitor(); },
-    });
-
     const inputContainer = h('div', { className: 'monitor-input-container' },
-      input,
+      this.input,
       h('button', { className: 'monitor-add-btn', id: 'addMonitorBtn', onClick: () => this.addMonitor() },
         t('components.monitor.add'),
       ),
     );
 
-    const monitorsList = h('div', { id: 'monitorsList' });
-    const monitorsResults = h('div', { id: 'monitorsResults' });
-
     // Route through the sanctioned helper (#6557): the monitor UI is the
     // panel's authoritative content — atomic replace with error-state clear.
-    this.setContentNodes(inputContainer, monitorsList, monitorsResults);
+    this.setContentNodes(inputContainer, this.monitorsList, this.monitorsResults);
 
     this.renderMonitorsList();
   }
 
   private addMonitor(): void {
-    const input = document.getElementById('monitorKeywords') as HTMLInputElement;
+    const input = this.input;
     const keywords = input.value.trim();
 
     if (!keywords) return;
@@ -67,10 +83,7 @@ export class MonitorPanel extends Panel {
   }
 
   private renderMonitorsList(): void {
-    const list = document.getElementById('monitorsList');
-    if (!list) return;
-
-    replaceChildren(list,
+    replaceChildren(this.monitorsList,
       ...this.monitors.map((m) =>
         h('span', { className: 'monitor-tag' },
           h('span', { className: 'monitor-tag-color', style: { background: m.color } }),
@@ -85,8 +98,7 @@ export class MonitorPanel extends Panel {
   }
 
   public renderResults(news: NewsItem[]): void {
-    const results = document.getElementById('monitorsResults');
-    if (!results) return;
+    const results = this.monitorsResults;
 
     if (this.monitors.length === 0) {
       replaceChildren(results,
@@ -105,9 +117,7 @@ export class MonitorPanel extends Panel {
         const searchText = `${item.title} ${(item as unknown as { description?: string }).description || ''}`.toLowerCase();
         const matched = monitor.keywords.some((kw) => {
           // Use word boundary matching to avoid false positives like "ai" in "train"
-          const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const regex = new RegExp(`\\b${escaped}\\b`, 'i');
-          return regex.test(searchText);
+          return keywordPattern(kw).test(searchText);
         });
         if (matched) {
           matchedItems.push({ ...item, monitorColor: monitor.color });

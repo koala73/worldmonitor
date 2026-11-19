@@ -63,6 +63,11 @@ export interface GlossaryTerm {
    * 'pizzint' is the only one; its markup lives in pages/glossary/[slug].astro.
    */
   liveReading?: 'pizzint';
+  /**
+   * YYYY-MM-DD the term's copy last changed. A live page's schema dateModified
+   * is the later of this and its published reading.
+   */
+  modifiedDate?: string;
   /** Visible questions and answers, also emitted in the page's FAQPage JSON-LD. */
   faq?: GlossaryQuestion[];
 }
@@ -158,7 +163,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     category: 'Scoring & Indices',
     metaTitle: 'Pentagon Pizza Index: Live Tracker & Method | World Monitor',
     metaDescription:
-      'The Pentagon Pizza Index reads pizza-shop busyness near the Pentagon as a crisis tell. See the live level, how it is scored, and why it is not a forecast.',
+      'Live Pentagon Pizza Index: the current DEFCON-style level from pizza-shop busyness near the Pentagon, how the index is scored, and why it is not a forecast.',
     short:
       'The Pentagon Pizza Index is an OSINT folk indicator: unusual busyness at pizza places near the Pentagon, read as a hint of late-night crisis work.',
     body: [
@@ -173,6 +178,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
       { label: 'How the index is scored', href: 'https://www.worldmonitor.app/docs/algorithms' },
     ],
     liveReading: 'pizzint',
+    modifiedDate: '2026-11-17',
     faq: [
       {
         question: 'Does the Pentagon Pizza Index predict military action?',
@@ -182,7 +188,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
       {
         question: 'Why does the page sometimes show no current reading?',
         answer:
-          'The level needs at least one open venue with a fresh live busyness reading. Late at night most venues are closed, and the venue-data providers sometimes stop sending live readings. World Monitor then shows no current reading instead of a guessed level.',
+          'The level needs at least one open venue with a fresh live busyness reading. Late at night most venues are closed, and the venue-data providers sometimes stop sending live readings. The page then shows the last published reading with its date and time, or no reading at all, instead of a guessed level.',
       },
     ],
   },

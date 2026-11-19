@@ -8,14 +8,11 @@
 // App-serving hosts only; sibling vendor hosts do not inherit browser trust.
 // Keep aligned with convex/payments/returnUrlOrigin.ts and CORS parity tests.
 const APP_ORIGIN_PATTERN = /^https:\/\/(?:(?:www|app|api|tech|finance|commodity|happy|energy)\.)?worldmonitor\.app$/;
+const MAX_ORIGIN_BYTES = 300;
+const ORIGIN_ENCODER = new TextEncoder();
 
 const PRODUCTION_PATTERNS: RegExp[] = [
   APP_ORIGIN_PATTERN,
-  // Vercel preview deployments under the "eliewm" team scope, e.g.
-  //   worldmonitor-git-<branch>-eliewm.vercel.app  (git-branch alias)
-  //   worldmonitor-<hash>-eliewm.vercel.app        (deployment URL)
-  // Tight on purpose: never a bare *.vercel.app (this is a security allowlist).
-  /^https:\/\/worldmonitor-[a-z0-9-]+-eliewm\.vercel\.app$/,
   /^https?:\/\/tauri\.localhost(:\d+)?$/,
   /^https?:\/\/[a-z0-9-]+\.tauri\.localhost(:\d+)?$/i,
   /^tauri:\/\/localhost$/,
@@ -39,15 +36,17 @@ const ALLOWED_HEADERS = [
   'X-Api-Key',
   'X-Widget-Key',
   'X-Pro-Key',
-  'X-WorldMonitor-Desktop-Timestamp',
-  'X-WorldMonitor-Desktop-Signature',
   'Idempotency-Key',
   'Mcp-Session-Id',
   'MCP-Protocol-Version',
+  // MCP 2026-07-28 request metadata headers (mirrored method / tool, prompt or resource name).
+  'Mcp-Method',
+  'Mcp-Name',
   'Last-Event-ID',
 ].join(', ');
 
 const EXPOSED_HEADERS = [
+  'Allow',
   'Mcp-Session-Id',
   'WWW-Authenticate',
   'Retry-After',
@@ -88,6 +87,12 @@ const EXPOSED_HEADERS = [
   'Sunset',
 ].join(', ');
 
+function stripTrailingDnsDots(hostname: string): string {
+  let end = hostname.length;
+  while (end > 0 && hostname[end - 1] === '.') end--;
+  return hostname.slice(0, end);
+}
+
 /**
  * Strip trailing DNS dots before allowlist match so
  * `https://tech.worldmonitor.app.` is treated as first-party (#6411).
@@ -97,7 +102,7 @@ function originForAllowlistMatch(origin: string): string {
   if (!origin) return '';
   try {
     const url = new URL(origin);
-    const host = url.hostname.replace(/\.+$/, '');
+    const host = stripTrailingDnsDots(url.hostname);
     if (!host || host === url.hostname) return origin;
     url.hostname = host;
     return url.origin;
@@ -116,7 +121,7 @@ function isWorldMonitorGoogleTranslateOrigin(origin: string): boolean {
   try {
     const url = new URL(origin);
     if (url.protocol !== 'https:' || url.port !== '') return false;
-    const host = url.hostname.replace(/\.+$/, '');
+    const host = stripTrailingDnsDots(url.hostname);
     const suffix = '.translate.goog';
     if (!host.endsWith(suffix)) return false;
     const encoded = host.slice(0, -suffix.length);
@@ -128,10 +133,24 @@ function isWorldMonitorGoogleTranslateOrigin(origin: string): boolean {
   }
 }
 
+/**
+ * A Vercel preview deployment trusts only its own hostnames (VERCEL_URL,
+ * VERCEL_BRANCH_URL). Never match previews by name pattern: any Vercel account
+ * can claim `worldmonitor-<x>-eliewm.vercel.app` by naming its project so.
+ * Read at call time; production never matches. Keep in sync with api/_cors.js.
+ */
+function isOwnPreviewDeploymentOrigin(origin: string): boolean {
+  if (process.env.VERCEL_ENV !== 'preview') return false;
+  return [process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL]
+    .some((host) => Boolean(host) && origin === `https://${host}`);
+}
+
 export function isAllowedOrigin(origin: string): boolean {
-  if (!origin) return false;
+  if (!origin || origin.length > MAX_ORIGIN_BYTES
+    || ORIGIN_ENCODER.encode(origin).byteLength > MAX_ORIGIN_BYTES) return false;
   if (isWorldMonitorGoogleTranslateOrigin(origin)) return true;
   const candidate = originForAllowlistMatch(origin);
+  if (isOwnPreviewDeploymentOrigin(candidate)) return true;
   return ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(candidate));
 }
 

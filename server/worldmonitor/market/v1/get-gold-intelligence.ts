@@ -29,6 +29,8 @@ interface RawQuote {
   price: number | null;
   change: number | null;
   sparkline?: number[];
+  sparklineIntervalSeconds?: number;
+  sparklineStartAt?: number;
 }
 
 interface RawCotCategory {
@@ -83,6 +85,8 @@ interface GoldCbHolderRaw { iso3: string; name: string; tonnes: number; pctOfRes
 interface GoldCbMoverRaw { iso3: string; name: string; deltaTonnes12m: number }
 interface GoldCbReservesPayload {
   updatedAt: string;
+  indicator?: string;
+  valueIsOunces?: boolean;
   asOfMonth: string;
   totalTonnes: number;
   topHolders: GoldCbHolderRaw[];
@@ -245,14 +249,18 @@ export async function getGoldIntelligence(
     const cbReserves: GoldCbReserves | undefined = rawCbReserves && Array.isArray(rawCbReserves.topHolders) && rawCbReserves.topHolders.length >= 5
       ? {
         asOfMonth: rawCbReserves.asOfMonth,
-        totalTonnes: rawCbReserves.totalTonnes,
+        indicator: rawCbReserves.indicator ?? '',
+        valueIsOunces: rawCbReserves.valueIsOunces,
+        totalTonnes: rawCbReserves.valueIsOunces === true ? rawCbReserves.totalTonnes : 0,
         topHolders: rawCbReserves.topHolders.map<GoldCbHolder>(h => ({
-          iso3: h.iso3, name: h.name, tonnes: h.tonnes, pctOfReserves: h.pctOfReserves,
+          iso3: h.iso3, name: h.name,
+          tonnes: rawCbReserves.valueIsOunces === true ? h.tonnes : 0,
+          pctOfReserves: h.pctOfReserves,
         })),
-        topBuyers12m: (rawCbReserves.topBuyers12m ?? []).map<GoldCbMover>(m => ({
+        topBuyers12m: (rawCbReserves.valueIsOunces === true ? rawCbReserves.topBuyers12m ?? [] : []).map<GoldCbMover>(m => ({
           iso3: m.iso3, name: m.name, deltaTonnes12m: m.deltaTonnes12m,
         })),
-        topSellers12m: (rawCbReserves.topSellers12m ?? []).map<GoldCbMover>(m => ({
+        topSellers12m: (rawCbReserves.valueIsOunces === true ? rawCbReserves.topSellers12m ?? [] : []).map<GoldCbMover>(m => ({
           iso3: m.iso3, name: m.name, deltaTonnes12m: m.deltaTonnes12m,
         })),
       }
@@ -278,6 +286,8 @@ export async function getGoldIntelligence(
       goldPrice,
       goldChangePct: gold?.change ?? 0,
       goldSparkline: gold?.sparkline ?? [],
+      goldSparklineIntervalSeconds: gold?.sparklineIntervalSeconds,
+      goldSparklineStartAt: gold?.sparklineStartAt,
       silverPrice,
       platinumPrice,
       palladiumPrice,

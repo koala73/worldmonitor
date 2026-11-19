@@ -22,11 +22,15 @@
  *   - cancellation send re-reads after the uncapped Resend wait: a resume
  *     (or expiry / new episode / suppression) during pacing must not send
  *     the pre-wait snapshot
+ *   - scheduled cancellation: a Dodo portal cancel arrives as
+ *     `subscription.updated` (status active, cancel_at_next_billing_date)
+ *     and must confirm once, read as scheduled to the billing UI, and not be
+ *     re-confirmed by the later `subscription.cancelled`
  */
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
-import { internal } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import {
   CANCELLATION_CONFIRM_RETRY_MAX_AGE_MS,
   RESEND_SLOT_COUNTER,
@@ -821,5 +825,263 @@ describe("cancellation confirmation is durably retried (#7328 review)", () => {
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(resendSends(fetchMock)).toHaveLength(1);
     expect(await ledgerRows(t)).toHaveLength(1);
+  });
+});
+
+describe("scheduled cancellation: subscription.updated with cancel_at_next_billing_date", () => {
+  // Dodo's customer portal does not send subscription.cancelled when a user
+  // cancels. It sends subscription.updated with status "active" and
+  // cancel_at_next_billing_date: true, and the real subscription.cancelled
+  // lands at or after period end, when the paid-through confirmation is
+  // already skipped. These cases drive that exact event sequence.
+  const PERIOD_END = Date.parse("2026-09-28T19:01:10Z");
+  const IDENTITY = { subject: USER_ID, tokenIdentifier: `clerk|${USER_ID}` };
+
+  async function seedScheduledCancelFixture(t: ReturnType<typeof convexTest>) {
+    await t.run(async (ctx) => {
+      await ctx.db.insert("productPlans", {
+        dodoProductId: "pdt_test",
+        planKey: "pro_monthly",
+        displayName: "Pro Monthly",
+        isActive: true,
+      });
+    });
+    await seedSub(t, {
+      status: "active",
+      currentPeriodEnd: PERIOD_END,
+      updatedAt: Date.now() - 5000,
+    });
+  }
+
+  async function fireUpdated(
+    t: ReturnType<typeof convexTest>,
+    webhookId: string,
+    timestamp: number,
+    cancelAtNextBillingDate: boolean,
+  ) {
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId,
+      eventType: "subscription.updated",
+      rawPayload: {
+        type: "subscription.updated",
+        data: {
+          subscription_id: SUB_ID,
+          product_id: "pdt_test",
+          status: "active",
+          customer: { email: EMAIL },
+          previous_billing_date: new Date(PERIOD_END - 31 * DAY_MS).toISOString(),
+          next_billing_date: new Date(PERIOD_END).toISOString(),
+          cancel_at_next_billing_date: cancelAtNextBillingDate,
+        },
+      },
+      timestamp,
+    });
+  }
+
+  async function confirmationJobs(t: ReturnType<typeof convexTest>) {
+    return t.run(async (ctx) =>
+      (await ctx.db.system.query("_scheduled_functions").collect()).filter(
+        (job) =>
+          job.name.includes("sendDunningEmail") &&
+          (job.args[0] as { step?: string } | undefined)?.step === "cancellation_confirm",
+      ),
+    );
+  }
+
+  async function billingView(t: ReturnType<typeof convexTest>) {
+    return t.withIdentity(IDENTITY).query(api.payments.billing.getSubscriptionForUser, {});
+  }
+
+  test("a portal cancel confirms once with the access-end date and reads as scheduled", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-28T19:56:22Z"));
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    await seedScheduledCancelFixture(t);
+
+    const cancelTs = Date.now();
+    await fireUpdated(t, "wh_portal_cancel_1", cancelTs, true);
+
+    const view = await billingView(t);
+    expect(view?.status).toBe("active");
+    expect(view?.cancelAtPeriodEnd).toBe(true);
+    expect(await confirmationJobs(t)).toHaveLength(1);
+
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    const sends = resendSends(fetchMock);
+    expect(sends).toHaveLength(1);
+    expect(sends[0]!.to).toEqual([EMAIL]);
+    expect(sends[0]!.subject).toContain("28 September 2026");
+    expect(sends[0]!.html).toContain("28 September 2026");
+
+    // Same event redelivered, then a later flagged update (Dodo re-sends the
+    // full object on any field change): neither opens a new episode.
+    await fireUpdated(t, "wh_portal_cancel_1_redelivery", cancelTs, true);
+    await fireUpdated(t, "wh_portal_cancel_1_followup", cancelTs + 60_000, true);
+    expect(await confirmationJobs(t)).toHaveLength(1);
+
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(resendSends(fetchMock)).toHaveLength(1);
+    expect(await ledgerRows(t)).toHaveLength(1);
+    expect((await billingView(t))?.cancelAtPeriodEnd).toBe(true);
+  });
+
+  test("un-cancelling clears the scheduled state and a re-cancel confirms again", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-28T19:56:22Z"));
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    await seedScheduledCancelFixture(t);
+
+    const firstCancel = Date.now();
+    await fireUpdated(t, "wh_cancel_a", firstCancel, true);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(resendSends(fetchMock)).toHaveLength(1);
+
+    vi.setSystemTime(firstCancel + 3600_000);
+    await fireUpdated(t, "wh_uncancel", Date.now(), false);
+    const resumed = await billingView(t);
+    expect(resumed?.status).toBe("active");
+    expect(resumed?.cancelAtPeriodEnd).toBe(false);
+
+    vi.setSystemTime(firstCancel + 2 * 3600_000);
+    await fireUpdated(t, "wh_cancel_b", Date.now(), true);
+    expect((await billingView(t))?.cancelAtPeriodEnd).toBe(true);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    expect(resendSends(fetchMock)).toHaveLength(2);
+    expect(await ledgerRows(t)).toHaveLength(2);
+  });
+
+  test("Dodo's period-end subscription.cancelled does not send a second confirmation", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-28T19:56:22Z"));
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    await seedScheduledCancelFixture(t);
+
+    await fireUpdated(t, "wh_portal_cancel", Date.now(), true);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(resendSends(fetchMock)).toHaveLength(1);
+
+    vi.setSystemTime(PERIOD_END + 60_000);
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_period_end_cancelled",
+      eventType: "subscription.cancelled",
+      rawPayload: { data: { subscription_id: SUB_ID, customer: { email: EMAIL } } },
+      timestamp: Date.now(),
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    expect(resendSends(fetchMock)).toHaveLength(1);
+    const ended = await billingView(t);
+    expect(ended?.status).toBe("cancelled");
+    expect(ended?.cancelAtPeriodEnd).toBe(false);
+  });
+
+  test("a subscription.cancelled inside the paid period does not re-confirm a scheduled cancel", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-28T19:56:22Z"));
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    await seedScheduledCancelFixture(t);
+
+    const cancelTs = Date.now();
+    await fireUpdated(t, "wh_portal_cancel", cancelTs, true);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(resendSends(fetchMock)).toHaveLength(1);
+
+    vi.setSystemTime(cancelTs + DAY_MS);
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_early_cancelled",
+      eventType: "subscription.cancelled",
+      rawPayload: { data: { subscription_id: SUB_ID, customer: { email: EMAIL } } },
+      timestamp: Date.now(),
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    expect(resendSends(fetchMock)).toHaveLength(1);
+    expect(await ledgerRows(t)).toHaveLength(1);
+  });
+
+  test("send gate accepts the scheduled episode and rejects a stale one", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-28T19:56:22Z"));
+    delete process.env.RESEND_API_KEY;
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    await seedScheduledCancelFixture(t);
+
+    const cancelTs = Date.now();
+    await fireUpdated(t, "wh_portal_cancel", cancelTs, true);
+    process.env.RESEND_API_KEY = "re_test";
+
+    const stale = await t.action(internal.payments.subscriptionEmails.sendDunningEmail, {
+      dodoSubscriptionId: SUB_ID,
+      step: "cancellation_confirm",
+      episodeAt: cancelTs - 1,
+    });
+    expect(stale).toEqual({ sent: false, reason: "stale_episode" });
+    expect(resendSends(fetchMock)).toHaveLength(0);
+
+    const current = await t.action(internal.payments.subscriptionEmails.sendDunningEmail, {
+      dodoSubscriptionId: SUB_ID,
+      step: "cancellation_confirm",
+      episodeAt: cancelTs,
+    });
+    expect(current).toEqual({ sent: true });
+    expect(resendSends(fetchMock)).toHaveLength(1);
+  });
+
+  test("send gate rejects a scheduled cancel that was withdrawn before the send ran", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-28T19:56:22Z"));
+    delete process.env.RESEND_API_KEY;
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    await seedScheduledCancelFixture(t);
+
+    const cancelTs = Date.now();
+    await fireUpdated(t, "wh_portal_cancel", cancelTs, true);
+    await fireUpdated(t, "wh_portal_uncancel", cancelTs + 60_000, false);
+    process.env.RESEND_API_KEY = "re_test";
+
+    const result = await t.action(internal.payments.subscriptionEmails.sendDunningEmail, {
+      dodoSubscriptionId: SUB_ID,
+      step: "cancellation_confirm",
+      episodeAt: cancelTs,
+    });
+    expect(result).toEqual({ sent: false, reason: "not_cancelled" });
+    expect(resendSends(fetchMock)).toHaveLength(0);
+  });
+
+  test("a confirmation skipped at webhook time is recovered by the daily scan", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-28T19:56:22Z"));
+    delete process.env.RESEND_API_KEY;
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    await seedScheduledCancelFixture(t);
+
+    await fireUpdated(t, "wh_portal_cancel_no_key", Date.now(), true);
+    expect(await confirmationJobs(t)).toHaveLength(0);
+
+    vi.setSystemTime(Date.now() + 3600_000);
+    process.env.RESEND_API_KEY = "re_test";
+    await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = resendSends(fetchMock);
+    expect(sends).toHaveLength(1);
+    expect(sends[0]!.html).toContain("28 September 2026");
+
+    // The next tick finds the ledger row and stays quiet.
+    await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(resendSends(fetchMock)).toHaveLength(1);
   });
 });

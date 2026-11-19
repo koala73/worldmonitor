@@ -43,7 +43,11 @@ Merge, auto-merge, and deployment require explicit authorization in the current 
 | Data workers and cache | `scripts/`, `server/_shared/`; [health contracts](docs/health-endpoints.mdx) | Producer and reader checks with fixtures; separately record live freshness evidence when required |
 | Proto and generated clients | `proto/`, `src/generated/`; [code generation](CONTRIBUTING.md#working-with-sebuf-rpc-framework) | `make generate` requires buf + sebuf v0.11.1 plugins; verify generated diff |
 | Desktop and sidecar | `src-tauri/`; [architecture](ARCHITECTURE.md) | Focused Rust checks or `npm run test:sidecar` |
+| CI workflows | `.github/workflows/`; [CI/CD table](ARCHITECTURE.md#11-cicd) | Add or update each workflow's table entry. Run `npm run docs:check` and validate the changed workflow before pushing. The pre-push hook enforces the documentation check for workflow changes |
+| Committed derived files (product facts, llms, AI search, catalogs) | `scripts/generate-derived.mjs`; [derived files](CONTRIBUTING.md#derived-files) | `npm run generate`, then commit what it rewrote |
 | Tests and documentation | `tests/`, `e2e/`, `docs/`; [verification guide](CONTRIBUTING.md#verify-the-changed-path) | Relevant existing test or docs check, `git diff --check` |
+
+For public documents and API collections, use `https://www.worldmonitor.app` for website and documentation links. Keep MCP and OAuth endpoint identities on the apex host. Run `node --test tests/agent-corpus-canonical-host.test.mjs` after changing published URLs.
 
 ## Landmarks
 
@@ -60,12 +64,14 @@ Test path, command, and owning CI job. Read this instead of `.github/workflows/t
 
 | Test path | Command | CI job |
 |---|---|---|
-| `tests/*.test.mjs`, `tests/*.test.mts`, `cli/test/`, `api/security/report.test.mjs` | `npm run test:data` | `unit-shards` |
+| `tests/*.test.mjs`, `tests/*.test.mts`, `cli/test/`, `api/security/report.test.mjs` | `npm run test:related` locally; `npm run test:data` is the full suite | `unit-shards` |
 | `tests/dom/` | `npm run test:dom` | `dom-tests` |
 | `convex/__tests__/`, `server/__tests__/`, `src/services/correlation-engine/` | `npm run test:convex` | `convex-tests` |
 | `api/` node suites except `api/security/report.test.mjs`, and `src-tauri/` | `npm run test:sidecar` | `sidecar` |
 
 Find a suite by subject with `ls tests/ | grep <subject>` before searching the tree.
+
+Before pushing, run `npm run test:related`. It runs the data tests that a branch's changes can reach, usually in under a minute. The full `test:data` suite takes about six minutes locally, and CI runs it on every push.
 
 ## Critical boundaries
 
@@ -84,7 +90,12 @@ The browser import direction is `types -> config -> services -> components -> ap
 
 - For browser behavior, load [verify-worldmonitor](.agents/skills/verify-worldmonitor/SKILL.md). Start with an existing strict feature test. Use manual driving for the interaction being changed.
 - For Sentry events, load [sentry-triage](.agents/skills/sentry-triage/SKILL.md). Its default is read-only triage.
+- For a new or changed news feed, load [add-rss-feed](.agents/skills/add-rss-feed/SKILL.md). For a JSON API endpoint, load [add-rpc-endpoint](.agents/skills/add-rpc-endpoint/SKILL.md). For a new dataset, seeder, or map layer, load [add-data-source](.agents/skills/add-data-source/SKILL.md).
+- For a code review or a self-review before a PR, load [review-worldmonitor-change](.agents/skills/review-worldmonitor-change/SKILL.md). A standalone review stays read-only.
+- Folder rules live in `src/components/AGENTS.md`, `scripts/AGENTS.md`, and `server/AGENTS.md`. Read the one for the folder you edit.
 - `.agents/skills/` contains repository engineering skills. `skills/` contains published product recipes for API and MCP consumers. They serve different users.
 - Read [documented solutions](docs/solutions/) when the affected area has a prior fix — organized by category directory (`security-issues/`, `logic-errors/`, `conventions/`, …) with YAML frontmatter (`module`, `component`, `problem_type`, `tags`) to grep. Use [CONCEPTS.md](CONCEPTS.md) for shared terms and [design philosophy](docs/architecture.mdx) for design decisions.
 
 Run the smallest meaningful proof first. Preserve useful regression coverage. Run heavy checks sequentially. Report failures honestly. Keep locally verified, PR ready, merged, deployed, observed in production, and acceptance complete as separate claims.
+
+A green pre-push hook proves only its local checks. After pushing, monitor required CI on the exact PR head. Repair relevant failures on the existing branch and verify the new head. Do not report CI success while required checks are failed or pending. Inspect the failed job's first actionable error before retrying or changing code.

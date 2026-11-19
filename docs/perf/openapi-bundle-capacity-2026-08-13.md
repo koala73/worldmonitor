@@ -123,9 +123,25 @@ Later passes in `scripts/build-openapi-json.mjs`, all JSON-only (the YAML keeps 
 
 The last one is boilerplate rather than repetition. It falls under step 3's "boilerplate that repeats verbatim", applied to response descriptions instead of operation descriptions. After it, the repeated structures the report still counts are dominated by the inline `jmespath` parameter copies, which `ensureInlineTypedInput` keeps on purpose for JSON-only scanners. Step 2 still needs scanner re-verification. The next operation will need step 2, or a scanner re-check of the budget.
 
+### Oversized examples
+
+Measured 2026-10-18 with 280 bytes left: the report's "repeated structures still inline" estimate (~9.3 KB) was almost entirely the inline `jmespath` and typed-parameter copies that `ensureInlineTypedInput` restores on purpose, so steps 1 and 2 had nothing left to give. The bytes were in two response examples instead. `get-china-corridor-control-towers` carried a 21,348-byte example (four corridors that repeat one node, condition, signal and provenance structure, escaped inside `payloadJson`) and `get-giving-summary` a 12,340-byte one; the median operation is about 1.3 KB in total.
+
+The production parser (`shared/china-corridor-control-towers.ts`) accepts a payload only with all four corridors and all six signal families on each, and `tests/china-corridor-service.test.mts` parses the documented example through it, so the example cannot drop corridors. `scripts/openapi-inject-china-corridors.mjs` now gives two corridors the observed port condition (signal plus provenance) and the other two the all-unavailable shape the parser also accepts. That is a source change, not a JSON-only pass: the per-service spec, the YAML bundle and the served JSON all shrink. The served artifact went from 949,720 to 943,028 bytes (6,972 free; still inside the three-operation reserve, so the status stays `reserve-breached`). The Giving example is the next candidate; its 10.7 KB `provenance` block is derived from `scripts/shared/giving-published-estimate-claims.json` and pinned by `tests/openapi-examples-contract.test.mjs`, so trimming it means trimming the shared claim fixture first.
+
 ### Operations left out of the scanner bundle
 
 Step 2 has since landed: `Idempotency-Key` and `Idempotent-Replayed` are shared `components.headers` refs in the served JSON. With 320 bytes left, the owner decided (#9093) that endpoints built for WorldMonitor's own pages and for operators stay out of `public/openapi.json`. `SCANNER_BUNDLE_EXCLUDED_OPERATIONS` in `scripts/build-openapi-json.mjs` lists each one with its reason. An excluded operation is still served, still documented in its per-service spec and the YAML bundle, and still callable. Only this artifact omits it, so it costs no budget.
+
+### Shorter emitted component keys
+
+Measured 2026-11-17, when #10920 (`list-sent-alerts`) and #10921 (Cmd+K headline search) met on main with 93 bytes left. The 5,539 bytes the report counted as "repeated structures still inline" were again 5,372 bytes of the inline `jmespath` copies that `ensureInlineTypedInput` restores on purpose, so there was nothing to collapse. The bytes were in the pointers instead. Every `$ref` spells its target key in full, and the error responses alone take 1,499 of them.
+
+`compactComponentKeys` in `scripts/build-openapi-json.mjs` runs after every pass that names a component. It shortens only keys those passes create: `E429` becomes `429`, `EDEF` becomes `DEF`, `Jmespath` becomes `J`, `WorldMonitorInt64` becomes `Int64`, and `IdempotentReplayedHeader` becomes `IdempotentReplayed`. It then rewrites all 1,813 refs to match. The source YAML has none of these components, and each component keeps its wire name inside it, so nothing a reader of the YAML or the per-service specs uses changes. Inverting the renames restores the input exactly, and `tests/openapi-json-dedup.test.mjs` proves this on the real bundle.
+
+The same sweep found one ref that resolved only by following another `$ref` partway along its path. A China provenance value ref pointed into `classification_confidence`, which `dedupeSharedSchemaSubtrees` had already replaced with a ref to its byte-identical twin `extraction_confidence`. That pass now points such refs at the same position inside the twin, so every pointer resolves under strict JSON Pointer evaluation. Keeping the replaced node in place instead would have cost 1,031 bytes.
+
+The served artifact went from 949,907 to 945,352 bytes, leaving 4,648 bytes free. The next lever needs a scanner re-check first: if orank credits `$ref`'d parameters, hoisting the inline `jmespath` copies returns about 5.4 KB.
 
 ### Not on the table
 

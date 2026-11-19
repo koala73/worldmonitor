@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 import { getRedisCredentials, loadEnvFile, redisCommand } from './_seed-utils.mjs';
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
+import { parseStoredSeedJson } from './_seed-payload-codec.mjs';
 import { HISTORY_KEY, RESOLUTIONS_KEY } from './seed-forecast-resolutions.mjs';
 import { formatReconciliationMarkdown, freezeCohort, reconcileCohort } from './_forecast-cohort.mjs';
 
@@ -52,9 +53,11 @@ function list(value) {
   return value ? value.split(',').map((item) => item.trim()).filter(Boolean) : null;
 }
 
-async function readJson(url, token, key) {
+// freeze and reconcile both read the resolution ledger through here; the
+// resolver stores it gzip-encoded (_seed-payload-codec.mjs).
+export async function readJson(url, token, key) {
   const { result } = await redisCommand(url, token, ['GET', key]);
-  return result == null ? null : JSON.parse(result);
+  return result == null ? null : parseStoredSeedJson(result);
 }
 
 // limit 0 reads the whole list.

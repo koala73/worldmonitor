@@ -84,19 +84,22 @@ const HTTP_METHODS = new Set([
 // -----------------------------------------------------------------------------
 
 const EXCLUDED_FROM_MCP_PARITY = new Map([
+  ['GET /api/economic/v1/get-food-prices', 'deferred-to-future-tool: source-specific food prices and dated food-security context are served to the dashboard (#9841)'],
+  ['GET /api/safety/v1/get-toronto-safety', 'deferred-to-future-tool: city-level Toronto Police data serves the Toronto Safety panel; the MCP tools were removed in 1.54.0 and a country-level safety tool replaces them once more countries are covered'],
+  ['GET /api/maritime/v1/list-ukmto-incidents', 'deferred-to-future-tool: UKMTO publisher reports await activation and source-aware MCP composition (#9831)'],
 
-  // === mutating (20) ===
+  // === mutating (21) ===
   ["GET /api/aviation/v1/list-airport-delays",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["GET /api/infrastructure/v1/list-temporal-anomalies",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["GET /api/infrastructure/v1/reverse-geocode",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
+  ["GET /api/infrastructure/v1/search-place",
+    "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["GET /api/resilience/v1/get-resilience-ranking",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["GET /api/v2/shipping/webhooks",
-    "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
-  ["GET /api/webcam/v1/list-webcams",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["POST /api/infrastructure/v1/record-baseline-snapshot",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
@@ -111,6 +114,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "mutating: writes to Convex (not server/_shared/redis) — lead registration write"],
   ["POST /api/leads/v1/submit-contact",
     "mutating: writes to Convex (not server/_shared/redis) — contact form write"],
+  ["POST /api/feedback/v1/submit-report",
+    "mutating: agent feedback written to Convex; MCP exposure is report_issue, which calls the shared admitFeedbackReport path rather than this route (#8721)"],
   ["POST /api/news/v1/submit-error-report",
     "mutating: reader error report written to the #9093 review queue via runRedisPipeline"],
   ["POST /api/news/v1/review-error-report",
@@ -132,10 +137,12 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   // 24h per-title cache, so per-call LLM cost is bounded. Metering differs by
   // credential class — OAuth/dashboard-key callers consume the 50/UTC-day MCP
   // reservation; env-key (`wm_`) callers are bounded by the 60/min/key limiter
-  // only (see docs/mcp-tools-reference.mdx). Do not restate this as "the daily
+  // only (see docs/mcp-tools/signals.mdx). Do not restate this as "the daily
   // quota bounds it" without qualifying the env-key path.
 
-  // === fetch-on-miss (28) ===
+  // === fetch-on-miss (29) ===
+  ['GET /api/cyber/v1/get-network-info',
+    'fetch-on-miss: high-cardinality-input — arbitrary public IP enrichment; provider authorization, privacy disclosure and source attribution are handled by the Cyber Threat popup'],
   ["GET /api/intelligence/v1/get-risk-scores",
     "fetch-on-miss: paid-upstream — cachedFetchJsonWithMeta + ACLED API on cache miss. Cross-domain composite spans conflict plus auxiliary infra outages, climate anomalies, cyber threats, wildfires, GPS jamming, OREF history, advisories, displacement, news insights/threats, aviation, earthquakes, sanctions, temporal anomalies, and military CII; intended for a future expanded_risk_scores composite tool because the current shape doesn't fit any single existing tool."],
   ["GET /api/aviation/v1/get-carrier-ops",
@@ -164,8 +171,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "fetch-on-miss: paid-upstream — external feed fetch per request"],
   ["GET /api/maritime/v1/list-navigational-warnings",
     "fetch-on-miss: paid-upstream — external feed fetch per request"],
-  ["GET /api/displacement/v1/get-internal-displacement",
-    "deferred-to-future-tool: pure-read of the seeded IOM DTM snapshot (displacement:dtm:v1). Region-level IDP counts per operation would widen get_displacement_data's UNHCR country shape; add them to that tool in a follow-up instead of a second displacement tool."],
   ["GET /api/market/v1/get-price-history",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["GET /api/market/v1/get-insider-transactions",
@@ -181,8 +186,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["GET /api/supply-chain/v1/get-route-explorer-lane",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["GET /api/supply-chain/v1/get-route-impact",
-    "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
-  ["GET /api/webcam/v1/get-webcam-image",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["POST /api/conflict/v1/get-humanitarian-summary-batch",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
@@ -232,16 +235,24 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
   ["GET /api/scenario/v1/list-scenario-templates",
     "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
-  ["POST /api/economic/v1/get-fred-series-batch",
-    "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
 
-  // === deferred-to-future-tool (55) ===
+  // === deferred-to-future-tool (57) ===
+  ["GET /api/safety/v1/get-toronto-safety",
+    "deferred-to-future-tool: pure-read of the seeded Toronto Police Service extracts. The two Toronto-only tools left tools/list (both names stay callable as retired tools); a public-safety tool taking a jurisdiction receives them once a second city or province is seeded."],
   ["GET /api/aviation/v1/list-aircraft-emergencies",
     "deferred-to-future-tool: reported transponder observations belong in a future aircraft-signals tool with explicit reception and freshness limits. This change adds only the dashboard layer and details."],
   ["GET /api/news/v1/list-country-headlines",
     "deferred-to-future-tool: country snapshot capture reads existing full RSS caches; a future country_headlines tool can expose this uncapped country pool"],
   ["GET /api/news/v1/list-error-reports",
     "deferred-to-future-tool: operator review queue (#9093) is secret-gated and holds private reader contacts; no MCP surface by design"],
+  ["GET /api/news/v1/list-source-items",
+    "deferred-to-future-tool: cached rows for a dashboard panel's enabled sources below the digest category cap (#9796); agents read whole categories through list-news-pool"],
+  ["GET /api/news/v1/search-headlines",
+    "deferred-to-future-tool: Cmd+K search over the last 24 hours of headlines the dashboard served; agents search current news through get_news_intelligence and verify_claim"],
+  ["GET /api/news/v1/search-headline-archive",
+    "deferred-to-future-tool: the 7-day Pro window of the same Cmd+K headline search; a future headline-history tool can expose it"],
+  ["GET /api/news/v1/list-sent-alerts",
+    "deferred-to-future-tool: account-private history of the alerts delivered to the caller, read by the dashboard search; no MCP surface until per-user notification data has an explicit MCP authorization design"],
   ["GET /api/news/v1/list-label-changes",
     "deferred-to-future-tool: label history (#9093) is read by the /trust page; a future trust tool can expose recent label changes"],
   ["GET /api/consumer-prices/v1/get-consumer-price-basket-series",
@@ -271,6 +282,10 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   // category is fetch-on-miss.
   ["GET /api/aviation/v1/get-airport-ops-summary",
     "deferred-to-future-tool: pure-read but no MCP tool exposes aviation:delays:intl:v3 yet — bundle into a future expanded-domain tool"],
+  ["GET /api/orbital/v1/list-imaging-satellites",
+    "deferred-to-future-tool: pure-read raw orbit elements; the subscription point-lookup tool computes passes from orbital:catalog:v1 instead of exposing the catalog"],
+  ["GET /api/orbital/v1/get-watched-site-imagery",
+    "deferred-to-future-tool: map-popup read of one watched site's newest image and next pass; the subscription country-evidence tool already returns every watched site's imagery from orbital:site:v1"],
   ["GET /api/cyber/v1/list-cyber-threats",
     "deferred-to-future-tool: pure-read but no MCP tool exposes cyber:threats:v2 yet — bundle into a future expanded-domain tool"],
   ["GET /api/economic/v1/get-bis-credit",
@@ -333,8 +348,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "deferred-to-future-tool: pure-read but no MCP tool exposes - yet — bundle into a future expanded-domain tool"],
   ["GET /api/supply-chain/v1/get-china-corridor-control-towers",
     "deferred-to-future-tool: pure-read corridor composition has no MCP supply-chain comparison tool yet — bundle into a future expanded-domain tool"],
-  ["GET /api/supply-chain/v1/get-shipping-rates",
-    "deferred-to-future-tool: pure-read but no MCP tool exposes supply_chain:shipping:v2 yet — bundle into a future expanded-domain tool"],
   ["GET /api/supply-chain/v1/list-vulnerability-rankings",
     "deferred-to-future-tool: issue #6449 deliberately exposes country and chokepoint MCP tools only; keep the global ranking RPC available to REST and UI clients until a bounded ranking-tool contract is approved"],
   ["GET /api/trade/v1/get-trade-barriers",

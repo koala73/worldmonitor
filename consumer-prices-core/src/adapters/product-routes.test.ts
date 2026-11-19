@@ -60,4 +60,34 @@ describe('retailer product-route filters admit the live route', () => {
       for (const f of filters) expect(f.startsWith('/')).toBe(true);
     }
   });
+
+  // Confirmed live 2026-10-29. Coop ends every product URL in `/p/<id>` under a
+  // per-language category tree; Naivas serves products from root slugs, so its
+  // old `/product/` filter rejected all 12 essentials-ke URLs Exa returned.
+  it('coop_ch admits product pages in every site language and drops corporate pages', () => {
+    const filters = filtersFor('coop_ch');
+    expect(
+      matchesAnyPathFilter(
+        'https://www.coop.ch/de/lebensmittel/vorraete/grundnahrungsmittel/mehl-zucker/kristallzucker-rohrzucker/prix-garantie-feinkristallzucker/p/6582329',
+        filters,
+      ),
+    ).toBe(true);
+    expect(matchesAnyPathFilter('https://www.coop.ch/fr/nourriture/produits-laitiers-oeufs/lait/lait-entier/p/3045429', filters)).toBe(true);
+    expect(matchesAnyPathFilter('https://www.coop.ch/de/unternehmen/medien/medienmitteilungen.html', filters)).toBe(false);
+  });
+
+  it('naivas_ke admits root-slug product pages', () => {
+    const filters = filtersFor('naivas_ke');
+    expect(matchesAnyPathFilter('https://www.naivas.online/brookside-fresh-milk-500ml-std', filters)).toBe(true);
+  });
+
+  it('runs Kenya and Switzerland on keyword search behind the strict validator', () => {
+    for (const slug of ['naivas_ke', 'coop_ch']) {
+      const config = loadRetailerConfig(slug);
+      expect(config.enabled, slug).toBe(true);
+      expect(config.searchConfig?.searchType, slug).toBe('keyword');
+      expect(config.searchConfig?.requireStrictValidator, slug).toBe(true);
+      expect(config.searchConfig?.requirePageTitleMatch, slug).toBe(true);
+    }
+  });
 });

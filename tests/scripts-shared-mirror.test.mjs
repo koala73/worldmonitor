@@ -20,6 +20,7 @@ const repoRoot = resolve(__dirname, '..');
 const MIRRORED_FILES = [
   'china-corporate-disclosure-policy.js',
   'correlation-runtime-mode.js',
+  'gdelt-tension-pairs.json',
   'geography.js',
   'hapi-app-identifier.json',
   'iso2-to-region.json',

@@ -54,7 +54,7 @@ const cases = [
   ['get_health_signals', 'country', { 'disease-outbreaks': { outbreaks: [{ countryCode: 'IQ' }, { countryCode: 'IR' }] } }],
   ['get_energy_intelligence', 'country', { _countries: ['IQ', 'IR'] }],
   ['get_climate_data', 'country', { disasters: { disasters: [{ countryCode: 'IQ' }, { countryCode: 'IR' }] } }],
-  ['get_tariff_trends', 'country', { bigmac: { countries: [{ code: 'IQ' }, { code: 'IR' }] } }],
+  ['get_price_and_debt_indicators', 'country', { bigmac: { countries: [{ code: 'IQ' }, { code: 'IR' }] } }],
   ['get_country_macro', 'countries', { macro: { countries: { IQ: { value: 1 }, IR: { value: 2 } } } }],
   ['get_displacement_data', 'countries', { summary: { countries: [{ code: 'IRQ' }, { code: 'IRN' }], topFlows: [{ originCode: 'IRQ', asylumCode: 'DEU' }, { originCode: 'SYR', asylumCode: 'IRQ' }, { originCode: 'IRN', asylumCode: 'DEU' }] } }],
 ];
@@ -96,29 +96,22 @@ it('country validation reaches callers as Invalid params through dispatch', asyn
   }
 });
 
-for (const [name, label] of [
-  ['get_country_macro', 'macro'],
-  ['get_eu_housing_cycle', 'house-prices'],
-  ['get_eu_quarterly_gov_debt', 'gov-debt-q'],
-  ['get_eu_industrial_production', 'industrial-production'],
-]) {
-  it(`${name} returns no other countries when the requested country has no coverage`, () => {
-    const tool = TOOL_REGISTRY.find(tool => tool.name === name);
+// get_country_macro carries the IMF datasets (ISO-2 keys) and the Eurostat
+// datasets (Eurostat geo keys: EL for Greece, plus the EA20 and EU27_2020 aggregates).
+const countryMacro = () => TOOL_REGISTRY.find(tool => tool.name === 'get_country_macro');
+
+for (const label of ['macro', 'house-prices', 'gov-debt-q', 'industrial-production']) {
+  it(`get_country_macro ${label} returns no other countries when the requested country has no coverage`, () => {
     const fixture = { [label]: { countries: { DE: { value: 2 } } } };
-    const result = tool._postFilter(structuredClone(fixture), { countries: ['Japan'] });
+    const result = countryMacro()._postFilter(structuredClone(fixture), { countries: ['Japan'] });
     assert.deepEqual(result[label].countries, {});
   });
 }
 
-for (const [name, label] of [
-  ['get_eu_housing_cycle', 'house-prices'],
-  ['get_eu_quarterly_gov_debt', 'gov-debt-q'],
-  ['get_eu_industrial_production', 'industrial-production'],
-]) {
-  it(`${name} preserves aggregate codes and maps Greece to Eurostat EL`, () => {
-    const tool = TOOL_REGISTRY.find((tool) => tool.name === name);
+for (const label of ['house-prices', 'gov-debt-q', 'industrial-production']) {
+  it(`get_country_macro ${label} preserves aggregate codes and maps Greece to Eurostat EL`, () => {
     const fixture = { [label]: { countries: { EL: { value: 1 }, DE: { value: 2 }, EA20: { value: 3 }, EU27_2020: { value: 4 } } } };
-    const filter = (countries) => tool._postFilter(structuredClone(fixture), { countries });
+    const filter = (countries) => countryMacro()._postFilter(structuredClone(fixture), { countries });
     for (const country of ['Greece', 'GRC', 'GR', 'EL']) {
       assert.deepEqual(Object.keys(filter([country])[label].countries), ['EL']);
     }
@@ -126,3 +119,15 @@ for (const [name, label] of [
     assert.throws(() => filter(['Atlantis']), RpcValidationError);
   });
 }
+
+it('get_country_macro keys Greece as GR in the IMF datasets and EL in the Eurostat ones in one call', () => {
+  const fixture = {
+    macro: { countries: { GR: { value: 1 }, DE: { value: 2 } } },
+    'house-prices': { countries: { EL: { value: 3 }, DE: { value: 4 }, EA20: { value: 5 } } },
+  };
+  for (const country of ['Greece', 'GR', 'EL']) {
+    const result = countryMacro()._postFilter(structuredClone(fixture), { countries: [country, 'EA20'] });
+    assert.deepEqual(Object.keys(result.macro.countries), ['GR']);
+    assert.deepEqual(Object.keys(result['house-prices'].countries), ['EL', 'EA20']);
+  }
+});

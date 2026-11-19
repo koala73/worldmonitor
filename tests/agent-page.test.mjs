@@ -33,11 +33,13 @@ describe('/agent page content', () => {
   });
 
   it('has a setup section for every client the page names', () => {
-    for (const id of ['claude', 'chatgpt', 'cursor', 'gemini', 'grok-bot', 'generic']) {
+    for (const id of ['claude', 'chatgpt', 'cursor', 'codex', 'gemini', 'grok-bot', 'generic']) {
       assert.match(PAGE, new RegExp(`<article class="client" id="${id}">`), id);
     }
     assert.match(PAGE, /claude mcp add --transport http worldmonitor https:\/\/worldmonitor\.app\/mcp/);
     assert.match(PAGE, /gemini mcp add --transport http worldmonitor https:\/\/worldmonitor\.app\/mcp/);
+    assert.match(PAGE, /codex mcp add worldmonitor --url https:\/\/worldmonitor\.app\/mcp/);
+    assert.match(PAGE, /<code>codex mcp login worldmonitor<\/code>/);
     assert.match(PAGE, /&quot;url&quot;: &quot;https:\/\/worldmonitor\.app\/mcp&quot;/);
   });
 
@@ -81,7 +83,7 @@ describe('/agent page SEO registration', () => {
     assert.ok(description, 'meta description');
     assert.ok(description.length >= 150 && description.length <= 160, `meta description is ${description.length} chars`);
     assert.ok(description.endsWith('.'));
-    assert.notEqual(description, APPROVED_DESCRIPTION, 'the approved line is the homepage meta; reuse would duplicate it');
+    assert.notEqual(description, APPROVED_DESCRIPTION, 'the approved line is the lede and the home.md description; the meta must not repeat it');
     const committedHtml = execFileSync('git', ['ls-files', '*.html'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
     for (const file of committedHtml) {
       if (file === 'public/agent/index.html') continue;

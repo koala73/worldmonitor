@@ -142,6 +142,7 @@ test('current workflow builds and publishes only the selected tag source', () =>
   for (const job of Object.values(desktop.jobs)) {
     for (const checkout of job.steps.filter((step) => step.uses?.startsWith('actions/checkout@'))) {
       assert.equal(checkout.with.ref, "${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.release_tag) || github.ref }}");
+      assert.equal(checkout.with['persist-credentials'], false, 'release jobs publish through gh with GITHUB_TOKEN and never need a git credential on disk');
     }
   }
 });

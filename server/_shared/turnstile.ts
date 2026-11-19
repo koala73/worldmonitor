@@ -40,6 +40,7 @@ export async function verifyTurnstile({
 
   try {
     const res = await fetch(TURNSTILE_VERIFY_URL, {
+      signal: AbortSignal.timeout(10_000),
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ secret, response: token, remoteip: ip }),

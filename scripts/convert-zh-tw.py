@@ -102,16 +102,14 @@ PHRASE_OVERRIDES = {
     # 列表 -> 列錶 when followed by 的历史: OpenCC takes 表 as 錶 (watch/clock)
     # instead of 表 (list/form). Stock-backtest tooltip hit this; ban the residue.
     "列錶": "列表",
+    # 激光雷达 -> 鐳射雷達, the Hong Kong form. Taiwan calls lidar 光達.
+    "鐳射雷達": "光達",
 }
 
 # Applied before PHRASE_OVERRIDES, so an entry can opt out of a global rule.
 # Keyed by catalogue name, then by dotted path (array elements as `key[0]`).
 KEY_OVERRIDES = {
     "src": {
-        # "visit <url>", not data access.
-        "modals.settingsWindow.worldMonitor.register.description": {
-            "請訪問": "請造訪",
-        },
         # "IN {{count}} DAYS". OpenCC keeps 后 because 天后 is a word in its own
         # right (a deity, a diva) — here it is 天 + 后 meaning "days after".
         "popups.techEvent.days.inDays": {

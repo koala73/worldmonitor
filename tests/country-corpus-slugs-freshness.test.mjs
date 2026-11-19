@@ -89,9 +89,10 @@ test('every workflow that rebuilds the corpus stages and verifies the map', () =
       /git add [^\n]*\bapi\/_country-corpus-slugs\.generated\.js\b/,
       `${name} rebuilds the slug map and then discards it`,
     );
-    assert.match(
-      workflow,
-      /tests\/country-corpus-slugs-freshness\.test\.mjs/,
+    const consumers = workflow.match(/SNAPSHOT_CONSUMERS: '([^']+)'/)?.[1];
+    assert.ok(
+      /tests\/country-corpus-slugs-freshness\.test\.mjs/.test(workflow)
+        || (consumers && new RegExp(consumers).test(readFileSync(fileURLToPath(import.meta.url), 'utf8'))),
       `${name} stages the slug map without running the gate that proves it fresh`,
     );
   }

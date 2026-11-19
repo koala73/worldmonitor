@@ -29,6 +29,7 @@ const SETTINGS_KEYS: readonly string[] = [
   'worldmonitor-webcam-prefs',
   'worldmonitor-disabled-feeds-schema',
   'map-height',
+  'map-height-mode',
   'map-split-height',
   'map-col-width',
   'map-side',
@@ -37,9 +38,38 @@ const SETTINGS_KEYS: readonly string[] = [
   'positive-threshold',
 ];
 
+// src/services/tab-store.ts keeps two per-variant keys: the dashboard tabs
+// (`worldmonitor-tabs-v1:<variant>`) and the panels new tabs start with
+// (`worldmonitor-new-tab-panels-v1:<variant>`). Without this pattern an
+// export/import cycle restored the active layout and silently dropped every
+// other workspace (#9372).
+type TabStoreKeyFamily = 'worldmonitor-tabs-v1' | 'worldmonitor-new-tab-panels-v1';
+const TAB_STORE_KEY_RE =
+  /^(worldmonitor-tabs-v1|worldmonitor-new-tab-panels-v1):(?:full|tech|finance|commodity|energy|happy)$/;
+
+function tabStoreKeyFamily(key: string): TabStoreKeyFamily | null {
+  return (TAB_STORE_KEY_RE.exec(key)?.[1] as TabStoreKeyFamily | undefined) ?? null;
+}
+
 function isSettingsKey(key: string): boolean {
   return SETTINGS_KEYS.includes(key)
-    || /^(?:worldmonitor-panels|worldmonitor-layers|worldmonitor-disabled-feeds)-(?:full|tech|finance|commodity|energy|happy)$/.test(key);
+    || /^(?:worldmonitor-panels|worldmonitor-layers|worldmonitor-disabled-feeds)-(?:full|tech|finance|commodity|energy|happy)$/.test(key)
+    || tabStoreKeyFamily(key) !== null;
+}
+
+// Live state that is only written back to storage lazily must be flushed
+// before an export reads storage. The dashboard tab snapshot is the case that
+// motivated this: the ACTIVE tab's stored snapshot is refreshed only when the
+// user switches away (PanelLayoutManager.snapshotActiveTab), so exporting
+// while on a tab captured the layout as it was at the last switch, not as it
+// is now. Owners register here; the standalone settings window has no owner
+// and exports whatever storage holds.
+const exportFlushHooks = new Map<() => void, ReadonlySet<string>>();
+
+/** Flush live state before export, until an import replaces one of its stored keys. */
+export function registerSettingsExportFlush(flush: () => void, persistedKeys: readonly string[]): () => void {
+  exportFlushHooks.set(flush, new Set(persistedKeys));
+  return () => { exportFlushHooks.delete(flush); };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -105,6 +135,17 @@ function validateSetting(key: string, raw: string, policies: {
   }
 }
 
+function normalizeStoredJson(raw: string, normalize: (parsed: unknown) => unknown): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const state = normalize(parsed);
+  return state === null ? null : JSON.stringify(state);
+}
+
 async function parseImportedEntries(parsed: unknown): Promise<Array<[string, string]>> {
   if (!isRecord(parsed) || !isRecord(parsed.data)) {
     throw new Error('Invalid format: expected an object with a data property.');
@@ -113,10 +154,16 @@ async function parseImportedEntries(parsed: unknown): Promise<Array<[string, str
     throw new Error(`Unsupported settings version: ${parsed.version}`);
   }
 
-  const [frameworks, maps, streams] = await Promise.all([
+  const [frameworks, maps, streams, tabStore] = await Promise.all([
     import('@/services/analysis-framework-store'), import('@/config/basemap'), import('@/services/ai-flow-settings'),
+    import('@/services/tab-store'),
   ]);
   const policies = { ...frameworks, ...maps, ...streams };
+  // A Record so a new tab-store key family cannot be admitted without a parser.
+  const tabStoreNormalizers: Record<TabStoreKeyFamily, (parsed: unknown) => unknown> = {
+    'worldmonitor-tabs-v1': tabStore.normalizeTabsState,
+    'worldmonitor-new-tab-panels-v1': tabStore.normalizeNewTabPanels,
+  };
   const entries: Array<[string, string]> = [];
   let decodedBytes = 0;
   const encoder = new TextEncoder();
@@ -132,6 +179,15 @@ async function parseImportedEntries(parsed: unknown): Promise<Array<[string, str
     const size = encoder.encode(stored).length;
     decodedBytes += size;
     if (size > 256 * 1024 || decodedBytes > 1024 * 1024) throw new Error('Settings payload is too large.');
+    // Tab-store values are admitted under the same shape rules the app reads
+    // storage with. Unusable ones are skipped, not fatal: the rest of the
+    // backup (panels, layers, monitors, ...) is still worth restoring alone.
+    const family = tabStoreKeyFamily(key);
+    if (family !== null) {
+      const normalized = normalizeStoredJson(stored, tabStoreNormalizers[family]);
+      if (normalized !== null) entries.push([key, normalized]);
+      continue;
+    }
     validateSetting(key, stored, policies);
     // The monitor reader trusts the stored JSON and immediately uses array
     // and string methods. Reject invalid records before changing any settings.
@@ -147,6 +203,8 @@ export const __testing__ = { isSettingsKey };
 
 export function exportSettings(): void {
   const data: Record<string, string> = {};
+
+  for (const flush of exportFlushHooks.keys()) flush();
 
   // Storage that cannot be read has no settings to export, and handing the
   // user a downloadable file anyway is worse than failing: the caller in
@@ -208,6 +266,11 @@ export function importSettings(file: File): Promise<ImportResult> {
 
         applyLocalPreferenceImport(entries);
         const importedKeys = entries.map(([key]) => key);
+        // Imported layouts take effect on reload. Their previous live owners
+        // must not replace them if the user exports before reloading.
+        for (const [flush, persistedKeys] of exportFlushHooks) {
+          if (importedKeys.some(key => persistedKeys.has(key))) exportFlushHooks.delete(flush);
+        }
         invalidatePanelStorageCacheForKeys(importedKeys);
         invalidateFrameworkCache();
         const keysImported = entries.length;

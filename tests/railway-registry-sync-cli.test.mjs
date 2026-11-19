@@ -11,6 +11,7 @@ const auditPath = fileURLToPath(new URL('../scripts/audit-railway-watch-paths.mj
 const registry = JSON.parse(readFileSync(new URL('../scripts/railway-services.json', import.meta.url)));
 const fleet = JSON.parse(readFileSync(new URL('../scripts/railway-native-autodeploy-fleet.json', import.meta.url))).services;
 const keyedId = fleet.find(({ name }) => name === 'seed-comtrade-bilateral-hs4').id;
+const energyId = fleet.find(({ name }) => name === 'seed-bundle-energy-sources').id;
 const otherId = fleet.find(({ name }) => name === 'seed-insights').id;
 const secret = 'fixture-secret-must-not-appear-in-output';
 
@@ -92,6 +93,29 @@ function assertSucceeded(result) {
 }
 
 describe('Railway registry sync CLI with unavailable source credentials', () => {
+  it('reports missing oil mirror credentials and clears the prerequisite only when configured', (t) => {
+    const fixture = createFixture(t);
+    delete fixture.state.config.services[energyId].variables.COMTRADE_API_KEYS;
+    fixture.save();
+
+    const readiness = fixture.run(['--environment', 'production']);
+    assert.equal(readiness.status, 2, readiness.stdout);
+    assert.match(readiness.stderr, /seed-bundle-energy-sources.*missing required environment COMTRADE_API_KEYS/);
+
+    const sync = fixture.run(['--apply', '--json']);
+    assertSucceeded(sync);
+    const report = JSON.parse(sync.stdout.slice(sync.stdout.indexOf('{\n')));
+    assert.deepEqual(report.runtimePrerequisites, [{
+      service: 'seed-bundle-energy-sources',
+      missingRequiredEnv: ['COMTRADE_API_KEYS'],
+    }]);
+    assert.deepEqual(fixture.read().edits, []);
+
+    fixture.state.config.services[energyId].variables.COMTRADE_API_KEYS = secret;
+    fixture.save();
+    assertSucceeded(fixture.run(['--environment', 'production']));
+  });
+
   it('does no work for matching configuration and complete credentials', (t) => {
     const fixture = createFixture(t);
     assertSucceeded(fixture.run());

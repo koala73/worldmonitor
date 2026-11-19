@@ -1,3 +1,5 @@
+import { isDesktopRuntime } from '@/services/desktop-runtime';
+
 interface CircuitState {
   failures: number;
   cooldownUntil: number;
@@ -59,9 +61,10 @@ const DEFAULT_MAX_CACHE_ENTRIES = 256;
 const DEFAULT_RECOVERY_PROBE_TIMEOUT_MS = 30_000;
 
 function isDesktopOfflineMode(): boolean {
-  if (typeof window === 'undefined') return false;
-  const hasTauri = Boolean((window as unknown as { __TAURI__?: unknown }).__TAURI__);
-  return hasTauri && typeof navigator !== 'undefined' && navigator.onLine === false;
+  // The shared detector, not a raw window.__TAURI__ read: the raw read said
+  // "web" in every desktop configuration that has no bridge global at that
+  // moment, so the offline stale-cache path never engaged there (#5912).
+  return isDesktopRuntime() && typeof navigator !== 'undefined' && navigator.onLine === false;
 }
 
 export class CircuitBreaker<T> {

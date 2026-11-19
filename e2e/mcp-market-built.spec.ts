@@ -4,9 +4,11 @@ import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { buildUiResourceRead, MARKET_RADAR_UI_URI } from '../api/mcp/ui/registry';
 import { terminalChart } from '../src/utils/terminal-chart';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 test.describe.configure({ mode: 'serial' });
 let bootstrap: string;
+let sharedChunk: string;
 const fixture = { cached_at: '2026-10-03T18:30:00Z', data: {
   'stocks-bootstrap': { quotes: Array.from({ length: 12 }, (_, i) => ({
     symbol: 'TEST' + i, name: 'Controlled asset ' + i, price: i === 0 ? 85233 : 100 + i, change: 1.25,
@@ -18,6 +20,11 @@ const fixture = { cached_at: '2026-10-03T18:30:00Z', data: {
 test.beforeAll(async () => {
   test.setTimeout(120_000);
   execFileSync('npm', ['run', 'build:plugin'], { timeout: 120_000, stdio: 'pipe' });
+  const entry = readFileSync('dist/plugin/market.html', 'utf8').match(/src="(\/plugin\/assets\/[a-zA-Z0-9_.-]+\.js)"/)![1];
+  // Rollup names the shared chunk after one of its modules, so take the entry's first static import instead of a name.
+  const firstImport = readFileSync('dist' + entry, 'utf8').match(/from"\.\/([a-zA-Z0-9_.-]+\.js)"/)?.[1];
+  if (!firstImport) throw new Error(`market entry ${entry} has no static import to fail`);
+  sharedChunk = firstImport;
   const previous = globalThis.fetch;
   globalThis.fetch = async url => {
     expect(String(url)).toBe('https://www.worldmonitor.app/plugin/market.html');
@@ -65,7 +72,7 @@ for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 90
       const url = new URL(route.request().url());
       expect(url.pathname).toMatch(/^\/plugin\/(market.html|assets\/(boot-\d+\/)?[a-zA-Z0-9_.-]+\.(js|css))$/);
       assets.push(url.pathname);
-      if (failDocument && (name === 'mobile' ? url.pathname.endsWith('market.html') : /\/dom-utils-[^/]+\.js$/.test(url.pathname))) {
+      if (failDocument && (name === 'mobile' ? url.pathname.endsWith('market.html') : url.pathname.endsWith('/' + sharedChunk))) {
         await route.fulfill({ status: 503, contentType: 'text/html', body: 'Temporarily unavailable', headers: { 'Access-Control-Allow-Origin': '*' } });
         return;
       }
@@ -98,8 +105,9 @@ for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 90
     await injected.evaluate(html => { document.open(); document.write(html); document.close(); }, bootstrap);
     const frame = page.frameLocator('iframe');
     await expect(frame.getByRole('status')).toContainText('could not load');
-    expect(await page.evaluate(() => (window as unknown as { marketMessages: unknown[] }).marketMessages)).toEqual([]);
-    await page.screenshot({ path: info.outputPath('injected-market-failure-' + name + '.png') });
+    await expect.poll(() => page.evaluate(() => (window as unknown as { marketMessages: { method: string }[] }).marketMessages.map(message => message.method)))
+      .toEqual(['ui/initialize', 'ui/notifications/initialized']);
+    await evidenceScreenshot(page, { path: info.outputPath('injected-market-failure-' + name + '.png') });
     failDocument = false;
     await frame.getByRole('button', { name: 'Retry interface' }).click();
     await expect(frame.locator('.qsym')).toHaveCount(12);
@@ -131,13 +139,15 @@ for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 90
     expect(assets.some(asset => asset.endsWith('.js'))).toBe(true);
     expect(assets.filter(asset => asset === '/plugin/market.html')).toHaveLength(2);
     if (name === 'desktop') {
-      expect(assets.filter(asset => /\/dom-utils-[^/]+\.js$/.test(asset))).toHaveLength(2);
-      expect(assets.some(asset => /\/boot-2\/dom-utils-/.test(asset))).toBe(true);
+      expect(assets.filter(asset => asset.endsWith('/' + sharedChunk))).toHaveLength(2);
+      expect(assets).toContain('/plugin/assets/boot-2/' + sharedChunk);
     }
+    expect(await page.evaluate(() => (window as unknown as { marketMessages: { method: string }[] }).marketMessages
+      .filter(message => message.method === 'ui/initialize'))).toHaveLength(1);
     expect(await page.evaluate(() => (window as unknown as { marketMessages: { method: string }[] }).marketMessages
       .filter(message => !['ui/initialize', 'ui/notifications/initialized', 'ui/notifications/size-changed'].includes(message.method)))).toEqual([]);
     expect(errors).toEqual([]);
-    await page.screenshot({ path: info.outputPath('injected-market-recovered-' + name + '.png') });
+    await evidenceScreenshot(page, { path: info.outputPath('injected-market-recovered-' + name + '.png') });
     await writeFile(info.outputPath('native-recovery-messages.json'), JSON.stringify(await page.evaluate(() => (window as unknown as { marketMessages: unknown[] }).marketMessages), null, 2));
   });
 }

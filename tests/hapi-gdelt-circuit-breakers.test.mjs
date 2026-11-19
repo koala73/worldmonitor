@@ -1,3 +1,8 @@
+// Static checks pin GDELT breaker wiring and distinct names because the
+// service exposes no injectable fetch (#8690, section 2). This suite also runs
+// CircuitBreaker cooldown and cache-isolation tests, which do not exercise the
+// service's network path.
+//
 /**
  * Regression tests for split GDELT circuit breakers (PR #879).
  *

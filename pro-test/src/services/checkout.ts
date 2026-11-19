@@ -13,7 +13,8 @@
  */
 
 import * as Sentry from '@sentry/react';
-import { ensureClerk, type LoadedClerk } from './clerk';
+import { viewportAnalyticsFields } from '../../../shared/analytics-viewport';
+import { ensureClerk, setAuthReturnUrls, SITE_DATA_BLOCKED_MESSAGE, SiteDataBlockedError, type LoadedClerk } from './clerk';
 export { ensureClerk } from './clerk';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
@@ -31,6 +32,8 @@ import {
   postCreateCheckout,
 } from './checkout-transport';
 import { createTimeoutSignal } from './timeout-signal';
+import { watchAuthModalDismissal } from './auth-modal-watch';
+import { IN_PLACE_UPGRADE_SOURCE_PLANS, runProBusinessUpgradeFlow } from './pro-business-upgrade';
 import {
   checkoutRetryAtMs,
   checkoutRetryRemainingSeconds,
@@ -45,11 +48,17 @@ import {
 import {
   CHECKOUT_ATTEMPT_STORAGE_KEY,
   CHECKOUT_RETURN_SOURCE_PARAM,
-  DESKTOP_CHECKOUT_HANDOFF,
   parseMissionPreviewAttribution,
   resolveCheckoutContext,
   type CheckoutAttribution,
 } from '../../../shared/checkout-attribution';
+import {
+  DESKTOP_CHECKOUT_HANDOFF,
+  desktopAccountDigest,
+  UNKNOWN_DESKTOP_ACCOUNT,
+  type DesktopCheckoutHandoff,
+} from '../../../shared/desktop-checkout-handoff';
+import { getFirstTouchAcquisitionForCheckout } from '../../../shared/acquisition-source';
 
 let checkoutInFlight = false;
 
@@ -126,6 +135,7 @@ function flushPendingFunnelEvents(): boolean {
 }
 
 function trackFunnelEvent(event: string, data?: Record<string, unknown>): void {
+  if (event === 'checkout-start') data = { ...data, ...viewportAnalyticsFields() };
   const enrichedData = withContentAttribution(data, getContentAttributionForAnalytics());
   try {
     const umami = getUmami();
@@ -253,17 +263,20 @@ export async function startCheckout(
     discountCode?: string;
     attributionSource?: string;
     checkoutAttribution?: CheckoutAttribution;
-    desktopHandoff?: boolean;
+    desktopHandoff?: DesktopCheckoutHandoff;
     bypassPendingGuard?: boolean;
   },
 ): Promise<boolean> {
   if (checkoutInFlight) return false;
   if (startCheckoutEntryInFlight) return false;
   startCheckoutEntryInFlight = true;
+  // Captured before loading_auth disables the clicked CTA (which drops its
+  // focus), so the auth chooser can hand focus back on cancel.
+  const trigger = (document.activeElement as HTMLElement | null) ?? null;
   document.getElementById('wm-checkout-error-toast')?.remove();
   if (_phase.kind === 'idle') setPhase({ kind: 'loading_auth', productId });
   try {
-    return await startCheckoutInner(productId, options);
+    return await startCheckoutInner(productId, options, trigger);
   } finally {
     startCheckoutEntryInFlight = false;
     if (_phase.kind === 'loading_auth') setPhase({ kind: 'idle' });
@@ -277,14 +290,19 @@ async function startCheckoutInner(
     discountCode?: string;
     attributionSource?: string;
     checkoutAttribution?: CheckoutAttribution;
-    desktopHandoff?: boolean;
+    desktopHandoff?: DesktopCheckoutHandoff;
     bypassPendingGuard?: boolean;
   },
+  trigger: HTMLElement | null = null,
 ): Promise<boolean> {
   let c: LoadedClerk;
   try {
     c = await ensureClerk();
   } catch (err) {
+    if (err instanceof SiteDataBlockedError) {
+      showCheckoutErrorToast(SITE_DATA_BLOCKED_MESSAGE);
+      return false;
+    }
     console.error('[checkout] Failed to load Clerk:', err);
     Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'load-clerk' } });
     showCheckoutErrorToast('Sign-in could not load. Please try again.');
@@ -307,25 +325,130 @@ async function startCheckoutInner(
   });
 
   if (!c.user) {
-    // Intent travels via afterSignInUrl / afterSignUpUrl — bound to
-    // THIS specific openSignIn call. On successful sign-in, Clerk
-    // navigates to the returnUrl which carries the checkout intent
-    // in its query string; tryResumeCheckoutFromUrl picks it up on
-    // page load. On dismissal, Clerk performs no navigation, so no
-    // resume. Other /pro sign-in paths don't set these URLs, so they
-    // can't trigger surprise purchases.
+    // Signed-out buyers pick the form before Clerk opens (#10842). Under strict
+    // enumeration protection each form strands the other group: a new address
+    // in sign-in, or an existing one in sign-up, reaches a code screen that
+    // sends no code. Both return URLs carry the checkout intent, so the footer
+    // link in either form still resumes via tryResumeCheckoutFromUrl. Never
+    // Clerk's combined sign-in/sign-up flow: it hid new-email sign-ups under
+    // strict enumeration protection (#10493).
+    // Auth has loaded: release the CTA so focus can return to it on cancel.
+    // The chooser's backdrop blocks clicks and the entry guard blocks re-entry.
+    if (_phase.kind === 'loading_auth') setPhase({ kind: 'idle' });
+    const form = await askCheckoutAuthForm(trigger);
+    if (form === 'cancel') return false;
     const returnUrl = buildCheckoutReturnUrl(window.location.href, productId, options);
+    setAuthReturnUrls({ afterSignInUrl: returnUrl, afterSignUpUrl: returnUrl });
     try {
-      c.openSignIn({ afterSignInUrl: returnUrl, afterSignUpUrl: returnUrl });
+      if (form === 'sign-up') c.openSignUp({ afterSignUpUrl: returnUrl, afterSignInUrl: returnUrl });
+      else c.openSignIn({ afterSignInUrl: returnUrl, afterSignUpUrl: returnUrl });
     } catch (err) {
-      console.error('[checkout] Failed to open sign in:', err);
-      Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'checkout-sign-in' } });
-      showCheckoutErrorToast('Sign-in could not open. Please try again.');
+      console.error(`[checkout] Failed to open ${form}:`, err);
+      Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: `checkout-${form}` } });
+      showCheckoutErrorToast(`${form === 'sign-up' ? 'Sign-up' : 'Sign-in'} could not open. Please try again.`);
+      return false;
     }
+    trackAuthStep(c, productId, form);
     return false;
   }
 
-  return doCheckout(productId, options ?? {});
+  return checkoutAs(c, productId, options ?? {});
+}
+
+type CheckoutAuthForm = 'sign-in' | 'sign-up';
+
+/** Funnel: the auth modal opened for a checkout click, and whether it closed without sign-in. */
+function trackAuthStep(c: LoadedClerk, productId: string, form: CheckoutAuthForm): void {
+  trackFunnelEvent('checkout-auth-shown', { productId: bucketProductIdForAnalytics(productId), surface: 'pro-page', form });
+  try {
+    watchAuthModalDismissal({
+      isSignedIn: () => Boolean(c.user),
+      onDismissed: ({ reachedCodeStep }) => {
+        trackFunnelEvent('checkout-auth-dismissed', {
+          productId: bucketProductIdForAnalytics(productId),
+          surface: 'pro-page',
+          form,
+          reachedCodeStep,
+        });
+      },
+    });
+  } catch {
+    /* analytics can never break checkout */
+  }
+}
+
+/** A resumed checkout counts as a new account when Clerk created the user this recently. */
+export const NEW_ACCOUNT_WINDOW_MS = 15 * 60_000;
+
+export function isRecentlyCreated(createdAt: Date | number | null | undefined, now: number): boolean {
+  const created = createdAt instanceof Date ? createdAt.getTime() : createdAt;
+  if (typeof created !== 'number' || !Number.isFinite(created)) return false;
+  const age = now - created;
+  return age >= 0 && age < NEW_ACCOUNT_WINDOW_MS;
+}
+
+type ProCheckoutOptions = NonNullable<Parameters<typeof startCheckout>[1]>;
+
+/**
+ * A desktop handoff names the account signed in to the app (#10342), but
+ * checkout runs on this browser's session. When they differ, the buyer picks:
+ * switch to the desktop account and resume this checkout after sign-in, or
+ * upgrade the browser account knowingly, which drops the "the app will
+ * update" return copy. Resolves the options to check out with and the
+ * account they were approved for, or null when checkout must not start now.
+ */
+async function confirmDesktopAccount(
+  c: LoadedClerk,
+  productId: string,
+  options: ProCheckoutOptions,
+): Promise<{ options: ProCheckoutOptions; userId?: string } | null> {
+  const desktopAccount = options.desktopHandoff?.account;
+  if (!c.user) return { options };
+  if (!desktopAccount || await desktopAccountDigest(c.user.id) === desktopAccount) {
+    return { options, userId: c.user.id };
+  }
+
+  const shownUserId = c.user.id;
+  const browserAccount = c.user.primaryEmailAddress?.emailAddress || 'this account';
+  const choice = await askDesktopAccountChoice(browserAccount, desktopAccount !== UNKNOWN_DESKTOP_ACCOUNT);
+  // Another tab can switch the browser session while the dialog is open. The
+  // buyer approved the account they were shown, not whichever is current.
+  if (choice !== 'cancel' && c.user?.id !== shownUserId) {
+    return confirmDesktopAccount(c, productId, options);
+  }
+  if (choice === 'upgrade-browser-account') {
+    const { desktopHandoff: _dropped, ...browserOptions } = options;
+    return { options: browserOptions, userId: shownUserId };
+  }
+  if (choice === 'switch-account') {
+    const returnUrl = buildCheckoutReturnUrl(window.location.href, productId, options);
+    try {
+      // The callback replaces Clerk's after-sign-out navigation, which would
+      // leave /pro before sign-in opens.
+      setAuthReturnUrls({ afterSignInUrl: returnUrl, afterSignUpUrl: returnUrl });
+      await c.signOut(() => c.openSignIn({ afterSignInUrl: returnUrl, afterSignUpUrl: returnUrl }));
+    } catch (err) {
+      console.error('[checkout] Failed to switch account:', err);
+      Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'desktop-account-switch' } });
+      showCheckoutErrorToast('Sign-in could not open. Please try again.');
+    }
+  }
+  return null;
+}
+
+/**
+ * Checkout runs on whatever session Clerk holds when the token is read, and
+ * another tab can switch it after the account check. doCheckout re-reads the
+ * account at that point and comes back here, without a pending-payment
+ * bypass the new account never approved.
+ */
+async function checkoutAs(c: LoadedClerk, productId: string, options: ProCheckoutOptions): Promise<boolean> {
+  const confirmed = await confirmDesktopAccount(c, productId, options);
+  if (!confirmed) return false;
+  const { bypassPendingGuard: _dropped, ...fresh } = options;
+  return doCheckout(productId, confirmed.options, confirmed.userId
+    ? { userId: confirmed.userId, restart: () => checkoutAs(c, productId, fresh) }
+    : undefined);
 }
 
 export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
@@ -355,15 +478,17 @@ export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
   // Funnel (#4931): post-sign-in auto-resume — the pre-auth click already
   // fired checkout-start{authed:false}; this marks the resumed attempt.
   // productId is URL-derived here — bucketed for analytics (round-4 F2).
+  const newAccount = isRecentlyCreated(c.user.createdAt, Date.now());
   trackFunnelEvent('checkout-start', {
     productId: bucketProductIdForAnalytics(productId),
     surface: 'pro-resume',
     authed: true,
+    newAccount,
     ...(checkoutAttribution
       ? { missionId: checkoutAttribution.missionId, panelKey: checkoutAttribution.panelKey }
       : {}),
   });
-  return doCheckout(productId, {
+  return checkoutAs(c, productId, {
     referralCode,
     discountCode,
     attributionSource,
@@ -379,9 +504,10 @@ async function doCheckout(
     discountCode?: string;
     attributionSource?: string;
     checkoutAttribution?: CheckoutAttribution;
-    desktopHandoff?: boolean;
+    desktopHandoff?: DesktopCheckoutHandoff;
     bypassPendingGuard?: boolean;
   },
+  account?: { userId: string; restart: () => Promise<boolean> },
 ): Promise<boolean> {
   const cooldownSeconds = currentCheckoutRateLimitSeconds();
   if (cooldownSeconds > 0) {
@@ -391,6 +517,8 @@ async function doCheckout(
   if (_phase.kind === 'rate_limited') setPhase({ kind: 'idle' });
   if (checkoutInFlight) return false;
   checkoutInFlight = true;
+  let redirecting = false;
+  let accountChanged = false;
   const checkoutContext = resolveCheckoutContext({
     surface: options.checkoutAttribution ? 'mission-preview' : 'dashboard',
     attribution: options.checkoutAttribution,
@@ -436,6 +564,10 @@ async function doCheckout(
       showCheckoutErrorToast('Your sign-in could not be verified. Please sign in again and retry.');
       return false;
     }
+    if (account && (await ensureClerk().catch(() => null))?.user?.id !== account.userId) {
+      accountChanged = true;
+      return false;
+    }
 
     // Transient CF/origin 502s on this POST are retried once with an
     // Idempotency-Key (server dedupes replays — api/_idempotency.ts).
@@ -457,6 +589,7 @@ async function doCheckout(
         discountCode: options.discountCode,
         referralCode: options.referralCode,
         attributionSource: options.attributionSource,
+        acquisition: getFirstTouchAcquisitionForCheckout(),
         // #4438: only set when the user confirmed "start a new checkout anyway"
         // from the pending-payment dialog. Skips the backend pending guard.
         ...(options.bypassPendingGuard ? { bypassPendingGuard: true } : {}),
@@ -488,7 +621,7 @@ async function doCheckout(
         // may spend longer than that reading the dialog before clicking.
         // Using a stale `token` would 401 at /customer-portal.
         const planKey = err?.subscription?.planKey;
-        showProDuplicateSubscriptionDialog({
+        const showGuidedDuplicateDialog = (): void => showProDuplicateSubscriptionDialog({
           planDisplayName: resolveProPlanDisplayName(planKey),
           // Picks the guided cancel-then-rebuy copy for the Pro → Pro Business
           // pairing; every other pairing keeps the portal line.
@@ -511,6 +644,30 @@ async function doCheckout(
           },
           onDismiss: () => { /* stay on /pro */ },
         });
+        // An active Pro moves to Pro Business in place (prorated Dodo plan
+        // change); the guided dialog stays the fallback when no preview comes back.
+        if (
+          PRO_BUSINESS_PRODUCT_IDS.has(productId) &&
+          typeof planKey === 'string' &&
+          IN_PLACE_UPGRADE_SOURCE_PLANS.has(planKey)
+        ) {
+          void runProBusinessUpgradeFlow({
+            apiBase: API_BASE,
+            planDisplayName: resolveProPlanDisplayName(planKey),
+            getToken: getAuthToken,
+            getUserId: async () => (await ensureClerk().catch(() => null))?.user?.id ?? null,
+            openPortal: () => {
+              const reservedWin = prereserveBillingPortalTab();
+              void getAuthToken().then((freshToken) => {
+                if (freshToken) void openBillingPortal(freshToken, reservedWin);
+                else if (reservedWin && !reservedWin.closed) reservedWin.close();
+              });
+            },
+            fallback: showGuidedDuplicateDialog,
+          });
+        } else {
+          showGuidedDuplicateDialog();
+        }
         Sentry.captureMessage('Duplicate subscription checkout attempt', {
           level: 'info',
           tags: { surface: 'pro-marketing', code: 'duplicate_subscription' },
@@ -526,7 +683,7 @@ async function doCheckout(
         showProPendingPaymentDialog({
           planDisplayName: resolveProPlanDisplayName(planKey),
           onConfirm: () => {
-            void doCheckout(productId, { ...options, bypassPendingGuard: true });
+            void doCheckout(productId, { ...options, bypassPendingGuard: true }, account);
           },
           onDismiss: () => { /* stay on /pro; pending payment may still complete */ },
         });
@@ -588,6 +745,7 @@ async function doCheckout(
     // the primary flow. The overlay Initialize/onEvent machinery above is left
     // dormant pending removal.
     window.location.assign(hostedCheckoutUrl);
+    redirecting = true;
 
     return true;
   } catch (err) {
@@ -609,10 +767,37 @@ async function doCheckout(
     showCheckoutErrorToast();
     return false;
   } finally {
-    checkoutInFlight = false;
-    unmountCheckoutInterstitial();
-    if (_phase.kind === 'creating_checkout') setPhase({ kind: 'idle' });
+    if (redirecting) holdCheckoutUntilNavigation();
+    else releaseCheckout();
+    if (accountChanged) void account?.restart();
   }
+}
+
+function releaseCheckout(): void {
+  checkoutInFlight = false;
+  unmountCheckoutInterstitial();
+  if (_phase.kind === 'creating_checkout') setPhase({ kind: 'idle' });
+}
+
+// `location.assign` only starts navigation: this page stays clickable until
+// Dodo's page loads, often 1-3 s later. Releasing the guard on return let a
+// second click create a second Dodo session. Hold the guard, spinner and
+// interstitial until the page is gone; release when the buyer comes back
+// through the back-forward cache, or when the navigation never happened
+// (stopped, blocked) so the CTA cannot stay dead.
+const REDIRECT_HOLD_MS = 15_000;
+
+function holdCheckoutUntilNavigation(): void {
+  const release = () => {
+    clearTimeout(timer);
+    window.removeEventListener('pageshow', onPageShow);
+    releaseCheckout();
+  };
+  const onPageShow = (event: PageTransitionEvent) => {
+    if (event.persisted) release();
+  };
+  window.addEventListener('pageshow', onPageShow);
+  const timer = setTimeout(release, REDIRECT_HOLD_MS);
 }
 
 // Dodo's hosted-checkout origins. Redirect mode (#4449) navigates the top
@@ -723,7 +908,7 @@ function showCheckoutLoadingToast(): void {
   setTimeout(() => toast.remove(), 5_000);
 }
 
-function showCheckoutErrorToast(message = 'Checkout is unavailable right now. Please try again. If this continues, contact support@worldmonitor.app.'): void {
+export function showCheckoutErrorToast(message = 'Checkout is unavailable right now. Please try again. If this continues, contact support@worldmonitor.app.'): void {
   const id = 'wm-checkout-error-toast';
   document.getElementById(id)?.remove();
   const toast = document.createElement('div');
@@ -1059,6 +1244,130 @@ function showProPendingPaymentDialog(options: ProDuplicateDialogOptions): void {
   document.getElementById(`${PRO_PENDING_DIALOG_ID}-dismiss`)?.addEventListener('click', dismiss);
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) dismiss(); });
   document.addEventListener('keydown', keyHandler, true);
+}
+
+type DesktopAccountChoice = 'switch-account' | 'upgrade-browser-account' | 'cancel';
+
+const PRO_DESKTOP_ACCOUNT_DIALOG_ID = 'wm-pro-desktop-account-dialog';
+
+interface ChoiceButton<T extends string> {
+  choice: T;
+  label: string;
+  style: string;
+}
+
+const CHOICE_BUTTON_STYLE = 'border-radius:4px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;overflow-wrap:anywhere;';
+const PRIMARY_CHOICE_STYLE = 'background:#44ff88;color:#0a0a0a;border:none;font-weight:700;';
+const SECONDARY_CHOICE_STYLE = 'background:transparent;color:#e8e8e8;border:1px solid #444;';
+const CANCEL_CHOICE_STYLE = 'background:transparent;color:#aaa;border:1px solid #2a2a2a;';
+
+/** A modal with one button per choice. Escape and a backdrop click resolve `dismiss`. */
+function askChoice<T extends string>(
+  id: string,
+  titleHtml: string,
+  bodyHtml: string,
+  buttons: ChoiceButton<T>[],
+  { dismiss, focus, stacked = false, returnFocusTo = document.activeElement as HTMLElement | null }: {
+    dismiss: T;
+    focus: T;
+    stacked?: boolean;
+    returnFocusTo?: HTMLElement | null;
+  },
+): Promise<T> {
+  return new Promise((resolve) => {
+    document.getElementById(id)?.remove();
+    const backdrop = document.createElement('div');
+    backdrop.id = id;
+    backdrop.setAttribute('role', 'dialog');
+    backdrop.setAttribute('aria-modal', 'true');
+    backdrop.setAttribute('aria-labelledby', `${id}-title`);
+    Object.assign(backdrop.style, {
+      position: 'fixed',
+      inset: '0',
+      zIndex: '99990',
+      background: 'rgba(10, 10, 10, 0.72)',
+      backdropFilter: 'blur(4px)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '24px',
+    });
+    const layout = stacked ? 'flex-direction:column;' : 'flex-wrap:wrap;justify-content:flex-end;';
+    backdrop.innerHTML = `
+      <div style="background:#141414;border:1px solid #2a2a2a;border-radius:8px;padding:20px 22px;max-width:460px;width:100%;color:#e8e8e8;font-family:'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace;box-shadow:0 12px 40px rgba(0,0,0,0.5);">
+        <h2 id="${id}-title" style="font-size:16px;font-weight:600;margin:0 0 10px 0;color:#fff;">${titleHtml}</h2>
+        <p style="font-size:13px;line-height:1.5;margin:0 0 18px 0;color:#c8c8c8;overflow-wrap:anywhere;">
+          ${bodyHtml}
+        </p>
+        <div style="display:flex;${layout}gap:10px;">
+          ${buttons.map(b => `<button data-choice="${b.choice}" type="button" style="${CHOICE_BUTTON_STYLE}${b.style}">${b.label}</button>`).join('\n          ')}
+        </div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+
+    const buttonEls = Array.from(backdrop.querySelectorAll<HTMLButtonElement>('button'));
+    const finish = (choice: T) => {
+      document.removeEventListener('keydown', onKey, true);
+      backdrop.remove();
+      returnFocusTo?.focus?.();
+      resolve(choice);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        finish(dismiss);
+        return;
+      }
+      if (e.key !== 'Tab' || buttonEls.length === 0) return;
+      const index = buttonEls.indexOf(document.activeElement as HTMLButtonElement);
+      const next = e.shiftKey
+        ? buttonEls[index <= 0 ? buttonEls.length - 1 : index - 1]
+        : buttonEls[index === -1 || index === buttonEls.length - 1 ? 0 : index + 1];
+      e.preventDefault();
+      next?.focus();
+    };
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) return finish(dismiss);
+      const choice = (e.target as HTMLElement).closest('button')?.dataset.choice as T | undefined;
+      if (choice) finish(choice);
+    });
+    document.addEventListener('keydown', onKey, true);
+    backdrop.querySelector<HTMLButtonElement>(`[data-choice="${focus}"]`)?.focus();
+  });
+}
+
+function askDesktopAccountChoice(browserAccount: string, desktopAccountKnown: boolean): Promise<DesktopAccountChoice> {
+  const account = escapeHtml(browserAccount);
+  return askChoice<DesktopAccountChoice>(
+    PRO_DESKTOP_ACCOUNT_DIALOG_ID,
+    desktopAccountKnown ? 'This browser uses a different account' : 'Confirm the account to upgrade',
+    desktopAccountKnown
+      ? `This browser is signed in as <strong style="color:#fff;">${account}</strong>, but your desktop app uses a different account. Checking out here upgrades ${account}, and the desktop app keeps its current plan.`
+      : `This browser is signed in as <strong style="color:#fff;">${account}</strong>. Your desktop app had not finished loading its account, so check that this is the one you use there. Checking out here upgrades ${account}.`,
+    [
+      { choice: 'cancel', label: 'Cancel', style: CANCEL_CHOICE_STYLE },
+      { choice: 'upgrade-browser-account', label: 'Upgrade this account', style: SECONDARY_CHOICE_STYLE },
+      { choice: 'switch-account', label: 'Switch account', style: PRIMARY_CHOICE_STYLE },
+    ],
+    { dismiss: 'cancel', focus: 'switch-account' },
+  );
+}
+
+const PRO_AUTH_FORM_DIALOG_ID = 'wm-pro-auth-form-dialog';
+
+/** Which Clerk form a signed-out buyer needs; see startCheckoutInner (#10842). */
+function askCheckoutAuthForm(returnFocusTo: HTMLElement | null): Promise<CheckoutAuthForm | 'cancel'> {
+  return askChoice<CheckoutAuthForm | 'cancel'>(
+    PRO_AUTH_FORM_DIALOG_ID,
+    'Continue to checkout',
+    'Checkout needs a World Monitor account. Secure checkout opens right after.',
+    [
+      { choice: 'sign-up', label: 'New here? Create account', style: PRIMARY_CHOICE_STYLE },
+      { choice: 'sign-in', label: 'Have an account? Sign in', style: SECONDARY_CHOICE_STYLE },
+      { choice: 'cancel', label: 'Cancel', style: CANCEL_CHOICE_STYLE },
+    ],
+    { dismiss: 'cancel', focus: 'sign-up', stacked: true, returnFocusTo },
+  );
 }
 
 function escapeHtml(s: string): string {

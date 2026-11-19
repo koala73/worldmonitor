@@ -71,7 +71,7 @@ vi.mock('@/services/widget-store', () => ({
 }));
 
 vi.mock('@/services/preferences-content', () => ({
-  renderPreferences: () => ({ html: '', attach: () => () => {} }),
+  renderPreferenceSection: () => ({ html: '', attach: () => () => {} }),
 }));
 
 vi.mock('@/services/notifications-settings', () => ({
@@ -196,7 +196,7 @@ afterEach(() => {
 describe('UnifiedSettings billing status colour (#7315)', () => {
   it('shows neutral support guidance when Manage Billing has no safe portal', async () => {
     mockSubscription = subscription();
-    settings.open('billing');
+    settings.open('account');
     const button = document.querySelector<HTMLButtonElement>('.manage-billing-btn');
     expect(button).not.toBeNull();
     button!.click();
@@ -219,6 +219,22 @@ describe('UnifiedSettings billing status colour (#7315)', () => {
     // Not the ended tone — the dot, the plan name, the border and the
     // background tint all derive from the same data-billing-tone.
     expect(html).not.toContain('data-billing-tone="ended"');
+  });
+
+  it('shows a portal-scheduled cancellation as ending with its access-until date, not "Renews"', () => {
+    const periodEnd = Date.now() + 12 * DAY;
+    mockSubscription = subscription({
+      status: 'active',
+      cancelAtPeriodEnd: true,
+      currentPeriodEnd: periodEnd,
+    });
+    const html = (settings as unknown as SettingsInternals).renderUpgradeSection();
+
+    expect(html).toContain(
+      `Cancellation scheduled -- access until ${new Date(periodEnd).toLocaleDateString()}`,
+    );
+    expect(html).not.toContain('Renews:');
+    expect(planTone(html)).toBe('ending');
   });
 
   it('paints a cancellation past its paid period red', () => {

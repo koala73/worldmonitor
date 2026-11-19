@@ -24,15 +24,11 @@ describe("account-bound Company Monitoring API-key scopes", () => {
     expect(await accountFor(t, OWNER_A)).toBeNull();
 
     // An unscoped key must stay entirely off Company Monitoring.
-    await t.withIdentity({ subject: OWNER_A, tokenIdentifier: `clerk|${OWNER_A}` }).mutation(
-      api.apiKeys.createApiKey,
-      { name: "generic", keyPrefix: "wm_ddddd", keyHash: "d".repeat(64) },
-    );
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: OWNER_A, name: "generic", keyPrefix: "wm_ddddd", keyHash: "d".repeat(64) });
     expect(await accountFor(t, OWNER_A)).toBeNull();
 
     // Requesting scopes is a first-use entry point: it provisions.
-    const scoped = await t.withIdentity({ subject: OWNER_A, tokenIdentifier: `clerk|${OWNER_A}` })
-      .mutation(api.apiKeys.createApiKey, {
+    const scoped = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: OWNER_A,
         name: "company-monitoring",
         keyPrefix: "wm_eeeee",
         keyHash: "e".repeat(64),
@@ -49,15 +45,12 @@ describe("account-bound Company Monitoring API-key scopes", () => {
     await grantProvisioned(t, OWNER_A, "api_starter");
     const account = await accountFor(t, OWNER_A);
 
-    const key = await t.withIdentity({ subject: OWNER_A, tokenIdentifier: `clerk|${OWNER_A}` }).mutation(
-      api.apiKeys.createApiKey,
-      {
+    const key = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: OWNER_A,
         name: "company-monitoring",
         keyPrefix: "wm_abcde",
         keyHash: "a".repeat(64),
         scopes: ["company_monitoring:read", "company_monitoring:write"],
-      },
-    );
+      });
     const valid = await t.query(internal.apiKeys.validateKeyByHash, { keyHash: "a".repeat(64) });
     expect(valid).toMatchObject({
       id: key.id,

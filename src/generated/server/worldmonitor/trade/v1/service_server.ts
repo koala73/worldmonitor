@@ -214,6 +214,42 @@ export interface CustomsRevenueMonth {
   fytdAmountBillions: number;
 }
 
+export interface GetMonthlySitcTradeRequest {
+  country: string;
+  sections: string[];
+  months: number;
+}
+
+export interface GetMonthlySitcTradeResponse {
+  country: string;
+  currency: string;
+  source: string;
+  sourceUrl: string;
+  indexBase: string;
+  latestMonth: string;
+  latestIndexMonth: string;
+  fetchedAt: number;
+  series: SitcTradeSeries[];
+  upstreamUnavailable: boolean;
+  unavailableReason: TradeFlowUnavailableReason;
+}
+
+export interface SitcTradeSeries {
+  section: string;
+  label: string;
+  months: SitcTradeMonth[];
+}
+
+export interface SitcTradeMonth {
+  month: string;
+  exports: number;
+  imports: number;
+  exportsUnitValueIndex?: number;
+  exportsVolumeIndex?: number;
+  importsUnitValueIndex?: number;
+  importsVolumeIndex?: number;
+}
+
 export interface ListComtradeFlowsRequest {
   reporterCode: string;
   cmdCode: string;
@@ -308,6 +344,7 @@ export interface TradeServiceHandler {
   getTradeFlows(ctx: ServerContext, req: GetTradeFlowsRequest): Promise<GetTradeFlowsResponse>;
   getTradeBarriers(ctx: ServerContext, req: GetTradeBarriersRequest): Promise<GetTradeBarriersResponse>;
   getCustomsRevenue(ctx: ServerContext, req: GetCustomsRevenueRequest): Promise<GetCustomsRevenueResponse>;
+  getMonthlySitcTrade(ctx: ServerContext, req: GetMonthlySitcTradeRequest): Promise<GetMonthlySitcTradeResponse>;
   listComtradeFlows(ctx: ServerContext, req: ListComtradeFlowsRequest): Promise<ListComtradeFlowsResponse>;
 }
 
@@ -356,7 +393,7 @@ export function createTradeServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -406,7 +443,7 @@ export function createTradeServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -456,7 +493,7 @@ export function createTradeServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -504,7 +541,7 @@ export function createTradeServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -553,7 +590,7 @@ export function createTradeServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -602,7 +639,7 @@ export function createTradeServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -639,7 +676,56 @@ export function createTradeServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/trade/v1/get-monthly-sitc-trade",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetMonthlySitcTradeRequest = {
+            country: params.get("country") ?? "",
+            sections: params.getAll("sections"),
+            months: Number(params.get("months") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getMonthlySitcTrade", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getMonthlySitcTrade(ctx, body);
+          return new Response(JSON.stringify(result as GetMonthlySitcTradeResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -688,7 +774,7 @@ export function createTradeServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },

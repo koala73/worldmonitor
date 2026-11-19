@@ -28,4 +28,7 @@ message ListInternetOutagesResponse {
   repeated InternetOutage outages = 1;
   // Pagination metadata.
   worldmonitor.core.v1.PaginationResponse pagination = 2;
+  // When the seeder last fetched the outage list from Cloudflare Radar, Unix
+  // epoch milliseconds. A retained payload keeps its original time; 0 when unknown
+  int64 fetched_at = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 }

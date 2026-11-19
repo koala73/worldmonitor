@@ -15,10 +15,11 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+// The website ID must match UMAMI_WEBSITE_ID in src/services/analytics.ts.
 export const UMAMI_SCRIPT_TAG =
   '<script async defer src="https://abacus.worldmonitor.app/script.js" '
-  + 'data-website-id="e8800335-16bc-4241-a133-0eb28c07c832" '
-  + 'data-domains="worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app" '
+  + 'data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" '
+  + 'data-domains="worldmonitor.app,www.worldmonitor.app,tech.worldmonitor.app,finance.worldmonitor.app,commodity.worldmonitor.app,happy.worldmonitor.app" '
   + 'nonce="wm-static-bootstrap"></script>';
 
 const DATASET_LICENSE = {
@@ -574,7 +575,7 @@ export function computeMonthlyAverages(history, startMonth, endMonth) {
     byMonth.get(month).push(row.total);
   }
   return [...byMonth.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
+    .sort(([a], [b]) => a.localeCompare(b, 'en-US'))
     .map(([month, values]) => ({
       month,
       days: values.length,
@@ -839,6 +840,11 @@ ${provenanceRows}
         <blockquote><p>${escapeHtml(`${report.author.name}, “${report.title}”, version ${report.version}, published ${report.datePublished}. ${canonical} — underlying transit data: IMF PortWatch (portwatch.imf.org).`)}</p></blockquote>
         <p>The canonical URL is stable, editions are append-only, and corrections bump the version and modified date rather than silently rewriting figures.</p>`);
         break;
+      case 'current-pointer':
+        // AI answers quote the direct answer on its own, so its age and the
+        // live page sit beside it rather than at the foot of the report.
+        parts.push(`        <p>This answer covers IMF PortWatch data through ${escapeHtml(focus.observationEnd)}. For the latest IMF PortWatch daily count, which is published with a lag, and today's disruption score, see the ${trackedLink(`/chokepoints/${chokepointSlug}/`, `live ${escapeHtml(focus.portwatchName)} status page`, 'chokepoint-page', escapeHtml)}.</p>`);
+        break;
       case 'live-handoff': {
         const dashboardUrl = absoluteUrl(baseUrl, `/dashboard?chokepoint=${report.focusChokepointId}`);
         parts.push(`        <p>This report is a dated snapshot. For the current picture: the ${trackedLink(`/chokepoints/${chokepointSlug}/`, 'live Strait of Hormuz status page', 'chokepoint-page', escapeHtml)} shows today's disruption pulse, and the ${trackedLink(dashboardUrl, 'World Monitor dashboard', 'dashboard', escapeHtml)} adds map layers, alerts, and vessel context around it.</p>
@@ -875,8 +881,7 @@ ${notCovered}
 ${sectionsHtml}
 ${notCoveredSection}
 ${justification}
-      <p class="source" data-snapshot-source="${escapeHtml(report.snapshotPath)}">Snapshot: World Monitor chokepoint transit snapshot, retrieved ${escapeHtml(String(snapshot.capturedAt).slice(0, 10))}. Attribution: ${escapeHtml(snapshot.source.attribution)} Methodology: <a href="/docs/methodology/chokepoints">chokepoint monitoring methodology</a>.</p>
-      ${UMAMI_SCRIPT_TAG}`;
+      <p class="source" data-snapshot-source="${escapeHtml(report.snapshotPath)}">Snapshot: World Monitor chokepoint transit snapshot, retrieved ${escapeHtml(String(snapshot.capturedAt).slice(0, 10))}. Attribution: ${escapeHtml(snapshot.source.attribution)} Methodology: <a href="/docs/methodology/chokepoints">chokepoint monitoring methodology</a>.</p>`;
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -960,7 +965,7 @@ export function renderResearchIndex({ reports, tpl, baseUrl, lastmod, dataCatalo
   const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const path = '/research/';
   const description =
-    'Original, source-backed World Monitor research: dated, versioned reports built from committed data snapshots, with downloadable data, explicit methodology, and declared gaps.';
+    'Original World Monitor research: dated, versioned reports built from committed data snapshots, with downloadable data, clear methods and declared gaps.';
   const body = `      <p class="eyebrow">Research corpus</p>
       <h1>World Monitor research reports</h1>
       <p class="lede">${escapeHtml(description)}</p>
@@ -969,8 +974,7 @@ ${reports.map((report) => `        <a class="card" href="/research/${escapeHtml(
       </div>
       <h2>How these reports work</h2>
       <p>Each report is generated deterministically from a versioned, committed data snapshot — no live fetches at build time — so every published figure can be recomputed from the downloadable data beside it. Observed data, derived analysis, and third-party context are labelled separately and never blended into a combined score. Missing or unverifiable data is declared, not zero-filled.</p>
-      <p>Editions are append-only: corrections bump the version and modified date. Report families expand only when the pilot demonstrates real demand, per the <a href="/docs/methodology/chokepoints">methodology</a> and measurement guardrails.</p>
-      ${UMAMI_SCRIPT_TAG}`;
+      <p>Editions are append-only: corrections bump the version and modified date. Report families expand only when the pilot demonstrates real demand, per the <a href="/docs/methodology/chokepoints">methodology</a> and measurement guardrails.</p>`;
   const html = pageDocument({
     baseUrl,
     path,

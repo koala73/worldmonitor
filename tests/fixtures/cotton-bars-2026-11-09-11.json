@@ -1,0 +1,532 @@
+{
+  "source": "Yahoo query2 /v8/finance/chart/CT%3DF; raw period1=1794182400&period2=1794441600&interval=1m; history range=3d&interval=5m; recent default; cachedHistory from existing Redis market:commodity-sparkline-history:v2:CT=F (GET only)",
+  "capturedAt": "2026-11-11T16:50:18.361214+00:00",
+  "note": "Non-null bars only, unrounded OHLCV. Cached history places 82.72 on Nov 10 08:20; fresh raw and 5m history place it on Nov 11 08:20. Nov 10 82.37 has zero volume and reverts; Nov 11 82.55/82.58 is sustained with volume.",
+  "raw": {
+    "meta": {
+      "currency": "USX",
+      "symbol": "CT=F",
+      "exchangeName": "NYM",
+      "fullExchangeName": "NY Mercantile",
+      "instrumentType": "ALTSYMBOL",
+      "firstTradeDate": 946875600,
+      "regularMarketTime": 1794414637,
+      "hasPrePostMarketData": false,
+      "gmtoffset": -18000,
+      "timezone": "EST",
+      "exchangeTimezoneName": "America/New_York",
+      "regularMarketPrice": 82.35,
+      "regularMarketChangePercent": -0.194,
+      "fulldayPrice": 82.35,
+      "fulldayChange": -0.16,
+      "fulldayChangePercent": -0.194,
+      "fiftyTwoWeekHigh": 92.15,
+      "fiftyTwoWeekLow": 60.71,
+      "regularMarketDayHigh": 79.9,
+      "regularMarketDayLow": 78.63,
+      "regularMarketVolume": 21034,
+      "shortName": "Cotton Mar 26",
+      "chartPreviousClose": 78.78,
+      "previousClose": 82.51,
+      "scale": 3,
+      "priceHint": 2,
+      "currentTradingPeriod": {
+        "pre": {
+          "timezone": "EST",
+          "start": 1794373200,
+          "end": 1794373200,
+          "gmtoffset": -18000
+        },
+        "regular": {
+          "timezone": "EST",
+          "start": 1794373200,
+          "end": 1794459540,
+          "gmtoffset": -18000
+        },
+        "post": {
+          "timezone": "EST",
+          "start": 1794459540,
+          "end": 1794459540,
+          "gmtoffset": -18000
+        }
+      },
+      "tradingPeriods": [
+        [
+          {
+            "timezone": "EST",
+            "start": 1794114000,
+            "end": 1794200340,
+            "gmtoffset": -18000
+          }
+        ],
+        [
+          {
+            "timezone": "EST",
+            "start": 1794200400,
+            "end": 1794286740,
+            "gmtoffset": -18000
+          }
+        ],
+        [
+          {
+            "timezone": "EST",
+            "start": 1794286800,
+            "end": 1794373140,
+            "gmtoffset": -18000
+          }
+        ],
+        [
+          {
+            "timezone": "EST",
+            "start": 1794373200,
+            "end": 1794459540,
+            "gmtoffset": -18000
+          }
+        ]
+      ],
+      "dataGranularity": "1m",
+      "range": "",
+      "validRanges": [
+        "1d",
+        "5d",
+        "1mo",
+        "3mo",
+        "6mo",
+        "1y",
+        "2y",
+        "5y",
+        "10y",
+        "ytd",
+        "max"
+      ]
+    },
+    "timestamp": [
+      1794212400,
+      1794230340,
+      1794230400,
+      1794241200,
+      1794305760,
+      1794316800,
+      1794327600,
+      1794385200,
+      1794392400,
+      1794403200,
+      1794403800,
+      1794414637
+    ],
+    "indicators": {
+      "quote": [
+        {
+          "open": [
+            79.27999877929688,
+            79.19000244140625,
+            79.16000366210938,
+            78.80000305175781,
+            82.37000274658203,
+            78.37999725341797,
+            78.2699966430664,
+            82.72000122070312,
+            82.55000305175781,
+            82.52999877929688,
+            82.5999984741211,
+            82.3499984741211
+          ],
+          "low": [
+            79.2699966430664,
+            79.19000244140625,
+            79.13999938964844,
+            78.76000213623047,
+            82.37000274658203,
+            78.37999725341797,
+            78.2699966430664,
+            82.72000122070312,
+            82.55000305175781,
+            82.5199966430664,
+            82.58999633789062,
+            82.3499984741211
+          ],
+          "volume": [
+            0,
+            4302,
+            10,
+            16924,
+            0,
+            5641,
+            23814,
+            0,
+            1260,
+            2776,
+            0,
+            0
+          ],
+          "high": [
+            79.27999877929688,
+            79.19000244140625,
+            79.16000366210938,
+            78.80999755859375,
+            82.37000274658203,
+            78.38999938964844,
+            78.2699966430664,
+            82.72000122070312,
+            82.55000305175781,
+            82.58000183105469,
+            82.63999938964844,
+            82.3499984741211
+          ],
+          "close": [
+            79.2699966430664,
+            79.19000244140625,
+            79.13999938964844,
+            78.76000213623047,
+            82.37000274658203,
+            78.38999938964844,
+            78.2699966430664,
+            82.72000122070312,
+            82.55000305175781,
+            82.58000183105469,
+            82.63999938964844,
+            82.3499984741211
+          ]
+        }
+      ]
+    }
+  },
+  "recent": {
+    "meta": {
+      "currency": "USX",
+      "symbol": "CT=F",
+      "exchangeName": "NYM",
+      "fullExchangeName": "NY Mercantile",
+      "instrumentType": "ALTSYMBOL",
+      "firstTradeDate": 946875600,
+      "regularMarketTime": 1794414637,
+      "hasPrePostMarketData": false,
+      "gmtoffset": -18000,
+      "timezone": "EST",
+      "exchangeTimezoneName": "America/New_York",
+      "regularMarketPrice": 82.35,
+      "regularMarketChangePercent": -0.194,
+      "fulldayPrice": 82.35,
+      "fulldayChange": -0.16,
+      "fulldayChangePercent": -0.194,
+      "fiftyTwoWeekHigh": 92.15,
+      "fiftyTwoWeekLow": 60.71,
+      "regularMarketDayHigh": 79.9,
+      "regularMarketDayLow": 78.63,
+      "regularMarketVolume": 21034,
+      "shortName": "Cotton Mar 26",
+      "chartPreviousClose": 82.51,
+      "previousClose": 82.51,
+      "scale": 3,
+      "priceHint": 2,
+      "currentTradingPeriod": {
+        "pre": {
+          "timezone": "EST",
+          "start": 1794373200,
+          "end": 1794373200,
+          "gmtoffset": -18000
+        },
+        "regular": {
+          "timezone": "EST",
+          "start": 1794373200,
+          "end": 1794459540,
+          "gmtoffset": -18000
+        },
+        "post": {
+          "timezone": "EST",
+          "start": 1794459540,
+          "end": 1794459540,
+          "gmtoffset": -18000
+        }
+      },
+      "tradingPeriods": [
+        [
+          {
+            "timezone": "EST",
+            "start": 1794373200,
+            "end": 1794459540,
+            "gmtoffset": -18000
+          }
+        ]
+      ],
+      "dataGranularity": "1m",
+      "range": "1d",
+      "validRanges": [
+        "1d",
+        "5d",
+        "1mo",
+        "3mo",
+        "6mo",
+        "1y",
+        "2y",
+        "5y",
+        "10y",
+        "ytd",
+        "max"
+      ]
+    },
+    "timestamp": [
+      1794385200,
+      1794392400,
+      1794403200,
+      1794403800,
+      1794414637
+    ],
+    "indicators": {
+      "quote": [
+        {
+          "volume": [
+            0,
+            1260,
+            2776,
+            0,
+            0
+          ],
+          "close": [
+            82.72000122070312,
+            82.55000305175781,
+            82.58000183105469,
+            82.63999938964844,
+            82.3499984741211
+          ],
+          "open": [
+            82.72000122070312,
+            82.55000305175781,
+            82.52999877929688,
+            82.5999984741211,
+            82.3499984741211
+          ],
+          "high": [
+            82.72000122070312,
+            82.55000305175781,
+            82.58000183105469,
+            82.63999938964844,
+            82.3499984741211
+          ],
+          "low": [
+            82.72000122070312,
+            82.55000305175781,
+            82.5199966430664,
+            82.58999633789062,
+            82.3499984741211
+          ]
+        }
+      ]
+    }
+  },
+  "history": {
+    "meta": {
+      "currency": "USX",
+      "symbol": "CT=F",
+      "exchangeName": "NYM",
+      "fullExchangeName": "NY Mercantile",
+      "instrumentType": "ALTSYMBOL",
+      "firstTradeDate": 946875600,
+      "regularMarketTime": 1794414637,
+      "hasPrePostMarketData": false,
+      "gmtoffset": -18000,
+      "timezone": "EST",
+      "exchangeTimezoneName": "America/New_York",
+      "regularMarketPrice": 82.35,
+      "regularMarketChangePercent": -0.194,
+      "fulldayPrice": 82.35,
+      "fulldayChange": -0.16,
+      "fulldayChangePercent": -0.194,
+      "fiftyTwoWeekHigh": 92.15,
+      "fiftyTwoWeekLow": 60.71,
+      "regularMarketDayHigh": 79.9,
+      "regularMarketDayLow": 78.63,
+      "regularMarketVolume": 21034,
+      "shortName": "Cotton Mar 26",
+      "chartPreviousClose": 78.78,
+      "previousClose": 82.51,
+      "scale": 3,
+      "priceHint": 2,
+      "currentTradingPeriod": {
+        "pre": {
+          "timezone": "EST",
+          "start": 1794373200,
+          "end": 1794373200,
+          "gmtoffset": -18000
+        },
+        "regular": {
+          "timezone": "EST",
+          "start": 1794373200,
+          "end": 1794459540,
+          "gmtoffset": -18000
+        },
+        "post": {
+          "timezone": "EST",
+          "start": 1794459540,
+          "end": 1794459540,
+          "gmtoffset": -18000
+        }
+      },
+      "tradingPeriods": [
+        [
+          {
+            "timezone": "EST",
+            "start": 1794200400,
+            "end": 1794286740,
+            "gmtoffset": -18000
+          }
+        ],
+        [
+          {
+            "timezone": "EST",
+            "start": 1794286800,
+            "end": 1794373140,
+            "gmtoffset": -18000
+          }
+        ],
+        [
+          {
+            "timezone": "EST",
+            "start": 1794373200,
+            "end": 1794459540,
+            "gmtoffset": -18000
+          }
+        ]
+      ],
+      "dataGranularity": "5m",
+      "range": "3d",
+      "validRanges": [
+        "1d",
+        "5d",
+        "1mo",
+        "3mo",
+        "6mo",
+        "1y",
+        "2y",
+        "5y",
+        "10y",
+        "ytd",
+        "max"
+      ]
+    },
+    "timestamp": [
+      1794212400,
+      1794230100,
+      1794230400,
+      1794241200,
+      1794305700,
+      1794316800,
+      1794327600,
+      1794385200,
+      1794392400,
+      1794403200,
+      1794403800,
+      1794414637
+    ],
+    "indicators": {
+      "quote": [
+        {
+          "volume": [
+            0,
+            4302,
+            10,
+            16924,
+            0,
+            5641,
+            23814,
+            0,
+            1260,
+            2776,
+            0,
+            0
+          ],
+          "open": [
+            79.27999877929688,
+            79.19000244140625,
+            79.16000366210938,
+            78.80000305175781,
+            82.37000274658203,
+            78.37999725341797,
+            78.2699966430664,
+            82.72000122070312,
+            82.55000305175781,
+            82.52999877929688,
+            82.5999984741211,
+            82.3499984741211
+          ],
+          "low": [
+            79.2699966430664,
+            79.19000244140625,
+            79.13999938964844,
+            78.76000213623047,
+            82.37000274658203,
+            78.37999725341797,
+            78.2699966430664,
+            82.72000122070312,
+            82.55000305175781,
+            82.5199966430664,
+            82.58999633789062,
+            82.3499984741211
+          ],
+          "high": [
+            79.27999877929688,
+            79.19000244140625,
+            79.16000366210938,
+            78.80999755859375,
+            82.37000274658203,
+            78.38999938964844,
+            78.2699966430664,
+            82.72000122070312,
+            82.55000305175781,
+            82.58000183105469,
+            82.63999938964844,
+            82.3499984741211
+          ],
+          "close": [
+            79.2699966430664,
+            79.19000244140625,
+            79.13999938964844,
+            78.76000213623047,
+            82.37000274658203,
+            78.38999938964844,
+            78.2699966430664,
+            82.72000122070312,
+            82.55000305175781,
+            82.58000183105469,
+            82.63999938964844,
+            82.3499984741211
+          ]
+        }
+      ]
+    }
+  },
+  "cachedHistory": {
+    "timestamp": [
+      1794212400,
+      1794230100,
+      1794230400,
+      1794241200,
+      1794298800,
+      1794305700,
+      1794316800,
+      1794327600,
+      1794392400,
+      1794392700,
+      1794392999
+    ],
+    "indicators": {
+      "quote": [
+        {
+          "close": [
+            79.2699966430664,
+            79.19000244140625,
+            79.13999938964844,
+            78.76000213623047,
+            82.72000122070312,
+            82.37000274658203,
+            78.38999938964844,
+            78.2699966430664,
+            82.55000305175781,
+            82.58999633789062,
+            82.58999633789062
+          ]
+        }
+      ]
+    }
+  }
+}

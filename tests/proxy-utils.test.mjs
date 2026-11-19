@@ -146,7 +146,7 @@ describe('proxy utilities', () => {
     ]) {
       assert.equal(
         resolveProxyString(`${equivalentHost}:10001:proxy-user:proxy-secret`),
-        'proxy-user:proxy-secret@us.decodo.com:10001',
+        'https://proxy-user:proxy-secret@us.decodo.com:10001',
         equivalentHost,
       );
     }
@@ -162,16 +162,26 @@ describe('proxy utilities', () => {
     ]) {
       assert.equal(
         resolveProxyString(`${foreignHost}:10001:proxy-user:proxy-secret`),
-        `proxy-user:proxy-secret@${foreignHost}:10001`,
+        `https://proxy-user:proxy-secret@${foreignHost}:10001`,
         foreignHost,
       );
     }
 
     assert.equal(
       resolveProxyString('https://proxy-user:proxy-secret@proxy.test:443'),
-      'proxy-user:proxy-secret@proxy.test:443',
+      'https://proxy-user:proxy-secret@proxy.test:443',
     );
     assert.equal(resolveProxyString(''), '');
+  });
+
+  it('keeps the configured curl proxy transport scheme with and without credentials', () => {
+    for (const scheme of ['https', 'http']) {
+      for (const auth of ['', 'user:pass@']) {
+        const raw = `${scheme}://${auth}proxy.test:8080`;
+        assert.equal(resolveProxyString(raw), raw);
+        assert.equal(resolveProxyStringForAttempt(1, raw), raw);
+      }
+    }
   });
 
   it('uses a distinct Decodo sticky port per attempt and preserves other routes', () => {
@@ -247,7 +257,7 @@ describe('proxy utilities', () => {
     }
     assert.equal(
       resolveProxyStringForAttempt(1, 'cn.decodo.com:30001:proxy-user:proxy-secret'),
-      'proxy-user:proxy-secret@cn.decodo.com:30002',
+      'https://proxy-user:proxy-secret@cn.decodo.com:30002',
     );
   });
 
@@ -259,31 +269,31 @@ describe('proxy utilities', () => {
     assert.equal(resolveProxyStringForAttempt(0, decodo), resolveProxyString(decodo));
     assert.equal(
       resolveProxyStringForAttempt(0, decodo),
-      'proxy-user:proxy-secret@us.decodo.com:10001',
+      'https://proxy-user:proxy-secret@us.decodo.com:10001',
     );
     assert.equal(
       resolveProxyStringForAttempt(1, decodo),
-      'proxy-user:proxy-secret@us.decodo.com:10002',
+      'https://proxy-user:proxy-secret@us.decodo.com:10002',
     );
     assert.equal(
       resolveProxyStringForAttempt(3, decodo),
-      'proxy-user:proxy-secret@us.decodo.com:10004',
+      'https://proxy-user:proxy-secret@us.decodo.com:10004',
     );
     // Sticky ports wrap rather than escaping the provider's assigned range.
     assert.equal(
       resolveProxyStringForAttempt(1, 'gate.decodo.com:49999:proxy-user:proxy-secret'),
-      'proxy-user:proxy-secret@us.decodo.com:10001',
+      'https://proxy-user:proxy-secret@us.decodo.com:10001',
     );
 
     // Rotating (non-sticky) Decodo ports and every other provider keep their
     // configured route: advancing the port there would point at nothing.
     assert.equal(
       resolveProxyStringForAttempt(2, 'gate.decodo.com:10000:proxy-user:proxy-secret'),
-      'proxy-user:proxy-secret@us.decodo.com:10000',
+      'https://proxy-user:proxy-secret@us.decodo.com:10000',
     );
     assert.equal(
       resolveProxyStringForAttempt(2, 'https://proxy-user:proxy-secret@proxy.test:443'),
-      'proxy-user:proxy-secret@proxy.test:443',
+      'https://proxy-user:proxy-secret@proxy.test:443',
     );
     assert.equal(resolveProxyStringForAttempt(2, ''), '');
   });
@@ -301,7 +311,7 @@ describe('proxy utilities', () => {
         'gate.decodo.com:10001:proxy-user:proxy-secret',
         'gate.decodo.com:10001:u:p',
       ),
-      'u:p@us.decodo.com:10001',
+      'https://u:p@us.decodo.com:10001',
       'a proxy string in the attempt slot degrades to attempt 0',
     );
     // Every other non-numeric attempt degrades the same way rather than
@@ -309,19 +319,19 @@ describe('proxy utilities', () => {
     for (const badAttempt of [undefined, null, NaN, 'two', {}, [], Infinity]) {
       assert.equal(
         resolveProxyStringForAttempt(badAttempt, 'gate.decodo.com:10001:u:p'),
-        'u:p@us.decodo.com:10001',
+        'https://u:p@us.decodo.com:10001',
         `attempt=${String(badAttempt)}`,
       );
     }
     // A negative attempt clamps forward, never below the sticky floor.
     assert.equal(
       resolveProxyStringForAttempt(-5, 'gate.decodo.com:10001:u:p'),
-      'u:p@us.decodo.com:10001',
+      'https://u:p@us.decodo.com:10001',
     );
     // A fractional attempt truncates rather than producing a fractional port.
     assert.equal(
       resolveProxyStringForAttempt(2.9, 'gate.decodo.com:10001:u:p'),
-      'u:p@us.decodo.com:10003',
+      'https://u:p@us.decodo.com:10003',
     );
   });
 
@@ -330,7 +340,7 @@ describe('proxy utilities', () => {
     // condition; only the below-minimum side had coverage.
     assert.equal(
       resolveProxyStringForAttempt(2, 'gate.decodo.com:50000:proxy-user:proxy-secret'),
-      'proxy-user:proxy-secret@us.decodo.com:50000',
+      'https://proxy-user:proxy-secret@us.decodo.com:50000',
     );
   });
 

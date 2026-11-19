@@ -1,3 +1,6 @@
+// This text check pins the non-product Markdown exclusions in package.json's
+// lint:md command (#8690, section 2).
+// A successful lint run cannot prove exclusions for trees with no lint violations.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

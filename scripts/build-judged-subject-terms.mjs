@@ -153,8 +153,8 @@ export function buildJudgedSubjectTerms() {
       ...(region.exclusions ? { exclusions: sorted(region.exclusions.map(normalize)) } : {}),
     };
   }
-  const sortedRegions = Object.fromEntries(Object.entries(regions).sort(([a], [b]) => a.localeCompare(b)));
-  const sortedLabels = Object.fromEntries(Object.entries(labels).sort(([a], [b]) => a.localeCompare(b)));
+  const sortedRegions = Object.fromEntries(Object.entries(regions).sort(([a], [b]) => a.localeCompare(b, 'en-US')));
+  const sortedLabels = Object.fromEntries(Object.entries(labels).sort(([a], [b]) => a.localeCompare(b, 'en-US')));
   return { version: 1, regions: sortedRegions, labels: sortedLabels, countries };
 }
 

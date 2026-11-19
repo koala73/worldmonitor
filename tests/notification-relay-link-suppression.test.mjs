@@ -82,8 +82,8 @@ function makeEvent(link = EVIL) {
 
 let harnessSeq = 0;
 
-function installHarness({ smembers = [], smembersOk = true, pipelineOk = true, pipelineCommandError = false, held = null, rule = {} } = {}) {
-  const calls = { telegram: 0, telegramBodies: [], pipeline: [], smembers: 0, del: [] };
+function installHarness({ smembers = [], smembersOk = true, pipelineOk = true, pipelineCommandError = false, held = null, publisherFamilies = [], rule = {} } = {}) {
+  const calls = { telegram: 0, telegramBodies: [], pipeline: [], smembers: 0, del: [], lrem: [] };
   // Mutable so a test can flip Redis from healthy to down mid-scenario.
   const state = { smembersOk };
   const logs = [];
@@ -129,6 +129,13 @@ function installHarness({ smembers = [], smembersOk = true, pipelineOk = true, p
     if (u.endsWith('/pipeline')) {
       let body = [];
       try { body = JSON.parse(opts.body); } catch { /* keep empty */ }
+      if (body.length && body.every(cmd => cmd[0] === 'ZRANGEBYSCORE')) {
+        return { ok: true, json: async () => body.map(() => ({ result: publisherFamilies })) };
+      }
+      if (body.length > 0 && body.every((cmd) => cmd[0] === 'LREM')) {
+        calls.lrem.push(...body.map((cmd) => cmd[3]));
+        return { ok: true, json: async () => body.map(() => ({ result: 1 })) };
+      }
       calls.pipeline.push(body);
       return {
         ok: pipelineOk,
@@ -163,6 +170,26 @@ function installHarness({ smembers = [], smembersOk = true, pipelineOk = true, p
 }
 
 describe('notification-relay link suppression (#8401)', () => {
+  it('uses the original build count for held news when the coverage reader cannot load', async () => {
+    const event = { ...makeEvent('https://reuters.com/x'), variant: 'full', observedPublisherCount: 7 };
+    event.payload.corroborationCount = 1;
+    const h = installHarness({ held: [JSON.stringify(event)] });
+    const hook = Module.registerHooks({
+      resolve(specifier, context, nextResolve) {
+        if (specifier === './lib/news-alert-coverage.mjs') throw new Error('coverage reader unavailable');
+        return nextResolve(specifier, context);
+      },
+    });
+    try {
+      await relay.processEvent({ eventType: 'flush_quiet_held', userId: 'user-1', variant: 'full' });
+      assert.match(h.calls.telegramBodies.join(' '), /Coverage: single publisher/);
+      assert.ok(h.logs.some(line => line.includes('publisher coverage unavailable')));
+    } finally {
+      hook.deregister();
+      h.restore();
+    }
+  });
+
   it('drops a blocked exact-URL event before any channel send, and logs the blast radius', async () => {
     const h = installHarness({ smembers: [EVIL] });
     try {
@@ -227,6 +254,34 @@ describe('notification-relay link suppression (#8401)', () => {
     } finally {
       h.restore();
     }
+  });
+
+  it('renders observed publisher families on a realtime alert while retaining its original score', async () => {
+    const h = installHarness({ publisherFamilies: ['a', 'b'] });
+    try {
+      const event = { ...makeEvent(), variant: 'full' };
+      event.payload.importanceScore = 83;
+      event.payload.corroborationCount = 1;
+      await relay.processEvent(event);
+      assert.match(h.calls.telegramBodies.join(' '), /Coverage: 2 independent publishers/);
+      assert.equal(event.payload.importanceScore, 83);
+      assert.equal(event.payload.corroborationCount, 1);
+    } finally { h.restore(); }
+  });
+
+  it('keeps the digest count when fewer publishers carried the exact headline than the story', async () => {
+    // corroborationCount counts every wording of the story; the history counts
+    // one wording. One family on this headline must not relabel three as single.
+    const h = installHarness({ publisherFamilies: ['a'] });
+    try {
+      const event = { ...makeEvent(), variant: 'full' };
+      event.payload.importanceScore = 83;
+      event.payload.corroborationCount = 3;
+      await relay.processEvent(event);
+      const sent = h.calls.telegramBodies.join(' ');
+      assert.match(sent, /Coverage: 3 independent publishers/);
+      assert.doesNotMatch(sent, /single publisher/i);
+    } finally { h.restore(); }
   });
 
   it('delivers when the link is not blocked', async () => {
@@ -322,13 +377,14 @@ describe('notification-relay link suppression (#8401)', () => {
 
   it('re-checks held quiet-hours events on drain and drops newly blocked ones', async () => {
     const blocked = JSON.stringify({ eventType: 'rss_alert', severity: 'high', payload: { title: 'Held phishing lure', link: EVIL } });
-    const clean = JSON.stringify({ eventType: 'rss_alert', severity: 'high', payload: { title: 'Held clean story', link: 'https://reuters.com/x' } });
-    const h = installHarness({ smembers: [EVIL], held: [blocked, clean] });
+    const clean = JSON.stringify({ eventType: 'rss_alert', severity: 'high', variant: 'full', observedPublisherCount: 1, payload: { title: 'Held clean story', link: 'https://reuters.com/x' } });
+    const h = installHarness({ smembers: [EVIL], held: [blocked, clean], publisherFamilies: ['a', 'b', 'c'] });
     try {
       await relay.processEvent({ eventType: 'flush_quiet_held', userId: 'user-1', variant: 'full' });
       assert.equal(h.calls.telegram, 1, 'the clean held event is still delivered');
       const sent = h.calls.telegramBodies.join('\n');
       assert.ok(sent.includes('Held clean story'));
+      assert.match(sent, /Coverage: 3 independent publishers/);
       assert.ok(!sent.includes('Held phishing lure'), 'a link blocked after hold must not ride the batch');
       assert.ok(sent.includes('1 held alert'), 'the batch count excludes the suppressed event');
       assert.ok(h.logs.some((l) => l.includes('[relay][link-suppressed]')), 'drain-time suppression is logged');
@@ -343,7 +399,8 @@ describe('notification-relay link suppression (#8401)', () => {
     try {
       await relay.processEvent({ eventType: 'flush_quiet_held', userId: 'user-1', variant: 'full' });
       assert.equal(h.calls.telegram, 0);
-      assert.deepEqual(h.calls.del, ['digest:quiet-held:user-1:full']);
+      assert.deepEqual(h.calls.lrem, [blocked], 'the blocked item is removed by value, nothing else is touched');
+      assert.deepEqual(h.calls.del, []);
     } finally {
       h.restore();
     }

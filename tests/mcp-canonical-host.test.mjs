@@ -18,7 +18,8 @@ import {
   MCP_CANONICAL_ENDPOINT_ERROR_MESSAGE,
   MCP_CANONICAL_LINK,
   MCP_CANONICAL_ORIGIN,
-  MCP_PRODUCTION_ALIAS_LABELS,
+  MCP_RETIRED_ALIAS_LABELS,
+  MCP_SERVED_ALIAS_LABELS,
   MCP_PRODUCT_PATHS,
 } from '../shared/mcp-host-policy.ts';
 
@@ -117,7 +118,7 @@ describe('canonical apex transport is unchanged', () => {
 });
 
 describe('alias ordinary GET/HEAD redirect', () => {
-  for (const label of MCP_PRODUCTION_ALIAS_LABELS) {
+  for (const label of MCP_RETIRED_ALIAS_LABELS) {
     for (const path of MCP_PRODUCT_PATHS) {
       it(`${label} GET ${path} 308s to the canonical location without copying query`, async () => {
         const res = await mcpHandler(
@@ -133,6 +134,20 @@ describe('alias ordinary GET/HEAD redirect', () => {
         assert.equal(res.headers.get('location'), expected);
         assert.match(res.headers.get('vary') ?? '', /\bAccept\b(?!-)/);
         assert.match(res.headers.get('vary') ?? '', /Last-Event-ID/i);
+      });
+    }
+  }
+
+  // Served aliases keep the transport but never publish a server card.
+  for (const label of MCP_SERVED_ALIAS_LABELS) {
+    for (const path of ['/.well-known/mcp', '/.well-known/mcp.json']) {
+      it(`${label} GET ${path} still 308s to the canonical card`, async () => {
+        const res = await mcpHandler(
+          request(`${aliasUrl(label, path)}?token=secret`, { headers: { Accept: 'text/html,*/*' } }),
+          explodingDeps(),
+        );
+        assert.equal(res.status, 308, `${label} ${path}`);
+        assert.equal(res.headers.get('location'), `${MCP_CANONICAL_ORIGIN}${path}`);
       });
     }
   }
@@ -165,7 +180,7 @@ describe('alias transport 410', () => {
   });
 
   it('preserves an empty-string id', async () => {
-    const res = await post(aliasUrl('api', '/api/mcp'), rpc('ping', { id: '' }));
+    const res = await post(aliasUrl('energy', '/api/mcp'), rpc('ping', { id: '' }));
     assert.equal(res.status, 410);
     assertGoneRpc(await res.json(), '');
   });
@@ -177,11 +192,11 @@ describe('alias transport 410', () => {
     assert.equal(await res.text(), '');
   });
 
-  it('malformed JSON is still -32600, not a 410', async () => {
+  it('malformed JSON returns -32700 before the host decision', async () => {
     const res = await post(aliasUrl('happy', '/mcp'), '{');
     assert.equal(res.status, 200);
     const body = await res.json();
-    assert.equal(body.error?.code, -32600);
+    assert.equal(body.error?.code, -32700);
   });
 
   it('an oversized body is still HTTP 413 before the host decision', async () => {
@@ -229,7 +244,7 @@ describe('alias transport 410', () => {
   });
 
   it('unsupported methods are 405 with Allow and canonical Link', async () => {
-    const res = await mcpHandler(request(aliasUrl('api', '/mcp'), { method: 'PUT' }), explodingDeps());
+    const res = await mcpHandler(request(aliasUrl('finance', '/mcp'), { method: 'PUT' }), explodingDeps());
     assert.equal(res.status, 405);
     assert.match(res.headers.get('allow') ?? '', /POST/);
     assertNoStoreCorsCanonical(res, 'PUT');

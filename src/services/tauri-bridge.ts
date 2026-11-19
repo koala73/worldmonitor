@@ -1,5 +1,7 @@
 type TauriInvoke = <T>(command: string, payload?: Record<string, unknown>) => Promise<T>;
 
+const USER_AUTHORIZATION_HEADER = 'X-WorldMonitor-User-Authorization';
+
 interface LocalApiProxyResponse {
   status: number;
   headers: Record<string, string>;
@@ -82,6 +84,7 @@ export async function proxyLocalApiRequest(
   path: string,
   input: RequestInfo | URL,
   init?: RequestInit,
+  userAuthorization?: string,
 ): Promise<Response> {
   if (!path.startsWith('/api/') || path.startsWith('//')) {
     throw new Error(`Refusing to proxy non-API path: ${path}`);
@@ -92,6 +95,10 @@ export async function proxyLocalApiRequest(
     : new Request(`http://localhost${path}`, init);
   const headers = new Headers(request.headers);
   headers.delete('Authorization');
+  // Native code authenticates this hop with Authorization, so the sidecar
+  // receives the user's cloud credential under its own header.
+  headers.delete(USER_AUTHORIZATION_HEADER);
+  if (userAuthorization) headers.set(USER_AUTHORIZATION_HEADER, userAuthorization);
   const body = request.method === 'GET' || request.method === 'HEAD'
     ? undefined
     : Array.from(new Uint8Array(await request.arrayBuffer()));

@@ -24,10 +24,20 @@ import { countryStockIndexKey } from './_country-stock-index.mjs';
  * gate and pads the failure log. `loadUnavailableCountryStockIndexes()` lists
  * them for the audit script that decides when a flag can be lifted.
  *
- * @returns {Array<{ code: string, symbol: string, name: string }>}
+ * Entries carrying `source: 'moex-iss'` are served by the Moscow Exchange ISS
+ * API instead of Yahoo (#6153): Yahoo stopped serving MOEX data after 2022,
+ * ISS is keyless and 15-minute delayed. The seeder routes them to that
+ * provider; the audit and the RPC's live Yahoo fallback skip them.
+ *
+ * @returns {Array<{ code: string, symbol: string, name: string, source?: string }>}
  */
 export function loadCountryStockIndexes() {
   return loadDeclaredCountryStockIndexes().filter(index => !index.unavailable);
+}
+
+/** Entries the Yahoo-backed audit can probe: serviceable and Yahoo-sourced. */
+export function loadYahooCountryStockIndexes() {
+  return loadCountryStockIndexes().filter(index => !index.source || index.source === 'yahoo');
 }
 
 /**
@@ -53,6 +63,7 @@ export function loadDeclaredCountryStockIndexes() {
       symbol: index.symbol,
       name: index.name,
       ...(index.unavailable ? { unavailable: index.unavailable } : {}),
+      ...(index.source ? { source: index.source } : {}),
     }));
 }
 

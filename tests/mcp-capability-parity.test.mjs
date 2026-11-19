@@ -1,31 +1,3 @@
-// MCP capability-parity test — catches two structural drift modes at once:
-//
-//   1. Drift between public/.well-known/mcp/server-card.json::capabilities
-//      (what external scanners read) and initialize.result.capabilities
-//      (what the wire serves). A future PR that flips one but forgets the
-//      other ships an advertised-but-unserved capability — discovery
-//      scanners 404 on the flagged surface.
-//
-//   2. Advertised-but-empty — a capability flag is on but the matching
-//      registry is empty at runtime. The list method returns
-//      `{ <capability>: [] }`, which is spec-valid but useless to clients
-//      and indistinguishable (to a casual reader) from "capability not
-//      offered". Catches accidental truncation of PROMPT_REGISTRY,
-//      RESOURCE_REGISTRY, or TOOL_REGISTRY.
-//
-// Normalization: server-card encodes capabilities as booleans (`tools: true`);
-// initialize emits an object per capability (`tools: {}` for passive,
-// `prompts: { listChanged: false }` for config). The value shapes are not
-// commensurable — only the KEY presence is. Both sides project to
-// Set<string> of advertised capability names; the value shape is per-spec
-// opaque.
-//
-// `logging` is structurally registry-less — it's a passive-ACK capability
-// (the handler returns `{}` for `logging/setLevel` but doesn't push
-// `notifications/message`). The allowlist exempts it from the non-empty
-// check. Adding a future passive-ACK capability requires editing this file
-// deliberately — that is the discipline this test is buying.
-
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
@@ -35,6 +7,7 @@ import { resolveMcpBudget } from '../api/mcp/quota.ts';
 import { MCP_DEFAULT_BURST_PER_MINUTE, MCP_PROTOCOL_BURST_PER_MINUTE, resolveMcpBurstPerMinute } from '../api/mcp/auth.ts';
 import { PANEL_READ_LIMIT } from '../api/mcp/panel-requests.ts';
 import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
+import { OPERATOR_KEY_DAILY_CEILINGS } from '../server/_shared/high-usage-alarm.ts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -304,14 +277,16 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
     assert.equal(typeof notes, 'string', 'server-card rateLimits.notes must be a string');
     assert.match(notes, /identical on the OAuth and dashboard-issued wm_ API-key doors/i,
       'notes must disclose that both credential doors resolve the same budget');
-    assert.match(notes, /Legacy operator keys[\s\S]*outside this daily reservation path/i,
-      'notes must keep operator keys outside the daily reservation path');
+    assert.ok(
+      notes.includes(`Legacy operator keys explicitly allowlisted in WORLDMONITOR_VALID_KEYS reserve one unit per call against a separate ${OPERATOR_KEY_DAILY_CEILINGS.mcpUnits}/day ceiling per key.`),
+      'notes must publish the operator-key daily ceiling the dispatcher enforces',
+    );
     // This assertion used to be `doesNotMatch(/1,000|10,000/)`, banning those
     // numbers because the API tiers advertised MCP caps the meter never applied.
     // They are enforced now, so the ban inverts: an agent planning a workload
     // needs the real budget AND the weight, or it cannot predict its own spend.
-    assert.match(notes, /API Starter \(1000\/day\) and API Business \(10000\/day\)/,
-      'notes must publish the API-tier budgets now that they are enforced');
+    assert.match(notes, /API Starter \(1000\/day\), API Business \(10000\/day\) and Enterprise \(10000\/day by default/,
+      'notes must publish the API-tier and Enterprise budgets now that they are enforced');
     assert.match(notes, /per-tool weight of 1 for a cache-backed read, 2 for a tool that fetches live data/i,
       'notes must publish the weight, or the shared budget is unpredictable');
     for (const method of [

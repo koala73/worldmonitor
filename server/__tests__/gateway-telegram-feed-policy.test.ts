@@ -1,9 +1,11 @@
 // @vitest-environment node
 import { beforeEach, afterEach, expect, test, vi } from 'vitest';
 
+// The gateway resolves wm_ keys through the desktop-aware principal (plan
+// 2026-10-25-001 U4); an `api` principal with rank 0 is today's API customer.
 vi.mock('../_shared/user-api-key', async (original) => ({
   ...await original<typeof import('../_shared/user-api-key')>(),
-  validateUserApiKey: async () => ({ userId: 'paid-account', keyId: 'synthetic-key', name: 'test' }),
+  validateUserApiKeyPrincipal: async () => ({ userId: 'paid-account', keyId: 'synthetic-key', keyKind: 'api', keyHash: 'h'.repeat(64), activeKeyRank: 0 }),
 }));
 vi.mock('../_shared/entitlement-check', async (original) => ({
   ...await original<typeof import('../_shared/entitlement-check')>(),

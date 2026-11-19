@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { z } from 'zod';
+import * as z from 'zod';
 import { CountrySectionError } from '@/services/country-brief-error';
 import { CountryBriefController } from '@/components/CountryBriefController';
 import type { CountryBriefSource } from '@/services/country-brief-source';

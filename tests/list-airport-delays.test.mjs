@@ -223,6 +223,25 @@ describe('listAirportDelays handler — coverage gating (#3707)', () => {
       'NOTAM-only airport with no NOTAM and no AS/FAA coverage → UNKNOWN');
   });
 
+  it('a NOTAM-only airport the NOTAM feed covers is open, not UNKNOWN; a closure still wins', async () => {
+    cacheStore.set('aviation:delays:faa:v1', { alerts: [] });
+    cacheStore.set('aviation:delays:intl:v3', { alerts: [], coverage: [] });
+    cacheStore.set('aviation:notam:closures:v2', {
+      closedIcaos: ['OEJN'], restrictedIcaos: [], reasons: { OEJN: 'AD CLSD' },
+      coveredIcaos: ['OEJN', 'OIIE'],
+    });
+
+    const resp = await listAirportDelays(context(), {});
+
+    const open = resp.alerts.find(a => a.iata === NOTAM_ONLY_SAMPLE);
+    assert.equal(open.severity, 'FLIGHT_DELAY_SEVERITY_NORMAL');
+    assert.equal(open.source, 'FLIGHT_DELAY_SOURCE_NOTAM');
+    assert.equal(open.reason, 'Open');
+    assert.equal(resp.alerts.find(a => a.iata === 'JED').severity, 'FLIGHT_DELAY_SEVERITY_SEVERE');
+    // The feed carried nothing for Oslo, so Oslo stays UNKNOWN.
+    assert.equal(resp.alerts.find(a => a.iata === 'OSL').severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN');
+  });
+
   it('INTL cache HIT preserves per-hub provider omissions as UNKNOWN', async () => {
     cacheStore.set('aviation:delays:faa:v1', { alerts: [] });
     cacheStore.set('aviation:delays:intl:v3', {

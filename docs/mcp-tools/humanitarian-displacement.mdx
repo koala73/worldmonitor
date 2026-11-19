@@ -1,0 +1,65 @@
+---
+title: "MCP tools: Humanitarian & displacement"
+sidebarTitle: "Humanitarian & displacement"
+description: "World Monitor MCP tool reference for cross-border arrivals and displacement data: parameters, freshness, backing API endpoints and example calls."
+---
+
+Part of the [MCP Tools Reference](/mcp-tools-reference), which indexes every tool. Connection, auth, plans and errors are in the [MCP Server overview](/mcp-overview).
+
+The `curl` examples assume `export WM_KEY="wm_…"`. With an OAuth token, replace `-H "X-WorldMonitor-Key: $WM_KEY"` with `-H "Authorization: Bearer $TOKEN"`.
+
+### `get_cross_border_arrivals`
+
+Public UNHCR Operational Data Portal cross-border situations, arrivals, returns and reported deaths/missing people. Reads the same published aggregate snapshot as the website's Cross-border tab. This is separate from annual UNHCR statistics and IOM DTM.
+
+**Parameters (tool-specific):** none.
+
+- **API endpoints:** none. The public bootstrap equivalent is `GET /api/bootstrap?keys=crossBorderArrivals&public=1`; this tool does not claim coverage of other bootstrap datasets.
+- **Access:** `free-account`. Uses existing signed-in account access and allowance/quota rules. Accepts universal `summary` and `jmespath` arguments.
+- **Kind:** cache read. No provider request, seed refresh, private history or panel admission.
+- **Freshness budget:** up to **2 d**. Fewer than 12 published situations also set `stale: true`. The producer's 45-day freshest-content age is checked independently from seed age. This does not assert freshness of every situation.
+- **Response:** normal cache envelope with `data.crossBorderArrivals.source`, `situations`, `unavailable` and `attribution`. Source `asOf`, country dates, monthly values and trends remain intact. `cached_at` is the seed clock. A nonempty `unavailable` list identifies partial failed situations. A missing cache is a tool execution failure, not a successful zero-displacement snapshot. A published empty list remains an empty, stale snapshot.
+- **Interpretation:** situations overlap; do not add their totals. Stock and monthly-arrival measures are distinct. The website selects the last complete monthly period separately from cumulative totals. This tool returns the source snapshot without deriving a global total.
+- **Attribution:** [ODP dataset terms](https://data.unhcr.org/en/disclaimer/) specify [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) except where otherwise indicated. Keep credit, original situation URLs, license and transformation notice with the values. The existing attribution rider retains that notice and the original situation URLs after projection. No UNHCR endorsement is implied.
+
+Call `get_cross_border_arrivals({})` for the full public snapshot. `summary: true` keeps the first three complete situations and adds `situationCount` for the full list. It preserves attribution and failed situation IDs. The ordinary summary envelope appears under `structuredContent.projection`. An optional `jmespath: "data.crossBorderArrivals.situations[].{name:name,asOf:asOf}"` selects situation names and report dates while keeping the attribution rider. Trend points retain their original `[date, number]` pair shape.
+
+### `get_displacement_data`
+
+Defaults to UNHCR annual displacement statistics for one reporting year: global totals, per-country refugees, asylum seekers, IDPs and stateless people by origin, totals hosted by each asylum country, and the largest origin-to-asylum refugee flows. Until UNHCR publishes the current year, the annual snapshot holds the prior year; `summary.year` names it.
+
+Use `view: "movements"` for source-dated UNHCR operational reports, UK daily arrivals, CBP monthly encounters, Frontex monthly detections and Panama monthly Darién arrivals. Each row keeps its source, measure, report date, license and transformation notice. Encounter and detection counts are events, not unique people. Sources can overlap; do not add their counts. Source status distinguishes missing, partial and stale data; absent windows do not mean zero. Retain the attribution rider when projecting results. No provider endorsement is implied.
+
+Use `view: "events"` for IDMC Internal Displacement Updates in `iduEvents`: per-country people displaced inside their country in the last 30 days (split into conflict and disaster), `newlyReported7d` (figures IDMC published in the last 7 days, whatever the displacement date), a `surge` flag (at least 5,000 people and three times the monthly mean of the 150 days before), and the located IDMC figures from the last 180 days, newest first, at most 100 per call. IDMC publishes a figure a median of three weeks after the displacement, so the latest weeks are incomplete.
+
+Use `view: "regions"` for IOM Displacement Tracking Matrix (DTM) data in `dtmRegions`: the latest survey round of each DTM operation from the last 18 months, largest first, with its total internally displaced people, the split by cause, the count per first-level region (with an OCHA P-code and a point where one is known) and up to 30 region-to-region routes. Operations in one country can overlap (a countrywide operation and a provincial one), so do not add their totals. Rounds are monthly at best.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `view` | string: annual / movements / events / regions | Choose yearly UNHCR stocks and flows (annual, used when omitted), source-dated border reports (movements), IDMC internal displacement (events), or IOM DTM operations (regions). Results appear under data.summary, data.crossBorderMovements, data.iduEvents, or data.dtmRegions, respectively. |
+| `route` | string | Filter movement reports by the route value returned in a movements row. Matches the exact case after trimming surrounding whitespace; ignored for other views. |
+| `countries` | `array<string>` | Countries to keep, as ISO 3166-1 alpha-2 or alpha-3 codes or country names (e.g. ["Syria","UA","AFG"]). Matches per-country totals, flows by origin or asylum country, movement reports, IDMC rows and DTM operations. Omit for all. Names and alpha-3 codes that do not resolve return Invalid params; any two-letter code is used as given and may match nothing. |
+| `limit` | number | Cap the per-country, top-flow, IDMC and DTM operation lists to at most this many items (default 30, pass 0 for no cap; IDMC events stay capped at 100). |
+
+- **API endpoints:** `GET /api/displacement/v1/get-displacement-summary`, `GET /api/displacement/v1/get-cross-border-movements`, `GET /api/displacement/v1/get-internal-displacement`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Response:** cache envelope with `cached_at`, `stale` and `data`, containing the selected dataset. Movement rows include `name`, `period`, source attribution and a `location` when available. `crossBorderMovements.sources` reports each source's `id`, `name`, `status` (`ok`, `partial`, `stale` or `unavailable`), `fetchedAt`, `contentAt` and `maxContentAgeMin`. Fetch and content timestamps use Unix milliseconds, with zero for an absent fetch or no accepted report. Source health and `dataAvailable` describe the feeds before country, route and limit filters; an empty filtered list does not establish source unavailability.
+- **Freshness budget:** annual data is stale after **2.5 d**. Movement feeds have a 48-hour fetch budget, plus independent report-age budgets: 45 days for ODP, 3 days for UK arrivals and 75 days for CBP, Frontex and Panama monthly reports. Sources proven never activated do not stale the aggregate; unreadable activation markers fail closed. Check each row and source status. IDMC events and DTM regions are stale after **2 d**; DTM regions are also stale when the newest round is over 90 days old.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_displacement_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>

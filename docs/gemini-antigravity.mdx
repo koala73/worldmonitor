@@ -1,0 +1,101 @@
+---
+title: "Gemini and Antigravity: connect WorldMonitor"
+description: "Connect WorldMonitor to Google Antigravity, review Gemini custom-app OAuth limitations, and prepare Gemini Connected Apps and Antigravity Marketplace submissions."
+---
+
+WorldMonitor exposes its hosted MCP server at `https://worldmonitor.app/mcp` over Streamable HTTP, with OAuth 2.1 sign-in (PKCE, Dynamic Client Registration and Client ID Metadata Documents). Antigravity uses the same server, tools and entitlements as other supported clients. Gemini custom apps and Connected Apps sign in through Google's OAuth callbacks, which the redirect URI allowlist accepts. Pro-only tools stay Pro-only. See the [MCP Server overview](/mcp-overview) for auth, quotas and the tool list.
+
+## Google Antigravity
+
+### Install the plugin
+
+The repository ships an Antigravity plugin manifest at `.antigravity-plugin/plugin.json`. It bundles the two MCP servers in `mcp_config.json` and the agent skills in `skills/`.
+
+```bash
+git clone https://github.com/koala73/worldmonitor
+agy plugin validate ./worldmonitor
+agy plugin install ./worldmonitor
+agy plugin list
+```
+
+Validation of the repository reports compatibility warnings for `AGENTS.md`, `mcp.json`, and the root `plugin.json`. Antigravity uses `.antigravity-plugin/plugin.json`, `mcp_config.json`, and `skills/`; the other files support repository development and other clients. Before Marketplace submission, prepare a standalone bundle with the Antigravity manifest, README, logo, MCP configuration, and skills, then run `agy plugin validate --strict <bundle-directory>` and require zero errors and warnings.
+
+When the Marketplace listing is live, install it with `agy plugin install worldmonitor@antigravity-plugins-official`.
+
+### Add the server manually
+
+In the Antigravity IDE, open **... > MCP Servers** in the agent side panel and edit `mcp_config.json`. In the CLI, use `~/.gemini/config/mcp_config.json` (global) or `.agents/mcp_config.json` (workspace):
+
+```json
+{
+  "mcpServers": {
+    "worldmonitor": { "serverUrl": "https://worldmonitor.app/mcp" }
+  }
+}
+```
+
+Antigravity's [MCP docs](https://antigravity.google/docs/mcp) use `serverUrl` for remote servers and also accept `url`, which the plugin's bundled `mcp_config.json` uses.
+
+Antigravity's OAuth callback, `https://antigravity.google/oauth-callback`, is already on the [redirect URI allowlist](/mcp-overview#redirect-uri-allowlist).
+
+## Gemini
+
+### Developer Mode (custom app)
+
+Follow Google's [Developer Mode guide](https://developers.google.com/connected-apps/mcp/dev-mode/usage): choose **+ Create new**, enter `https://worldmonitor.app/mcp` as the MCP Server URL, accept the security notice and connect. Gemini registers through Dynamic Client Registration with a callback under `https://oauth-redirect.googleusercontent.com/r/` or `/a/`, which the [redirect URI allowlist](/mcp-overview#redirect-uri-allowlist) accepts.
+
+Check these during the first Developer Mode run. They have not yet been tested against Gemini:
+
+- **Sign-in completes** and a Pro-only tool answers for a Pro account.
+- **The connection survives two token refreshes.** Google asks servers to return the same refresh token on each refresh. WorldMonitor issues a new one each time and revokes the token family when an old refresh token is reused. If Gemini keeps the first refresh token, the second refresh disconnects the user.
+- **Token requests succeed.** WorldMonitor registers every client as a public client (`token_endpoint_auth_method: none`). If Gemini sends a client secret, check that token requests still succeed.
+
+### Connected App listing metadata
+
+These values are used when registering WorldMonitor in the [Google Connected Console](https://connected.google.com/console).
+
+Before submitting, complete console-issued domain verification, pass the Developer Mode checks above, and test end to end with a Pro account.
+
+Domain verification: in the console's **MCP and tools setup**, select **Download token** under **Verify domain ownership**. Copy the token from the downloaded `google-connected-apps.json` into the `verification_tokens` array of `public/.well-known/google-connected-apps`, deploy, then select **Verify domain**. Vercel serves the file at `https://worldmonitor.app/.well-known/google-connected-apps` as JSON with HTTP 200 and no redirect, as Google requires.
+
+| Field | Value |
+|---|---|
+| Connected app name | WorldMonitor |
+| Description (under 30 words) | Track world news, country risk, conflicts, markets, energy and shipping chokepoints with source-attributed live data. |
+| Icon (512 x 512 PNG) | `https://www.worldmonitor.app/favico/android-chrome-512x512.png` |
+| MCP endpoint | `https://worldmonitor.app/mcp` |
+| Auth | User-delegated OAuth (Authorization Code), dynamic registration (CIMD or DCR) |
+| Terms of Service URL | `https://www.worldmonitor.app/docs/terms` |
+| Privacy Policy URL | `https://www.worldmonitor.app/docs/privacy` |
+| Website URL | `https://www.worldmonitor.app` |
+
+Capabilities:
+
+- Browse source-attributed world headlines
+- Read country risk and intelligence briefs
+- Check maritime chokepoint and energy disruption status
+- Compare macro and market histories
+
+Example prompts:
+
+- @WorldMonitor what are today's top world headlines?
+- @WorldMonitor summarize the current risk picture for Taiwan
+- Check which shipping chokepoints are disrupted on WorldMonitor
+
+## Gemini CLI
+
+The repository root holds a Gemini CLI extension manifest, `gemini-extension.json`. It adds the same two servers over Streamable HTTP. Gemini CLI uses `httpUrl` for Streamable HTTP; its `url` key means SSE.
+
+```bash
+gemini extensions install https://github.com/koala73/worldmonitor --ref main
+```
+
+Without `--ref`, Gemini CLI installs from the latest GitHub release's source archive, and releases up to v2.11.6 predate the manifest. With `--ref main`, Gemini CLI finds no release tagged `main` and asks whether to install with `git clone` instead; answer yes. From the first release after v2.11.6, the command also works without `--ref`.
+
+Start Gemini CLI and sign in when the browser opens: WorldMonitor answers the connection with an OAuth challenge, so sign-in happens at startup, before any tool call. Gemini CLI registers with a `localhost` callback, which the [redirect URI allowlist](/mcp-overview#redirect-uri-allowlist) accepts. Run `/mcp auth worldmonitor` to sign in again.
+
+## Related
+
+- [MCP quickstart](/mcp-quickstart)
+- [MCP Server overview](/mcp-overview)
+- [Agent discovery](/agent-discovery)

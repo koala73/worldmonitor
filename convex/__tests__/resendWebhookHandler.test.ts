@@ -1,6 +1,7 @@
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
+import { MAX_SIGNATURE_CANDIDATES } from "../lib/svixVerify";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -97,6 +98,29 @@ describe("Resend webhook signature verification (#4678)", () => {
     delete process.env.RESEND_WEBHOOK_SECRET;
   });
 
+  test("only a bounded number of signature candidates is considered (#8491)", async () => {
+    // The candidate cap landed in the Clerk verifier only (#8469); the shared
+    // verifier carries it to every webhook. Burying the real signature past
+    // the cap must fail closed, while a real rotation still verifies.
+    vi.spyOn(Date, "now").mockReturnValue(TEST_NOW_MS);
+    process.env.RESEND_WEBHOOK_SECRET = RESEND_WEBHOOK_SECRET;
+    const payload = makePayload();
+    const real = await signPayload(payload);
+    const padding = Array.from(
+      { length: MAX_SIGNATURE_CANDIDATES },
+      (_, i) => `v1,${btoa(`pad-${i}`)}`,
+    );
+
+    const buried = await postResendWebhook([...padding, `v1,${real}`].join(" "), { payload });
+    expect(buried.status).toBe(401);
+
+    const rotated = await postResendWebhook(
+      `v1,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= v1,${real}`,
+      { payload },
+    );
+    expect(rotated.status).toBe(200);
+  });
+
   test("accepts a valid Svix/Resend signature", async () => {
     vi.spyOn(Date, "now").mockReturnValue(TEST_NOW_MS);
     process.env.RESEND_WEBHOOK_SECRET = RESEND_WEBHOOK_SECRET;
@@ -153,6 +177,20 @@ describe("Resend webhook signature verification (#4678)", () => {
     expect(await extraFields.text()).toBe("Invalid signature");
     expect(missing.status).toBe(401);
     expect(await missing.text()).toBe("Invalid signature");
+  });
+
+  test("a malformed or empty secret is a server error, not a 401", async () => {
+    // Before the shared verifier this threw out of atob/importKey, which
+    // Convex turns into a 500; keep that so Svix retries until it is fixed.
+    vi.spyOn(Date, "now").mockReturnValue(TEST_NOW_MS);
+    const payload = makePayload();
+    const signature = await signPayload(payload);
+    for (const secret of ["whsec_not*base64!", "whsec_"]) {
+      process.env.RESEND_WEBHOOK_SECRET = secret;
+      await expect(postResendWebhook(`v1,${signature}`, { payload }), secret).rejects.toThrow(
+        "RESEND_WEBHOOK_SECRET is not a valid whsec_ secret",
+      );
+    }
   });
 
   test("rejects stale timestamps", async () => {

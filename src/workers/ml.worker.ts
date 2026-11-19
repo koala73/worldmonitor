@@ -220,32 +220,87 @@ interface NEREntity {
   text: string;
   type: string;
   confidence: number;
-  start: number;
-  end: number;
+  start: number | null;
+  end: number | null;
 }
 
-async function extractEntities(texts: string[]): Promise<NEREntity[][]> {
-  return modelPipelines.use('ner', () => createModelPipeline('ner'), async (pipe) => {
-    const results: NEREntity[][] = [];
-    for (const text of texts) {
-      const output = await pipe(text);
-      const entities = (output as Array<{
-        entity_group: string;
-        score: number;
-        word: string;
-        start: number;
-        end: number;
-      }>).map(e => ({
-        text: e.word,
-        type: e.entity_group,
-        confidence: e.score,
-        start: e.start,
-        end: e.end,
-      }));
-      results.push(entities);
+async function extractEntities(
+  texts: string[]
+): Promise<NEREntity[][]> {
+
+  return modelPipelines.use(
+    'ner',
+    () => createModelPipeline('ner'),
+    async (pipe) => {
+
+      const results: NEREntity[][] = [];
+
+      for (const text of texts) {
+
+        const output: unknown = await pipe(text);
+
+        const entities: NEREntity[] = [];
+
+        if (!Array.isArray(output)) {
+          results.push(entities);
+          continue;
+        }
+
+        for (const candidate of output) {
+
+          if (
+            !candidate ||
+            typeof candidate !== 'object'
+          ) {
+            continue;
+          }
+
+          const item = candidate as Record<string, unknown>;
+
+          const type = item.entity_group ?? item.entity;
+          const word = item.word;
+          const score = item.score;
+
+          if (
+            typeof type !== 'string' ||
+            !/^(?:[BI]-)?(?:PER|ORG|LOC|MISC)$/i.test(type.trim()) ||
+            typeof word !== 'string' ||
+            !word.trim() ||
+            typeof score !== 'number' ||
+            !Number.isFinite(score) ||
+            score < 0 ||
+            score > 1
+          ) {
+            continue;
+          }
+
+          const validOffset = (
+            value: unknown
+          ): number | null => {
+            return (
+              typeof value === 'number' &&
+              Number.isSafeInteger(value) &&
+              value >= 0
+            )
+              ? value
+              : null;
+          };
+
+          entities.push({
+            text: word,
+            type: type.trim(),
+            confidence: score,
+            start: validOffset(item.start),
+            end: validOffset(item.end),
+          });
+        }
+
+        results.push(entities);
+      }
+
+      return results;
     }
-    return results;
-  });
+  );
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {

@@ -49,14 +49,14 @@ describe('urlHasAsyncFlyTo', () => {
 });
 
 describe('setupUrlStateSync consults the predicate', () => {
-  it('gates the immediate sync on urlHasAsyncFlyTo(initialUrlState)', () => {
+  it('waits for an initial camera move before syncing its final center', () => {
     // A passing predicate proves nothing if the call site re-inlines the
     // condition; pin the wiring so the two cannot drift apart again.
     const source = readFileSync(resolve(import.meta.dirname, '../src/app/event-handlers.ts'), 'utf8');
     assert.match(
       source,
-      /if \(!urlHasAsyncFlyTo\(this\.ctx\.initialUrlState\)\) \{\s*\n\s*this\.debouncedUrlSync\(\);/,
-      'setupUrlStateSync must skip the immediate URL write exactly when the shared predicate says the camera will move',
+      /if \(urlHasAsyncFlyTo\(this\.ctx\.initialUrlState\)\) \{[\s\S]*?this\.ctx\.map\.whenViewportSettled\(\)\.then\([\s\S]*?this\.debouncedUrlSync\(\);[\s\S]*?\} else \{\s*\n\s*this\.debouncedUrlSync\(\);/,
+      'setupUrlStateSync must write immediately for settled state and defer camera deep links until their final center is available',
     );
     assert.doesNotMatch(
       source,
@@ -69,8 +69,17 @@ describe('setupUrlStateSync consults the predicate', () => {
     const source = readFileSync(resolve(import.meta.dirname, '../src/app/event-handlers.ts'), 'utf8');
     assert.match(
       source,
-      /history\.replaceState\(history\.state, '', withUrlFragment\(shareUrl, window\.location\.hash\)\)/,
+      /history\.replaceState\(history\.state, '', withUrlFragment\(url, window\.location\.hash\)\)/,
       'dropping the fragment sends the resumed sign-up card off #/verify-email-address (#8577)',
+    );
+  });
+
+  it('keeps the pre-lookup centre while a satellite lookup owns the map', () => {
+    const source = readFileSync(resolve(import.meta.dirname, '../src/app/event-handlers.ts'), 'utf8');
+    assert.match(
+      source,
+      /const url = isMapUrlCentreClaimed\(\) \? withMapCentreOf\(shareUrl, window\.location\.href\) : shareUrl;/,
+      'the lookup centres the map on the picked point, and URL-reading telemetry must not see it',
     );
   });
 });

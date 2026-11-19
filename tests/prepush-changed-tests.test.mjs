@@ -36,6 +36,13 @@ import { fileURLToPath } from 'node:url';
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = join(REPO_ROOT, 'scripts', 'prepush-changed-tests.sh');
 
+// A sync child blocks the event loop, so node:test's per-test timeout cannot
+// fire while it runs. Without a deadline, a child that never exits hangs the
+// whole file until run-data-tests' 300s watchdog aborts it unnamed (#10334).
+// SIGKILL, because the default SIGTERM leaves the call blocked until a child
+// that ignores it exits on its own.
+const CHILD_TIMEOUT_MS = 60_000;
+
 // Every mkdtemp below funnels through here so the run leaves nothing behind.
 // These fixtures used to accumulate one directory per call in $TMPDIR forever.
 const FIXTURE_DIRS = [];
@@ -106,16 +113,29 @@ function partition(mode, { cwd, changed = CHANGED } = {}) {
     // gate that failed. `err.stderr` is still populated, which is what the
     // loud-failure assertions match on.
     stdio: ['pipe', 'pipe', 'pipe'],
+    timeout: CHILD_TIMEOUT_MS,
+    killSignal: 'SIGKILL',
   });
   return out.split('\0').filter(Boolean);
 }
 
+// The probe catches a config error and prints it rather than dying on it. On
+// Linux, a tsx child that exits on an uncaught error sometimes deadlocks in
+// exit with its loader thread (futex_wait, 5 in 4000 runs on Node 24.22.2;
+// none in 2400 with the error caught), and the call then sits out the full
+// CHILD_TIMEOUT_MS (CI runs 43812543197, 43737436237).
 function loadDomTestConfig(env = {}) {
   const probe = join(fixtureDir('wm-dom-config-probe-'), 'probe.mts');
   writeFileSync(
     probe,
-    `const m = await import(${JSON.stringify(join(REPO_ROOT, 'vitest.dom.config.mts'))});\n` +
-      'console.log(JSON.stringify(m.default?.test ?? null));\n',
+    'let result;\n' +
+      'try {\n' +
+      `  const m = await import(${JSON.stringify(join(REPO_ROOT, 'vitest.dom.config.mts'))});\n` +
+      '  result = { test: m.default?.test ?? null };\n' +
+      '} catch (error) {\n' +
+      '  result = { error: error instanceof Error ? error.message : String(error) };\n' +
+      '}\n' +
+      'console.log(JSON.stringify(result));\n',
   );
   const childEnv = { ...process.env };
   delete childEnv.VITEST_MAX_THREADS;
@@ -125,8 +145,12 @@ function loadDomTestConfig(env = {}) {
     encoding: 'utf8',
     env: childEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: CHILD_TIMEOUT_MS,
+    killSignal: 'SIGKILL',
   });
-  return JSON.parse(out.trim().split('\n').at(-1));
+  const result = JSON.parse(out.trim().split('\n').at(-1));
+  if ('error' in result) throw new Error(result.error);
+  return result.test;
 }
 
 describe('pre-push changed-test partition', () => {
@@ -311,9 +335,14 @@ describe('runner dispatch', () => {
   // green when `-n` becomes `-z` or `|| exit 1` is dropped, silently skipping
   // the suite. The decision now lives in the script, so these run it for real
   // against stubbed runners and assert what was invoked.
-  function runDispatch(mode, list, { stubExit = 0, concurrency } = {}) {
+  function runDispatch(mode, list, { stubExit = 0, concurrency, env = {} } = {}) {
     const dir = fixtureDir('wm-prepush-dispatch-');
     const log = join(dir, 'invocations.log');
+    const budgets = join(dir, 'budgets.log');
+    // Records the wall-clock budget each runner gets, then runs it unchanged.
+    const timeoutStub = join(dir, 'timeout');
+    writeFileSync(timeoutStub, `#!/bin/sh\necho "$1" >> ${JSON.stringify(budgets)}\nshift\nexec "$@"\n`);
+    chmodSync(timeoutStub, 0o755);
     for (const bin of ['npm', 'npx']) {
       const stub = join(dir, bin);
       writeFileSync(stub, `#!/bin/sh\necho "${bin} $*" >> ${JSON.stringify(log)}\nexit ${stubExit}\n`);
@@ -330,14 +359,68 @@ describe('runner dispatch', () => {
           ...process.env,
           PATH: `${dir}:${process.env.PATH}`,
           ...(concurrency ? { WM_PREPUSH_TEST_CONCURRENCY: concurrency } : {}),
+          ...env,
         },
+        timeout: CHILD_TIMEOUT_MS,
+        killSignal: 'SIGKILL',
       });
     } catch (err) {
+      if (err.code === 'ETIMEDOUT') throw err;
       status = err.status;
     }
 
-    return { status, invocations: existsSync(log) ? readFileSync(log, 'utf8').trim() : '' };
+    return {
+      status,
+      invocations: existsSync(log) ? readFileSync(log, 'utf8').trim() : '',
+      budget: existsSync(budgets) ? readFileSync(budgets, 'utf8').trim() : '',
+    };
   }
+
+  // The DOM half runs the whole vitest project, not the changed files, under
+  // the hook's 2-worker cap. Measured 2026-10-20 at 269 files: 129s on an idle
+  // machine, so the 120s budget the node half uses killed every push that
+  // touched tests/dom/ with no test having failed.
+  test('the DOM suite gets its own budget, sized for the whole project', () => {
+    const { status, budget } = runDispatch('run-dom', ['tests/dom/gate-action.test.mts'], {
+      env: { WM_PREPUSH_TEST_TIMEOUT: '', WM_PREPUSH_DOM_TEST_TIMEOUT: '' },
+    });
+    assert.equal(status, 0);
+    assert.equal(budget, '600');
+  });
+
+  test('the DOM budget is overridable without touching the node budget', () => {
+    const dom = runDispatch('run-dom', ['tests/dom/gate-action.test.mts'], {
+      env: { WM_PREPUSH_TEST_TIMEOUT: '', WM_PREPUSH_DOM_TEST_TIMEOUT: '900' },
+    });
+    assert.equal(dom.budget, '900');
+    const node = runDispatch('run-node', ['tests/handlers.test.mts'], {
+      env: { WM_PREPUSH_TEST_TIMEOUT: '', WM_PREPUSH_DOM_TEST_TIMEOUT: '900' },
+    });
+    assert.equal(node.budget, '120');
+  });
+
+  test('a non-numeric DOM budget fails loudly instead of running unbounded', () => {
+    const { status, invocations } = runDispatch('run-dom', ['tests/dom/gate-action.test.mts'], {
+      env: { WM_PREPUSH_DOM_TEST_TIMEOUT: 'ten-minutes' },
+    });
+    assert.equal(status, 2);
+    assert.equal(invocations, '');
+  });
+
+  test('an all-zero DOM budget fails loudly, since `timeout 00` means no deadline', () => {
+    for (const value of ['0', '00', '000']) {
+      const { status, invocations } = runDispatch('run-dom', ['tests/dom/gate-action.test.mts'], {
+        env: { WM_PREPUSH_DOM_TEST_TIMEOUT: value },
+      });
+      assert.equal(status, 2, `WM_PREPUSH_DOM_TEST_TIMEOUT=${value}`);
+      assert.equal(invocations, '');
+    }
+    const padded = runDispatch('run-dom', ['tests/dom/gate-action.test.mts'], {
+      env: { WM_PREPUSH_DOM_TEST_TIMEOUT: '0600' },
+    });
+    assert.equal(padded.status, 0);
+    assert.equal(padded.budget, '0600');
+  });
 
   test('a changed DOM test runs the vitest project', () => {
     const { status, invocations } = runDispatch('run-dom', ['tests/dom/gate-action.test.mts']);

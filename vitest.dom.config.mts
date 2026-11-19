@@ -38,6 +38,8 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
+    // Async console RPCs can outlive worker teardown. Keep logs on stdout/stderr.
+    disableConsoleIntercept: true,
     // Local pre-push exports this cap so several worktrees cannot each fan out
     // to every core. CI leaves it unset and retains Vitest's full-width default.
     ...(prepushMaxWorkers === undefined ? {} : { maxWorkers: prepushMaxWorkers }),

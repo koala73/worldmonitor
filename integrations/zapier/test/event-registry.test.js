@@ -47,6 +47,26 @@ describe('event registry', () => {
     }
   });
 
+  it('occurrence triggers expose exactly the registry scope fields as inputs (snake_case to camelCase)', () => {
+    const toCamel = (key) => key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+    for (const trigger of Object.values(App.triggers).filter((t) => t.operation.type === 'hook')) {
+      const event = EVENT_REGISTRY.events[trigger.operation.sample.eventType];
+      if (event.kind !== 'occurrence') continue;
+      const inputs = trigger.operation.inputFields.map((field) => toCamel(field.key)).sort();
+      assert.deepEqual(inputs, Object.keys(event.inputSchema.properties).sort(), `${trigger.key} inputs drifted from the registry inputSchema`);
+      for (const field of trigger.operation.inputFields) {
+        const schema = event.inputSchema.properties[toCamel(field.key)];
+        if (schema.type === 'array') assert.equal(field.list, true, `${trigger.key}.${field.key} is a list`);
+        if (schema.enum) assert.deepEqual(Object.keys(field.choices), schema.enum, `${trigger.key}.${field.key} choices`);
+        if (schema.items && schema.items.enum) assert.deepEqual(Object.keys(field.choices), schema.items.enum, `${trigger.key}.${field.key} choices`);
+        if ('default' in schema && !Array.isArray(schema.default)) assert.equal(field.default, String(schema.default), `${trigger.key}.${field.key} default`);
+      }
+      // subscriberId is the Zap's own subscription, not a field users map.
+      const userFacing = event.payloadSchema.required.filter((key) => key !== 'subscriberId');
+      assert.ok(userFacing.every((key) => trigger.operation.outputFields.some((f) => f.key === key)), `${trigger.key} outputFields name every required payload field`);
+    }
+  });
+
   it('the monitored-country dropdown lists exactly the registry countries, with unique ids', async () => {
     const rows = await App.triggers.country_list.operation.perform();
     const ids = rows.map((r) => r.id);

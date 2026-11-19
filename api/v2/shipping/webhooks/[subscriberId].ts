@@ -21,6 +21,7 @@ import { validateUserApiKey } from '../../../../server/_shared/user-api-key';
 import { checkFailClosedScopedIpRateLimit } from '../../../../server/_shared/rate-limit';
 import { resolvePremiumCallerIdentity } from '../../../../server/_shared/premium-check';
 import { getCachedJson, runRedisPipeline } from '../../../../server/_shared/redis';
+import { stripTrailingSlashes } from '../../../../shared/strip-trailing-slashes.js';
 import {
   ALL_INDEX_KEY,
   webhookKey,
@@ -40,6 +41,7 @@ const DELETE_SCRIPT = [
   "redis.call('DEL', KEYS[1])",
   "redis.call('SREM', KEYS[2], ARGV[2])",
   "redis.call('SREM', KEYS[3], ARGV[2])",
+  "redis.call('SREM', KEYS[5], ARGV[2])",
   "redis.call('DEL', KEYS[4])",
   'return 1',
 ].join(' ');
@@ -62,7 +64,7 @@ export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'GET' && req.method !== 'DELETE') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
-      headers: { ...cors, 'Content-Type': 'application/json' },
+      headers: { ...cors, 'Content-Type': 'application/json', Allow: 'GET, DELETE, OPTIONS' },
     });
   }
 
@@ -108,7 +110,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   const url = new URL(req.url);
-  const parts = url.pathname.replace(/\/+$/, '').split('/');
+  const parts = stripTrailingSlashes(url.pathname).split('/');
   const subscriberId = parts[parts.length - 1];
   if (!subscriberId || !subscriberId.startsWith('wh_')) {
     return new Response(JSON.stringify({ error: 'Webhook not found' }), {
@@ -129,6 +131,7 @@ export default async function handler(req: Request): Promise<Response> {
     // worker rewrites the record after each delivery; a rewrite between the
     // read and the delete is retried against the new bytes.
     for (let attempt = 0; attempt < DELETE_ATTEMPTS; attempt += 1) {
+      if (attempt > 0) await new Promise(resolve => setTimeout(resolve, Math.min(500, 50 * 2 ** (attempt - 1)) * (0.5 + Math.random() * 0.5)));
       const [read] = await runRedisPipeline([['GET', webhookKey(subscriberId)]]).catch(() => [null]);
       if (!read || read.error) return json(503, { error: 'Service temporarily unavailable' });
       if (typeof read.result !== 'string') return json(404, { error: 'Webhook not found' });
@@ -142,8 +145,9 @@ export default async function handler(req: Request): Promise<Response> {
       if (!stored) return json(404, { error: 'Webhook not found' });
       if (stored.ownerTag !== ownerHash) return json(403, { error: 'Forbidden' });
       const [row] = await runRedisPipeline([[
-        'EVAL', DELETE_SCRIPT, '4',
+        'EVAL', DELETE_SCRIPT, '5',
         webhookKey(subscriberId), ownerIndexKey(stored.ownerTag), ALL_INDEX_KEY, deliveryStateKey(subscriberId),
+        ownerIndexKey(stored.quotaTag || stored.ownerTag),
         raw, subscriberId,
       ]]).catch(() => [null]);
       if (!row || row.error) return json(503, { error: 'Service temporarily unavailable' });
@@ -168,6 +172,7 @@ export default async function handler(req: Request): Promise<Response> {
     eventType: recordEventType(record),
     countries: Array.isArray(record.countries) ? record.countries : [],
     minLiveSignal: record.minLiveSignal ?? 0,
+    ...(record.scope ? { scope: record.scope } : {}),
     failureCount: record.failureCount ?? 0,
     lastDeliveryAt: record.lastDeliveryAt ?? null,
     lastDeliveryStatus: record.lastDeliveryStatus ?? null,

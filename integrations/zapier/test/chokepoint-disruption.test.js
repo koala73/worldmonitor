@@ -1,11 +1,11 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { createHmac } = require('node:crypto');
 const nock = require('nock');
 const zapier = require('zapier-platform-core');
 
 const App = require('../index');
+const { signedRequest } = require('./helpers/signed-request');
 const { BASE_URL, PATHS } = require('../constants');
 
 const appTester = zapier.createAppTester(App);
@@ -33,19 +33,7 @@ const RECORDED_BODY = JSON.stringify({
 });
 const RECORDED_DELIVERY_ID = 'whd_74f1d94e09a3968ee447b2a33513522b';
 
-const sign = (body, secret = SECRET) => `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`;
-
-const rawRequest = (body, overrides = {}) => ({
-  method: 'POST',
-  content: body,
-  headers: {
-    'Http-Content-Type': 'application/json',
-    'Http-X-Wm-Signature': sign(body),
-    'Http-X-Wm-Event': 'chokepoint.disruption',
-    'Http-X-Wm-Delivery-Id': RECORDED_DELIVERY_ID,
-    ...overrides,
-  },
-});
+const rawRequest = (body, overrides = {}) => signedRequest(body, { secret: SECRET, event: 'chokepoint.disruption', deliveryId: RECORDED_DELIVERY_ID, overrides });
 
 describe('trigger chokepoint_disruption (REST hook)', () => {
   afterEach(() => nock.cleanAll());
@@ -115,9 +103,9 @@ describe('trigger chokepoint_disruption (REST hook)', () => {
 
   it('rejects a delivery whose signature does not match the subscription secret', async () => {
     for (const headers of [
-      { 'Http-X-Wm-Signature': sign(RECORDED_BODY, 'a'.repeat(64)) },
-      { 'Http-X-Wm-Signature': 'sha256=not-hex' },
-      { 'Http-X-Wm-Signature': undefined },
+      { 'Http-X-Wm-Signature-V2': signedRequest(RECORDED_BODY, { secret: 'a'.repeat(64), event: 'chokepoint.disruption', deliveryId: RECORDED_DELIVERY_ID }).headers['Http-X-Wm-Signature-V2'] },
+      { 'Http-X-Wm-Signature-V2': 'sha256=not-hex' },
+      { 'Http-X-Wm-Signature-V2': undefined },
     ]) {
       await assert.rejects(
         () => appTester(trigger.perform, {

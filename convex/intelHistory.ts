@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { isInvalidPaginationCursorError } from "./paginationCursor";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import {
@@ -38,6 +39,28 @@ import {
  * see the schema comment on `intelHistory`.
  */
 export const INTEL_HISTORY_EMBED_DIMS = 512;
+
+/**
+ * Identity of the vector space every stored row lives in, stamped on each
+ * row by `append` (#5742). MUST equal `${EMBED_MODEL}@${EMBED_DIMS}` from
+ * scripts/lib/brief-dedup-consts.mjs (pinned by
+ * tests/intel-history-endpoints.test.mts). A model or dimension change is a
+ * table migration (docs/operations/intel-history-embedding-migration-runbook.md);
+ * the stamp exists so that a row from another space is visible in
+ * `embeddingModelInventory` and skipped by `search`, rather than silently
+ * ranked against vectors it cannot be compared with.
+ */
+export const INTEL_HISTORY_EMBED_MODEL = "openai/text-embedding-3-small@512";
+
+/** Rows written before the stamp existed were all produced by the one model ever used. */
+const LEGACY_EMBEDDING_MODEL = "openai/text-embedding-3-small@512";
+
+export function isCurrentEmbeddingModel(
+  embeddingModel: string | undefined,
+  currentModel = INTEL_HISTORY_EMBED_MODEL,
+): boolean {
+  return (embeddingModel ?? LEGACY_EMBEDDING_MODEL) === currentModel;
+}
 
 /**
  * Per-call ingest cap. Each record carries a 512-float vector (~4KB before
@@ -316,6 +339,7 @@ export const append = internalMutation({
         ingestedAt,
         dedupeKey: rec.dedupeKey,
         embedding: rec.embedding,
+        embeddingModel: INTEL_HISTORY_EMBED_MODEL,
       });
       inserted += 1;
     }
@@ -648,11 +672,9 @@ export const listRetractions = internalQuery({
  * has no index and no bounded cost. The REST layer rejects the unscoped case
  * too, so this throw is the backstop, not the user-facing error.
  *
- * `domain` wins the index when both are given, matching `search` below so the
- * two read paths agree; `country` is then post-filtered from a window
- * over-fetched by POST_FILTER_OVERFETCH. When that candidate window is full,
- * `partial` tells callers it may contain more country matches beyond the
- * bounded scan; they must not treat a short or empty page as exhaustive.
+ * `domain` wins the index when both are given. The country filter has a
+ * bounded scan budget, so a page can be empty with a continuation cursor.
+ * Native index cursors preserve ties on occurredAt without dropping events.
  */
 export const timeline = internalQuery({
   args: {
@@ -661,6 +683,7 @@ export const timeline = internalQuery({
     from: v.optional(v.number()),
     to: v.optional(v.number()),
     limit: v.optional(v.number()),
+    cursor: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     if (args.domain === undefined && args.country === undefined) {
@@ -682,9 +705,9 @@ export const timeline = internalQuery({
     // part of the index range rather than a post-read filter. The duplicated
     // branches are the price of that: `withIndex` types the range builder
     // against the specific index, so one shared helper cannot serve both.
-    const docs =
+    const query =
       args.domain !== undefined
-        ? await ctx.db
+        ? ctx.db
             .query("intelHistory")
             .withIndex("by_domain_occurredAt", (q) => {
               const scoped = q.eq("domain", args.domain as string);
@@ -696,8 +719,7 @@ export const timeline = internalQuery({
               return scoped;
             })
             .order("desc")
-            .take(scanLimit)
-        : await ctx.db
+        : ctx.db
             .query("intelHistory")
             .withIndex("by_country_occurredAt", (q) => {
               const scoped = q.eq("country", args.country as string);
@@ -708,16 +730,30 @@ export const timeline = internalQuery({
               if (to !== undefined) return scoped.lte("occurredAt", to);
               return scoped;
             })
-            .order("desc")
-            .take(scanLimit);
+            .order("desc");
 
-    const matched = needsPostFilter
-      ? docs.filter((doc) => doc.country === args.country)
-      : docs;
+    const scoped = needsPostFilter
+      ? query.filter((q) => q.eq(q.field("country"), args.country))
+      : query;
+    let result;
+    try {
+      result = await scoped.paginate({
+        cursor: args.cursor || null,
+        numItems: limit,
+        maximumRowsRead: scanLimit,
+        maximumBytesRead: 2_000_000,
+      });
+    } catch (err) {
+      if (isInvalidPaginationCursorError(err)) {
+        return { records: [], partial: false, nextCursor: "", error: "INVALID_CURSOR" as const };
+      }
+      throw err;
+    }
 
     return {
-      records: matched.slice(0, limit).map(projectRecord),
-      partial: needsPostFilter && docs.length === scanLimit,
+      records: result.page.map(projectRecord),
+      partial: !result.isDone,
+      nextCursor: result.isDone ? "" : result.continueCursor,
     };
   },
 });
@@ -742,7 +778,42 @@ export const getByIds = internalQuery({
     // rather than serially. Promise.all resolves in input order, which IS the
     // relevance order the caller depends on.
     const docs = await Promise.all(args.ids.map((id) => ctx.db.get(id)));
-    return docs.filter((doc) => doc !== null).map((doc) => projectRecord(doc));
+    return docs
+      .filter((doc) => doc !== null)
+      .map((doc) => ({ ...projectRecord(doc), embeddingModel: doc.embeddingModel }));
+  },
+});
+
+/**
+ * Byte-bounded census page in newest-ingested order. Accumulate `models`
+ * across `nextCursor` pages until `partial` is false for a complete census.
+ */
+export const embeddingModelInventory = internalQuery({
+  args: { limit: v.optional(v.number()), cursor: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const limit = clamp(args.limit ?? 200, 1, 1000);
+    const result = await ctx.db
+      .query("intelHistory")
+      .withIndex("by_ingestedAt")
+      .order("desc")
+      .paginate({
+        cursor: args.cursor || null,
+        numItems: limit,
+        maximumRowsRead: 1000,
+        maximumBytesRead: 2_000_000,
+      });
+    const models: Record<string, number> = {};
+    for (const row of result.page) {
+      const key = row.embeddingModel ?? "unstamped";
+      models[key] = (models[key] ?? 0) + 1;
+    }
+    return {
+      current: INTEL_HISTORY_EMBED_MODEL,
+      scanned: result.page.length,
+      partial: !result.isDone,
+      nextCursor: result.isDone ? "" : result.continueCursor,
+      models,
+    };
   },
 });
 
@@ -794,8 +865,9 @@ export const search = internalAction({
       (pushedDown === "domain" && args.country !== undefined) ||
       args.from !== undefined ||
       args.to !== undefined;
+    // Model identity is always post-filtered, even without a country/date filter.
     const vectorLimit = Math.min(
-      needsPostFilter ? limit * POST_FILTER_OVERFETCH : limit,
+      limit * POST_FILTER_OVERFETCH,
       VECTOR_SEARCH_MAX_LIMIT,
     );
 
@@ -812,12 +884,20 @@ export const search = internalAction({
     if (hits.length === 0) return { records: [], partial: false };
 
     const scoreById = new Map(hits.map((hit) => [hit._id as string, hit._score]));
-    const hydrated: IntelHistoryRecord[] = await ctx.runQuery(
+    const hydrated: Array<IntelHistoryRecord & { embeddingModel?: string }> = await ctx.runQuery(
       internal.intelHistory.getByIds,
       { ids: hits.map((hit) => hit._id) },
     );
 
-    const records = hydrated
+    // A row from another vector space scored against this query vector is a
+    // number, not a similarity (#5742). Drop it rather than rank it, and
+    // report the result as partial so a caller can tell a thinned answer
+    // from a complete one.
+    const sameSpace = hydrated.filter((rec) => isCurrentEmbeddingModel(rec.embeddingModel));
+    const droppedForeignSpace = sameSpace.length !== hydrated.length;
+
+    const records = sameSpace
+      .map(({ embeddingModel: _embeddingModel, ...rec }) => rec)
       .filter((rec) => {
         if (pushedDown === "domain" && args.country !== undefined) {
           if (rec.country !== args.country) return false;
@@ -833,7 +913,10 @@ export const search = internalAction({
       .slice(0, limit)
       .map((rec) => ({ ...rec, _score: scoreById.get(rec.id) ?? 0 }));
 
-    return { records, partial: needsPostFilter && hits.length === vectorLimit };
+    return {
+      records,
+      partial: (needsPostFilter && hits.length === vectorLimit) || droppedForeignSpace,
+    };
   },
 });
 

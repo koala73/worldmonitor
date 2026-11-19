@@ -109,6 +109,7 @@ describe('finalisePortsForCountry (runtime, semantic equivalence)', () => {
     const refMap = new Map([['42', { lat: 10, lon: 20 }]]);
     const [port] = finalisePortsForCountry(portAccumMap, refMap);
     assert.equal(port.tankerCalls30d, 60 * 23 + 20 * 7);
+    assert.equal(port.prevTankerCalls30d, 40 * 30);
     assert.equal(port.importTankerDwt30d, 1000);
     assert.equal(port.exportTankerDwt30d, 500);
     const expectedTrend = Math.round(((60 * 23 + 20 * 7 - 40 * 30) / (40 * 30)) * 1000) / 10;
@@ -125,6 +126,7 @@ describe('finalisePortsForCountry (runtime, semantic equivalence)', () => {
     ]);
     const [port] = finalisePortsForCountry(portAccumMap, new Map());
     assert.equal(port.trendDelta, 0);
+    assert.equal(port.prevTankerCalls30d, 0);
     assert.equal(port.anomalySignal, false);
   });
 

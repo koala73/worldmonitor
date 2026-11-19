@@ -46,27 +46,6 @@ export function parseStoryParams(url: URL): { countryCode: string; type: string 
   };
 }
 
-// Generate QR code data URL (simple implementation)
-export function generateQRCode(data: string, size: number = 200): string {
-  // Using a simple QR code library pattern
-  // In production, use a library like qrcode or node-qrcode
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  
-  // Placeholder - would use actual QR library
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, size, size);
-  ctx.fillStyle = '#000000';
-  ctx.font = '14px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText('Scan to view', size/2, size/2 - 10);
-  ctx.fillText(data.substring(0, 20) + '...', size/2, size/2 + 10);
-  
-  return canvas.toDataURL('image/png');
-}
-
 // Share text templates for different platforms
 export const shareTexts = {
   twitter: (data: StoryData) =>

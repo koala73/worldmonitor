@@ -91,7 +91,7 @@ function requestHttpsText(
   return new Promise((resolve, reject) => {
     let settled = false;
     let req;
-    req = httpsGet(url, { headers, timeout: timeoutMs }, (response) => {
+    req = httpsGet(url, { signal: AbortSignal.timeout(timeoutMs), headers, timeout: timeoutMs }, (response) => {
       let body = '';
       let bodyBytes = 0;
       response.setEncoding('utf8');
@@ -187,7 +187,13 @@ function curlConfigValue(value) {
 }
 
 function buildCurlConfig(url, { headers = {}, proxy } = {}) {
-  const lines = [`proxy = ${curlConfigValue(`http://${proxy}`)}`];
+  const proxyUrl = /^https?:\/\//i.test(proxy) ? proxy : `https://${proxy}`;
+  if (/^http:\/\//i.test(proxyUrl) && process.env.PROXY_ALLOW_INSECURE_HTTP !== '1') {
+    const error = new Error('Plain HTTP curl proxies require PROXY_ALLOW_INSECURE_HTTP=1');
+    error.code = 'PROXY_HTTP_OPT_IN_REQUIRED';
+    throw error;
+  }
+  const lines = [`proxy = ${curlConfigValue(proxyUrl)}`];
   for (const [name, value] of Object.entries(headers)) {
     lines.push(`header = ${curlConfigValue(`${name}: ${value}`)}`);
   }

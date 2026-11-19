@@ -1,51 +1,59 @@
 import type { GetGoldIntelligenceResponse } from '../../../src/generated/server/worldmonitor/market/v1/service_server';
-import type { ListInternetTrafficAnomaliesResponse, ListInternetDdosAttacksResponse } from '../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
-import { COUNTRY_ARG_HINT, requireCountryCode } from '../_country-args';
 import { buildAuthHeaders } from '../auth';
-import { assertToolFetchOk, RpcValidationError } from '../billing-denial';
+import { assertToolFetchOk } from '../billing-denial';
 import { fetchMcpDownstream } from '../downstream';
 import type { ToolDef } from '../types';
 
 const number = { type: 'number' };
-const string = { type: 'string' };
-const cotCategory = { type: 'object', properties: {
-  longPositions: string, shortPositions: string, wowNetDelta: string, netPct: number, oiSharePct: number,
-} };
-const ddosShare = { type: 'object', properties: { label: string, percentage: number } };
-const INTERNET_PATHS = {
-  traffic: '/api/infrastructure/v1/list-internet-traffic-anomalies',
-  ddos: '/api/infrastructure/v1/list-internet-ddos-attacks',
-} as const;
+const num = (description: string) => ({ type: 'number', description });
+const str = (description: string) => ({ type: 'string', description });
+const cotCategory = (description: string) => ({ type: 'object', description, properties: {
+  longPositions: str('Long contracts held, as a decimal string.'),
+  shortPositions: str('Short contracts held, as a decimal string.'),
+  wowNetDelta: str('Week-over-week change in net (long minus short) contracts, as a decimal string; 0 when the prior week is unknown.'),
+  netPct: num('Net positioning as a percentage of the group\'s gross (long plus short) contracts; positive means net long.'),
+  oiSharePct: num('The group\'s gross contracts as a percentage of total open interest; 0 when unknown.'),
+} });
+const mover = { type: 'object', properties: { iso3: str('ISO alpha-3 country code.'), name: str('Country name.'), deltaTonnes12m: num('Change in gold holdings over 12 months, tonnes.') } };
+
 
 export const PUBLIC_DOMAIN_TOOLS: ToolDef[] = [{
   name: 'get_gold_intelligence',
   title: 'Gold market intelligence',
-  description: 'Read seeded gold intelligence: precious-metal futures quotes, cross-currency gold prices, COT positioning, session/returns/range, drivers, ETF holdings and central-bank reserves when available. Prices are USD per troy ounce unless a cross-currency row states its currency; returns/changes are percentages. unavailable: true and missing enrichment mark absent data; placeholder zero prices are not confirmed zero observations. COT counts are decimal strings, ETF holdings tonnes/AUM USD, central-bank reserves tonnes. Each enrichment has its own observation date; updatedAt does not establish freshness of all sources. No trade or research snapshot is created.',
+  description: 'Return seeded gold intelligence: metal futures quotes, cross-currency gold prices, CFTC positioning, session returns/ranges, drivers, ETF holdings and central-bank reserves. Prices are USD/troy ounce unless a currency row states otherwise; changes/returns are percentages; COT counts are decimal strings; ETF holdings are tonnes, AUM is USD. Reserves include IMF indicator and valueIsOunces: only true means tonnes/totalTonnes are measured, including genuine zero. False or missing means legacy zero placeholders, not measured quantities; physical movers are unavailable. Reserve percentages can remain available on the USD fallback. unavailable:true or missing blocks mark absent data; zero prices are placeholders. Each block has its own observation date; updatedAt does not guarantee source freshness. No arguments. Paid plan; one downstream seeded fetch, weight 2 on API plans. Read-only; no trade or research snapshot is created.',
   _outputBudgetBytes: 131072,
   inputSchema: { type: 'object', properties: {}, required: [] },
   outputSchema: { type: 'object', required: ['unavailable'], properties: {
-    goldPrice: number, goldChangePct: number, goldSparkline: { type: 'array', items: number },
-    silverPrice: number, platinumPrice: number, palladiumPrice: number,
-    goldSilverRatio: number, goldPlatinumPremiumPct: number,
-    crossCurrencyPrices: { type: 'array', items: { type: 'object', properties: { currency: string, flag: string, price: number } } },
-    cot: { type: 'object', properties: { reportDate: string, nextReleaseDate: string, openInterest: string,
-      managedMoney: cotCategory, producerSwap: cotCategory } },
-    updatedAt: string, unavailable: { type: 'boolean' },
-    session: { type: 'object', properties: { dayHigh: number, dayLow: number, prevClose: number } },
-    returns: { type: 'object', properties: { w1: number, m1: number, ytd: number, y1: number } },
-    range52w: { type: 'object', properties: { hi: number, lo: number, positionPct: number } },
-    drivers: { type: 'array', items: { type: 'object', properties: {
-      symbol: string, label: string, value: number, changePct: number, correlation30d: number,
+    goldPrice: num('Gold futures (GC=F) price, USD per troy ounce; 0 is a placeholder.'),
+    goldChangePct: num('Gold futures change on the session, percent.'),
+    goldSparkline: { type: 'array', items: number, description: 'Recent gold futures prices, oldest first, USD per troy ounce.' },
+    silverPrice: num('Silver futures (SI=F) price, USD per troy ounce; 0 is a placeholder.'),
+    platinumPrice: num('Platinum futures (PL=F) price, USD per troy ounce; 0 is a placeholder.'),
+    palladiumPrice: num('Palladium futures (PA=F) price, USD per troy ounce; 0 is a placeholder.'),
+    goldSilverRatio: num('Gold price divided by silver price; absent when either price is missing.'),
+    goldPlatinumPremiumPct: num('Gold premium over platinum, percent of the platinum price; absent when either price is missing.'),
+    crossCurrencyPrices: { type: 'array', description: 'Gold price per troy ounce converted into other currencies.', items: { type: 'object', properties: { currency: str('Currency code, such as EUR or JPY.'), flag: str('Flag emoji for the currency.'), price: num('Gold price per troy ounce in that currency.') } } },
+    cot: { type: 'object', description: 'CFTC Commitments of Traders positioning in COMEX gold futures.', properties: { reportDate: str('Report date of the CFTC release.'), nextReleaseDate: str('Expected date of the next release; empty when unknown.'), openInterest: str('Total open interest in contracts, as a decimal string.'),
+      managedMoney: cotCategory('Managed-money (speculative fund) positions.'), producerSwap: cotCategory('Producer/merchant and swap-dealer positions.') } },
+    updatedAt: str('Timestamp of the session, returns and drivers data; empty when that data is missing. Other blocks carry their own dates.'),
+    unavailable: { type: 'boolean', description: 'True when no gold quote could be read; every other field is then a placeholder.' },
+    session: { type: 'object', description: 'Current gold futures session, USD per troy ounce.', properties: { dayHigh: num('Session high.'), dayLow: num('Session low.'), prevClose: num('Previous session close.') } },
+    returns: { type: 'object', description: 'Gold futures price returns, percent.', properties: { w1: num('Over 1 week (5 trading days).'), m1: num('Over 1 month.'), ytd: num('Since the first trading day of the year.'), y1: num('Over 1 year.') } },
+    range52w: { type: 'object', description: '52-week gold futures range, USD per troy ounce.', properties: { hi: num('52-week high.'), lo: num('52-week low.'), positionPct: num('Current price position within the range: 0 at the low, 100 at the high.') } },
+    drivers: { type: 'array', description: 'Market series that move gold.', items: { type: 'object', properties: {
+      symbol: str('Market symbol of the series.'), label: str('Display name.'), value: num('Latest value.'), changePct: num('Change from the previous close, percent.'), correlation30d: num('Pearson correlation of its daily returns with gold over the last 30 trading days, -1 to 1.'),
     } } },
-    etfFlows: { type: 'object', properties: {
-      asOfDate: string, tonnes: number, aumUsd: number, nav: number, changeW1Tonnes: number,
-      changeM1Tonnes: number, changeY1Tonnes: number, changeW1Pct: number, changeM1Pct: number,
-      changeY1Pct: number, sparkline90d: { type: 'array', items: number },
+    etfFlows: { type: 'object', description: 'SPDR Gold Shares (GLD) holdings; absent when unavailable.', properties: {
+      asOfDate: str('Date of the holdings figure.'), tonnes: num('Gold held, tonnes.'), aumUsd: num('Assets under management, USD.'), nav: num('Net asset value per share, USD.'),
+      changeW1Tonnes: num('Change in holdings over 1 week, tonnes.'), changeM1Tonnes: num('Change in holdings over 1 month, tonnes.'), changeY1Tonnes: num('Change in holdings over 1 year, tonnes.'),
+      changeW1Pct: num('Change in holdings over 1 week, percent.'), changeM1Pct: num('Change in holdings over 1 month, percent.'), changeY1Pct: num('Change in holdings over 1 year, percent.'),
+      sparkline90d: { type: 'array', items: number, description: 'Daily holdings over the last 90 days, tonnes, oldest first.' },
     } },
-    cbReserves: { type: 'object', properties: { asOfMonth: string, totalTonnes: number,
-      topHolders: { type: 'array', items: { type: 'object', properties: { iso3: string, name: string, tonnes: number, pctOfReserves: number } } },
-      topBuyers12m: { type: 'array', items: { type: 'object', properties: { iso3: string, name: string, deltaTonnes12m: number } } },
-      topSellers12m: { type: 'array', items: { type: 'object', properties: { iso3: string, name: string, deltaTonnes12m: number } } },
+    cbReserves: { type: 'object', description: 'Central-bank gold reserves from IMF data; absent when fewer than five holders are available.', properties: { asOfMonth: str('Month of the reserve data.'), totalTonnes: num('Summed gold reserves of all reporting central banks, tonnes; 0 unless valueIsOunces is true.'),
+      indicator: str('IMF indicator the figures come from.'), valueIsOunces: { type: 'boolean', description: 'True only when the source measured ounces, so tonne fields are real quantities.' },
+      topHolders: { type: 'array', description: 'Largest holders.', items: { type: 'object', properties: { iso3: str('ISO alpha-3 country code.'), name: str('Country name.'), tonnes: num('Gold held, tonnes; 0 unless valueIsOunces is true.'), pctOfReserves: num('Gold share of the country\'s total reserves, percent.') } } },
+      topBuyers12m: { type: 'array', description: 'Largest 12-month buyers; empty unless valueIsOunces is true.', items: mover },
+      topSellers12m: { type: 'array', description: 'Largest 12-month sellers; empty unless valueIsOunces is true.', items: mover },
     } },
   } },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -59,53 +67,4 @@ export const PUBLIC_DOMAIN_TOOLS: ToolDef[] = [{
     return await response.json() as GetGoldIntelligenceResponse;
   },
   _apiPaths: ['GET /api/market/v1/get-gold-intelligence'],
-}, {
-  name: 'get_internet_activity',
-  title: 'Internet traffic anomalies and DDoS',
-  description: 'Read Cloudflare Radar seeded traffic anomalies or global DDoS summaries. Traffic accepts optional country and returns at most limit matching anomalies (default 30, max 100); totalCount remains the upstream global count before filtering. DDoS protocol/vector percentages and target countries are global for dateRangeStart..dateRangeEnd and cannot be filtered by country. Each returned list is capped independently; truncated means at least one list was cut. Traffic timestamps are epoch milliseconds; endDate 0 means ongoing. A missing cache returns an error, while a valid empty list means no recorded rows. No load time is presented as source freshness.',
-  _outputBudgetBytes: 131072,
-  inputSchema: { type: 'object', properties: {
-    dataset: { type: 'string', enum: Object.keys(INTERNET_PATHS) },
-    country: { type: 'string', description: `Traffic only. ${COUNTRY_ARG_HINT}` },
-    limit: { type: 'integer', minimum: 1, maximum: 100, default: 30 },
-  }, required: ['dataset'] },
-  outputSchema: { type: 'object', required: ['dataset', 'data', 'truncated'], properties: {
-    dataset: { type: 'string', enum: Object.keys(INTERNET_PATHS) }, truncated: { type: 'boolean' },
-    data: { type: 'object', properties: {
-      anomalies: { type: 'array', items: { type: 'object', properties: {
-        uuid: string, type: string, status: string, startDate: number, endDate: number,
-        asn: string, asnName: string, locationCode: string, locationName: string, latitude: number, longitude: number,
-      } } }, totalCount: { type: 'integer' },
-      protocol: { type: 'array', items: ddosShare }, vector: { type: 'array', items: ddosShare },
-      dateRangeStart: string, dateRangeEnd: string,
-      topTargetLocations: { type: 'array', items: { type: 'object', properties: {
-        countryCode: string, countryName: string, percentage: number, latitude: number, longitude: number,
-      } } },
-    } },
-  } },
-  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  _execute: async (params, base, context, execution) => {
-    const invalid = (field: string, description: string): never => { throw new RpcValidationError('get_internet_activity', [{ field, description }]); };
-    if (typeof params.dataset !== 'string' || !Object.prototype.hasOwnProperty.call(INTERNET_PATHS, params.dataset)) invalid('dataset', 'Select traffic or ddos.');
-    const dataset = params.dataset as keyof typeof INTERNET_PATHS;
-    if (dataset === 'ddos' && params.country !== undefined) invalid('country', 'DDoS summaries are global; country filtering is only supported for traffic.');
-    const country = params.country === undefined ? undefined : requireCountryCode(params.country, 'get_internet_activity', 'country');
-    const limit = params.limit ?? 30;
-    if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 100) invalid('limit', 'Expected an integer from 1 through 100.');
-    const url = `${base}${INTERNET_PATHS[dataset]}${country ? `?country=${country}` : ''}`;
-    const auth = await buildAuthHeaders(context, 'GET', url, null);
-    const response = await fetchMcpDownstream(url, {
-      headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' }, signal: AbortSignal.timeout(25_000),
-    }, execution);
-    await assertToolFetchOk(response, 'get_internet_activity', { preserveBackoff: true });
-    let truncated = false;
-    const cap = <T>(rows: T[]): T[] => { if (rows.length > (limit as number)) truncated = true; return rows.slice(0, limit as number); };
-    if (dataset === 'traffic') {
-      const data = await response.json() as ListInternetTrafficAnomaliesResponse;
-      return { dataset, data: { ...data, anomalies: cap(data.anomalies) }, truncated };
-    }
-    const data = await response.json() as ListInternetDdosAttacksResponse;
-    return { dataset, data: { ...data, protocol: cap(data.protocol), vector: cap(data.vector), topTargetLocations: cap(data.topTargetLocations) }, truncated };
-  },
-  _apiPaths: Object.values(INTERNET_PATHS).map(path => `GET ${path}`),
 }];

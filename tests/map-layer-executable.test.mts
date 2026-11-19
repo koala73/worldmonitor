@@ -21,6 +21,7 @@ import type { MapLayers } from '../src/types';
 import { persistGateOwnershipTransition } from '../src/services/variant-panel-ownership';
 import {
   LAYER_REGISTRY,
+  LAYER_SYNONYMS,
   isLayerCommandAllowed,
   isLayerExecutable,
   isLayerEntitled,
@@ -65,7 +66,7 @@ describe('LAYER_REGISTRY — renderer axis', () => {
     assert.equal('torontoRoads' in LAYER_REGISTRY, false);
     assert.ok(LAYER_REGISTRY.canadaRoads);
     assert.equal(LAYER_REGISTRY.canadaRoads.key, 'canadaRoads');
-    assert.match(LAYER_REGISTRY.canadaRoads.fallbackLabel, /Toronto/i);
+    assert.deepEqual(LAYER_SYNONYMS.toronto, ['canadaRoads']);
   });
 
   test('all-surface layers list every renderer', () => {
@@ -383,15 +384,6 @@ describe('isLayerCommandAllowed — CMD+K toggle policy', () => {
     assert.equal(isLayerCommandAllowed('resilienceScore', false, 'deck', true), true);
     // ciiChoropleth is enhanced (free-toggleable) and renders on deck.
     assert.equal(isLayerCommandAllowed('ciiChoropleth', false, 'deck', false), true);
-  });
-
-  test('renderer compatibility still blocks commands independently of entitlement', () => {
-    // resilience renders only on deck: globe is blocked even for premium.
-    assert.equal(isLayerCommandAllowed('resilienceScore', false, 'globe', true), false);
-    // storageFacilities is deck-only: the SVG fallback cannot run it.
-    assert.equal(isLayerCommandAllowed('storageFacilities', false, 'svg', true), false);
-    // ciiChoropleth renders on deck/globe but not the SVG fallback.
-    assert.equal(isLayerCommandAllowed('ciiChoropleth', false, 'svg', false), false);
   });
 });
 

@@ -14,17 +14,19 @@ vi.mock("../../api/_api-key.js", () => ({
   validateApiKey: vi.fn().mockResolvedValue({ valid: false, required: true }),
 }));
 vi.mock("../auth-session", () => ({ validateBearerToken: vi.fn() }));
-vi.mock("../_shared/user-api-key", () => ({ validateUserApiKey: vi.fn() }));
+// The premium resolver reads the desktop-aware principal (plan 2026-10-25-001 U4).
+vi.mock("../_shared/user-api-key", () => ({ validateUserApiKeyPrincipal: vi.fn() }));
 
 import { getCachedJson, setCachedJson } from "../_shared/redis";
 import { validateBearerToken } from "../auth-session";
-import { validateUserApiKey } from "../_shared/user-api-key";
+import { validateUserApiKeyPrincipal } from "../_shared/user-api-key";
 import {
   __resetEntitlementNegativeCacheForTests,
   getEntitlements,
   type CachedEntitlements,
 } from "../_shared/entitlement-check";
 import { resolvePremiumCallerIdentity } from "../_shared/premium-check";
+import { OPERATOR_KEY_DAILY_CEILINGS } from "../_shared/high-usage-alarm";
 import { checkProMcpAccess } from '../_shared/pro-mcp-gate';
 import { checkEntitlementDetailed } from '../_shared/entitlement-check';
 import {
@@ -63,7 +65,7 @@ beforeEach(() => {
   cache.clear();
   vi.clearAllMocks();
   vi.mocked(validateBearerToken).mockResolvedValue({ valid: true, role: "free", userId: USER });
-  vi.mocked(validateUserApiKey).mockResolvedValue({ userId: USER });
+  vi.mocked(validateUserApiKeyPrincipal).mockResolvedValue({ userId: USER, keyId: "k1", keyKind: "api", keyHash: "h".repeat(64), activeKeyRank: 0 });
   vi.mocked(getCachedJson).mockImplementation(async (key) => {
     const entry = cache.get(key);
     return entry && entry.expiresAt > Date.now() ? structuredClone(entry.value) : null;
@@ -189,7 +191,14 @@ describe("Convex paid fallback through the marker cache and premium resolver", (
   test("operator and complimentary role grants do not depend on an entitlement", async () => {
     expect(await resolvePremiumCallerIdentity(new Request("https://www.worldmonitor.app/api/chat-analyst", {
       headers: { "X-WorldMonitor-Key": "operator-test-key" },
-    }))).toMatchObject({ isPremium: true, kind: "enterprise", quotaExempt: true });
+    }))).toMatchObject({
+      isPremium: true,
+      kind: "enterprise",
+      // Metered per key against a circuit breaker, not exempt (high-usage-alarm.ts).
+      quotaExempt: false,
+      quotaUserId: expect.stringMatching(/^wm:[0-9a-f]{32}$/),
+      directLlmDailyLimit: OPERATOR_KEY_DAILY_CEILINGS.directLlmCalls,
+    });
     vi.mocked(validateBearerToken).mockResolvedValue({ valid: true, role: "pro", userId: USER });
     expect(await resolvePremiumCallerIdentity(requestFor("bearer"))).toMatchObject({
       isPremium: true, kind: "bearer", directLlmDailyLimit: 50,

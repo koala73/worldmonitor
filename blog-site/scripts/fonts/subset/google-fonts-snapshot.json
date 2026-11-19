@@ -1,0 +1,230 @@
+{
+  "css_url": "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700;800&display=swap",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "families": {
+    "Inter": {
+      "faces": [
+        300,
+        400,
+        500,
+        600,
+        700,
+        800
+      ],
+      "subsets": {
+        "cyrillic-ext": {
+          "url": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2JL7W0Q5n-wU.woff2",
+          "sha256": "fccca918fea40089dacadc7045861314d1a6bc91f1f323cc1eeb22ebcdb321b5",
+          "unicode_range": "U+460-52F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F",
+          "renders": "U+460-479, U+480-48F, U+492-49D, U+4A0-4AF, U+4B2-4FF, U+52F, U+20B4, U+2DFF, U+A69F",
+          "head_bbox": [
+            -1513,
+            -448,
+            2663,
+            1930
+          ]
+        },
+        "cyrillic": {
+          "url": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa0ZL7W0Q5n-wU.woff2",
+          "sha256": "aebf2ab4a4ce6810d73c1ac7be7cafb4e5ec4cee2d6db5fb3e09691747ec4bd6",
+          "unicode_range": "U+301, U+400-45F, U+490-491, U+4B0-4B1, U+2116",
+          "renders": "U+301, U+400-45F, U+490-491, U+4B0-4B1, U+2116",
+          "head_bbox": [
+            -80,
+            -427,
+            2200,
+            1930
+          ]
+        },
+        "greek-ext": {
+          "url": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2ZL7W0Q5n-wU.woff2",
+          "sha256": "a2e2c783ca6f9c20486e81e72a279203e86730bbf8f01ff6a5ee9dbd09e1c271",
+          "unicode_range": "U+1F00-1FFF",
+          "renders": "U+1F00-1F15, U+1F18-1F1D, U+1F20-1F45, U+1F48-1F4D, U+1F50-1F57, U+1F59, U+1F5B, U+1F5D, U+1F5F-1F7D, U+1F80-1FB4, U+1FB6-1FC4, U+1FC6-1FD3, U+1FD6-1FDB, U+1FDD-1FEF, U+1FF2-1FF4, U+1FF6-1FFE",
+          "head_bbox": [
+            -282,
+            -494,
+            2160,
+            1930
+          ]
+        },
+        "greek": {
+          "url": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1pL7W0Q5n-wU.woff2",
+          "sha256": "46dd4cdca58c26ae87cc6927657bf83b2e8abfc39ffd0ab176e301a8d28d22bf",
+          "unicode_range": "U+370-377, U+37A-37F, U+384-38A, U+38C, U+38E-3A1, U+3A3-3FF",
+          "renders": "U+374-376, U+37A-37F, U+384-38A, U+38C, U+38E-3A1, U+3A3-3D7, U+3DC-3DD, U+3F0-3F6, U+3F9-3FA, U+3FC-3FF",
+          "head_bbox": [
+            -81,
+            -494,
+            1747,
+            1910
+          ]
+        },
+        "vietnamese": {
+          "url": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2pL7W0Q5n-wU.woff2",
+          "sha256": "8db00ff46c67b22cda8bed865acf7077651cac8d2841d5b40980556b48961931",
+          "unicode_range": "U+102-103, U+110-111, U+128-129, U+168-169, U+1A0-1A1, U+1AF-1B0, U+300-301, U+303-304, U+308-309, U+323, U+329, U+1EA0-1EF9, U+20AB",
+          "renders": "U+102-103, U+110-111, U+128-129, U+168-169, U+1A0-1A1, U+1AF-1B0, U+300-301, U+303-304, U+308-309, U+323, U+1EA0-1EF9, U+20AB",
+          "head_bbox": [
+            -42,
+            -426,
+            1526,
+            2263
+          ]
+        },
+        "latin-ext": {
+          "url": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa25L7W0Q5n-wU.woff2",
+          "sha256": "a28eb6d3ccb534ae0c94ca999371df024aab60b08c3c8a5720ee9e32fa0faaa2",
+          "unicode_range": "U+100-2BA, U+2BD-2C5, U+2C7-2CC, U+2CE-2D7, U+2DD-2FF, U+304, U+308, U+329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF",
+          "renders": "U+100-130, U+132-148, U+14A-151, U+154-1C3, U+1C5-254, U+256-27B, U+27E-284, U+286-290, U+292-2A4, U+2A6-2BA, U+2BD-2C5, U+2C7-2CC, U+2CE-2D7, U+2DD-2FF, U+304, U+308, U+1D00, U+1D0D, U+1D1B, U+1D43, U+1D47-1D49, U+1D4D, U+1D4F-1D50, U+1D52, U+1D56-1D58, U+1D5B, U+1D62-1D65, U+1D9C, U+1DA0, U+1DBB, U+1DBF, U+1E00-1E9B, U+1E9D-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20AF, U+20B1-20B5, U+20B8-20BA, U+20BC-20BF, U+2113, U+2C7C, U+2C7F, U+A7FF",
+          "head_bbox": [
+            -209,
+            -546,
+            2744,
+            2269
+          ]
+        },
+        "latin": {
+          "url": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2",
+          "sha256": "c940764593d0fe5d596be327ca7558855e018039fb78509aa21921fd3644c3e4",
+          "unicode_range": "U+0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+2DA, U+2DC, U+304, U+308, U+329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD",
+          "renders": "U+0, U+20-7E, U+A0-AC, U+AE-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+2DA, U+2DC, U+304, U+308, U+2002, U+2009, U+200B, U+2013-2014, U+2018-201A, U+201C-201E, U+2022, U+2026, U+2032-2033, U+2039-203A, U+2044, U+20AC, U+2122, U+2191, U+2193, U+2212, U+FEFF",
+          "head_bbox": [
+            -400,
+            -480,
+            5290,
+            2263
+          ]
+        }
+      },
+      "display": "swap"
+    },
+    "JetBrains Mono": {
+      "faces": [
+        400,
+        500,
+        700
+      ],
+      "subsets": {
+        "cyrillic-ext": {
+          "url": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPx3cwgknk-6nFg.woff2",
+          "sha256": "9343de2ca5d9549f792e7962375af8efb0f320c7643bfd36c884b5a30e5c396f",
+          "unicode_range": "U+460-52F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F",
+          "renders": "U+4AE-4AF, U+4E8-4E9",
+          "head_bbox": [
+            35,
+            -180,
+            565,
+            950
+          ]
+        },
+        "cyrillic": {
+          "url": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxTcwgknk-6nFg.woff2",
+          "sha256": "4995a9a43ac659ec32fcd8b463755cd6a07b31a6e6b3894a6a153b661cf490e2",
+          "unicode_range": "U+301, U+400-45F, U+490-491, U+4B0-4B1, U+2116",
+          "renders": "U+301, U+401-40C, U+40E-44F, U+451-45C, U+45E-45F, U+490-491, U+2116",
+          "head_bbox": [
+            -5,
+            -180,
+            590,
+            950
+          ]
+        },
+        "greek": {
+          "url": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxPcwgknk-6nFg.woff2",
+          "sha256": "49c3da6c9a2b279b0f1f860f5cfb1f5dc38d88a5c7be9c9b1837bbc4e3db6111",
+          "unicode_range": "U+370-377, U+37A-37F, U+384-38A, U+38C, U+38E-3A1, U+3A3-3FF",
+          "renders": "U+374-375, U+37E, U+384-38A, U+38C, U+38E-3A1, U+3A3-3CF, U+3D7",
+          "head_bbox": [
+            -125,
+            -180,
+            580,
+            950
+          ]
+        },
+        "vietnamese": {
+          "url": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPx_cwgknk-6nFg.woff2",
+          "sha256": "d44eb1936043a56038eb02dd70b243f379bef65783f94ec12f277550720411f1",
+          "unicode_range": "U+102-103, U+110-111, U+128-129, U+168-169, U+1A0-1A1, U+1AF-1B0, U+300-301, U+303-304, U+308-309, U+323, U+329, U+1EA0-1EF9, U+20AB",
+          "renders": "U+102-103, U+110-111, U+128-129, U+168-169, U+1A0-1A1, U+1AF-1B0, U+300-301, U+303-304, U+308-309, U+323, U+1EA0-1EF9, U+20AB",
+          "head_bbox": [
+            10,
+            -213,
+            625,
+            1020
+          ]
+        },
+        "latin-ext": {
+          "url": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPx7cwgknk-6nFg.woff2",
+          "sha256": "9c38cb2d0d2d93c1ee6e21fa78db76f13ea7e15e15cc64214c7ca89b6aaa35c4",
+          "unicode_range": "U+100-2BA, U+2BD-2C5, U+2C7-2CC, U+2CE-2D7, U+2DD-2FF, U+304, U+308, U+329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF",
+          "renders": "U+100-130, U+134-151, U+154-17F, U+18F, U+192, U+1A0-1A1, U+1AF-1B0, U+1CD-1CE, U+1E6-1E7, U+1EA-1EB, U+1F4-1F5, U+1FC-1FF, U+218-21B, U+232-233, U+237, U+259, U+2B9-2BA, U+2C7, U+2C9, U+2DD, U+2F3, U+2F7, U+304, U+308, U+1E80-1E85, U+1E9E, U+1EF2-1EF9, U+2020, U+20AB, U+20AE, U+20BD, U+20BF, U+2113",
+          "head_bbox": [
+            -31,
+            -250,
+            630,
+            994
+          ]
+        },
+        "latin": {
+          "url": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwgknk-4.woff2",
+          "sha256": "2c32b9b3ee358c119e210f6f5195f9bd34894d78a785ff2e95d60e718e400af4",
+          "unicode_range": "U+0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+2DA, U+2DC, U+304, U+308, U+329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD",
+          "renders": "U+D, U+20-7E, U+A0-FF, U+131, U+152-153, U+2BC, U+2C6, U+2DA, U+2DC, U+304, U+308, U+2013-2014, U+2018-201A, U+201C-201E, U+2022, U+2026, U+2032-2033, U+2039-203A, U+2044, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF",
+          "head_bbox": [
+            -1735,
+            -213,
+            600,
+            994
+          ]
+        }
+      },
+      "display": "swap"
+    },
+    "Space Grotesk": {
+      "faces": [
+        500,
+        700
+      ],
+      "subsets": {
+        "vietnamese": {
+          "url": "https://fonts.gstatic.com/s/spacegrotesk/v22/V8mDoQDjQSkFtoMM3T6r8E7mPb54C_k3HqUtEw.woff2",
+          "sha256": "d699664b145bfeeccc66a4cce7fa55e14eb63efd7ec6b0b2ec52e25dd98f3917",
+          "unicode_range": "U+102-103, U+110-111, U+128-129, U+168-169, U+1A0-1A1, U+1AF-1B0, U+300-301, U+303-304, U+308-309, U+323, U+329, U+1EA0-1EF9, U+20AB",
+          "renders": "U+102-103, U+110-111, U+128-129, U+168-169, U+1A0-1A1, U+1AF-1B0, U+300-301, U+303-304, U+308-309, U+323, U+1EA0-1EF9, U+20AB",
+          "head_bbox": [
+            -49,
+            -274,
+            1203,
+            1081
+          ]
+        },
+        "latin-ext": {
+          "url": "https://fonts.gstatic.com/s/spacegrotesk/v22/V8mDoQDjQSkFtoMM3T6r8E7mPb94C_k3HqUtEw.woff2",
+          "sha256": "054c266fbb441ee059365dba0885d206f67ca05b375de869b88e02ebfccc9b9d",
+          "unicode_range": "U+100-2BA, U+2BD-2C5, U+2C7-2CC, U+2CE-2D7, U+2DD-2FF, U+304, U+308, U+329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF",
+          "renders": "U+100-130, U+132-151, U+154-180, U+18F, U+192, U+1A0-1A1, U+1AF-1B0, U+1C4-1DC, U+1E6-1E7, U+1EA-1EB, U+1FA-21B, U+22A-22D, U+230-233, U+237, U+243, U+251, U+259, U+2B9-2BA, U+2BE-2BF, U+2C7-2CC, U+2DD, U+304, U+308, U+1E08-1E09, U+1E0C-1E0F, U+1E14-1E17, U+1E1C-1E1D, U+1E20-1E21, U+1E24-1E25, U+1E2A-1E2B, U+1E2E-1E2F, U+1E36-1E3B, U+1E42-1E49, U+1E4C-1E53, U+1E5A-1E69, U+1E6C-1E6F, U+1E78-1E7B, U+1E80-1E85, U+1E8E-1E8F, U+1E92-1E93, U+1E97, U+1E9E, U+1EF2-1EF9, U+2020, U+20A1, U+20A3-20A4, U+20A6-20A7, U+20A9, U+20AB, U+20AD, U+20B1-20B2, U+20B5, U+20B9-20BA, U+20BC-20BD, U+20BF, U+2113",
+          "head_bbox": [
+            -49,
+            -274,
+            1203,
+            1081
+          ]
+        },
+        "latin": {
+          "url": "https://fonts.gstatic.com/s/spacegrotesk/v22/V8mDoQDjQSkFtoMM3T6r8E7mPbF4C_k3HqU.woff2",
+          "sha256": "a0d054c4af557de20afd6ca59f47ab353bcaec49c63ff04b6c9d39d0f8910557",
+          "unicode_range": "U+0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+2DA, U+2DC, U+304, U+308, U+329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD",
+          "renders": "U+D, U+20-7E, U+A0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+2DA, U+2DC, U+304, U+308, U+2009, U+200B, U+2013-2014, U+2018-201A, U+201C-201E, U+2022, U+2026, U+2032-2033, U+2039-203A, U+2044, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215",
+          "head_bbox": [
+            -49,
+            -274,
+            1203,
+            1081
+          ]
+        }
+      },
+      "display": "swap"
+    }
+  }
+}

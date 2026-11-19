@@ -70,6 +70,9 @@ const ORIGINAL_ENV = {
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
   localApiMode: process.env.LOCAL_API_MODE,
   validKeys: process.env.WORLDMONITOR_VALID_KEYS,
+  relayUrl: process.env.WS_RELAY_URL,
+  relaySecret: process.env.RELAY_SHARED_SECRET,
+  relayHeader: process.env.RELAY_AUTH_HEADER,
 };
 const REDIS_HOST = 'https://redis.test';
 const ENTERPRISE_KEY = 'test-bilateral-tariff-enterprise-key';
@@ -77,11 +80,26 @@ const ENTERPRISE_KEY = 'test-bilateral-tariff-enterprise-key';
 let redisStore: Map<string, string>;
 let witsCalls: string[];
 let witsFaults: Set<string>;
+let relayCalls: { url: string; headers: Headers }[];
+let relayStatus: number | undefined;
+let directHeaders: Headers[];
+let edgeRedirectValidation: boolean;
+let redirectStatus: number | undefined;
+let upstreamRedirects: RequestRedirect[];
 
 beforeEach(() => {
   redisStore = new Map();
   witsCalls = [];
   witsFaults = new Set();
+  relayCalls = [];
+  relayStatus = undefined;
+  directHeaders = [];
+  edgeRedirectValidation = false;
+  redirectStatus = undefined;
+  upstreamRedirects = [];
+  delete process.env.WS_RELAY_URL;
+  delete process.env.RELAY_SHARED_SECRET;
+  delete process.env.RELAY_AUTH_HEADER;
   process.env.UPSTASH_REDIS_REST_URL = REDIS_HOST;
   process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
   process.env.WORLDMONITOR_VALID_KEYS = ENTERPRISE_KEY;
@@ -105,11 +123,28 @@ beforeEach(() => {
       const reply = Array.isArray(body?.[0]) ? commands.map(() => ({ result: 'OK' })) : { result: 'OK' };
       return new Response(JSON.stringify(reply), { status: 200 });
     }
-    if (url.origin === 'https://wits.worldbank.org') {
-      witsCalls.push(href);
-      if (witsFaults.has(href)) return new Response('Service Unavailable', { status: 503 });
-      const route = WITS_ROUTES[href];
-      if (!route) throw new Error(`unexpected WITS call ${href}`);
+    const isRelay = url.origin === 'https://relay.test';
+    if (isRelay || url.origin === 'https://wits.worldbank.org') {
+      upstreamRedirects.push(init?.redirect ?? 'follow');
+      if (edgeRedirectValidation && init?.redirect === 'error') {
+        throw new TypeError('Invalid redirect value, must be one of "follow" or "manual"');
+      }
+      const target = isRelay ? `https://wits.worldbank.org${url.searchParams.get('path')}` : href;
+      if (isRelay) {
+        assert.equal(url.pathname, '/wits');
+        relayCalls.push({ url: target, headers: new Headers(init?.headers) });
+        assert.equal(init?.redirect, 'manual');
+        if (relayStatus !== undefined) return new Response('Relay unavailable', { status: relayStatus });
+      } else {
+        witsCalls.push(href);
+        directHeaders.push(new Headers(init?.headers));
+      }
+      if (redirectStatus !== undefined) {
+        return new Response(null, { status: redirectStatus, headers: { Location: 'https://untrusted.test/wits' } });
+      }
+      if (witsFaults.has(target)) return new Response('Service Unavailable', { status: 503 });
+      const route = WITS_ROUTES[target];
+      if (!route) throw new Error(`unexpected WITS call ${target}`);
       return new Response(fixture(route[1]), { status: route[0] });
     }
     throw new Error(`unexpected fetch to ${href}`);
@@ -123,6 +158,9 @@ afterEach(() => {
     ['UPSTASH_REDIS_REST_TOKEN', ORIGINAL_ENV.token],
     ['LOCAL_API_MODE', ORIGINAL_ENV.localApiMode],
     ['WORLDMONITOR_VALID_KEYS', ORIGINAL_ENV.validKeys],
+    ['WS_RELAY_URL', ORIGINAL_ENV.relayUrl],
+    ['RELAY_SHARED_SECRET', ORIGINAL_ENV.relaySecret],
+    ['RELAY_AUTH_HEADER', ORIGINAL_ENV.relayHeader],
   ] as const) {
     if (value === undefined) delete process.env[name];
     else process.env[name] = value;
@@ -366,6 +404,106 @@ describe('getBilateralTariff', () => {
       assert.equal(res.unavailableReason, R.invalidRequest, JSON.stringify(bad));
     }
     assert.deepEqual(witsCalls, []);
+  });
+});
+
+describe('WITS relay transport', () => {
+  for (const configuredRelay of [false, true]) {
+    test(`Edge fetch accepts WITS reads with configuredRelay=${configuredRelay}`, async () => {
+      edgeRedirectValidation = true;
+      if (configuredRelay) {
+        process.env.WS_RELAY_URL = 'https://relay.test';
+        process.env.RELAY_SHARED_SECRET = 'local-relay-secret';
+      }
+      const res = await getBilateralTariff(premiumCtx(), request({}));
+      assert.equal(res.upstreamUnavailable, false);
+      assert.equal(res.appliedRate?.rate, 2.5);
+      assert.deepEqual(new Set(upstreamRedirects), new Set(['manual']));
+    });
+
+    for (const status of [302, 307]) {
+      test(`WITS HTTP ${status} stays unavailable without following Location with configuredRelay=${configuredRelay}`, async () => {
+        redirectStatus = status;
+        if (configuredRelay) {
+          process.env.WS_RELAY_URL = 'https://relay.test';
+          process.env.RELAY_SHARED_SECRET = 'local-relay-secret';
+        }
+        const res = await getBilateralTariff(premiumCtx(), request({}));
+        assert.equal(res.upstreamUnavailable, true);
+        assert.equal(res.unavailableReason, R.upstreamUnavailable);
+        assert.equal(res.appliedRate, undefined);
+        assert.deepEqual(new Set(upstreamRedirects), new Set(['manual']));
+        assert.deepEqual(witsCalls, configuredRelay ? [] : [
+          `${META}/dataavailability/country/840/year/all`,
+          trainsRowsUrl('840', '870323', 2021),
+        ]);
+      });
+    }
+  }
+
+  test('configured relay carries rows and metadata with auth and no direct WITS request', async () => {
+    process.env.WS_RELAY_URL = 'wss://relay.test/';
+    process.env.RELAY_SHARED_SECRET = 'local-relay-secret';
+    process.env.RELAY_AUTH_HEADER = 'X-Custom-Relay-Key';
+
+    const res = await getBilateralTariff(premiumCtx(), request({ partnerCountry: '484' }));
+    assert.equal(res.appliedRate?.rate, 0);
+    assert.equal(res.basis, BASIS.preferential);
+    assert.equal(res.source, 'UNCTAD TRAINS via World Bank WITS');
+    assert.deepEqual(witsCalls, []);
+    assert.deepEqual(new Set(relayCalls.map(c => c.url)), new Set([
+      `${META}/dataavailability/country/840/year/all`,
+      trainsRowsUrl('840', '870323', 2021),
+      `${META}/country/all`,
+    ]));
+    for (const call of relayCalls) {
+      assert.equal(call.headers.get('x-custom-relay-key'), 'local-relay-secret');
+      assert.equal(call.headers.get('authorization'), 'Bearer local-relay-secret');
+      assert.match(call.headers.get('accept')!, /application\/xml/);
+    }
+  });
+
+  test('configured relay also carries the MFN AVE request', async () => {
+    process.env.WS_RELAY_URL = 'https://relay.test';
+    process.env.RELAY_SHARED_SECRET = 'local-relay-secret';
+    const res = await getBilateralTariff(premiumCtx(), request({ hsCode: '220421' }));
+    assert.equal(res.upstreamUnavailable, false);
+    assert.ok(relayCalls.some(c => c.url === trainsRowsUrl('840', '220421', 2021, 'aveestimated')));
+    assert.deepEqual(witsCalls, []);
+  });
+
+  for (const status of [401, 403, 404, 502, 504]) {
+    test(`relay HTTP ${status} stays unavailable without retrying direct WITS`, async () => {
+      process.env.WS_RELAY_URL = 'https://relay.test';
+      process.env.RELAY_SHARED_SECRET = 'local-relay-secret';
+      relayStatus = status;
+      const res = await getBilateralTariff(premiumCtx(), request({}));
+      assert.equal(res.upstreamUnavailable, true);
+      assert.equal(res.unavailableReason, R.upstreamUnavailable);
+      assert.equal(res.appliedRate, undefined);
+      assert.deepEqual(witsCalls, []);
+    });
+  }
+
+  test('relay NoRecordsFound remains not covered', async () => {
+    process.env.WS_RELAY_URL = 'https://relay.test';
+    process.env.RELAY_SHARED_SECRET = 'local-relay-secret';
+    const res = await getBilateralTariff(premiumCtx(), request({ hsCode: '999999' }));
+    assert.equal(res.unavailableReason, R.notCovered);
+    assert.equal(res.upstreamUnavailable, false);
+    assert.deepEqual(witsCalls, []);
+  });
+
+  test('without a relay URL direct WITS does not receive relay credentials', async () => {
+    process.env.RELAY_SHARED_SECRET = 'local-relay-secret';
+    const res = await getBilateralTariff(premiumCtx(), request({}));
+    assert.equal(res.upstreamUnavailable, false);
+    assert.ok(witsCalls.length > 0);
+    assert.deepEqual(relayCalls, []);
+    for (const headers of directHeaders) {
+      assert.equal(headers.has('authorization'), false);
+      assert.equal(headers.has('x-relay-key'), false);
+    }
   });
 });
 

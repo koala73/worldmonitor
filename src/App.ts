@@ -8,7 +8,9 @@ import { openStockResearchOverlay } from '@/features/stock-research/stock-resear
 import { openExternalUrl } from '@/services/external-navigation';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import type { AppContext } from '@/app/app-context';
+import type { LoadAllDataTrigger } from '@/app/viewport-hydration-ledger';
 import { applyVisibleMapDimension } from '@/app/map-dimension-control';
+import { localizeShellMeta } from '@/app/shell-meta';
 import {
   REFRESH_INTERVALS,
   DEFAULT_PANELS,
@@ -42,7 +44,7 @@ import type { MapVariant } from '@/config/map-layer-definitions';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import { applyCanadaRoadsOptInMigration } from '@/services/canada-roads-opt-in';
 import {
-  initDB,
+  openStorageForBoot,
   cleanOldSnapshots,
   isAisConfigured,
   initAisStream,
@@ -52,7 +54,8 @@ import {
   stopFlightHistoryCleanup,
 } from '@/services';
 import { enableVesselRuntime, stopLoadedVesselHistoryCleanup } from '@/services/military-vessels-lazy';
-import { isProUser, isProTierResolved, loadWidgets } from '@/services/widget-store';
+import { isProUser, isProTierResolved, loadWidgets, subscribeWidgetAccess } from '@/services/widget-store';
+import { startSelfHostKeyService } from '@/services/self-host-key';
 import { mlWorker } from '@/services/ml-worker';
 import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { startLearning } from '@/services/country-instability';
@@ -67,12 +70,16 @@ import {
   showToast,
 } from '@/utils';
 import { clearPanelSpans, invalidatePanelStorageCacheForKeys } from '@/utils/panel-storage';
+import type { OrbitalShareLink } from '@/utils/urlState';
+import { scheduleOrbitalShareLink, takeOrbitalShareLink } from '@/app/orbital-share-link';
+import { connectOrbitalLookupMap } from '@/services/orbital/lookup-host';
+import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 import { overlayHistory, type OverlayId } from '@/utils/overlay-history';
 import type { ParsedMapUrlState } from '@/utils';
 import { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
 import { initBreakingNewsAlerts, destroyBreakingNewsAlerts } from '@/services/breaking-news-alerts';
 import { markLcpDebug } from '@/utils/lcp-debug';
-import { safeStorageGet, safeStorageSet } from '@/utils/safe-storage';
+import { safeStorageGet, safeStorageSet, safeStorageSetChecked, safeStorageRemoveChecked } from '@/utils/safe-storage';
 import type { ServiceStatusPanel } from '@/components/ServiceStatusPanel';
 import type { MonitorPanel } from '@/components/MonitorPanel';
 import type { StablecoinPanel } from '@/components/StablecoinPanel';
@@ -95,6 +102,7 @@ import type { StorageFacilityMapPanel } from '@/components/StorageFacilityMapPan
 import type { FuelShortagePanel } from '@/components/FuelShortagePanel';
 import type { EnergyDisruptionsPanel } from '@/components/EnergyDisruptionsPanel';
 import type { EnergyRiskOverviewPanel } from '@/components/EnergyRiskOverviewPanel';
+import type { GridDisruptionClockPanel } from '@/components/GridDisruptionClockPanel';
 import type { ChokepointStripPanel } from '@/components/ChokepointStripPanel';
 import type { ClimateNewsPanel } from '@/components/ClimateNewsPanel';
 import type { ConsumerPricesPanel } from '@/components/ConsumerPricesPanel';
@@ -117,7 +125,7 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { BETA_MODE } from '@/config/beta';
 import { track, trackEvent, trackDeeplinkOpened, initAuthAnalytics, trackMapViewChange } from '@/services/analytics';
 import { preloadCountryGeometry, isCountryGeometryLoaded, getCountryNameByCode } from '@/services/country-geometry';
-import { initI18n, t, I18N_RESOURCES_LOADED_EVENT, type I18nResourcesLoadedDetail } from '@/services/i18n';
+import { getCurrentLanguage, initI18n, t, I18N_RESOURCES_LOADED_EVENT, type I18nResourcesLoadedDetail } from '@/services/i18n';
 import { initDeferredDashboardFonts } from '@/bootstrap/secondary-startup';
 import { applyFontScale, FONT_SCALE_STORAGE_KEY } from '@/services/font-scale-settings';
 
@@ -126,6 +134,10 @@ import {
   CANADA_DEPTH_OPT_IN_SOURCES,
   CRISIS_FLOOR_OPT_IN_SOURCES,
   CURATED_REGIONAL_OPT_IN_SOURCES,
+  GERMAN_RSS_SOURCES,
+  BRAZIL_OPT_IN_SOURCES,
+  COUNTRY_COVERAGE_OPT_IN_SOURCES,
+  PUBLISHER_DIRECT_OPT_IN_SOURCES,
   computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
   FEEDS,
@@ -206,7 +218,7 @@ import {
   shouldRunCloudLegacyRecovery,
   sweepLegacyDisabledCustomWidgets,
 } from '@/app/free-tier-gate';
-import { replaceRawI18nKeyPlaceholders } from '@/app/i18n-raw-key-healer';
+import { replaceRawI18nKeyPlaceholders } from '@/utils/i18n-raw-key-healer';
 import { startAccountAuthHandoff } from '@/app/account-auth-handoff';
 import { TierPreferenceHandoff } from '@/app/tier-preference-handoff';
 import { initialRegionFromCache, resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinates } from '@/utils/user-location';
@@ -233,6 +245,10 @@ import {
   migrateCanadaDepthOptInsV7,
   migrateCrisisDeskOptInsV8,
   migrateCuratedRegionalOptInsV9,
+  migrateGermanRssSourcesV10,
+  migrateBrazilOptInsV11,
+  migrateCountryCoverageOptInsV12,
+  migratePublisherDirectOptInsV13,
 } from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
@@ -257,6 +273,7 @@ import {
   resetEntitlementState,
   resetEntitlementVerification,
 } from '@/services/entitlements';
+import { watchDesktopCloudAccess } from '@/services/desktop-cloud-auth';
 import { initSubscriptionWatch, destroySubscriptionWatch, openBillingPortal } from '@/services/billing';
 import {
   captureBillingPortalIntentFromUrl,
@@ -284,6 +301,13 @@ import {
   getStoredAnonId,
 } from '@/services/anonymous-identity-storage';
 import { captureReferralFromUrl } from '@/services/referral-capture';
+import {
+  businessInviteErrorKind,
+  captureBusinessInviteFromUrl,
+  clearPendingBusinessInvite,
+  keepInviteAfterAttempt,
+  loadPendingBusinessInvite,
+} from '@/services/business-invite-capture';
 import { nextPrimeRetryDelayMs } from '@/utils/prime-retry';
 
 /** Look-ahead margin for viewport-gated panel priming and refresh scheduling. */
@@ -319,6 +343,8 @@ export class App {
   private pendingDeepLinkStoryCode: string | null = null;
   private pendingDeepLinkChokepoint: string | null = null;
   private pendingDeepLinkSearchQuery: string | null = null;
+  private pendingOrbitalShareLink: OrbitalShareLink | null = null;
+  private cancelOrbitalShareLink: (() => void) | null = null;
   private chokepointDeepLinkTimer: number | null = null;
   private stockDeepLinkTimer: number | null = null;
   // At most one automatic precise mobile recenter per startup (#7778). Set
@@ -348,6 +374,8 @@ export class App {
   private unsubAiFlow: (() => void) | null = null;
   private unsubFreeTier: (() => void) | null = null;
   private unsubEntitlementPremiumLoaders: (() => void) | null = null;
+  private unsubWidgetAccessPremiumLoaders: (() => void) | null = null;
+  private unsubDesktopCloudAccess: (() => void) | null = null;
   /**
    * Boot epoch for optional local-AI continuations (#7779). destroy() bumps
    * it first so a stale detached continuation from a torn-down App can never
@@ -383,6 +411,7 @@ export class App {
   /** Earliest `Date.now()` at which a failed prime key may be retried. */
   private visiblePanelPrimeRetryAt = new Map<string, number>();
   private visiblePanelPrimeRaf: number | null = null;
+  private visiblePanelPrimeFullPass = false;
   private viewportHydrationReady = false;
   private viewportHydrationReadyAt = 0;
   private slowTierWaitTimedOut = false;
@@ -426,18 +455,22 @@ export class App {
     ) {
       return;
     }
+    // A resize can move panels across layout breakpoints, so it keeps a full
+    // pass. A scroll only needs data for panels entering range for the first
+    // time; re-running loaded panels re-fetched their data on every frame.
+    if (event?.type === 'resize') this.visiblePanelPrimeFullPass = true;
     if (this.visiblePanelPrimeRaf !== null) return;
     this.visiblePanelPrimeRaf = window.requestAnimationFrame(() => {
       this.visiblePanelPrimeRaf = null;
+      const trigger: LoadAllDataTrigger = this.visiblePanelPrimeFullPass ? 'full' : 'viewport';
+      this.visiblePanelPrimeFullPass = false;
       markLcpDebug('wm:hydration:viewport-trigger');
       void this.primeVisiblePanelData();
       // loadAllData covers panels primeVisiblePanelData does not (news,
       // markets, intelligence, fred, …). Now that bootstrap runs with
       // forceAll=false, below-fold panels need this re-trigger on scroll
-      // so their data lands when they enter the viewport. Both are
-      // viewport-gated and inflight-guarded — repeat invocations are
-      // cheap.
-      void this.dataLoader.loadAllData();
+      // so their data lands when they enter the viewport.
+      void this.dataLoader.loadAllData(false, trigger);
     });
   };
   private readonly handleConnectivityChange = (): void => {
@@ -494,6 +527,24 @@ export class App {
     if (keys.length === 0) return;
 
     const keySet = new Set(keys);
+    // An ownership-only event can mean the cloud preference write failed.
+    // Retain the ownership of that unchanged baseline until preferences land.
+    if (this.state.pendingSourcePreferences && keySet.has(STORAGE_KEYS.disabledFeeds)) {
+      const cloudGateOwned = new Set(loadFromStorage<string[]>(STORAGE_KEYS.sourceGateOwnership, []));
+      this.state.pendingSourcePreferences.baselineGateOwned = cloudGateOwned;
+      this.state.pendingSourcePreferences.gateOwned = cloudGateOwned;
+      this.state.pendingSourcePreferences.fallbackDisabledSources = undefined;
+    }
+    // Apply the landed selection before enforcement, which can defer while
+    // entitlement is unresolved even after the preference handoff completes.
+    if (keySet.has(STORAGE_KEYS.disabledFeeds)) {
+      const disabled = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+      for (const [name, value] of this.state.pendingSourcePreferences?.edits ?? []) {
+        if (value) disabled.add(name);
+        else disabled.delete(name);
+      }
+      this.state.disabledSources = disabled;
+    }
     let freeTierLimitsInvoked = false;
     const tierReconciliationDeferred = this.shouldDeferTierPreferenceReconciliation();
     invalidatePanelStorageCacheForKeys(keys);
@@ -577,7 +628,10 @@ export class App {
       if (!tierReconciliationDeferred && !freeTierLimitsInvoked) {
         this.enforceFreeTierLimits(cloudSyncVersion);
       }
-      this.state.disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+      if (!this.state.pendingSourcePreferences) {
+        this.state.disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+      }
+      this.state.unifiedSettings?.refreshSourceToggles();
     }
 
     if (keySet.has(STORAGE_KEYS.monitors)) {
@@ -851,6 +905,10 @@ export class App {
     if (shouldPrime('energy-risk-overview')) {
       const panel = this.state.panels['energy-risk-overview'] as EnergyRiskOverviewPanel | undefined;
       if (panel) primeTask('energy-risk-overview', () => panel.fetchData());
+    }
+    if (shouldPrime('grid-disruption-clock')) {
+      const panel = this.state.panels['grid-disruption-clock'] as GridDisruptionClockPanel | undefined;
+      if (panel) primeTask('grid-disruption-clock', () => panel.fetchData());
     }
     if (shouldPrime('chokepoint-strip')) {
       // Without this primeTask entry the panel mounts via panel-layout.ts and
@@ -1326,6 +1384,18 @@ export class App {
     if (!CYBER_LAYER_ENABLED) {
       mapLayers.cyberThreats = false;
     }
+    let sessionDisabledSources: string[] | undefined = currentVariant === 'full' && !storageAvailable
+      ? computeDefaultDisabledSources(this.currentSourceCapLanguage())
+      : undefined;
+    let sourcePreferencesMissing = !storageAvailable;
+    const sessionSourceEdits = new Map<string, boolean>();
+    const pendingSourceMigrationMarkers: string[] = sessionDisabledSources
+      ? [
+        'worldmonitor-country-coverage-optin-v1',
+        'worldmonitor-brazil-optin-v1',
+        'worldmonitor-publisher-direct-optin-v1',
+      ]
+      : [];
     // One-time migration: reduce default-enabled sources (full variant only)
     if (currentVariant === 'full' && storageAvailable) {
       const baseKey = 'worldmonitor-sources-reduction-v3';
@@ -1505,6 +1575,81 @@ export class App {
         }
         if (persisted) safeStorageSet(curatedRegionalOptInKey, 'done');
       }
+      const germanRssKey = 'worldmonitor-german-rss-sources-v1';
+      if (!safeStorageGet(germanRssKey)) {
+        // Missing preferences need persisted defaults; a saved [] is an explicit enable-all choice.
+        const current = loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+        const blob = { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current ?? computeDefaultDisabledSources(userLang)) };
+        const migrated = migrateGermanRssSourcesV10(blob, GERMAN_RSS_SOURCES, userLang);
+        const persisted = (current !== null && migrated === blob) || saveToStorage(
+          STORAGE_KEYS.disabledFeeds,
+          JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[],
+        );
+        if (persisted) safeStorageSet(germanRssKey, 'done');
+      }
+      const sourceMigrationBaselineValue = loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+      sourcePreferencesMissing = sourceMigrationBaselineValue === null;
+      const sourceMigrationBaseline = new Set(sourceMigrationBaselineValue ?? computeDefaultDisabledSources(userLang));
+      const countryCoverageOptInKey = 'worldmonitor-country-coverage-optin-v1';
+      if (!safeStorageGet(countryCoverageOptInKey)) {
+        const current = loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+        const blob = { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current ?? computeDefaultDisabledSources(userLang)) };
+        const migrated = migrateCountryCoverageOptInsV12(blob, COUNTRY_COVERAGE_OPT_IN_SOURCES);
+        const updated = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
+        const persisted = (current !== null && migrated === blob) || saveToStorage(
+          STORAGE_KEYS.disabledFeeds,
+          updated,
+        );
+        if (!persisted) {
+          sessionDisabledSources = updated;
+          pendingSourceMigrationMarkers.push(countryCoverageOptInKey);
+        }
+        if (persisted && !safeStorageSetChecked(countryCoverageOptInKey, 'done')) {
+          sessionDisabledSources = updated;
+          pendingSourceMigrationMarkers.push(countryCoverageOptInKey);
+          if (current === null) safeStorageRemoveChecked(STORAGE_KEYS.disabledFeeds);
+          else saveToStorage(STORAGE_KEYS.disabledFeeds, current);
+        }
+      }
+      const brazilOptInKey = 'worldmonitor-brazil-optin-v1';
+      if (!safeStorageGet(brazilOptInKey)) {
+        const current = sessionDisabledSources ?? loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+        const blob = { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current ?? computeDefaultDisabledSources(userLang)) };
+        const migrated = migrateBrazilOptInsV11(blob, BRAZIL_OPT_IN_SOURCES);
+        const updated = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
+        if (sessionDisabledSources) sessionDisabledSources = updated;
+        const persisted = (current !== null && migrated === blob) || saveToStorage(
+          STORAGE_KEYS.disabledFeeds,
+          updated,
+        );
+        if (!persisted || sessionDisabledSources) {
+          sessionDisabledSources = updated;
+          pendingSourceMigrationMarkers.push(brazilOptInKey);
+        } else if (!safeStorageSetChecked(brazilOptInKey, 'done')) {
+          sessionDisabledSources = updated;
+          pendingSourceMigrationMarkers.push(brazilOptInKey);
+          if (current === null) safeStorageRemoveChecked(STORAGE_KEYS.disabledFeeds);
+          else saveToStorage(STORAGE_KEYS.disabledFeeds, current);
+        }
+      }
+      const publisherDirectOptInKey = 'worldmonitor-publisher-direct-optin-v1';
+      if (!safeStorageGet(publisherDirectOptInKey)) {
+        const current = sessionDisabledSources ?? loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+        const blob = { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current ?? computeDefaultDisabledSources(userLang)) };
+        const migrated = migratePublisherDirectOptInsV13(blob, PUBLISHER_DIRECT_OPT_IN_SOURCES);
+        const updated = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
+        if (sessionDisabledSources) sessionDisabledSources = updated;
+        const persisted = (current !== null && migrated === blob) || saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+        if (!persisted || sessionDisabledSources) {
+          sessionDisabledSources = updated;
+          pendingSourceMigrationMarkers.push(publisherDirectOptInKey);
+        } else if (!safeStorageSetChecked(publisherDirectOptInKey, 'done')) {
+          sessionDisabledSources = updated;
+          pendingSourceMigrationMarkers.push(publisherDirectOptInKey);
+          if (current === null) safeStorageRemoveChecked(STORAGE_KEYS.disabledFeeds);
+          else saveToStorage(STORAGE_KEYS.disabledFeeds, current);
+        }
+      }
       // Locale boost: additively enable locale-matched sources (runs once per locale).
       // Reads the explicit-choice key (`wm-locale-explicit`, written by Settings →
       // Language) before falling back to navigator. Mirrors the i18n.ts:99
@@ -1519,16 +1664,38 @@ export class App {
       if (userLang !== 'en' && !localStorage.getItem(localeKey)) {
         const boosted = getLocaleBoostedSources(userLang);
         if (boosted.size > 0) {
-          const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+          const current = sessionDisabledSources ?? loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
           const updated = current.filter(name => !boosted.has(name));
+          if (sessionDisabledSources) sessionDisabledSources = updated;
           saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
           console.log(`[App] Locale boost (${userLang}): enabled ${current.length - updated.length} sources`);
         }
         localStorage.setItem(localeKey, 'done');
       }
+      if (sessionDisabledSources) {
+        const sessionDisabled = new Set(sessionDisabledSources);
+        // Default seeding is a replaceable baseline. Only failed opt-in
+        // migrations and actual changes are replayed over incoming cloud choices.
+        const pendingPacks: Array<[string, readonly string[]]> = [
+          [countryCoverageOptInKey, COUNTRY_COVERAGE_OPT_IN_SOURCES],
+          [brazilOptInKey, BRAZIL_OPT_IN_SOURCES],
+          [publisherDirectOptInKey, PUBLISHER_DIRECT_OPT_IN_SOURCES],
+        ];
+        for (const [marker, sources] of pendingPacks) {
+          if (!pendingSourceMigrationMarkers.includes(marker)) continue;
+          for (const name of sources) {
+            if (sessionDisabled.has(name)) sessionSourceEdits.set(name, true);
+          }
+        }
+        for (const name of new Set([...sourceMigrationBaseline, ...sessionDisabled])) {
+          if (sourceMigrationBaseline.has(name) !== sessionDisabled.has(name)) {
+            sessionSourceEdits.set(name, sessionDisabled.has(name));
+          }
+        }
+      }
     }
 
-    const disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+    const disabledSources = new Set(sessionDisabledSources ?? loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
 
     // Build shared state object
     this.state = {
@@ -1550,6 +1717,13 @@ export class App {
       intelligenceCache: {},
       cyberThreatsCache: null,
       disabledSources,
+      pendingSourcePreferences: sessionDisabledSources === undefined ? undefined : {
+        gateOwned: null,
+        baselineGateOwned: null,
+        fallbackDisabledSources: sourcePreferencesMissing ? new Set(sessionDisabledSources) : undefined,
+        edits: sessionSourceEdits,
+        migrationMarkers: pendingSourceMigrationMarkers,
+      },
       currentTimeRange: '7d',
       inFlight: new Set(),
       seenGeoAlerts: new Set(),
@@ -1557,6 +1731,7 @@ export class App {
       signalModal: null,
       ensureSignalModal: () => this.ensureSignalModal(),
       statusPanel: null,
+      digestCoverage: null,
       searchModal: null,
       findingsBadge: null,
       breakingBanner: null,
@@ -1587,6 +1762,7 @@ export class App {
       clustersSettled: false,
       resolvedLocation: 'global',
       activeChokepoint: initialUrlState.chokepoint ?? null,
+      pendingCountryBrief: null,
       initialUrlState,
       PANEL_ORDER_KEY,
       PANEL_SPANS_KEY,
@@ -1615,7 +1791,6 @@ export class App {
         const name = CountryIntelManager.resolveCountryName(code);
         void this.countryIntel.openCountryBriefByCode(code, name).catch((err) => {
           console.error('[CountryBrief] Failed to open country brief:', err);
-          this.state.map?.setRenderPaused(false);
           showToast('Country brief failed to open. Please try again.');
         });
       },
@@ -1623,7 +1798,7 @@ export class App {
         track('search-open', { source: 'pro-onboarding' });
         void this.openSearch();
       },
-      loadAllData: () => this.dataLoader.loadAllData(),
+      loadAllData: (forceAll, trigger) => this.dataLoader.loadAllData(forceAll, trigger),
       primeVisiblePanelData: () => {
         if (!this.viewportHydrationReady || this.state.isDestroyed) return;
         void this.primeVisiblePanelData();
@@ -1632,6 +1807,7 @@ export class App {
       loadSecurityAdvisories: () => this.dataLoader.loadSecurityAdvisories(),
       loadTelegramIntel: () => this.dataLoader.loadTelegramIntel(),
       applyMapLayerChange: (layer, enabled, source) => this.eventHandlers.applyMapLayerChange(layer, enabled, source),
+      syncUrlState: () => this.eventHandlers.syncUrlStateIfStarted(),
       isFreeTierFallbackActive: () => this.freeTierGate.authSettleDeadlineExceeded,
     });
 
@@ -1649,6 +1825,10 @@ export class App {
       applySavedPanelOrder: (panelOrder?: string[]) => this.panelLayout.applySavedPanelOrder(panelOrder),
       stopLayerActivity: (layer) => this.dataLoader.stopLayerActivity(layer),
       mountLiveNewsIfReady: () => this.panelLayout.mountLiveNewsIfReady(),
+      focusStorageFacility: (facilityId) => this.panelLayout.focusStorageFacility(facilityId),
+      canUseFocus: () => this.panelLayout.canFocus(),
+      promptForFocus: () => this.panelLayout.promptForFocus(),
+      showFocusGate: () => this.panelLayout.showFocusGateNotice(),
       updateFlightSource: (adsb, military) => this.updateFlightSourceIfReady(adsb, military),
       isFreeTierFallbackActive: () => this.freeTierGate.authSettleDeadlineExceeded,
     });
@@ -1761,7 +1941,6 @@ export class App {
           return;
         }
         console.error('[CountryBrief] Failed to open country brief:', error);
-        this.state.map?.setRenderPaused(false);
         showToast('Country brief failed to open. Please try again.');
         resolve(false);
       };
@@ -2226,6 +2405,7 @@ export class App {
         }
         return listWebMcpMissionPresets(this.state, SITE_VARIANT, query, {
           hasPremium: hasPremiumAccess(getAuthState()),
+          hasFocus: this.panelLayout.canFocus(),
           isPanelEntitled: (panelId) => {
             const config = this.state.panelSettings[panelId]
               ?? getEffectivePanelConfig(panelId, SITE_VARIANT);
@@ -2242,6 +2422,7 @@ export class App {
         }
         return applyWebMcpMissionPreset(this.state, SITE_VARIANT, presetId, {
           hasPremium: hasPremiumAccess(getAuthState()),
+          hasFocus: this.panelLayout.canFocus(),
           isPanelEntitled: (panelId) => {
             const config = this.state.panelSettings[panelId]
               ?? getEffectivePanelConfig(panelId, SITE_VARIANT);
@@ -2424,30 +2605,39 @@ export class App {
     // the first await so a failed init unregisters those tools through destroy().
     this.webMcpController = webMcpController;
 
+    // Take a Business seat invite out of the URL before the map URL sync
+    // rewrites the query string. The accept hook in the auth subscription
+    // reads it from here, including after a sign-up that happens later.
+    captureBusinessInviteFromUrl();
+
+    // Self-hosted installs: ask the sidecar for the desktop-key verdict. Never
+    // awaited; a no-op on worldmonitor.app and in the desktop app.
+    startSelfHostKeyService();
+
     window.addEventListener(I18N_RESOURCES_LOADED_EVENT, this.handleI18nResourcesLoaded);
 
-    await initDB();
+    // IndexedDB and the locale bundles are independent (i18n reads only
+    // localStorage and the URL), so the locale loads while the database opens.
+    // A failed load is still thrown below, where it is awaited.
+    const i18nReady = initI18n();
+    i18nReady.catch(() => {});
+    await openStorageForBoot();
     startFlightHistoryCleanup();
     // Re-arm the lazy vessel runtime (a no-op on first boot; matters on a
     // same-document re-init after a prior App.destroy() disarmed it). The
     // history-cleanup interval itself still starts lazily on first vessel use.
     enableVesselRuntime();
-    await initI18n();
+    await i18nReady;
     markLcpDebug('wm:boot:i18n-ready');
     initDeferredDashboardFonts();
     // Localize the static index.html shell — <title>, meta description, and
     // the accessible <h1> are baked in English before the app boots; once i18n
     // is ready we swap them to the user's locale.
-    document.title = t('shell.documentTitle');
+    localizeShellMeta(document, getCurrentLanguage(), t);
     const setMeta = (sel: string, val: string) => {
       const el = document.querySelector(sel);
       if (el) el.setAttribute('content', val);
     };
-    setMeta('meta[name="description"]', t('shell.metaDescription'));
-    setMeta('meta[property="og:title"]', t('shell.documentTitle'));
-    setMeta('meta[property="og:description"]', t('shell.metaDescription'));
-    setMeta('meta[name="twitter:title"]', t('shell.documentTitle'));
-    setMeta('meta[name="twitter:description"]', t('shell.metaDescription'));
     // Mirror of OG_LOCALE in pro-test/src/i18n.ts. The two packages have
     // separate Vite roots and bundlers and can't share an import — keep the
     // tables aligned by hand when adding a locale here OR there.
@@ -2594,13 +2784,20 @@ export class App {
       // periodic-refresh handlers). ensureWmSession() genuinely rejects on the
       // old WebView / Smart-TV engines this module targets — `new
       // AbortController()` and the timeout setTimeout sit outside mintSession's
-      // try — and init() has no try/catch, so a bare await would abort boot
-      // here: no bootstrap hydration, no auth, no UI. main.ts catches that with
+      // try — and init() has no try/catch, so an unguarded await would abort
+      // boot: no bootstrap hydration, no auth, no UI. main.ts catches that with
       // `.catch(console.error)`, so it would not even reach Sentry. Session
       // establishment is best-effort at this point; the refresh-on-401 layer is
       // the safety net.
-      await ensureWmSession().catch(() => false);
-      markLcpDebug('wm:boot:session-ready');
+      //
+      // Boot does not await the mint. The fast tier is a credential-less public
+      // read the interceptor passes straight through, and every session-bound
+      // call goes through the interceptor, which awaits the in-flight mint.
+      // Awaiting here put a full /api/wm-session round trip in front of the
+      // first dashboard data.
+      void ensureWmSession()
+        .catch(() => false)
+        .then(() => markLcpDebug('wm:boot:session-ready'));
     }
 
     // Hydrate in-memory cache from bootstrap endpoint. Awaits only the fast tier; the slow
@@ -2688,6 +2885,14 @@ export class App {
       _prevHadPremium = nowPremium;
     };
     this.unsubEntitlementPremiumLoaders = onEntitlementChange(() => firePremiumLoaders());
+    // Tester keys and a self-hosted install's desktop-key verdict are Pro
+    // signals that settle after boot, so they re-run the same reconcile.
+    this.unsubWidgetAccessPremiumLoaders = subscribeWidgetAccess(() => firePremiumLoaders());
+    if (isDesktopRuntime()) {
+      // Desktop cloud data rides the Pro credential (#9396). Requests sent
+      // before it existed got 401s and tripped panel breakers, so start clean.
+      this.unsubDesktopCloudAccess = watchDesktopCloudAccess(() => window.location.reload());
+    }
     this.unsubFreeTier = subscribeAuthState((session) => {
       const userId = session.user?.id ?? null;
       const accountTransition = (
@@ -2733,6 +2938,7 @@ export class App {
         void startAccountAuthHandoff({
           userId,
           isCurrent: () => (
+            !this.state.isDestroyed &&
             handoffGeneration === _convexWatchHandoffGeneration &&
             getAuthState().user?.id === userId
           ),
@@ -2793,12 +2999,14 @@ export class App {
           });
         }
 
-        // Accept a Business Pro seat invite carried in the URL (mirror of the
-        // anon-claim hook). The invite link is /settings?accept-business-invite=<id>&token=<t>.
+        // Accept a Business Pro seat invite (mirror of the anon-claim hook).
+        // The invite link is /dashboard?accept-business-invite=<id>&token=<t>;
+        // older emails used /settings, which vercel.json redirects here.
+        // init() captured it before the map URL sync rewrote the query string,
+        // so an invitee who signs up after landing still accepts it here.
         // Runs after sign-in so the invitee's Clerk email is available server-side.
-        const businessInviteGrantId = new URLSearchParams(window.location.search).get('accept-business-invite');
-        const businessInviteToken = new URLSearchParams(window.location.search).get('token');
-        if (businessInviteGrantId && businessInviteToken) {
+        const pendingBusinessInvite = loadPendingBusinessInvite();
+        if (pendingBusinessInvite) {
           void (async () => {
             const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
             if (!client || !api) return;
@@ -2807,38 +3015,68 @@ export class App {
               console.warn('[business-seats] acceptBusinessInvite skipped — Convex auth not ready');
               return;
             }
+            // settleAccountOperation also throws when the server accepted but
+            // Clerk switched accounts meanwhile, so record acceptance here.
+            let acceptedByServer = false;
+            let failureKind: string | null = null;
+            // Enterprise account invites share this capture and lifecycle;
+            // only the mutation and the success copy differ.
+            const isEnterpriseInvite = pendingBusinessInvite.kind === 'enterprise';
+            const operation = isEnterpriseInvite
+              ? 'accepting the Enterprise account invite'
+              : 'accepting the Business Pro seat invite';
             try {
               await settleAccountOperation(
                 userId,
-                'accepting the Business Pro seat invite',
-                () => client.mutation(api.payments.businessSeats.acceptBusinessInvite, {
-                  grantId: businessInviteGrantId as Id<'businessProGrants'>,
-                  token: businessInviteToken,
+                operation,
+                () => (isEnterpriseInvite
+                  ? client.mutation(api.enterpriseSeats.acceptInvite, {
+                    memberId: pendingBusinessInvite.grantId as Id<'enterpriseMembers'>,
+                    token: pendingBusinessInvite.token,
+                  })
+                  : client.mutation(api.payments.businessSeats.acceptBusinessInvite, {
+                    grantId: pendingBusinessInvite.grantId as Id<'businessProGrants'>,
+                    token: pendingBusinessInvite.token,
+                  })
+                ).then((result) => {
+                  acceptedByServer = true;
+                  return result;
                 }),
               );
-              assertAccountStillCurrent(userId, 'accepting the Business Pro seat invite');
-              showToast('Pro seat activated');
+              assertAccountStillCurrent(userId, operation);
+              showToast(isEnterpriseInvite ? 'You have joined the Enterprise account' : 'Pro seat activated');
             } catch (err) {
+              const kind = businessInviteErrorKind(err);
+              failureKind = kind;
               if (!isAccountStillCurrent(userId)) return;
-              const msg = err instanceof Error ? err.message : 'Failed to accept invite';
-              if (msg.includes('INVITE_EMAIL_MISMATCH')) {
+              if (kind === 'INVITE_EMAIL_MISMATCH') {
                 showToast('This invite is for a different email address');
-              } else if (msg.includes('INVITE_EXPIRED')) {
+              } else if (kind === 'INVITEE_EMAIL_UNVERIFIED') {
+                showToast('Verify your email address to accept this invite');
+              } else if (kind === 'INVITE_EXPIRED') {
                 showToast('This invite has expired');
-              } else if (msg.includes('BUSINESS_NOT_ACTIVE')) {
+              } else if (kind === 'BUSINESS_NOT_ACTIVE') {
                 showToast('The Business plan that sent this invite is no longer active');
-              } else if (msg.includes('INVITE_ALREADY_USED')) {
+              } else if (kind === 'CONTRACT_ENDED') {
+                showToast('The Enterprise contract that sent this invite has ended');
+              } else if (kind === 'ALREADY_MEMBER_OF_ANOTHER_ACCOUNT') {
+                showToast('This account already belongs to another Enterprise account');
+              } else if (kind === 'INVITE_ALREADY_USED') {
                 showToast('This invite has already been used');
               } else {
                 showToast('Could not accept invite');
               }
               console.warn('[business-seats] acceptBusinessInvite failed:', err);
             } finally {
-              // Clear the invite params from the URL so a refresh does not retry.
-              const url = new URL(window.location.href);
-              url.searchParams.delete('accept-business-invite');
-              url.searchParams.delete('token');
-              window.history.replaceState({}, '', url.toString());
+              // Forget the invite once it is settled so a refresh does not retry.
+              // A wrong account or an account switch keeps it for the invited
+              // account to accept in this tab.
+              const keep = keepInviteAfterAttempt({
+                accepted: acceptedByServer,
+                accountChanged: !isAccountStillCurrent(userId),
+                errorKind: failureKind,
+              });
+              if (!keep) clearPendingBusinessInvite(pendingBusinessInvite);
             }
           })();
         }
@@ -3002,12 +3240,18 @@ export class App {
     }
     this.pendingDeepLinkStoryCode = earlyParams.get('c') ?? null;
     this.pendingDeepLinkSearchQuery = readDashboardSearchQuery(window.location.search);
+    this.pendingOrbitalShareLink = ORBITAL_WATCH_ENABLED ? takeOrbitalShareLink() : null;
+    connectOrbitalLookupMap(() => this.state.map);
     this.eventHandlers.setupUrlStateSync();
     if (import.meta.env.VITE_E2E === '1') {
       document.documentElement.dataset.wmEventHandlersReady = 'true';
     }
 
-    this.state.countryBriefPage?.onStateChange?.(() => {
+    this.countryIntel.onBriefStateChange(({ visible }) => {
+      // The loading panel opens with a placeholder code; the deep link stays
+      // pending until a real country shows or the panel closes.
+      const code = this.state.countryBriefPage?.getCode();
+      if (!visible || (code && !code.startsWith('__'))) this.state.pendingCountryBrief = null;
       this.eventHandlers.syncUrlState();
     });
 
@@ -3356,19 +3600,24 @@ export class App {
     try {
       ownershipMetadataExists = localStorage.getItem(STORAGE_KEYS.sourceGateOwnership) !== null;
     } catch { /* optional persistence */ }
-    const persistedDisabled = new Set(
-      loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []),
-    );
+    const storedDisabled = loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+    const persistedDisabled = new Set(storedDisabled ?? []);
+    const pending = this.state.pendingSourcePreferences;
+    const baselineDisabled = new Set(pending?.fallbackDisabledSources ?? storedDisabled ?? []);
+    for (const [name, disabled] of pending?.edits ?? []) {
+      if (disabled) baselineDisabled.add(name);
+      else baselineDisabled.delete(name);
+    }
     const persistedGateOwned = new Set(
       loadFromStorage<string[]>(STORAGE_KEYS.sourceGateOwnership, []),
     );
-    let gateOwned = new Set(persistedGateOwned);
+    let gateOwned = new Set(pending?.baselineGateOwned ?? persistedGateOwned);
     const userLang = this.currentSourceCapLanguage();
     const protectedNames = this.sourceCapProtectedNames(userLang);
 
     // Heal untouched profiles capped before ownership metadata existed. Exact
     // matching preserves every customized denylist.
-    if (!ownershipMetadataExists) {
+    if (!ownershipMetadataExists && !pending?.baselineGateOwned) {
       const defaultUserDisabled = new Set(computeDefaultDisabledSources(userLang));
       const expectedGateOwned = selectSourcesUnderCap(
         FEEDS,
@@ -3378,19 +3627,20 @@ export class App {
         protectedNames,
       ).autoDisabled;
       gateOwned = inferExactSourceGateOwnership(
-        persistedDisabled,
+        baselineDisabled,
         defaultUserDisabled,
         expectedGateOwned,
       ) ?? gateOwned;
     }
 
+    for (const name of pending?.edits.keys() ?? []) gateOwned.delete(name);
+    const userDisabled = restoreGateOwnedSources(baselineDisabled, gateOwned);
     let nextDisabled: Set<string>;
     let nextGateOwned: Set<string>;
     if (pro) {
-      nextDisabled = restoreGateOwnedSources(persistedDisabled, gateOwned);
+      nextDisabled = userDisabled;
       nextGateOwned = new Set();
     } else {
-      const userDisabled = restoreGateOwnedSources(persistedDisabled, gateOwned);
       const nextAutoDisabled = selectSourcesUnderCap(
         FEEDS,
         INTEL_SOURCES,
@@ -3421,7 +3671,19 @@ export class App {
     );
     const disabledPersisted = disabledChanged && persistence.preferencePersisted;
     const ownershipPersisted = ownershipChanged && persistence.ownershipPersisted;
-    if (disabledChanged) {
+    const migrationMarkers = (pending?.migrationMarkers ?? []).filter(marker =>
+      !persistence.preferencePersisted || !safeStorageSetChecked(marker, 'done'));
+    this.state.pendingSourcePreferences = persistence.complete && migrationMarkers.length === 0
+      ? undefined
+      : {
+        gateOwned: nextGateOwned,
+        // A partial write can leave the stored and live cap on different snapshots.
+        baselineGateOwned: persistence.preferencePersisted ? nextGateOwned : gateOwned,
+        fallbackDisabledSources: persistence.preferencePersisted ? undefined : pending?.fallbackDisabledSources,
+        edits: pending?.edits ?? new Map(),
+        migrationMarkers,
+      };
+    if (!stringSetsEqual(this.state.disabledSources, nextDisabled)) {
       // The live entitlement boundary must not depend on localStorage health.
       // Durable writes remain ordered/retryable above, but free users stay
       // capped and Pro users unlock immediately even when quota is exhausted.
@@ -3605,6 +3867,8 @@ export class App {
       window.cancelAnimationFrame(this.visiblePanelPrimeRaf);
       this.visiblePanelPrimeRaf = null;
     }
+    this.cancelOrbitalShareLink?.();
+    this.cancelOrbitalShareLink = null;
     if (this.chokepointDeepLinkTimer !== null) {
       window.clearTimeout(this.chokepointDeepLinkTimer);
       this.chokepointDeepLinkTimer = null;
@@ -3629,6 +3893,8 @@ export class App {
       this.unsubAiFlow?.();
       this.unsubFreeTier?.();
       this.unsubEntitlementPremiumLoaders?.();
+      this.unsubWidgetAccessPremiumLoaders?.();
+      this.unsubDesktopCloudAccess?.();
       this.freeTierGate.cancelFallback();
       mlWorker.terminate();
       this.state.findingsBadge?.destroy();
@@ -3794,6 +4060,13 @@ export class App {
     const url = new URL(window.location.href);
     const DEEP_LINK_INITIAL_DELAY_MS = 1500;
 
+    // A satellite pass share link lives in the fragment and opens beside any other deep link.
+    const orbitalShareLink = this.pendingOrbitalShareLink;
+    this.pendingOrbitalShareLink = null;
+    if (orbitalShareLink) {
+      this.cancelOrbitalShareLink = scheduleOrbitalShareLink(orbitalShareLink, DEEP_LINK_INITIAL_DELAY_MS, () => this.state.isDestroyed, () => this.state.map);
+    }
+
     // SearchAction lands on /dashboard?q=… after URL sync has already rewritten
     // the address bar. Consume the captured term through the same lazy path as
     // Cmd+K so the modal is created only when a query is actually present.
@@ -3837,7 +4110,6 @@ export class App {
             maximize: true,
           }).catch((err) => {
             console.error('[CountryBrief] Failed to open country brief:', err);
-            this.state.map?.setRenderPaused(false);
             showToast('Country brief failed to open. Please try again.');
           });
           this.eventHandlers.syncUrlState();
@@ -3854,13 +4126,22 @@ export class App {
     if (deepLinkCountry) {
       trackDeeplinkOpened('country', deepLinkCountry);
       const cName = CountryIntelManager.resolveCountryName(deepLinkCountry);
+      // Set in the same task as setupUrlStateSync(), before its first debounced
+      // write, and only here: search and story links return above and open no
+      // ?country brief.
+      this.state.pendingCountryBrief = { code: deepLinkCountry, expanded: deepLinkExpanded };
       setTimeout(() => {
         void this.countryIntel.openCountryBriefByCode(deepLinkCountry, cName, {
           maximize: deepLinkExpanded,
         }).catch((err) => {
           console.error('[CountryBrief] Failed to open country brief:', err);
-          this.state.map?.setRenderPaused(false);
           showToast('Country brief failed to open. Please try again.');
+        }).finally(() => {
+          // The open also resolves without a brief (a failed chunk import is
+          // handled inside it, a stale request returns). Once it settles the
+          // panel itself decides the URL.
+          this.state.pendingCountryBrief = null;
+          this.eventHandlers.syncUrlState();
         });
         this.eventHandlers.syncUrlState();
       }, DEEP_LINK_INITIAL_DELAY_MS);
@@ -3901,7 +4182,21 @@ export class App {
       );
     });
 
-    // Happy variant only refreshes news -- skip all geopolitical/financial/military refreshes
+    this.refreshScheduler.scheduleRefresh(
+      'ukmtoIncidents',
+      () => this.dataLoader.loadUkmtoIncidents(),
+      60_000,
+      () => (SITE_VARIANT === 'full' && this.state.mapLayers.ais) || this.state.panelSettings['ukmto-incidents']?.enabled === true,
+    );
+
+    this.refreshScheduler.scheduleRefresh(
+      'reservoirLevels',
+      () => this.dataLoader.loadReservoirLevels(),
+      REFRESH_INTERVALS.reservoirLevels,
+      () => this.state.mapLayers.reservoirLevels === true || this.state.panelSettings['reservoir-levels']?.enabled === true,
+    );
+
+    // Other geopolitical, financial and military refreshes exclude Happy.
     if (SITE_VARIANT !== 'happy') {
       this.refreshScheduler.registerAll([
         {
@@ -4067,12 +4362,12 @@ export class App {
     // PRO-gated: the isNearViewport check is a visibility gate, not an entitlement gate,
     // so without hasPremiumAccess() here we'd still hit the 6 WTO RPCs every poll for
     // free users once the panel scrolled into view.
-    if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity' || SITE_VARIANT === 'energy') {
-      this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), REFRESH_INTERVALS.tradePolicy, () => hasPremiumAccess() && this.isPanelNearViewport('trade-policy'));
-      this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), REFRESH_INTERVALS.supplyChain, () => this.isPanelNearViewport('supply-chain'));
-      this.refreshScheduler.scheduleRefresh('chinaCorridors', () => this.dataLoader.loadChinaCorridors(), REFRESH_INTERVALS.chinaCorridors, () => this.isPanelNearViewport('china-corridors'));
-      this.refreshScheduler.scheduleRefresh('chinaActivityNowcast', () => this.dataLoader.loadChinaActivityNowcast(), REFRESH_INTERVALS.chinaActivityNowcast, () => this.isPanelNearViewport('china-activity-nowcast'));
-    }
+    // Not variant-gated: a user can add these panels to any variant, and each
+    // condition already requires the panel on screen (#9396).
+    this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), REFRESH_INTERVALS.tradePolicy, () => hasPremiumAccess() && this.isPanelNearViewport('trade-policy'));
+    this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), REFRESH_INTERVALS.supplyChain, () => this.isPanelNearViewport('supply-chain'));
+    this.refreshScheduler.scheduleRefresh('chinaCorridors', () => this.dataLoader.loadChinaCorridors(), REFRESH_INTERVALS.chinaCorridors, () => this.isPanelNearViewport('china-corridors'));
+    this.refreshScheduler.scheduleRefresh('chinaActivityNowcast', () => this.dataLoader.loadChinaActivityNowcast(), REFRESH_INTERVALS.chinaActivityNowcast, () => this.isPanelNearViewport('china-activity-nowcast'));
 
     this.refreshScheduler.scheduleRefresh(
       'cross-source-signals',
@@ -4181,6 +4476,13 @@ export class App {
     );
 
     this.refreshScheduler.scheduleRefresh(
+      'grid-disruption-clock',
+      () => (this.state.panels['grid-disruption-clock'] as GridDisruptionClockPanel).fetchData(),
+      REFRESH_INTERVALS.gridDisruptionClock,
+      () => this.isPanelNearViewport('grid-disruption-clock'),
+    );
+
+    this.refreshScheduler.scheduleRefresh(
       'chokepoint-strip',
       () => (this.state.panels['chokepoint-strip'] as ChokepointStripPanel).fetchData(),
       REFRESH_INTERVALS.chokepointStrip,
@@ -4282,6 +4584,13 @@ export class App {
         if (iranEvents) this.state.intelligenceCache.iranEvents = iranEvents;
         return this.dataLoader.loadIntelligenceSignals();
       }, REFRESH_INTERVALS.intelligence, () => this.shouldRefreshIntelligence());
+    } else {
+      // Other variants have no intelligence refresh, so Internet Disruptions
+      // gets its own. Drop the cached outages so loadOutages refetches.
+      this.refreshScheduler.scheduleRefresh('internet-disruptions', () => {
+        delete this.state.intelligenceCache.outages;
+        return this.dataLoader.loadOutages();
+      }, REFRESH_INTERVALS.intelligence, () => this.isPanelNearViewport('internet-disruptions'));
     }
 
     // Correlation engine refresh

@@ -81,11 +81,23 @@ jobs:
           MCP_REGISTRY_PRIVATE_KEY: ${{ secrets.MCP_REGISTRY_PRIVATE_KEY }}
         run: |
           test -n "${MCP_REGISTRY_PRIVATE_KEY}"
-          ./mcp-publisher login http \
-            --domain worldmonitor.app \
-            --private-key "${MCP_REGISTRY_PRIVATE_KEY}"
+          for attempt in 1 2 3; do
+            ./mcp-publisher login http \
+              --domain worldmonitor.app \
+              --private-key "${MCP_REGISTRY_PRIVATE_KEY}" && exit 0
+            echo "::warning::registry login attempt ${attempt}/3 failed"
+            sleep $((attempt * 10))
+          done
+          exit 1
 
       - name: Publish server
         run: |
-          node scripts/publish-mcp-registry.mjs registry-server.json -- \
-            ./mcp-publisher publish registry-server.json
+          # Each attempt re-reads the registry first, so retrying after a
+          # publish that landed but lost its response skips instead of duplicating.
+          for attempt in 1 2 3; do
+            node scripts/publish-mcp-registry.mjs registry-server.json -- \
+              ./mcp-publisher publish registry-server.json && exit 0
+            echo "::warning::registry publish attempt ${attempt}/3 failed"
+            sleep $((attempt * 10))
+          done
+          exit 1

@@ -1,3 +1,8 @@
+// This pins the settled or exempt CSS pulse rules and the MapComponent
+// settle-window wiring (#8690, section 2). These unit tests inspect
+// declarations because their Node runner does not animate CSS or measure
+// compositing layers.
+//
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -22,7 +27,6 @@ const SETTLED_SELECTORS = [
   '.cable-advisory-marker.fault',
   '.protest-marker.high',
   '.outage-marker.total',
-  '.conflict-zone',
   '.iran-event-marker',
   '.earthquake-marker',
   '.nuclear-marker.active',
@@ -100,6 +104,36 @@ describe('marker pulse settle (#4669)', () => {
     }
   });
 
+  it('every map-scoped infinite pulse animates only compositor properties', () => {
+    // A pulse that animates a paint property (an SVG fill, a box-shadow) cannot
+    // run on the compositor, so it restyles and repaints on the main thread every
+    // frame of the settle window. Overlay renders re-arm that window all through
+    // boot hydration. The conflict-zone fill pulse alone cost ~700 ms of style
+    // recalc at 4x CPU on a first phone visit once the map opened expanded (#10220).
+    const allowed = new Set(['opacity', 'transform', 'animation-timing-function']);
+    const pulses = [];
+    let current = '';
+    for (const line of css.split('\n')) {
+      if (/^[^\s@}].*\{/.test(line)) current = line.replace(/\s*\{.*$/, '').trim();
+      const animation = line.match(/animation:\s*([\w-]+)[^;]*\binfinite\b/);
+      // SETTLE_EXEMPT pulses run on one hovered or highlighted element, not per marker.
+      const exempt = SETTLE_EXEMPT.some((ex) => current === ex || current.endsWith(ex));
+      if (animation && !exempt && /marker|hotspot|conflict-zone|breaking-tag|dark-vessel|cable-path/i.test(current)) {
+        pulses.push({ sel: current, name: animation[1] });
+      }
+    }
+    assert.ok(pulses.length >= SETTLED_SELECTORS.length - 2, 'scan should find the marker pulses');
+    const offenders = [];
+    for (const { sel, name } of pulses) {
+      const frames = css.match(new RegExp(`@keyframes\\s+${escapeRegExp(name)}\\s*\\{([\\s\\S]*?)\\n\\}`));
+      assert.ok(frames, `expected @keyframes ${name}`);
+      for (const [, prop] of frames[1].matchAll(/([a-z-]+)\s*:/g)) {
+        if (!allowed.has(prop)) offenders.push(`${sel} → @keyframes ${name} animates ${prop}`);
+      }
+    }
+    assert.deepEqual([...new Set(offenders)], [], 'map pulses must animate opacity/transform only');
+  });
+
   it('MapComponent arms the settle window on overlay renders', () => {
     assert.match(mapSrc, /MARKER_SETTLE_MS/, 'Map.ts must define MARKER_SETTLE_MS');
     assert.match(
@@ -117,5 +151,21 @@ describe('marker pulse settle (#4669)', () => {
       /armMarkerSettle\(\)/,
       'renderOverlays must arm the marker settle window',
     );
+  });
+
+  it('low-end devices settle markers from the first render and stop page live pulses', () => {
+    const arm = mapSrc.match(/private armMarkerSettle\(\): void \{([\s\S]*?)\n  \}/);
+    assert.ok(arm, 'expected armMarkerSettle in Map.ts');
+    const body = arm[1];
+    const lowEnd = body.indexOf('if (this.lowEndDevice)');
+    assert.ok(lowEnd >= 0, 'armMarkerSettle must short-circuit on low-end devices');
+    assert.ok(
+      lowEnd < body.indexOf("classList.remove('markers-settled')"),
+      'the low-end branch must run before the settled class is cleared',
+    );
+    assert.match(body.slice(lowEnd), /classList\.add\('markers-settled'\);\s*return;/);
+    for (const sel of ['.panel-data-badge.live::before', '.live-media-shell-dot::before', '.panel-live-count::before']) {
+      assert.match(css, new RegExp(`\\.low-end-device ${escapeRegExp(sel)}`), `missing .low-end-device ${sel}`);
+    }
   });
 });

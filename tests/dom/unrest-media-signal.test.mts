@@ -28,6 +28,13 @@ it('does not validate an old high-confidence GDELT cache record', () => {
   expect(event.severity).toBe('low');
   expect(event.eventType).not.toBe('riot');
 });
+
+it('passes point precision to exposure only for ACLED events with explicit precision', () => {
+  const acled = { ...legacy, sourceType: 'UNREST_SOURCE_TYPE_ACLED' } as const;
+  expect(toSocialUnrestEvent(acled).hasPreciseLocation).toBe(false);
+  expect(toSocialUnrestEvent({ ...acled, hasPreciseLocation: true }).hasPreciseLocation).toBe(true);
+  expect(toSocialUnrestEvent({ ...legacy, hasPreciseLocation: true }).hasPreciseLocation).toBe(false);
+});
 it('labels the single signal and its article link without asserting event severity', () => {
   popup.show({ type: 'protest', data: toSocialUnrestEvent(legacy), x: 10, y: 10 });
   expect(document.body.textContent).toContain('Unverified media signal');

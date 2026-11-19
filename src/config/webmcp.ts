@@ -9,8 +9,10 @@ import type { SiteVariant } from './variant';
  * while the entitled, visible panel has settled data.
  */
 export const WEBMCP_HOMEPAGE_TOOL_NAMES = [
-  'launchWorldMonitor',
+  'open_dashboard',
   'getWorldMonitorMcpEndpoint',
+  'listCountryScorecards',
+  'getCountryScorecard',
 ] as const;
 
 export const WEBMCP_SPA_TOOL = Object.freeze({
@@ -108,8 +110,6 @@ export const WEBMCP_MISSION_PICKER_REASONS = [
   WEBMCP_MISSION_PICKER_REASON.appDestroyed,
 ] as const;
 
-export type WebMcpMissionPickerReason = (typeof WEBMCP_MISSION_PICKER_REASONS)[number];
-
 export const WEBMCP_DECLARATIVE_TOOL_NAMES = [
   'search_procurement',
 ] as const;
@@ -120,8 +120,6 @@ export const WEBMCP_PROCUREMENT_TOOL_NAME = WEBMCP_DECLARATIVE_TOOL_NAMES[0];
 export const WEBMCP_PROCUREMENT_TEXT_MAX_CHARS = 160;
 export const WEBMCP_PROCUREMENT_COUNTRY_CODE_CHARS = 2;
 export const WEBMCP_PROCUREMENT_COUNTRY_CODE_PATTERN = '^[A-Za-z]{2}$';
-
-export type WebMcpHomepageToolName = (typeof WEBMCP_HOMEPAGE_TOOL_NAMES)[number];
 export type WebMcpSpaToolName = (typeof WEBMCP_SPA_TOOL_NAMES)[number];
 export type WebMcpDeclarativeToolName = (typeof WEBMCP_DECLARATIVE_TOOL_NAMES)[number];
 

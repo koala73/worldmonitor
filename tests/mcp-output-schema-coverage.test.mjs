@@ -1,20 +1,3 @@
-// Parity test for the per-tool spec `outputSchema` field (v1.6.0).
-//
-// Covers:
-//   1. Every tool in TOOL_REGISTRY declares a non-empty outputSchema with at
-//      least one key on outputSchema.properties. Failures name the tool so a
-//      future PR adding a tool without an outputSchema fails loudly.
-//   2. Every fixture in tests/fixtures/jmespath-samples/ validates against the
-//      schema declared by the tool that produced it. Drift between declared
-//      schema and the real response shape fails the test by tool name.
-//   3. The reverse direction of 2: no tool may declare a list-item field that
-//      is absent from every captured row. Schema validation alone cannot see
-//      this — `properties` without `required` admits a payload that omits a
-//      declared key, which is how get_market_data advertised `changePercent`
-//      while every seeder wrote `change`.
-//   4. tools/list emits outputSchema on every advertised tool — surfacing the
-//      field at the wire boundary in addition to the in-process registry.
-
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -317,7 +300,9 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.ok(newsStory.threatLevel, 'news schema must declare threatLevel');
     assert.deepEqual(newsStory.sourceProvenance.required, [
       'risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed', 'knownBiases', 'summary',
+      'homeCountry', 'audience', 'language', 'ownershipClass',
     ]);
+    assert.deepEqual(newsStory.sourceProvenance.properties.audience.enum, ['domestic', 'international', 'diaspora', null]);
     assert.deepEqual(newsStory.sourceProvenance.properties.risk.enum, [
       'low', 'medium', 'high', 'unknown',
     ]);
@@ -456,7 +441,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // rather than silently skipped, so the count can only go down. Each is the
   // same defect class -- schema key never written by the producer:
   const KNOWN_PHANTOM_ROW_FIELDS = new Set([
-    // Serves `locationName` (+ latitude/longitude) -- scripts/seed-iran-events.mjs.
+    // Serves `locationName` (+ latitude/longitude) -- scripts/lib/middle-east-strikes.cjs (ais-relay).
     'get_conflict_events.data.iran-events.events[].country',
     'get_conflict_events.data.iran-events.events[].location',
     // Serves staticBaseline/dynamicScore/combinedScore, never a flat `score`.
@@ -603,6 +588,41 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.deepEqual(await jsonResponse(value, 200).json(), value);
   });
 
+  it('describes mineral production records and portfolios returned by the handler', async () => {
+    const { projectMineralProduction } = await import('../server/worldmonitor/supply-chain/v1/get-mineral-production.ts');
+    const schema = mod.__testing__.TOOL_REGISTRY.find(t => t.name === 'get_mineral_production').outputSchema;
+    const check = new Ajv2020({ strict: false }).compile(schema);
+    const stage = { year: 2025, unit: 'metric tons', hhi: 2500, withheldCount: 1, countries: [
+      { iso2: 'CL', country: 'Chile', output: 10, share: 50, estimated: true },
+      { iso2: 'US', country: 'United States', withheld: true },
+    ] };
+    const seed = { fetchedAt: '2026-02-06T00:00:00Z', dataYear: 2025, commodities: {
+      copper: { id: 'copper', label: 'Copper', sources: ['usgs-mcs'], stages: { mine: stage, refinery: stage } },
+    } };
+    for (const iso2 of ['', 'CL', 'US', 'AU']) {
+      for (const filter of ['', 'mine', 'refinery']) {
+        const result = projectMineralProduction(seed, { commodity: '', iso2, stage: filter });
+        assert.equal(check(result), true, JSON.stringify(check.errors));
+      }
+    }
+    assert.equal(check(projectMineralProduction(null, { commodity: '', iso2: '', stage: '' })), true);
+    // These paths used to be prose-only arrays: prove their nested fields are advertised.
+    const record = schema.properties.commodities.items.properties;
+    const holding = schema.properties.countries.items.properties.holdings.items.properties;
+    for (const stageName of ['mine', 'refinery']) {
+      const snapshot = record[stageName].properties;
+      assert.equal(snapshot.worldTotal.type, 'number');
+      assert.equal(snapshot.countries.items.properties.output.type, 'number');
+      const result = projectMineralProduction(seed, { commodity: '', iso2: '', stage: stageName });
+      result.commodities[0][stageName].countries[0].share = '50';
+      assert.equal(check(result), false, 'country share must be numeric');
+    }
+    assert.equal(holding.output.type, 'number');
+    const portfolio = projectMineralProduction(seed, { commodity: '', iso2: 'CL', stage: '' });
+    portfolio.countries[0].holdings[0].output = '10';
+    assert.equal(check(portfolio), false, 'portfolio output must be numeric');
+  });
+
   // --------------------------------------------------------------------
   // Test 4 — buildPublicTool returns a deep-clone, NOT a reference into the
   // module-level outputSchema literal. Mutating the returned object must not
@@ -643,27 +663,23 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // Tools that reshape inside `_execute` are deliberately out of scope — the
   // gateway response is not what they return.
   // --------------------------------------------------------------------
-  // `generate_forecasts` is verbatim too but declares `_apiPaths: []`, so it
-  // has no OpenAPI operation to check against and cannot be listed here.
   const VERBATIM_PASSTHROUGH_TOOLS = [
+    'get_country_history',
+    'get_media_perspective',
     'analyze_news_headlines',
     'analyze_situation',
     'get_chokepoint_dependencies',
     'get_country_coverage',
-    'get_country_risk',
     'get_defense_industrial_base',
+    'get_fred_series',
     'get_demographics_capability',
     'get_food_stocks',
     'get_intel_timeline',
     'get_mineral_production',
     'get_resilience_indicators',
     'get_similar_events',
-    'get_bilateral_tariff',
-    'get_tariff_averages',
-    'get_us_import_duty',
-    'list_five_factor_scorecards',
+    'get_five_factor_scorecard',
     'get_supply_vulnerabilities',
-    'search_flight_prices_by_date',
     'search_flights',
     'search_intel_history',
   ];
@@ -674,13 +690,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // different one, and stay "justified" — shipping new fiction on a tool the
   // guard nominally covers. Movement in either direction reds instead, so an
   // entry cannot rot into a blanket exemption.
-  const KNOWN_DRIFT = new Map([
-    ['analyze_situation', {
-      why: 'DeductSituationResponse is {analysis, model, provider}',
-      names: ['deduction', 'confidence', 'signals', 'framework', 'generatedAt'],
-      types: [],
-    }],
-  ]);
+  const KNOWN_DRIFT = new Map([]);
 
   function loadOpenApiOperations() {
     const specsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'docs', 'api');
@@ -736,6 +746,26 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       return { ...target, properties: out };
     };
     return { properties: resolve(schema, '').properties ?? {}, unresolved };
+  }
+
+  // Deep union of two resolved property maps: a field present in either
+  // response is on the wire, at any depth.
+  function unionWireProperties(left, right) {
+    const out = { ...left };
+    for (const [key, node] of Object.entries(right)) {
+      const prior = out[key];
+      if (!prior) {
+        out[key] = node;
+        continue;
+      }
+      const merged = { ...prior, ...node };
+      if (prior.properties || node.properties) merged.properties = unionWireProperties(prior.properties ?? {}, node.properties ?? {});
+      if (prior.items?.properties && node.items?.properties) {
+        merged.items = { ...prior.items, ...node.items, properties: unionWireProperties(prior.items.properties, node.items.properties) };
+      }
+      out[key] = merged;
+    }
+    return out;
   }
 
   // The two comparisons the population loop and the positive control below
@@ -815,15 +845,25 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       const tool = mod.__testing__.TOOL_REGISTRY.find(t => t.name === toolName);
       assert.ok(tool, `tool ${toolName} not found in registry`);
       assert.equal(typeof tool._execute, 'function', `${toolName} is listed as an RPC passthrough but has no _execute`);
-      assert.equal(
-        (tool._apiPaths ?? []).length, 1,
-        `${toolName} must declare exactly one _apiPaths entry to be checked against a single OpenAPI operation`,
+      assert.ok(
+        (tool._apiPaths ?? []).length >= 1,
+        `${toolName} must declare at least one _apiPaths entry to be checked against its OpenAPI operations`,
       );
 
-      const entry = loadOpenApiOperations().get(tool._apiPaths[0].replace(/\s+/g, ' ').trim());
-      assert.ok(entry, `${toolName}: no OpenAPI operation for "${tool._apiPaths[0]}"`);
-      const wire = wireResponseProperties(entry);
-      assert.ok(wire, `${toolName}: OpenAPI operation declares no resolvable 200 JSON response schema`);
+      // A tool that picks one of several operations per call (search_flights,
+      // get_five_factor_scorecard) is checked against the union of their
+      // responses: every declared field must appear in at least one of them.
+      const wires = tool._apiPaths.map((apiPath) => {
+        const entry = loadOpenApiOperations().get(apiPath.replace(/\s+/g, ' ').trim());
+        assert.ok(entry, `${toolName}: no OpenAPI operation for "${apiPath}"`);
+        const one = wireResponseProperties(entry);
+        assert.ok(one, `${toolName}: OpenAPI operation "${apiPath}" declares no resolvable 200 JSON response schema`);
+        return one;
+      });
+      const wire = {
+        properties: wires.reduce((merged, one) => unionWireProperties(merged, one.properties), {}),
+        unresolved: wires.flatMap((one) => one.unresolved),
+      };
       // An unresolvable $ref would become an untyped {} and quietly make that
       // property unverifiable — shrink coverage loudly, never silently.
       assert.deepEqual(
@@ -884,9 +924,8 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     const candidates = mod.__testing__.TOOL_REGISTRY
       .filter(t => typeof t._execute === 'function'
         && RETURNS_RESPONSE_VERBATIM.test(t._execute.toString())
-        // A tool with no single declared OpenAPI operation has no contract to
-        // check against; `generate_forecasts` declares `_apiPaths: []`.
-        && (t._apiPaths ?? []).length === 1)
+        // A tool with no declared OpenAPI operation has no contract to check against.
+        && (t._apiPaths ?? []).length >= 1)
       .map(t => t.name)
       .sort();
 
@@ -919,14 +958,20 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // `adds` lists the keys `_execute` or MCP dispatch layers on top; they are legitimately
   // absent from the wire, so they are subtracted before comparing.
   const SPREAD_PASSTHROUGH_TOOLS = new Map([
-    ['open_news_dashboard', { adds: ['requestedView', 'panelRequest'] }],
-    ['get_country_brief', { adds: ['digestCoverage', 'groundingStories', 'sources[].sourceProvenance'] }],
+    ['open_news_dashboard', { adds: ['requestedView', 'panelRequest', 'headlineAnalysis'] }],
+    ['get_country_brief', { adds: ['digestCoverage', 'groundingStories', 'sources[].sourceProvenance', 'panelRequest'] }],
+    ['get_country_risk', { adds: ['ciiHistory', 'panelRequest'] }],
+    // The live tariff tools add what answered and where it stops (buildCoverage).
+    ['get_bilateral_tariff', { adds: ['coverage'] }],
+    ['get_tariff_averages', { adds: ['coverage'] }],
+    ['get_us_import_duty', { adds: ['coverage'] }],
   ]);
 
   for (const [toolName, { adds }] of SPREAD_PASSTHROUGH_TOOLS) {
     it(`${toolName} declares only fields its OpenAPI response carries, plus its own additions`, () => {
       const tool = mod.__testing__.TOOL_REGISTRY.find(t => t.name === toolName);
       assert.ok(tool, `tool ${toolName} not found in registry`);
+      assert.equal(typeof tool._execute, 'function', `${toolName} must be an RPC tool with an _execute to spread its response`);
       assert.equal(
         (tool._apiPaths ?? []).length, 1,
         `${toolName} must declare exactly one _apiPaths entry to be checked against a single OpenAPI operation`,
@@ -937,6 +982,14 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       const wire = wireResponseProperties(entry);
       assert.ok(wire, `${toolName}: OpenAPI operation declares no resolvable 200 JSON response schema`);
       assert.deepEqual(wire.unresolved, [], `${toolName}: OpenAPI response has unresolvable $refs`);
+
+      // The same outage-discriminator check the verbatim loop runs: moving a
+      // tool here must not drop it.
+      assert.deepEqual(
+        undeclaredSafetyFlags(tool.outputSchema, wire.properties), [],
+        `${toolName}'s response carries a degraded-state flag its outputSchema never declares. An agent cannot ` +
+          'distinguish "no data" from "everything is fine" without it.',
+      );
 
       const drift = declaredButNotOnWire(tool.outputSchema, wire.properties)
         .filter(name => !adds.includes(name));
@@ -961,6 +1014,40 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       );
     });
   }
+
+  // The spread map is hand-written too, so deleting an entry silently drops
+  // that tool's wire-parity checks. Derive the tail-position spread form
+  // (`return { ...body, ... }` or `return { ...await response.json(), ... }`)
+  // from the same `_execute.toString()` source the verbatim derivation reads,
+  // and require each candidate to be enrolled. This is containment, not
+  // equality: get_country_brief spreads mid-function and is enrolled by hand.
+  const RETURNS_RESPONSE_SPREAD = /return\s*\{\s*\.\.\.(?:body|await\s+response\.json\(\))[\s\S]*?\}\s*;?\s*\}\s*$/;
+
+  it('SPREAD_PASSTHROUGH_TOOLS enrolls every RPC tool that returns the gateway response by spread', () => {
+    const candidates = mod.__testing__.TOOL_REGISTRY
+      .filter(t => typeof t._execute === 'function'
+        && (t._apiPaths ?? []).length === 1
+        && RETURNS_RESPONSE_SPREAD.test(t._execute.toString()))
+      .map(t => t.name)
+      .sort();
+
+    // Floor: if the regex stops matching, the set collapses and the
+    // containment check below passes vacuously.
+    for (const name of ['get_bilateral_tariff', 'get_tariff_averages', 'get_us_import_duty']) {
+      assert.ok(
+        candidates.includes(name),
+        `${name} was not derived as a spread-passthrough tool — the detection regex has stopped matching. ` +
+          `Fix the regex; derived: ${JSON.stringify(candidates)}`,
+      );
+    }
+    for (const name of candidates) {
+      assert.ok(
+        SPREAD_PASSTHROUGH_TOOLS.has(name),
+        `${name} returns its gateway response by spread but is not in SPREAD_PASSTHROUGH_TOOLS, so its declared ` +
+          'outputSchema is never checked against the OpenAPI response — enroll it with the keys _execute adds.',
+      );
+    }
+  });
 
   // Positive control: the assertion above is an "expect nothing" check over a
   // population, which stays green if the comparison itself is broken. Prove it

@@ -10,7 +10,7 @@ const originalStringify = JSON.stringify;
 const originalEnv = { ...process.env };
 const context = { kind: 'pro', userId: 'user_pro_xyz', mcpTokenId: 'k57mcptokenid' };
 const budget = { allowance: 'mcp', limit: 50 };
-const sourceKeys = ['conflict:ucdp-events:v1', 'unrest:events:v1', 'risk:scores:sebuf:stale:v8', 'seed-meta:conflict:ucdp-events', 'seed-meta:unrest:events'];
+const sourceKeys = ['conflict:ucdp-events:v1', 'unrest:events:v1', 'risk:scores:sebuf:stale:v14', 'seed-meta:conflict:ucdp-events', 'seed-meta:unrest:events'];
 const iran = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
 const readCount = iran ? 6 : 5;
 
@@ -27,7 +27,7 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
       { id: 'de1', country: 'Germany', deathsBest: 5 },
     ] },
     'unrest:events:v1': { events: [{ country: 'France', fatalities: 3 }, { country: 'Germany' }] },
-    'risk:scores:sebuf:stale:v8': { ciiScores: [{ region: 'FR', score: 12 }, { region: 'DE', score: 7 }] },
+    'risk:scores:sebuf:stale:v14': { ciiScores: [{ region: 'FR', score: 12 }, { region: 'DE', score: 7 }] },
     'conflict:iran-events:v1': { events: [{ id: 'iran1', country: 'Iran' }] },
   });
   const invoke = async (deps, args = {}, name = 'get_conflict_events') => {
@@ -63,11 +63,28 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
     Object.assign(process.env, originalEnv);
   });
 
+  it('applies area and age filters on a dedicated panel connection', async () => {
+    const now = Date.now();
+    sources['conflict:ucdp-events:v1'].events = [
+      { id: 'paris', country: 'France', deathsBest: 1, location: { latitude: 48.86, longitude: 2.35 }, dateStart: now - 86_400_000 },
+      { id: 'lyon', country: 'France', deathsBest: 1, location: { latitude: 45.76, longitude: 4.84 }, dateStart: now - 86_400_000 },
+      { id: 'old-paris', country: 'France', deathsBest: 1, location: { latitude: 48.85, longitude: 2.34 }, dateStart: now - 30 * 86_400_000 },
+    ];
+    const { deps } = makeProDeps();
+    const result = await invoke(deps, { lat: 48.86, lon: 2.35, radius_km: 50, since_days: 7 });
+    assert.equal(result.body.error, undefined, JSON.stringify(result.body));
+    const data = envelope(result).data;
+    assert.deepEqual(data['ucdp-events'].events.map(event => event.id), ['paris']);
+    assert.equal(data.geo_filter.area.kind, 'radius');
+    const invalid = await invoke(deps, { lat: 48.86, radius_km: 50 });
+    assert.equal(invalid.body.error?.code, -32602, JSON.stringify(invalid.body));
+  });
+
   it('expires replay at the source deadline and recovers under the same daily admission', async () => {
     let clock = Date.UTC(2026, 9, 5, 12);
     Date.now = () => clock;
-    ucdpMeta.fetchedAt = clock - 29.5 * 60000;
-    unrestMeta.fetchedAt = clock;
+    ucdpMeta.fetchedAt = clock;
+    unrestMeta.fetchedAt = clock - 119.5 * 60000;
     const { deps, pipe } = makeProDeps();
     const first = await invoke(deps);
     const token = envelope(first).panelRequest.token;
@@ -81,13 +98,13 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
     assert.equal(expired.cached, undefined);
     assert.ok(expired.rateLimitKey.endsWith(':read'));
     const boundary = await invoke(deps, { panel_request: token });
-    assert.equal(envelope(boundary).stale, false, 'the ordinary evaluator includes the exact 30-minute boundary');
+    assert.equal(envelope(boundary).stale, false, 'the ordinary evaluator includes the exact 120-minute unrest boundary');
     assert.equal(fetched.length, 2 * readCount, 'an expired snapshot is reevaluated even at the boundary');
     clock += 1;
     const stale = await invoke(deps, { panel_request: token });
     assert.equal(envelope(stale).stale, true);
     assert.equal(fetched.length, 3 * readCount);
-    ucdpMeta.fetchedAt = clock;
+    unrestMeta.fetchedAt = clock;
     const recovered = await invoke(deps, { panel_request: token });
     assert.equal(envelope(recovered).stale, false);
     await invoke(deps, { panel_request: token });
@@ -95,12 +112,78 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
     assert.equal(pipe.count, 1);
   });
 
+  it('caps replay at UCDP content expiry and recovers under the same admission', async () => {
+    let clock = Date.UTC(2026, 9, 5, 12);
+    Date.now = () => clock;
+    Object.assign(ucdpMeta, { fetchedAt: clock, newestItemAt: clock - 129600 * 60000, maxContentAgeMin: 129600 });
+    unrestMeta.fetchedAt = clock;
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps);
+    assert.equal(envelope(first).stale, false);
+    const token = envelope(first).panelRequest.token;
+    const cacheSet = pipe.ops.flat().find(command => command[0] === 'SET' && command[1].includes(':data:'));
+    assert.equal(cacheSet.at(-1), 30, 'reuse ends when rounded content age exceeds 90 days');
+    assert.deepEqual(envelope(first).conflict_source.ucdp, ucdpMeta);
+    clock += 29_000;
+    await invoke(deps, { panel_request: token });
+    assert.equal(fetched.length, readCount);
+    clock += 1_000;
+    const expired = await invoke(deps, { panel_request: token });
+    assert.equal(envelope(expired).stale, true);
+    assert.equal(fetched.length, 2 * readCount);
+    ucdpMeta.newestItemAt = clock;
+    const recovered = await invoke(deps, { panel_request: token });
+    assert.equal(envelope(recovered).stale, false);
+    await invoke(deps, { panel_request: token });
+    assert.equal(fetched.length, 3 * readCount);
+    assert.equal(pipe.count, 1);
+  });
+
+  it('rechecks content expiry after a delayed panel cache lookup', async () => {
+    let clock = Date.UTC(2026, 9, 5, 12);
+    Date.now = () => clock;
+    Object.assign(ucdpMeta, { fetchedAt: clock, newestItemAt: clock - 129600 * 60000, maxContentAgeMin: 129600 });
+    unrestMeta.fetchedAt = clock;
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps);
+    clock += 29_000;
+    const pipeline = deps.redisPipeline;
+    deps.redisPipeline = async (commands, ...options) => {
+      const results = await pipeline(commands, ...options);
+      if (commands.length === 2 && commands[1][0] === 'GET' && commands[1][1].includes(':data:')) clock += 2_000;
+      return results;
+    };
+    const result = await invoke(deps, { panel_request: envelope(first).panelRequest.token });
+    assert.equal(envelope(result).stale, true);
+    assert.equal(fetched.length, 2 * readCount);
+    assert.equal(pipe.count, 1);
+  });
+
+  it('does not save when content expires during serialization', async () => {
+    let clock = Date.UTC(2026, 9, 5, 12);
+    Date.now = () => clock;
+    Object.assign(ucdpMeta, { fetchedAt: clock, newestItemAt: clock - 129600 * 60000, maxContentAgeMin: 129600 });
+    unrestMeta.fetchedAt = clock;
+    let delayed = false;
+    JSON.stringify = (value, ...args) => {
+      const text = originalStringify(value, ...args);
+      if (!delayed && value?.conflict_source && value.data) { clock += 31_000; delayed = true; }
+      return text;
+    };
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps);
+    assert.equal(first.body.error, undefined);
+    assert.equal(delayed, true);
+    assert.equal(pipe.ops.flat().filter(command => command[0] === 'SET' && command[1].includes(':data:')).length, 0);
+    assert.equal(pipe.count, 1);
+  });
+
   for (const [remainingMs, expectedTtl] of [[1599, 1], [999, null]]) {
     it(`floors a ${remainingMs}ms source reuse interval without overshooting it`, async () => {
       const clock = Date.UTC(2026, 9, 5, 12);
       Date.now = () => clock;
-      ucdpMeta.fetchedAt = clock - 30 * 60000 + remainingMs;
-      unrestMeta.fetchedAt = clock;
+      ucdpMeta.fetchedAt = clock;
+      unrestMeta.fetchedAt = clock - 120 * 60000 + remainingMs;
       const { deps, pipe } = makeProDeps();
       await invoke(deps);
       const sets = pipe.ops.flat().filter(command => command[0] === 'SET' && command[1].includes(':data:'));
@@ -109,11 +192,11 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
     });
   }
 
-  it('leaves old but valid unrest readable without caching a misleading shared freshness window', async () => {
+  it('leaves old but valid UCDP readable without caching a misleading shared freshness window', async () => {
     const clock = Date.UTC(2026, 9, 5, 12);
     Date.now = () => clock;
-    ucdpMeta.fetchedAt = clock;
-    unrestMeta.fetchedAt = clock - 45 * 60000;
+    ucdpMeta.fetchedAt = clock - 180 * 60000;
+    unrestMeta.fetchedAt = clock;
     const { deps, pipe } = makeProDeps();
     const first = await invoke(deps);
     assert.equal(envelope(first).stale, false);
@@ -150,8 +233,8 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
   it('checks the source deadline after a delayed cache lookup', async () => {
     let clock = Date.UTC(2026, 9, 5, 12);
     Date.now = () => clock;
-    ucdpMeta.fetchedAt = clock - 29.5 * 60000;
-    unrestMeta.fetchedAt = clock;
+    ucdpMeta.fetchedAt = clock;
+    unrestMeta.fetchedAt = clock - 119.5 * 60000;
     const { deps, pipe } = makeProDeps();
     const first = await invoke(deps);
     clock += 29_000;
@@ -171,8 +254,8 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
     it(`does not save after serialization reaches the ${label}`, async () => {
       let clock = Date.UTC(2026, 9, 5, 12);
       Date.now = () => clock;
-      ucdpMeta.fetchedAt = label === 'source deadline' ? clock - 29.5 * 60000 : clock;
-      unrestMeta.fetchedAt = clock;
+      ucdpMeta.fetchedAt = clock;
+      unrestMeta.fetchedAt = label === 'source deadline' ? clock - 119.5 * 60000 : clock;
       let delayed = false;
       JSON.stringify = (value, ...args) => {
         const text = originalStringify(value, ...args);
@@ -258,7 +341,7 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
   for (const [label, mutate] of [
     ['missing original unrest bucket', () => { sources['unrest:events:v1'] = null; }],
     ['malformed original excluded row', () => { sources['conflict:ucdp-events:v1'].events.push(null); }],
-    ['malformed original scores', () => { sources['risk:scores:sebuf:stale:v8'].ciiScores = {}; }],
+    ['malformed original scores', () => { sources['risk:scores:sebuf:stale:v14'].ciiScores = {}; }],
     ['malformed source completeness', () => { sources['conflict:ucdp-events:v1'].candidateComplete = 'true'; }],
     ['malformed source failed-pages', () => { sources['conflict:ucdp-events:v1'].annualFailedPages = '0'; }],
     ['malformed original unrest row', () => { sources['unrest:events:v1'].events.push(false); }],
@@ -268,7 +351,10 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
     ['missing completeness', () => { delete ucdpMeta.annualFailedPages; }],
     ['mismatched versions', () => { ucdpMeta.candidateVersion = '26.0.8'; }],
     ['annual-only unknown candidate', () => { ucdpMeta.candidateVersion = null; ucdpMeta.candidateComplete = false; sources['conflict:ucdp-events:v1'].candidateVersion = null; }],
-    ['stale source', () => { ucdpMeta.fetchedAt -= 40 * 60000; }],
+    ['stale source', () => { ucdpMeta.fetchedAt -= 421 * 60000; }],
+    ['failed refresh', () => { ucdpMeta.status = 'error'; }],
+    ['expired event content', () => { Object.assign(ucdpMeta, { newestItemAt: Date.now() - 91 * 86400000, maxContentAgeMin: 129600 }); }],
+    ['missing event clock', () => { Object.assign(ucdpMeta, { newestItemAt: null, maxContentAgeMin: 129600 }); }],
     ['unknown source metadata', () => { ucdpMeta = null; }],
     ['failed metadata read', () => { ucdpMeta = new Error('fixture failure'); }],
     ['structured degraded source', () => { sources['unrest:events:v1'].degraded = true; }],
@@ -289,9 +375,9 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
     });
   }
   for (const [label, mutate] of [
-    ['degraded scores', () => { sources['risk:scores:sebuf:stale:v8'].degraded = true; }],
+    ['degraded scores', () => { sources['risk:scores:sebuf:stale:v14'].degraded = true; }],
     ['missing unrest', () => { sources['unrest:events:v1'] = null; }],
-    ['malformed unrelated scores row', () => { sources['risk:scores:sebuf:stale:v8'].ciiScores.push(null); }],
+    ['malformed unrelated scores row', () => { sources['risk:scores:sebuf:stale:v14'].ciiScores.push(null); }],
   ]) {
     it(`still narrows usable events when ${label} makes the original noncacheable`, async () => {
       const { deps, pipe } = makeProDeps();
@@ -400,7 +486,12 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
       { planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: Date.now() + 86400000 },
     ]) {
       const { deps, pipe } = makeProDeps({ getEntitlements: async () => entitlement });
-      const first = await invoke(deps, { country: 'France', min_fatalities: '1', limit: 1.9, extra: true });
+      const fetchCount = fetched.length;
+      const invalid = await invoke(deps, { country: 'France', min_fatalities: '1', limit: 1.9, extra: true });
+      assert.equal(invalid.body.error?.code, -32602);
+      assert.equal(pipe.count, 0);
+      assert.equal(fetched.length, fetchCount);
+      const first = await invoke(deps, { country: 'France', min_fatalities: 1, limit: 1.9, extra: true });
       assert.equal(first.body.error, undefined);
       assert.equal(envelope(first).panelRequest, undefined);
       assert.equal(envelope(first).data['ucdp-events'].events.length, 1);

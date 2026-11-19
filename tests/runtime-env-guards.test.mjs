@@ -1,3 +1,8 @@
+// Env-source guard by design (#8690, section 2): this suite checks explicit
+// Vite env reads and rejects whole-object and dynamic-access source patterns.
+// Runtime values after Vite replaces env expressions cannot show which
+// source-access pattern produced them.
+//
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -7,9 +12,11 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const runtimeSrc = readFileSync(resolve(__dirname, '../src/services/runtime.ts'), 'utf-8');
 // #5911 split the desktop detector (and its VITE_DESKTOP_RUNTIME read) into a
-// dependency-free leaf. The allow-list invariant follows the code: both halves
-// are asserted, so the split cannot be used to smuggle in a whole-env snapshot.
-const desktopRuntimeSrc = readFileSync(resolve(__dirname, '../src/services/desktop-runtime.ts'), 'utf-8');
+// dependency-free leaf, and #5912 moved that leaf to src/config/ so config
+// modules can import it (src/services/desktop-runtime.ts only re-exports it).
+// The allow-list invariant follows the implementation: both halves are
+// asserted, so the split cannot be used to smuggle in a whole-env snapshot.
+const desktopRuntimeSrc = readFileSync(resolve(__dirname, '../src/config/desktop-runtime.ts'), 'utf-8');
 const variantSrc = readFileSync(resolve(__dirname, '../src/config/variant.ts'), 'utf-8');
 
 describe('runtime env guards', () => {

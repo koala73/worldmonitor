@@ -81,6 +81,12 @@ export interface TransitSummary {
   riskReportAction: string;
   dataAvailable: boolean;
   todayCountsAvailable: boolean;
+  officialLatestDate: string;
+  officialLatestTotal: number;
+  officialAvg7d?: number;
+  baselineAvgDaily: number;
+  baselineFrom: string;
+  baselineTo: string;
 }
 
 export interface TransitDayCount {
@@ -108,6 +114,7 @@ export interface FlowEstimate {
   source: FlowSource;
   hazardAlertLevel: string;
   hazardAlertName: string;
+  latestDate: string;
 }
 
 export interface GetChokepointHistoryRequest {

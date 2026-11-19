@@ -72,7 +72,9 @@ export default defineConfig({
   },
   build: {
     // Built only to be uploaded; filesToDeleteAfterUpload removes them again.
-    sourcemap: uploadSourceMapsToSentry,
+    // 'hidden': Sentry matches maps by debug ID, so bundles need no
+    // sourceMappingURL pointing at a file that is deleted after upload.
+    sourcemap: uploadSourceMapsToSentry ? 'hidden' : false,
     // @clerk/clerk-js ships as one monolithic vendor SDK (~3MB) that can't be
     // split further; it's already dynamically imported (services/clerk.ts)
     // so it never loads on first paint. Raise the warning threshold to match.

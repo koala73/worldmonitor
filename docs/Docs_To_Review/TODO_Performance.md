@@ -80,9 +80,7 @@ Status:  · 🔄 Partial · ❌ Not started
 ### PERF-008 — Virtualize Panel Content Lists
 
 - **Impact:** 🔴 High | **Effort:** ~1 day
-- **Status:**  — `VirtualList.ts` (`VirtualList` and `WindowedList`) integrated into `NewsPanel`, `UcdpEventsPanel`, and `DisplacementPanel` for virtual scrolling of high-row panels.
-- The `VirtualList.ts` component exists but is not used by most panels. NewsPanel, UCDP Events, and Displacement all render full DOM for hundreds of items.
-- Integrate `VirtualList` into every panel that can display >20 rows.
+- **Status:** `WindowedList` in `VirtualList.ts` is what `NewsPanel` uses for windowed rows. Most panels still render the full list.
 - **Expected gain:** DOM node count drops from ~5000 to ~500. Smooth scrolling.
 
 ### PERF-009 — Batch DOM Updates with requestAnimationFrame
@@ -343,7 +341,7 @@ Status:  · 🔄 Partial · ❌ Not started
 ### PERF-040 — Move CII Calculation to Web Worker
 
 - **Impact:** 🟡 Medium | **Effort:** ~4 hours
-- **Status:** Deprecated premise — the proposed CII worker file was never added. Published CII is server-authoritative v8 for 31 Tier-1 countries from `shared/cii-weights.ts`; the frontend normally renders cached risk scores and only uses `calculateCII()` as the local fallback path.
+- **Status:** Deprecated premise — the proposed CII worker file was never added. Published CII is server-authoritative v14 for 31 Tier-1 countries from `shared/cii-weights.ts`; the frontend normally renders cached risk scores and only uses `calculateCII()` as the local fallback path.
 - **Expected gain:** Re-open only with fresh profiling evidence that the local fallback path, not cached server-score ingestion, causes measurable main-thread stalls.
 
 ### PERF-041 — SharedArrayBuffer for Large Datasets

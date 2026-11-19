@@ -15,7 +15,6 @@
    - [MapContainer (Adapter)](#mapcontainer)
    - [MapPopup (Popup Builder)](#mappopup)
 4. [Virtual Scrolling](#virtual-scrolling)
-   - [VirtualList](#virtuallist)
    - [WindowedList\<T\>](#windowedlistt)
 5. [Search](#search)
    - [SearchModal](#searchmodal)
@@ -57,7 +56,7 @@ communicates through method calls, callbacks, and a handful of
 |---|---|
 | Panel subclasses | ~35 |
 | Map components | 4 (DeckGLMap, MapComponent, MapContainer, MapPopup) |
-| Virtual scrolling | 2 (VirtualList, WindowedList) |
+| Virtual scrolling | 1 (WindowedList) |
 | Search | 1 (SearchModal) |
 | Modals & widgets | ~9 |
 | **Total** | **~51** |
@@ -109,7 +108,6 @@ const panel = new Panel(options);
 | `toggle()` | `(): void` | Toggles between show/hide. |
 | `setNewBadge()` | `(): void` | Adds the "NEW" pill next to the title. |
 | `clearNewBadge()` | `(): void` | Removes the "NEW" pill. |
-| `getId()` | `(): string` | Returns the panel id. |
 | `resetHeight()` | `(): void` | Clears any user-set height override. |
 | `destroy()` | `(): void` | Removes element, cleans up listeners. |
 
@@ -414,50 +412,7 @@ returns sanitized HTML.
 
 **File:** `src/components/VirtualList.ts`
 
-Two complementary strategies for rendering large lists without creating
-thousands of DOM nodes.
-
-### VirtualList
-
-Fixed-height, DOM-recycling virtual scroller.
-
-#### Constructor
-
-```ts
-interface VirtualListOptions {
-  itemHeight: number;          // px height per row
-  overscan?: number;           // extra rows above/below viewport (default 3)
-  container: HTMLElement;      // parent element
-  renderItem: (index: number, el: HTMLElement) => void;
-  onRecycle?: (el: HTMLElement) => void;
-}
-
-const vl = new VirtualList(options);
-```
-
-#### Methods
-
-| Method | Signature | Description |
-|---|---|---|
-| `setItemCount()` | `(n: number): void` | Total number of items. |
-| `refresh()` | `(): void` | Re-render visible items from current scroll position. |
-| `scrollToIndex()` | `(i: number): void` | Programmatic scroll. |
-| `getViewport()` | `(): { start: number; end: number }` | Currently visible range. |
-| `destroy()` | `(): void` | Cleanup. |
-
-#### DOM Structure
-
-```
-div.virtual-viewport
- └─ div.virtual-content           ← total height = itemHeight × itemCount
-     ├─ (spacer top)
-     ├─ div.virtual-item          ← pooled, reused via renderItem()
-     ├─ div.virtual-item
-     ├─ ...
-     └─ (spacer bottom)
-```
-
----
+`WindowedList` renders large lists in chunks so a panel does not create a DOM node for every row.
 
 ### WindowedList\<T\>
 
@@ -592,7 +547,7 @@ domain-specific markup.
 |---|---|
 | **File** | `src/components/CIIPanel.ts` |
 | **Panel ID** | `cii` |
-| **Purpose** | Renders server-authoritative CII v8 scores for 31 Tier-1 countries from cached risk-score ingestion, with local fallback scoring when forced or no cached data is available. |
+| **Purpose** | Renders server-authoritative CII v14 scores for 31 Tier-1 countries from cached risk-score ingestion, with local fallback scoring when forced or no cached data is available. |
 | **Key methods** | `setShareStoryHandler()`, `setCountryClickHandler()`, `refresh(forceLocal?)`, `renderFromCached(cached)`, `getScores()` |
 | **DOM** | `.cii-list` → `.cii-country` each with header (emoji flag, name, score, trend arrow, share button), colour bar, sub-score row (U/C/S/I). |
 | **Services** | `toCountryScore()`, `calculateCII()` fallback path, `getCSSColor` |
@@ -1063,15 +1018,6 @@ small UI affordances.
 | **Key methods** | `setOnSignalClick()`, `setOnAlertClick()` |
 | **Notes** | Audio notification for new findings. `full` variant only. |
 
-### VerificationChecklist
-
-| Field | Detail |
-|---|---|
-| **File** | `src/components/VerificationChecklist.ts` |
-| **Purpose** | Bellingcat-style open-source verification checklist (8 checks). |
-| **Framework** | **Preact** component (`extends Component`) — the only Preact component in the codebase. |
-| **Notes** | Verdict scoring based on completed checks. |
-
 ---
 
 ## Variant Visibility Matrix
@@ -1083,7 +1029,7 @@ small UI affordances.
 | MapComponent | ✅ | ✅ | ✅ |
 | MapContainer | ✅ | ✅ | ✅ |
 | MapPopup | ✅ | ✅ | ✅ |
-| VirtualList / WindowedList | ✅ | ✅ | ✅ |
+| WindowedList | ✅ | ✅ | ✅ |
 | SearchModal | ✅ | ✅ | ✅ |
 | NewsPanel | ✅ | ✅ | ✅ |
 | LiveNewsPanel | ✅ | ✅ | — |
@@ -1128,7 +1074,6 @@ small UI affordances.
 | DownloadBanner | ✅ | ✅ | ✅ |
 | PizzIntIndicator | ✅ | — | — |
 | IntelligenceFindingsBadge | ✅ | — | — |
-| VerificationChecklist | ✅ | ✅ | — |
 
 ---
 
@@ -1318,7 +1263,7 @@ export { MapComponent } from './Map';
 export { MapContainer } from './MapContainer';
 
 // Scrolling
-export { VirtualList, WindowedList } from './VirtualList';
+export { WindowedList } from './VirtualList';
 
 // Search
 export { SearchModal } from './SearchModal';
@@ -1329,7 +1274,6 @@ export { CountryBriefPage } from './CountryBriefPage';
 export { CountryTimeline } from './CountryTimeline';
 export { PlaybackControl } from './PlaybackControl';
 export { LanguageSelector } from './LanguageSelector';
-export { VerificationChecklist } from './VerificationChecklist';
 // ... and standalone functions
 ```
 

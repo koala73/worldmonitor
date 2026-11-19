@@ -238,3 +238,13 @@ test('readCanonicalEnvelopeMeta: retries on timeout, still null (never throws) w
   assert.equal(calls, 3, 'default retry count should be 2 (3 total attempts)');
   assert.equal(meta, null, 'defensive null contract preserved');
 });
+
+test('verifySeedKey: a cooldown beyond the bounded wait fails without an early retry', async () => {
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return buildResponse({ ok: false, status: 429, body: {}, headers: { 'Retry-After': '120' } });
+  };
+  assert.equal(await verifySeedKey('fixture:cooldown'), null);
+  assert.equal(calls, 1);
+});

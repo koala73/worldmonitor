@@ -1,0 +1,1319 @@
+{
+  "observations": {
+    "Eggs": [
+      {
+        "price": {
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "type": "literal",
+          "value": "101.97"
+        },
+        "v0": {
+          "type": "uri",
+          "value": "https://ld.admin.ch/time/month/2026-09"
+        },
+        "v1": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product/201"
+        },
+        "v2": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/unit/2"
+        },
+        "v3": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/currency/1"
+        },
+        "v4": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/production-system/1"
+        },
+        "v5": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product-origin/1"
+        },
+        "v6": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/sales-region/1"
+        },
+        "v7": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/data-method/5"
+        },
+        "v8": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product-properties/10"
+        },
+        "v9": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/value-chain-detail/18"
+        },
+        "v10": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/data-source/4"
+        },
+        "v11": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/key-indicator-type/1"
+        },
+        "v12": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/usage/0"
+        },
+        "v13": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/cost-component/1"
+        },
+        "v14": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/foreign-trade/0"
+        }
+      },
+      {
+        "price": {
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "type": "literal",
+          "value": "32.79"
+        },
+        "v0": {
+          "type": "uri",
+          "value": "https://ld.admin.ch/time/month/2026-09"
+        },
+        "v1": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product/193"
+        },
+        "v2": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/unit/2"
+        },
+        "v3": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/currency/1"
+        },
+        "v4": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/production-system/L4-3"
+        },
+        "v5": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product-origin/8"
+        },
+        "v6": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/sales-region/1"
+        },
+        "v7": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/data-method/5"
+        },
+        "v8": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product-properties/4"
+        },
+        "v9": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/value-chain-detail/18"
+        },
+        "v10": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/data-source/4"
+        },
+        "v11": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/key-indicator-type/1"
+        },
+        "v12": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/usage/0"
+        },
+        "v13": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/cost-component/1"
+        },
+        "v14": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/foreign-trade/1"
+        }
+      },
+      {
+        "price": {
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "type": "literal",
+          "value": "42.25"
+        },
+        "v0": {
+          "type": "uri",
+          "value": "https://ld.admin.ch/time/month/2026-09"
+        },
+        "v1": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product/216"
+        },
+        "v2": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/unit/2"
+        },
+        "v3": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/currency/1"
+        },
+        "v4": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/production-system/L4-3"
+        },
+        "v5": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product-origin/1"
+        },
+        "v6": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/sales-region/1"
+        },
+        "v7": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/data-method/5"
+        },
+        "v8": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product-properties/4"
+        },
+        "v9": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/value-chain-detail/18"
+        },
+        "v10": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/data-source/4"
+        },
+        "v11": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/key-indicator-type/1"
+        },
+        "v12": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/usage/0"
+        },
+        "v13": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/cost-component/1"
+        },
+        "v14": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/foreign-trade/0"
+        }
+      }
+    ],
+    "MilkDairyProducts": [
+      {
+        "price": {
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "type": "literal",
+          "value": "1.41"
+        },
+        "v0": {
+          "type": "uri",
+          "value": "https://ld.admin.ch/time/month/2026-09"
+        },
+        "v1": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product/268"
+        },
+        "v2": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/unit/7"
+        },
+        "v3": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/currency/CHF"
+        },
+        "v4": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/production-system/3"
+        },
+        "v5": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product-origin/1"
+        },
+        "v6": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/sales-region/1"
+        },
+        "v7": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/data-method/0"
+        },
+        "v8": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product-properties/0"
+        },
+        "v9": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/value-chain-detail/18"
+        },
+        "v10": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/data-source/1"
+        },
+        "v11": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/key-indicator-type/1"
+        },
+        "v12": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/usage/0"
+        },
+        "v13": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/cost-component/1"
+        },
+        "v14": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/foreign-trade/0"
+        }
+      },
+      {
+        "price": {
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "type": "literal",
+          "value": "1.49"
+        },
+        "v0": {
+          "type": "uri",
+          "value": "https://ld.admin.ch/time/month/2026-09"
+        },
+        "v1": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product/269"
+        },
+        "v2": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/unit/7"
+        },
+        "v3": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/currency/CHF"
+        },
+        "v4": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/production-system/3"
+        },
+        "v5": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product-origin/1"
+        },
+        "v6": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/sales-region/1"
+        },
+        "v7": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/data-method/0"
+        },
+        "v8": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product-properties/0"
+        },
+        "v9": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/value-chain-detail/18"
+        },
+        "v10": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/data-source/1"
+        },
+        "v11": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/key-indicator-type/1"
+        },
+        "v12": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/usage/0"
+        },
+        "v13": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/cost-component/1"
+        },
+        "v14": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/foreign-trade/0"
+        }
+      },
+      {
+        "price": {
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "type": "literal",
+          "value": "1.55"
+        },
+        "v0": {
+          "type": "uri",
+          "value": "https://ld.admin.ch/time/month/2026-09"
+        },
+        "v1": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product/322"
+        },
+        "v2": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/unit/7"
+        },
+        "v3": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/currency/CHF"
+        },
+        "v4": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/production-system/3"
+        },
+        "v5": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product-origin/1"
+        },
+        "v6": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/sales-region/1"
+        },
+        "v7": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/data-method/0"
+        },
+        "v8": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product-properties/0"
+        },
+        "v9": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/value-chain-detail/18"
+        },
+        "v10": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/data-source/1"
+        },
+        "v11": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/key-indicator-type/1"
+        },
+        "v12": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/usage/0"
+        },
+        "v13": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/cost-component/1"
+        },
+        "v14": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/foreign-trade/0"
+        }
+      }
+    ],
+    "FruitsVegetablesPotatoes": [
+      {
+        "price": {
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "type": "literal",
+          "value": "3.52"
+        },
+        "v0": {
+          "type": "uri",
+          "value": "https://ld.admin.ch/time/month/2026-09"
+        },
+        "v1": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product/1012"
+        },
+        "v2": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/unit/1"
+        },
+        "v3": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/currency/CHF"
+        },
+        "v4": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/production-system/4"
+        },
+        "v5": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product-origin/0"
+        },
+        "v6": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/sales-region/1"
+        },
+        "v7": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/data-method/1"
+        },
+        "v8": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product-properties/1"
+        },
+        "v9": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/value-chain-detail/18"
+        },
+        "v10": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/data-source/4"
+        },
+        "v11": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/key-indicator-type/1"
+        },
+        "v12": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/usage/10"
+        },
+        "v13": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/cost-component/1"
+        },
+        "v14": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/foreign-trade/0"
+        }
+      },
+      {
+        "price": {
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "type": "literal",
+          "value": "3.52"
+        },
+        "v0": {
+          "type": "uri",
+          "value": "https://ld.admin.ch/time/month/2026-09"
+        },
+        "v1": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product/1012"
+        },
+        "v2": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/unit/1"
+        },
+        "v3": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/currency/CHF"
+        },
+        "v4": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/production-system/4"
+        },
+        "v5": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product-origin/0"
+        },
+        "v6": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/sales-region/L4-10005"
+        },
+        "v7": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/data-method/1"
+        },
+        "v8": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product-properties/1"
+        },
+        "v9": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/value-chain-detail/18"
+        },
+        "v10": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/data-source/4"
+        },
+        "v11": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/key-indicator-type/1"
+        },
+        "v12": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/usage/10"
+        },
+        "v13": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/cost-component/1"
+        },
+        "v14": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/foreign-trade/0"
+        }
+      },
+      {
+        "price": {
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "type": "literal",
+          "value": "3.52"
+        },
+        "v0": {
+          "type": "uri",
+          "value": "https://ld.admin.ch/time/month/2026-09"
+        },
+        "v1": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product/1012"
+        },
+        "v2": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/unit/1"
+        },
+        "v3": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/currency/CHF"
+        },
+        "v4": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/production-system/4"
+        },
+        "v5": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product-origin/0"
+        },
+        "v6": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/sales-region/L4-10006"
+        },
+        "v7": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/data-method/1"
+        },
+        "v8": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/product-properties/1"
+        },
+        "v9": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/value-chain-detail/18"
+        },
+        "v10": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/data-source/4"
+        },
+        "v11": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/key-indicator-type/1"
+        },
+        "v12": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/usage/10"
+        },
+        "v13": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/cost-component/1"
+        },
+        "v14": {
+          "type": "uri",
+          "value": "https://agriculture.ld.admin.ch/foag/foreign-trade/0"
+        }
+      }
+    ]
+  },
+  "labels": [
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/cost-component/1"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "incl. VAT"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/cost-component/1"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "inkl. MwSt"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/data-method/0"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "NA"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/data-method/0"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "NA"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/data-method/1"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "List price"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/data-method/1"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Listenpreis"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/data-method/5"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Realised value"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/data-method/5"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Realisierter Wert"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/data-source/1"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "BLW, Fachbereich Agrardaten und Marktanalysen"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/data-source/1"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "FOAG, Agricultural Data and Market Analysis"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/data-source/4"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "BLW, Fachbereich Agrardaten und Marktanalysen, Basis Eigenerhebung Detailhandel Standardprodukte"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/data-source/4"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "FOAG, Agricultural Data and Market Analysis, base: own data collection retail standard products"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/foreign-trade/0"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "NA"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/foreign-trade/0"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "NA"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/foreign-trade/1"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Import"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/foreign-trade/1"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Import"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product-origin/0"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "NA"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product-origin/0"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "NA"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product-origin/1"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Schweiz"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product-origin/1"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Switzerland"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product-origin/8"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Nicht-Schweiz"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product-origin/8"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Non-Switzerland"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product-properties/0"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "NA"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product-properties/0"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "NA"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product-properties/1"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "fresh"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product-properties/1"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "frisch"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product-properties/10"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "cooked"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product-properties/10"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "gekocht"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product-properties/4"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "raw"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product-properties/4"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "roh"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product/1012"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Trauben weiss kernlos"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product/193"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Boden, roh, Import"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product/193"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Barn, raw eggs, imports"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product/201"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Bio, gekocht, CH"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product/201"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Organic, boiled eggs, CH"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product/216"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Barn, raw eggs, pack of 10, CH"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product/216"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Boden, roh, 10er-Packung, CH"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product/268"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Vollmilch UHT"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product/269"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Milch Drink UHT"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/product/322"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Magermilch UHT"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/production-system/1"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Bio"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/production-system/1"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Organic"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/production-system/3"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Conventional"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/production-system/3"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Konventionell"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/production-system/4"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Nicht-Bio"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/production-system/4"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Non-organic"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/production-system/L4-3"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Boden"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/production-system/L4-3"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Barn"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/sales-region/1"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Schweiz"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/sales-region/1"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Switzerland"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/sales-region/L4-10005"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "D-CH"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/sales-region/L4-10005"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "D-CH"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/sales-region/L4-10006"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "F-CH"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/sales-region/L4-10006"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "F-CH"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/unit/1"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "kg"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/unit/1"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "kg"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/unit/2"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Piece"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/unit/2"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Stück"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/unit/7"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Liter"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/unit/7"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Litres"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/usage/0"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "NA"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/usage/0"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "NA"
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/usage/10"
+      },
+      "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Produkt für direkten menschlichen Verzehr "
+      }
+    },
+    {
+      "uri": {
+        "type": "uri",
+        "value": "https://agriculture.ld.admin.ch/foag/usage/10"
+      },
+      "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Product for direct human consumption"
+      }
+    }
+  ]
+}

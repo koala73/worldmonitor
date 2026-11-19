@@ -28,6 +28,16 @@ const command = ([op, key, value]) => {
   if (op === 'EVAL') return 1;
   throw new Error('Unexpected Redis command ' + op);
 };
+// runSeed's lock fence (SM-122): renewal and fenced writes find the lock held;
+// a fenced write (two keys: lock, target) is the SET it performs.
+const isFence = (cmd) => cmd[0] === 'EVAL' && String(cmd[1]).includes('PEXPIRE');
+const unfence = (cmd) => (isFence(cmd) && cmd[2] === 2
+  ? (cmd[8] === '' ? ['SET', cmd[4], cmd[7]] : ['SET', cmd[4], cmd[7], 'EX', cmd[8]])
+  : cmd);
+const reply = (cmd) => {
+  const result = command(unfence(cmd));
+  return isFence(cmd) ? [1, ''] : result;
+};
 globalThis.fetch = async (input, options = {}) => {
   const url = new URL(input);
   if (url.hostname === 'services6.arcgis.com') {
@@ -37,7 +47,7 @@ globalThis.fetch = async (input, options = {}) => {
   if (url.hostname !== 'bc-redis.test') throw new Error('Unexpected network ' + url.hostname);
   if (url.pathname.startsWith('/get/')) return Response.json({ result: cache.get(decodeURIComponent(url.pathname.slice(5))) ?? null });
   const body = JSON.parse(options.body);
-  return Response.json(Array.isArray(body[0]) ? body.map(cmd => ({ result: command(cmd) })) : { result: command(body) });
+  return Response.json(Array.isArray(body[0]) ? body.map(cmd => ({ result: reply(cmd) })) : { result: reply(body) });
 };
 process.on('exit', () => console.log('BC_RESULT=' + JSON.stringify([...cache])));
 await import(process.argv[1]);

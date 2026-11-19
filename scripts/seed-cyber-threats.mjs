@@ -544,7 +544,8 @@ async function fetchUrlhaus(cutoffMs) {
         id: `urlhaus:${indType}:${indicator}`, type, source: 'urlhaus', indicator, indicatorType: indType,
         lat: toNum(r?.latitude ?? r?.lat), lon: toNum(r?.longitude ?? r?.lon),
         country: normCountry(r?.country || r?.country_code), severity: sev,
-        malwareFamily: clean(r?.threat, 80), tags, firstSeen, lastSeen,
+        // URLhaus's threat field is a classification, not a malware family.
+        malwareFamily: '', tags: normTags([threat, ...tags], 9), firstSeen, lastSeen,
       });
       if (t) threats.push(t);
       if (threats.length >= MAX_LIMIT) break;
@@ -640,6 +641,19 @@ async function fetchOtx(days) {
   }
 }
 
+// A failed blacklist call (non-OK, e.g. a 429 from the daily cap, an invalid body, or a thrown error) falls back to the
+// last good 24h list instead of publishing 0 rows, so the feed does not flap between
+// 500 rows and none. The retained rows carry no fresh observation clock.
+async function retainedAbuseIpDb(label, reason = 'upstream-error') {
+  const cached = await verifySeedKey(ABUSEIPDB_CACHE_KEY).catch(() => null);
+  if (Array.isArray(cached) && cached.length > 0) {
+    console.warn(`  AbuseIPDB: ${label} — keeping ${cached.length} cached threats`);
+    return { ...providerResult(true, cached), outcome: 'retained', reason: `${reason}-cache` };
+  }
+  console.warn(`  AbuseIPDB: ${label} — no cache`);
+  return providerResult(false, [], null, reason);
+}
+
 async function fetchAbuseIpDb() {
   const apiKey = clean(process.env.ABUSEIPDB_API_KEY || '', 200);
   if (!apiKey) { console.log('  AbuseIPDB: skipped (no ABUSEIPDB_API_KEY)'); return { ...providerResult(false, [], null, 'missing-key'), outcome: 'unconfigured' }; }
@@ -669,9 +683,9 @@ async function fetchAbuseIpDb() {
       headers: { Accept: 'application/json', Key: apiKey, 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    if (!resp.ok) return providerResult(false);
+    if (!resp.ok) return retainedAbuseIpDb(`HTTP ${resp.status}`);
     const records = await providerRows(resp, 'abuseipdb', ['data']);
-    if (records === null) return providerResult(false, [], null, 'invalid-payload');
+    if (records === null) return retainedAbuseIpDb('invalid payload', 'invalid-payload');
     const threats = [];
     for (const r of records) {
       const ip = clean(r?.ipAddress || r?.ip || '', 80).toLowerCase();
@@ -692,8 +706,7 @@ async function fetchAbuseIpDb() {
     await writeExtraKey(ABUSEIPDB_RATE_KEY, { calledAt: Date.now() }, 86400).catch(() => {});
     return providerResult(true, threats, Date.now());
   } catch (e) {
-    console.warn(`  AbuseIPDB: failed — ${e.message}`);
-    return providerResult(false);
+    return retainedAbuseIpDb(`failed — ${e.message}`);
   }
 }
 
@@ -710,7 +723,7 @@ export function dedupeThreats(threats) {
     const eSeen = existing.lastSeen || existing.firstSeen;
     const cSeen = t.lastSeen || t.firstSeen;
     if (cSeen >= eSeen) {
-      map.set(key, { ...existing, ...t, tags: normTags([...existing.tags, ...t.tags]) });
+      map.set(key, { ...existing, ...t, tags: normTags([...existing.tags, ...t.tags], t.source === 'urlhaus' ? 9 : 8) });
     }
   }
   return Array.from(map.values());
@@ -806,8 +819,10 @@ async function fetchAllThreats() {
     });
   }
 
-  const anyOk = feodo.ok || urlhaus.ok || c2intel.ok || otx.ok || abuseipdb.ok;
-  if (!anyOk) throw new Error('All 5 IOC sources failed');
+  // A retained AbuseIPDB list (rate window or failed call) keeps the feed populated but is
+  // not a fresh observation: a run where nothing was observed must fail, so seed-meta ages.
+  const anyObserved = [feodo, urlhaus, c2intel, otx, abuseipdb].some((p) => p.ok && p.outcome === 'observed');
+  if (!anyObserved) throw new Error('All 5 IOC sources failed');
 
   const combined = dedupeThreats([
     ...feodo.threats, ...urlhaus.threats, ...c2intel.threats, ...otx.threats, ...abuseipdb.threats,

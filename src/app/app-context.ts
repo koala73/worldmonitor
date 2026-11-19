@@ -23,18 +23,18 @@ import type { Earthquake } from '@/services/earthquakes';
 
 export type { CountryBriefSignals } from '@/types';
 
-import type { UnifiedSettingsTabId } from '@/components/settings-types';
-export type { UnifiedSettingsTabId };
+import type { SettingsSectionId } from '@/config/settings-sections';
 
 export interface UnifiedSettingsController {
   open(
-    tab?: UnifiedSettingsTabId,
+    section?: SettingsSectionId,
     replaceOverlayId?: OverlayId,
     historyPending?: boolean,
   ): void | Promise<boolean>;
   close(): void;
   hasPendingChanges(): boolean;
   refreshPanelToggles(): void;
+  refreshSourceToggles(): void;
   getButton(): HTMLButtonElement;
   destroy(): void;
 }
@@ -94,6 +94,17 @@ export interface AppContext {
   cyberThreatsCache: CyberThreat[] | null;
 
   disabledSources: Set<string>;
+  pendingSourcePreferences?: {
+    /** Ownership for the live source selection. */
+    gateOwned: Set<string> | null;
+    /** Ownership for the stored selection after a partial write. */
+    baselineGateOwned: Set<string> | null;
+    /** Session overrides; true disables a source, false enables it. */
+    edits: Map<string, boolean>;
+    /** Startup defaults used until saved or replaced by an applied cloud snapshot. */
+    fallbackDisabledSources?: Set<string>;
+    migrationMarkers: string[];
+  };
   currentTimeRange: import('@/components').TimeRange;
 
   inFlight: Set<string>;
@@ -103,6 +114,9 @@ export interface AppContext {
   signalModal: import('@/components/SignalModal').SignalModal | null;
   ensureSignalModal: () => Promise<import('@/components/SignalModal').SignalModal>;
   statusPanel: import('@/components').StatusPanel | null;
+  // The last news coverage summary. StatusPanel loads lazily and can arrive
+  // after the first digest; it replays this so the coverage row still mounts.
+  digestCoverage: import('@/components/StatusPanel').DigestCoverageSummary | null;
   searchModal: import('@/components').SearchModal | null;
   findingsBadge: import('@/components').IntelligenceGapBadge | null;
   breakingBanner: import('@/components/BreakingNewsBanner').BreakingNewsBanner | null;
@@ -140,6 +154,8 @@ export interface AppContext {
   clustersSettled: boolean;
   resolvedLocation: 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
   activeChokepoint: string | null;
+  /** A ?country deep link whose brief has not opened yet; the URL keeps it meanwhile. */
+  pendingCountryBrief: { code: string; expanded: boolean } | null;
 
   initialUrlState: import('@/utils').ParsedMapUrlState | null;
   readonly PANEL_ORDER_KEY: string;

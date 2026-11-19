@@ -127,6 +127,7 @@ const BOOTSTRAP = [
   { key: "techEvents", group: "Science, Health & Society", holds: "125 upcoming tech conferences and events: title, location, start/end date, url" },
   { key: "positiveGeoEvents", group: "Science, Health & Society", holds: "~230 positive-news counts by country and category (e.g. humanity-kindness) with lat/lon" },
   { key: "crossBorderArrivals", group: "Science, Health & Society", holds: "16 UNHCR refugee situations: refugees by host country, returns, Mediterranean monthly arrivals, latest change" },
+  { key: "idmcIduDisplacement", group: "Science, Health & Society", holds: "IDMC internal displacement: ~3,800 located figures from 180 days, per-country 30-day totals and surge flags (~2.5 MB)" },
   { key: "giving", group: "Science, Health & Society", holds: "Global giving summary: estimated daily flow USD, platforms, categories, OECD aid" },
 ];
 
@@ -149,9 +150,14 @@ const RPCS = [
   { path: "/api/economic/v1/get-us-interest-rates", group: "Economy", params: "history (true = full dated history; default latest point)", holds: "US rates in %: fed funds effective and target range, Treasury 1m-30y (H.15), SOFR" },
   { path: "/api/economic/v1/get-us-treasury-par-yield-curve", group: "Economy", params: "history (true = every business day since 1990; default latest day)", holds: "US Treasury par yield curve, 1-month to 30-year tenors in %, per business day" },
   { path: "/api/economic/v1/get-world-cpi-monthly", group: "Economy", params: "country (ISO2, optional), history (true = stored periods, some since 2012)", holds: "CPI index with period-over-period and y/y % for 196 countries; monthly (Australia quarterly)" },
+  { path: "/api/economic/v1/get-capital-flows", group: "Economy", params: "country (ISO2, optional), counterpart (ISO2, with country: both directions of the pair), include_series (true)", holds: "Capital inflows/outflows with surge/stop/flight states; bank, portfolio and FDI positions per country and pair; USD bn" },
+  { path: "/api/economic/v1/get-no2-activity", group: "Economy", params: "country_code (ISO2: the country plus its clusters), region_id, kind (country|cluster)", holds: "Sentinel-5P NO2 activity direction and % change per country and industrial cluster; pending/excluded states; Copernicus credit" },
   { path: "/api/economic/v1/get-government-yield-curve", group: "Economy", params: "country (ISO2, required; daily curves for JP, CA, DE, GB, AU, CH, NO, SE; others monthly 10Y), history (true)", holds: "Sovereign yield per tenor (3m…40y) in %: latest day, or dated history with history=true" },
   { path: "/api/economic/v1/get-eu-yield-curve", group: "Economy", params: "", holds: "Euro area AAA government yield curve (ECB): 1Y, 2Y, 5Y, 10Y, 20Y, 30Y in %, latest date" },
   { path: "/api/economic/v1/get-economic-calendar", group: "Economy", params: "fromDate, toDate (YYYY-MM-DD)", holds: "Macro event calendar (rate decisions, data releases): country, date, impact, actual/estimate/previous" },
+  { path: "/api/scorecard/v1/get-five-factor-scorecard", group: "Economy", params: "countryCode (ISO2, required)", holds: "Food, energy, demographics, technology and defense capability bands for one country, with sub-scores" },
+  { path: "/api/scorecard/v1/get-bloc-scorecard", group: "Economy", params: "preset (USMCA|EU27|BRICS|GCC|ASEAN|NATO) or 2-30 unique ISO2 members as repeated query keys in the endpoint URL, e.g. ?members=US&members=CA (omit members from params)", holds: "Same five-factor scorecard aggregated across a bloc's members" },
+  { path: "/api/scorecard/v1/list-five-factor-scorecards", group: "Economy", params: "", holds: "Compact five-factor scorecard for every scored country: bands and coverage, no raw observations" },
   { path: "/api/economic/v1/get-energy-prices", group: "Energy & Commodities", params: "commodities (wti or brent; omit for both)", holds: "EIA spot prices for WTI and Brent crude: $/barrel, change %, price date" },
   { path: "/api/economic/v1/get-energy-capacity", group: "Energy & Commodities", params: "energy_sources (SUN, WND or COL; omit for all three)", holds: "US installed generating capacity MW for solar, wind, coal (EIA): ~20 annual points" },
   { path: "/api/economic/v1/get-oil-inventories", group: "Energy & Commodities", params: "", holds: "US crude, SPR and gas stocks (8 weekly points each), EU gas storage, IEA stocks, refinery data" },
@@ -168,6 +174,7 @@ const RPCS = [
   { path: "/api/intelligence/v1/list-satellites", group: "Conflict & Security", params: "country (optional)", holds: "~98 military and intelligence satellites: name, country, type (SAR…), TLE orbit lines" },
   { path: "/api/intelligence/v1/list-gps-interference", group: "Conflict & Security", params: "region (optional)", holds: "GPS jamming (gpsjam.org): counts of high/medium interference hexes, hexes with lat/lon and level" },
   { path: "/api/climate/v1/list-air-quality-data", group: "Disasters & Climate", params: "", holds: "~6,300 air quality stations, worst AQI first (OpenAQ): city, country, PM2.5, AQI, risk level" },
+  { path: "/api/climate/v1/list-reservoir-levels", group: "Disasters & Climate", params: "", holds: "Strategic reservoirs and lakes (ICESat-2 ATL13/ATL06 lidar): latest level, 30/90/365-day change, seasonal anomaly, status, 36-month series" },
   { path: "/api/news/v1/list-feed-digest", group: "News & Forecasts", params: "variant (full|tech|finance|happy|commodity), lang (en, fr, ar…)", holds: "Latest headlines grouped by category from the WorldMonitor RSS pool: title, source, link, time" },
   { path: "/api/news/v1/list-country-headlines", group: "News & Forecasts", params: "country_codes (ISO2, required, one per call)", holds: "Up to 5 recent headlines for a country: source, title, link, publish time" },
   { path: "/api/intelligence/v1/search-gdelt-documents", group: "News & Forecasts", params: "query (required), max_records (default 10, max 20)", holds: "GDELT news article search: title, url, source, date, language, tone" },
@@ -198,6 +205,8 @@ const RPCS = [
 
 // Every other registry key and GET route, with the reason the widget does not use it.
 const EXCLUDED_BOOTSTRAP_KEYS = {
+  gridDisruptionClock: 'Regional outage reports require source times and coverage for comparison. See the Grid disruption clock.',
+  ukmtoIncidents: 'Publisher claims requiring source attribution and freshness; use the UKMTO panel',
   iranEvents: "Disabled in production (IRAN_EVENTS_ENABLED off); returns nothing",
   liveVideoResolved: "Internal: live-video channel to video-ID map",
   sharedFxRates: "Internal FX conversion table used by other panels",
@@ -211,11 +220,17 @@ const EXCLUDED_BOOTSTRAP_KEYS = {
   torontoRoads: "Road/traffic feed, ~2 MB (2,342 records); unusable in a widget",
   bcOpen511: "Road/traffic event feed (DriveBC); not widget data",
   imdCycloneMarine: "IMD marine bulletin text by sea area; map-layer feed, not widget data",
+  notamAirspace: "FAA NMS airspace restriction geometry, ~1.5 MB; map-layer feed, not widget data",
   temporalAnomalies: "Internal anomaly detector output; usually empty",
   aaiiSentiment: "Stale fallback data (fallback=true, last update 2026-04-03)",
 };
 
 const EXCLUDED_RPC_ROUTES = {
+  '/api/cyber/v1/get-network-info': 'Opt-in passive lookup for an arbitrary public IP; requires provider authorization and attribution in the Cyber Threat popup',
+  '/api/maritime/v1/list-ukmto-incidents': 'Publisher claims requiring source attribution and freshness; use the UKMTO panel',
+  "/api/displacement/v1/get-cross-border-movements": "Requires source attribution and per-source freshness; use the cross-border displacement panel",
+  "/api/intelligence/v1/get-country-history": "Daily archive is planned and activation-gated; use the country history panel after activation",
+  "/api/intelligence/v1/get-country-signal-observations": "Requires an authenticated country panel; unavailable to the anonymous widget session",
   "/api/aviation/v1/get-carrier-ops": "Pro-only (401 for the anonymous widget session)",
   "/api/aviation/v1/get-flight-status": "Pro-only (401 for the anonymous widget session)",
   "/api/aviation/v1/get-youtube-live-stream-info": "Blocked by relay widget endpoint policy",
@@ -255,6 +270,7 @@ const EXCLUDED_RPC_ROUTES = {
   "/api/economic/v1/get-eu-gas-storage": "Same data as bootstrap key euGasStorage",
   "/api/economic/v1/get-eurostat-country-data": "Same data as bootstrap key eurostatCountryData",
   "/api/economic/v1/get-fao-food-price-index": "Same data as bootstrap key faoFoodPriceIndex",
+  "/api/economic/v1/get-food-prices": "Source-specific food baskets require country, market and unit selection; use the dashboard food-price card",
   "/api/economic/v1/get-macro-signals": "Same data as bootstrap key macroSignals",
   "/api/economic/v1/get-nat-gas-storage": "Same data as bootstrap key natGasStorage",
   "/api/economic/v1/get-national-debt": "Pro-only (401 for the anonymous widget session)",
@@ -270,6 +286,10 @@ const EXCLUDED_RPC_ROUTES = {
   "/api/health/v1/list-air-quality-alerts": "Same data as /api/climate/v1/list-air-quality-data",
   "/api/health/v1/list-disease-outbreaks": "Same data as bootstrap key diseaseOutbreaks",
   "/api/imagery/v1/search-imagery": "Map satellite-imagery search; needs a bbox, returns scene metadata",
+  "/api/orbital/v1/list-imaging-satellites": "Orbit elements for the point lookup; raw OMM records, not displayable values",
+  "/api/orbital/v1/get-point-passes": "Pro-only (401 for the anonymous widget session)",
+  "/api/orbital/v1/get-country-imagery-evidence": "Pro-only (401 for the anonymous widget session)",
+  "/api/orbital/v1/get-watched-site-imagery": "One watched site's newest image for its map popup; image URLs must be painted through the archive blob loader",
   "/api/infrastructure/v1/get-bootstrap-data": "Internal duplicate of /api/bootstrap",
   "/api/infrastructure/v1/get-cable-health": "Returned empty (cables {}) in production",
   "/api/infrastructure/v1/get-ip-geo": "Blocked by relay widget endpoint policy",
@@ -280,6 +300,7 @@ const EXCLUDED_RPC_ROUTES = {
   "/api/infrastructure/v1/list-service-statuses": "Same data as bootstrap key serviceStatuses",
   "/api/infrastructure/v1/list-temporal-anomalies": "Same data as internal temporalAnomalies key; usually empty",
   "/api/infrastructure/v1/reverse-geocode": "Utility: lat/lon to country lookup",
+  "/api/infrastructure/v1/search-place": "Utility: place name to coordinates lookup for the satellite pass search",
   "/api/intelligence/v1/classify-event": "Pro-only (401 for the anonymous widget session)",
   "/api/intelligence/v1/get-china-decision-signals": "Same data as bootstrap key chinaDecisionSignals",
   "/api/intelligence/v1/get-country-coverage": "Pro-only (401 for the anonymous widget session)",
@@ -325,7 +346,13 @@ const EXCLUDED_RPC_ROUTES = {
   "/api/natural/v1/list-natural-events": "Same data as bootstrap key naturalEvents",
   "/api/news/v1/list-error-reports": "Operator review queue (#9093), secret-gated",
   "/api/news/v1/list-label-changes": "Trust-page label history (#9093), not a widget data source",
+  "/api/news/v1/list-media-perspective": "Coverage grouped by outlet country and audience for agents (get_media_perspective), not a widget data source",
+  "/api/news/v1/list-news-pool": "Several editions and languages merged for agents (get_news_clusters, extract_entities), not a widget data source",
+  "/api/news/v1/list-source-items": "Cached items of a panel's enabled sources below the digest category cap (#9796), not a widget data source",
+  "/api/news/v1/list-sent-alerts": "Account-private alert history for the dashboard search; needs a signed-in Pro account (401 for the anonymous widget session)",
   "/api/news/v1/search-fact-checks": "Fact-check citations for /verify and verify_claim (#9094), not a widget data source",
+  "/api/news/v1/search-headlines": "Cmd+K headline search over the dashboard's last 24 hours; takes a typed query, not a widget data source",
+  "/api/news/v1/search-headline-archive": "Pro-only Cmd+K headline search (up to 7 days, by language); the widget session gets 401",
   "/api/news/v1/search-claim-headlines": "Claim headline search for /verify and verify_claim, not a widget data source",
   "/api/news/v1/summarize-article-cache": "Blocked by relay widget endpoint policy",
   "/api/positive-events/v1/list-positive-geo-events": "Same data as bootstrap key positiveGeoEvents",
@@ -341,9 +368,6 @@ const EXCLUDED_RPC_ROUTES = {
   "/api/sanctions/v1/lookup-sanction-entity": "Blocked by relay widget endpoint policy",
   "/api/scenario/v1/get-scenario-status": "Pro-only (401 for the anonymous widget session)",
   "/api/scenario/v1/list-scenario-templates": "Internal scenario-engine templates",
-  "/api/scorecard/v1/get-bloc-scorecard": "Pro-only (401 for the anonymous widget session)",
-  "/api/scorecard/v1/get-five-factor-scorecard": "Pro-only (401 for the anonymous widget session)",
-  "/api/scorecard/v1/list-five-factor-scorecards": "Pro-only (401 for the anonymous widget session)",
   "/api/seismology/v1/list-earthquakes": "Same data as bootstrap key earthquakes (time/magnitude filters ignored)",
   "/api/supply-chain/v1/get-bypass-options": "Pro-only (401 for the anonymous widget session)",
   "/api/supply-chain/v1/get-china-corridor-control-towers": "One JSON-string payload (~125 KB) over the widget budget",
@@ -374,6 +398,7 @@ const EXCLUDED_RPC_ROUTES = {
   "/api/trade/v1/get-tariff-trends": "Pro-only (401 for the anonymous widget session)",
   "/api/trade/v1/get-bilateral-tariff": "Pro-only (401 for the anonymous widget session)",
   "/api/trade/v1/get-us-import-duty": "Pro-only (401 for the anonymous widget session)",
+  "/api/trade/v1/get-monthly-sitc-trade": "Pro-only (401 for the anonymous widget session)",
   "/api/trade/v1/list-comtrade-flows": "Pro-only (401 for the anonymous widget session)",
   "/api/unrest/v1/list-unrest-events": "Same data as bootstrap key unrestEvents",
   "/api/v2/shipping/route-intelligence": "Pro-only (401 for the anonymous widget session)",
@@ -396,7 +421,7 @@ const byGroup = (entries, line) => GROUPS
 const WIDGET_DATA_CATALOG = `## Option 1 — Bootstrap (pre-seeded, instant, matches dashboard panels exactly)
 Use: /api/bootstrap?keys=<key> (comma-separate several keys) — response shape: { data: { <key>: <array or object> } }
 PREFER this over RPCs whenever a key matches the user's topic.
-Quote keys (marketQuotes, commodityQuotes, cryptoQuotes, gulfQuotes) hold the current price, change % and a sparkline of recent prices with no dates; its interval varies by source (today's intraday ticks or the last few daily closes), so it is not a dated history; for dated daily closes use /api/market/v1/get-price-history (not crypto). Add params.symbols (comma-separated) to return only those quotes. commodityQuotes symbols: GC=F gold, SI=F silver, HG=F copper, PL=F platinum, PA=F palladium, CL=F WTI, BZ=F Brent, NG=F natural gas, TTF=F EU gas, ZW=F wheat, ZC=F corn, KC=F coffee, plus FX pairs such as EURUSD=X and USDJPY=X.
+Quote keys (marketQuotes, commodityQuotes, cryptoQuotes, gulfQuotes) hold the current price, change % and a sparkline of recent prices with no dates; its interval varies by source (today's intraday ticks or the last few daily closes), so it is not a dated history; for dated daily closes use /api/market/v1/get-price-history (not crypto). commodityQuotes also carries sparklineStartAt, the first bar's time, and sparklineIntervalSeconds: 300 for the last 24 hours in 5-minute bars, 86400 for daily closes. Add params.symbols (comma-separated) to return only those quotes. commodityQuotes symbols: GC=F gold, SI=F silver, HG=F copper, PL=F platinum, PA=F palladium, CL=F WTI, BZ=F Brent, NG=F natural gas, TTF=F EU gas, ZW=F wheat, ZC=F corn, KC=F coffee, plus FX pairs such as EURUSD=X and USDJPY=X.
 
 ${byGroup(BOOTSTRAP, entry => `- ${entry.key}: ${entry.holds}`)}
 

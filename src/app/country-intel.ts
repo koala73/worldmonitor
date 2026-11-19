@@ -1,7 +1,13 @@
+import { countrySignalsFromMilitary, recoverCountrySignals } from '@/services/country-signals';
+import { getPanelDisplayName } from '@/services/panel-display-name';
+import { CountrySectionError } from '@/services/country-brief-error';
 import { COUNTRY_ACTIVITY_BOUNDS, isCountryActivityCoordinate, projectCountryMilitaryActivity, projectCountryMilitarySignalCounts } from '@/services/country-military-activity';
 import { CountryBriefController, projectChinaCountrySummary } from '@/components/CountryBriefController';
 import { createWebsiteCountryBriefSource } from '@/services/country-brief-source';
 import { hasTemporalBaselineSnapshot } from '@/services/temporal-baseline';
+import { isBriefAviationDisruption } from '@/services/country-aviation-context';
+import type { AirportDelayAlert } from '@/services/aviation';
+import { withTimeout } from '@/utils/with-timeout';
 import type { AppContext, AppModule, CountryBriefSignals } from '@/app/app-context';
 import type { CountrySignalCounts } from '@/types';
 import { getSignalAggregator } from '@/app/lazy-services';
@@ -19,7 +25,8 @@ import { yieldToMain } from '@/utils/after-paint';
 import { effectivePubDateMs } from '@/services/feed-date';
 import type { CountryCoverageEvent } from '@/services/country-coverage';
 import { reconcileCountryTimelineIncidents } from '../../shared/country-timeline-events';
-import { projectCountrySignalDetails } from '../../shared/country-signal-details';
+import { loadHostCountryMilitaryActivity } from '@/services/country-military-activity';
+import type { QualifiedCountrySignals } from '../../shared/country-signal-observations';
 import {
   COUNTRY_ALIASES,
   countryTermIndex,
@@ -32,8 +39,10 @@ import {
 import {
   canonicalizeCountryCode,
   getCountryAtCoordinates,
+  getCountryNearCoordinates,
   getCountryCentroid,
   hasCountryGeometry,
+  isCountryGeometryLoaded,
   ME_STRIKE_BOUNDS,
   preloadCountryGeometry,
 } from '@/services/country-geometry';
@@ -50,13 +59,15 @@ import { collectStoryData } from '@/services/story-data';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
-import { showMapContextMenu } from '@/components/MapContextMenu';
+import { showMapContextMenu, type MapContextMenuItem } from '@/components/MapContextMenu';
+import { MapLocateControl } from '@/components/MapLocateControl';
+import { claimMapUrlCentre, releaseMapUrlCentreOnUserMove } from '@/app/orbital-map-focus';
 import { BETA_MODE } from '@/config/beta';
 import { mlWorker } from '@/services/ml-worker';
 import { isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
 import { trackCountrySelected, trackCountryBriefOpened } from '@/services/analytics';
-import { toApiUrl } from '@/services/runtime';
+import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
 import { raceWebMcpAbort, throwIfWebMcpAborted } from '@/services/webmcp';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 import type { NewsItem } from '@/types';
@@ -76,6 +87,9 @@ import { getChinaDecisionSignalsData } from '@/services/china-decision-signals';
 import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-signals';
 import { showToast as showGlobalToast } from '@/utils/toast';
 import { vesselTypeLabel } from '@/utils/vessel-type-label';
+import { watchOrbitalEvidence, watchOrbitalRoute } from '@/app/orbital-route';
+import { orbitalMapViewFor, setOrbitalMapView } from '@/app/orbital-map-focus';
+import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: no strikes in the
 // country deep-dive or the AI brief. Set VITE_ENABLE_IRAN_ATTACKS=true to restore.
@@ -112,6 +126,8 @@ type CountryIntelBriefResult = {
 type PendingCountryBriefRequest = {
   token: number;
   owner: 'human' | 'agent';
+  /** Set by a map click or map menu: closing the brief returns focus here. */
+  returnTarget?: HTMLElement;
 };
 
 type CountryBriefOpenOptions = {
@@ -141,11 +157,19 @@ type CountryPresentation = {
   signalDetailsPending: boolean;
 };
 
+const AVIATION_SIGNAL_TIMEOUT_MS = 2500;
+/** Town scale: the share grid's 0.01° cell stays well inside the view. */
+const LOCATE_ZOOM = 9;
+// About 5 km: absorbs simplified coastlines without crossing a strait into the neighbour of an outline-less state like Singapore.
+const LOCATE_COAST_TOLERANCE_DEG = 0.05;
+
 export class CountryIntelManager implements AppModule {
   private ctx: AppContext;
   private briefRequestToken = 0;
   private pendingBriefRequest: PendingCountryBriefRequest | null = null;
+  private mapReturnTarget: HTMLElement | null = null;
   private visibleBriefOwner: PendingCountryBriefRequest['owner'] | null = null;
+  private briefStateListener: ((state: { visible: boolean; maximized: boolean }) => void) | null = null;
   private frameworkUnsubscribe: (() => void) | null = null;
   private _fwDebounce: ReturnType<typeof setTimeout> | null = null;
   // Re-fire PRO-gated country sections on false→true entitlement transition.
@@ -155,10 +179,18 @@ export class CountryIntelManager implements AppModule {
   // entitlement so unrelated auth events (session refresh, prefs sync)
   // don't re-hammer fetchProSections.
   private authUnsubscribe: (() => void) | null = null;
+  private orbitalRouteUnsubscribe: (() => void) | null = null;
+  private locateControl: MapLocateControl | null = null;
+  private orbitalEvidenceUnsubscribe: (() => void) | null = null;
+  private orbitalMapFocusUnsubscribe: (() => void) | null = null;
   private entitlementUnsubscribe: (() => void) | null = null;
   private lastHadPremium = false;
   private currentCountryPresentation: CountryPresentation | null = null;
   private countryController: CountryBriefController | null = null;
+  private qualifiedSource = createWebsiteCountryBriefSource();
+  private qualifiedMilitary: { code: string; page: NonNullable<AppContext['countryBriefPage']>; presentation: CountryPresentation | null; revision: number | undefined; signal: AbortSignal; promise: ReturnType<typeof loadHostCountryMilitaryActivity> } | null = null;
+  private qualifiedSignals: QualifiedCountrySignals | null = null;
+  private qualifiedMilitarySummary: { code: string; page: NonNullable<AppContext['countryBriefPage']>; value: CountryDeepDiveMilitarySummary; signalCounts: Pick<CountrySignalCounts, MilitarySignalField> } | null = null;
   private countryControllerPage: AppContext['countryBriefPage'] = null;
   private countryBriefPageLoading: Promise<boolean> | null = null;
   private currentCoverageEvents: CountryCoverageEvent[] = [];
@@ -182,6 +214,11 @@ export class CountryIntelManager implements AppModule {
       }, 400);
     });
 
+    this.orbitalMapFocusUnsubscribe = setOrbitalMapView(orbitalMapViewFor(() => this.ctx.map));
+    if (ORBITAL_WATCH_ENABLED) {
+      this.orbitalRouteUnsubscribe = watchOrbitalRoute(() => this.ctx.map);
+      this.orbitalEvidenceUnsubscribe = watchOrbitalEvidence(() => this.ctx.map);
+    }
     this.lastHadPremium = hasPremiumAccess(getAuthState());
     const syncPremiumAccess = () => this.handlePremiumAccessTransition(hasPremiumAccess(getAuthState()));
     this.authUnsubscribe = subscribeAuthState(syncPremiumAccess);
@@ -189,6 +226,14 @@ export class CountryIntelManager implements AppModule {
   }
 
   destroy(): void {
+    this.locateControl?.destroy();
+    this.locateControl = null;
+    this.orbitalRouteUnsubscribe?.();
+    this.orbitalRouteUnsubscribe = null;
+    this.orbitalEvidenceUnsubscribe?.();
+    this.orbitalEvidenceUnsubscribe = null;
+    this.orbitalMapFocusUnsubscribe?.();
+    this.orbitalMapFocusUnsubscribe = null;
     this.currentCountryPresentation = null;
     this.briefRequestToken++;
     this.countryController?.dispose();
@@ -214,18 +259,29 @@ export class CountryIntelManager implements AppModule {
   private handlePremiumAccessTransition(nowPremium: boolean): void {
     if (nowPremium === this.lastHadPremium) return;
     this.lastHadPremium = nowPremium;
+    this.qualifiedSignals = null;
+    this.qualifiedMilitary = null;
+    this.qualifiedMilitarySummary = null;
+    this.qualifiedSource.clearLoadedData();
 
     const page = this.ctx.countryBriefPage;
     const openCode = page?.getCode();
     if (!page?.isVisible() || !openCode || openCode === '__loading__' || openCode === '__error__') return;
 
     page.syncCountryPremiumSectionsAccess?.(nowPremium);
+    page.clearQualifiedCountrySignals?.();
+    if (!nowPremium) {
+      const summary = this.buildMilitarySummary(openCode, page.getName() ?? openCode);
+      page.updateMilitaryActivity?.(summary);
+      const latest = page.getSignalCounts?.();
+      if (latest) page.updateSignals?.({ ...latest, ...this.getQualifiedMilitaryCounts(openCode) }, summary.coverageNotes);
+    }
     this.getCountryController(page).refreshPremium();
+    this.refreshOpenBrief();
   }
 
   private handleCountryBriefOpenError(err: unknown): void {
     console.error('[CountryBrief] Failed to open country brief:', err);
-    this.ctx.map?.setRenderPaused(false);
     this.showToast('Country brief failed to open. Please try again.');
   }
 
@@ -246,7 +302,10 @@ export class CountryIntelManager implements AppModule {
     ) {
       return null;
     }
-    const request = { token: ++this.briefRequestToken, owner };
+    const request: PendingCountryBriefRequest = { token: ++this.briefRequestToken, owner };
+    // The map hands its focus target to the request it starts, so the target
+    // survives the brief module's first load and dies with the request.
+    if (owner === 'human' && this.mapReturnTarget) request.returnTarget = this.mapReturnTarget;
     this.abortCountryCoverage();
     this.pendingBriefRequest = request;
     return request;
@@ -272,16 +331,45 @@ export class CountryIntelManager implements AppModule {
     return request.token === this.briefRequestToken;
   }
 
+  /**
+   * The brief returns focus to whatever was focused when it opened. A map
+   * click leaves focus on an earlier control (a layer toggle, or `main`), so
+   * hand focus to the map first: closing the brief then returns to the map.
+   */
+  private focusMapForBrief(): HTMLElement | null {
+    const container = document.getElementById('mapContainer');
+    if (!container) return null;
+    if (!container.hasAttribute('tabindex')) container.tabIndex = -1;
+    // A plain div cannot carry a name; as a group it can, and -1 keeps it out of the Tab order.
+    if (!container.hasAttribute('role')) container.setAttribute('role', 'group');
+    if (!container.hasAttribute('aria-label')) container.setAttribute('aria-label', getPanelDisplayName('map'));
+    container.focus({ preventScroll: true });
+    this.ctx.countryBriefPage?.returnFocusTo?.(container);
+    return container;
+  }
+
+  /**
+   * Opens a brief from the map. The open claims its request before its first
+   * await, so the map target is offered only to that claim and never to a
+   * later request from another entry point.
+   */
+  private openFromMap(open: () => Promise<void>): void {
+    this.mapReturnTarget = this.focusMapForBrief();
+    try {
+      void open().catch((err) => this.handleCountryBriefOpenError(err));
+    } finally {
+      this.mapReturnTarget = null;
+    }
+  }
+
   private async setupCountryIntel(): Promise<void> {
     if (!this.ctx.map) return;
     this.ctx.map.onCountryClicked((countryClick) => {
       if (countryClick.code && countryClick.name) {
         trackCountrySelected(countryClick.code, countryClick.name, 'map');
-        void this.openCountryBriefByCode(countryClick.code, countryClick.name)
-          .catch((err) => this.handleCountryBriefOpenError(err));
+        this.openFromMap(() => this.openCountryBriefByCode(countryClick.code!, countryClick.name!));
       } else {
-        void this.openCountryBrief(countryClick.lat, countryClick.lon)
-          .catch((err) => this.handleCountryBriefOpenError(err));
+        this.openFromMap(() => this.openCountryBrief(countryClick.lat, countryClick.lon));
       }
     });
 
@@ -290,32 +378,94 @@ export class CountryIntelManager implements AppModule {
       if (payload.countryCode && payload.countryName) {
         items.push({
           label: t('contextMenu.openCountryBrief'),
-          action: () => {
-            void this.openCountryBriefByCode(payload.countryCode!, payload.countryName!)
-              .catch((err) => this.handleCountryBriefOpenError(err));
-          },
+          action: () => this.openFromMap(() => this.openCountryBriefByCode(payload.countryCode!, payload.countryName!)),
         });
       } else {
         items.push({
           label: t('contextMenu.openCountryBrief'),
-          action: () => {
-            void this.openCountryBrief(payload.lat, payload.lon)
-              .catch((err) => this.handleCountryBriefOpenError(err));
-          },
+          action: () => this.openFromMap(() => this.openCountryBrief(payload.lat, payload.lon)),
         });
       }
+      if (ORBITAL_WATCH_ENABLED) items.push({
+        label: t('contextMenu.satellitePasses'),
+        action: () => {
+          void import('@/app/orbital-watch').then(({ openOrbitalWatch }) =>
+            openOrbitalWatch({ lat: payload.lat, lon: payload.lon }, document.getElementById('mapContainer'), this.ctx.map));
+        },
+      });
       items.push({ label: t('contextMenu.copyCoordinates'), action: () => navigator.clipboard.writeText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`).catch(() => {}) });
       showMapContextMenu(payload.screenX, payload.screenY, items);
     });
+
+    const map = this.ctx.map;
+    this.locateControl?.destroy();
+    this.locateControl = new MapLocateControl({
+      centre: (point) => {
+        // The URL sync would write the user's own position into the address bar,
+        // which shared links and analytics read. Keep the previous centre there
+        // until the map's centre actually leaves the located point.
+        // A globe or WebGL flight still reads a centre short of the point, so the
+        // claim cannot judge the centre until the flight has landed or stopped.
+        let token: number | null = null;
+        let landed = false;
+        claimMapUrlCentre(
+          () => token === null || map.isViewportActionCurrent(token),
+          { point, read: () => (landed ? map.getCenter() : null) },
+        );
+        token = map.setCenter(point.lat, point.lon, LOCATE_ZOOM);
+        const land = () => { landed = true; };
+        map.whenViewportSettled(token).then(land, land);
+        releaseMapUrlCentreOnUserMove(document.getElementById('mapContainer'));
+      },
+      actions: (point) => this.locatedActions(point),
+    });
+    map.addMapControl(this.locateControl.element);
+  }
+
+  /**
+   * The locate menu. The point is the user's own position cut to the share grid, so
+   * the country comes from the local outlines only, never the reverse-geocode API.
+   */
+  private async locatedActions(point: { lat: number; lon: number }): Promise<MapContextMenuItem[]> {
+    const items: MapContextMenuItem[] = [];
+    // A failed outline load must read as "location unavailable", not as "no country here".
+    await preloadCountryGeometry();
+    // The loader catches its own fetch failure and resolves with no outlines.
+    if (!isCountryGeometryLoaded()) throw new Error('country outlines unavailable');
+    const country = getCountryNearCoordinates(point.lat, point.lon, LOCATE_COAST_TOLERANCE_DEG);
+    if (country) items.push({
+      label: t('contextMenu.openCountryBrief'),
+      action: () => {
+        void this.openCountryBriefByCode(country.code, country.name)
+          .catch((err) => this.handleCountryBriefOpenError(err));
+      },
+    });
+    if (ORBITAL_WATCH_ENABLED) items.push({
+      label: t('contextMenu.imageryEvidenceHere'),
+      action: () => {
+        void import('@/app/orbital-watch').then(({ openOrbitalWatch }) =>
+          openOrbitalWatch(point, document.getElementById('mapContainer'), this.ctx.map, { located: true }));
+      },
+    });
+    return items;
   }
 
   private getCountryController(page: NonNullable<AppContext['countryBriefPage']>): CountryBriefController {
     if (!this.countryController || this.countryControllerPage !== page) {
       this.countryController?.dispose();
-      this.countryController = new CountryBriefController(createWebsiteCountryBriefSource(), page);
+      this.countryController = new CountryBriefController(this.qualifiedSource, page);
       this.countryControllerPage = page;
     }
     return this.countryController;
+  }
+
+  /**
+   * Listen to the brief's open/close/maximize state. The page is a lazy chunk
+   * created on first open, so the listener is held here and attached then.
+   */
+  onBriefStateChange(cb: (state: { visible: boolean; maximized: boolean }) => void): void {
+    this.briefStateListener = cb;
+    this.ctx.countryBriefPage?.onStateChange?.(cb);
   }
 
   private async ensureCountryBriefPage(): Promise<boolean> {
@@ -336,6 +486,7 @@ export class CountryIntelManager implements AppModule {
     if (this.ctx.isDestroyed || !this.ctx.map) return false;
     this.ctx.countryBriefPage = new CountryDeepDivePanel(this.ctx.map);
     this.getCountryController(this.ctx.countryBriefPage);
+    if (this.briefStateListener) this.ctx.countryBriefPage.onStateChange?.(this.briefStateListener);
 
     this.ctx.countryBriefPage.onClose(() => {
       this.currentCountryPresentation = null;
@@ -344,7 +495,6 @@ export class CountryIntelManager implements AppModule {
       // Keep the controller for the next open to cancel; closing must not
       // interrupt WebKit body reads.
       this.ctx.map?.clearCountryHighlight();
-      this.ctx.map?.setRenderPaused(false);
       this.ctx.countryTimeline?.destroy();
       this.ctx.countryTimeline = null;
     });
@@ -360,7 +510,7 @@ export class CountryIntelManager implements AppModule {
       const page = this.ctx.countryBriefPage;
       if (!page) return;
       page.showLoading();
-      this.ctx.map?.setRenderPaused(true);
+      if (request.returnTarget) page.returnFocusTo?.(request.returnTarget);
 
       const localGeo = getCountryAtCoordinates(lat, lon);
       if (localGeo) {
@@ -373,7 +523,6 @@ export class CountryIntelManager implements AppModule {
       if (!this.isCurrentBriefRequest(request)) return;
       if (!geo) {
         page.hide();
-        this.ctx.map?.setRenderPaused(false);
         return;
       }
 
@@ -389,6 +538,9 @@ export class CountryIntelManager implements AppModule {
     opts?: CountryBriefOpenOptions,
   ): Promise<void> {
     throwIfWebMcpAborted(opts?.signal);
+    // Reject a code with no country before claiming, so it cannot supersede a
+    // pending valid open and strand its loading shell.
+    if (!canonicalizeCountryCode(code)) return;
     const requestOwner = opts?.owner ?? (opts?.signal ? 'agent' : 'human');
     const request = this.claimBriefRequest(requestOwner);
     if (!request) return;
@@ -405,6 +557,7 @@ export class CountryIntelManager implements AppModule {
     const token = request.token;
     let pageShown = false;
     let showedLoading = loadingAlreadyShown;
+    let presentationStarted = false;
 
     try {
       throwIfWebMcpAborted(opts?.signal);
@@ -415,6 +568,10 @@ export class CountryIntelManager implements AppModule {
       if (!page) return;
       // Map GeoJSON can still stamp Taiwan as CN-TW; APIs require ISO alpha-2.
       code = canonicalizeCountryCode(code);
+      if (!code) {
+        if (showedLoading) page.hide();
+        return;
+      }
       const hasVisibleBrief = this.hasVisibleRealCountryBrief();
       // An agent open must not replace visible state while it works. Ownership
       // is explicit because shipping WebMCP browsers omit the target signal.
@@ -423,7 +580,11 @@ export class CountryIntelManager implements AppModule {
         if (!showedLoading) page.showLoading();
         showedLoading = true;
       }
-      if (!loadingAlreadyShown) this.ctx.map?.setRenderPaused(true);
+      // Now that the brief is open, even on the module's first load, it takes
+      // the map as its return target, whatever took focus while it loaded. A
+      // coordinate open already handed it over with its loading brief; doing it
+      // again after geocoding would pull focus from whatever the user opened since.
+      if (request.returnTarget && !loadingAlreadyShown) page.returnFocusTo?.(request.returnTarget);
       if (opts?.trackAnalytics !== false) trackCountryBriefOpened(code);
 
       const canonicalName = TIER1_COUNTRIES[code] || CountryIntelManager.resolveCountryName(code);
@@ -438,14 +599,19 @@ export class CountryIntelManager implements AppModule {
       if (token !== this.briefRequestToken || this.ctx.isDestroyed || this.ctx.countryBriefPage !== page) return;
 
       const score = getCachedCountryScore(normalizeCiiCountryCode(code));
+      this.qualifiedSource.clearLoadedData();
+      this.qualifiedMilitary = null;
+      this.qualifiedMilitarySummary = null;
+      signals = { ...signals, ...this.getQualifiedMilitaryCounts(code) };
+      presentationStarted = true;
       page.show(country, code, score, signals);
+      pageShown = true;
       const presentation: CountryPresentation = {
         page, code, score, stock: null, imf: null, refreshGeneration: 0, signalDetailsPending: true,
       };
       this.currentCountryPresentation = presentation;
       const signalGeneration = presentation.refreshGeneration;
       this.currentCoverageEvents = [];
-      pageShown = true;
       this.visibleBriefOwner = request.owner;
       this.clearBriefRequest(request);
       // Agent selection needs to acknowledge the visible UI transition, not
@@ -498,27 +664,6 @@ export class CountryIntelManager implements AppModule {
           }
         });
       }
-      const militarySummary = this.buildMilitarySummary(code, country);
-      page.updateMilitaryActivity?.(militarySummary);
-      if (signalGeneration === presentation.refreshGeneration) {
-        page.updateSignals?.(signals, militarySummary.coverageNotes);
-        try {
-          const signalDetails = await this.buildSignalDetails(code);
-          if (token === this.briefRequestToken && this.isCurrentPresentation(presentation) && signalGeneration === presentation.refreshGeneration) {
-            presentation.signalDetailsPending = false;
-            page.updateSignalDetails?.(signalDetails);
-          }
-        } catch (err) {
-          console.warn('[CountryBrief] signal details unavailable:', err);
-          if (token === this.briefRequestToken && this.isCurrentPresentation(presentation) && signalGeneration === presentation.refreshGeneration) {
-            presentation.signalDetailsPending = false;
-            page.setSectionFailure?.('signals', 'unavailable', 'Aggregate severity and recent high-severity observations are unavailable.');
-          }
-        }
-      }
-      if (!this.isCurrentPresentation(presentation)) return;
-      this.renderCountryEconomics(presentation);
-
       const { stockPromise } = this.getCountryController(page).hydrate(code, country, {
         stock: stock => {
           if (!this.isCurrentPresentation(presentation)) return;
@@ -531,6 +676,27 @@ export class CountryIntelManager implements AppModule {
           this.renderCountryEconomics(presentation);
         },
       });
+      const militarySummary = this.buildMilitarySummary(code, country);
+      page.updateMilitaryActivity?.(militarySummary);
+      if (signalGeneration === presentation.refreshGeneration) {
+        page.updateSignals?.({ ...signals, ...this.getQualifiedMilitaryCounts(code) }, militarySummary.coverageNotes);
+        try {
+          const signalDetails = await this.buildSignalDetails(code);
+          if (token === this.briefRequestToken && this.isCurrentPresentation(presentation) && signalGeneration === presentation.refreshGeneration) {
+            presentation.signalDetailsPending = false;
+            if (signalDetails) page.updateSignalDetails?.(signalDetails);
+            if (this.qualifiedSignals?.countryCode === code) page.updateQualifiedCountrySignals?.(this.qualifiedSignals);
+          }
+        } catch (err) {
+          console.warn('[CountryBrief] signal details unavailable:', err);
+          if (token === this.briefRequestToken && this.isCurrentPresentation(presentation) && signalGeneration === presentation.refreshGeneration) {
+            presentation.signalDetailsPending = false;
+            page.setSectionFailure?.('signals', 'unavailable', 'Aggregate severity and recent high-severity observations are unavailable.');
+          }
+        }
+      }
+      if (!this.isCurrentPresentation(presentation)) return;
+      this.renderCountryEconomics(presentation);
 
       const filteredNews = this.ctx.allNews.filter((item) => (
         CountryIntelManager.isCountryHeadline(item.title, country, code)
@@ -610,7 +776,7 @@ export class CountryIntelManager implements AppModule {
         }
 
         const groundingNews = filteredNews.slice(0, 15);
-        let briefSources = collectBriefSources(groundingNews, 6);
+        const briefSources = collectBriefSources(groundingNews, 6);
         const headlines = groundingNews.map((n) => n.title);
         if (headlines.length) context.headlines = headlines;
         if (briefSources.length) context.briefSources = briefSources;
@@ -664,9 +830,6 @@ export class CountryIntelManager implements AppModule {
           briefResult = await this.fetchCountryIntelBrief(code, contextSnapshot, countryFw?.systemPromptAppend ?? '');
           if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
           briefText = briefResult.brief;
-          if (briefResult.sources.length > 0) {
-            briefSources = briefResult.sources;
-          }
         } catch { /* server unreachable */ }
 
         if (briefText) {
@@ -674,7 +837,7 @@ export class CountryIntelManager implements AppModule {
             brief: briefText,
             country,
             code,
-            sources: briefSources,
+            sources: briefResult?.sources ?? [],
             evidence: briefResult?.evidence,
             generatedAt: briefResult?.generatedAt,
             cached: briefResult?.cached,
@@ -700,9 +863,14 @@ export class CountryIntelManager implements AppModule {
           } else {
             const lines = this.buildFallbackSignalLines(presentation.score, signals, country, context);
             if (lines.length > 0) {
-              this.ctx.countryBriefPage?.updateBrief({ brief: lines.join('\n'), country, code, fallback: true });
+              this.ctx.countryBriefPage?.updateBrief({ brief: lines.join('\n'), country, code, fallback: true, signalRows: true });
             } else {
-              this.ctx.countryBriefPage?.updateBrief({ brief: '', country, code, error: 'No AI service available. Configure OPENROUTER_API_KEY in Settings for full briefs.' });
+              // Only the desktop app has a Settings field for the key; web
+              // visitors get the page's neutral "unavailable" text.
+              this.ctx.countryBriefPage?.updateBrief({
+                brief: '', country, code,
+                error: isDesktopRuntime() ? 'No AI service available. Configure OPENROUTER_API_KEY in Settings for full briefs.' : undefined,
+              });
             }
           }
         }
@@ -737,15 +905,17 @@ export class CountryIntelManager implements AppModule {
       if (!pageShown) {
         const activePage = this.ctx.countryBriefPage;
         const activeCode = activePage?.getCode();
-        if (showedLoading && activePage?.isVisible() && (activeCode === '__loading__' || activeCode === '__error__')) activePage.hide();
-        if (!this.hasVisibleRealCountryBrief()) this.ctx.map?.setRenderPaused(false);
+        // show() can throw after it replaces the loading shell, including a
+        // same-country reopen that never set __loading__ or __error__ (#9710).
+        const failedPresentation = presentationStarted && !!activePage?.isVisible();
+        const failedLoadingShell = showedLoading
+          && !!activePage?.isVisible()
+          && (activeCode === '__loading__' || activeCode === '__error__');
+        if (failedPresentation || failedLoadingShell) activePage?.hide();
         this.showToast('Country brief failed to open. Please try again.');
       }
     } finally {
       this.clearBriefRequest(request);
-      if (!pageShown && token === this.briefRequestToken && !this.hasVisibleRealCountryBrief()) {
-        this.ctx.map?.setRenderPaused(false);
-      }
     }
   }
 
@@ -773,7 +943,7 @@ export class CountryIntelManager implements AppModule {
   private commitCountryScore(presentation: CountryPresentation, score: CountryScore | null, signals: WebsiteCountrySignals): void {
     if (!this.isCurrentPresentation(presentation)) return;
     presentation.score = score;
-    presentation.page.updateScore?.(score, signals);
+    presentation.page.updateScore?.(score, { ...signals, ...this.getQualifiedMilitaryCounts(presentation.code) });
     this.renderCountryEconomics(presentation);
   }
 
@@ -781,6 +951,8 @@ export class CountryIntelManager implements AppModule {
     const presentation = this.currentCountryPresentation;
     if (!presentation || !this.isCurrentPresentation(presentation)) return;
     const { page, code } = presentation;
+    this.qualifiedSource.clearLoadedData();
+    this.qualifiedMilitary = null;
     const name = TIER1_COUNTRIES[code] ?? CountryIntelManager.resolveCountryName(code);
     const generation = ++presentation.refreshGeneration;
     void this.getCountrySignals(code, name)
@@ -789,20 +961,22 @@ export class CountryIntelManager implements AppModule {
         const score = getCachedCountryScore(normalizeCiiCountryCode(code));
         this.commitCountryScore(presentation, score, signals);
         presentation.signalDetailsPending = true;
-        page.updateSignals?.(signals, this.buildMilitarySummary(code, name).coverageNotes);
-        // Fallback assessments embed temporal status inline; refresh that copy
+        page.updateSignals?.({ ...signals, ...this.getQualifiedMilitaryCounts(code) }, this.buildMilitarySummary(code, name).coverageNotes);
+        // Signal-row assessments embed temporal status inline; refresh that copy
         // when chips change so unavailable/zero/global context stays consistent.
-        if (page.isFallbackBrief?.()) {
+        // Local-model prose also carries the Fallback badge but is left alone.
+        if (page.isSignalRowsBrief?.()) {
           const lines = this.buildFallbackSignalLines(score, signals, name, {});
           if (lines.length > 0) {
-            page.updateBrief({ brief: lines.join('\n'), country: name, code, fallback: true });
+            page.updateBrief({ brief: lines.join('\n'), country: name, code, fallback: true, signalRows: true });
           }
         }
         try {
           const details = await this.buildSignalDetails(code);
           if (this.isCurrentPresentation(presentation) && generation === presentation.refreshGeneration) {
             presentation.signalDetailsPending = false;
-            page.updateSignalDetails?.(details);
+            if (details) page.updateSignalDetails?.(details);
+            if (this.qualifiedSignals?.countryCode === code) page.updateQualifiedCountrySignals?.(this.qualifiedSignals);
           }
         } catch (err) {
           console.warn('[CountryBrief] signal details unavailable:', err);
@@ -843,12 +1017,12 @@ export class CountryIntelManager implements AppModule {
     const lang = getCurrentLanguage();
     const params = new URLSearchParams({ country_code: code, lang });
     const trimmed = contextSnapshot.trim();
-    if (trimmed.length > 0) {
-      // 3800 chars ≈ ~950 tokens; raised from 2200 to include infra context. Monitor p95 LLM latency if timeouts increase.
+    const effectiveFramework = framework.slice(0, 2000);
+    if (effectiveFramework && trimmed.length > 0) {
       params.set('context', trimmed.slice(0, 3800));
     }
-    if (framework) {
-      params.set('framework', framework.slice(0, 2000));
+    if (effectiveFramework) {
+      params.set('framework', effectiveFramework);
     }
 
     const resp = await premiumFetch(toApiUrl(`/api/intelligence/v1/get-country-intel-brief?${params.toString()}`), {
@@ -1160,6 +1334,9 @@ export class CountryIntelManager implements AppModule {
     // than aborting the whole open. Only the cluster-derived counts degrade.
     let clusters: CountrySignalCluster[] = [];
     let clustersAvailable = false;
+    // The aviation read never rejects and does not need the aggregator, so it
+    // starts now instead of waiting behind the aggregator chunk.
+    const aviationDisruptionsPending = this.countryAviationDisruptions(code, country);
     try {
       clusters = (await getSignalAggregator()).getCountryClusters();
       clustersAvailable = true;
@@ -1198,7 +1375,7 @@ export class CountryIntelManager implements AppModule {
       ).length;
     }
 
-    const military = this.selectCountryMilitary(code, country).signalCounts;
+    const military = this.getQualifiedMilitaryCounts(code);
 
     let outages = 0;
     if (this.ctx.intelligenceCache.outages) {
@@ -1217,13 +1394,7 @@ export class CountryIntelManager implements AppModule {
 
     const activeStrikes = this.getCountryStrikes(code, hasGeoShape).length;
 
-    let aviationDisruptions = 0;
-    if (this.ctx.intelligenceCache.flightDelays) {
-      aviationDisruptions = this.ctx.intelligenceCache.flightDelays.filter(d =>
-        (d.severity === 'major' || d.severity === 'severe' || d.delayType === 'closure') &&
-        (hasGeoShape ? this.isInCountry(d.lat, d.lon, code) : d.country?.toLowerCase() === countryLower)
-      ).length;
-    }
+    const aviationDisruptions = (await aviationDisruptionsPending).length;
 
     const ciiData = getCountryData(code);
     const isTier1 = !!TIER1_COUNTRIES[code];
@@ -1298,6 +1469,30 @@ export class CountryIntelManager implements AppModule {
     };
   }
 
+  /**
+   * Airport closures and severe or major disruptions in this country. The
+   * flight-delay cache is filled only while the Aviation map layer is on, so a
+   * brief opened with the layer off reads the same bootstrap snapshot through
+   * the aviation service instead of reporting zero. The read is bounded: the
+   * brief waits on these signals before it shows.
+   */
+  private async countryAviationDisruptions(code: string, country: string): Promise<AirportDelayAlert[]> {
+    let delays = this.ctx.intelligenceCache.flightDelays;
+    if (!delays) {
+      try {
+        const { fetchFlightDelays } = await import('@/services/aviation');
+        delays = await withTimeout(fetchFlightDelays(), AVIATION_SIGNAL_TIMEOUT_MS, 'country-aviation-disruptions');
+      } catch (err) {
+        console.warn('[CountryBrief] airport disruptions unavailable:', err);
+        return [];
+      }
+    }
+    const countryLower = country.toLowerCase();
+    const hasGeoShape = hasCountryGeometry(code) || !!CountryIntelManager.COUNTRY_BOUNDS[code];
+    return delays.filter(d => isBriefAviationDisruption(d)
+      && (hasGeoShape ? this.isInCountry(d.lat, d.lon, code) : d.country?.toLowerCase() === countryLower));
+  }
+
   private newsSeverityRank(item: NewsItem): number {
     const level = item.threat?.level;
     if (level === 'critical') return 5;
@@ -1308,12 +1503,81 @@ export class CountryIntelManager implements AppModule {
     return 1;
   }
 
-  private async buildSignalDetails(code: string): Promise<CountryDeepDiveSignalDetails> {
-    const cluster = (await getSignalAggregator()).getCountryClusters().find((entry) => entry.country === code);
-    return projectCountrySignalDetails(cluster?.signals ?? []);
+  private async buildSignalDetails(code: string): Promise<CountryDeepDiveSignalDetails | null> {
+    const value = await this.loadQualifiedCountrySignals(code);
+    return value.details;
   }
 
-  private selectCountryMilitary(code: string, country: string) {
+  private getQualifiedMilitaryCounts(code: string): Pick<CountrySignalCounts, MilitarySignalField> {
+    const owner = this.qualifiedMilitarySummary;
+    return owner?.code === code && owner.page === this.ctx.countryBriefPage
+      ? owner.signalCounts
+      : { militaryFlights: null, militaryFlightsInCountry: null, militaryVessels: null, militaryVesselsInCountry: null };
+  }
+
+  private async loadQualifiedCountrySignals(code: string): Promise<QualifiedCountrySignals> {
+    const page = this.ctx.countryBriefPage;
+    if (!page || !page.isVisible() || page.getCode() !== code) throw new DOMException('Country view changed', 'AbortError');
+    const signal = page.signal;
+    const country = page.getName() ?? CountryIntelManager.resolveCountryName(code);
+    const presentation = this.currentCountryPresentation;
+    const revision = presentation?.refreshGeneration;
+    if (!this.qualifiedMilitary || this.qualifiedMilitary.code !== code || this.qualifiedMilitary.page !== page || this.qualifiedMilitary.signal !== signal || this.qualifiedMilitary.revision !== revision || this.qualifiedMilitary.presentation !== presentation) {
+      if (this.qualifiedSignals?.countryCode !== code) this.qualifiedSignals = null;
+      const promise = loadHostCountryMilitaryActivity(this.qualifiedSource, code, country, signal);
+      const request = { code, page, signal, presentation, revision, promise };
+      this.qualifiedMilitary = request;
+      const current = () => this.qualifiedMilitary === request && !signal.aborted && !this.ctx.isDestroyed
+        && this.ctx.countryBriefPage === page && page.signal === signal && page.isVisible() && page.getCode() === code
+        && this.currentCountryPresentation === presentation && revision === presentation?.refreshGeneration;
+      const publish = (summary: CountryDeepDiveMilitarySummary, counts: Pick<CountrySignalCounts, MilitarySignalField>, denied: readonly MilitarySignalField[]) => {
+        if (!current()) return;
+        const owner = this.qualifiedMilitarySummary;
+        const prior = owner?.code === code && owner.page === page ? owner : null;
+        const next = { ...counts };
+        for (const field of denied) next[field] = null;
+        const recovered = recoverCountrySignals(countrySignalsFromMilitary(code, next), prior ? countrySignalsFromMilitary(code, prior.signalCounts) : null, denied);
+        const retained = recovered.notes.length > 0;
+        const flightDenied = denied.includes('militaryFlights') || denied.includes('militaryFlightsInCountry');
+        const vesselDenied = denied.includes('militaryVessels') || denied.includes('militaryVesselsInCountry');
+        const foreignFlights = flightDenied ? null : summary.foreignFlights ?? (retained ? prior?.value.foreignFlights ?? null : null);
+        const retainCombinedPresence = retained && !denied.length && Object.values(next).every(count => count === null);
+        const value = { ...summary,
+          ownFlights: flightDenied ? null : summary.ownFlights ?? (retained ? prior?.value.ownFlights ?? null : null),
+          foreignFlights,
+          nearbyVessels: vesselDenied ? null : summary.nearbyVessels ?? (retained ? prior?.value.nearbyVessels ?? null : null),
+          foreignPresence: summary.foreignPresence === true || (foreignFlights ?? 0) > 0 ? true
+            : denied.length ? null : summary.foreignPresence ?? (retainCombinedPresence ? prior?.value.foreignPresence ?? null : null),
+          coverage: retained || denied.length ? 'partial' as const : summary.coverage,
+          coverageNotes: [...new Set([...(summary.coverageNotes ?? []), ...(retained ? prior?.value.coverageNotes ?? [] : []), ...recovered.notes])],
+        };
+        const signalCounts = { militaryFlights: recovered.signals.militaryFlights, militaryFlightsInCountry: recovered.signals.militaryFlightsInCountry,
+          militaryVessels: recovered.signals.militaryVessels, militaryVesselsInCountry: recovered.signals.militaryVesselsInCountry };
+        this.qualifiedMilitarySummary = { code, page, value, signalCounts };
+        page.updateMilitaryActivity?.(value);
+        const latest = page.getSignalCounts?.();
+        if (latest) page.updateSignals?.({ ...latest, ...signalCounts }, value.coverageNotes);
+      };
+      void promise.then(summary => publish(summary, summary.signalCounts, summary.deniedSignalFields), error => {
+        publish({ ownFlights: null, foreignFlights: null, nearbyVessels: null, nearestBases: projectCountryMilitaryActivity(code, country, null, null).nearestBases, foreignPresence: null,
+          coverage: 'partial', coverageNotes: ['Military observations could not be loaded. Retry or refresh to recover them.'] },
+        { militaryFlights: null, militaryFlightsInCountry: null, militaryVessels: null, militaryVesselsInCountry: null },
+        error instanceof CountrySectionError && error.state === 'locked' ? ['militaryFlights', 'militaryFlightsInCountry', 'militaryVessels', 'militaryVesselsInCountry'] : []);
+      });
+    }
+    const request = this.qualifiedMilitary;
+    const previous = this.qualifiedSignals;
+    const { loadQualifiedCountrySignals } = await import('@/services/country-signal-projection');
+    signal.throwIfAborted();
+    const value = await loadQualifiedCountrySignals(this.qualifiedSource, code, signal, request.promise, previous);
+    if (this.qualifiedMilitary === request && !signal.aborted && !this.ctx.isDestroyed && this.ctx.countryBriefPage === page
+      && page.signal === signal && page.isVisible() && page.getCode() === code && this.currentCountryPresentation === presentation && revision === presentation?.refreshGeneration) {
+      this.qualifiedSignals = value;
+    }
+    return value;
+  }
+
+  selectCountryMilitary(code: string, country: string) {
     const cached = this.ctx.intelligenceCache.military;
     const flightState = cached?.flightDataState;
     const vesselState = cached?.vesselDataState;
@@ -1346,8 +1610,8 @@ export class CountryIntelManager implements AppModule {
     return { signalCounts, summary: { ...summary, coverageNotes, coverage: flightConfirmed && vesselConfirmed ? 'complete' as const : 'partial' as const } };
   }
 
-  private buildMilitarySummary(code: string, country: string): CountryDeepDiveMilitarySummary {
-    return this.selectCountryMilitary(code, country).summary;
+  private buildMilitarySummary(code: string, _country: string): CountryDeepDiveMilitarySummary {
+    return this.qualifiedMilitarySummary?.code === code && this.qualifiedMilitarySummary.page === this.ctx.countryBriefPage ? this.qualifiedMilitarySummary.value : { ownFlights: null, foreignFlights: null, nearbyVessels: null, nearestBases: [], foreignPresence: null, coverage: 'partial', coverageNotes: ['Qualified country military observations are loading.'] };
   }
 
   private buildEconomicIndicators(
@@ -1422,8 +1686,13 @@ export class CountryIntelManager implements AppModule {
     }
     const posturePanel = this.ctx.panels['strategic-posture'] as StrategicPosturePanel | undefined;
     const postures = posturePanel?.getPostures() || [];
-    const aggregator = await getSignalAggregator();
-    const signals = await this.getCountrySignals(code, name);
+    // getCountrySignals waits on the aggregator chunk too, but it also starts
+    // the aviation read; awaiting both together lets that read overlap.
+    const [aggregator, countrySignals] = await Promise.all([
+      getSignalAggregator(),
+      this.getCountrySignals(code, name),
+    ]);
+    const signals = { ...countrySignals, ...this.selectCountryMilitary(code, name).signalCounts };
     const cluster = aggregator.getCountryClusters().find(c => c.country === code);
     const regional = aggregator.getRegionalConvergence().filter(r => r.countries.includes(code));
     const convergence = cluster ? {

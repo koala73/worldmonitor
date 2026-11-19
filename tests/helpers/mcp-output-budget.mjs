@@ -13,8 +13,9 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { __testing__, utf8ByteLength } from '../../api/mcp.ts';
+import { utf8ByteLength } from '../../api/mcp.ts';
 import { presentDefaultMarketData } from '../../api/mcp/registry/cache-tools.ts';
+import { TOOL_ALIASES } from '../../api/mcp/registry/index.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const FIXTURES_DIR = path.resolve(HERE, '..', 'fixtures', 'jmespath-samples');
@@ -98,7 +99,9 @@ export function classify(observed, budget, toolName, knownOverBudget = KNOWN_OVE
 export function runBudgetChecks() {
   const rows = [];
   for (const { file, tool: toolName } of FIXTURES) {
-    const tool = __testing__.TOOL_REGISTRY.find((t) => t.name === toolName);
+    // Retired tools are still callable, so their response budget still holds.
+    const resolved = TOOL_ALIASES.resolve(toolName, {});
+    const tool = resolved.kind === 'registered' || resolved.kind === 'retired' ? resolved.tool : undefined;
     if (!tool) {
       rows.push({ file, tool: toolName, status: 'missing-tool', budget: null, observed: null });
       continue;

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "querySetId": "seo-ai-visibility-v1",
-  "reviewedAt": "2026-07-27",
-  "reviewNotes": "Twenty-five English-language decision queries reviewed against World Monitor's current page families. Reference entities are comparison candidates or primary sources to inspect; their inclusion is not an endorsement or a ranking claim.",
+  "querySetId": "seo-ai-visibility-v2",
+  "reviewedAt": "2026-11-13",
+  "reviewNotes": "The twenty-five English-language decision queries of seo-ai-visibility-v1, unchanged, plus eight short searches (q26-q33) that Search Console reported for World Monitor in both trailing windows on 2026-11-13. Search Console reported none of the twenty-five long queries in either window. Reference entities are comparison candidates or primary sources to inspect; their inclusion is not an endorsement or a ranking claim.",
   "queries": [
     {
       "id": "q01",
@@ -576,6 +576,190 @@
           "role": "source",
           "name": "World Monitor compact health API",
           "url": "https://www.worldmonitor.app/api/health?compact=1"
+        }
+      ]
+    },
+    {
+      "id": "q26",
+      "query": "world monitor",
+      "intent": "branded_entity",
+      "targetAudience": "People who already know the product and search for it by name",
+      "targetPage": {
+        "family": "homepage",
+        "url": "https://www.worldmonitor.app/"
+      },
+      "conversionGoal": "Launch the dashboard",
+      "referenceEntities": [
+        {
+          "role": "source",
+          "name": "World Monitor product reference",
+          "url": "https://www.worldmonitor.app/llms.txt"
+        },
+        {
+          "role": "source",
+          "name": "World Monitor GitHub repository",
+          "url": "https://github.com/koala73/worldmonitor"
+        }
+      ]
+    },
+    {
+      "id": "q27",
+      "query": "worldmonitor",
+      "intent": "branded_entity",
+      "targetAudience": "People who search for the product by its one-word domain name",
+      "targetPage": {
+        "family": "homepage",
+        "url": "https://www.worldmonitor.app/"
+      },
+      "conversionGoal": "Launch the dashboard",
+      "referenceEntities": [
+        {
+          "role": "source",
+          "name": "World Monitor product reference",
+          "url": "https://www.worldmonitor.app/llms.txt"
+        },
+        {
+          "role": "source",
+          "name": "World Monitor GitHub repository",
+          "url": "https://github.com/koala73/worldmonitor"
+        }
+      ]
+    },
+    {
+      "id": "q28",
+      "query": "world monitor api",
+      "intent": "developer_agent",
+      "targetAudience": "Developers looking for World Monitor data access by name",
+      "targetPage": {
+        "family": "documentation",
+        "url": "https://www.worldmonitor.app/docs/api-reference"
+      },
+      "conversionGoal": "Review the API reference and create an API key",
+      "referenceEntities": [
+        {
+          "role": "source",
+          "name": "GDELT API documentation",
+          "url": "https://www.gdeltproject.org/data.html"
+        },
+        {
+          "role": "source",
+          "name": "ACLED API documentation",
+          "url": "https://acleddata.com/acleddatanew/wp-content/uploads/dlm_uploads/2024/03/API-Documentation.pdf"
+        }
+      ]
+    },
+    {
+      "id": "q29",
+      "query": "world monitor mcp",
+      "intent": "developer_agent",
+      "targetAudience": "AI-agent developers looking for the World Monitor MCP server by name",
+      "targetPage": {
+        "family": "developer_mcp",
+        "url": "https://www.worldmonitor.app/docs/mcp-overview"
+      },
+      "conversionGoal": "Connect an MCP client",
+      "referenceEntities": [
+        {
+          "role": "source",
+          "name": "Model Context Protocol",
+          "url": "https://modelcontextprotocol.io/"
+        },
+        {
+          "role": "source",
+          "name": "World Monitor MCP server reference",
+          "url": "https://www.worldmonitor.app/mcp-server.md"
+        }
+      ]
+    },
+    {
+      "id": "q30",
+      "query": "liveuamap alternative",
+      "intent": "evaluation",
+      "targetAudience": "Live-map users comparing conflict and OSINT maps",
+      "targetPage": {
+        "family": "compare",
+        "url": "https://www.worldmonitor.app/compare/liveuamap-alternatives/"
+      },
+      "conversionGoal": "Compare coverage and open the live dashboard",
+      "referenceEntities": [
+        {
+          "role": "competitor",
+          "name": "Liveuamap",
+          "url": "https://liveuamap.com/"
+        },
+        {
+          "role": "competitor",
+          "name": "ACLED Explorer",
+          "url": "https://acleddata.com/explorer/"
+        }
+      ]
+    },
+    {
+      "id": "q31",
+      "query": "osint dashboard",
+      "intent": "category_definition",
+      "targetAudience": "OSINT practitioners looking for a dashboard to monitor open sources",
+      "targetPage": {
+        "family": "blog",
+        "url": "https://www.worldmonitor.app/blog/posts/osint-for-everyone-open-source-intelligence-democratized/"
+      },
+      "conversionGoal": "Continue from the OSINT explainer to the live dashboard",
+      "referenceEntities": [
+        {
+          "role": "competitor",
+          "name": "Liveuamap",
+          "url": "https://liveuamap.com/"
+        },
+        {
+          "role": "source",
+          "name": "GDELT Project",
+          "url": "https://www.gdeltproject.org/"
+        }
+      ]
+    },
+    {
+      "id": "q32",
+      "query": "osint world map",
+      "intent": "category_definition",
+      "targetAudience": "OSINT practitioners and news readers looking for a live world map",
+      "targetPage": {
+        "family": "homepage",
+        "url": "https://www.worldmonitor.app/"
+      },
+      "conversionGoal": "Launch the dashboard",
+      "referenceEntities": [
+        {
+          "role": "competitor",
+          "name": "Liveuamap",
+          "url": "https://liveuamap.com/"
+        },
+        {
+          "role": "source",
+          "name": "GDELT Project",
+          "url": "https://www.gdeltproject.org/"
+        }
+      ]
+    },
+    {
+      "id": "q33",
+      "query": "global conflict tracker",
+      "intent": "use_case",
+      "targetAudience": "Readers and analysts following active conflicts worldwide",
+      "targetPage": {
+        "family": "homepage",
+        "url": "https://www.worldmonitor.app/"
+      },
+      "conversionGoal": "Launch the dashboard with the conflict layers on",
+      "referenceEntities": [
+        {
+          "role": "competitor",
+          "name": "Council on Foreign Relations Global Conflict Tracker",
+          "url": "https://www.cfr.org/global-conflict-tracker"
+        },
+        {
+          "role": "competitor",
+          "name": "ACLED Explorer",
+          "url": "https://acleddata.com/explorer/"
         }
       ]
     }

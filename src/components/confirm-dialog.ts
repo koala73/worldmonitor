@@ -20,11 +20,6 @@ export { resolveConfirmLabels } from '@/components/confirm-dialog-labels';
 
 let activeOverlay: HTMLElement | null = null;
 
-/** Whether a confirm dialog is currently on screen (callers can avoid re-opening). */
-export function isConfirmDialogOpen(): boolean {
-  return activeOverlay !== null;
-}
-
 /**
  * Show a non-blocking confirm dialog. Single-instance: a call made while one is
  * already open resolves `false` immediately rather than stacking overlays.

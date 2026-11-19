@@ -1,4 +1,12 @@
+import { bindMapControlDisclosure } from './map-control-disclosure';
+import { createTimeoutSignal } from '@/services/timeout-signal';
 import * as d3 from 'd3';
+import { UKMTO_SOURCE_URL, ukmtoIncidentLabel, type UkmtoMapIncident } from '../../shared/ukmto-incidents';
+import { iso2ToUnCode } from '../../shared/country-numeric-codes';
+import { FOCUS_CENTRES, type FocusFitBounds } from '@/utils/focus-map';
+import type { ReservoirLevel } from '@/services/climate';
+import { continuousTrack, pointNear, sweptSwath, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
+import { reservoirTone, statusLabel as reservoirStatusLabel } from './reservoir-levels-view';
 import * as topojson from 'topojson-client';
 import { escapeHtml } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
@@ -8,8 +16,6 @@ import type { MapLayers, Hotspot, NewsItem, NewsLocationMarker, InternetOutage, 
 import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import type { Earthquake } from '@/services/earthquakes';
 import { type IranEvent, getIranEventCssColor, getIranEventSize } from '@/services/conflict';
-import type { TechHubActivity } from '@/services/tech-activity';
-import type { GeoHubActivity } from '@/services/geo-activity';
 import { getNaturalEventIcon } from '@/services/eonet';
 import type { WeatherAlert } from '@/services/weather';
 import type { RadiationObservation } from '@/services/radiation';
@@ -18,6 +24,7 @@ import { getThreatColor } from '@/services/threat-classifier';
 import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/smart-poll-loop';
 import { scheduleAfterFirstPaint, yieldToMain } from '@/utils/after-paint';
 import { measure, mutate } from '@/utils/layout-batch';
+import type { ScreenOffset } from '@/utils/map-point-offset';
 import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import {
   INTEL_HOTSPOTS,
@@ -39,10 +46,14 @@ import {
 import { STARTUP_HUBS, ACCELERATORS, TECH_HQS, CLOUD_REGIONS } from '@/config/tech-geo';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
 import { worldTopologyUrl, UNDERSEA_CABLES, NUCLEAR_FACILITIES, SANCTIONED_COUNTRIES, ECONOMIC_CENTERS, SPACEPORTS, CRITICAL_MINERALS } from '@/config/geo-map';
-import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
+import { mountWebcamPinButton } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { tokenizeForMatch, matchKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { MapPopup } from './MapPopup';
+import { fireDetectionPopupData } from './map-popup-fire';
+import type { CrossBorderData, CrossBorderPoint, DisplacementFlow, DisplacementEventsData, InternalDisplacementData } from '@/services/displacement';
+import { createCrossBorderMarker, crossBorderMarkerOffsets } from './cross-border-marker';
+import { createDisplacementMarker, displacementFlowMarkers, displacementEventMarkers, internalDisplacementMarkers, type DisplacementMarker } from './displacement-marker';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { AcledConflictEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import {
@@ -55,17 +66,21 @@ import {
 import { getCachedCountryScoreValue } from '@/services/cached-risk-scores';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
 import { getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
+import { installLongPressContextMenu } from '@/utils/long-press';
+
 import type { CountryClickPayload } from './DeckGLMap';
-import { t } from '@/services/i18n';
+import { initI18n, t } from '@/services/i18n';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { renderLayerTruncationBadges } from '@/utils/layer-truncation-badge';
+import { isLowEndDevice } from '@/utils/device-tier';
 import {
   overlayMarkerPosition,
   projectionPointAtScreenCentre,
 } from '@/utils/overlay-marker-geometry';
 import {
   MAP_OVERLAY_MARKER_BUDGET_DESKTOP,
+  MAP_OVERLAY_MARKER_BUDGET_LOW_END,
   MAP_OVERLAY_MARKER_BUDGET_MOBILE,
   proximityRank,
   selectGlobeMarkers,
@@ -81,7 +96,7 @@ import {
   LAYER_REGISTRY,
   resolveLayerLabel,
 } from '@/config/map-layer-definitions';
-import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
+import { layerExplanationLookup, renderLayerExplanationCard } from '@/utils/layer-explanation-card';
 import {
   createCountryClickGestureTracker,
   finishCountryClickGesture,
@@ -90,6 +105,8 @@ import {
   updateCountryClickGestureDrag,
 } from './map-interaction-guard';
 import { resolveClusterGlContext } from './map-cluster-gl';
+
+export interface MapContextMenuPayload { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string }
 
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
@@ -144,6 +161,40 @@ const RENDERABLE_AI_DATA_CENTERS = AI_DATA_CENTERS.filter(
   (dc) => (dc.chipCount || 0) >= MIN_AI_DATA_CENTER_GPU_COUNT,
 );
 
+/**
+ * Highest SVG zoom (a linear scale factor) a dashboard focus fit may reach,
+ * the counterpart of FOCUS_FIT_MAX_ZOOM for the MapLibre map.
+ */
+const SVG_FOCUS_MAX_ZOOM = 6;
+// Screen sizes of a natural-event marker (main.css .nat-event-*): a 30px icon
+// row, then 8px and 7px bold rows in --font-mono, whatever the body font.
+const NAT_EVENT_ICON_ROW_PX = 30;
+const NAT_EVENT_LABEL_ROW_PX = 14;
+const NAT_EVENT_LABEL_CHAR_PX = 4.8;
+const NAT_EVENT_LABEL_MAX_PX = 120;
+const NAT_EVENT_MAGNITUDE_ROW_PX = 10.5;
+const NAT_EVENT_MAGNITUDE_CHAR_PX = 4.2;
+const NAT_EVENT_LABEL_MIN_ZOOM = 2;
+
+/** A natural-event marker's text rows, with offsets from the top of its column. */
+type NaturalEventText = {
+  marker: HTMLElement;
+  x: number;
+  y: number;
+  priority: number;
+  columnHeight: number;
+  rows: Array<{ el: HTMLElement; needsZoom: boolean; top: number; height: number; width: number }>;
+};
+
+type OrbitalLabelSide = 'right' | 'left' | 'below';
+
+export interface FocusFitInset {
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+}
+
 export class MapComponent {
   private static readonly MOBILE_MIN_EARTHQUAKE_MAGNITUDE = 5;
   private static readonly MOBILE_MAX_IRAN_EVENTS = 50;
@@ -175,9 +226,12 @@ export class MapComponent {
   private static readonly SVG_MARKER_DOM_ZOOM_LAYERS = new Set<keyof MapLayers>(['bases', 'nuclear']);
 
   private container: HTMLElement;
+  private controlDisclosureCleanups: (() => void)[] = [];
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
   private wrapper: HTMLElement;
   private overlays: HTMLElement;
+  private controlsEl: HTMLElement | null = null;
+  private mountedMapControl: HTMLElement | null = null;
   private markerSettleTimer: ReturnType<typeof setTimeout> | null = null;
   private clusterCanvas: HTMLCanvasElement;
   private clusterGl: WebGLRenderingContext | null = null;
@@ -185,6 +239,19 @@ export class MapComponent {
   private layerExplanationOutsideClickHandler: ((event: MouseEvent) => void) | null = null;
   private worldData: WorldTopology | null = null;
   private countryFeatures: Feature<Geometry>[] | null = null;
+  /**
+   * Dashboard focus outline (#10453), as UN M49 codes: the world topology
+   * keys its country features by M49, not ISO2.
+   */
+  private focusOutline: { chosen: Set<string>; neighbours: Set<string> } | null = null;
+  private orbitalTrack: PassTrack | null = null;
+  private orbitalTrackMarker: TrackPoint | null = null;
+  private orbitalTarget: OrbitalTarget | null = null;
+  private orbitalMarkerNodes: SVGCircleElement[] = [];
+  private orbitalSweptNodes: SVGPathElement[] = [];
+  private orbitalEdgeNodes: SVGPathElement[] = [];
+  /** A focus fit requested while the map had no size (a collapsed mobile map). */
+  private pendingFocusFit: { fit: FocusFitBounds; maxZoom: number; inset?: FocusFitInset } | null = null;
   private isResizing = false;
   private baseLayerGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
   private dynamicLayerGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
@@ -198,6 +265,8 @@ export class MapComponent {
   private radiationObservations: RadiationObservation[] = [];
   private outages: InternetOutage[] = [];
   private aisDisruptions: AisDisruptionEvent[] = [];
+  private ukmtoIncidents: UkmtoMapIncident[] = [];
+  private reservoirLevels: ReservoirLevel[] = [];
   private aisDensity: AisDensityZone[] = [];
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
@@ -212,17 +281,17 @@ export class MapComponent {
   private militaryVessels: MilitaryVessel[] = [];
   private militaryVesselClusters: MilitaryVesselCluster[] = [];
   private naturalEvents: NaturalEvent[] = [];
-  private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }> = [];
+  private crossBorderPoints: CrossBorderPoint[] = [];
+  private displacementFlows: DisplacementMarker[] = [];
+  private internalDisplacement: DisplacementMarker[] = [];
+  private displacementEvents: DisplacementMarker[] = [];
+  private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string; detected_at?: number; satellite?: string; source?: string }> = [];
   private techEvents: TechEventMarker[] = [];
-  private techActivities: TechHubActivity[] = [];
-  private geoActivities: GeoHubActivity[] = [];
   private iranEvents: IranEvent[] = [];
   private aptGroups: import('@/types').APTGroup[] = [];
   private aptGroupsLoaded = false;
   private webcamData: Array<WebcamEntry | WebcamCluster> = [];
   private news: NewsItem[] = [];
-  private onTechHubClick?: (hub: TechHubActivity) => void;
-  private onGeoHubClick?: (hub: GeoHubActivity) => void;
   private popup: MapPopup;
   private onNewsClick?: (item: Pick<NewsLocationMarker, 'article' | 'title'>) => void;
   private onHotspotClick?: (hotspot: Hotspot) => void;
@@ -231,6 +300,7 @@ export class MapComponent {
   private layerZoomOverrides: Partial<Record<keyof MapLayers, boolean>> = {};
   private onStateChange?: (state: MapState) => void;
   private onCountryClick?: (country: CountryClickPayload) => void;
+  private onMapContextMenu?: (payload: MapContextMenuPayload) => void;
   private highlightedAssets: Record<AssetType, Set<string>> = {
     pipeline: new Set(),
     cable: new Set(),
@@ -259,8 +329,13 @@ export class MapComponent {
   private destroyed = false;
   // Mobile loads the lighter 110m country topology (U6); passed in from MapContainer.
   private readonly isMobile: boolean;
+  // Low-memory device (src/utils/device-tier.ts): static markers, smaller budget.
+  private readonly lowEndDevice = isLowEndDevice();
   private readonly canToggleLayer: NonNullable<MapComponentOptions['canToggleLayer']>;
   private overlayAppendTarget: ParentNode | null = null;
+  /** Text under each natural-event icon, largest event first, for declutterNaturalEventTexts. */
+  private naturalEventTexts: NaturalEventText[] = [];
+  private naturalEventTextsZoom = Number.NaN;
   // #7112 overlay marker budget. `overlayMarkerCut` holds the marker objects
   // this render pass withheld; it is consulted by identity, so a feed that is
   // NOT in the plan simply never appears here and renders in full. That makes a
@@ -281,10 +356,21 @@ export class MapComponent {
   // through getOverlayMarkerBudgetState() so a test can assert that a view
   // another render already re-planned is not rebuilt again.
   private overlayRenderCount = 0;
+  // A mouse or pen click goes to the element under both press and release.
+  // renderDynamicLayers() replaces every marker, so a rebuild between the two
+  // sent the click to the map and the press opened nothing. While a press on a
+  // marker is down the rebuild waits, and runs once the press ends. Touch is
+  // exempt: Chromium hit-tests a tap at release, so it reaches the new marker.
+  // Pointers pressing a marker; a mouse and a pen can each hold one at once.
+  private readonly markerPressPointers = new Set<number>();
+  private dynamicRebuildDeferred = false;
   private lastTruncationLabelKey = '';
   private labelVisibilityScheduled = false;
   private pendingLabelVisibilityZoom = 1;
   private lastContainerSize = { width: 0, height: 0 };
+  // Mobile can intentionally collapse the map to 0x0 at startup. Preserve an
+  // initial deep-link center until the map is revealed and can project it.
+  private pendingCenter: { lat: number; lon: number } | null = null;
   // #5080 slice 2: last zoom (4dp) whose overlay counter-scale CSS vars were
   // written — lets applyTransform() skip same-value setProperty calls that
   // would restyle every marker on every render pass.
@@ -303,6 +389,11 @@ export class MapComponent {
   // interaction. The effective value is set in the constructor (= !this.isMobile);
   // false here documents the mobile-off default.
   private mobileLabelVisibilityArmed = false;
+  // Last container size the ResizeObserver reported (0 until the first
+  // observation, and again while hidden). onContainerResized() tells a later
+  // layout change apart from the initial paint with it (#4547).
+  private observedContainerWidth = 0;
+  private observedContainerHeight = 0;
   // All container/document interaction listeners are registered with this signal so
   // destroy() can remove them in one shot. The container node is reused across
   // renderer switches (MapContainer keeps one element and rebuilds MapComponent on it),
@@ -395,22 +486,11 @@ export class MapComponent {
   }
 
   private setupResizeObserver(): void {
-    let lastWidth = 0;
-    let lastHeight = 0;
     this.resizeObserver = new ResizeObserver((entries) => {
       if (this.isResizing) return;
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
-        if (width === lastWidth && height === lastHeight) continue;
-        lastWidth = width;
-        lastHeight = height;
-        // Record zero-size (hidden) transitions too, not just visible sizes.
-        // getKnownContainerSize() falls back to a live read whenever the cache
-        // is zero, so recording the hide keeps render()'s zero-size skip intact
-        // and lets a reveal center off current dimensions instead of the last
-        // visible ones (#5022 review). Only a visible size is worth rendering.
-        this.rememberContainerSize({ width, height });
-        if (width > 0 && height > 0) this.scheduleRender();
+        this.onContainerResized(width, height);
       }
     });
     this.resizeObserver.observe(this.container);
@@ -424,20 +504,78 @@ export class MapComponent {
     document.addEventListener('visibilitychange', this.boundVisibilityHandler);
   }
 
+  /**
+   * One ResizeObserver observation of the map container.
+   *
+   * Records zero-size (hidden) transitions too, not just visible sizes:
+   * getKnownContainerSize() falls back to a live read whenever the cache is
+   * zero, so recording the hide keeps render()'s zero-size skip intact and lets
+   * a reveal center off current dimensions instead of the last visible ones
+   * (#5022 review). Only a visible size is worth rendering.
+   *
+   * #4547: a layout change after first paint (device rotation, split view, a
+   * desktop-width window resize on a touch device) re-lays the overlays out
+   * through the scheduled render → applyTransform(), but on mobile that pass
+   * skips label-overlap thinning until the first direct interaction, so the
+   * labels stayed stacked on the new geometry until the user touched the map.
+   * A WIDTH change from a previously visible size arms thinning; the render
+   * this schedules then does the one label pass. The first observation
+   * (no previous width) is the initial paint the deferral exists for, and a
+   * height-only change is what the mobile URL bar produces on every scroll,
+   * so neither may arm it. A reveal after a hide starts from width 0 again and
+   * is likewise not a layout change.
+   *
+   * A size change of the painted map renders here, before the next paint. A
+   * scheduled render would paint at least one frame of the old viewBox
+   * stretched into the new box, with markers off their countries.
+   */
+  private onContainerResized(width: number, height: number): void {
+    if (width === this.observedContainerWidth && height === this.observedContainerHeight) return;
+    const previousWidth = this.observedContainerWidth;
+    const previousHeight = this.observedContainerHeight;
+    this.observedContainerWidth = width;
+    this.observedContainerHeight = height;
+    this.rememberContainerSize({ width, height });
+    if (width > 0 && height > 0) {
+      if (previousWidth > 0 && previousHeight > 0 && width !== previousWidth) this.armMobileLabelVisibilityForLayoutChange();
+      this.resize(this.baseRendered && (width !== this.baseWidth || height !== this.baseHeight));
+    }
+  }
+
+  /**
+   * Arms mobile label thinning without running a pass itself: the caller has a
+   * render scheduled, and that render's applyTransform() owns the pass.
+   * resumeMobileLabelVisibility() is the interaction-driven twin that measures
+   * immediately because no render follows a pan or pinch.
+   */
+  private armMobileLabelVisibilityForLayoutChange(): void {
+    if (!this.isMobile || this.mobileLabelVisibilityArmed) return;
+    this.mobileLabelVisibilityArmed = true;
+  }
+
   public setIsResizing(value: boolean): void {
     const wasResizing = this.isResizing;
     this.isResizing = value;
     if (wasResizing && !value) {
-      this.scheduleRender();
+      this.resize();
     }
   }
 
-  public resize(): void {
-    this.scheduleRender();
+  public resize(renderNow = false): void {
+    const pendingFocusFit = this.pendingFocusFit;
+    const pendingCenter = this.pendingCenter;
+    if (pendingFocusFit) this.fitFocusBounds(pendingFocusFit.fit, pendingFocusFit.maxZoom, pendingFocusFit.inset);
+    else if (pendingCenter) this.setCenter(pendingCenter.lat, pendingCenter.lon);
+    if (renderNow) this.render();
+    else this.scheduleRender();
   }
 
   public destroy(): void {
+    this.controlDisclosureCleanups.forEach(cleanup => cleanup());
+    this.controlDisclosureCleanups = [];
     this.destroyed = true;
+    // The popup is appended to document.body, so removing the map container leaves it open.
+    this.popup.hide();
     this.listenerAbort.abort();
     if (this.markerSettleTimer !== null) {
       clearTimeout(this.markerSettleTimer);
@@ -464,9 +602,16 @@ export class MapComponent {
     }
   }
 
+  /** Adds a control below the zoom buttons, kept across a late controls build. */
+  public mountMapControl(el: HTMLElement): void {
+    this.mountedMapControl = el;
+    this.controlsEl?.append(el);
+  }
+
   private createControls(): HTMLElement {
     const controls = document.createElement('div');
     controls.className = 'map-controls';
+    this.controlsEl = controls;
     setTrustedHtml(controls, trustedHtml(`
       <button class="map-control-btn" data-action="zoom-in" aria-label="Zoom in">+</button>
       <button class="map-control-btn" data-action="zoom-out" aria-label="Zoom out">−</button>
@@ -481,6 +626,7 @@ export class MapComponent {
       else if (action === 'reset') this.reset();
     });
 
+    if (this.mountedMapControl) controls.append(this.mountedMapControl);
     return controls;
   }
 
@@ -582,9 +728,9 @@ export class MapComponent {
       // already restricted to renderers: ['deck'] in LAYER_REGISTRY, which keeps
       // them out of the globe picker too.
       'ais', 'flights', 'aircraftEmergencies', 'gpsJamming',
-      'natural', 'weather',                               // natural
+      'natural', 'weather', 'reservoirLevels',            // natural
       'economic',                                         // economic
-      'waterways',                                        // labels
+      'waterways', 'displacement',
       'ciiChoropleth',                                    // Candidate only; SVG capability filter below omits it.
     ];
     const techLayers: (keyof MapLayers)[] = [
@@ -616,6 +762,7 @@ export class MapComponent {
       'outages',                              // power / energy system status
       'natural',                              // earthquakes near energy infrastructure
       'weather', 'fires',                     // operational risk
+      'reservoirLevels',                      // hydropower reservoirs
       'economic',                             // infrastructure context
     ];
     // Commodity variant — SVG/mobile fallback. Only include keys that actually
@@ -694,7 +841,7 @@ export class MapComponent {
       explainBtn.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        this.showLayerExplanation(layer);
+        void this.showLayerExplanation(layer);
       });
       row.appendChild(explainBtn);
 
@@ -704,13 +851,14 @@ export class MapComponent {
     // Add help button
     const helpBtn = document.createElement('button');
     helpBtn.className = 'layer-help-btn';
-    helpBtn.textContent = '?';
+    helpBtn.textContent = 'i';
     helpBtn.title = t('components.deckgl.layerGuide');
     helpBtn.setAttribute('aria-label', t('components.deckgl.layerGuide'));
     helpBtn.addEventListener('click', () => this.showLayerHelp());
     toggles.appendChild(helpBtn);
     enforceLayerLimit();
 
+    this.controlDisclosureCleanups.push(bindMapControlDisclosure(this.container, toggles, 'layers', t('components.deckgl.layersTitle')));
     return toggles;
   }
 
@@ -720,7 +868,15 @@ export class MapComponent {
     this.layerExplanationOutsideClickHandler = null;
   }
 
-  private showLayerExplanation(layer: keyof MapLayers): void {
+  private async showLayerExplanation(layer: keyof MapLayers): Promise<void> {
+    try {
+      await initI18n();
+    } catch (error) {
+      console.warn('[Map] Unable to load layer explanation text', error);
+      return;
+    }
+    if (this.destroyed) return;
+
     const existing = this.container.querySelector('.layer-explanation-popup') as HTMLElement | null;
     this.clearLayerExplanationOutsideClickHandler();
     if (existing?.dataset.layer === layer) {
@@ -736,7 +892,7 @@ export class MapComponent {
     popup.className = 'layer-explanation-popup';
     popup.dataset.layer = layer;
     setTrustedHtml(popup, trustedHtml(
-      renderLayerExplanationCard(this.getLayerControlLabel(layer), getLayerExplanation(layer)),
+      renderLayerExplanationCard(this.getLayerControlLabel(layer), getLayerExplanation(layer), layerExplanationLookup(t)),
       "static layer explanation metadata",
     ));
 
@@ -963,12 +1119,21 @@ export class MapComponent {
         <div class="map-legend-item"><span class="map-legend-icon apt">⚠</span>APT</div>
       `, "legacy direct innerHTML migration"));
     }
+    this.controlDisclosureCleanups.push(bindMapControlDisclosure(this.container, legend, 'legend', t('components.deckgl.legend.title')));
     return legend;
+  }
+
+  // A collapsed map (phones start with the map section hidden) has no size, so
+  // render() draws nothing and there is no base layer to verify yet. Reads the
+  // cached size like render() so a visible map takes no forced reflow (#5017).
+  private isCollapsed(): boolean {
+    const { width, height } = this.getKnownContainerSize();
+    return width === 0 || height === 0;
   }
 
   private runHealthCheck(): void {
     const svgNode = this.svg.node();
-    if (!svgNode) return;
+    if (!svgNode || this.isCollapsed()) return;
 
     // Verify base layer exists and has content
     const baseGroup = svgNode.querySelector('.map-base');
@@ -988,6 +1153,30 @@ export class MapComponent {
 
   private setupZoomHandlers(): void {
     const signal = this.listenerAbort.signal;
+    this.container.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch' || !(e.target instanceof Node)) return;
+      if (this.overlays?.contains(e.target) || this.dynamicLayerGroup?.node()?.contains(e.target)) this.markerPressPointers.add(e.pointerId);
+    }, { capture: true, signal });
+    // A pointer's release ends only its own press; a finger lifted elsewhere on
+    // a touch laptop must not release a mouse press. The rebuild waits until
+    // no press is left. Window blur ends every press.
+    const endMarkerPress = (e: Event) => {
+      if (!this.markerPressPointers?.size) return;
+      if (e instanceof PointerEvent) {
+        if (!this.markerPressPointers.delete(e.pointerId) || this.markerPressPointers.size) return;
+      } else {
+        this.markerPressPointers.clear();
+      }
+      // The click follows pointerup in the same task; scheduleRender() waits for
+      // a frame, so the click reaches the marker it was pressed on.
+      if (this.dynamicRebuildDeferred) {
+        this.dynamicRebuildDeferred = false;
+        this.scheduleRender();
+      }
+    };
+    document.addEventListener('pointerup', endMarkerPress, { capture: true, signal });
+    document.addEventListener('pointercancel', endMarkerPress, { capture: true, signal });
+    window.addEventListener('blur', endMarkerPress, { signal });
     let isDragging = false;
     let lastPos = { x: 0, y: 0 };
     let lastTouchDist = 0;
@@ -997,7 +1186,7 @@ export class MapComponent {
       if (!(target instanceof Element)) return false;
       return Boolean(
         target.closest(
-          '.map-controls, .time-slider, .layer-toggles, .map-legend, .layer-help-popup, .map-popup, button, select, input, textarea, a'
+          '.map-controls, .time-slider, .layer-toggles, .map-legend, .layer-help-popup, .layer-explanation-popup, .map-popup, button, select, input, textarea, a'
         )
       );
     };
@@ -1184,6 +1373,7 @@ export class MapComponent {
     }, { signal });
 
     this.container.addEventListener('click', (e) => {
+      if (shouldIgnoreInteractionStart(e.target)) return;
       if (!this.onCountryClick) return;
       if (performance.now() - lastDragEndTime < 300) return;
       if (shouldSuppressCountryClick(countryClickGesture)) return;
@@ -1208,12 +1398,25 @@ export class MapComponent {
       }
     }, { signal });
 
+    // Right-click, or a long press on a phone, opens the point lookup as on the globe and deck.gl maps.
+    this.container.addEventListener('contextmenu', (e) => {
+      if (!this.onMapContextMenu || shouldIgnoreInteractionStart(e.target)) return;
+      const point = this.clientToLatLon(e.clientX, e.clientY);
+      if (!point) return;
+      e.preventDefault();
+      const hit = getCountryAtCoordinates(point.lat, point.lon);
+      this.onMapContextMenu({ ...point, screenX: e.clientX, screenY: e.clientY, countryCode: hit?.code, countryName: hit?.name });
+    }, { signal });
+    const removeLongPress = installLongPressContextMenu(this.container, { ignore: shouldIgnoreInteractionStart });
+    signal.addEventListener('abort', removeLongPress, { once: true });
+
     this.container.style.cursor = 'grab';
   }
 
-  private async loadMapData(): Promise<void> {
+  private async loadMapData(attempt = 0): Promise<void> {
+    if (this.destroyed) return;
     try {
-      const worldResponse = await fetch(worldTopologyUrl(this.isMobile));
+      const worldResponse = await fetch(worldTopologyUrl(this.isMobile), { signal: createTimeoutSignal(15_000) });
       this.worldData = await worldResponse.json();
       if (this.worldData) {
         const countries = topojson.feature(
@@ -1227,6 +1430,10 @@ export class MapComponent {
       // Re-render after layout stabilizes to catch full container width.
       this.scheduleRender();
     } catch (e) {
+      if (attempt < 2) {
+        await new Promise(resolve => setTimeout(resolve, Math.round(500 * 2 ** attempt * (0.5 + Math.random() * 0.5))));
+        return this.loadMapData(attempt + 1);
+      }
       console.error('Failed to load map data:', e);
     }
   }
@@ -1291,6 +1498,43 @@ export class MapComponent {
     return this.lastContainerSize.width > 0 && this.lastContainerSize.height > 0
       ? this.lastContainerSize
       : this.readContainerSize();
+  }
+
+  /**
+   * A natural event prints its title and size under its icon, so close events
+   * (icebergs off South Georgia) printed on top of each other. Keep the text of
+   * the largest event in each crowd; the others keep their icon and popup.
+   * Zoom moves markers apart or together without a rebuild, so this reruns on
+   * every zoom change, and it also shows titles once zoom reaches
+   * NAT_EVENT_LABEL_MIN_ZOOM. Hidden rows keep their space (visibility, not
+   * display), so an icon never moves off its point. Markers keep a fixed
+   * screen size and the text is monospace, so the boxes come from character
+   * counts, with no layout read.
+   */
+  private declutterNaturalEventTexts(zoom: number): void {
+    this.naturalEventTextsZoom = zoom;
+    const placed: Array<{ left: number; right: number; top: number; bottom: number }> = [];
+    for (const text of this.naturalEventTexts) {
+      const rows = text.rows.filter((row) => !row.needsZoom || zoom >= NAT_EVENT_LABEL_MIN_ZOOM);
+      let clear = false;
+      if (rows.length) {
+        // The marker column is centred on its point: the icon, then the text rows.
+        const x = text.x * zoom;
+        const columnTop = text.y * zoom - text.columnHeight / 2;
+        const width = Math.max(...rows.map((row) => row.width));
+        const box = {
+          left: x - width / 2 - 2,
+          right: x + width / 2 + 2,
+          top: columnTop + Math.min(...rows.map((row) => row.top)) - 1,
+          bottom: columnTop + Math.max(...rows.map((row) => row.top + row.height)) + 1,
+        };
+        clear = !placed.some((p) => box.left < p.right && box.right > p.left && box.top < p.bottom && box.bottom > p.top);
+        if (clear) placed.push(box);
+      }
+      for (const row of text.rows) row.el.style.visibility = clear && rows.includes(row) ? '' : 'hidden';
+      // A neighbour's icon would otherwise paint over the shown text.
+      text.marker.classList.toggle('nat-event-texted', clear);
+    }
   }
 
   private appendOverlay(node: Node): void {
@@ -1394,6 +1638,7 @@ export class MapComponent {
 
       // Countries
       this.renderCountries(this.baseLayerGroup, basePath);
+      this.applyFocusOutline();
       this.baseRendered = true;
     }
 
@@ -1440,6 +1685,10 @@ export class MapComponent {
   // reached, so it runs synchronously. The re-entrancy token lets a chunked pass bail once a
   // newer render (which bumps the token and rebuilds) has superseded it.
   private async renderDynamicLayers(width: number, height: number, chunk = false): Promise<void> {
+    if (this.markerPressPointers?.size) {
+      this.dynamicRebuildDeferred = true;
+      return;
+    }
     const dynamicGroup = this.dynamicLayerGroup;
     const dynamicNode = dynamicGroup?.node();
     if (!dynamicGroup || !dynamicNode) return;
@@ -1460,6 +1709,8 @@ export class MapComponent {
     if (this.state.layers.ais) steps.push(() => this.renderAisDensity(projection));
     steps.push(() => this.renderClusterLayer(projection));
     steps.push(() => this.renderOverlays(projection));
+    if (this.orbitalTrack) steps.push(() => this.renderOrbitalTrack(projection));
+    if (this.orbitalTarget) steps.push(() => this.renderOrbitalTarget(projection));
 
     for (let i = 0; i < steps.length; i++) {
       if (chunk && (this.destroyed || token !== this.dynamicRenderToken)) return;
@@ -1923,6 +2174,7 @@ export class MapComponent {
     if (layers.waterways) add('waterways', STRATEGIC_WATERWAYS);
     if (layers.ais) {
       add('ais', this.aisDisruptions);
+      add('ais', this.filterByTime(this.ukmtoIncidents, item => item.occurredAt));
       add('ais', PORTS);
     }
     if (layers.cyberThreats && SITE_VARIANT !== 'tech') add('cyberThreats', this.aptGroups);
@@ -1947,6 +2199,7 @@ export class MapComponent {
       add('natural', slices.naturalEvents);
     }
     if (layers.economic) add('economic', ECONOMIC_CENTERS);
+    if (layers.reservoirLevels) add('reservoirLevels', this.reservoirLevels);
     if (layers.weather) add('weather', slices.weather);
     if (layers.radiationWatch) add('radiationWatch', slices.radiationObservations);
     if (layers.outages) add('outages', slices.outages);
@@ -1962,6 +2215,12 @@ export class MapComponent {
     if (layers.techHQs) add('techHQs', TECH_HQS);
     if (layers.accelerators) add('accelerators', ACCELERATORS);
     if (layers.techEvents) add('techEvents', this.techEvents);
+    if (layers.displacement) {
+      add('displacement', this.crossBorderPoints);
+      for (const markers of [this.displacementFlows, this.internalDisplacement, this.displacementEvents]) {
+        add('displacement', markers, { rank: item => (item as DisplacementMarker).count });
+      }
+    }
     if (layers.stockExchanges) add('stockExchanges', STOCK_EXCHANGES);
     if (layers.financialCenters) add('financialCenters', FINANCIAL_CENTERS);
     if (layers.centralBanks) add('centralBanks', CENTRAL_BANKS);
@@ -1985,11 +2244,6 @@ export class MapComponent {
       add('fires', slices.fires, { rank: (m) => (m as { brightness?: number }).brightness ?? 0 });
     }
     if (layers.webcams && this.state.zoom >= 2) add('webcams', this.webcamData);
-    // Variant hub overlays have no layer-toggle row, so a truncation here would
-    // have nowhere to be disclosed — exempt like the globe's `news` group. Both
-    // are bounded by the hub registry, not by an upstream feed.
-    if (SITE_VARIANT === 'tech') add('techHubs', this.techActivities, { exempt: true });
-    if (SITE_VARIANT === 'full') add('geoHubs', this.geoActivities, { exempt: true });
 
     // Layers with no severity signal rank by nearness to the centre of the
     // current view rather than by raw feed order, so a capped reference layer
@@ -2007,9 +2261,11 @@ export class MapComponent {
       else group.rank = nearestFirst;
     }
 
-    const budget = this.isMobile
-      ? MAP_OVERLAY_MARKER_BUDGET_MOBILE
-      : MAP_OVERLAY_MARKER_BUDGET_DESKTOP;
+    const budget = this.lowEndDevice
+      ? MAP_OVERLAY_MARKER_BUDGET_LOW_END
+      : this.isMobile
+        ? MAP_OVERLAY_MARKER_BUDGET_MOBILE
+        : MAP_OVERLAY_MARKER_BUDGET_DESKTOP;
     const { markers, truncated } = selectGlobeMarkers(groups, budget);
 
     const kept = new Set(markers);
@@ -2048,6 +2304,40 @@ export class MapComponent {
   ): LatLng {
     const centre = projection.invert?.(projectionPointAtScreenCentre(width, height, this.state.pan));
     return { lat: centre?.[1] ?? 0, lng: centre?.[0] ?? 0 };
+  }
+
+  /** A fire dot; a satellite detection is a button that opens its popup when Orbital Watch is on (#10713). */
+  private createFireDot(fire: MapComponent['firmsFireData'][number], pos: [number, number]): HTMLElement {
+    const color = fire.brightness > 400 ? getCSSColor('--semantic-critical') : fire.brightness > 350 ? getCSSColor('--semantic-high') : getCSSColor('--semantic-elevated');
+    const size = Math.max(4, Math.min(10, (fire.frp || 1) * 0.5));
+
+    const detection = fireDetectionPopupData(fire);
+    const dot = document.createElement(detection ? 'button' : 'div');
+    dot.className = 'fire-dot';
+    dot.style.left = `${pos[0]}px`;
+    dot.style.top = `${pos[1]}px`;
+    dot.style.width = `${size}px`;
+    dot.style.height = `${size}px`;
+    dot.style.backgroundColor = color;
+    dot.title = `${fire.region} — ${Math.round(fire.brightness)}K, ${fire.frp}MW`;
+
+    if (detection) {
+      dot.classList.add('fire-dot-popup');
+      (dot as HTMLButtonElement).type = 'button';
+      dot.setAttribute('aria-label', dot.title);
+      dot.addEventListener('click', (event) => {
+        const e = event as MouseEvent;
+        e.stopPropagation();
+        const rect = this.container.getBoundingClientRect();
+        // Enter and Space click with no pointer position, so anchor on the dot itself.
+        const at = e.detail === 0 ? dot.getBoundingClientRect() : null;
+        this.popup.show({
+          type: 'fireDetection', data: detection,
+          x: (at ? at.left + at.width / 2 : e.clientX) - rect.left, y: (at ? at.top + at.height / 2 : e.clientY) - rect.top,
+        });
+      });
+    }
+    return dot;
   }
 
   /** True when this render pass withheld `marker` under the overlay budget (#7112). */
@@ -2190,7 +2480,59 @@ export class MapComponent {
     const previousTarget = this.overlayAppendTarget;
     this.overlayAppendTarget = fragment;
 
+    // A viewport-only overlay refresh does not clear the dynamic SVG group.
+    this.dynamicLayerGroup?.selectAll('.displacement-route').remove();
     try {
+    if (this.state.layers.displacement) {
+      const routeLayer = this.dynamicLayerGroup?.select('.overlays-svg');
+      const path = d3.geoPath().projection(projection);
+      for (const item of [...this.displacementFlows, ...this.internalDisplacement, ...this.displacementEvents]) {
+        if (this.isOverlayMarkerCut(item)) continue;
+        if (item.route) {
+          routeLayer?.append('path')
+            .attr('class', 'displacement-route')
+            .attr('d', path({ type: 'LineString', coordinates: item.route }))
+            .attr('fill', 'none').attr('stroke', item.color)
+            .attr('stroke-width', 2).attr('opacity', 0.7)
+            .attr('vector-effect', 'non-scaling-stroke').style('pointer-events', 'none');
+        }
+        const pos = projection([item.lon, item.lat]);
+        if (!pos) continue;
+        const marker = createDisplacementMarker(item);
+        marker.style.position = 'absolute';
+        marker.style.left = `${pos[0]}px`;
+        marker.style.top = `${pos[1]}px`;
+        marker.style.transform = 'translate(-50%, -50%) scale(var(--marker-scale, 1))';
+        marker.addEventListener('click', event => {
+          event.stopPropagation();
+          const rect = marker.getBoundingClientRect();
+          const containerRect = this.container.getBoundingClientRect();
+          this.popup.show({ type: 'displacement', data: item,
+            x: rect.left - containerRect.left + rect.width / 2, y: rect.top - containerRect.top });
+        });
+        this.appendOverlay(marker);
+      }
+      const offsets = crossBorderMarkerOffsets(this.crossBorderPoints);
+      for (const point of this.crossBorderPoints) {
+        if (this.isOverlayMarkerCut(point)) continue;
+        const pos = projection([point.lon, point.lat]);
+        if (!pos) continue;
+        const marker = createCrossBorderMarker(point);
+        const [offsetX, offsetY] = offsets.get(point)!;
+        marker.style.position = 'absolute';
+        marker.style.left = `${pos[0] + offsetX}px`;
+        marker.style.top = `${pos[1] + offsetY}px`;
+        marker.style.transform = 'translate(-50%, -50%) scale(var(--marker-scale, 1))';
+        marker.addEventListener('click', (event) => {
+          event.stopPropagation();
+          const rect = marker.getBoundingClientRect();
+          const containerRect = this.container.getBoundingClientRect();
+          this.popup.show({ type: 'crossBorder', data: point,
+            x: rect.left - containerRect.left + rect.width / 2, y: rect.top - containerRect.top });
+        });
+        this.appendOverlay(marker);
+      }
+    }
     for (const item of slices.news) {
       if (this.isOverlayMarkerCut(item)) continue;
       const pos = projection([item.lon, item.lat]);
@@ -2220,6 +2562,44 @@ export class MapComponent {
     if (this.state.layers.ais) {
       this.renderAisDisruptions(projection);
       this.renderPorts(projection);
+      this.filterByTime(this.ukmtoIncidents, item => item.occurredAt).forEach(item => {
+        if (!item.location || this.isOverlayMarkerCut(item)) return;
+        const pos = projection([item.location.longitude, item.location.latitude]);
+        if (!pos) return;
+        const marker = document.createElement('a');
+        marker.className = 'ais-disruption-marker ukmto-marker';
+        marker.style.left = `${pos[0]}px`;
+        marker.style.top = `${pos[1]}px`;
+        marker.textContent = '⚓';
+        marker.title = `${ukmtoIncidentLabel(item)}\n${item.description}`;
+        marker.setAttribute('aria-label', ukmtoIncidentLabel(item));
+        marker.href = UKMTO_SOURCE_URL;
+        marker.target = '_blank';
+        marker.rel = 'noopener noreferrer';
+        this.appendOverlay(marker);
+      });
+    }
+
+    if (this.state.layers.reservoirLevels) {
+      this.reservoirLevels.forEach((reservoir) => {
+        if (this.isOverlayMarkerCut(reservoir)) return;
+        const pos = projection([reservoir.lon, reservoir.lat]);
+        if (!pos) return;
+        const marker = document.createElement('button');
+        marker.type = 'button';
+        marker.className = `wl-marker wl-tone-${reservoirTone(reservoir.status)}`;
+        marker.dataset.reservoirId = reservoir.id;
+        marker.style.left = `${pos[0]}px`;
+        marker.style.top = `${pos[1]}px`;
+        marker.title = `${reservoir.name} · ${reservoirStatusLabel(reservoir, t)}`;
+        marker.setAttribute('aria-label', marker.title);
+        marker.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const rect = this.container.getBoundingClientRect();
+          this.popup.show({ type: 'reservoirLevel', data: reservoir, x: e.clientX - rect.left, y: e.clientY - rect.top });
+        });
+        this.appendOverlay(marker);
+      });
     }
 
     // APT groups — rendered only when cyberThreats layer is active, loaded lazily
@@ -3182,80 +3562,6 @@ export class MapComponent {
       });
     }
 
-    // Tech Hub Activity Markers (shows activity heatmap for tech hubs with news activity)
-    if (SITE_VARIANT === 'tech' && this.techActivities.length > 0) {
-      this.techActivities.forEach((activity) => {
-        const pos = projection([activity.lon, activity.lat]);
-        if (!pos) return;
-
-        // Only show markers for hubs with actual activity
-        if (activity.newsCount === 0) return;
-
-        const div = document.createElement('div');
-        div.className = `tech-activity-marker ${activity.activityLevel}`;
-        div.style.left = `${pos[0]}px`;
-        div.style.top = `${pos[1]}px`;
-        div.style.zIndex = activity.activityLevel === 'high' ? '60' : activity.activityLevel === 'elevated' ? '50' : '40';
-        div.title = `${activity.city}: ${activity.newsCount} stories`;
-
-        div.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.onTechHubClick?.(activity);
-          const rect = this.container.getBoundingClientRect();
-          this.popup.show({
-            type: 'techActivity',
-            data: activity,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-          });
-        });
-
-        this.appendOverlay(div);
-
-        // Add label for high/elevated activity hubs at sufficient zoom
-        if ((activity.activityLevel === 'high' || (activity.activityLevel === 'elevated' && this.state.zoom >= 2)) && this.state.zoom >= 1.5) {
-          const label = document.createElement('div');
-          label.className = 'tech-activity-label';
-          label.textContent = activity.city;
-          label.style.left = `${pos[0]}px`;
-          label.style.top = `${pos[1] + 14}px`;
-          this.appendOverlay(label);
-        }
-      });
-    }
-
-    // Geo Hub Activity Markers (shows activity heatmap for geopolitical hubs - full variant)
-    if (SITE_VARIANT === 'full' && this.geoActivities.length > 0) {
-      this.geoActivities.forEach((activity) => {
-        const pos = projection([activity.lon, activity.lat]);
-        if (!pos) return;
-
-        // Only show markers for hubs with actual activity
-        if (activity.newsCount === 0) return;
-
-        const div = document.createElement('div');
-        div.className = `geo-activity-marker ${activity.activityLevel}`;
-        div.style.left = `${pos[0]}px`;
-        div.style.top = `${pos[1]}px`;
-        div.style.zIndex = activity.activityLevel === 'high' ? '60' : activity.activityLevel === 'elevated' ? '50' : '40';
-        div.title = `${activity.name}: ${activity.newsCount} stories`;
-
-        div.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.onGeoHubClick?.(activity);
-          const rect = this.container.getBoundingClientRect();
-          this.popup.show({
-            type: 'geoActivity',
-            data: activity,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-          });
-        });
-
-        this.appendOverlay(div);
-      });
-    }
-
     // Protests / Social Unrest Events (severity colors + icons) - with clustering
     if (this.state.layers.protests) {
       const significantProtests = this.keepBudgetedMarkers(slices.protests);
@@ -3631,6 +3937,7 @@ export class MapComponent {
     }
 
     // Natural Events (NASA EONET) - part of NATURAL layer
+    this.naturalEventTexts = [];
     if (this.state.layers.natural) {
       slices.naturalEvents.forEach((event) => {
         if (this.isOverlayMarkerCut(event)) return;
@@ -3647,19 +3954,31 @@ export class MapComponent {
         icon.textContent = getNaturalEventIcon(event.category);
         div.appendChild(icon);
 
-        if (this.state.zoom >= 2) {
-          const label = document.createElement('div');
-          label.className = 'nat-event-label';
-          label.textContent = event.title.length > 25 ? event.title.slice(0, 25) + '…' : event.title;
-          div.appendChild(label);
-        }
+        const text: NaturalEventText = { marker: div, x: pos[0], y: pos[1], priority: event.magnitude ?? 0, columnHeight: NAT_EVENT_ICON_ROW_PX, rows: [] };
+        // Built at every zoom and shown from NAT_EVENT_LABEL_MIN_ZOOM by
+        // declutterNaturalEventTexts, which runs on each zoom change.
+        const label = document.createElement('div');
+        label.className = 'nat-event-label';
+        label.textContent = event.title.length > 25 ? event.title.slice(0, 25) + '…' : event.title;
+        div.appendChild(label);
+        text.rows.push({
+          el: label, needsZoom: true, top: text.columnHeight, height: NAT_EVENT_LABEL_ROW_PX,
+          width: Math.min(NAT_EVENT_LABEL_MAX_PX, [...label.textContent].length * NAT_EVENT_LABEL_CHAR_PX),
+        });
+        text.columnHeight += NAT_EVENT_LABEL_ROW_PX;
 
         if (event.magnitude) {
           const mag = document.createElement('div');
           mag.className = 'nat-event-magnitude';
           mag.textContent = `${event.magnitude}${event.magnitudeUnit ? ` ${event.magnitudeUnit}` : ''}`;
           div.appendChild(mag);
+          text.rows.push({
+            el: mag, needsZoom: false, top: text.columnHeight, height: NAT_EVENT_MAGNITUDE_ROW_PX,
+            width: [...mag.textContent].length * NAT_EVENT_MAGNITUDE_CHAR_PX,
+          });
+          text.columnHeight += NAT_EVENT_MAGNITUDE_ROW_PX;
         }
+        this.naturalEventTexts.push(text);
 
         div.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -3674,6 +3993,8 @@ export class MapComponent {
 
         this.appendOverlay(div);
       });
+      this.naturalEventTexts.sort((a, b) => b.priority - a.priority);
+      this.declutterNaturalEventTexts(this.state.zoom);
     }
 
     // Satellite Fires (NASA FIRMS) - separate fires layer
@@ -3683,18 +4004,7 @@ export class MapComponent {
         const pos = projection([fire.lon, fire.lat]);
         if (!pos) return;
 
-        const color = fire.brightness > 400 ? getCSSColor('--semantic-critical') : fire.brightness > 350 ? getCSSColor('--semantic-high') : getCSSColor('--semantic-elevated');
-        const size = Math.max(4, Math.min(10, (fire.frp || 1) * 0.5));
-
-        const dot = document.createElement('div');
-        dot.className = 'fire-dot';
-        dot.style.left = `${pos[0]}px`;
-        dot.style.top = `${pos[1]}px`;
-        dot.style.width = `${size}px`;
-        dot.style.height = `${size}px`;
-        dot.style.backgroundColor = color;
-        dot.title = `${fire.region} — ${Math.round(fire.brightness)}K, ${fire.frp}MW`;
-
+        const dot = this.createFireDot(fire, pos);
         this.appendOverlay(dot);
       });
     }
@@ -3725,7 +4035,7 @@ export class MapComponent {
         dot.style.opacity = '0.75';
         dot.style.cursor = 'pointer';
         dot.title = isCluster ? `${(cam as WebcamCluster).count} webcams` : ((cam as WebcamEntry).title || 'Webcam');
-        dot.addEventListener('click', (e) => {
+        dot.addEventListener('click', (e: MouseEvent) => {
           e.stopPropagation();
           if (isCluster) {
             this.showWebcamClusterPopup(cam as WebcamCluster, e.clientX, e.clientY);
@@ -3748,6 +4058,12 @@ export class MapComponent {
   // add .markers-settled on the wrapper so main.css stops the infinite pulses
   // and their compositing layers are released while the map is idle.
   private armMarkerSettle(): void {
+    // Low-end devices skip the attention window: every render restarts ~150
+    // pulses and their compositing layers.
+    if (this.lowEndDevice) {
+      this.wrapper.classList.add('markers-settled');
+      return;
+    }
     this.wrapper.classList.remove('markers-settled');
     if (this.markerSettleTimer !== null) clearTimeout(this.markerSettleTimer);
     this.markerSettleTimer = setTimeout(() => {
@@ -3889,31 +4205,16 @@ export class MapComponent {
             previewDiv.appendChild(span);
           }
 
-          const pinBtn = document.createElement('button');
-          pinBtn.className = 'webcam-pin-btn';
           const wcId = cam.webcamId;
-          if (isPinned(wcId)) {
-            pinBtn.classList.add('webcam-pin-btn--pinned');
-            pinBtn.textContent = '\u{1F4CC} Pinned';
-            pinBtn.disabled = true;
-          } else {
-            pinBtn.textContent = '\u{1F4CC} Pin';
-            pinBtn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              pinWebcam({
-                webcamId: wcId,
-                title: cam.title || img?.title || '',
-                lat: cam.lat,
-                lng: cam.lng,
-                category: cam.category || 'other',
-                country: cam.country || '',
-                playerUrl: img?.playerUrl || '',
-              });
-              pinBtn.classList.add('webcam-pin-btn--pinned');
-              pinBtn.textContent = '\u{1F4CC} Pinned';
-              pinBtn.disabled = true;
-            });
-          }
+          const pinBtn = mountWebcamPinButton(() => ({
+            webcamId: wcId,
+            title: cam.title || img?.title || '',
+            lat: cam.lat,
+            lng: cam.lng,
+            category: cam.category || 'other',
+            country: cam.country || '',
+            playerUrl: img?.playerUrl || '',
+          }));
           tooltip.appendChild(pinBtn);
         });
       });
@@ -4313,6 +4614,8 @@ export class MapComponent {
   }
 
   public setView(view: MapView, zoom?: number): void {
+    this.pendingCenter = null;
+    this.pendingFocusFit = null;
     this.state.view = view;
 
     // Region-specific zoom and pan settings
@@ -4689,6 +4992,9 @@ export class MapComponent {
       this.wrapper.style.setProperty('--marker-scale', String(markerScale));
       this.wrapper.style.setProperty('--zoom', String(zoom));
     }
+    // Exact zoom, not the rounded CSS key: 1.99999 and 2 share a key but sit on
+    // either side of the title threshold.
+    if (zoom !== this.naturalEventTextsZoom) this.declutterNaturalEventTexts(zoom);
 
     // Smart label hiding based on zoom level and overlap
     if (this.shouldUpdateLabelVisibility()) this.updateLabelVisibility(zoom);
@@ -4889,8 +5195,289 @@ export class MapComponent {
     this.onTimeRangeChange = callback;
   }
 
+  public setOnMapContextMenu(cb: (payload: MapContextMenuPayload) => void): void {
+    this.onMapContextMenu = cb;
+  }
+
+  /** The map point under a client position, or null off the projection. */
+  private clientToLatLon(clientX: number, clientY: number): { lat: number; lon: number } | null {
+    const rect = this.container.getBoundingClientRect();
+    const zoom = this.state.zoom;
+    const { width, height } = this.readContainerSize();
+    const tx = (width / 2) * (1 - zoom) + this.state.pan.x * zoom;
+    const ty = (height / 2) * (1 - zoom) + this.state.pan.y * zoom;
+    const coords = this.getProjection(width, height).invert?.([(clientX - rect.left - tx) / zoom, (clientY - rect.top - ty) / zoom]);
+    if (!coords || !Number.isFinite(coords[0]) || !Number.isFinite(coords[1])) return null;
+    return { lat: coords[1], lon: coords[0] };
+  }
+
   public setOnCountryClick(cb: (country: CountryClickPayload) => void): void {
     this.onCountryClick = cb;
+  }
+
+  public setOrbitalTrack(track: PassTrack | null, marker: TrackPoint | null): void {
+    this.orbitalTrack = track;
+    this.orbitalTrackMarker = track ? marker : null;
+    this.container.classList.toggle('orbital-tracked', !!track);
+    if (!track) {
+      this.dynamicLayerGroup?.node()?.querySelector('.orbital-track')?.remove();
+      this.orbitalMarkerNodes = [];
+      this.orbitalSweptNodes = [];
+      this.orbitalEdgeNodes = [];
+    }
+    this.render();
+  }
+
+  public setOrbitalTrackMarker(point: TrackPoint | null): void {
+    if (!this.orbitalTrack) return;
+    this.orbitalTrackMarker = point;
+    const { width, height } = this.getKnownContainerSize();
+    if (width > 0 && height > 0) this.placeOrbitalMarker(this.getProjection(width, height));
+  }
+
+  private renderOrbitalTrack(projection: d3.GeoProjection): void {
+    const track = this.orbitalTrack;
+    const group = this.dynamicLayerGroup;
+    if (!track || !group) return;
+    const shapes = continuousTrack(track, this.orbitalAroundLon(track));
+    const toPath = (positions: Array<[number, number]>, close: boolean) => MapComponent.orbitalPathData(projection, positions, close);
+    const layer = group.append('g').attr('class', 'orbital-track').attr('pointer-events', 'none');
+    this.orbitalSweptNodes = [];
+    this.orbitalEdgeNodes = [];
+    this.orbitalMarkerNodes = [];
+    const accent = getCSSColor('--green');
+    const text = getCSSColor('--text');
+    for (const copy of MapComponent.orbitalWorldCopies(layer, projection)) {
+      for (const ring of shapes.footprint) {
+        copy.append('path').attr('d', toPath(ring, true))
+          .attr('fill', accent).attr('fill-opacity', 0.07).attr('stroke', accent).attr('stroke-opacity', 0.5).attr('stroke-width', 1).attr('vector-effect', 'non-scaling-stroke');
+      }
+      copy.append('path').attr('d', toPath(shapes.path, false))
+        .attr('fill', 'none').attr('stroke', getCSSColor('--text-dim')).attr('stroke-width', 1.5).attr('vector-effect', 'non-scaling-stroke');
+      this.orbitalSweptNodes.push(copy.append('path').attr('class', 'orbital-swept').attr('fill', accent).attr('fill-opacity', 0.24).attr('stroke', 'none').node()!);
+      this.orbitalEdgeNodes.push(copy.append('path').attr('class', 'orbital-leading-edge').attr('fill', 'none')
+        .attr('stroke', accent).attr('stroke-width', 2.6).attr('stroke-linecap', 'round').attr('vector-effect', 'non-scaling-stroke').node()!);
+      this.orbitalMarkerNodes.push(copy.append('circle').attr('r', 4).attr('fill', text).attr('stroke', getCSSColor('--panel-bg'))
+        .attr('vector-effect', 'non-scaling-stroke').node()!);
+    }
+    this.placeOrbitalMarker(projection);
+  }
+
+  private orbitalAroundLon(track: PassTrack): number {
+    return this.orbitalTarget?.lon ?? track.closest.lon;
+  }
+
+  /** The map draws one world, so orbital shapes are drawn three times, a world width apart, to show past ±180. */
+  private static orbitalWorldCopies(
+    layer: d3.Selection<SVGGElement, unknown, null, undefined>,
+    projection: d3.GeoProjection,
+  ): Array<d3.Selection<SVGGElement, unknown, null, undefined>> {
+    const world = MapComponent.orbitalWorldWidth(projection);
+    return [0, -1, 1].map((turn) => layer.append('g').attr('class', 'orbital-world').attr('data-turn', turn)
+      .attr('transform', turn ? `translate(${turn * world},0)` : null));
+  }
+
+  private static orbitalWorldWidth(projection: d3.GeoProjection): number {
+    return (projection([180, 0])?.[0] ?? 0) - (projection([-180, 0])?.[0] ?? 0);
+  }
+
+  public setOrbitalTarget(target: OrbitalTarget | null): void {
+    this.orbitalTarget = target;
+    this.container.classList.toggle('orbital-pinned', !!target);
+    if (!target) this.dynamicLayerGroup?.node()?.querySelectorAll('.orbital-target, .orbital-target-copy').forEach((node) => node.remove());
+    this.render();
+  }
+
+  /** Projects a longitude past ±180 a world width over, since the projection wraps it back into -180..180. */
+  private static orbitalProject(projection: d3.GeoProjection, [lon, lat]: [number, number]): [number, number] | null {
+    const turns = Math.round(lon / 360);
+    const xy = projection([lon - 360 * turns, lat]);
+    return xy && turns ? [xy[0] + turns * MapComponent.orbitalWorldWidth(projection), xy[1]] : xy;
+  }
+
+  private static orbitalPathData(projection: d3.GeoProjection, positions: Array<[number, number]>, close: boolean): string {
+    const projected = positions.map((position) => MapComponent.orbitalProject(projection, position)).filter((xy): xy is [number, number] => xy !== null);
+    return projected.length < 2 ? '' : `M${projected.map(([x, y]) => `${x},${y}`).join('L')}${close ? 'Z' : ''}`;
+  }
+
+  private renderOrbitalTarget(projection: d3.GeoProjection): void {
+    const target = this.orbitalTarget;
+    const xy = target ? projection([target.lon, target.lat]) : null;
+    if (!xy || !this.dynamicLayerGroup) return;
+    const unit = 1 / Math.max(1, this.state.zoom);
+    const accent = getCSSColor('--green');
+    const reticle = this.dynamicLayerGroup.append('g').attr('class', 'orbital-target').attr('pointer-events', 'none')
+      .attr('transform', `translate(${xy[0]},${xy[1]}) scale(${unit})`);
+    reticle.append('circle').attr('r', 12).attr('fill', 'none').attr('stroke', accent).attr('stroke-width', 2);
+    reticle.append('circle').attr('r', 3).attr('fill', accent);
+    const world = MapComponent.orbitalWorldWidth(projection);
+    if (world > 0) {
+      for (const turn of [-1, 1]) {
+        const copy = this.dynamicLayerGroup.append('g').attr('class', 'orbital-target-copy').attr('pointer-events', 'none')
+          .attr('transform', `translate(${xy[0] + turn * world},${xy[1]}) scale(${unit})`);
+        copy.append('circle').attr('r', 12).attr('fill', 'none').attr('stroke', accent).attr('stroke-width', 2);
+        copy.append('circle').attr('r', 3).attr('fill', accent);
+      }
+    }
+    const lines = target?.lines ?? [];
+    if (lines.length === 0) return;
+    const frame = this.container.getBoundingClientRect();
+    const right = Math.min(frame.right, document.documentElement.clientWidth) - 48;
+    // The tag sits right of the reticle; on a narrow map it moves left, then under it, then wraps at its ' · ' breaks.
+    const attempts: Array<[string[], OrbitalLabelSide]> = [[lines, 'right'], [lines, 'left'], [lines, 'below']];
+    const wrapped = MapComponent.wrapOrbitalLines(lines);
+    if (wrapped.length > lines.length) attempts.push([wrapped, 'right'], [wrapped, 'left']);
+    for (const [i, [rows, side]] of attempts.entries()) {
+      const label = MapComponent.drawOrbitalLabel(reticle, rows, side);
+      const box = label.node()?.getBoundingClientRect();
+      const fits = !box || box.width <= 0 || (box.left >= frame.left + 4 && box.right <= right);
+      if (fits || i === attempts.length - 1) return;
+      label.remove();
+    }
+  }
+
+  private static drawOrbitalLabel(
+    reticle: d3.Selection<SVGGElement, unknown, null, undefined>,
+    lines: string[],
+    side: OrbitalLabelSide,
+  ): d3.Selection<SVGGElement, unknown, null, undefined> {
+    const width = 10 + 7 * Math.max(...lines.map((line) => line.length));
+    const x = side === 'left' ? -20 - width : side === 'below' ? -width / 2 : 20;
+    const label = reticle.append('g');
+    if (side === 'below') label.attr('transform', `translate(0,${20 + 9 * lines.length + 3})`);
+    label.append('rect').attr('x', x).attr('y', -9 * lines.length - 3).attr('height', 18 * lines.length + 6)
+      .attr('width', width).attr('fill', getCSSColor('--panel-bg')).attr('fill-opacity', 0.88);
+    const text = label.append('text').attr('fill', getCSSColor('--text'))
+      .attr('font-family', getCSSColor('--font-mono')).attr('font-size', 11).attr('letter-spacing', '0.06em');
+    lines.forEach((line, i) => {
+      text.append('tspan').attr('x', x + 5).attr('y', (i - (lines.length - 1) / 2) * 18 + 4).text(line);
+    });
+    return label;
+  }
+
+  /** Splits each line at its ' · ' breaks, packing parts back together up to the widest unbreakable part. */
+  private static wrapOrbitalLines(lines: string[]): string[] {
+    const parts = lines.map((line) => line.split(' \u00b7 '));
+    const limit = Math.max(...parts.flat().map((part) => part.length));
+    return parts.flatMap((pieces) => pieces.reduce<string[]>((rows, piece) => {
+      const last = rows[rows.length - 1];
+      if (last !== undefined && last.length + 3 + piece.length <= limit) rows[rows.length - 1] = `${last} \u00b7 ${piece}`;
+      else rows.push(piece);
+      return rows;
+    }, []));
+  }
+
+  private placeOrbitalMarker(projection: d3.GeoProjection): void {
+    const track = this.orbitalTrack;
+    if (!track || !this.orbitalMarkerNodes[0]?.isConnected) return;
+    const aroundLon = this.orbitalAroundLon(track);
+    const marker = this.orbitalTrackMarker ? pointNear(this.orbitalTrackMarker, aroundLon) : null;
+    const swept = marker ? sweptSwath(track, marker.timeMs, aroundLon) : { rings: [], leadingEdge: [] };
+    const sweptPath = swept.rings.map((ring) => MapComponent.orbitalPathData(projection, ring, true)).join('');
+    const edgePath = swept.leadingEdge.map((line) => MapComponent.orbitalPathData(projection, line, false)).join('');
+    const xy = marker ? MapComponent.orbitalProject(projection, [marker.lon, marker.lat]) : null;
+    this.orbitalSweptNodes.forEach((node) => node.setAttribute('d', sweptPath));
+    this.orbitalEdgeNodes.forEach((node) => node.setAttribute('d', edgePath));
+    for (const node of this.orbitalMarkerNodes) {
+      if (!xy) {
+        node.setAttribute('display', 'none');
+        continue;
+      }
+      node.removeAttribute('display');
+      node.setAttribute('r', String(4 / Math.max(1, this.state.zoom)));
+      node.setAttribute('cx', String(xy[0]));
+      node.setAttribute('cy', String(xy[1]));
+    }
+  }
+
+
+  /**
+   * Outline the dashboard focus (#10453): chosen countries with a solid
+   * border, neighbours with a lighter one (styles in main.css). Null removes
+   * it. Markers are untouched.
+   */
+  public setFocusOutline(outline: { chosen: readonly string[]; neighbours: readonly string[] } | null): void {
+    const toUn = (codes: readonly string[]) => new Set(
+      codes.map((code) => iso2ToUnCode(code)).filter((code): code is string => !!code),
+    );
+    this.focusOutline = outline
+      ? { chosen: toUn(outline.chosen), neighbours: toUn(outline.neighbours) }
+      : null;
+    if (!outline) this.pendingFocusFit = null;
+    this.applyFocusOutline();
+  }
+
+  private applyFocusOutline(): void {
+    const group = this.baseLayerGroup;
+    if (!group) return;
+    const focus = this.focusOutline;
+    const countries = group.selectAll<SVGPathElement, Feature<Geometry>>('.country');
+    countries.each(function (datum) {
+      const id = datum?.id != null ? String(datum.id) : '';
+      const chosen = !!focus && focus.chosen.has(id);
+      this.classList.toggle('country-focus-chosen', chosen);
+      this.classList.toggle('country-focus-neighbour', !chosen && !!focus && focus.neighbours.has(id));
+    });
+    // Later paths paint over earlier ones along a shared border: neighbours
+    // above the rest, chosen countries above their neighbours.
+    countries.filter('.country-focus-neighbour').raise();
+    countries.filter('.country-focus-chosen').raise();
+    // The 110m topology omits small states. Keep their focus visible with a
+    // screen-sized ring, without inventing a geographic boundary or hit target.
+    const present = new Set<string>();
+    countries.each((datum) => { if (datum?.id != null) present.add(String(datum.id)); });
+    const centres = Object.entries(FOCUS_CENTRES).flatMap(([code, [lat, lon]]) => {
+      const id = iso2ToUnCode(code);
+      if (!id || present.has(id) || !focus || (!focus.chosen.has(id) && !focus.neighbours.has(id))) return [];
+      return [{ id, lat, lon, chosen: focus.chosen.has(id) }];
+    });
+    const rings = group.selectAll<SVGCircleElement, typeof centres[number]>('.focus-centre-ring')
+      .data(centres, (d) => d.id)
+      .join('circle')
+      .attr('class', (d) => `focus-centre-ring country-focus-${d.chosen ? 'chosen' : 'neighbour'}`)
+      .attr('data-id', (d) => d.id)
+      .attr('fill', 'none')
+      .attr('pointer-events', 'none');
+    if (centres.length) {
+      const { width, height } = this.readContainerSize();
+      const projection = this.getProjection(width, height);
+      rings.attr('cx', (d) => projection([d.lon, d.lat])![0])
+        .attr('cy', (d) => projection([d.lon, d.lat])![1]);
+    }
+    rings.raise();
+  }
+
+  /**
+   * Frame the focus's chosen countries. `fit.east` may be unwrapped past 180;
+   * this flat map has one world copy, so a dateline-crossing union centres on
+   * the arc's midpoint and shows the part of it on this side of the edge.
+   */
+  /** `inset` is the part of the map left uncovered by overlays: its size, and its centre's offset from the map's. */
+  public fitFocusBounds(fit: FocusFitBounds, maxZoom = SVG_FOCUS_MAX_ZOOM, inset?: FocusFitInset): void {
+    const { width, height } = this.readContainerSize();
+    if (width <= 0 || height <= 0) {
+      // Collapsed (the mobile "Show map" toggle) or not laid out: fit when
+      // resize() reports a size, unless another view command comes first.
+      this.pendingFocusFit = { fit, maxZoom, inset };
+      return;
+    }
+    this.pendingFocusFit = null;
+    const projection = this.getProjection(width, height);
+    // Equirectangular: pixels per degree are the same on both axes.
+    const pxPerDegree = projection.scale() * Math.PI / 180;
+    const padFactor = 0.8;
+    const view = inset ?? { width, height, x: 0, y: 0 };
+    const zoomX = fit.lonSpan > 0 ? (view.width * padFactor) / (fit.lonSpan * pxPerDegree) : maxZoom;
+    const zoomY = fit.latSpan > 0 ? (view.height * padFactor) / (fit.latSpan * pxPerDegree) : maxZoom;
+    this.state.zoom = Math.max(1, Math.min(maxZoom, zoomX, zoomY));
+    this.setCenter(fit.center.lat, fit.center.lon);
+    if (view.x || view.y) {
+      // Shift in pixels, not degrees: a centre moved past ±180 would project into the other world.
+      this.state.pan.x += view.x / this.state.zoom;
+      this.state.pan.y += view.y / this.state.zoom;
+      this.applyTransform();
+    }
+    this.resumeMobileLabelVisibility();
   }
 
   public fitCountry(code: string): void {
@@ -4924,6 +5511,7 @@ export class MapComponent {
   }
 
   public getCenter(): { lat: number; lon: number } | null {
+    if (this.pendingCenter) return { ...this.pendingCenter };
     const { width, height } = this.readContainerSize();
     const projection = this.getProjection(width, height);
     if (!projection.invert) return null;
@@ -4941,6 +5529,7 @@ export class MapComponent {
   }
 
   public setZoom(zoom: number): void {
+    this.pendingFocusFit = null;
     this.state.zoom = Math.max(1, Math.min(10, zoom));
     this.applyTransform();
     // Ensure base layer is intact after zoom change
@@ -4948,6 +5537,7 @@ export class MapComponent {
   }
 
   private ensureBaseLayerIntact(): void {
+    if (this.isCollapsed()) return;
     // Query DOM directly instead of relying on cached d3 selection
     const svgNode = this.svg.node();
     const domBaseGroup = svgNode?.querySelector('.map-base');
@@ -4971,11 +5561,17 @@ export class MapComponent {
   }
 
   public setCenter(lat: number, lon: number): void {
-    console.log('[Map] setCenter called:', { lat, lon });
+    // Any centre command, including the one a focus fit ends with, ends a
+    // fit still waiting for the map to have a size.
+    this.pendingFocusFit = null;
     const { width, height } = this.readContainerSize();
+    if (width === 0 || height === 0) {
+      this.pendingCenter = { lat, lon };
+      return;
+    }
+    this.pendingCenter = null;
     const projection = this.getProjection(width, height);
     const pos = projection([lon, lat]);
-    console.log('[Map] projected pos:', pos, 'container:', { width, height }, 'zoom:', this.state.zoom);
     if (!pos) return;
     // Pan formula: after applyTransform() computes tx = centerOffset + pan*zoom,
     // and transform is translate(tx,ty) scale(zoom), to center on pos:
@@ -4989,6 +5585,36 @@ export class MapComponent {
     this.applyTransform();
     // Ensure base layer is intact after pan
     this.ensureBaseLayerIntact();
+  }
+
+  /** The centre that draws (lat, lon) `offset` pixels from the container centre at `zoom`, clamped as setZoom clamps it. */
+  public centerForOffset(lat: number, lon: number, zoom: number, offset: ScreenOffset): { lat: number; lon: number } {
+    const { width, height } = this.readContainerSize();
+    if (width === 0 || height === 0) return { lat, lon };
+    const projection = this.getProjection(width, height);
+    const pos = projection([lon, lat]);
+    const scale = Math.max(1, Math.min(10, zoom));
+    if (!pos) return { lat, lon };
+    // One world is drawn, so a centre past the antimeridian would wrap to the far edge.
+    const west = projection([-180, 0])?.[0] ?? -Infinity;
+    const east = projection([180, 0])?.[0] ?? Infinity;
+    const x = Math.min(east - 1e-6, Math.max(west + 1e-6, pos[0] - offset.x / scale));
+    const centre = projection.invert?.([x, pos[1] - offset.y / scale]);
+    return centre ? { lat: centre[1], lon: centre[0] } : { lat, lon };
+  }
+
+  /** Where (lat, lon) is drawn in client coordinates, through the same translate and scale applyTransform() sets. */
+  public projectToClient(lat: number, lon: number): { x: number; y: number } | null {
+    const { width, height } = this.readContainerSize();
+    if (width === 0 || height === 0) return null;
+    const pos = this.getProjection(width, height)([lon, lat]);
+    if (!pos) return null;
+    const { zoom, pan } = this.state;
+    const rect = this.container.getBoundingClientRect();
+    return {
+      x: rect.left + (width / 2) * (1 - zoom) + (pan.x + pos[0]) * zoom,
+      y: rect.top + (height / 2) * (1 - zoom) + (pan.y + pos[1]) * zoom,
+    };
   }
 
   public setLayers(layers: MapLayers): void {
@@ -5027,6 +5653,25 @@ export class MapComponent {
   public setAisData(disruptions: AisDisruptionEvent[], density: AisDensityZone[]): void {
     this.aisDisruptions = disruptions;
     this.aisDensity = density;
+    this.render();
+  }
+
+  public setReservoirLevels(reservoirs: ReservoirLevel[]): void {
+    this.reservoirLevels = reservoirs;
+    this.render();
+  }
+
+  /** Pan to a reservoir and open its popup at the container centre. */
+  public openReservoir(reservoir: ReservoirLevel): void {
+    if (this.destroyed) return;
+    this.setCenter(reservoir.lat, reservoir.lon);
+    this.setZoom(5);
+    const { width, height } = this.readContainerSize();
+    this.popup.show({ type: 'reservoirLevel', data: reservoir, x: width / 2, y: height / 2 });
+  }
+
+  public setUkmtoIncidents(incidents: UkmtoMapIncident[]): void {
+    this.ukmtoIncidents = incidents;
     this.render();
   }
 
@@ -5084,7 +5729,27 @@ export class MapComponent {
     this.render();
   }
 
-  public setFires(fires: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }>): void {
+  public setCrossBorderArrivals(data: CrossBorderData): void {
+    this.crossBorderPoints = [...data.points, ...(data.deaths ?? [])];
+    this.render();
+  }
+
+  public setDisplacementFlows(flows: DisplacementFlow[]): void {
+    this.displacementFlows = displacementFlowMarkers(flows);
+    this.render();
+  }
+
+  public setInternalDisplacement(data: InternalDisplacementData): void {
+    this.internalDisplacement = internalDisplacementMarkers(data);
+    this.render();
+  }
+
+  public setDisplacementEvents(data: DisplacementEventsData): void {
+    this.displacementEvents = displacementEventMarkers(data);
+    this.render();
+  }
+
+  public setFires(fires: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string; detected_at?: number; satellite?: string; source?: string }>): void {
     this.firmsFireData = fires;
     this.render();
   }
@@ -5111,24 +5776,6 @@ export class MapComponent {
   public setNewsLocations(data: NewsLocationMarker[]): void {
     this.newsLocations = data;
     this.render();
-  }
-
-  public setTechActivity(activities: TechHubActivity[]): void {
-    this.techActivities = activities;
-    this.render();
-  }
-
-  public setOnTechHubClick(handler: (hub: TechHubActivity) => void): void {
-    this.onTechHubClick = handler;
-  }
-
-  public setGeoActivity(activities: GeoHubActivity[]): void {
-    this.geoActivities = activities;
-    this.render();
-  }
-
-  public setOnGeoHubClick(handler: (hub: GeoHubActivity) => void): void {
-    this.onGeoHubClick = handler;
   }
 
   private getCableAdvisory(cableId: string): CableAdvisory | undefined {

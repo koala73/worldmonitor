@@ -244,10 +244,10 @@ describe('openExternalUrl — desktop', () => {
   it('hands the URL to the OS browser and never navigates the WebView', async () => {
     installWindow('desktop');
 
-    assert.equal(await openExternalUrl('https://worldmonitor.app/pro'), 'native');
+    assert.equal(await openExternalUrl('https://worldmonitor.app/docs'), 'native');
 
     assert.deepEqual(probe.invocations, [
-      { command: 'open_url', payload: { url: 'https://worldmonitor.app/pro' } },
+      { command: 'open_url', payload: { url: 'https://worldmonitor.app/docs' } },
     ]);
     // The whole point: neither of the two ways the WebView could be replaced.
     assert.deepEqual(probe.assigned, []);
@@ -258,7 +258,7 @@ describe('openExternalUrl — desktop', () => {
     installWindow('desktop');
     const stray = makeTab();
 
-    assert.equal(await openExternalUrl('https://worldmonitor.app/pro', stray), 'native');
+    assert.equal(await openExternalUrl('https://worldmonitor.app/docs', stray), 'native');
 
     assert.equal(stray.closed, true, 'a blank WebView window must not be left behind the browser');
     assert.equal(stray.location.href, '', 'the reserved tab must never be navigated on desktop');
@@ -275,7 +275,7 @@ describe('openExternalUrl — desktop', () => {
     probe.invokeHangs = true;
     mock.timers.enable({ apis: ['setTimeout'] });
     try {
-      const pending = openExternalUrl('https://worldmonitor.app/pro');
+      const pending = openExternalUrl('https://worldmonitor.app/docs');
       mock.timers.tick(5_000);
       assert.equal(await pending, 'failed', 'the timeout must resolve the caller, not strand it');
     } finally {
@@ -294,7 +294,7 @@ describe('openExternalUrl — desktop', () => {
     probe.invokeRejects = true;
     probe.popupBlocked = true;
 
-    assert.equal(await openExternalUrl('https://worldmonitor.app/pro'), 'failed');
+    assert.equal(await openExternalUrl('https://worldmonitor.app/docs'), 'failed');
 
     assert.equal(probe.invocations.length, 1, 'the native path must be tried first');
     assert.deepEqual(probe.assigned, [], 'and the WebView must still not be replaced');
@@ -313,13 +313,25 @@ describe('openExternalUrl — desktop', () => {
     installWindow('desktop');
     probe.invokeRejects = true;
 
-    assert.equal(await openExternalUrl('https://worldmonitor.app/pro'), 'popup');
+    assert.equal(await openExternalUrl('https://worldmonitor.app/docs'), 'popup');
 
     assert.equal(probe.invocations.length, 1, 'the native path must be tried first');
     assert.deepEqual(probe.opened, [
-      ['https://worldmonitor.app/pro', '_blank', undefined],
+      ['https://worldmonitor.app/docs', '_blank', undefined],
     ]);
     assert.deepEqual(probe.assigned, [], 'the fallback must still not replace the app');
+  });
+
+  // #10342: the opener is the one exit every desktop upgrade CTA and link
+  // shares, so it is where /pro learns which account the app is signed in to.
+  it('marks an exit to /pro as a desktop checkout handoff', async () => {
+    installWindow('desktop');
+
+    assert.equal(await openExternalUrl('https://worldmonitor.app/pro#pricing'), 'native');
+
+    assert.deepEqual(probe.invocations, [
+      { command: 'open_url', payload: { url: 'https://worldmonitor.app/pro?wm_checkout_handoff=desktop#pricing' } },
+    ]);
   });
 });
 

@@ -100,6 +100,7 @@ test('doc-anchors runs for every repository input that can change rendered ancho
   for (const file of [
     'scripts/check-doc-anchors.mjs',
     'scripts/_html-entities.mjs',
+    'scripts/mint-export-preload.mjs',
     '.github/workflows/lint-code.yml',
   ]) {
     assert.equal(classify([file]).docs, 'true', file);

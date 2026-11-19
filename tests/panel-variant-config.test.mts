@@ -288,7 +288,7 @@ describe('variant panel config resolution', () => {
     );
     assert.match(
       text,
-      /getLocalizedPanelName\(key, resolvedPanel\.name \?\? panel\.name\)/,
+      /getPanelDisplayName\(key, resolvedPanel\.name \?\? panel\.name\)/,
       'settings-window render must prefer the resolved variant name before saved panel.name',
     );
   });

@@ -2,12 +2,20 @@
 #
 # Four-tier AI crawler policy (#4952):
 #   1. `User-agent: *` — default rules + Content-Signal usage preferences.
-#   2. AI search crawlers — explicitly welcomed because they drive citations.
-#      A named group REPLACES `*`, so it restates the full rule set.
+#   2. Autonomous AI crawlers of vendors whose assistants cite us — both their
+#      search indexers and their training crawlers. Training is welcome
+#      (ai-train=yes): a model that already knows World Monitor names it
+#      before it searches. A named group REPLACES `*`, so it restates the full
+#      rule set.
 #   3. User-triggered assistant fetchers — same bounded path rules, but shared
 #      coordinate links stay fetchable because a person selected the URL.
-#   4. Bulk training-only scrapers (no user-facing assistant, no citations) —
-#      disallowed entirely, consistent with ai-train=no.
+#   4. Bulk scrapers with no assistant of their own and no citation path back
+#      to us — disallowed entirely.
+#
+# Crawlers not named here (Googlebot, bingbot, Applebot, Meta-WebIndexer,
+# meta-externalagent, YouBot, link-preview bots, …) fall under `*`, which is
+# the intended policy for them. Name a crawler only to treat it differently,
+# and restate the full `*` rule set when you do.
 
 # AI content-usage preferences (contentsignals.org draft RFC) are declared BOTH
 # as the Content-Signal group directive below (what agent-readiness scanners
@@ -87,7 +95,7 @@
 # cannot render.
 
 User-agent: *
-Content-Signal: ai-train=no, search=yes, ai-input=yes
+Content-Signal: ai-train=yes, search=yes, ai-input=yes
 Allow: /
 Allow: /api/story
 Allow: /api/og-story
@@ -101,8 +109,12 @@ Disallow: /*?*lat=
 Disallow: /*?*lon=
 Disallow: /*?*zoom=
 
-# Tier 2 — AI search crawlers: welcome. Same path rules as `*`, restated
+# Tier 2 — autonomous AI crawlers: welcome. Same path rules as `*`, restated
 # because a matching named group makes a crawler ignore `*` entirely.
+#   Search indexers: OAI-SearchBot, Claude-SearchBot, PerplexityBot,
+#     DuckAssistBot.
+#   Training crawlers / training-control tokens: GPTBot, ClaudeBot,
+#     Google-Extended (also Gemini grounding), Applebot-Extended.
 User-agent: GPTBot
 User-agent: OAI-SearchBot
 User-agent: ClaudeBot
@@ -111,7 +123,7 @@ User-agent: PerplexityBot
 User-agent: Google-Extended
 User-agent: Applebot-Extended
 User-agent: DuckAssistBot
-Content-Signal: ai-train=no, search=yes, ai-input=yes
+Content-Signal: ai-train=yes, search=yes, ai-input=yes
 Allow: /
 Allow: /api/story
 Allow: /api/og-story
@@ -130,7 +142,7 @@ User-agent: ChatGPT-User
 User-agent: Claude-User
 User-agent: Perplexity-User
 User-agent: MistralAI-User
-Content-Signal: ai-train=no, search=yes, ai-input=yes
+Content-Signal: ai-train=yes, search=yes, ai-input=yes
 Allow: /
 Allow: /api/story
 Allow: /api/og-story
@@ -141,12 +153,11 @@ Disallow: /api/
 Disallow: /tests/
 Disallow: /tmp/
 
-# Tier 4 — bulk training-only scrapers: no assistant surface, no citations,
-# nothing given back. anthropic-ai is Anthropic's legacy training UA
-# (ClaudeBot above is the one that powers Claude citations).
+# Tier 4 — bulk scrapers: no assistant surface, no citations, nothing given
+# back. CCBot redistributes a public corpus with no attribution path to us;
+# Bytespider is ByteDance's high-volume crawler.
 User-agent: CCBot
 User-agent: Bytespider
-User-agent: anthropic-ai
 Disallow: /
 
 Sitemap: https://www.worldmonitor.app/sitemap.xml

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { retainLastFailure } from './_last-failure.mjs';
 import {
   loadEnvFile,
   readSeedSnapshot,
@@ -61,7 +62,9 @@ export function szseTransportFailureFromMarker(marker) {
   if (!Number.isFinite(failureAt) || failureAt <= 0) {
     throw new Error('SZSE transport failure marker has an invalid fetchedAt');
   }
+  const lastFailure = retainLastFailure(marker.lastFailure);
   return {
+    ...(lastFailure ? { lastFailure } : {}),
     checkedAt: new Date(failureAt).toISOString(),
     errorCode: typeof marker.errorCode === 'string'
       && /^[a-z0-9_]{1,80}$/iu.test(marker.errorCode)
@@ -93,6 +96,7 @@ export async function recordSzseTransportFailure(
   ) && source.transportReliability.consecutiveFailures > 0
     ? source.transportReliability.consecutiveFailures
     : 1;
+  const lastFailure = retainLastFailure(source.lastFailure);
   await writeMetadata(
     'market',
     SZSE_FAILURE_RESOURCE,
@@ -101,7 +105,7 @@ export async function recordSzseTransportFailure(
     CHINA_CORPORATE_DISCLOSURE_TTL_SECONDS,
     failureAt,
     null,
-    { errorCode, consecutiveFailures },
+    { errorCode, consecutiveFailures, ...(lastFailure ? { lastFailure } : {}) },
   );
   return true;
 }

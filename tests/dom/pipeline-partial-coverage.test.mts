@@ -30,8 +30,18 @@ const fixtures = vi.hoisted(() => {
     evidence: pipelineEvidence,
     publicBadge: 'flowing',
   };
+  const oilRow = {
+    ...gasRow,
+    id: 'rpc-oil',
+    name: 'RPC Oil Line',
+    operator: 'RPC Oil Operator',
+    commodityType: 'oil',
+    capacityBcmYr: 0,
+    capacityMbd: 1.2,
+  };
   return {
     gasRow,
+    oilRow,
     livePipelines: {
       pipelines: [gasRow],
       fetchedAt: '2026-08-21T00:00:00Z',
@@ -94,21 +104,55 @@ function track(panel: PipelineStatusPanel): PipelineStatusPanel {
 }
 
 describe('pipeline panel partial coverage', () => {
-  it('renders retained rows and a coverage warning when one registry is missing', async () => {
+  async function renderLive(): Promise<PipelineStatusPanel> {
     setPipelineBootstrapReader(() => undefined);
     setPipelineOnDemandLoader(async () => undefined);
-
     const panel = track(new PipelineStatusPanel());
     document.body.append(panel.getElement());
     panel.notifyConnected();
     await panel.fetchData();
+    return panel;
+  }
+
+  it('keeps gas rows and names oil as missing when the oil registry is absent', async () => {
+    const panel = await renderLive();
     await waitForText(panel.getElement(), 'RPC Gas Link');
 
     expect(panel.getElement().querySelectorAll('.pp-row')).toHaveLength(1);
     expect(panel.getElement().querySelector('.economic-warning')?.textContent)
-      .toContain('Supply chain data temporarily unavailable');
+      .toBe('Oil pipeline data unavailable');
+    expect(panel.getElement().textContent).not.toContain('Supply chain data temporarily unavailable');
     expect(panel.getElement().textContent).not.toContain('Pipeline registry unavailable');
     expect(getCachedPipelineRegistries().source).toBe('none');
+  });
+
+  it('keeps oil rows and names gas as missing when the gas registry is absent', async () => {
+    fixtures.livePipelines = { ...fixtures.livePipelines, pipelines: [fixtures.oilRow] };
+    const panel = await renderLive();
+    await waitForText(panel.getElement(), 'RPC Oil Line');
+
+    expect(panel.getElement().querySelectorAll('.pp-row')).toHaveLength(1);
+    expect(panel.getElement().querySelector('.economic-warning')?.textContent)
+      .toBe('Gas pipeline data unavailable');
+    expect(panel.getElement().textContent).not.toContain('Supply chain data temporarily unavailable');
+  });
+
+  it('keeps the outage banner when both commodities have rows but the response is still flagged', async () => {
+    fixtures.livePipelines = { ...fixtures.livePipelines, pipelines: [fixtures.gasRow, fixtures.oilRow] };
+    const panel = await renderLive();
+    await waitForText(panel.getElement(), 'RPC Oil Line');
+
+    expect(panel.getElement().querySelector('.economic-warning')?.textContent)
+      .toContain('Supply chain data temporarily unavailable');
+  });
+
+  it('shows no warning when both registries are present', async () => {
+    fixtures.livePipelines = { ...fixtures.livePipelines, pipelines: [fixtures.gasRow, fixtures.oilRow], upstreamUnavailable: false };
+    const panel = await renderLive();
+    await waitForText(panel.getElement(), 'RPC Oil Line');
+
+    expect(panel.getElement().querySelectorAll('.pp-row')).toHaveLength(2);
+    expect(panel.getElement().querySelector('.economic-warning')).toBeNull();
   });
 
   it('shows an error only when the live registry is empty and unavailable', async () => {

@@ -1,0 +1,1207 @@
+{
+  "date": "2026-10-18",
+  "scope": "Original h04 and q015 questions only; no question or profile regeneration.",
+  "webDefinition": "Tool-search variants plus native Sonar, including Sonar rows with web=false.",
+  "excluded": "perplexity +web was unsupported in both baselines; native Sonar retained.",
+  "questions": [
+    {
+      "id": "h04",
+      "query": "Is there a crisis-alerting tool like Factal that a small team can sign up for without a sales call?",
+      "question": {
+        "intent": "problem",
+        "persona": "buyer",
+        "query": "Is there a crisis-alerting tool like Factal that a small team can sign up for without a sales call?",
+        "id": "h04"
+      },
+      "models": [
+        {
+          "name": "openrouter/openai/gpt-5.5",
+          "label": "gpt",
+          "web_search": false
+        },
+        {
+          "name": "anthropic/claude-sonnet-5-5",
+          "label": "claude",
+          "web_search": false
+        },
+        {
+          "name": "openrouter/perplexity/sonar-pro",
+          "label": "perplexity",
+          "web_search": false
+        }
+      ],
+      "repetitions": 5,
+      "webSearch": {
+        "compare": true,
+        "mode": "tool",
+        "search": "exa_ai",
+        "max_results": 5,
+        "max_searches": 3,
+        "force": false,
+        "search_tool": ""
+      },
+      "judgeModel": "anthropic/claude-sonnet-5-5",
+      "followupAeoScore": 22.6,
+      "baselineRun": "heldout-baseline",
+      "followupRun": "h04-20261018",
+      "spendUsd": {
+        "answer": 0.872779,
+        "search": 0.19,
+        "judge": 0.192412
+      },
+      "runs": {
+        "baseline": {
+          "all": {
+            "answers": 25,
+            "named": 0,
+            "topPick": 0
+          },
+          "web": {
+            "answers": 15,
+            "named": 0,
+            "topPick": 0
+          },
+          "byModel": {
+            "claude": {
+              "answers": 5,
+              "named": 0,
+              "topPick": 0
+            },
+            "claude +web": {
+              "answers": 5,
+              "named": 0,
+              "topPick": 0
+            },
+            "gpt": {
+              "answers": 5,
+              "named": 0,
+              "topPick": 0
+            },
+            "gpt +web": {
+              "answers": 5,
+              "named": 0,
+              "topPick": 0
+            },
+            "perplexity": {
+              "answers": 5,
+              "named": 0,
+              "topPick": 0
+            }
+          },
+          "sourceHashes": {
+            "profile.json": "27888ab9847f33e200751a7d607d987673e08c54d40e6a045991b5dc39a006a5",
+            "queries.json": "d3feb3664056cd669b52adfadfc927cc75d695de72209253b1044ba9d0dedf23",
+            "answers.jsonl": "a3f79f0a926dca195d079cc0b9bae38489b7ed2bb952ac432f6d3b0788657671",
+            "judgments.jsonl": "91825a652ca42a0c53955d904e2a6cd1d5b3d0a45cb068b4c8b78408811938a5"
+          },
+          "answers": [
+            {
+              "key": "h04|claude +web|1",
+              "model": "claude +web",
+              "rep": 1,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "18abc006c7a27aefa5eae1a5a30f440f8299b237a55823a4a64818df4a01a66d",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|claude +web|2",
+              "model": "claude +web",
+              "rep": 2,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "cae16f0742d74714f27830307f099c44bcdfaa5c7e07b98fc568ecf3a2e29ee8",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|claude +web|3",
+              "model": "claude +web",
+              "rep": 3,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "4df7b5eeb1432a2a561256045763d3486defad080fa014185aeed176f243a602",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|claude +web|4",
+              "model": "claude +web",
+              "rep": 4,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "c65c70aa04610fc6a861c13d0880c74a02e2f2a958c1f3bd191ebface48f2801",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|claude +web|5",
+              "model": "claude +web",
+              "rep": 5,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "417c257c8705ff956e20760d4074ab6baa35a99f0d7b4f0152eafb22a22575bf",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|claude|1",
+              "model": "claude",
+              "rep": 1,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "3053e22a001d4831348bbd90ee63058b0454af3ae684d3a4338c66ef4dfd9b86",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|claude|2",
+              "model": "claude",
+              "rep": 2,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "01e7e2c98269e4aaf9e6d9bcbb572b0d69d12a52b0a418fe6fa203157c63e873",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|claude|3",
+              "model": "claude",
+              "rep": 3,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "61c58295d21f00dad077173cf67284821598617f4e05528a1176e937068e1be3",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|claude|4",
+              "model": "claude",
+              "rep": 4,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "d1823d6dcba3a409bfbe900ad4270daf8bcbe0c02bef0aed91f8e08b37ee8c45",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|claude|5",
+              "model": "claude",
+              "rep": 5,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "d3366c5ca5b23e7365121cd870fb1a27bbbb98ddeba8944f60b3f69a2ae2eb06",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|gpt +web|1",
+              "model": "gpt +web",
+              "rep": 1,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "55c3f5163c801bf48f7bbc2e7b888bcfc824d8793b9925ba032ca729629de314",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|gpt +web|2",
+              "model": "gpt +web",
+              "rep": 2,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "ce90d0b9168ebf2635005cf4124e21b212c9e97a743be3eb44525ceaa7b28caf",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|gpt +web|3",
+              "model": "gpt +web",
+              "rep": 3,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "3689dbada7df6074655b4593b3acff319de147c982f5acb08505f308c639c2e8",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|gpt +web|4",
+              "model": "gpt +web",
+              "rep": 4,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "8bc4f68ace9782787075d76cf84bbbbada848a383a3e9c4b4618c66af55a1414",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|gpt +web|5",
+              "model": "gpt +web",
+              "rep": 5,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "8d02666a9e47f06a9c417783fd2705595d0bf49508c6e5ec82bed2da07521a44",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|gpt|1",
+              "model": "gpt",
+              "rep": 1,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "a3cfbc0923ca329b71489e8dae7d499b06f8eb551f0da7d8475c7056df0cf8e3",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|gpt|2",
+              "model": "gpt",
+              "rep": 2,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "805e0ae3810e258b002f2f2ac374296c5a70dfab51b30e59df94c217b677ea15",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|gpt|3",
+              "model": "gpt",
+              "rep": 3,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "4379d89b6e35da534d923559e06204a3a0e74ea74968ef47295668fdb2e7e33a",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|gpt|4",
+              "model": "gpt",
+              "rep": 4,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "3803d59f1a11d7ff9b06fb5e3ad91e8a89cecc262215f62e3c6fcda7c5530011",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|gpt|5",
+              "model": "gpt",
+              "rep": 5,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "1f0d8b625b02011a1ebbd591ace9ad0af220d358733400e7e80eaf66ebe0843f",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|perplexity|1",
+              "model": "perplexity",
+              "rep": 1,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "55edcaf96156a4117a7bcd43156cec855da1862a62e26a315b954dbbfb569429",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|perplexity|2",
+              "model": "perplexity",
+              "rep": 2,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "8b3c3e361e673f872f6fcc86807b4e2e049ef534a523a706feb13af1d78c78f2",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|perplexity|3",
+              "model": "perplexity",
+              "rep": 3,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "661345c87e126f2009f1ee8506d2b549db315c00eb8f7f85cfb579841da726ac",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|perplexity|4",
+              "model": "perplexity",
+              "rep": 4,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "f1083051909dd5c258d8bc78e6493ebe36c87ff39670c18043f0411d6a0c1da9",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|perplexity|5",
+              "model": "perplexity",
+              "rep": 5,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "9ea92c4595d5b5405c4c1dc93a961f78d143e85b45b5ab0b8a573e0252089406",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            }
+          ]
+        },
+        "followup": {
+          "all": {
+            "answers": 25,
+            "named": 7,
+            "topPick": 2
+          },
+          "web": {
+            "answers": 15,
+            "named": 7,
+            "topPick": 2
+          },
+          "byModel": {
+            "claude": {
+              "answers": 5,
+              "named": 0,
+              "topPick": 0
+            },
+            "claude +web": {
+              "answers": 5,
+              "named": 4,
+              "topPick": 0
+            },
+            "gpt": {
+              "answers": 5,
+              "named": 0,
+              "topPick": 0
+            },
+            "gpt +web": {
+              "answers": 5,
+              "named": 3,
+              "topPick": 2
+            },
+            "perplexity": {
+              "answers": 5,
+              "named": 0,
+              "topPick": 0
+            }
+          },
+          "sourceHashes": {
+            "profile.json": "f5b44950d4b6367413bb008f2cd7539274a82e0682411f68b86bc5601f8a5bd9",
+            "queries.json": "1da9a0dfab91833754353b8933253128f2f5c1c29e5f7c861a77ac82ec4535b3",
+            "answers.jsonl": "98481f3fec610dbacf9b27cc6df014a62bf06569d896742f7d74dfd59ab1660d",
+            "judgments.jsonl": "323f6e94ae3a9f3157797459e52caba93674e0fb90dc7421f1e032d946b757e5"
+          },
+          "answers": [
+            {
+              "key": "h04|claude +web|1",
+              "model": "claude +web",
+              "rep": 1,
+              "webCapable": true,
+              "role": "recommended",
+              "rank": 3,
+              "answerSha256": "384122ea40064962759d5586164012e85953f192dbdd0c550d4d1e72a968fbad",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": [
+                "https://www.worldmonitor.app/blog/alternatives/factal/"
+              ]
+            },
+            {
+              "key": "h04|claude +web|2",
+              "model": "claude +web",
+              "rep": 2,
+              "webCapable": true,
+              "role": "recommended",
+              "rank": 2,
+              "answerSha256": "4a6d3311a696e8813a48414bb1c53b1e94c9c4f2417d31560a5f1097d2470ae1",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": [
+                "https://www.worldmonitor.app/blog/alternatives/factal/"
+              ]
+            },
+            {
+              "key": "h04|claude +web|3",
+              "model": "claude +web",
+              "rep": 3,
+              "webCapable": true,
+              "role": "recommended",
+              "rank": 4,
+              "answerSha256": "46fd5a099bb2061c59c29cdcc0904c32e9efe78fe9548b27fb381ccc3e2067a0",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": [
+                "https://www.worldmonitor.app/blog/alternatives/factal/"
+              ]
+            },
+            {
+              "key": "h04|claude +web|4",
+              "model": "claude +web",
+              "rep": 4,
+              "webCapable": true,
+              "role": "recommended",
+              "rank": 2,
+              "answerSha256": "85ffce3400e53bb6493bc75583b44fd3614b39ba715d42849e11aef23b6d11cf",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": [
+                "https://www.worldmonitor.app/blog/alternatives/factal/"
+              ]
+            },
+            {
+              "key": "h04|claude +web|5",
+              "model": "claude +web",
+              "rep": 5,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "3b1778792d0b30609d25335cbe6f43c3fb100fc81004639ce312efe8ea6418fb",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|claude|1",
+              "model": "claude",
+              "rep": 1,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "2b57d9038ffd56aee79cc1656cda44f7d2cb7e7253aae95ad65bfc76d702a437",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|claude|2",
+              "model": "claude",
+              "rep": 2,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "71cfbbc837bb3d1b11ad4af6f32fa32d2f629fdb100961a75328f4055ce67495",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|claude|3",
+              "model": "claude",
+              "rep": 3,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "51e15fb286565fd5a530816d0b276c5458bdcc94393690fab4cf4556e2d86610",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|claude|4",
+              "model": "claude",
+              "rep": 4,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "9df8a8242c90fa6f117b34c8eb24513fd3869638c8970e4c34a1ae78644a5a65",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|claude|5",
+              "model": "claude",
+              "rep": 5,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "efe247312114fe723454ac34b985b6024667da48c98636392206a9d56efdf6c2",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|gpt +web|1",
+              "model": "gpt +web",
+              "rep": 1,
+              "webCapable": true,
+              "role": "primary",
+              "rank": 1,
+              "answerSha256": "97d4ce2f15f6d65eb2f6ab8f4c48c50862a7437a4194f766d2583d236c8e4a20",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": [
+                "https://www.worldmonitor.app/",
+                "https://www.worldmonitor.app/?chokepoint=bab_el_mandeb",
+                "https://www.worldmonitor.app/blog/alternatives/factal/",
+                "https://www.worldmonitor.app/compare/",
+                "https://www.worldmonitor.app/docs/pricing",
+                "https://www.worldmonitor.app/pro"
+              ]
+            },
+            {
+              "key": "h04|gpt +web|2",
+              "model": "gpt +web",
+              "rep": 2,
+              "webCapable": true,
+              "role": "mentioned",
+              "rank": 6,
+              "answerSha256": "0bced15c7a43125dd0cf2ac30d68db45ee9679f28ee69293bb204a9ff59819ea",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": [
+                "https://www.worldmonitor.app/blog/alternatives/factal/"
+              ]
+            },
+            {
+              "key": "h04|gpt +web|3",
+              "model": "gpt +web",
+              "rep": 3,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "cfe186e01a98db9d1fbb387a8dcd074edafe2e23a032ea9eba556d234f9dff85",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|gpt +web|4",
+              "model": "gpt +web",
+              "rep": 4,
+              "webCapable": true,
+              "role": "primary",
+              "rank": 1,
+              "answerSha256": "5f2b6c6816e9499a8aab043c278103efa45f70e90652dc800d9958bc2670e2ad",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": [
+                "https://www.worldmonitor.app/blog/alternatives/factal/"
+              ]
+            },
+            {
+              "key": "h04|gpt +web|5",
+              "model": "gpt +web",
+              "rep": 5,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "df05f33f2745e5679fe781bf9c789d4dbe5daf06e7ddead4157b9fe1345e70e3",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": [
+                "https://www.worldmonitor.app/blog/alternatives/factal/"
+              ]
+            },
+            {
+              "key": "h04|gpt|1",
+              "model": "gpt",
+              "rep": 1,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "6d749daf3b87add044925b48a3e5b59d5b258f419715ed11b70a54ac426dd176",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|gpt|2",
+              "model": "gpt",
+              "rep": 2,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "a7a06c03637209be1f7a4455e1dc016c1f4b6ee65af00443a2e790e2689d9e0b",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|gpt|3",
+              "model": "gpt",
+              "rep": 3,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "08e771cd122d4a93b4294436b46404acac04ed1495e75b1a54fa23064b92b9b3",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|gpt|4",
+              "model": "gpt",
+              "rep": 4,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "f12ac27b600e610e504892865eabfc520cbf4e946a843768b1c9484837e534f6",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|gpt|5",
+              "model": "gpt",
+              "rep": 5,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "8780ab3834735eb303c6ef92fac40d0513bf75687dce08b0af3b15b2c6958ed4",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|perplexity|1",
+              "model": "perplexity",
+              "rep": 1,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "8b22239ee517c45d3787da2c38d73dc4e34573604e7338be9908a9c9cb53fb50",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|perplexity|2",
+              "model": "perplexity",
+              "rep": 2,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "0e19ccd33656030a9a0b507697ca26d138f8eecfe25d49532f080684bb194d45",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|perplexity|3",
+              "model": "perplexity",
+              "rep": 3,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "97d949b52d6501c19b3d40557e0cd60b121c151f73123e0351c3b15d5b767e02",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|perplexity|4",
+              "model": "perplexity",
+              "rep": 4,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "d3d764578b66676b6070be761d643f58b460e95a429e441157af3b7e196038a5",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "h04|perplexity|5",
+              "model": "perplexity",
+              "rep": 5,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "8d3bed008485968b32e7b570ed231b0d9920a79abea0ce11566f4f6d1937bd93",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "q015",
+      "query": "I need to feed global incidents and risk signals into our internal app without manually scraping news sites and social media. What data service should I use?",
+      "question": {
+        "intent": "problem",
+        "persona": "developer",
+        "query": "I need to feed global incidents and risk signals into our internal app without manually scraping news sites and social media. What data service should I use?",
+        "id": "q015"
+      },
+      "models": [
+        {
+          "name": "openrouter/openai/gpt-5.5",
+          "label": "gpt",
+          "web_search": false
+        },
+        {
+          "name": "anthropic/claude-sonnet-5-5",
+          "label": "claude",
+          "web_search": false
+        },
+        {
+          "name": "openrouter/google/gemini-3.7-flash",
+          "label": "gemini",
+          "web_search": false
+        },
+        {
+          "name": "openrouter/perplexity/sonar-pro",
+          "label": "perplexity",
+          "web_search": false
+        }
+      ],
+      "repetitions": 2,
+      "webSearch": {
+        "compare": true,
+        "mode": "tool",
+        "search": "exa_ai",
+        "max_results": 5,
+        "max_searches": 3,
+        "force": false,
+        "search_tool": ""
+      },
+      "judgeModel": "anthropic/claude-sonnet-5-5",
+      "followupAeoScore": 18.5,
+      "baselineRun": "worldmonitor.app-20261016",
+      "followupRun": "q015-20261018",
+      "spendUsd": {
+        "answer": 0.258561,
+        "search": 0.05,
+        "judge": 0.103526
+      },
+      "runs": {
+        "baseline": {
+          "all": {
+            "answers": 14,
+            "named": 0,
+            "topPick": 0
+          },
+          "web": {
+            "answers": 8,
+            "named": 0,
+            "topPick": 0
+          },
+          "byModel": {
+            "claude": {
+              "answers": 2,
+              "named": 0,
+              "topPick": 0
+            },
+            "claude +web": {
+              "answers": 2,
+              "named": 0,
+              "topPick": 0
+            },
+            "gemini": {
+              "answers": 2,
+              "named": 0,
+              "topPick": 0
+            },
+            "gemini +web": {
+              "answers": 2,
+              "named": 0,
+              "topPick": 0
+            },
+            "gpt": {
+              "answers": 2,
+              "named": 0,
+              "topPick": 0
+            },
+            "gpt +web": {
+              "answers": 2,
+              "named": 0,
+              "topPick": 0
+            },
+            "perplexity": {
+              "answers": 2,
+              "named": 0,
+              "topPick": 0
+            }
+          },
+          "sourceHashes": {
+            "profile.json": "27888ab9847f33e200751a7d607d987673e08c54d40e6a045991b5dc39a006a5",
+            "queries.json": "b8cd81bf9f83fff584c17b574422442dabc225e2a1eff7c7666cfe03b1571666",
+            "answers.jsonl": "1a334700c0fa229894c14e9cba84744b13b2c02c59516b04fe9da380d4055202",
+            "judgments.jsonl": "66dc9dc24561cbc4c97aa9bd9724d1a07d3a9503ac27d035ed6a72b39a1534ab"
+          },
+          "answers": [
+            {
+              "key": "q015|claude +web|1",
+              "model": "claude +web",
+              "rep": 1,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "f2b7d7c94425961533be0f07a7ee98bffd8a018121350d7162fbc165aefca1bd",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|claude +web|2",
+              "model": "claude +web",
+              "rep": 2,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "88d4b4c26554edebb66866df3f8ffefefc1b05698740dbc8d8df566f5f6ef2c8",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": [
+                "https://www.worldmonitor.app/compare/"
+              ]
+            },
+            {
+              "key": "q015|claude|1",
+              "model": "claude",
+              "rep": 1,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "85ef093c5f456cec79f28ca5433260b17c0928499aeed811383ff9db76008fe4",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|claude|2",
+              "model": "claude",
+              "rep": 2,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "38eaf7976f85ed8397c44f9137e73e7e755e0a778cf21cff7ffece327c6dc862",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|gemini +web|1",
+              "model": "gemini +web",
+              "rep": 1,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "4ec06ad3b82e8e2770b762e461aabea1956c8280f7c5383c5bafe0ed47fd5092",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|gemini +web|2",
+              "model": "gemini +web",
+              "rep": 2,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "993eca7a3afa74e0468343bf6ac47cecd3ab34d9959d910878e7958887b48ca8",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|gemini|1",
+              "model": "gemini",
+              "rep": 1,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "0d51e60b842b6e98692a95b320e07628b866c8b9aab5d0441b7dc80a2a3e9c45",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|gemini|2",
+              "model": "gemini",
+              "rep": 2,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "e14ffd12a5d5ece6ea546350edaa54b4a90462eb43f89a1df4c22f149c23f633",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|gpt +web|1",
+              "model": "gpt +web",
+              "rep": 1,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "c930eb22ffcf1c8a09ea9f1b1461073008467c17c119d54ce6dc1654ba1be949",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|gpt +web|2",
+              "model": "gpt +web",
+              "rep": 2,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "52d095b29c626bdc68b97ea2e28306e8733a571989a1a10901637a305ee47bdf",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|gpt|1",
+              "model": "gpt",
+              "rep": 1,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "fd84b92399bdec2cdf752152a1fec29ed67faea41c9f2993fa2781391b1fc0f9",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|gpt|2",
+              "model": "gpt",
+              "rep": 2,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "68182e53de0a48b1abdbb0b8e8897832c61f490547040ece3e6d06ddeaa1c77c",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|perplexity|1",
+              "model": "perplexity",
+              "rep": 1,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "c34f6f6e901f65a79b5de245c5ee11d88d04a4030bcd8605bfb64cc85b14f996",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|perplexity|2",
+              "model": "perplexity",
+              "rep": 2,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "ae7e4401733df979112706694c5a1ff7707d3a1523c76d11b537f7c63ec578f1",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            }
+          ]
+        },
+        "followup": {
+          "all": {
+            "answers": 14,
+            "named": 3,
+            "topPick": 2
+          },
+          "web": {
+            "answers": 8,
+            "named": 3,
+            "topPick": 2
+          },
+          "byModel": {
+            "claude": {
+              "answers": 2,
+              "named": 0,
+              "topPick": 0
+            },
+            "claude +web": {
+              "answers": 2,
+              "named": 1,
+              "topPick": 0
+            },
+            "gemini": {
+              "answers": 2,
+              "named": 0,
+              "topPick": 0
+            },
+            "gemini +web": {
+              "answers": 2,
+              "named": 0,
+              "topPick": 0
+            },
+            "gpt": {
+              "answers": 2,
+              "named": 0,
+              "topPick": 0
+            },
+            "gpt +web": {
+              "answers": 2,
+              "named": 0,
+              "topPick": 0
+            },
+            "perplexity": {
+              "answers": 2,
+              "named": 2,
+              "topPick": 2
+            }
+          },
+          "sourceHashes": {
+            "profile.json": "f5b44950d4b6367413bb008f2cd7539274a82e0682411f68b86bc5601f8a5bd9",
+            "queries.json": "77bb5a8d61dfd9ca388ea9d55db9332285974638cb572e5ac73abdeb525e88cb",
+            "answers.jsonl": "4dfc01bc27ace082101ec058617e9f1c18ec9fe69057d2089c27baa0bdde4f85",
+            "judgments.jsonl": "cc90123a0743256446ba3a7e7b5885469143af982dc720298c087b90a779d478"
+          },
+          "answers": [
+            {
+              "key": "q015|claude +web|1",
+              "model": "claude +web",
+              "rep": 1,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "e8964f66fd032b0b9d1f9a59221a723d883021ddb2a7e0d132c8b0a45dfd5391",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": [
+                "https://www.worldmonitor.app/compare/travel-risk-intelligence-vs-assistance/"
+              ]
+            },
+            {
+              "key": "q015|claude +web|2",
+              "model": "claude +web",
+              "rep": 2,
+              "webCapable": true,
+              "role": "mentioned",
+              "rank": 11,
+              "answerSha256": "644cbfcff5b9a1792c9e100211c7b3c04c88af2a35c0fa84da4afef673b7b14e",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": [
+                "https://www.worldmonitor.app/blog/best/intelligence-apis-for-developers/",
+                "https://www.worldmonitor.app/compare/"
+              ]
+            },
+            {
+              "key": "q015|claude|1",
+              "model": "claude",
+              "rep": 1,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "e22ce391d0ebf63ebace27be26a37ce1a7b778484f4b69e96981f1c18c927d68",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|claude|2",
+              "model": "claude",
+              "rep": 2,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "3c6b386dd75766eddc97143c8142ea563c9acbb8e8098b53069594551e9e0904",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|gemini +web|1",
+              "model": "gemini +web",
+              "rep": 1,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "0aa2a7a85ebd7218aa27a3661a109f5cafeaddc7827cd913999cf32a8c2650e6",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|gemini +web|2",
+              "model": "gemini +web",
+              "rep": 2,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "4a0ee17da9b3042e519811ba3bf4f25d0f9860cf4490d63dc2ab11b863204dd6",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|gemini|1",
+              "model": "gemini",
+              "rep": 1,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "67dae07783f31848afdeaa822a417fb6aeb5c8bce707bbb77091f0dbfc321027",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|gemini|2",
+              "model": "gemini",
+              "rep": 2,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "ba3670830a7d1a2b2b60952bc03f7a00d29023e10c611a41fe757a97fb4df7c3",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|gpt +web|1",
+              "model": "gpt +web",
+              "rep": 1,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "9356540986d33f303003479e99f91817751769123efcb17c39eb0450c112c847",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|gpt +web|2",
+              "model": "gpt +web",
+              "rep": 2,
+              "webCapable": true,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "d30817f9b2cbd2c38238143ffc6f01baee9fbeb07b199a6ad07f356c7f3ea52c",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|gpt|1",
+              "model": "gpt",
+              "rep": 1,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "145d5556c99f052522c7ae7d5b3be613df9d8aaa19b8aa3b8e5c92741eef2b02",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|gpt|2",
+              "model": "gpt",
+              "rep": 2,
+              "webCapable": false,
+              "role": "absent",
+              "rank": null,
+              "answerSha256": "5ce84dc6e9bac13271f1a0b828ef454d6d685625f01b68b58d61d1c8160c73bc",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": []
+            },
+            {
+              "key": "q015|perplexity|1",
+              "model": "perplexity",
+              "rep": 1,
+              "webCapable": true,
+              "role": "primary",
+              "rank": 1,
+              "answerSha256": "6be5924df787ebafcbbd24ff7fd43647c02ff1d29ab52fa9e6869095fbcfe50c",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": [
+                "https://www.worldmonitor.app/docs/incident-feed"
+              ]
+            },
+            {
+              "key": "q015|perplexity|2",
+              "model": "perplexity",
+              "rep": 2,
+              "webCapable": true,
+              "role": "primary",
+              "rank": 1,
+              "answerSha256": "c7b8c4ecd25d0944be38beb9f15a3c6dac8ac7638d02e041649cce043639a0ab",
+              "targetUrlsInAnswer": [],
+              "targetUrlsRetrieved": [
+                "https://www.worldmonitor.app/docs/incident-feed"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

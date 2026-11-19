@@ -1,10 +1,13 @@
 // @ts-nocheck — Migrated from .js to .ts to import server-side auth helpers
 // (PR #3768 review). Most of the body remains JS-shaped; types can be added
 // incrementally.
-import { Agent } from 'undici';
+import { Agent, Dispatcher1Wrapper } from 'undici';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { resolvePremiumCallerIdentity } from '../server/_shared/premium-check.js';
+import { DESKTOP_KEY_CLIENT_ERROR } from '../server/_shared/desktop-key-principal.js';
+import { chargeDesktopKeyBudget, desktopKeyBudgetResponse } from '../server/_shared/desktop-key-meter.js';
+import { runRedisPipeline } from '../server/_shared/redis.js';
 import { isBlockedResolvedAddress } from '../server/_shared/ip-address-classification.js';
 import { buildUsageIdentity } from '../server/_shared/usage-identity.js';
 import {
@@ -134,6 +137,8 @@ export function proxyUsageIdentityFor(req, identity) {
       customer_id: identity.userId,
       tier: 0,
       plan_key: null,
+      account_id: null,
+      overage: null,
     };
   }
 
@@ -142,7 +147,7 @@ export function proxyUsageIdentityFor(req, identity) {
     : null;
   return buildUsageIdentity({
     sessionUserId: identity.userId,
-    isUserApiKey: identity.kind === 'user-api-key',
+    isUserApiKey: identity.kind === 'user-api-key' || identity.kind === 'desktop-key',
     enterpriseApiKey,
     widgetKey: null,
     clerkOrgId: null,
@@ -318,7 +323,7 @@ async function fetchMcpUpstream(input, init) {
   const { resolvedAddresses } = await assertServerUrlSafe(url, init?.signal);
   const dispatcher = pinnedDispatcher(resolvedAddresses);
   try {
-    return await fetch(url.toString(), { ...init, dispatcher });
+    return await fetch(url.toString(), { ...init, dispatcher: new Dispatcher1Wrapper(dispatcher) });
   } catch (error) {
     if (proxyFailureFor(error).isTimeout) throw error;
     throw new McpProxyUpstreamError('MCP server request failed', { cause: error });
@@ -704,14 +709,19 @@ function isSseTransport(url) {
 function makeDeferred() {
   let resolve, reject;
   const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+  // The read loop or the RPC timer can reject this before its owner reaches
+  // `await promise` (send() is still awaiting the POST). Mark it handled so
+  // Node never reports an unhandled rejection; the later await still throws.
+  promise.catch(() => {});
   return { promise, resolve, reject };
 }
 
 class SseSession {
   constructor(sseUrl, headers) {
     this._sseUrl = sseUrl;
-    this._originHost = new URL(sseUrl).host;
-    this._originProtocol = new URL(sseUrl).protocol;
+    const url = new URL(sseUrl);
+    this._originHost = url.host;
+    this._originProtocol = url.protocol;
     this._headers = headers;
     this._endpointUrl = null;
     this._endpointDeferred = makeDeferred();
@@ -1010,6 +1020,11 @@ export async function handler(req, ctx) {
   // for Pro users; /api/mcp-proxy is now in PREMIUM_RPC_PATHS for that
   // path-gated injection.
   const callerIdentity = await resolvePremiumCallerIdentity(req);
+  if (!callerIdentity.isPremium && callerIdentity.desktopClientDenied) {
+    // The owner has Pro; a script reusing their desktop key needs an API plan.
+    emitProxyUsage(req, 403, Date.now() - startedAt, ctx);
+    return jsonResponse({ error: DESKTOP_KEY_CLIENT_ERROR }, 403, cors);
+  }
   if (!callerIdentity.isPremium) {
     emitProxyUsage(req, 401, Date.now() - startedAt, ctx);
     return jsonResponse({ error: 'Pro authentication required' }, 401, cors);
@@ -1020,6 +1035,22 @@ export async function handler(req, ctx) {
   if (proofDenied) {
     emitProxyUsage(req, proofDenied.status, Date.now() - startedAt, ctx);
     return proofDenied;
+  }
+
+  // Per-account desktop-key meter (plan 2026-10-25-001, KTD6 / R6). This edge
+  // is not served by the gateway, so nothing upstream has charged the owner's
+  // daily ceiling and burst bucket; charge them here with the same contract
+  // (429 with Retry-After, degraded 503) before any upstream work is done.
+  if (callerIdentity.kind === 'desktop-key') {
+    const budget = await chargeDesktopKeyBudget({
+      userId: callerIdentity.userId,
+      entitlement: callerIdentity.desktopKeyMeter,
+      pipeline: (cmds) => runRedisPipeline(cmds),
+    });
+    if (!budget.ok) {
+      emitProxyUsage(req, budget.status, Date.now() - startedAt, ctx, callerIdentity);
+      return desktopKeyBudgetResponse(budget, withProxyNoStore(cors));
+    }
   }
   const ip = getClientIp(req);
   const meta: ProxyMeta = { targetHost: '', targetPath: '', headerNames: [] };
@@ -1073,7 +1104,7 @@ export async function handler(req, ctx) {
     } else if (req.method === 'POST') {
       response = await handleCallTool(req, cors, meta);
     } else {
-      response = jsonResponse({ error: 'Method not allowed' }, 405, cors);
+      response = jsonResponse({ error: 'Method not allowed' }, 405, { ...cors, Allow: 'GET, POST, OPTIONS' });
     }
   } catch (err) {
     const msg = err instanceof McpProxyUpstreamError

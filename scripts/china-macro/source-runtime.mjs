@@ -192,6 +192,11 @@ export async function fetchThroughProxy(target, init, proxyUrl, {
   // (PROXY_FALLBACK_BUDGET_MS) so four live 12s exits cannot blow the seeder.
   const deadlineAt = Math.min(now() + PROXY_FALLBACK_BUDGET_MS, callerDeadlineAt);
   for (let attempt = 0; attempt < PROXY_EXIT_ATTEMPTS; attempt += 1) {
+    if (attempt > 0) {
+      const waitMs = Math.min(1_000, 100 * 2 ** (attempt - 1)) * (0.5 + Math.random() * 0.5);
+      if (deadlineAt - now() < waitMs + PROXY_BUDGET_FLOOR_MS) break;
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+    }
     const remainingMs = deadlineAt - now();
     if (remainingMs < PROXY_BUDGET_FLOOR_MS) break;
     const proxyConfig = parseProxyConfigForAttempt(proxyUrl, attempt);

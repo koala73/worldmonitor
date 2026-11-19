@@ -143,10 +143,9 @@ const HAPI_REQUEST_DELAY_MS = 1_100;
 export const HAPI_FALLBACK_BUDGET_MS = 140_000;
 const PIZZINT_TTL = 600;
 
-export const CONFLICT_COUNTRIES = [
-  'AF', 'SY', 'UA', 'SD', 'SS', 'SO', 'CD', 'MM', 'YE', 'ET',
-  'IQ', 'PS', 'LY', 'ML', 'BF', 'NE', 'NG', 'CM', 'MZ', 'HT',
-];
+// The DOC sweep covers exactly the countries the bulk mapper accepts, so the two
+// GDELT routes cannot drift apart. Its floor scales with the list (80%).
+export const CONFLICT_COUNTRIES = Object.freeze(Object.keys(GDELT_COUNTRY_NAMES));
 export const GDELT_MIN_SUCCESSFUL_COUNTRIES = Math.ceil(CONFLICT_COUNTRIES.length * 0.8);
 // DERIVED from the crisis-tracker registry, never hand-listed. This used to be a
 // hardcoded duplicate of shared/crawlable-crises.json's coverage codes with nothing
@@ -249,7 +248,7 @@ export const GDELT_BULK_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 // _gdelt-fetch.mjs's default rose from 15s to 30s for seed-gdelt-intel's slow
 // residential-proxy route (issue #5830), but this sweep's own budget was never
 // re-tuned for that — GDELT_SWEEP_BUDGET_MS (120s) launches batches of 4 and
-// needs 16/20 countries to clear GDELT_MIN_SUCCESSFUL_COUNTRIES. Inheriting the
+// needs 80% of CONFLICT_COUNTRIES to clear GDELT_MIN_SUCCESSFUL_COUNTRIES. Inheriting the
 // 30s default would let a single degraded batch eat a quarter of the whole
 // sweep budget, so this call site keeps the prior 15s ceiling explicitly.
 export const GDELT_COUNTRY_FETCH_OPTS = Object.freeze({ maxRetries: 0, proxyMaxAttempts: 1, timeoutMs: 15_000 });
@@ -480,7 +479,7 @@ export async function fetchGdeltCountryEvents(cc) {
   }
   let data;
   try {
-    // Runs 20× per cycle — keep each call cheap so the whole sweep fits the run window.
+    // Runs once per CONFLICT_COUNTRIES entry — keep each call cheap so the whole sweep fits the run window.
     data = await fetchGdeltJson(buildGdeltConflictUrl(cc), { label: `conflict:${cc}`, ...GDELT_COUNTRY_FETCH_OPTS });
   } catch (e) {
     console.warn(`  GDELT ${cc}: ${e.message}`);

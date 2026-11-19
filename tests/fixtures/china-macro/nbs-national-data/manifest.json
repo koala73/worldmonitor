@@ -1,0 +1,63 @@
+{
+  "endpoint": "https://data.stats.gov.cn/dg/website/publicrelease/web/external/stream/esData",
+  "tableUrl": "https://data.stats.gov.cn/dg/website/page.html#/pc/national/monthData",
+  "termsUrl": "https://www.stats.gov.cn/english/nbs/200701/t20070104_59236.html",
+  "attribution": "Quoted from the website of the National Bureau of Statistics: www.stats.gov.cn",
+  "robots": {
+    "url": "https://data.stats.gov.cn/robots.txt",
+    "httpStatus": 404,
+    "checkedAt": "2026-10-24T04:19:21.019Z"
+  },
+  "responses": {
+    "money-202608-202609.json": {
+      "retrievedAt": "2026-10-24T04:27:09.987Z",
+      "httpStatus": 200,
+      "contentHash": "sha256:34ff7dfd452fb7a8b37fbc6feebdee4e5a9c7bd82c79329a9f0ed200f7698f9b",
+      "request": {
+        "cid": "82130c6621a745cda3d64b090e733383",
+        "rootId": "fc982599aa684be7969d7b90b1bd0e84",
+        "indicatorIds": [
+          "e03f2232631f41cd9d754a7d7feb4a81"
+        ],
+        "daCatalogId": "",
+        "das": [
+          {
+            "text": "全国",
+            "value": "000000000000"
+          }
+        ],
+        "showType": 1,
+        "dts": [
+          "202608MM-202609MM"
+        ]
+      },
+      "notes": "Anonymous public table query; no cookies, credentials, authenticated download or TLS bypass. September cells are empty; August is populated. No publication/revision timestamp is returned. daterange_sdate is the historical series start, not its publication date."
+    },
+    "trade-202608-202609.json": {
+      "retrievedAt": "2026-10-24T04:27:10.195Z",
+      "httpStatus": 200,
+      "contentHash": "sha256:aade927f1191f9c045e4b5219d5d1524f36a8a5daa2e3a75c6457e53c4e14e2e",
+      "request": {
+        "cid": "7e11b47c828d4e4e925f1c5a98305558",
+        "rootId": "fc982599aa684be7969d7b90b1bd0e84",
+        "indicatorIds": [
+          "9e38b39f55a7461ea195508c1bb7dbdc",
+          "86a340fee806409ebdf4d0069bd23f29",
+          "0123bdd4e85348f28efc74685a4a40e5"
+        ],
+        "daCatalogId": "",
+        "das": [
+          {
+            "text": "全国",
+            "value": "000000000000"
+          }
+        ],
+        "showType": 1,
+        "dts": [
+          "202608MM-202609MM"
+        ]
+      },
+      "notes": "Anonymous public table query; no cookies, credentials, authenticated download or TLS bypass. September cells are empty; August is populated. No publication/revision timestamp is returned. daterange_sdate is the historical series start, not its publication date."
+    }
+  }
+}

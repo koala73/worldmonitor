@@ -63,6 +63,25 @@ async function callTool(name: string, args: unknown, fetchImpl?: typeof globalTh
 }
 
 describe('get_intel_timeline country pre-flight (WORLDMONITOR-10R)', () => {
+  it('forwards the opaque cursor and returns an empty page with continuation', async () => {
+    const cursor = 'opaque+/=?cursor';
+    const res = await callTool('get_intel_timeline', { domain: 'conflict', cursor }, async (input) => {
+      assert.equal(new URL(String(input)).searchParams.get('cursor'), cursor);
+      return new Response(JSON.stringify({ records: [], partial: true, upstreamUnavailable: false, nextCursor: 'older-page' }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    const parsed = await res.json();
+    assert.equal(parsed.error, undefined);
+    assert.equal(parsed.result.structuredContent.nextCursor, 'older-page');
+  });
+
+  it('rejects oversized cursors before the downstream fetch', async () => {
+    const res = await callTool('get_intel_timeline', { domain: 'conflict', cursor: 'x'.repeat(4097) });
+    const parsed = await res.json();
+    assert.equal(parsed.error.code, -32602);
+  });
+
   it('rejects a country that is not ISO 3166-1 alpha-2 without a round-trip', async () => {
     // Positive control for the guard's other half: `normalizeCountry` only
     // trims + uppercases (#7170 fixed `"ua"`), so `"Ukraine"` still fails the

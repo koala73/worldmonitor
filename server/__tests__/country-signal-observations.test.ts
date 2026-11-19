@@ -1,0 +1,159 @@
+import { describe, expect, it } from 'vitest';
+import { COUNTRY_SIGNAL_BYTES, COUNTRY_SIGNAL_FAMILIES, projectCountrySignalFamily, projectImagerySignalFamily, projectQualifiedCountrySignals, projectQualifiedCountrySignalContext, unavailableCountrySignal, boundCountrySignalFamily, sourceClock, type CountrySignalOutcome } from '../../shared/country-signal-observations';
+import { ROLLUP_MAX_AGE_MS } from '../../shared/orbital/country-rollup.js';
+import { CONFIRMED, RAISED, flagAfter, rollupOf, shadowedRollup, siteOf, watchedRead } from '../../tests/helpers/orbital-country-rollup.mjs';
+
+describe('qualified country Signals', () => {
+  it.each([['elevated', 1, 'medium'], ['elevated', 5, 'high'], ['critical', 1, 'medium'], ['critical', 5, 'high']] as const)('keeps vessel count thresholds for %s posture with %i vessels', (postureLevel, trackedVessels, severity) => {
+    const outcome = projectCountrySignalFamily('IR', 'posture', { state: 'observed', status: 'live', provider: 'adsb.lol', theaters: [{ theater: 'iran-theater', postureLevel, activeFlights: 1, trackedVessels }] });
+    expect(outcome.observations.find(row => row.type === 'military_vessel')?.severity).toBe(severity);
+    expect(outcome.observations.find(row => row.type === 'military_flight')?.severity).toBe(postureLevel === 'critical' ? 'high' : 'medium');
+  });
+  const observed = (family: CountrySignalOutcome['family']): CountrySignalOutcome => ({ ...unavailableCountrySignal('FR', family, ''), state: 'observed', partial: false, reason: null });
+  it('distinguishes observed empty, missing and locked without invented zero totals', () => {
+    expect(projectQualifiedCountrySignals('FR', [unavailableCountrySignal('FR', 'fires', 'missing')]).details).toBeNull();
+    expect(projectQualifiedCountrySignals('FR', [observed('fires')]).details).toMatchObject({ critical: 0, high: 0, medium: 0, low: 0 });
+    expect(() => projectQualifiedCountrySignals('US', [observed('fires')])).toThrow('identity');
+  });
+  it('counts available evidence and preserves unknown clocks with stable recent items', () => {
+    const outcome = observed('military');
+    outcome.observations = ['critical', 'high', 'high', 'high', 'high', 'medium', 'medium', 'medium', 'low'].map((severity, i) => ({ id: String(i), family: 'military', type: 'military_flight', severity: severity as 'high', title: `Eligible ${i}`, source: 'Licensed provider', eventAt: null, snapshotAt: null, timeBasis: 'unknown' }));
+    const value = projectQualifiedCountrySignals('FR', [outcome, unavailableCountrySignal('FR', 'fires', 'missing')]);
+    expect(value.details).toMatchObject({ critical: 1, high: 4, medium: 3, low: 1 });
+    expect(value.details?.recentHigh.map(row => row.description)).toEqual(['Eligible 0', 'Eligible 1', 'Eligible 2']);
+    expect(value.details?.recentHigh.every(row => row.timestamp === null)).toBe(true);
+    expect(boundCountrySignalFamily(outcome).observations).toHaveLength(9);
+  });
+  it.each([[4, 'low'], [5, 'medium'], [9, 'medium'], [10, 'high']])('summarizes %i deduplicated country unrest rows with source time unknown', (count, severity) => {
+    const events = Array.from({ length: count as number }, (_, i) => ({ id: String(i), country: 'FR', occurredAt: 1792324800000 }));
+    const outcome = projectCountrySignalFamily('FR', 'unrest', { events: [...events, ...events] });
+    expect(outcome.observations).toHaveLength(1);
+    expect(outcome.observations[0]).toMatchObject({ severity, eventAt: null, snapshotAt: null, timeBasis: 'unknown' });
+  });
+  it('credits unrest to GDELT alone; UCDP is the conflict feed', () => {
+    const outcome = projectCountrySignalFamily('FR', 'unrest', { events: [{ id: 'a', country: 'FR', occurredAt: 1792324800000 }] });
+    expect(outcome.attribution).toBe('GDELT; media-location signals are unverified');
+  });
+  it.each([[1, 'low'], [2, 'medium'], [4, 'medium'], [5, 'critical']])('preserves the conflict summary threshold at %i high rows', (count, severity) => {
+    const events = Array.from({ length: count as number }, (_, i) => ({ id: String(i), country: 'FR', severity: 'high', timestamp: 1792324800 }));
+    const outcome = projectCountrySignalFamily('FR', 'conflict', { events, scrapedAt: '1792324800000' });
+    expect(outcome.observations[0]).toMatchObject({ severity, eventAt: '2026-10-18T12:00:00.000Z', timeBasis: 'event' });
+    expect(projectCountrySignalFamily('FR', 'conflict', { events: [], scrapedAt: '0' }).state).toBe('unavailable');
+  });
+  it.each([[19, 0, null], [20, 0, 'medium'], [49, 0, 'medium'], [50, 0, 'high'], [1, 1, 'medium'], [1, 5, 'high']])('uses sanctions stock %i and delta %i without an invented event date', (entryCount, newEntryCount, severity) => {
+    const outcome = projectCountrySignalFamily('FR', 'sanctions', { countries: [{ countryCode: 'FR', entryCount, newEntryCount }], fetchedAt: '1792324800000' });
+    expect(outcome.observations[0]?.severity ?? null).toBe(severity);
+    expect(outcome.observations.every(row => row.eventAt === null && row.timeBasis === 'snapshot')).toBe(true);
+  });
+  it('filters country before the local bound and rejects malformed radiation severity', () => {
+    const outages = [...Array.from({ length: 1001 }, (_, i) => ({ id: `us-${i}`, country: 'US' })), { id: 'fr', country: 'France', severity: 'OUTAGE_SEVERITY_TOTAL' }];
+    expect(projectCountrySignalFamily('FR', 'outages', { outages }).observations).toMatchObject([{ id: 'fr', severity: 'high' }]);
+    const radiation = projectCountrySignalFamily('FR', 'radiation', { observations: [{ id: 'bad', country: 'FR', severity: 'garbage' }] });
+    expect(radiation).toMatchObject({ state: 'unavailable', observations: [], partial: true });
+    for (const value of [null, undefined, 0, -1, '0', 'invalid', Number.POSITIVE_INFINITY]) expect(sourceClock(value)).toBeNull();
+  });
+  it('replaces only a posture type with positive eligible evidence', () => {
+    const military = observed('military');
+    military.countryCode = 'IR';
+    military.observations = ['military_flight', 'military_vessel', 'ais_disruption'].map(type => ({ id: type, family: 'military', type, severity: 'high', title: type, source: 'adsb.lol / AIS', eventAt: null, snapshotAt: null, timeBasis: 'unknown' }));
+    const posture = projectCountrySignalFamily('IR', 'posture', { state: 'observed', status: 'live', provider: 'adsb.lol', theaters: [{ theater: 'iran-theater', postureLevel: 'elevated', activeFlights: 2, trackedVessels: 0 }] });
+    const rows = projectQualifiedCountrySignals('IR', [military, posture]).observations;
+    expect(rows.map(row => `${row.family}:${row.type}`)).toEqual(['military:military_vessel', 'military:ais_disruption', 'posture:military_flight']);
+  });
+  it('keeps dense model context bounded while preserving totals and each top-three clock', () => {
+    const families = [...COUNTRY_SIGNAL_FAMILIES, 'military' as const].map(family => ({
+      ...observed(family), scope: '💥'.repeat(250), attribution: '\\'.repeat(500), reason: '💥'.repeat(250),
+      observations: [{ id: family, family, type: family, severity: 'high' as const, title: '\\'.repeat(512), source: '💥'.repeat(250), eventAt: null, snapshotAt: '2026-10-18T12:00:00.000Z', timeBasis: 'snapshot' as const }],
+    }));
+    const model = projectQualifiedCountrySignals('FR', families);
+    const context = projectQualifiedCountrySignalContext(model);
+    expect(context.details?.high).toBe(model.details?.high);
+    expect(context.details?.recentHigh.map(row => row.timestamp)).toEqual(model.details?.recentHigh.map(row => row.timestamp));
+    expect(context.details?.recentHigh.every(row => row.description.truncated)).toBe(true);
+    expect(new TextEncoder().encode(JSON.stringify({ content: [{ text: JSON.stringify(context) }] })).length).toBeLessThan(16384);
+  });
+});
+
+describe('imagery country signal family', () => {
+  const now = Date.UTC(2026, 8, 21, 12);
+  const natanz = siteOf('nuclear:natanz', 'Natanz Enrichment Facility');
+  const project = (rollup: Parameters<typeof watchedRead>[0]) => projectImagerySignalFamily('IR', watchedRead(rollup), now);
+
+  it('projects one confirmed flag with its site, satellites and scene dates', () => {
+    const outcome = project(rollupOf('IR', now, [{ site: natanz, flag: flagAfter(natanz.id, now, CONFIRMED) }]));
+    expect(outcome).toMatchObject({ state: 'observed', partial: false, scope: 'Confirmed radar statistics changes only; change scoring is published for 1 of 1 watched sites' });
+    expect(outcome.observations).toEqual([expect.objectContaining({
+      id: natanz.id, family: 'imagery', type: 'imagery_statistics_changed', severity: 'low', eventAt: '2026-09-09T12:00:00.000Z', timeBasis: 'event',
+      title: 'Imagery statistics changed at Natanz Enrichment Facility: raised by Sentinel-1A scene 2026-08-28, confirmed by Sentinel-1C scene 2026-09-09',
+    })]);
+  });
+
+  it('observes no change rather than inventing one for a raised flag', () => {
+    const outcome = project(rollupOf('IR', now, [{ site: natanz, flag: flagAfter(natanz.id, now, RAISED) }]));
+    expect(outcome).toMatchObject({ state: 'observed', observations: [] });
+  });
+
+  it('is unavailable, never observed-empty, while change scoring is shadowed', async () => {
+    const { rollup, shadowFlags } = await shadowedRollup('IR', now, [natanz]);
+    expect(shadowFlags?.[0]?.state).toBe('confirmed');
+    expect(project(rollup)).toMatchObject({ state: 'unavailable', observations: [] });
+  });
+
+  it('is unavailable for a missing, stale or foreign rollup', () => {
+    const flagged = [{ site: natanz, flag: flagAfter(natanz.id, now, CONFIRMED) }];
+    expect(project(null)).toMatchObject({ state: 'unavailable', reason: 'No current watched-site evidence for this country.' });
+    expect(project(rollupOf('IR', now, flagged, { evaluatedAt: now - ROLLUP_MAX_AGE_MS - 1 }))).toMatchObject({ state: 'unavailable', observations: [] });
+    expect(projectImagerySignalFamily('IQ', watchedRead(rollupOf('IR', now, flagged)), now)).toMatchObject({ state: 'unavailable', observations: [] });
+  });
+
+  it('stays under the family byte cap with 100 confirmed sites', () => {
+    const sites = Array.from({ length: 100 }, (_, i) => siteOf(`military_base:${'x'.repeat(60)}${i}`, `${'Long Watched Site Name '.repeat(8)}${i}`));
+    const outcome = project(rollupOf('IR', now, sites.map(site => ({ site, flag: flagAfter(site.id, now, CONFIRMED) }))));
+    expect(outcome.state).toBe('observed');
+    expect(outcome.observations.length).toBeGreaterThan(0);
+    expect(new TextEncoder().encode(JSON.stringify(outcome)).length).toBeLessThanOrEqual(COUNTRY_SIGNAL_BYTES - 4096);
+    expect(projectQualifiedCountrySignals('IR', [outcome]).details?.recentHigh).toEqual([]);
+  });
+
+  it('is a fixed family the generic projection routes to the rollup reader', () => {
+    expect(COUNTRY_SIGNAL_FAMILIES).toContain('imagery');
+    expect(projectCountrySignalFamily('IR', 'imagery', null)).toMatchObject({ state: 'unavailable', family: 'imagery' });
+  });
+});
+
+describe('water country signal family', () => {
+  const reservoir = (id: string, country: string, seasonalZ: number | null, extra: Record<string, unknown> = {}) => ({
+    id, name: `Lake ${id}`, country, status: seasonalZ != null && seasonalZ <= -1.5 ? 'low' : 'normal', seasonalZ,
+    seasonalAnomalyM: seasonalZ == null ? null : seasonalZ * 2, latest: { date: '2026-09-06', levelM: 600 }, ...extra,
+  });
+  const body = (reservoirs: unknown[]) => ({ fetchedAt: '2026-11-14T00:00:00.000Z', reservoirs });
+
+  it('lists only the country reservoirs beyond the seasonal baseline, each with its pass date', () => {
+    const outcome = projectCountrySignalFamily('ET', 'water', body([
+      reservoir('gerd', 'ET', -2.4), reservoir('tana', 'ET', 0.3), reservoir('aswan', 'EG', -3), reservoir('koka', 'ET', 1.6),
+    ]));
+    expect(outcome.state).toBe('observed');
+    expect(outcome.observations.map(row => row.id)).toEqual(['gerd', 'koka']);
+    expect(outcome.observations[0]).toMatchObject({ family: 'water', type: 'reservoir_below_seasonal', severity: 'low', eventAt: '2026-09-06T00:00:00.000Z', timeBasis: 'event' });
+    expect(outcome.observations[0]!.title).toContain('ICESat-2 pass 2026-09-06');
+    expect(outcome.observations[1]!.type).toBe('reservoir_above_seasonal');
+    expect(outcome.partial).toBe(false);
+  });
+
+  it('is observed with no rows when the reservoirs sit within their seasonal range', () => {
+    const outcome = projectCountrySignalFamily('ET', 'water', body([reservoir('tana', 'ET', 0.3)]));
+    expect(outcome).toMatchObject({ state: 'observed', observations: [] });
+  });
+
+  it('is unavailable without a snapshot, without reservoirs in the country, or without a baseline', () => {
+    expect(projectCountrySignalFamily('ET', 'water', { dataAvailable: false })).toMatchObject({ state: 'unavailable', family: 'water' });
+    expect(projectCountrySignalFamily('FR', 'water', body([reservoir('gerd', 'ET', -2.4)]))).toMatchObject({ state: 'unavailable' });
+    expect(projectCountrySignalFamily('ET', 'water', body([reservoir('gerd', 'ET', null), reservoir('tana', 'ET', -2, { status: 'no_recent_data' })]))).toMatchObject({ state: 'unavailable' });
+  });
+
+  it('marks the family partial when some reservoirs lack a baseline and keeps rows out of high-severity signals', () => {
+    const outcome = projectCountrySignalFamily('ET', 'water', body([reservoir('gerd', 'ET', -2.4), reservoir('tana', 'ET', null)]));
+    expect(outcome.partial).toBe(true);
+    expect(projectQualifiedCountrySignals('ET', [outcome]).details?.recentHigh).toEqual([]);
+  });
+});

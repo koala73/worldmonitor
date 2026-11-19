@@ -174,3 +174,86 @@ export async function fetchKalshiMarketsBySeries(seriesTickers, {
 
   return markets;
 }
+
+const KALSHI_ORDERBOOK_CHUNK = 100;
+const KALSHI_MARKET_URL = /^https:\/\/kalshi\.com\/markets\/([A-Za-z0-9._-]+)$/;
+
+function parseBookNumber(raw) {
+  if (typeof raw !== 'string' && typeof raw !== 'number') return null;
+  if (typeof raw === 'string' && raw.trim() === '') return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+// Resting depth in USD: every bid level on both sides (yes bids and no bids),
+// price times size. An empty book is a known 0; an unreadable one is unknown.
+export function kalshiOrderbookDepth(book) {
+  const orderbook = book?.orderbook_fp;
+  if (!orderbook || typeof orderbook !== 'object') return null;
+  let total = 0;
+  for (const side of [orderbook.yes_dollars, orderbook.no_dollars]) {
+    if (side == null) continue;
+    if (!Array.isArray(side)) return null;
+    for (const level of side) {
+      const price = parseBookNumber(level?.[0]);
+      const size = parseBookNumber(level?.[1]);
+      if (price === null || size === null) return null;
+      total += price * size;
+    }
+  }
+  return Math.round(total * 100) / 100;
+}
+
+export async function fetchKalshiOrderbookDepths(tickers, {
+  fetchFn = globalThis.fetch,
+  baseUrl,
+  userAgent,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  retry = (fn) => fn(),
+  onChunkError,
+} = {}) {
+  const unique = [...new Set((tickers ?? []).map((ticker) => String(ticker).trim()).filter(Boolean))];
+  const depths = new Map();
+  for (let start = 0; start < unique.length; start += KALSHI_ORDERBOOK_CHUNK) {
+    const chunk = unique.slice(start, start + KALSHI_ORDERBOOK_CHUNK);
+    // Kalshi reads a comma-joined value as one ticker; each needs its own key.
+    const params = new URLSearchParams(chunk.map((ticker) => ['tickers', ticker]));
+    try {
+      const books = await retry(async () => {
+        const response = await fetchFn(`${baseUrl.replace(/\/$/, '')}/markets/orderbooks?${params}`, {
+          headers: requestHeaders(userAgent),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        if (!response.ok) {
+          const error = new Error(`Kalshi orderbooks HTTP ${response.status}`);
+          if (response.status >= 400 && response.status < 500 && response.status !== 429) error.nonRetryable = true;
+          throw error;
+        }
+        const data = await response.json();
+        if (!Array.isArray(data?.orderbooks)) throw new Error('Kalshi orderbooks invalid payload: expected orderbooks array');
+        return data.orderbooks;
+      });
+      const requested = new Set(chunk);
+      for (const book of books) {
+        const depth = kalshiOrderbookDepth(book);
+        if (depth !== null && requested.has(book?.ticker)) depths.set(book.ticker, depth);
+      }
+    } catch (error) {
+      onChunkError?.(error, chunk);
+    }
+  }
+  return depths;
+}
+
+export async function attachKalshiLiquidity(records, options = {}) {
+  const kalshiRecords = (records ?? [])
+    .filter((record) => record?.source === 'kalshi')
+    .map((record) => ({ record, ticker: KALSHI_MARKET_URL.exec(String(record.url ?? ''))?.[1] }))
+    .filter(({ ticker }) => ticker);
+  const tickers = [...new Set(kalshiRecords.map(({ ticker }) => ticker))];
+  const depths = await fetchKalshiOrderbookDepths(tickers, options);
+  for (const { record, ticker } of kalshiRecords) {
+    if (depths.has(ticker)) record.liquidity = depths.get(ticker);
+  }
+  return { tickers: tickers.length, priced: depths.size };
+}

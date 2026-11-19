@@ -330,6 +330,7 @@ interface ImfMacroEntry {
   currentAccountPct?: number | null;
   govRevenuePct?: number | null;
   year?: number | null;
+  periods?: { govRevenuePct?: number | null; currentAccountPct?: number | null } | null;
 }
 
 // BisExchangeRate interface removed in PR 3 §3.5: only the
@@ -1769,7 +1770,8 @@ export async function scoreMacroFiscal(
           weight: MACRO_FISCAL_INDICATOR_WEIGHTS.govRevenuePct,
           rawValue: imfEntry?.govRevenuePct ?? null,
           rawUnit: 'percent_gdp',
-          sourceYear: imfEntry?.year ?? null,
+          // `year` is the inflation year; each metric's own year is in `periods`.
+          sourceYear: imfEntry?.periods?.govRevenuePct ?? null,
           provenanceHint: overlay.usedStatcanInflation ? 'canada-national-overlay' : '',
         }),
     // Debt growth rate: rapid debt accumulation = fiscal stress even at moderate levels.
@@ -1787,7 +1789,7 @@ export async function scoreMacroFiscal(
           weight: MACRO_FISCAL_INDICATOR_WEIGHTS.currentAccountPct,
           rawValue: imfEntry?.currentAccountPct ?? null,
           rawUnit: 'percent_gdp',
-          sourceYear: imfEntry?.year ?? null,
+          sourceYear: imfEntry?.periods?.currentAccountPct ?? null,
         }),
     tracedMetric('unemploymentPct', imfLaborRaw == null && !overlay.usedStatcanUnemployment
       ? { score: null, weight: MACRO_FISCAL_INDICATOR_WEIGHTS.unemploymentPct }
@@ -1967,22 +1969,6 @@ export async function scoreCurrencyExternal(
   })));
 }
 
-// Renamed from scoreTradeSanctions in plan 2026-04-25-004 Phase 1 (Ship 1).
-// The OFAC-domicile-count component (sanctions:country-counts:v1, was weight
-// 0.45) was DROPPED — domicile-of-designated-entities is a corporate-finance
-// liability metric, not a country-resilience indicator. The remaining 3
-// trade-policy components are reweighted to total 1.0:
-//   WTO restriction severity → 0.30 (was 0.15)
-//   WTO barrier severity     → 0.30 (was 0.15)
-//   applied tariff rate    → 0.40 (was 0.25)
-// The `sanctions:country-counts:v1` seed key is no longer read by this
-// module; only `scripts/seed-sanctions-pressure.mjs` continues to WRITE it
-// for country-brief generation and ad-hoc analysis. The retired
-// `RESILIENCE_SANCTIONS_KEY` constant and `normalizeSanctionCount` helper
-// were removed in this PR (see retire-tag at lines ~263 and ~542).
-// Phase 2 (Ship 2) adds the `financialSystemExposure` dim built from
-// BIS CBS + WB IDS + FATF status — a structural-exposure construct that
-// does not rely on the OFAC count.
 export async function scoreTradePolicy(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,

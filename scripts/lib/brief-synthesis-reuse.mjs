@@ -30,17 +30,18 @@ export const DEFAULT_NONDUE_SYNTHESIS_REUSE_MIN = 360;
  * synthesis on a non-due tick.
  *
  * @param {object|null} priorEnvelope Parsed brief envelope (or null).
- * @param {{ nowMs: number; maxAgeMs: number; currentStories: Array<{ headline?: string }> }} opts
+ * @param {{ nowMs: number; maxAgeMs: number; currentStories: Array<{ headline?: string }>; priorSynthesizedAt?: number }} opts
  *   `currentStories` is the SYNTHESIS-shaped pool ({ headline, ... }) the
  *   fresh path would have prompted with — grounding must be judged against
- *   what the user will actually see this tick.
+ *   what the user will actually see this tick. `priorSynthesizedAt` is the
+ *   time the prior prose was generated (from the brief:latest pointer).
  * @returns {{ reuse: false; reason: string } | {
- *   reuse: true; reason: 'ok'; ageMs: number;
+ *   reuse: true; reason: 'ok'; ageMs: number; synthesizedAt: number;
  *   synthesis: { lead: string; threads: unknown[]; signals: unknown[] };
  *   publicLead: { lead: string; threads: unknown[]; signals: unknown[] } | null;
  * }}
  */
-export function resolveNonDueSynthesisReuse(priorEnvelope, { nowMs, maxAgeMs, currentStories }) {
+export function resolveNonDueSynthesisReuse(priorEnvelope, { nowMs, maxAgeMs, currentStories, priorSynthesizedAt }) {
   if (!priorEnvelope || typeof priorEnvelope !== 'object') {
     return { reuse: false, reason: 'no_prior_envelope' };
   }
@@ -48,7 +49,15 @@ export function resolveNonDueSynthesisReuse(priorEnvelope, { nowMs, maxAgeMs, cu
   if (typeof issuedAt !== 'number' || !Number.isFinite(issuedAt)) {
     return { reuse: false, reason: 'no_issued_at' };
   }
-  const ageMs = nowMs - issuedAt;
+  // Age is measured from when the prose was synthesized. Every compose
+  // re-stamps issuedAt with the tick time, reuse ticks included, so issuedAt
+  // alone kept reused prose "young" forever for a never-due rule (#9758).
+  // The cron carries the synthesis time on the brief:latest pointer; pointers
+  // written before that field existed fall back to issuedAt.
+  const synthesizedAt = typeof priorSynthesizedAt === 'number' && Number.isFinite(priorSynthesizedAt)
+    ? priorSynthesizedAt
+    : issuedAt;
+  const ageMs = nowMs - synthesizedAt;
   // Negative age = clock skew or a corrupted row; treat as unusable rather
   // than "infinitely fresh".
   if (ageMs < 0 || ageMs > maxAgeMs) {
@@ -81,5 +90,5 @@ export function resolveNonDueSynthesisReuse(priorEnvelope, { nowMs, maxAgeMs, cu
         signals: Array.isArray(digest.publicSignals) ? digest.publicSignals : [],
       }
     : null;
-  return { reuse: true, reason: 'ok', ageMs, synthesis, publicLead };
+  return { reuse: true, reason: 'ok', ageMs, synthesizedAt, synthesis, publicLead };
 }

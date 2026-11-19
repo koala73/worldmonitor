@@ -42,6 +42,9 @@
  *                                            -> shared WMShared<N> components
  *   - component schemas nothing can reach   -> removed
  *     (openapi-drop-unreachable-schemas.mjs)
+ *   - the emit-time component keys above    -> shorter keys (E429 -> 429,
+ *     Jmespath -> J, WorldMonitorInt64 -> Int64), every $ref rewritten
+ *     (compactComponentKeys; each key is paid once per pointer)
  *
  * `scripts/openapi-capacity-report.mjs` measures what is left and ranks what to
  * collapse next; docs/perf/openapi-bundle-capacity-2026-08-13.md is the plan.
@@ -190,6 +193,115 @@ export function shortenGeneratedSuccessDescriptions(spec) {
   return stats;
 }
 
+const HTTP_METHODS = new Set(['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace']);
+
+// Generated summaries repeat operationId verbatim. Keep custom summaries and
+// the human-readable YAML; omit only this duplicate from the compact JSON.
+export function dropDuplicateOperationSummaries(spec) {
+  const stats = { dropped: 0 };
+  for (const pathItem of Object.values(spec.paths ?? {})) {
+    for (const [method, operation] of Object.entries(pathItem ?? {})) {
+      if (!HTTP_METHODS.has(method)) continue;
+      if (typeof operation?.operationId !== 'string' || !operation.operationId) continue;
+      if (operation.summary === operation.operationId) {
+        delete operation.summary;
+        stats.dropped += 1;
+      }
+    }
+  }
+  return stats;
+}
+
+/**
+ * Proto RPC comments open with the RPC name ("ListX returns ..."), so nearly
+ * every generated description repeats its operationId: about 200 copies, 3.9 KB
+ * of the served artifact. The YAML keeps the name because Mintlify uses the
+ * description as the page's meta description, where the name reads as the
+ * subject. In the JSON the operationId sits on the same object, so the copy is
+ * dropped and the next word capitalized ("Returns ..."). JSON only.
+ *
+ * Mutates `spec` in place; returns { dropped }.
+ */
+export function dropOperationIdDescriptionPrefixes(spec) {
+  const stats = { dropped: 0 };
+  for (const pathItem of Object.values(spec.paths ?? {})) {
+    for (const [method, operation] of Object.entries(pathItem ?? {})) {
+      if (!HTTP_METHODS.has(method)) continue;
+      const { operationId, description } = operation ?? {};
+      if (typeof operationId !== 'string' || !operationId || typeof description !== 'string') continue;
+      const rest = description.startsWith(`${operationId} `) ? description.slice(operationId.length + 1) : '';
+      if (!/^\S/.test(rest)) continue;
+      operation.description = rest[0].toUpperCase() + rest.slice(1);
+      stats.dropped += 1;
+    }
+  }
+  return stats;
+}
+
+/**
+ * openapi-inject-security.mjs appends "PRO-gated. Requires entitlement tier >= N."
+ * to every entitlement-gated operation, and the per-spec contract tests pin that
+ * wording in the YAML. The JSON states the same gate as "PRO tier N+."; the 403
+ * response still describes the refusal in full. JSON only.
+ *
+ * Mutates `spec` in place; returns { compacted }.
+ */
+const ENTITLEMENT_NOTE = /(?:PRO-gated\. )?Requires entitlement tier >= (\d+)\./g;
+
+export function compactEntitlementNotes(spec) {
+  const stats = { compacted: 0 };
+  for (const pathItem of Object.values(spec.paths ?? {})) {
+    for (const [method, operation] of Object.entries(pathItem ?? {})) {
+      if (!HTTP_METHODS.has(method) || typeof operation?.description !== 'string') continue;
+      operation.description = operation.description.replace(ENTITLEMENT_NOTE, (_, tier) => {
+        stats.compacted += 1;
+        return `PRO tier ${tier}+.`;
+      });
+    }
+  }
+  return stats;
+}
+
+/**
+ * A 2xx response example illustrates the payload's shape; one item of each list
+ * of objects shows that shape as well as nine. The two captured examples that
+ * repeat whole rows (giving summary, China corridor control towers) spent 27 KB
+ * of the budget on rows a reader skims past. Lists of scalars stay whole: they
+ * are small, and a tuple like a bbox only makes sense complete. JSON only; the
+ * YAML and the per-service specs keep every row for Mintlify and the contract
+ * tests that validate them.
+ *
+ * Mutates `spec` in place; returns { trimmed }.
+ */
+export function trimResponseExampleLists(spec) {
+  const stats = { trimmed: 0 };
+  const trim = (value) => {
+    if (Array.isArray(value)) {
+      if (value.length > 1 && value.every((item) => item && typeof item === 'object')) {
+        value.length = 1;
+        stats.trimmed += 1;
+      }
+      value.forEach(trim);
+    } else if (value && typeof value === 'object') {
+      Object.values(value).forEach(trim);
+    }
+  };
+  for (const pathItem of Object.values(spec.paths ?? {})) {
+    if (!pathItem || typeof pathItem !== 'object') continue;
+    for (const operation of Object.values(pathItem)) {
+      const responses = operation && typeof operation === 'object' ? operation.responses : null;
+      if (!responses || typeof responses !== 'object') continue;
+      for (const [code, response] of Object.entries(responses)) {
+        if (!/^2\d\d$/.test(code) || !response || typeof response !== 'object' || response.$ref) continue;
+        for (const media of Object.values(response.content ?? {})) {
+          if (media && typeof media === 'object' && 'example' in media) trim(media.example);
+        }
+      }
+    }
+  }
+  return stats;
+}
+
 /**
  * Operations left out of this scanner-facing JSON. The bundle has a hard byte
  * budget (SCANNER_BUDGET_BYTES) and the owner decided (#9093) that endpoints
@@ -199,12 +311,28 @@ export function shortenGeneratedSuccessDescriptions(spec) {
  * and still callable: only this one artifact omits it. Every entry names why.
  */
 export const SCANNER_BUNDLE_EXCLUDED_OPERATIONS = Object.freeze({
+  '/api/cyber/v1/get-network-info': 'Budget: the optional cyber popup enrichment (#10186) puts the scanner bundle 1,793 bytes over its cap. The endpoint remains served and fully documented in the CyberService spec and YAML bundle.',
+  '/api/economic/v1/get-food-prices': 'Budget: the dashboard food-price card (#9841) puts the scanner bundle 2,983 bytes over its cap. The endpoint remains served and fully documented in the EconomicService spec and YAML bundle.',
+  '/api/maritime/v1/list-ukmto-incidents': 'Budget: the optional UKMTO dashboard dataset puts the scanner bundle 2,045 bytes over its cap. The endpoint remains served and fully documented in the MaritimeService spec and YAML bundle; worker activation is tracked in #9831.',
+  '/api/intelligence/v1/get-country-signal-observations': 'Internal country panel observation carrier; documented in the IntelligenceService spec and YAML bundle.',
   '/api/news/v1/list-label-changes': 'Label history read by the /trust page (#9093); documented in the NewsService spec.',
   '/api/news/v1/submit-error-report': 'The /trust page "Report an error" form (#9093); documented in the NewsService spec.',
   '/api/news/v1/list-error-reports': 'Operator review queue, secret-gated (#9093).',
   '/api/news/v1/review-error-report': 'Operator review decision, secret-gated (#9093).',
   '/api/news/v1/search-fact-checks': 'Fact-check lookup for the /verify page and verify_claim (#9094); documented in the NewsService spec.',
   '/api/news/v1/search-claim-headlines': 'Claim headline search for the /verify page and verify_claim; documented in the NewsService spec.',
+  '/api/news/v1/search-headlines': 'Cmd+K headline search over the last 24 hours of served headlines, built for the dashboard; documented in the NewsService spec.',
+  '/api/news/v1/search-headline-archive': 'Cmd+K headline search over up to 7 days by language (Pro), built for the dashboard; documented in the NewsService spec.',
+  '/api/news/v1/list-source-items': 'Cached rows for a dashboard panel\'s enabled sources below the digest category cap (#9796); documented in the NewsService spec.',
+  '/api/economic/v1/get-capital-flows': 'Budget: the operation costs more than the bundle\'s remaining headroom (~2 KB on main at the time) and its full field documentation is kept rather than trimmed. Served, documented in the EconomicService spec and the YAML bundle, and exposed to agents by MCP get_capital_flows, whose tool description and schema do not depend on this artifact.',
+  '/api/feedback/v1/submit-report': 'The dashboard\'s own feedback form. Budget: the country risk response\'s satellite imagery context costs about 650 bytes when about 25 were free. Served and documented in the FeedbackService spec and the YAML bundle.',
+  '/api/intelligence/v1/get-pizzint-status': 'Budget: the dashboard\'s Pentagon Pizza Index and tension popup read it, and its tension evidence schemas cost about 1.4 KB when 77 bytes were free. Served and documented in the IntelligenceService spec and the YAML bundle.',
+  '/api/orbital/v1/get-point-passes': 'Budget: the per-point pass and image lookup does not fit the 25 bytes of headroom left after the catalog exclusion. Served, documented in the OrbitalService spec and the YAML bundle, and exposed to agents by MCP get_point_satellite_passes.',
+  '/api/orbital/v1/get-country-imagery-evidence': 'Budget: the per-country watched-site satellite evidence does not fit the 25 bytes of headroom left after the catalog exclusion. Served, documented in the OrbitalService spec and the YAML bundle, and exposed to agents by MCP get_country_imagery_evidence.',
+  '/api/orbital/v1/get-watched-site-imagery': 'Budget: the map popup\'s watched-site image and next pass, read by site id; the bundle had about 25 bytes of headroom. Served and documented in the OrbitalService spec and the YAML bundle.',
+  '/api/infrastructure/v1/search-place': 'Place-name search for the satellite pass lookup sheet; the bundle had about 25 bytes of headroom. Served and documented in the InfrastructureService spec and the YAML bundle.',
+  '/api/trade/v1/get-monthly-sitc-trade': 'Budget: Malaysia\'s DOSM monthly trade by SITC section costs about 4.8 KB when 97 bytes were free, and its unit and index-gap field documentation is kept rather than trimmed. Served and documented in the TradeService spec and the YAML bundle.',
+  '/api/orbital/v1/list-imaging-satellites': 'Budget: the imaging-satellite catalog read by the point lookup carries the full OMM element schema and puts the scanner bundle 5,552 bytes over its cap. Served and documented in the OrbitalService spec and the YAML bundle.',
 });
 
 /**
@@ -251,6 +379,91 @@ export function dropUnreferencedSecuritySchemes(spec) {
       stats.dropped += 1;
     }
   }
+  return stats;
+}
+
+/**
+ * Shorter keys for the components the dedup passes above create. Every `$ref`
+ * spells its target key out in full, so the key is paid once per pointer: the
+ * error responses alone take 1,499 pointers, and `WorldMonitorInt64` 125. The
+ * source YAML has no `components.responses`, `parameters` or `headers`, and no
+ * `WorldMonitorInt64` schema, so every key renamed here is an emit-time name
+ * and no reader of the YAML or the per-service specs depends on it. The
+ * component bodies are unchanged; a header or parameter keeps its wire name
+ * inside the component (`name: jmespath`, the `Idempotent-Replayed` map key).
+ */
+export const COMPACT_COMPONENT_KEYS = Object.freeze({
+  // E429 -> 429, E403_3 -> 403_3, EDEF -> DEF.
+  responses: (key) => key.replace(/^E(?=\d|DEF$)/, ''),
+  parameters: (key) => (key === 'Jmespath' ? 'J' : key),
+  // IdempotentReplayedHeader -> IdempotentReplayed, IdempotencyKeyHeader_2 -> IdempotencyKey_2.
+  headers: (key) => key.replace(/Header(?=_\d+$|$)/, ''),
+  schemas: (key) => (key === 'WorldMonitorInt64' ? 'Int64' : key),
+});
+
+/**
+ * Rename component keys by COMPACT_COMPONENT_KEYS and rewrite every `$ref` to
+ * them, including pointers into a renamed component. A rename whose target
+ * already exists, or that two keys would share, is skipped, so the mapping is
+ * always one-to-one and inverting it restores the input exactly. Example
+ * payloads are data, not references, and are not rewritten. Mutates `spec`;
+ * returns { renamed, rewrittenRefs, renames } where `renames` maps each
+ * `#/components/<bucket>/<old>` pointer to its new one.
+ */
+export function compactComponentKeys(spec, rules = COMPACT_COMPONENT_KEYS) {
+  const stats = { renamed: 0, rewrittenRefs: 0, renames: {} };
+  const components = spec?.components;
+  if (!components || typeof components !== 'object') return stats;
+
+  for (const [bucket, rename] of Object.entries(rules)) {
+    const entries = components[bucket];
+    if (!entries || typeof entries !== 'object') continue;
+    const keys = Object.keys(entries);
+    const taken = new Set(keys);
+    const plan = new Map();
+    for (const key of keys) {
+      const next = rename(key);
+      if (next === key || !next || taken.has(next)) continue;
+      taken.add(next);
+      plan.set(key, next);
+    }
+    if (plan.size === 0) continue;
+    // Rebuild in the original order so only the keys change.
+    components[bucket] = Object.fromEntries(keys.map((key) => [plan.get(key) ?? key, entries[key]]));
+    for (const [key, next] of plan) {
+      stats.renames[`#/components/${bucket}/${key}`] = `#/components/${bucket}/${next}`;
+      stats.renamed += 1;
+    }
+  }
+  if (stats.renamed === 0) return stats;
+
+  const rewrite = (ref) => {
+    const match = /^(#\/components\/[^/]+\/[^/]+)(\/.*)?$/.exec(ref);
+    const next = match && stats.renames[match[1]];
+    return next ? next + (match[2] ?? '') : ref;
+  };
+  const walk = (node, parentKey) => {
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, null);
+      return;
+    }
+    if (!node || typeof node !== 'object') return;
+    for (const [key, value] of Object.entries(node)) {
+      if (key === '$ref' && typeof value === 'string') {
+        const next = rewrite(value);
+        if (next !== value) {
+          node.$ref = next;
+          stats.rewrittenRefs += 1;
+        }
+        continue;
+      }
+      // `example`/`examples` hold payloads, except as a property NAME inside a
+      // schema's `properties`, where the value is a schema like any other.
+      if ((key === 'example' || key === 'examples') && parentKey !== 'properties') continue;
+      walk(value, key);
+    }
+  };
+  walk(spec, null);
   return stats;
 }
 
@@ -335,11 +548,26 @@ export function buildBundle({ spec: provided } = {}) {
   // schema targets alive wherever it runs — that unconditional seeding, not
   // this ordering, is the invariant a future edit must preserve.
   const unreachableStats = dropUnreachableSchemas(spec);
+  // After every pass that names or points at a component, so each of them still
+  // sees the descriptive keys its own contract tests pin.
+  const compactKeyStats = compactComponentKeys(spec);
   // Runs on the finished document so every surviving description, hoisted
   // component or inline copy alike, is compacted exactly once.
   const softBreakStats = collapseSoftLineBreaks(spec);
   const defaultRequiredStats = dropDefaultParameterRequired(spec);
   const successDescriptionStats = shortenGeneratedSuccessDescriptions(spec);
+  const duplicateSummaryStats = dropDuplicateOperationSummaries(spec);
+  const descriptionPrefixStats = dropOperationIdDescriptionPrefixes(spec);
+  // Component keys already include the proto message name. Keep the full
+  // description in the YAML and omit that repeated prefix in the served JSON.
+  for (const [key, schema] of Object.entries(spec.components?.schemas ?? {})) {
+    const prefix = `${key.split('_').at(-1)} `;
+    if (typeof schema?.description !== 'string' || !schema.description.startsWith(prefix)) continue;
+    const rest = schema.description.slice(prefix.length);
+    if (/^\S/.test(rest)) schema.description = rest[0].toUpperCase() + rest.slice(1);
+  }
+  const entitlementNoteStats = compactEntitlementNotes(spec);
+  const exampleListStats = trimResponseExampleLists(spec);
 
   // Minified: this artifact is machine-consumed (scanners/agents), and the
   // smaller payload dodges fetch-size caps. The YAML remains the human copy.
@@ -359,9 +587,14 @@ export function buildBundle({ spec: provided } = {}) {
     paramStats,
     inlineTypedStats,
     unreachableStats,
+    compactKeyStats,
     softBreakStats,
     defaultRequiredStats,
     successDescriptionStats,
+    duplicateSummaryStats,
+    descriptionPrefixStats,
+    entitlementNoteStats,
+    exampleListStats,
     excludedStats,
   };
 }
@@ -383,6 +616,7 @@ function main() {
     paramStats,
     inlineTypedStats,
     unreachableStats,
+    compactKeyStats,
   } = buildBundle({ spec: parseYaml(yaml.toString('utf8')) });
   writeFileSync(jsonPath, json);
   writeFileSync(llmsPath, llms);
@@ -399,7 +633,8 @@ function main() {
       `reused ${schemaSubtreeStats.replacedRefs} byte-identical schema subtrees across ${schemaSubtreeStats.groups} groups; ` +
       `hoisted ${sharedSubtreeStats.replacedRefs} deep repeated subtrees into ${sharedSubtreeStats.groups} shared components (${sharedSubtreeStats.bytesFreed} bytes); ` +
       `reused ${chinaDateStats.replacedRefs} China date-precision schemas; ` +
-      `dropped ${unreachableStats.dropped} unreachable schemas worth ${unreachableStats.bytesFreed} bytes)`,
+      `dropped ${unreachableStats.dropped} unreachable schemas worth ${unreachableStats.bytesFreed} bytes; ` +
+      `shortened ${compactKeyStats.renamed} emitted component keys across ${compactKeyStats.rewrittenRefs} $refs)`,
   );
 }
 

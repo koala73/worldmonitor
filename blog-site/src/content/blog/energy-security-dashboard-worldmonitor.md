@@ -28,7 +28,7 @@ This is the layer most market tools skip entirely: they show you the price of th
 
 ## The market and policy layers
 
-The market panels reuse WorldMonitor's finance engine, curated for energy: the **Oil & Gas Complex**, **EIA inventories**, **WTI, Brent, and natural-gas quotes**, and the **Market Regime** signal. The policy layer is what makes it an energy-*security* dashboard rather than a commodity screen: the **Energy Crisis Policy Tracker** follows government interventions — price caps, subsidies, export bans — while [**Sanctions Pressure**](/blog/posts/monitor-global-sanctions-pressure-worldmonitor/), **Gulf & OPEC Economies**, and **GCC Energy Investments** track the actors who move supply on purpose.
+The market panels reuse WorldMonitor's finance engine, curated for energy: the **Oil & Gas Complex**, **[EIA inventories](https://www.worldmonitor.app/tools/crude-oil-inventories/)**, **WTI, Brent, and natural-gas quotes**, and the **Market Regime** signal. The policy layer is what makes it an energy-*security* dashboard rather than a commodity screen: the **Energy Crisis Policy Tracker** follows government interventions — price caps, subsidies, export bans — while [**Sanctions Pressure**](/blog/posts/monitor-global-sanctions-pressure-worldmonitor/), **Gulf & OPEC Economies**, and **GCC Energy Investments** track the actors who move supply on purpose.
 
 The demand side closes the loop: **Retail Fuel Prices** (the number citizens actually feel — the same [ground-truth philosophy](/blog/posts/ground-truth-inflation-shelf-price-tracking-worldmonitor/) as the shelf-price tracker), **Climate & Weather Impact** as the demand driver, and **Renewable Energy** for the structural shift underneath it all.
 

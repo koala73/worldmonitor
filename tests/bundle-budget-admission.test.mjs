@@ -53,10 +53,11 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS_DIR = join(resolve(__dirname, '..'), 'scripts');
 
-// Railway hard-kills a cron container at 10 minutes. Every wall budget exists
-// to keep a section from being SIGKILLed mid-publish by that limit, so a budget
-// at or above it is not a budget.
-const RAILWAY_CONTAINER_CAP_MS = 600_000;
+// Project policy: configured admission budgets stay under 10 minutes. This is not
+// a Railway limit — Railway does not kill cron runs, it skips the next tick
+// while one is still active (see scripts/_bundle-runner.mjs). A budget at or
+// above the cap violates this policy; tick duration is not bounded here.
+const BUNDLE_WALL_CAP_MS = 600_000;
 
 /**
  * Parse every bundle once. Throws rather than skipping on any unresolvable
@@ -112,11 +113,11 @@ function readBudgetedBundles() {
     // The budget only means anything if it is under the ceiling it exists to
     // stay beneath. Nothing else in the repo checks this: a bundle declaring
     // maxBundleMs 900_000 would satisfy every per-section assertion below and
-    // still be hard-killed by Railway at 10 minutes, mid-publish.
+    // still violate the admission budget policy.
     assert.ok(
-      maxBundleMs < RAILWAY_CONTAINER_CAP_MS,
-      `${name}: maxBundleMs ${maxBundleMs}ms is at or above Railway's ${RAILWAY_CONTAINER_CAP_MS}ms container kill. `
-      + 'The container dies before the budget is reached, so the budget shapes nothing.',
+      maxBundleMs < BUNDLE_WALL_CAP_MS,
+      `${name}: maxBundleMs ${maxBundleMs}ms is at or above the ${BUNDLE_WALL_CAP_MS}ms bundle wall cap. `
+      + 'Keep configured admission budgets under the cap.',
     );
 
     const sections = extractBundleSections(src);
@@ -193,8 +194,8 @@ test('every budgeted bundle section fits its own bundle budget', () => {
         `${bundle.name} / ${section.label}: needs ${section.worstCaseMs + ADMISSION_HEADROOM_MS}ms `
         + `(timeoutMs ${section.timeoutMs} + ${KILL_GRACE_MS}ms kill grace + ${ADMISSION_HEADROOM_MS}ms admission headroom) `
         + `but maxBundleMs is ${bundle.maxBundleMs}ms — it can never be admitted. Lower timeoutMs to <= `
-        + `${bundle.maxBundleMs - KILL_GRACE_MS - ADMISSION_HEADROOM_MS}, or raise the budget below Railway's `
-        + '10-minute container cap.',
+        + `${bundle.maxBundleMs - KILL_GRACE_MS - ADMISSION_HEADROOM_MS}, or raise the budget below the `
+        + '600s bundle wall cap.',
       );
     }
   }
@@ -258,7 +259,7 @@ test('#6806: static-ref light fits together and heavy ordering stays starvation-
 
   assert.deepEqual(
     heavy.sections.map((s) => s.label).sort(),
-    ['Arms-Suppliers', 'Military-Bases', 'Mineral-Production', 'Supply-Vulnerability'],
+    ['Arms-Suppliers', 'CII-Structural-Prior', 'Military-Bases', 'Mineral-Production', 'Supply-Vulnerability'],
   );
 
   // THE property that makes the light half unstarvable: every member fits
@@ -280,7 +281,7 @@ test('#6806: static-ref light fits together and heavy ordering stays starvation-
     'the bounded preflight in the simultaneous-fit arithmetic must be enabled at runtime',
   );
 
-  // The heavy half CANNOT have that property — Railway's 10-minute kill means no
+  // The heavy half CANNOT have that property — the 570s budget means no
   // two of these members share a tick. Each must at least be individually
   // admissible, and the rotation below is what stops one of them monopolising
   // the lead slot.
@@ -306,6 +307,8 @@ test('#6806: static-ref light fits together and heavy ordering stays starvation-
   const heavySrc = readFileSync(join(SCRIPTS_DIR, 'seed-bundle-static-ref-heavy.mjs'), 'utf-8');
   const military = heavy.sections.find((section) => section.label === 'Military-Bases');
   const daily = heavy.sections.find((section) => section.label === 'Supply-Vulnerability');
+  const prior = heavy.sections.find((section) => section.label === 'CII-Structural-Prior');
+  assert.ok(prior);
   assert.ok(
     military.timeoutMs + daily.timeoutMs + (2 * KILL_GRACE_MS) > heavy.maxBundleMs,
     'the ordering proof must stay necessary: these two worst cases cannot share one tick',
@@ -317,7 +320,7 @@ test('#6806: static-ref light fits together and heavy ordering stays starvation-
   );
 
   const worstCaseAdmissions = (orderedSections, dueLabels) => {
-    let reservedMs = 0;
+    let reservedMs = ADMISSION_HEADROOM_MS;
     const admitted = [];
     for (const section of orderedSections) {
       if (!dueLabels.has(section.label)) continue;
@@ -328,12 +331,12 @@ test('#6806: static-ref light fits together and heavy ordering stays starvation-
     }
     return admitted;
   };
-  const dueLabels = new Set(['Military-Bases', 'Supply-Vulnerability']);
+  const dueLabels = new Set(['Military-Bases', 'Supply-Vulnerability', 'CII-Structural-Prior']);
   for (let firstTurn = 0; firstTurn < 6; firstTurn += 1) {
     const admissions = [firstTurn, firstTurn + 1].map((turn) => worstCaseAdmissions(
       orderStaticRefHeavySections(
-        heavy.sections.filter((section) => section.label !== 'Supply-Vulnerability'),
-        [daily],
+        heavy.sections.filter((section) => ![daily, prior].includes(section)),
+        [daily, prior],
         turn,
       ),
       dueLabels,
@@ -345,6 +348,10 @@ test('#6806: static-ref light fits together and heavy ordering stays starvation-
     assert.ok(
       admissions.some((labels) => labels.includes('Military-Bases')),
       `Military-Bases must retain a worst-case slot within two claimed turns from ${firstTurn}`,
+    );
+    assert.ok(
+      admissions.some((labels) => labels.includes('CII-Structural-Prior')),
+      `the pinned prior must be admitted within two claimed turns from ${firstTurn}`,
     );
   }
 });

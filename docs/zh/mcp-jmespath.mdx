@@ -69,7 +69,7 @@ curl "https://api.worldmonitor.app/api/market/v1/get-fear-greed-index?jmespath=c
 - **省略 `jmespath` 则一切照旧。** 未投影的响应本身就内联携带署名，因此会原样返回，既没有包裹层也没有 `_attribution` 键。
 - **附带块计入该工具的输出预算**；当表达式软失败时，它也会附在 `{ _jmespath_error, original_keys }` 信封上（该信封此时位于 `data` 内）。在 REST 上，错误表达式返回 HTTP 400 且不携带任何数据，因此无需署名，也不会有附带块。
 
-目前携带附带块的工具与端点：`get_resilience_indicators`、`get_toronto_reported_occurrences`、`get_toronto_calls_attended`、`get_imd_cyclone_marine`、`GET /api/resilience/v1/get-resilience-indicators` 以及 `GET /api/safety/v1/get-toronto-safety`。该清单由工具 schema 推导而来，而非手工维护——一个新增了许可字段却没有声明署名提取表达式的工具会直接让构建失败。
+目前携带附带块的工具与端点：`get_resilience_indicators`、`get_imd_cyclone_marine`、`GET /api/resilience/v1/get-resilience-indicators` 以及 `GET /api/safety/v1/get-toronto-safety`。已退役的多伦多工具（`get_toronto_reported_occurrences`、`get_toronto_calls_attended`）不再出现在 `tools/list` 中，但仍可调用，并保留附带块。该清单由工具 schema 推导而来，而非手工维护——一个新增了许可字段却没有声明署名提取表达式的工具会直接让构建失败。
 
 ## 十二个示例
 
@@ -426,7 +426,7 @@ curl "https://api.worldmonitor.app/api/market/v1/get-fear-greed-index?jmespath=c
 { "risk": "critical", "count": 627 }
 ```
 
-**为什么有效。** 对象即映射的结构在这个服务里随处可见——咽喉点、`fear-greed.categories` 内的权重、`get_eu_housing_cycle` 里以欧盟成员国为键的序列。把它们当作点号路径导航：已知键 → 直接用该键。如果你不知道键名，见下一个示例。
+**为什么有效。** 对象即映射的结构在这个服务里随处可见——咽喉点、`fear-greed.categories` 内的权重、`get_country_macro` 的 `house-prices` 数据集里以欧盟成员国为键的序列。把它们当作点号路径导航：已知键 → 直接用该键。如果你不知道键名，见下一个示例。
 
 ---
 
@@ -548,7 +548,7 @@ JMESPath 表达式可能以三种方式失败：表达式本身超过 1024 字�
 
 ### `describe_tool`
 
-当 `tools/list` 返回的压缩描述对某工具的响应结构含糊不清时，调用 `describe_tool({ tool_name: "get_market_data" })` 取完整未压缩定义。`describe_tool` 仅含元数据且**不计入 Pro 每日配额**——编写投影时尽管放心用。如果名字错了，响应是 `{ error: "unknown_tool", available: [...] }`，同样无配额成本。
+要在不重新列出整个目录的情况下重读单个工具的定义（含其 `outputSchema`），调用 `describe_tool({ tool_name: "get_market_data" })`。`describe_tool` 仅含元数据且**不计入 Pro 每日配额**——编写投影时尽管放心用。如果名字错了，响应是 `{ error: "unknown_tool", available: [...] }`，同样无配额成本。
 
 ## 另请参阅
 

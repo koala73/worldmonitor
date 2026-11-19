@@ -16,6 +16,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { renderBriefMagazine } from '../server/_shared/brief-render.js';
 import { BRIEF_ENVELOPE_VERSION } from '../shared/brief-envelope.js';
 
@@ -241,6 +242,29 @@ describe('renderBriefMagazine — chrome invariants', () => {
       assert.equal(Number(m[1]), i + 1);
       assert.equal(Number(m[2]), total);
     });
+  });
+
+  // Layout geometry is asserted in a browser by e2e/brief-magazine.spec.ts
+  // ("chrome stays clear of page content"). That spec is not in a CI
+  // shard, so this pins the CSS it depends on.
+  it('keeps the digest running head and text clear of the counter and pager', () => {
+    const html = renderBriefMagazine(envelope());
+    const css = html.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? '';
+    // The running-head reservation assumes a 7-character "NN / NN" counter
+    // in the head's own mono face and size, at 0.2em tracking.
+    for (const m of html.matchAll(/<div class="page-number mono">([^<]*)<\/div>/g)) {
+      assert.equal(m[1].length, 7, `counter "${m[1]}" must stay 7 characters`);
+    }
+    assert.match(css, /\.page-number \{\s*position: absolute; top: 5vh; inset-inline-end: 4vw;[\s\S]*?letter-spacing: 0\.2em;/);
+    assert.match(
+      css,
+      /\.digest \.running-head \{[^}]*font-family: 'IBM Plex Mono', monospace; font-size: max\(11px, 0\.85vw\);[^}]*padding-inline-end: calc\(7ch \+ 1\.4em - 2vw \+ 1em\);/,
+    );
+    // Digest copy stops above the fixed pager pill instead of scrolling under it.
+    assert.match(css, /\.digest \{[^}]*border-bottom: var\(--pager-band\) solid transparent;/);
+    assert.match(css, /\.nav-dots \{[^}]*bottom: var\(--pager-bottom\);[^}]*padding: var\(--pager-pad-y\) 1\.4vw;/);
+    // An empty pager (before or without NAV_SCRIPT) is not a bare grey bar.
+    assert.match(css, /\.nav-dots:empty \{ display: none; \}/);
   });
 
   it('applies .crit highlight to critical and high threat levels only', () => {
@@ -592,7 +616,7 @@ describe('renderBriefMagazine — v4 clusterId field (Sprint 1 canonical contrac
     /** @type {any} */ (env.data.stories[0]).clusterId = undefined;
     assert.throws(
       () => renderBriefMagazine(env),
-      /envelope\.data\.stories\[0\]\.clusterId must be a non-empty string on v4 envelopes/,
+      /envelope\.data\.stories\[0\]\.clusterId must be a non-empty string on v4\+ envelopes/,
     );
   });
 
@@ -601,16 +625,7 @@ describe('renderBriefMagazine — v4 clusterId field (Sprint 1 canonical contrac
     /** @type {any} */ (env.data.stories[1]).clusterId = '';
     assert.throws(
       () => renderBriefMagazine(env),
-      /envelope\.data\.stories\[1\]\.clusterId must be a non-empty string on v4 envelopes/,
-    );
-  });
-
-  it('rejects a v4 envelope when clusterId is null', () => {
-    const env = v4Envelope();
-    /** @type {any} */ (env.data.stories[0]).clusterId = null;
-    assert.throws(
-      () => renderBriefMagazine(env),
-      /envelope\.data\.stories\[0\]\.clusterId must be a non-empty string on v4 envelopes/,
+      /envelope\.data\.stories\[1\]\.clusterId must be a non-empty string on v4\+ envelopes/,
     );
   });
 
@@ -619,7 +634,7 @@ describe('renderBriefMagazine — v4 clusterId field (Sprint 1 canonical contrac
     /** @type {any} */ (env.data.stories[0]).clusterId = 12345;
     assert.throws(
       () => renderBriefMagazine(env),
-      /envelope\.data\.stories\[0\]\.clusterId must be a non-empty string on v4 envelopes/,
+      /envelope\.data\.stories\[0\]\.clusterId must be a non-empty string on v4\+ envelopes/,
     );
   });
 
@@ -692,17 +707,114 @@ describe('renderBriefMagazine — v4 clusterId field (Sprint 1 canonical contrac
     assert.ok(typeof html === 'string' && html.length > 0);
   });
 
-  it('rejects a v5 envelope (forward-incompatible — not in SUPPORTED_ENVELOPE_VERSIONS)', () => {
-    // The v3 → v4 bump expanded the supported set to {1, 2, 3, 4}.
-    // A v5 envelope is composer drift (or a future bump that hasn't
-    // shipped a matching renderer) and must be rejected at the version
-    // gate before any per-story validation runs.
-    const env = /** @type {any} */ (v4Envelope());
-    env.version = 5;
-    assert.throws(
-      () => renderBriefMagazine(env),
-      /is not in supported set/,
-    );
+  it('accepts a v5 envelope that carries a valid lang', () => {
+    for (const lang of ['fr', 'zh-TW', 'pt']) {
+      const env = /** @type {any} */ ({ ...v4Envelope(), version: 5, lang });
+      const html = renderBriefMagazine(env);
+      assert.ok(typeof html === 'string' && html.length > 0, lang);
+    }
+  });
+
+  it('rejects a v5 envelope without lang', () => {
+    const env = /** @type {any} */ ({ ...v4Envelope(), version: 5 });
+    assert.throws(() => renderBriefMagazine(env), /envelope\.lang must be/);
+  });
+
+  it('rejects a v5 envelope whose lang is "en" or malformed', () => {
+    for (const lang of ['en', 'FR', 'fr-tw', 'french', '', 7, 'fr"><script>']) {
+      const env = /** @type {any} */ ({ ...v4Envelope(), version: 5, lang });
+      assert.throws(() => renderBriefMagazine(env), /envelope\.lang must be/, String(lang));
+    }
+  });
+
+  it('rejects lang on a v4 envelope as an unexpected key', () => {
+    const env = /** @type {any} */ ({ ...v4Envelope(), lang: 'fr' });
+    assert.throws(() => renderBriefMagazine(env), /envelope has unexpected key "lang"/);
+  });
+
+  it('rejects a v6 envelope', () => {
+    const env = /** @type {any} */ ({ ...v4Envelope(), version: 6 });
+    assert.throws(() => renderBriefMagazine(env), /is not in supported set/);
+  });
+
+  it('requires clusterId on v5 stories', () => {
+    const base = v4Envelope();
+    const stories = base.data.stories.map((s, i) => (i === 0 ? { ...s, clusterId: undefined } : s));
+    const env = /** @type {any} */ ({ ...base, version: 5, lang: 'fr', data: { ...base.data, stories } });
+    assert.throws(() => renderBriefMagazine(env), /stories\[0\]\.clusterId must be a non-empty string on v4\+ envelopes/);
+  });
+
+  it('renders v5 fixed chrome in the envelope language', () => {
+    const v5 = /** @type {any} */ ({ ...v4Envelope(), version: 5, lang: 'fr' });
+    const html = renderBriefMagazine(v5, { shareUrl: 'https://worldmonitor.app/brief/public/abc' });
+    for (const label of ['Les chiffres du jour', 'Pourquoi c’est important', 'Merci de votre lecture', 'Signaux à surveiller', 'Partager', '← → / balayer / défiler']) {
+      assert.ok(html.includes(label), label);
+    }
+    assert.ok(!html.includes('The Numbers Today'));
+    assert.ok(html.includes('WorldMonitor Brief'));
+    assert.ok(html.startsWith('<!DOCTYPE html><html lang="fr">'));
+  });
+
+  it('a v4 envelope renders <html lang="en">', () => {
+    assert.ok(renderBriefMagazine(v4Envelope()).startsWith('<!DOCTYPE html><html lang="en">'));
+  });
+
+  it('a v5 fr envelope renders <html lang="fr">', () => {
+    const html = renderBriefMagazine(/** @type {any} */ ({ ...v4Envelope(), version: 5, lang: 'fr' }));
+    assert.ok(html.startsWith('<!DOCTYPE html><html lang="fr">'));
+  });
+
+  it('zh renders lang="zh-CN" and zh-TW renders lang="zh-TW"', () => {
+    for (const [lang, tag] of [['zh', 'zh-CN'], ['zh-TW', 'zh-TW']]) {
+      const html = renderBriefMagazine(/** @type {any} */ ({ ...v4Envelope(), version: 5, lang }));
+      assert.ok(html.startsWith(`<!DOCTYPE html><html lang="${tag}">`), lang);
+    }
+  });
+
+  it('public mode renders lang="en" for a v5 envelope', () => {
+    const html = renderBriefMagazine(/** @type {any} */ ({ ...v4Envelope(), version: 5, lang: 'fr' }), { publicMode: true });
+    assert.ok(html.startsWith('<!DOCTYPE html><html lang="en">'));
+  });
+
+  it('a v5 envelope with a lang outside the UI list is rejected', () => {
+    for (const lang of ['fil', 'xx', 'pt-BR']) {
+      const env = /** @type {any} */ ({ ...v4Envelope(), version: 5, lang });
+      assert.throws(() => renderBriefMagazine(env), /envelope\.lang must be a non-English UI language code/, lang);
+    }
+  });
+
+  it('the lang attribute value is HTML-escaped', () => {
+    const src = readFileSync(new URL('../server/_shared/brief-render.js', import.meta.url), 'utf8');
+    assert.ok(src.includes(`'<html lang="' + escapeHtml(htmlLangFor(lang)) + '"'`));
+  });
+
+  it('English CSS output is unchanged apart from the appended :lang() rules', () => {
+    const html = renderBriefMagazine(v4Envelope());
+    const firstLang = html.indexOf(':lang(');
+    assert.ok(firstLang > 0);
+    assert.ok(firstLang > html.indexOf('.wm-public-strip { font-size: 11px'), 'every :lang() rule comes after the existing rules');
+    const appended = html.slice(firstLang, html.indexOf('</style>', firstLang));
+    assert.doesNotMatch(appended, /font-family|font-weight|font-feature|font-variant|direction/);
+  });
+
+  it('keeps v4 chrome English', () => {
+    const html = renderBriefMagazine(v4Envelope());
+    for (const label of ['The Numbers Today', 'Why this is important', 'Thank you for reading', '← → / swipe / scroll']) {
+      assert.ok(html.includes(label), label);
+    }
+  });
+
+  it('localizes the threads page label for a private v5 envelope', () => {
+    const v5 = /** @type {any} */ ({ ...v4Envelope(), version: 5, lang: 'fr' });
+    assert.ok(renderBriefMagazine(v5).includes('<div class="label mono">Les fils du jour</div>'));
+    assert.ok(renderBriefMagazine(v4Envelope()).includes('<div class="label mono">Today\u2019s Threads</div>'));
+  });
+
+  it('public mode renders English chrome even for a v5 envelope', () => {
+    const v5 = /** @type {any} */ ({ ...v4Envelope(), version: 5, lang: 'fr' });
+    const html = renderBriefMagazine(v5, { publicMode: true });
+    assert.ok(html.includes('The Numbers Today'));
+    assert.ok(!html.includes('Les chiffres du jour'));
   });
 });
 

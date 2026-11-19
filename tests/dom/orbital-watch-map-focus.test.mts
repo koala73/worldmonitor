@@ -1,0 +1,179 @@
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+
+import { initTestI18n } from './helpers/i18n.mts';
+
+vi.mock('@/services/orbital/pass-client', () => ({
+  getOrbitalPassClient: () => ({ lookup: () => new Promise(() => {}) }),
+}));
+
+import { isMapUrlCentreClaimed, setOrbitalMapView } from '@/app/orbital-map-focus';
+import { openOrbitalShareLink, openOrbitalWatch } from '@/app/orbital-watch';
+import { ORBITAL_LOOKUP_MAX_ZOOM } from '@/app/orbital-map-focus';
+
+const PALM = { lat: 25.112, lon: 55.139 };
+const rect = (left: number, top: number, width: number, height: number) => new DOMRect(left, top, width, height);
+const frames = (n = 20) => new Promise<void>((done) => {
+  const step = (left: number) => (left ? requestAnimationFrame(() => step(left - 1)) : done());
+  step(n);
+});
+
+beforeAll(async () => {
+  await initTestI18n();
+});
+
+afterEach(() => {
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+  document.body.replaceChildren();
+  vi.restoreAllMocks();
+});
+
+describe('orbital watch map focus', () => {
+  it('centres the point in the map area the sheet leaves visible and keeps the reticle on it', async () => {
+    const original = Element.prototype.getBoundingClientRect;
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      return this.classList.contains('ies-panel') ? rect(988, 64, 440, 824) : original.call(this);
+    });
+    const center = vi.fn(() => true);
+    const project = vi.fn(() => ({ x: 494, y: 450 }));
+    let mapRect = rect(0, 0, 1440, 900);
+    const hold = vi.fn();
+    const release = setOrbitalMapView({ rect: () => mapRect, center, project, hold, camera: () => null, capZoom: () => {}, restore: vi.fn() });
+    try {
+      openOrbitalWatch(PALM, null);
+      await frames(40);
+      expect(center).toHaveBeenCalledWith(PALM, { x: -226, y: 0 });
+      expect(hold, 'the idle globe spin would carry the point away').toHaveBeenLastCalledWith(true);
+      const mark = document.querySelector<HTMLElement>('.ies-mapmark')!;
+      expect(mark.hidden).toBe(false);
+      expect(mark.style.transform).toBe('translate(494px, 450px)');
+
+      project.mockReturnValue({ x: 1200, y: 450 });
+      await frames();
+      expect(mark.hidden, 'a point under the panel is not marked').toBe(true);
+      expect(center, 'a map the user moved after landing is left where it is').toHaveBeenCalledTimes(1);
+
+      mapRect = rect(0, 0, 1600, 1000);
+      await frames();
+      expect(center, 'a resized map is centred again').toHaveBeenNthCalledWith(2, PALM, { x: -306, y: 0 });
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(hold, 'closing lets the globe spin again').toHaveBeenLastCalledWith(false);
+    } finally {
+      release();
+    }
+  });
+
+  it('leaves the point to the map when the map draws its own reticle there', async () => {
+    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center: () => true, project: () => ({ x: 494, y: 450 }), hold: vi.fn(), camera: () => null, capZoom: () => {}, restore: vi.fn() });
+    const targets: unknown[] = [];
+    try {
+      openOrbitalWatch(PALM, null, { setOrbitalTrack: () => {}, setOrbitalTrackMarker: () => {}, setOrbitalTarget: (t) => targets.push(t) });
+      await frames();
+      expect(targets[targets.length - 1]).not.toBeNull();
+      expect(document.querySelector<HTMLElement>('.ies-mapmark')!.hidden, 'one reticle, not two').toBe(true);
+    } finally {
+      release();
+    }
+  });
+
+  it('keeps trying to centre until a booting map can move', async () => {
+    let ready = false;
+    const center = vi.fn(() => ready);
+    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center, project: () => null, hold: vi.fn(), camera: () => null, capZoom: () => {}, restore: vi.fn() });
+    try {
+      openOrbitalWatch(PALM, null);
+      await frames();
+      const tries = center.mock.calls.length;
+      expect(tries, 'a refused centre is retried, not taken as done').toBeGreaterThan(1);
+      ready = true;
+      await frames();
+      const settled = center.mock.calls.length;
+      await frames();
+      expect(center, 'a landed centre is not repeated').toHaveBeenCalledTimes(settled);
+    } finally {
+      release();
+    }
+  });
+
+  it('keeps the picked point out of the page URL until the user moves the map', () => {
+    const map = document.createElement('div');
+    map.id = 'mapContainer';
+    const outside = document.createElement('button');
+    document.body.append(map, outside);
+    expect(isMapUrlCentreClaimed()).toBe(false);
+    openOrbitalWatch(PALM, null);
+    expect(isMapUrlCentreClaimed()).toBe(true);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(document.querySelector('.imagery-evidence-sheet')).toBeNull();
+    expect(isMapUrlCentreClaimed()).toBe(true);
+    outside.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    expect(isMapUrlCentreClaimed()).toBe(true);
+    map.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
+    expect(isMapUrlCentreClaimed()).toBe(false);
+  });
+
+  it('claims the URL centre again when a new lookup opens before the user moves the map', () => {
+    const map = document.createElement('div');
+    map.id = 'mapContainer';
+    document.body.append(map);
+    openOrbitalWatch(PALM, null);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    openOrbitalWatch({ lat: 25.003, lon: 54.99 }, null);
+    map.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    expect(isMapUrlCentreClaimed()).toBe(true);
+  });
+
+  it('puts the map back where it was when the lookup closes, so the point never becomes the map centre', async () => {
+    const home = { lat: -15, lon: 80, zoom: 4 };
+    let camera = home;
+    const restore = vi.fn();
+    const release = setOrbitalMapView({
+      rect: () => rect(0, 0, 1440, 900),
+      center: (point) => { camera = { ...point, zoom: 11 }; return true; },
+      project: () => null,
+      hold: vi.fn(),
+      capZoom: vi.fn(),
+      camera: () => camera,
+      restore,
+    });
+    try {
+      openOrbitalWatch(PALM, null);
+      await frames(40);
+      openOrbitalWatch({ lat: 25.2, lon: 55.27 }, null);
+      await frames(40);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(document.querySelector('.imagery-evidence-sheet')).toBeNull();
+      expect(restore, 'a second point keeps the camera from before the first').toHaveBeenCalledExactlyOnceWith(home);
+    } finally {
+      release();
+    }
+  });
+
+  it('caps the map before the sheet moves it, for a click and for a shared link, and lifts the cap before restoring on close', async () => {
+    const calls: string[] = [];
+    const release = setOrbitalMapView({
+      rect: () => rect(0, 0, 1440, 900),
+      center: () => { calls.push('center'); return true; },
+      project: () => null,
+      hold: vi.fn(),
+      capZoom: (zoom) => { calls.push(`cap:${zoom}`); },
+      camera: () => ({ lat: 0, lon: 0, zoom: 12 }),
+      restore: () => { calls.push('restore'); },
+    });
+    try {
+      openOrbitalWatch(PALM, null);
+      await frames(40);
+      expect(calls.slice(0, 2), 'the cap lands before the first centre').toEqual([`cap:${ORBITAL_LOOKUP_MAX_ZOOM}`, 'center']);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(calls.slice(-2)).toEqual(['cap:null', 'restore']);
+      calls.length = 0;
+      openOrbitalShareLink({ point: PALM, pass: null }, null);
+      await frames(40);
+      expect(calls[0]).toBe(`cap:${ORBITAL_LOOKUP_MAX_ZOOM}`);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(calls.slice(-2)).toEqual(['cap:null', 'restore']);
+    } finally {
+      release();
+    }
+  });
+});

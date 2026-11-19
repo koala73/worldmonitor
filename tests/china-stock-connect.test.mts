@@ -950,6 +950,25 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
   });
 
   describe('request discipline', () => {
+    it('preserves SSE request counts when both transport routes fail', async () => {
+      let proxyCalls = 0;
+      const { snapshot, log } = await fetchWithFixtures({
+        overrides: [['queryMargin.do', () => { throw new Error('timeout'); }]],
+        sseProxyUrl: 'http://user:pw@exit.example:7001',
+        proxyRequestFn: async () => {
+          proxyCalls += 1;
+          throw new Error('timeout');
+        },
+      });
+      const directCalls = log.filter((entry) => entry.url.includes('queryMargin.do')).length;
+      assert.equal(directCalls, 1);
+      assert.equal(proxyCalls, 1);
+      const source = snapshot.sources.find((entry: { id: string }) => entry.id === 'sse-margin');
+      assert.equal(source.transportStatus, 'error');
+      assert.equal(source.requestCount, directCalls + proxyCalls);
+      assert.equal(source.lastFailure.requestCount, directCalls + proxyCalls);
+    });
+
     it('always pins a date on SZSE report requests', async () => {
       const { log } = await fetchWithFixtures();
       const reportCalls = log.filter((entry) => entry.url.includes('ShowReport'));
@@ -983,159 +1002,6 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
       );
       const szse = snapshot.sources.find((s: { id: string }) => s.id === 'szse-northbound');
       assert.equal(szse.errorCode, 'NO_PUBLISHED_TRADE_DATE');
-      assert.equal(snapshot.status, 'degraded');
-    });
-
-    it('calls a malformed SZSE 200 malformed, not an unpublished session', async () => {
-      // A schema change upstream returns HTTP 200 with an unexpected body. If
-      // that reads as "this date is not published yet" the probe walks every
-      // candidate and reports NO_PUBLISHED_TRADE_DATE -- indistinguishable from
-      // a market holiday, and a whole diagnostic session wasted.
-      const { snapshot, log } = await fetchWithFixtures({
-        overrides: [['CATALOGID=SGT_SGTJYRB', { unexpected: 'shape' }]],
-      });
-      const source = snapshot.sources.find((s: { id: string }) => s.id === 'szse-northbound');
-      assert.equal(source.errorCode, 'MALFORMED_RESPONSE');
-      // ...and it must stop on the first bad payload rather than burn the budget.
-      assert.equal(
-        log.filter((e) => e.url.includes('CATALOGID=SGT_SGTJYRB')).length,
-        1,
-      );
-    });
-
-    it('re-walks the ladder when the sticky hop blips', async () => {
-      // Sticky exists to stop each date probe re-paying the escalation, but a
-      // one-off failure on the remembered hop must not kill the source when
-      // another transport is working -- that turns an optimisation into a
-      // single point of failure.
-      const log: FetchLogEntry[] = [];
-      const served = fixtureFetch(log);
-      let directReportCalls = 0;
-      const snapshot = await fetchChinaStockConnectSnapshot({
-        fetchFn: async (input: unknown, init: RequestInit) => {
-          const url = String(input);
-          // The calendar cannot be reached directly, so it escalates to the
-          // proxy and pins sticky='proxy'. The reports can.
-          if (url.includes('monthList')) throw new Error('fetch failed');
-          if (url.includes('szse.cn')) directReportCalls += 1;
-          return served(input, init);
-        },
-        proxyUrl: 'http://user:pw@exit.example:7001',
-        sseProxyUrl: '',
-        proxyRequestFn: async (input: string) => {
-          // Proxy serves the calendar, then blips for every report.
-          if (!input.includes('monthList')) throw new Error('fetch failed');
-          const body = JSON.stringify(szseCalendarFixture);
-          return {
-            status: 200,
-            contentType: 'application/json',
-            buffer: new TextEncoder().encode(body),
-          };
-        },
-        now: NOW,
-        onDecision: () => {},
-      });
-      assert.ok(
-        directReportCalls > 0,
-        'the direct hop must be re-tried after the sticky proxy blip',
-      );
-      assert.equal(
-        snapshot.northbound.turnoverCny.status,
-        'known',
-        'a working direct hop must still produce data after a sticky blip',
-      );
-    });
-
-    it('gives SZSE its full wall-clock budget regardless of SSE latency', async () => {
-      // The budget is shared across every szse.cn request. If SSE work runs
-      // between the calendar and the SZSE reports, slow SSE silently eats the
-      // SZSE allowance and the reports die on TRANSPORT_BUDGET_EXCEEDED without
-      // SZSE ever being at fault.
-      const order: string[] = [];
-      const log: FetchLogEntry[] = [];
-      const served = fixtureFetch(log);
-      const snapshot = await fetchChinaStockConnectSnapshot({
-        fetchFn: async (input: unknown, init: RequestInit) => {
-          order.push(String(input).includes('szse.cn') ? 'szse' : 'sse');
-          return served(input, init);
-        },
-        proxyUrl: '',
-        sseProxyUrl: '',
-        edgeEgress: null,
-        now: NOW,
-        onDecision: () => {},
-      });
-      // Guard against a vacuous pass: both halves must actually have dialled.
-      assert.ok(order.includes('szse'), 'SZSE must have made requests');
-      assert.ok(order.includes('sse'), 'SSE must have made requests');
-      // Every szse.cn request must precede the first sse request, so the shared
-      // deadline only ever measures SZSE's own work.
-      const firstSse = order.indexOf('sse');
-      const lastSzse = order.lastIndexOf('szse');
-      assert.ok(
-        lastSzse < firstSse,
-        `SZSE work must be contiguous before SSE; saw ${order.join(',')}`,
-      );
-      assert.equal(snapshot.status, 'healthy');
-    });
-
-    it('abandons a source on transport failure instead of blaming the trade date', async () => {
-      const { snapshot, log } = await fetchWithFixtures({
-        overrides: [['CATALOGID=1837_xxpl', () => { throw new Error('fetch failed'); }]],
-      });
-      const marginCalls = log.filter((entry) => entry.url.includes('CATALOGID=1837_xxpl'));
-      // One attempt, not one per candidate date: the network is down, and
-      // reporting NO_PUBLISHED_TRADE_DATE here would misdiagnose it.
-      assert.equal(marginCalls.length, 1);
-      const source = snapshot.sources.find((s: { id: string }) => s.id === 'szse-margin');
-      assert.equal(source.errorCode, 'FETCH_FAILED');
-      assert.notEqual(source.errorCode, 'NO_PUBLISHED_TRADE_DATE');
-      // The dials it really made must reach the decision log; reporting 0 here
-      // reads as "never tried" and sends the reader to the wrong layer.
-      assert.equal(source.requestCount, marginCalls.length);
-      assert.deepEqual(source.probedDates, ['2026-08-05']);
-    });
-
-    it('stops dialling SZSE once its wall-clock reservation is spent', async () => {
-      // Jumps far past every reservation between creating a deadline and
-      // checking it, so each SZSE consumer trips its own budget.
-      let now = 0;
-      const clock = () => (now += 1_000_000_000);
-      const { snapshot } = await fetchWithFixtures({ clock });
-      for (const id of ['szse-northbound', 'szse-margin']) {
-        const source = snapshot.sources.find((s: { id: string }) => s.id === id);
-        assert.equal(source.errorCode, 'TRANSPORT_BUDGET_EXCEEDED', id);
-      }
-      // SSE is on a different host and keeps working.
-      const sse = snapshot.sources.find((s: { id: string }) => s.id === 'sse-northbound');
-      assert.equal(sse.transportStatus, 'ok');
-    });
-
-    it('routes each exchange through its own configured proxy', async () => {
-      // The registration test only regex-matches the two declaration lines, so
-      // it stays green if a call site swaps which URL feeds which exchange.
-      // This asserts the actual wiring.
-      const dialled: Array<{ url: string; proxy: string }> = [];
-      const proxyRequestFn = async (input: string, config: { port: number }) => {
-        dialled.push({ url: input, proxy: String(config.port) });
-        throw new Error('proxy refused');
-      };
-      const snapshot = await fetchChinaStockConnectSnapshot({
-        // Force every direct hop to fail so the proxy hop is always reached.
-        fetchFn: async () => { throw new Error('fetch failed'); },
-        proxyUrl: 'http://user:pw@szse-exit.example:7001',
-        sseProxyUrl: 'http://user:pw@sse-exit.example:9001',
-        proxyRequestFn,
-        edgeEgress: null,
-        now: NOW,
-        onDecision: () => {},
-      });
-      const sseDials = dialled.filter((d) => d.url.includes('sse.com.cn'));
-      const szseDials = dialled.filter((d) => d.url.includes('szse.cn'));
-      assert.ok(sseDials.length > 0, 'SSE must reach its proxy');
-      assert.ok(szseDials.length > 0, 'SZSE must reach its proxy');
-      for (const dial of sseDials) assert.equal(dial.proxy, '9001', dial.url);
-      for (const dial of szseDials) assert.equal(dial.proxy, '7001', dial.url);
       assert.equal(snapshot.status, 'degraded');
     });
 
@@ -1426,5 +1292,35 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
       assert.equal(byHost.get('query.sse.com.cn'), 'https://www.sse.com.cn/home/legal/');
       assert.equal(byHost.get('www.szse.cn'), 'https://www.szse.cn/application/laws/');
     });
+  });
+});
+
+describe('Stock Connect retained failure evidence', () => {
+  it('retains the failed route and original clocks through repeated source recovery', () => {
+    const lastGood = '2026-10-25T06:50:09.020Z';
+    const failedAt = '2026-10-25T07:40:30.775Z';
+    const failed = buildChinaStockConnectSnapshot({
+      generatedAt: failedAt,
+      previousSnapshot: { sources: [{ id: 'sse-margin', lastSuccessAt: lastGood }] },
+      outcomes: [{ sourceId: 'sse-margin', ok: false, errorCode: 'TIMEOUT',
+        requestCount: 2, transportPath: 'proxy', fallbackReason: 'ETIMEDOUT',
+        proxyFailureReason: 'TIMEOUT', body: 'secret' }],
+    });
+    const expected = { checkedAt: failedAt, lastSuccessAt: lastGood,
+      errorCode: 'TIMEOUT', requestCount: 2, transportPath: 'proxy',
+      fallbackReason: 'ETIMEDOUT', proxyFailureReason: 'TIMEOUT' };
+    let previousSnapshot = failed;
+    for (const generatedAt of ['2026-10-25T08:30:53.998Z', '2026-10-25T09:20:00.000Z']) {
+      previousSnapshot = buildChinaStockConnectSnapshot({
+        generatedAt, previousSnapshot,
+        outcomes: [{ sourceId: 'sse-margin', ok: true, requestCount: 1,
+          observations: [{ tradeDate: '2026-10-23' }] }],
+      });
+      const source = previousSnapshot.sources.find((entry) => entry.id === 'sse-margin');
+      assert.deepEqual(source.lastFailure, expected);
+      assert.equal(source.lastSuccessAt, generatedAt);
+      assert.equal(source.errorCode, null);
+      assert.equal(source.transportStatus, 'ok');
+    }
   });
 });

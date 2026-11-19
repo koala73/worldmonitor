@@ -7,8 +7,9 @@
  * xhtml:link alternates, slash redirects, and 404 passthrough prefixes.
  *
  * x-default always points at the English root. Portuguese stays `/pt/` (the
- * app locale id) with hreflang `pt-BR`. Indonesian is omitted: there is no
- * `id.json` dictionary.
+ * app locale id) with hreflang `pt-BR`. Indonesian (`id`) has a `pro-test`
+ * dictionary only: the dashboard ships no `id.json`, so `/id/` is localized
+ * and the dashboard it links to stays English.
  */
 
 export const INDEXABLE_LANDING_ORIGIN = 'https://www.worldmonitor.app' as const;
@@ -138,6 +139,26 @@ export const INDEXABLE_LANDING_LOCALES: readonly IndexableLandingLocale[] = Obje
     dir: 'rtl',
     isDefault: false,
   }),
+  landing({
+    id: 'id',
+    pathSegment: 'id',
+    canonicalPath: '/id/',
+    hreflang: 'id',
+    htmlLang: 'id',
+    ogLocale: 'id_ID',
+    dir: 'ltr',
+    isDefault: false,
+  }),
+  landing({
+    id: 'ja',
+    pathSegment: 'ja',
+    canonicalPath: '/ja/',
+    hreflang: 'ja',
+    htmlLang: 'ja',
+    ogLocale: 'ja_JP',
+    dir: 'ltr',
+    isDefault: false,
+  }),
 ]);
 
 assertLandingTable(INDEXABLE_LANDING_LOCALES);
@@ -174,11 +195,17 @@ export function landingById(id: string): IndexableLandingLocale | undefined {
   return BY_ID.get(id);
 }
 
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 1 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
+}
+
 /** Exact landing paths only (`/`, `/es`, `/es/`). Nested paths do not match. */
 export function landingByPath(pathname: string): IndexableLandingLocale | undefined {
   const raw = typeof pathname === 'string' ? pathname : '';
   if (raw === '' || raw === '/') return defaultLandingLocale();
-  const stripped = raw.replace(/\/+$/, '') || '/';
+  const stripped = stripTrailingSlashes(raw) || '/';
   if (stripped === '/') return defaultLandingLocale();
   if (stripped.includes('/', 1)) return undefined;
   const segment = stripped.slice(1);

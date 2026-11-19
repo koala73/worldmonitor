@@ -165,7 +165,6 @@ describe('summary never contradicts a curated fact (#6419)', () => {
 
 describe('provenance coverage (#6419)', () => {
   it('coverage numbers equal a direct tally of the registry, and the caveat names both', () => {
-    assert.equal(typeof api.getProvenanceCoverage, 'function', 'getProvenanceCoverage must be exported');
     const names = registryNames();
     const coverage = api.getProvenanceCoverage();
     assert.equal(coverage.sources, names.length);

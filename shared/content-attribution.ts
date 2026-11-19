@@ -248,9 +248,15 @@ export function parseContentAttribution(
   });
 }
 
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 1 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
+}
+
 /** Keep scorecard page-family values closed even for crafted destination URLs. */
 export function inferLandingPageFamily(pathname: string): ContentLandingPageFamily {
-  const path = pathname.toLowerCase().replace(/\/+$/, '') || '/';
+  const path = stripTrailingSlashes(pathname.toLowerCase()) || '/';
   if (path === '/') return 'homepage';
   if (path === '/dashboard' || path.startsWith('/dashboard/')) return 'dashboard';
   if (path === '/pro' || path.startsWith('/pro/')) return 'pricing';

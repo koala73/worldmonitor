@@ -1,16 +1,109 @@
-import { z } from 'zod';
+import * as z from 'zod';
+import { COUNTRY_SIGNAL_BYTES, countrySignalResponseSchema, countrySignalOutcomeSchema } from '../../../shared/country-signal-observations';
 import { RAW_SIGNAL_READS, RAW_SIGNAL_FAMILIES, RAW_SIGNAL_BODY_BYTES, RAW_SIGNAL_ENVELOPE_BYTES, failedRawSignal, validateRawSignal, assembleRawSignals, type RawSignalsValue } from '../../../shared/country-raw-signals';
-import { COUNTRY_READERS, countryReaderSchema, countryViewSchema, panelAdmissionSchema } from '../../../shared/country-brief-host';
+import { COUNTRY_READERS, countryReaderSchema, countryViewSchema, panelAdmissionSchema, type CountryReader } from '../../../shared/country-brief-host';
 import { BRIEF_TOPICS } from '../../../shared/country-brief-sections';
-import { resolveCountryCode } from '../../../shared/country-code-resolve';
+import { resolveCountryArg } from '../_country-args';
+import { normalizeFoodStocksCommodity } from '../../../server/worldmonitor/resilience/v1/_food-stocks-query';
 import { buildAuthHeaders } from '../auth';
-import { assertToolFetchOk, BillingDenialError, RpcValidationError, throwIfBillingDenial } from '../billing-denial';
+import { assertToolFetchOk, BillingDenialError, RpcValidationError, throwIfBillingDenial, UpstreamHttpError } from '../billing-denial';
 import { readBoundedResponseBody } from '../bounded-body';
 import { fetchMcpDownstream } from '../downstream';
 import type { ToolDef } from '../types';
 import { COUNTRY_VIEW_UI_URI } from '../ui/news-dashboard-app';
+import { describedPanelReceipt } from './news-dashboard';
 
 const COUNTRY_SECTION_BUDGET_BYTES = 524288;
+
+function countryViewArguments(params: Record<string, unknown>) {
+  const parsed = countryViewSchema.safeParse(Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'jmespath')));
+  const countryCode = parsed.success ? resolveCountryArg(parsed.data.country_code) : null;
+  if (!parsed.success || !countryCode) throw new RpcValidationError('open_country_brief', [{ field: 'country_code', description: 'Supply a recognized country and topic.' }]);
+  return { countryCode, topic: parsed.data.topic };
+}
+
+function countrySectionArguments(params: Record<string, unknown>) {
+  const parsed = countryReaderSchema.safeParse(Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'jmespath')));
+  if (!parsed.success) throw new RpcValidationError('get_country_brief_section', [{ field: 'section', description: 'Unknown country section reader.' }]);
+  const { section } = parsed.data;
+  const reader = COUNTRY_READERS[section];
+  const args = reader.args.safeParse(parsed.data.arguments);
+  if (!args.success) throw new RpcValidationError('get_country_brief_section', [{ field: 'arguments', description: 'Invalid arguments for this country section.' }]);
+  if (section === 'food' && 'commodity' in args.data && normalizeFoodStocksCommodity(args.data.commodity) === null) {
+    throw new RpcValidationError('get_country_brief_section', [{ field: 'arguments.commodity', description: 'Supply a supported food commodity.' }]);
+  }
+  return { parsed, section, reader, args };
+}
+
+// What each section reader returns and what its arguments mean. The zod
+// schemas in shared/country-brief-host.ts carry the constraints; the prose
+// here is what tools/list advertises on every nested `arguments` property, so
+// an agent can fill a branch without a failed call first. The module-load
+// guard below fails when a reader gains an argument this map does not cover.
+const ISO2 = 'Country to read, as an ISO 3166-1 alpha-2 code such as "DE".';
+const M49 = 'Country as a UN M49 numeric code, such as "840" for the United States.';
+const HS2 = 'HS chapter of the goods: 10 cereals, 27 fuels, 29 organic chemicals, 30 pharmaceuticals, 39 plastics, 62 apparel, 72 iron and steel, 84 machinery, 85 electrical equipment, 87 vehicles.';
+const CHOKEPOINT_ID = 'Chokepoint to model, by registry id such as "hormuz_strait" or "suez".';
+const FIXED_EMPTY = 'Unused: the reader always returns the full list, with no narrowing.';
+const BOX_UNUSED = 'Unused: the reader returns the global snapshot rather than a box query.';
+const NEXT_CURSOR = 'pagination.nextCursor from the previous page; empty for the first page.';
+const SIGNAL_FAMILY = 'Source family to read, one per request: COUNTRY_SIGNAL_FAMILY_OUTAGES (Internet outages), _UNREST (protests and riots), _FIRES (satellite fire detections), _RADIATION (radiation readings), _SANCTIONS (sanctions pressure), _CONFLICT (conflict events), _POSTURE (military theater posture), _IMAGERY (confirmed satellite imagery statistics changes at watched sites), _WATER (strategic reservoirs whose dated lidar level is beyond its seasonal baseline) or _FLIGHT_PAGE (one page of military flights over the country).';
+const COUNTRY_SECTION_DOCS: Record<CountryReader, { summary: string; args: Record<string, string> }> = {
+  countrySignals: { summary: 'One bounded country-qualified source family or eligible flight page. Requires a verified same-country panel.', args: { country_code: ISO2, family: SIGNAL_FAMILY, window_index: 'FLIGHT_PAGE only: which part of the country\'s flight search area to page; countries split into two boxes use 0 and 1, others 0.', cursor: `FLIGHT_PAGE only: ${NEXT_CURSOR}` } },
+  signalsRaw: { summary: 'Attributed raw signal samples for one country: earthquakes, Internet outages, travel advisories and thermal escalations, each with scope, snapshot time and attribution. Needs a verified same-country paid panel token.', args: { country_code: `${ISO2} Must equal the country of the verified panel token.` } },
+  flights: { summary: 'Military flight observations inside a bounding box, 100 per page, with provider attribution.', args: { ne_lat: 'Latitude of the box\'s north-east corner, degrees.', ne_lon: 'Longitude of the box\'s north-east corner, degrees.', sw_lat: 'Latitude of the box\'s south-west corner, degrees.', sw_lon: 'Longitude of the box\'s south-west corner, degrees.', page_size: 'Rows per page.', operator: 'Unused: no operator narrowing is available.', aircraft_type: 'Unused: no aircraft-type narrowing is available.', cursor: NEXT_CURSOR } },
+  vessels: { summary: 'Live AIS vessel snapshot with connection status, snapshot time, density zones and disruptions; unavailable when the snapshot is older than one hour.', args: { ne_lat: BOX_UNUSED, ne_lon: BOX_UNUSED, sw_lat: BOX_UNUSED, sw_lon: BOX_UNUSED, include_candidates: 'Candidate vessel matches are always included in the snapshot.' } },
+  fleet: { summary: 'The latest USNI fleet and marine tracker report.', args: {} },
+  facts: { summary: 'Reference facts about the country.', args: { country_code: ISO2 } },
+  energy: { summary: 'The country\'s energy profile.', args: { country_code: ISO2 } },
+  maritime: { summary: 'Port activity for the country\'s monitored ports.', args: { country_code: ISO2 } },
+  risk: { summary: 'Country risk: Composite Instability Index with components, travel-advisory level and sanctions exposure.', args: { country_code: ISO2 } },
+  stock: { summary: 'The country\'s benchmark stock index quote.', args: { country_code: ISO2 } },
+  food: { summary: 'Food stock observations for one country or the WORLD aggregate, optionally narrowed to one commodity.', args: { countryCode: 'Country to read as an ISO alpha-2 code, or WORLD for the global aggregate.', commodity: 'Commodity to narrow to: wheat, corn, rice, soybeans, barley or palmOil; empty for every commodity.' } },
+  demographics: { summary: 'Demographic capability observations: age structure, education and industrial workforce.', args: { countryCode: ISO2 } },
+  resilience: { summary: 'The country\'s resilience score with its domain breakdown.', args: { countryCode: ISO2 } },
+  factors: { summary: 'The five-factor scorecard with provenance and raw observations.', args: { countryCode: ISO2 } },
+  debt: { summary: 'National debt levels for every country.', args: {} },
+  flows: { summary: 'UN COMTRADE trade flows reported by one country, optionally narrowed to one commodity or to anomalies.', args: { reporter_code: `Reporting ${M49.charAt(0).toLowerCase()}${M49.slice(1)}`, cmd_code: 'HS commodity code (chapter, heading or subheading) to narrow to; empty for every commodity.', anomalies_only: '"true" keeps only flows flagged as anomalous; "false" returns every flow.' } },
+  tariffs: { summary: 'Applied tariff trend series for one reporting country.', args: { reporting_country: `Importing ${M49.charAt(0).toLowerCase()}${M49.slice(1)}`, product_sector: 'WITS product group to narrow to, such as "84-85_MachElec"; empty for all products.', years: 'Number of most recent years of history to return.', partner_country: 'Exporting partner as a UN M49 numeric code; empty for all partners.' } },
+  monthlyTrade: { summary: 'Malaysia\'s official monthly exports and imports by SITC section (DOSM) from January 1990, in whole MYR, with value and volume indices.', args: { country: 'Malaysia ("MY") only.', months: 'Months back from the newest published month; default 60, maximum 240.' } },
+  products: { summary: 'The country\'s supply-chain product profile, optionally narrowed to one HS heading.', args: { iso2: ISO2, hs4: 'HS heading (4 digits) to narrow to one product group; omit for the full profile.' } },
+  commodities: { summary: 'Commodity supply vulnerabilities for the country.', args: { iso2: ISO2 } },
+  exposure: { summary: 'Chokepoint exposure index for one country and HS chapter.', args: { iso2: ISO2, hs2: HS2 } },
+  dependency: { summary: 'Sector dependency on maritime chokepoints for one country and HS chapter.', args: { iso2: ISO2, hs2: HS2 } },
+  bypass: { summary: 'Rerouting options when one chokepoint closes, by cargo type and closure share.', args: { chokepointId: CHOKEPOINT_ID, cargoType: 'Kind of cargo to reroute; only corridors suited to it are listed.', closurePct: 'Share of the chokepoint closed, percent; corridors that open only on a full closure are listed at 100.' } },
+  chokepoints: { summary: 'Current status of every monitored chokepoint.', args: {} },
+  cost: { summary: 'Multi-sector cost shock for one country from a chokepoint closure of a given length.', args: { iso2: ISO2, chokepointId: CHOKEPOINT_ID, closureDays: 'How long the chokepoint stays closed, days; scales the cost totals.' } },
+  pipelines: { summary: 'The pipeline registry.', args: { commodityType: FIXED_EMPTY } },
+  facilities: { summary: 'The energy storage facility registry.', args: { facilityType: FIXED_EMPTY } },
+  shortages: { summary: 'Current fuel shortages.', args: { country: FIXED_EMPTY, product: FIXED_EMPTY, severity: FIXED_EMPTY } },
+  pipelineDetail: { summary: 'One pipeline\'s detail; unavailable when the pipeline does not originate in, end in or transit the country.', args: { country_code: `${ISO2} The pipeline must originate in, end in or transit this country.`, pipelineId: 'The id of a pipeline returned by the pipelines section.' } },
+  facilityDetail: { summary: 'One storage facility\'s detail; unavailable when the facility is not in the country.', args: { country_code: `${ISO2} The facility must be located in this country.`, facilityId: 'The id of a facility returned by the facilities section.' } },
+  shortageDetail: { summary: 'One fuel shortage\'s detail; unavailable when the shortage is not in the country.', args: { country_code: `${ISO2} The shortage must be located in this country.`, shortageId: 'The id of a shortage returned by the shortages section.' } },
+  disruptions: { summary: 'Energy disruption events, optionally only those still ongoing.', args: { assetId: FIXED_EMPTY, assetType: FIXED_EMPTY, ongoingOnly: '"true" keeps only disruptions still ongoing; "false" includes resolved ones.' } },
+  scenario: { summary: 'Energy supply shock scenario for one country and chokepoint at a chosen disruption share and fuel.', args: { country_code: ISO2, chokepoint_id: CHOKEPOINT_ID, disruption_pct: 'Share of the chokepoint flow disrupted, percent. Omitted or below 10: modelled as 10.', fuel_mode: 'Fuel to model: oil, gas or both.' } },
+  defense: { summary: 'Defense industrial base indicators and arms-supplier shares for the country.', args: { country_code: ISO2 } },
+  reservoirs: { summary: 'Strategic Water Levels reservoirs located in the country, each with its NASA ICESat-2 lidar water-surface level, the date of the pass that measured it and its seasonal status. Dated context beside the energy mix, not a live reading, storage volume or input to the Composite Instability Index; dataAvailable false or an empty list is unknown, not zero.', args: { country_code: ISO2 } },
+  no2: { summary: 'Sentinel-5P NO2 industrial activity direction for the country against the same window in prior years, with the Copernicus credit.', args: { country_code: ISO2, kind: 'Region type read: the country polygon only, not its industrial clusters.' } },
+  markets: { summary: 'Prediction markets list with optional title and category narrowing.', args: { page_size: 'Markets to return.', query: 'Case-insensitive text to find in market titles; empty for every market.', category: 'Category bucket name to narrow to; empty for every category.', cursor: 'Unused: only the first page is readable here.' } },
+  china: { summary: 'China decision signals.', args: {} },
+  production: { summary: 'Mine and refinery production for one commodity across countries and stages.', args: { commodity: 'Commodity slug, such as "copper".', iso2: FIXED_EMPTY, stage: FIXED_EMPTY } },
+  housing: { summary: 'BIS housing datasets: debt-service ratio and residential and commercial property prices.', args: { keys: 'The datasets read: BIS debt-service ratio, residential property prices and commercial property prices.' } },
+  imf: { summary: 'IMF macro datasets: macro, growth, labor and external accounts.', args: { keys: 'The datasets read: IMF macro, growth, labor and external-accounts indicators.' } },
+};
+
+function describedSectionArguments(section: CountryReader): Record<string, unknown> {
+  const schema = z.toJSONSchema(COUNTRY_READERS[section].args, { io: 'input' }) as Record<string, unknown>;
+  const docs = COUNTRY_SECTION_DOCS[section];
+  const properties = { ...((schema.properties as Record<string, Record<string, unknown>> | undefined) ?? {}) };
+  for (const field of Object.keys(properties)) {
+    const text = docs.args[field];
+    if (!text) throw new Error(`api/mcp/registry/country-view.ts: section "${section}" argument "${field}" has no description in COUNTRY_SECTION_DOCS`);
+    properties[field] = { ...properties[field], description: text };
+  }
+  const description = Object.keys(properties).length ? `Arguments for the ${section} section.` : `Not used: the ${section} section reads one dataset with no parameters.`;
+  return { ...schema, description, properties };
+}
 
 // One shared deadline covers signing, waiting for a slot, fetch and body reads.
 async function beforeSignalsDeadline<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
@@ -68,9 +161,9 @@ async function collectRawSignals(countryCode: string, base: string, context: Par
 
 export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
   name: 'open_country_brief',
-  title: 'WorldMonitor country brief',
+  title: 'Open the interactive country brief view',
   _subscriptionOnly: true,
-  description: 'Open the interactive WorldMonitor country brief with its assessment, source evidence, resilience, energy, trade and security sections. Covers country brief requests and follow-up topic navigation. On dedicated paid MCP plans, one country request includes its internal section loads. Same-country opens reuse the request for five minutes. Explicit refresh starts a new request. API plans retain per-tool weighted billing. The interface loads sections progressively through the authenticated connection. Section availability and dates are shown in the view.',
+  description: 'Open the interactive WorldMonitor country brief for one country and return {countryCode, topic, panelRequest}; the host renders the embedded view, which then loads its assessment, source evidence, resilience, security, economy, resources and society sections progressively over the authenticated connection. The tool itself returns only the resolved country and topic: no assessment text, scores or section data reach the caller. topic (default overview) selects which section group the view opens on. Requires a paid plan; weight 2 on API plans. On dedicated paid plans one country request covers the view\'s internal section loads, same-country opens reuse it for five minutes, and refresh with request_id starts a new request. Read-only.',
   _uiResourceUri: COUNTRY_VIEW_UI_URI,
   _openaiEntrypoints: [{ type: 'global' }, { type: 'thread' }],
   _outputBudgetBytes: 4096,
@@ -78,8 +171,8 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
   inputSchema: {
     type: 'object',
     properties: {
-      country_code: { type: 'string', minLength: 2, maxLength: 100, description: 'Country name or ISO2 code.' },
-      topic: { type: 'string', enum: Object.keys(BRIEF_TOPICS) },
+      country_code: { type: 'string', minLength: 2, maxLength: 100, description: 'Country to open, as an ISO alpha-2 or alpha-3 code or a country name, such as "DE", "DEU" or "Germany".' },
+      topic: { type: 'string', enum: Object.keys(BRIEF_TOPICS), description: 'Section group the view opens on: economy covers economy and trade, resources covers resources and infrastructure, sources lists the source evidence, all shows every group. Omitted: overview.' },
       request_id: { type: 'string', format: 'uuid', description: 'Stable ID for an explicit refresh. Retries with the same ID share one paid admission.' },
       refresh: { type: 'boolean', description: 'Start a new paid panel request and refresh loaded observations. Default false reuses the current same-country request.' },
     },
@@ -87,20 +180,22 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
   },
   outputSchema: {
     type: 'object',
-    properties: { countryCode: { type: 'string' }, topic: { type: 'string', enum: Object.keys(BRIEF_TOPICS) }, panelRequest: z.toJSONSchema(panelAdmissionSchema) },
+    properties: {
+      countryCode: { type: 'string', description: 'Resolved country, ISO alpha-2.' },
+      topic: { type: 'string', enum: Object.keys(BRIEF_TOPICS), description: 'Section group the view opens on.' },
+      panelRequest: describedPanelReceipt(panelAdmissionSchema, 'Dedicated paid plans only: the paid country request this open admitted or reused.'),
+    },
     required: ['countryCode', 'topic'],
   },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  _validateArgs: countryViewArguments,
   _execute: async (params, _base, _context, execution) => {
-    const parsed = countryViewSchema.safeParse(Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'jmespath')));
-    const countryCode = parsed.success ? resolveCountryCode(parsed.data.country_code) : null;
-    if (!parsed.success || !countryCode) throw new RpcValidationError('open_country_brief', [{ field: 'country_code', description: 'Supply a recognized country and topic.' }]);
-    return { countryCode, topic: parsed.data.topic, ...(execution?.panelRequest ? { panelRequest: execution.panelRequest } : {}) };
+    return { ...countryViewArguments(params), ...(execution?.panelRequest ? { panelRequest: execution.panelRequest } : {}) };
   },
 }, {
   name: 'get_country_brief_section',
-  title: 'Country brief data section',
-  description: 'Read a fixed country-view dataset for the embedded country brief. Reviewed readers include military flights, AIS, fleet reports and Atlas assets. signalsRaw requires a verified same-country paid panel receipt and returns attributed earthquake, Internet outage, travel advisory and thermal samples through four fixed authorized GETs. Unavailable evidence is unknown, not zero; sample scope and unknown clocks remain explicit. Flight coverage follows provider redistribution permissions. Returns a ready, locked or unavailable state. Native dates remain in value; retrievedAt records retrieval. Does not accept URLs, headers or arbitrary RPC paths.',
+  title: 'Structured country data, one section',
+  description: 'Read one named structured data section for a country, raw values without narrative, and return {state: ready|locked|unavailable, section, value, retrievedAt, reason}. 41 readers selected by section: country facts and risk, energy, reservoirs and maritime, markets, trade, supply chain, resilience and demographics, defense, NO2 activity, China signals, housing and IMF macro, military flights, AIS vessels, the USNI fleet and signalsRaw; each oneOf branch documents one section. Each section takes its own arguments object (key names differ: country_code, countryCode or iso2; numeric M49 codes for trade; HS codes for products) and rejects unknown keys. flights pages 100 rows at a time through cursor. signalsRaw returns attributed earthquake, Internet-outage, travel-advisory and thermal samples and needs a verified same-country paid panel token; every other section works with an ordinary paid credential. Unavailable evidence is unknown, not zero. Requires a paid plan; one downstream read, weight 2 on API plans.',
   _subscriptionOnly: true,
   _weight: 2,
   _outputBudgetBytes: COUNTRY_SECTION_BUDGET_BYTES,
@@ -109,21 +204,27 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
   inputSchema: {
     type: 'object',
     properties: {
-      panel_request: { type: 'string', maxLength: 160, description: 'Server-issued paid country-panel request token. Only the embedded country view supplies this.' },
-      section: { type: 'string', enum: Object.keys(COUNTRY_READERS), description: 'Closed country reader name. signalsRaw requires a verified paid country-panel receipt and matching arguments.country_code.' },
-      arguments: { type: 'object', additionalProperties: { type: ['string', 'number', 'boolean'] } },
+      panel_request: { type: 'string', maxLength: 160, description: 'Request token of a verified paid country panel, issued to the embedded country view; it unlocks countrySignals and signalsRaw for that country. Other callers omit it.' },
+      section: { type: 'string', enum: Object.keys(COUNTRY_READERS), description: 'Dataset to read; each oneOf branch documents one section and its arguments. countrySignals and signalsRaw need a panel_request for the same country as arguments.country_code.' },
+      arguments: { type: 'object', additionalProperties: { type: ['string', 'number', 'boolean'] }, description: 'Arguments for the chosen section, as the matching oneOf branch defines them (key names differ per section and unknown keys are rejected). Omit for sections that take none.' },
     },
     required: ['section'],
-    oneOf: Object.entries(COUNTRY_READERS).map(([section, reader]) => ({
-      properties: { section: { const: section }, arguments: z.toJSONSchema(reader.args) },
-    })),
+    oneOf: (Object.keys(COUNTRY_READERS) as CountryReader[]).map((section) => {
+      const args = describedSectionArguments(section);
+      return {
+        properties: { section: { const: section, description: COUNTRY_SECTION_DOCS[section].summary }, arguments: args },
+        ...((args.required as string[] | undefined)?.length ? { required: ['arguments'] } : {}),
+      };
+    }),
   },
   outputSchema: {
     type: 'object',
     properties: {
-      state: { type: 'string', enum: ['ready', 'locked', 'unavailable'] },
-      section: { type: 'string', enum: Object.keys(COUNTRY_READERS) },
-      value: { type: 'object' }, retrievedAt: { type: 'string' }, reason: { type: 'string' },
+      state: { type: 'string', enum: ['ready', 'locked', 'unavailable'], description: 'ready: value holds the data. locked: this connection may not read the section. unavailable: the data is missing or stale, which is unknown, not zero.' },
+      section: { type: 'string', enum: Object.keys(COUNTRY_READERS), description: 'Section read.' },
+      value: { type: 'object', description: 'The section\'s raw data when state is ready; its shape depends on the section.' },
+      retrievedAt: { type: 'string', description: 'When the data was read, ISO 8601.' },
+      reason: { type: 'string', description: 'Why state is locked or unavailable.' },
     },
     required: ['state', 'section'],
     anyOf: [
@@ -131,38 +232,63 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
       { properties: { value: {
         type: 'object',
         properties: {
-          countryCode: { type: 'string', pattern: '^[A-Z]{2}$' },
+          countryCode: { type: 'string', pattern: '^[A-Z]{2}$', description: 'Country read.' },
           sources: {
             type: 'object',
+            description: 'One entry per raw signal family.',
             propertyNames: { enum: [...RAW_SIGNAL_FAMILIES] },
             additionalProperties: {
               type: 'object',
               properties: {
-                state: { type: 'string', enum: ['observed', 'locked', 'unavailable'] },
-                records: { type: ['array', 'null'], items: { type: 'object' } },
-                partial: { type: 'boolean' }, scope: { type: 'string' }, attribution: { type: 'string' },
-                snapshotAt: { type: ['string', 'null'] }, computationAt: { type: ['string', 'null'] },
-                observationWindow: { type: ['string', 'null'] }, sourceVersion: { type: ['string', 'null'] },
-                retrievedAt: { type: 'string' }, reason: { type: 'string' },
+                state: { type: 'string', enum: ['observed', 'locked', 'unavailable'], description: 'observed: records hold the samples. locked or unavailable: records is null.' },
+                records: { type: ['array', 'null'], items: { type: 'object' }, description: 'Raw samples for the country; null unless observed.' },
+                partial: { type: 'boolean', description: 'True when some source rows were malformed and dropped, so the country count is not exact.' },
+                scope: { type: 'string', description: 'What the samples cover.' }, attribution: { type: 'string', description: 'Credit line to show with the samples.' },
+                snapshotAt: { type: ['string', 'null'], description: 'Time of the source snapshot; null when unknown.' }, computationAt: { type: ['string', 'null'], description: 'When the source data was last fetched; null when unknown.' },
+                observationWindow: { type: ['string', 'null'], description: 'Period the samples cover; null when unknown.' }, sourceVersion: { type: ['string', 'null'], description: 'Source dataset version; null when unknown.' },
+                retrievedAt: { type: 'string', description: 'When the family was read, ISO 8601.' }, reason: { type: 'string', description: 'Why the family is locked or unavailable.' },
               },
               required: ['state', 'records', 'partial', 'scope', 'attribution', 'snapshotAt', 'computationAt', 'observationWindow', 'sourceVersion', 'retrievedAt'],
             },
             required: [...RAW_SIGNAL_FAMILIES],
           },
-          missing: { type: 'array', items: { type: 'string', enum: [...RAW_SIGNAL_FAMILIES] }, maxItems: 4 },
+          missing: { type: 'array', items: { type: 'string', enum: [...RAW_SIGNAL_FAMILIES] }, maxItems: 4, description: 'Families that are not observed, or observed only partially.' },
         },
         required: ['countryCode', 'sources', 'missing'],
       } }, required: ['value'] },
     ],
   },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  _validateArgs: countrySectionArguments,
   _execute: async (params, base, context, execution) => {
-    const parsed = countryReaderSchema.safeParse(Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'jmespath')));
-    if (!parsed.success) throw new RpcValidationError('get_country_brief_section', [{ field: 'section', description: 'Unknown country section reader.' }]);
-    const { section } = parsed.data;
-    const reader = COUNTRY_READERS[section];
-    const args = reader.args.safeParse(parsed.data.arguments);
-    if (!args.success) throw new RpcValidationError('get_country_brief_section', [{ field: 'arguments', description: 'Invalid arguments for this country section.' }]);
+    const { parsed, section, reader, args } = countrySectionArguments(params);
+    if (section === 'countrySignals') {
+      const values = args.data as { country_code: string; family: string; window_index: number; cursor: string };
+      if (execution?.countryPanelCode !== values.country_code) throw new RpcValidationError('get_country_brief_section', [{ field: 'panel_request', description: 'Country Signals require a verified same-country panel read.' }]);
+      const deadline = AbortSignal.timeout(15_000);
+      const query = new URLSearchParams(Object.entries(values).map(([key, value]) => [key, String(value)]));
+      const url = `${base}${reader.path}?${query}`;
+      const headers = await beforeSignalsDeadline(buildAuthHeaders(context, 'GET', url, null), deadline);
+      deadline.throwIfAborted();
+      const pending = fetchMcpDownstream(url, { headers: { ...headers, 'User-Agent': 'WorldMonitor-MCP/1.0' }, signal: deadline }, execution);
+      void pending.then(response => { if (deadline.aborted) void response.body?.cancel().catch(() => {}); }, () => {});
+      const response = await beforeSignalsDeadline(pending, deadline);
+      throwIfBillingDenial(response, section);
+      if (response.status === 401 || response.status === 403) {
+        void response.body?.cancel().catch(() => {});
+        return { state: 'locked', section, reason: 'This connection is not authorized for this section.' };
+      }
+      const body = response.body?.pipeThrough(new TransformStream<Uint8Array, Uint8Array>(), { signal: deadline });
+      const bytes = await beforeSignalsDeadline(readBoundedResponseBody({ headers: response.headers, body }, COUNTRY_SIGNAL_BYTES), deadline);
+      deadline.throwIfAborted();
+      if (!response.ok) throw new UpstreamHttpError(`Country Signals HTTP ${response.status}`, response.status);
+      const value = countrySignalResponseSchema.parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)));
+      if (value.countryCode !== values.country_code || value.family !== values.family || value.windowIndex !== values.window_index) throw new Error('Country signal response identity mismatch');
+      if (values.family === 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE') { if (!value.flightPage || value.outcomeJson) throw new Error('Invalid flight page'); }
+      else { const outcome = countrySignalOutcomeSchema.parse(JSON.parse(value.outcomeJson)); if (outcome.countryCode !== values.country_code || `COUNTRY_SIGNAL_FAMILY_${outcome.family.toUpperCase()}` !== values.family) throw new Error('Country family identity mismatch'); }
+      deadline.throwIfAborted();
+      return { section, state: 'ready', value, retrievedAt: new Date().toISOString() };
+    }
     if (section === 'signalsRaw') {
       const countryCode = (args.data as { country_code: string }).country_code;
       if (execution?.countryPanelCode !== countryCode) throw new RpcValidationError('get_country_brief_section', [{ field: 'panel_request', description: 'Raw Signals require a verified paid country panel read.' }]);
@@ -173,7 +299,7 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
       ? bootstrapKeys.map(key => new URLSearchParams({ keys: key, public: '1' }))
       : [new URLSearchParams(Object.entries(args.data).map(([key, value]) => [key, String(value)]))];
     const results = await Promise.allSettled(queries.map(async query => {
-      if (['pipelineDetail', 'facilityDetail', 'shortageDetail'].includes(section)) query.delete('country_code');
+      if (['pipelineDetail', 'facilityDetail', 'shortageDetail', 'reservoirs'].includes(section)) query.delete('country_code');
       const url = `${base}${reader.path}${query.size ? `?${query}` : ''}`;
       const headers = bootstrapKeys ? {} : await buildAuthHeaders(context, 'GET', url, null);
       const response = await fetchMcpDownstream(url, { headers: { ...headers, 'User-Agent': 'WorldMonitor-MCP/1.0' }, signal: AbortSignal.timeout(15_000) }, execution);
@@ -182,7 +308,7 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
       await assertToolFetchOk(response, section, { preserveBackoff: true });
       return bootstrapKeys
         ? z.object({ data: z.record(z.string(), z.unknown()), missing: z.array(z.string()) }).parse(JSON.parse(new TextDecoder().decode(await readBoundedResponseBody(response, COUNTRY_SECTION_BUDGET_BYTES))))
-        : ['pipelines', 'facilities', 'shortages', 'pipelineDetail', 'facilityDetail', 'shortageDetail'].includes(section)
+        : ['pipelines', 'facilities', 'shortages', 'pipelineDetail', 'facilityDetail', 'shortageDetail', 'reservoirs'].includes(section)
           ? JSON.parse(new TextDecoder().decode(await readBoundedResponseBody(response, COUNTRY_SECTION_BUDGET_BYTES)))
           : response.json();
     }));
@@ -223,9 +349,15 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
       const requestedId = parsed.data.arguments?.pipelineId ?? parsed.data.arguments?.facilityId ?? parsed.data.arguments?.shortageId;
       if (!asset || asset.id !== requestedId || value?.unavailable || !belongs) return { state: 'unavailable', section, reason: 'This asset detail is unavailable for the selected country.' };
     }
+    if (section === 'reservoirs') {
+      const country = (args.data as { country_code: string }).country_code;
+      if (!value?.dataAvailable || !Array.isArray(value.reservoirs)) return { state: 'unavailable', section, reason: 'The Strategic Water Levels snapshot is unavailable.' };
+      value = { ...value, countryCode: country, reservoirs: value.reservoirs.filter((reservoir: { country?: unknown }) => typeof reservoir?.country === 'string' && reservoir.country.toUpperCase() === country) };
+    }
     if (section === 'flights' && (!Array.isArray(value?.flights) || (!value.flights.length && !(parsed.data.arguments?.cursor && value.pagination?.totalCount > 0)))) return { state: 'unavailable', section, reason: 'Flight observations are unavailable or unconfirmed. An empty provider response is not evidence of zero activity.' };
     if (section === 'fleet' && !value?.report) return { state: 'unavailable', section, reason: 'The reported fleet roster is unavailable.' };
     if (section === 'vessels' && (!value?.dataAvailable || !value.snapshot?.status?.connected || !Number.isFinite(value.snapshot.snapshotAt) || value.snapshot.snapshotAt <= 0 || Date.now() - value.snapshot.snapshotAt > 3_600_000 || value.snapshot.snapshotAt > Date.now() + 300_000)) return { state: 'unavailable', section, reason: 'The live AIS snapshot is unavailable or stale.' };
+    if (section === 'monthlyTrade' && !value?.series?.length) return { state: 'unavailable', section, reason: 'No monthly trade data; this is not zero trade.' };
     return { state: 'ready', section, value, retrievedAt };
   },
 }];

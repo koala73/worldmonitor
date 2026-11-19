@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import { createMarketServiceRoutes, ValidationError } from '../src/generated/server/worldmonitor/market/v1/service_server.ts';
 import { marketHandler } from '../server/worldmonitor/market/v1/handler.ts';
 import { resolvePhysicalPremiumMetals } from '../server/worldmonitor/market/v1/get-physical-premiums.ts';
+import { serverOptions } from '../server/gateway.ts';
 
 const seed = {
   premiums: [
@@ -56,7 +57,7 @@ const ENV_KEYS = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'] as const
 const originalEnv = new Map<string, string | undefined>();
 
 function routeHandler() {
-  const descriptor = createMarketServiceRoutes(marketHandler, {})
+  const descriptor = createMarketServiceRoutes(marketHandler, serverOptions)
     .find((route) => route.path === '/api/market/v1/get-physical-premiums');
   assert.ok(descriptor);
   return descriptor.handler;
@@ -98,6 +99,56 @@ describe('GetPhysicalPremiums contract', () => {
     assert.throws(() => resolvePhysicalPremiumMetals([' ']), ValidationError);
   });
 
+  it('bounds the echoed unsupported labels for oversized filter lists', () => {
+    const labels = Array.from({ length: 5_000 }, (_, index) => `metal-${index}-${'x'.repeat(100)}`);
+    let caught: unknown;
+    try {
+      resolvePhysicalPremiumMetals(labels);
+    } catch (err) {
+      caught = err;
+    }
+    assert.ok(caught instanceof ValidationError);
+    const [violation] = caught.violations;
+    assert.equal(violation?.field, 'metals');
+    assert.ok(violation.description.length <= 256, `description is ${violation.description.length} chars`);
+    assert.match(violation.description, /and 4995 more/);
+  });
+
+  it('rejects oversized, duplicate, and non-canonical metal filters before Redis access', async () => {
+    let redisCalls = 0;
+    mock.method(globalThis, 'fetch', async () => {
+      redisCalls += 1;
+      return new Response(JSON.stringify({ result: null }));
+    });
+    const oversized = Array.from({ length: 500 }, () => 'metals=gold').join('&');
+    for (const query of [
+      'metals=Gold',
+      'metals=%20GOLD%20',
+      'metals=gold&metals=gold',
+      'metals=gold&metals=silver&metals=gold',
+      'metals=gold,silver',
+      oversized,
+    ]) {
+      const response = await routeHandler()(
+        new Request(`https://worldmonitor.app/api/market/v1/get-physical-premiums?${query}`),
+      );
+      assert.equal(response.status, 400, query.slice(0, 60));
+      const body = await response.json();
+      assert.match(body.violations[0].field, /^metals(?:\[\d+\])?$/, query.slice(0, 60));
+    }
+    assert.equal(redisCalls, 0);
+  });
+
+  it('accepts both canonical metals in one request', async () => {
+    installRedisMock(seed);
+    const response = await routeHandler()(
+      new Request('https://worldmonitor.app/api/market/v1/get-physical-premiums?metals=silver&metals=gold'),
+    );
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body.premiums.map((premium: { metal: string }) => premium.metal), ['gold', 'silver']);
+  });
+
   it('returns auditable physical, paper, premium, and FX fields', async () => {
     installRedisMock(seed);
     const response = await routeHandler()(new Request('https://worldmonitor.app/api/market/v1/get-physical-premiums'));
@@ -132,7 +183,7 @@ describe('GetPhysicalPremiums contract', () => {
     );
     assert.equal(response.status, 400);
     const body = await response.json();
-    assert.equal(body.violations[0].field, 'metals');
+    assert.match(body.violations[0].field, /^metals(?:\[\d+\])?$/);
   });
 
   it('degrades a missing or malformed snapshot to an empty response', async () => {

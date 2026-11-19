@@ -146,6 +146,25 @@ describe('country geometry political overrides', () => {
     assert.equal(countryGeometry.hasCountryGeometry('TW'), true);
     assert.equal(countryGeometry.hasCountryGeometry('CN-TW'), false);
   });
+
+  it('maps placeholder stamps such as -99 to no country instead of passing them to APIs', async () => {
+    const countryGeometry = await loadFreshCountryGeometryModule();
+    assert.equal(countryGeometry.canonicalizeCountryCode('-99'), '');
+    assert.equal(countryGeometry.canonicalizeCountryCode(' -99 '), '');
+    assert.equal(countryGeometry.canonicalizeCountryCode(''), '');
+    assert.equal(countryGeometry.canonicalizeCountryCode('USA'), '');
+    assert.equal(countryGeometry.canonicalizeCountryCode(' gb '), 'GB');
+
+    // Somaliland, Northern Cyprus, Bir Tawil and other bundled features carry
+    // -99; map hover/click reads this property raw on every pointer event.
+    const bundled = JSON.parse(readFileSync(new URL('../public/data/countries.geojson', import.meta.url), 'utf8'));
+    const placeholders = bundled.features.filter((f: { properties: Record<string, unknown> }) => f.properties['ISO3166-1-Alpha-2'] === '-99');
+    assert.ok(placeholders.length > 0, 'fixture no longer exercises the -99 placeholder');
+    for (const feature of bundled.features as Array<{ properties: Record<string, unknown> }>) {
+      const code = countryGeometry.canonicalizeCountryCode(String(feature.properties['ISO3166-1-Alpha-2']));
+      assert.match(code, /^(?:[A-Z]{2})?$/, `${String(feature.properties.name)} canonicalized to ${code}`);
+    }
+  });
 });
 
 describe('country geometry overrides', () => {
@@ -230,4 +249,24 @@ describe('country geometry recovery', () => {
       assert.equal(requests, 2, 'successful data remains cached');
     });
   }
+});
+
+describe('coastal country lookup', () => {
+  it('resolves a coastal city the simplified outline misses, and leaves open sea empty', async () => {
+    const bundled = JSON.parse(readFileSync(new URL('../public/data/countries.geojson', import.meta.url), 'utf8'));
+    globalThis.fetch = (async (input) => {
+      if (String(input) === '/data/countries.geojson') return jsonResponse(bundled);
+      return jsonResponse({ type: 'FeatureCollection', features: [] });
+    }) as typeof fetch;
+    const geometry = await loadFreshCountryGeometryModule();
+    await geometry.preloadCountryGeometry();
+    assert.equal(geometry.getCountryAtCoordinates(25.2, 55.27), null);
+    assert.equal(geometry.getCountryNearCoordinates(25.2, 55.27)?.code, 'AE');
+    assert.equal(geometry.getCountryNearCoordinates(48.86, 2.35)?.code, 'FR');
+    assert.equal(geometry.getCountryNearCoordinates(0, -30), null);
+  assert.equal(geometry.getCountryNearCoordinates(1.29, 103.85)?.code, 'MY', 'Singapore has no outline, so the wide search lands in Malaysia');
+  assert.equal(geometry.getCountryNearCoordinates(1.29, 103.85, 0.05), null);
+  assert.equal(geometry.getCountryNearCoordinates(1.44, 103.79, 0.05), null);
+  assert.equal(geometry.getCountryNearCoordinates(25.2, 55.27, 0.05)?.code, 'AE');
+  });
 });

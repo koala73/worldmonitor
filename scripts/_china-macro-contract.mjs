@@ -29,7 +29,15 @@ export const CHINA_MACRO_SERIES_MAX_AGE_DAYS = Object.freeze({
   nbs_fixed_asset_investment_yoy: 75,
   nbs_real_estate_investment_yoy: 75,
   safe_fx_reserves: 45,
-  safe_bank_fx_settlement: 45,
+  // SAFE releases month M's settlement data 13-28 days after month end, so
+  // month M must stay usable through all of month M+1 plus that lag. From
+  // 2022 to 2026 the oldest it reached before its successor landed was 58
+  // days (August 2022, superseded 2022-10-28). 45 rejected the whole snapshot
+  // for days in most months, e.g. 2026-10-15 to 2026-10-20.
+  safe_bank_fx_settlement: 60,
+  // June's month-end had to last until the July report on 2026-08-17 (48
+  // days), plus the macro worker's 36h interval. 50 days covers that cycle.
+  pboc_m2_yoy: 50,
 });
 
 export const CHINA_MACRO_PUBLISHER_IDS = Object.freeze({
@@ -103,6 +111,31 @@ export const CHINA_MACRO_SERIES_CONTRACT = Object.freeze({
 });
 
 export const CHINA_MACRO_SERIES_IDS = Object.freeze(Object.keys(CHINA_MACRO_SERIES_CONTRACT));
+
+// One reviewed alternative for M2 only. Keep the direct PBOC contract above so
+// readers can still validate stored v2 payloads from before this lane launched.
+export const CHINA_MACRO_M2_REPUBLICATION = Object.freeze({
+  publisherId: 'publisher:shanghai-finance-cn',
+  publisherName: 'Shanghai Municipal Financial Commission Office',
+  registrySourceName: 'Shanghai Financial Portal (People’s Bank of China republication)',
+  source: 'People’s Bank of China via Shanghai Financial Portal',
+  sourceHost: 'jrj.sh.gov.cn',
+  sourcePathPrefix: '/SCGK194/',
+});
+
+export function chinaMacroSourceBinding(seriesId, sourceUrl, value) {
+  if (seriesId === 'pboc_m2_yoy') {
+    try {
+      const url = new URL(sourceUrl);
+      if (url.origin === 'https://jrj.sh.gov.cn'
+        && (/^\/SCGK194\/\d{8}\/[a-f0-9]{32}\.html$/.test(url.pathname)
+          || (value === null && url.pathname === '/SCGK194/index.html'))) {
+        return CHINA_MACRO_M2_REPUBLICATION;
+      }
+    } catch { /* The caller rejects invalid source URLs. */ }
+  }
+  return CHINA_MACRO_SERIES_CONTRACT[seriesId];
+}
 
 export function chinaMacroObservationDateMs(value) {
   if (typeof value !== 'string' || !value) return null;

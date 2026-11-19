@@ -1,18 +1,21 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type {
   GetDisplacementSummaryResponse as ProtoResponse,
+  GetCrossBorderMovementsResponse,
   CountryDisplacement as ProtoCountry,
   DisplacementFlow as ProtoFlow,
 } from '@/generated/client/worldmonitor/displacement/v1/service_client';
-import { createCircuitBreaker, getCSSColor } from '@/utils';
+import { createCircuitBreaker } from '@/utils';
 import { DisplacementServiceClient } from '@/services/generated-rpc-clients';
 import { publicRpcFetch } from '@/services/public-rpc-fetch';
 import { ensureHydrated } from '@/services/bootstrap';
 import { EMPTY_INTERNAL_DISPLACEMENT, toInternalDisplacementData, type InternalDisplacementData } from './internal';
-import { EMPTY_CROSS_BORDER, toCrossBorderData, type CrossBorderData } from './cross-border';
+import { toMovementData, type CrossBorderData } from './cross-border';
+import { EMPTY_DISPLACEMENT_EVENTS, toDisplacementEventsData, type DisplacementEventsData } from './idu-events';
 
 export * from './internal';
 export * from './cross-border';
+export * from './idu-events';
 
 // ─── Consumer-friendly types (matching legacy shape exactly) ───
 
@@ -168,53 +171,43 @@ export async function fetchInternalDisplacement(): Promise<InternalDisplacementD
   }, EMPTY_INTERNAL_DISPLACEMENT, { shouldCache: (r) => r.operations.length > 0 });
 }
 
-// ─── Cross-border movements (UNHCR Operational Data Portal) ───
+// ─── Internal displacement events (IDMC) ───
 
-const crossBorderBreaker = createCircuitBreaker<CrossBorderData>({
-  name: 'UNHCR Cross-Border Movements',
+const displacementEventsBreaker = createCircuitBreaker<DisplacementEventsData>({
+  name: 'IDMC Displacement Events',
   cacheTtlMs: 30 * 60 * 1000,
   persistCache: true,
 });
 
 // On-demand bootstrap key: fetched only when the panel or map layer needs it.
-export async function fetchCrossBorderArrivals(): Promise<CrossBorderData> {
-  return crossBorderBreaker.execute(async () => {
-    const data = toCrossBorderData(await ensureHydrated('crossBorderArrivals'));
-    if (data.situations.length === 0) throw new Error('cross-border arrivals unavailable');
+export async function fetchDisplacementEvents(): Promise<DisplacementEventsData> {
+  return displacementEventsBreaker.execute(async () => {
+    const data = toDisplacementEventsData(await ensureHydrated('idmcIduDisplacement'));
+    if (data.points.length === 0 && data.countries.length === 0) throw new Error('IDMC displacement events unavailable');
     return data;
-  }, EMPTY_CROSS_BORDER, { shouldCache: (r) => r.situations.length > 0 });
+  }, EMPTY_DISPLACEMENT_EVENTS, { shouldCache: (r) => r.points.length > 0 || r.countries.length > 0 });
 }
 
-// ─── Presentation helpers (copied verbatim from legacy src/services/unhcr.ts) ───
+// ─── Cross-border movements (UNHCR Operational Data Portal) ───
 
-export function getDisplacementColor(totalDisplaced: number): [number, number, number, number] {
-  if (totalDisplaced >= 1_000_000) return [255, 50, 50, 200];
-  if (totalDisplaced >= 500_000) return [255, 150, 0, 200];
-  if (totalDisplaced >= 100_000) return [255, 220, 0, 180];
-  return [100, 200, 100, 150];
-}
+const crossBorderBreaker = createCircuitBreaker<GetCrossBorderMovementsResponse>({
+  name: 'Cross-Border Movement Reports',
+  cacheTtlMs: 30 * 60 * 1000,
+  persistCache: true,
+});
 
-export function getDisplacementBadge(totalDisplaced: number): { label: string; color: string } {
-  if (totalDisplaced >= 1_000_000) return { label: 'CRISIS', color: getCSSColor('--semantic-critical') };
-  if (totalDisplaced >= 500_000) return { label: 'HIGH', color: getCSSColor('--semantic-high') };
-  if (totalDisplaced >= 100_000) return { label: 'ELEVATED', color: getCSSColor('--semantic-elevated') };
-  return { label: '', color: '' };
+// Fetch only when the displacement panel or layer needs the source-dated view.
+export async function fetchCrossBorderArrivals(): Promise<CrossBorderData> {
+  const response = await crossBorderBreaker.execute(async () => {
+    const result = await new DisplacementServiceClient(getRpcBaseUrl(), { fetch: publicRpcFetch }).getCrossBorderMovements({ countryCode: '', route: '' });
+    if (!result.dataAvailable) throw new Error('cross-border movements unavailable');
+    return result;
+  }, { movements: [], sources: [], dataAvailable: false }, { shouldCache: (r) => r.movements.length > 0 });
+  return toMovementData(response);
 }
 
 export function formatPopulation(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
   return String(n);
-}
-
-export function getOriginCountries(data: UnhcrSummary): CountryDisplacement[] {
-  return [...data.countries]
-    .filter(c => c.refugees + c.asylumSeekers > 0)
-    .sort((a, b) => (b.refugees + b.asylumSeekers) - (a.refugees + a.asylumSeekers));
-}
-
-export function getHostCountries(data: UnhcrSummary): CountryDisplacement[] {
-  return [...data.countries]
-    .filter(c => (c.hostTotal || 0) > 0)
-    .sort((a, b) => (b.hostTotal || 0) - (a.hostTotal || 0));
 }

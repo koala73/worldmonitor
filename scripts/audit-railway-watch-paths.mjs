@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_CONCURRENCY,
   RAILWAY_CALL_TIMEOUT_MS,
+  RAILWAY_INVENTORY_TIMEOUT_MS,
   REPOSITORY,
   isRepositoryService,
   readArgument,
@@ -641,7 +642,14 @@ async function main() {
     throw new Error('RAILWAY_PROJECT_ID is required for the Viewer deployment projection');
   }
   const registry = readRegistry();
-  const inventory = readServices(environment, { projectId });
+  // Infinity outside deployment-only mode, so the min keeps the full bound.
+  const inventory = readServices(environment, {
+    projectId,
+    timeoutMs: Math.min(
+      RAILWAY_INVENTORY_TIMEOUT_MS,
+      Math.max(1, Math.floor(deploymentDeadlineAt - performance.now())),
+    ),
+  });
   if (deploymentOnly && performance.now() >= deploymentDeadlineAt) {
     throw new Error(DEPLOYMENT_CONFIG_READ_DEADLINE_ERROR);
   }

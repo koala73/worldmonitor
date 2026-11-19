@@ -116,6 +116,9 @@ const stubSources: Record<string, string> = {
     };
   `,
   './clerk': `
+    export class SiteDataBlockedError extends Error { name = 'SiteDataBlockedError'; }
+    export const SITE_DATA_BLOCKED_MESSAGE = 'site data blocked';
+    export const setAuthReturnUrls = () => {};
     export async function ensureClerk() {
       return {
         user: { id: 'user_rate_limited' },

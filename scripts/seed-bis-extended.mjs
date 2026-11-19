@@ -45,8 +45,6 @@ loadEnvFile(import.meta.url);
 
 const BIS_BASE = 'https://stats.bis.org/api/v1/data';
 
-// Keep this aligned with the BIS_COUNTRIES map in seed-bis-data.mjs and
-// server/worldmonitor/economic/v1/_bis-shared.ts. BIS uses XM for Euro Area.
 const BIS_COUNTRIES = {
   US: { name: 'United States' },
   GB: { name: 'United Kingdom' },

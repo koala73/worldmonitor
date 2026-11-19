@@ -38,6 +38,11 @@ const fixture = `<!doctype html>
     <meta name="twitter:title" content="${FULL.title}" />
     <meta name="twitter:description" content="${FULL.description}" />
     <meta name="twitter:image" content="https://www.worldmonitor.app/favico/og-image.png" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/favico/android-chrome-96x96.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favico/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favico/favicon-16x16.png" />
+    <link rel="icon" type="image/x-icon" href="/favico/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/favico/apple-touch-icon.png" />
     <script type="application/ld+json" nonce="wm-static-bootstrap">
     {
       "@context": "https://schema.org",

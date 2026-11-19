@@ -166,10 +166,13 @@ function runScript({ keys, argv, redis }) {
   return { result: readValue(L, -1), redis };
 }
 
-const publish = ({ data, acceptedAt = NOW, now = NOW, initial = {} }) =>
+const publish = ({ data, acceptedAt = NOW, now = NOW, initial = {}, exempt = [], fingerprint = '' }) =>
   runScript({
     keys: [BODY_KEY, REVOKED_KEY, ATTEMPT_KEY],
-    argv: [now, LASTGOOD_MAX_AGE_MS, acceptedAt, LASTGOOD_TTL_S, JSON.stringify(data), 900, '', '', 120, ATTEMPT_META_TTL_S],
+    argv: [
+      now, LASTGOOD_MAX_AGE_MS, acceptedAt, LASTGOOD_TTL_S, JSON.stringify(data), 900, '', '', 120, ATTEMPT_META_TTL_S,
+      JSON.stringify(exempt), fingerprint,
+    ],
     redis: makeRedis(initial),
   });
 
@@ -564,6 +567,60 @@ describe('durable last-good publish gate — executed, not described (#7084)', (
     assert.equal(parsed.itemCount, 1, 'but the richness count reflects what is servable now');
   });
 
+  it('an exempt category coming back empty does not hold the incumbent', () => {
+    // A few-feed category (a sparse new one) can lose every feed in one
+    // build. Counting it as breadth would hold the whole edition for six hours.
+    const twoCats = {
+      categories: {
+        politics: { items: [{ link: 'https://a.test/1' }, { link: 'https://a.test/2' }] },
+        'supply-chain': { items: [{ link: 'https://s.test/1' }] },
+      },
+      generatedAt: GENERATED_AT,
+    };
+    const initial = { [BODY_KEY]: JSON.stringify({ acceptedAt: NOW - 60_000, categoryCount: 1, itemCount: 3, data: twoCats }) };
+    const candidate = bodyOf(['https://a.test/1', 'https://a.test/2', 'https://a.test/3']);
+    assert.equal(publish({ data: candidate, initial, exempt: ['supply-chain'] }).result, 1);
+    assert.equal(publish({ data: candidate, initial }).result, 0, 'without the exemption it is a narrower digest');
+  });
+
+  it('a non-exempt category coming back empty is still held as narrower', () => {
+    const twoCats = {
+      categories: {
+        politics: { items: [{ link: 'https://a.test/1' }, { link: 'https://a.test/2' }] },
+        github: { items: [{ link: 'https://g.test/1' }] },
+      },
+      generatedAt: GENERATED_AT,
+    };
+    const initial = { [BODY_KEY]: JSON.stringify({ acceptedAt: NOW - 60_000, categoryCount: 2, itemCount: 3, data: twoCats }) };
+    const candidate = bodyOf(['https://a.test/1', 'https://a.test/2', 'https://a.test/3']);
+    assert.equal(publish({ data: candidate, initial, exempt: ['supply-chain'] }).result, 0);
+  });
+
+  it('a catalog change replaces the incumbent and does not carry its peak', () => {
+    // Removing feeds lowers the edition's item count for good. Comparing
+    // against the old catalog's peak would freeze the edition for six hours.
+    const rich = bodyOf(['https://a.test/1', 'https://a.test/2', 'https://a.test/3', 'https://a.test/4', 'https://a.test/5']);
+    const initial = {
+      [BODY_KEY]: JSON.stringify({
+        acceptedAt: NOW - 60_000, categoryCount: 1, itemCount: 5, peakItemCount: 5, peakAt: NOW - 60_000,
+        catalogFingerprint: 'old1', data: rich,
+      }),
+    };
+    const smaller = bodyOf(['https://a.test/1', 'https://a.test/2']);
+    assert.equal(publish({ data: smaller, initial, fingerprint: 'old1' }).result, 0, 'same catalog: a real regression');
+    const { result, redis } = publish({ data: smaller, initial, fingerprint: 'new2' });
+    assert.equal(result, 1);
+    const stored = JSON.parse(redis.store.get(BODY_KEY));
+    assert.equal(stored.peakItemCount, 2);
+    assert.equal(stored.catalogFingerprint, 'new2');
+  });
+
+  it('a row without a fingerprint is compared as before', () => {
+    const rich = bodyOf(['https://a.test/1', 'https://a.test/2', 'https://a.test/3', 'https://a.test/4', 'https://a.test/5']);
+    const initial = { [BODY_KEY]: JSON.stringify({ acceptedAt: NOW - 60_000, categoryCount: 1, itemCount: 5, data: rich }) };
+    assert.equal(publish({ data: bodyOf(['https://a.test/1']), initial, fingerprint: 'new2' }).result, 0);
+  });
+
   it('agrees with measureServableRichness, the TS twin the sidecar build uses', async () => {
     // Two implementations of one policy: the sidecar (tauri) build decides
     // replacement with measureServableRichness, production decides it in this
@@ -584,14 +641,26 @@ describe('durable last-good publish gate — executed, not described (#7084)', (
         },
         revoked: ['https://b.test/2'],
       },
+      {
+        data: {
+          categories: {
+            politics: { items: [{ link: 'https://a.test/1' }] },
+            podcasts: { items: [] },
+            'nq-news': { items: [{ link: 'https://c.test/1' }] },
+          },
+        },
+        revoked: [],
+        exempt: ['podcasts', 'nq-news'],
+      },
     ];
-    for (const { data, revoked } of cases) {
-      const { redis } = publish({ data, initial: { [REVOKED_KEY]: revoked } });
+    for (const { data, revoked, exempt = [] } of cases) {
+      const { redis } = publish({ data, initial: { [REVOKED_KEY]: revoked }, exempt });
       const stored = JSON.parse(redis.store.get(BODY_KEY));
-      const ts = measure(data, new Set(revoked));
+      const ts = measure(data, new Set(revoked), exempt);
       assert.deepEqual(
-        { categoryCount: stored.categoryCount, itemCount: stored.itemCount }, ts,
-        `Lua and TS must count ${JSON.stringify(data)} identically under ${JSON.stringify(revoked)}`,
+        { categoryCount: stored.categoryCount, itemCount: stored.itemCount },
+        { categoryCount: ts.categoryCount, itemCount: ts.itemCount },
+        `Lua and TS must count ${JSON.stringify(data)} identically under ${JSON.stringify(revoked)}, exempt ${JSON.stringify(exempt)}`,
       );
     }
   });

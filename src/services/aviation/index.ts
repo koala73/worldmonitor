@@ -114,11 +114,6 @@ export interface PriceQuote {
   checkoutRef: string;       // empty for cached/demo
 }
 
-/** Returns true if a quote has a known expiry that has passed. */
-export function isPriceExpired(q: PriceQuote): boolean {
-  return q.expiresAt !== null && q.expiresAt.getTime() < Date.now();
-}
-
 export interface AviationNewsItem {
   id: string;
   title: string;

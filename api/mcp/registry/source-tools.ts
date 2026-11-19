@@ -16,12 +16,14 @@
 // presenting one inventory would mean inventing attribution for the other 533.
 // Provenance honesty is the product's differentiator; faking the join here
 // would undercut the thing this tool exists to advertise.
-import attributionManifest from '../../../shared/source-attribution-manifest.json';
+import attributionEntries from './_source-providers.generated.json';
 import { getProvenanceCoverage, getSourceProvenanceState } from '../../../shared/source-provenance';
+import { withOutletProfile } from '../../../server/_shared/outlet-profile';
 import { TELEGRAM_CHANNEL_TRUST } from '../../../shared/telegram-channel-trust';
 import { SOURCE_TIERS } from '../../../server/_shared/source-tiers';
 import { resolveSourceOrigin, sourceOriginFilterValue, sourceOriginLabel } from '../../../scripts/source-origin.mjs';
 import { argNum, argStr, ciIncludes } from '../filters';
+import { MEDIA_PERSPECTIVE_TOOL } from './media-perspective-tool';
 import type { ToolDef } from '../types';
 
 interface ManifestEntry {
@@ -30,17 +32,10 @@ interface ManifestEntry {
   kind?: string;
   status?: string;
   license?: string;
-  observed?: boolean;
-  catalogActive?: boolean;
 }
 
-const MANIFEST_ENTRIES = (attributionManifest as { entries: ManifestEntry[] }).entries;
-const ACTIVE_PROVIDERS = MANIFEST_ENTRIES.filter((entry) => (
-  entry.observed === true
-  && entry.catalogActive !== false
-  && (entry.status === 'reviewed' || entry.status === 'terms-review')
-));
-const EXCLUDED_COUNT = MANIFEST_ENTRIES.filter((entry) => entry.status === 'excluded').length;
+const ACTIVE_PROVIDERS = attributionEntries.providers as ManifestEntry[];
+const EXCLUDED_COUNT = attributionEntries.excludedProviderCount;
 
 const PROVIDER_HOSTS = new Map<string, string[]>();
 for (const entry of ACTIVE_PROVIDERS) {
@@ -124,7 +119,7 @@ export function outletRecord(name: string) {
   return {
     name,
     tier,
-    provenance,
+    provenance: withOutletProfile(name, provenance),
     ...(platformIdentities ? { platformIdentities } : {}),
   };
 }
@@ -133,7 +128,7 @@ export const SOURCE_TOOLS: ToolDef[] = [
   {
     name: 'get_sources',
     title: 'Source inventory',
-    _outputBudgetBytes: 65536,
+    _outputBudgetBytes: 131072,
     // U7 roster (R7). The selection criterion is cheap to serve, cacheable,
     // low value to bulk-scrape, AND reliably fresh. This tool satisfies all
     // four trivially: it is a committed-registry read with no network call, no
@@ -146,22 +141,22 @@ export const SOURCE_TOOLS: ToolDef[] = [
     // generic, so adding a screened tool later is this one line.
     _freeTier: true,
     description:
-      "WorldMonitor's live source inventory, for deciding whether and how far to trust what the other tools return. Two separate populations: `providers` are upstream hosts data is fetched from (with licence and attribution status), and `outlets` are named public source identities carrying an editorial tier plus propaganda-risk and source-type provenance. Platform channels include stable platform identities instead of pretending every source is a newsroom masthead. Defaults to `summary` (counts only); pass a view to enumerate. Static registry read — no network, no cache, always current with the deployed build.",
+      "WorldMonitor's live source inventory, for deciding whether and how far to trust what the other tools return. Two separate populations: `providers` are upstream hosts data is fetched from (with licence and attribution status), and `outlets` are named public source identities carrying an editorial tier plus propaganda-risk and source-type provenance. Platform channels include stable platform identities instead of pretending every source is a newsroom masthead. Defaults to `summary` (counts only); pass a view to enumerate. Static registry read — no network, no cache, always current with the deployed build. Credential-free: callable anonymously with no daily quota, under a separate ceiling of 10 unauthenticated calls per minute per IP.",
     inputSchema: {
       type: 'object',
       properties: {
         view: {
           type: 'string',
           enum: [...SOURCE_VIEWS],
-          description: 'summary (default) returns counts only and is small. providers enumerates upstream hosts; outlets enumerates named public source identities with tier and provenance.',
+          description: 'What to list: summary returns counts only; providers lists upstream hosts with licence and attribution status; outlets lists named source identities with tier and provenance. Every view also carries summary. Omitted means summary.',
         },
         kind: { type: 'string', description: 'providers view only: restrict to one kind — feed, structured, feed+structured, or operational-status.' },
         country: { type: 'string', description: 'providers view only: restrict by publisher origin using a two-letter country code or intl for international sources. Case-insensitive.' },
-        tier: { type: 'integer', minimum: 1, maximum: 4, description: 'outlets view only: restrict to one editorial tier. 1 is a wire or primary outlet. Outlets with no declared tier are never returned by this filter, because their tier is unknown rather than 4.' },
-        risk: { type: 'string', enum: ['low', 'medium', 'high', 'unknown'], description: 'outlets view only: restrict to one declared propaganda-risk band.' },
-        platform: { type: 'string', enum: [...SOURCE_PLATFORMS], description: 'outlets view only: restrict to source identities configured on a platform such as telegram.' },
+        tier: { type: 'integer', minimum: 1, maximum: 4, description: 'outlets view only: keep outlets with this declared editorial tier: 1 wire services and official bodies, 2 major outlets, 3 specialist, regional and think-tank sources, 4 aggregators and blogs. Outlets with no declared tier never match, because their tier is unknown rather than 4.' },
+        risk: { type: 'string', enum: ['low', 'medium', 'high', 'unknown'], description: 'outlets view only: keep outlets in this propaganda-risk band: high is state media, medium warrants caution, low is reviewed low risk, unknown is unreviewed.' },
+        platform: { type: 'string', enum: [...SOURCE_PLATFORMS], description: 'outlets view only: keep source identities configured on this platform, such as Telegram channels, rather than newsroom mastheads.' },
         query: { type: 'string', description: 'Case-insensitive substring match — against host and provider in the providers view, against outlet name in the outlets view. Applied before limit.' },
-        limit: { type: 'integer', minimum: 1, maximum: MAX_ROW_LIMIT, description: `Maximum rows in an enumerated view. Defaults to ${DEFAULT_ROW_LIMIT}, capped at ${MAX_ROW_LIMIT}. Ignored by the summary view. The full provider inventory does not fit one response, so a truncated result sets returned < matched.` },
+        limit: { type: 'integer', minimum: 1, maximum: MAX_ROW_LIMIT, description: `Maximum rows in the providers or outlets list, in registry order; omitted means ${DEFAULT_ROW_LIMIT}. Ignored by the summary view. The full provider inventory does not fit one response, so a truncated result sets returned < matched.` },
       },
       required: [],
     },
@@ -223,7 +218,7 @@ export const SOURCE_TOOLS: ToolDef[] = [
             properties: {
               name: { type: 'string' },
               tier: { type: ['number', 'null'], description: 'Declared editorial tier, or null when WorldMonitor has not declared one. Never defaulted to a number.' },
-              provenance: { type: 'object', description: 'Same provenance shape the news tools attach to stories, minus the prose `summary`. `knownBiases` is always present; empty means no perspective label recorded, not neutral.' },
+              provenance: { type: 'object', description: 'Same provenance shape the news tools attach to stories, minus the prose `summary`. `knownBiases` is always present; empty means no perspective label recorded, not neutral. Includes the outlet profile: `homeCountry`, `audience` (domestic, international or diaspora), `language` and `ownershipClass`, each null when no profile is recorded.' },
               platformIdentities: {
                 type: 'array',
                 description: 'Stable platform-specific identities for this source, when configured.',
@@ -336,4 +331,5 @@ export const SOURCE_TOOLS: ToolDef[] = [
     // which the RpcToolDef contract names as the valid empty-_apiPaths case.
     _apiPaths: [],
   },
+  MEDIA_PERSPECTIVE_TOOL,
 ];

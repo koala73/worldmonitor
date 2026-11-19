@@ -10,7 +10,7 @@ Last updated: October 16, 2026
 
 World Monitor is the official name of the real-time global intelligence dashboard at [https://www.worldmonitor.app](https://www.worldmonitor.app). Alternate spellings: WorldMonitor, worldmonitor.app.
 
-This page is the crawlable brand-identity record for agents and search indexes: official name, canonical domain, contact channels, and press mentions that already link to the product. The visual homepage is [https://www.worldmonitor.app/](https://www.worldmonitor.app/); the Markdown homepage twin is [home.md](https://www.worldmonitor.app/home.md).
+This page is the crawlable brand-identity record for agents and search indexes: official name, canonical domain, contact channels, and press mentions that already link to the product. The visual homepage is [https://www.worldmonitor.app/](https://www.worldmonitor.app/); the Markdown homepage twin is [home.md](https://www.worldmonitor.app/home.md). The canonical long-form product description, for directories and listings, is the [About page](https://www.worldmonitor.app/docs/about).
 
 ## Official identity (NAP)
 
@@ -79,6 +79,7 @@ Human about page: https://www.worldmonitor.app/docs/about
 - npm CLI: https://www.npmjs.com/package/worldmonitor
 - X / Twitter (product): https://x.com/worldmonitorai
 - X / Twitter (founder): https://x.com/eliehabib
+- YouTube: https://www.youtube.com/channel/UCqMywHwOgtoP2y0kNPesyNQ
 - WIRED feature: https://www.wired.com/story/world-monitor-elie-habib/
 - The Atlantic feature: https://www.theatlantic.com/technology/2026/03/world-monitor-situation-meme/686389/
 - El País feature: https://elpais.com/tecnologia/2026-03-16/el-riesgo-de-seguir-en-directo-el-conflicto-de-oriente-proximo-en-plataformas-hechas-con-ia-hacen-que-parezca-casi-como-un-videojuego.html

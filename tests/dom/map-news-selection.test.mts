@@ -33,7 +33,7 @@ describe('loaded news selection callbacks', () => {
     const flat = { setOnNewsClick: vi.fn(), getState: () => ({ layers: {} }) };
     const deck = { setOnNewsClick: vi.fn(), getState: () => ({ layers: {} }) };
     const globe = { setOnNewsClick: vi.fn(), getState: () => ({ layers: {} }) };
-    const map = Object.assign(Object.create(MapContainer.prototype), { useDeckGL: false, useGlobe: false, svgMap: flat, deckGLMap: deck, globeMap: globe, emergencyLayer: { setEnabled: vi.fn() }, layerLoadingState: new Map(), layerReadyState: new Map(), hiddenLayerToggles: new Set() });
+    const map = Object.assign(Object.create(MapContainer.prototype), { useDeckGL: false, useGlobe: false, svgMap: flat, deckGLMap: deck, globeMap: globe, emergencyLayer: { setEnabled: vi.fn() }, notamAirspaceLayer: { setEnabled: vi.fn() }, cachedNotamAirspace: [], layerLoadingState: new Map(), layerReadyState: new Map(), hiddenLayerToggles: new Set() });
     map.onNewsClicked(callback);
     expect(flat.setOnNewsClick).toHaveBeenCalledExactlyOnceWith(callback);
     map.useDeckGL = true;

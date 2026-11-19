@@ -35,6 +35,9 @@ function hasHydrationConsumer(source, key) {
 // the hydration-coverage test (which allows them) and the tier-freeloader test
 // (which forbids them from riding in a bundle every client downloads). #5300.
 const PENDING_CONSUMERS = new Set([ 'chokepointBaselines',
+      // Legacy public bootstrap/widget contract; the dashboard now uses the
+      // source-dated movement RPC. Keep this key on-demand until that contract migrates.
+      'crossBorderArrivals',
       'portwatchChokepointsRef', 'portwatchPortActivity', 'sprPolicies', 'electricityPrices', 'jodiOil',
       'eurostatHousePrices', 'eurostatGovDebtQ', 'eurostatIndProd',
       // BIS extended dataflows are consumed via a direct scoped bootstrap
@@ -486,6 +489,25 @@ describe('Bootstrap tier definitions', () => {
       [],
       `PENDING_CONSUMERS entries have real hydration consumers and must be removed: ${stale.join(', ')}`,
     );
+  });
+
+  // The published `worldmonitor` CLI (npm 0.2.2) loads only `?tier=slow&public=1`
+  // for these keys and reads them from that response. Installed copies never see a
+  // source change here, so moving one off the slow tier empties that CLI view until
+  // users upgrade. Move a key only after a CLI release fetches it some other way.
+  const PUBLISHED_CLI_SLOW_TIER_KEYS = [
+    'sectors', 'etfFlows', 'climateAnomalies', 'climateDisasters', 'co2Monitoring', 'oceanIce',
+    'radiationWatch', 'thermalEscalation', 'crossSourceSignals', 'wildfires', 'naturalEvents',
+    'cryptoQuotes', 'defiTokens', 'aiTokens', 'otherTokens', 'gulfQuotes', 'stablecoinMarkets',
+    'unrestEvents', 'ucdpEvents', 'techEvents',
+    'securityAdvisories', 'sanctionsPressure', 'fearGreedIndex', 'diseaseOutbreaks',
+    'economicStress', 'fuelShortages',
+  ];
+
+  it('keeps every key the published CLI reads from the slow tier in that tier', () => {
+    const slow = tierKeys('slow');
+    const moved = PUBLISHED_CLI_SLOW_TIER_KEYS.filter((k) => !slow.has(k));
+    assert.deepEqual(moved, [], `published CLI reads these from ?tier=slow but they left it: ${moved.join(', ')}`);
   });
 
   it('on-demand keys are NOT served by the tier bundles every client downloads', () => {

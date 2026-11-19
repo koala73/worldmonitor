@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { performance } from 'node:perf_hooks';
 import { describe, it } from 'node:test';
 
 import { TRUSTED_RETURN_URL_ORIGINS } from '../convex/payments/returnUrlOrigin.ts';
@@ -10,6 +11,7 @@ import {
   isDisallowedOrigin as isDisallowedOriginJs,
 } from '../api/_cors.js';
 import {
+  default as corsWorker,
   buildCorsHeaders as buildCorsHeadersWorker,
   isAllowedOrigin as isAllowedOriginWorker,
 } from '../workers/api-cors-preflight/src/index.js';
@@ -110,19 +112,67 @@ describe('cors helper', () => {
   });
 });
 
-// The Vercel project moved from the personal scope (worldmonitor-*-elie-<hash>)
-// to the "eliewm" team scope. Browsers send Origin on the POST to
-// /api/wm-session, so a stale allowlist 403s every preview deployment and the
-// anonymous session can never be minted (dashboard + /welcome teasers stay dark).
-describe('isAllowedOrigin — Vercel preview allowlist (eliewm team scope)', () => {
+// Vercel previews are trusted only on their own deployment, by exact hostname
+// (VERCEL_URL / VERCEL_BRANCH_URL). A `worldmonitor-*-eliewm.vercel.app` name
+// pattern is claimable by any Vercel account (a project's `<name>.vercel.app`
+// goes to whoever registers the name first), so it must never be allowlisted.
+describe('isAllowedOrigin — Vercel preview origins', () => {
   // Origin for the JS twin (api/_cors.js exports isDisallowedOrigin, not the
   // bare predicate) — same allow/deny outcome proves both files stay in sync.
   const allowedByJsTwin = (origin: string) =>
     !isDisallowedOriginJs(new Request('https://worldmonitor.app/x', { headers: { Origin: origin } }));
 
+  const withPreviewEnv = (fn: () => void) => {
+    const keys = ['VERCEL_ENV', 'VERCEL_URL', 'VERCEL_BRANCH_URL'] as const;
+    const saved = keys.map((k) => process.env[k]);
+    process.env.VERCEL_ENV = 'preview';
+    process.env.VERCEL_URL = 'worldmonitor-abc123def456-eliewm.vercel.app';
+    process.env.VERCEL_BRANCH_URL = 'worldmonitor-git-feature-eliewm.vercel.app';
+    try {
+      fn();
+    } finally {
+      keys.forEach((k, i) => {
+        if (saved[i] === undefined) delete process.env[k];
+        else process.env[k] = saved[i];
+      });
+    }
+  };
+
+  it('a preview deployment trusts its own deployment URL and branch alias', () => {
+    withPreviewEnv(() => {
+      for (const origin of [
+        'https://worldmonitor-abc123def456-eliewm.vercel.app',
+        'https://worldmonitor-git-feature-eliewm.vercel.app',
+      ]) {
+        assert.equal(isAllowedOrigin(origin), true, `server/cors.ts must allow ${origin}`);
+        assert.equal(allowedByJsTwin(origin), true, `api/_cors.js must allow ${origin}`);
+      }
+    });
+  });
+
+  it('a preview deployment rejects look-alike eliewm previews it does not own', () => {
+    withPreviewEnv(() => {
+      for (const origin of [
+        'https://worldmonitor-attacker-eliewm.vercel.app',
+        'https://worldmonitor-git-other-eliewm.vercel.app',
+        'http://worldmonitor-git-feature-eliewm.vercel.app',
+      ]) {
+        assert.equal(isAllowedOrigin(origin), false, `server/cors.ts must reject ${origin}`);
+        assert.equal(allowedByJsTwin(origin), false, `api/_cors.js must reject ${origin}`);
+      }
+    });
+  });
+
+  it('production ignores VERCEL_URL / VERCEL_BRANCH_URL', () => {
+    withPreviewEnv(() => {
+      process.env.VERCEL_ENV = 'production';
+      const origin = 'https://worldmonitor-git-feature-eliewm.vercel.app';
+      assert.equal(isAllowedOrigin(origin), false);
+      assert.equal(allowedByJsTwin(origin), false);
+    });
+  });
+
   const ALLOWED = [
-    ['git-branch alias URL', 'https://worldmonitor-git-feature-eliewm.vercel.app'],
-    ['hash deployment URL', 'https://worldmonitor-abc123def456-eliewm.vercel.app'],
     ['apex production origin', 'https://worldmonitor.app'],
     ['production subdomain', 'https://tech.worldmonitor.app'],
     ['trailing-dot FQDN apex (#6411)', 'https://worldmonitor.app.'],
@@ -133,6 +183,9 @@ describe('isAllowedOrigin — Vercel preview allowlist (eliewm team scope)', () 
   ];
 
   const REJECTED = [
+    ['third-party project named like an eliewm preview', 'https://worldmonitor-attacker-eliewm.vercel.app'],
+    ['eliewm-shaped git-branch alias outside its own deployment', 'https://worldmonitor-git-feature-eliewm.vercel.app'],
+    ['eliewm-shaped hash URL outside its own deployment', 'https://worldmonitor-abc123def456-eliewm.vercel.app'],
     ['non-worldmonitor vercel.app origin', 'https://some-other-app-eliewm.vercel.app'],
     ['foreign team scope', 'https://worldmonitor-git-feature-attacker.vercel.app'],
     ['bare worldmonitor vercel.app (no scope segment)', 'https://worldmonitor.vercel.app'],
@@ -222,6 +275,40 @@ describe('RFC 9745 / RFC 8594 lifecycle headers are readable cross-origin', () =
   }
 });
 
+/**
+ * The per-header suites above only guard the headers someone remembered to
+ * list. #9140 added X-Wm-Upstream-Timeout to api/_cors.js and server/cors.ts
+ * but not to the Worker, which overwrites Expose-Headers on every
+ * api.worldmonitor.app response. Browsers could not read the marker, so
+ * premium-fetch kept reporting relayed MCP timeouts (Sentry WORLDMONITOR-17A).
+ * Every surface must expose exactly the set api/_cors.js does.
+ */
+describe('every CORS surface exposes the same header set', () => {
+  const canonical = [...new Set(exposedHeaders(getCorsHeadersJs(corsRequest())))].sort();
+  for (const [label, build] of CORS_SURFACES) {
+    it(`${label} matches api/_cors.js getCorsHeaders`, () => {
+      assert.deepEqual([...new Set(exposedHeaders(build()))].sort(), canonical);
+    });
+  }
+});
+
+/**
+ * Same drift on the request side: the MCP 2026-07-28 metadata headers
+ * (Mcp-Method, Mcp-Name) reached api/_cors.js only, so the Worker's preflight
+ * on api.worldmonitor.app refused browser MCP clients that sent them.
+ * Every surface must allow exactly the set api/_cors.js does.
+ */
+describe('every CORS surface allows the same request header set', () => {
+  const allowedHeaders = (headers: Record<string, string>) =>
+    [...new Set(headers['Access-Control-Allow-Headers'].split(',').map((name) => name.trim()))].sort();
+  const canonical = allowedHeaders(getCorsHeadersJs(corsRequest()));
+  for (const [label, build] of CORS_SURFACES) {
+    it(`${label} matches api/_cors.js getCorsHeaders`, () => {
+      assert.deepEqual(allowedHeaders(build()), canonical);
+    });
+  }
+});
+
 describe('IETF RateLimit headers are readable across every CORS surface', () => {
   const IETF_RATE_LIMIT_HEADERS = [
     'RateLimit',
@@ -271,21 +358,91 @@ describe('CORS triplet parity — Google Translate + trailing-dot helpers stay i
         `${rel} must share the trailing-dot normalizer name`,
       );
       assert.ok(
-        source.includes('hostname.replace(/\\.+$/, \'\')'),
-        `${rel} must strip trailing DNS dots on the hostname`,
+        !source.includes('replace(/\\.+$/'),
+        `${rel} must avoid backtracking when stripping trailing DNS dots`,
       );
     });
   }
 });
 
-describe('CORS triplet parity — eliewm preview pattern stays tight in all three twins', () => {
-  // Root cause of the original 403s was twins drifting. THREE surfaces gate
-  // Vercel-preview CORS and must move together; guard each for:
-  // (1) the eliewm-scoped preview pattern is present, and
-  // (2) no bare *.vercel.app wildcard sneaks in as a "fix".
-  // The Cloudflare Worker is the load-bearing one: it short-circuits OPTIONS at
-  // the edge, so if it drifts narrower the browser blocks the preflight before
-  // Vercel is ever consulted.
+describe('bounded CORS Origin validation (#9315)', () => {
+  const surfaces = [
+    ['API', (origin: string) => !isDisallowedOriginJs(new Request('https://api.worldmonitor.app/x', { headers: { Origin: origin } }))],
+    ['gateway', isAllowedOrigin],
+    ['Worker', isAllowedOriginWorker],
+  ] as const;
+
+  for (const [surface, allows] of surfaces) {
+    it(`${surface} accepts 300 bytes and rejects 301 bytes before normalization`, () => {
+      for (const base of ['https://worldmonitor.app', 'https://worldmonitor-app.translate.goog']) {
+        const atLimit = base + '.'.repeat(300 - base.length);
+        assert.equal(allows(atLimit), true);
+        assert.equal(allows(`${atLimit}.`), false);
+      }
+    });
+
+    it(`${surface} limits UTF-8 bytes rather than only code units`, () => {
+      const origin = 'https://worldmonitor.app' + '\u00ad'.repeat(140) + '.';
+      assert.ok(origin.length < 300);
+      assert.ok(new TextEncoder().encode(origin).byteLength > 300);
+      assert.equal(allows(origin), false);
+    });
+
+    it(`${surface} preserves raw trailing-dot origins and rejects internal empty labels`, () => {
+      for (const origin of ['https://worldmonitor.app...', 'https://tech-worldmonitor-app.translate.goog...']) {
+        assert.equal(allows(origin), true);
+        const req = new Request('https://api.worldmonitor.app/x', { headers: { Origin: origin } });
+        for (const headers of [getCorsHeaders(req), getCorsHeadersJs(req), buildCorsHeadersWorker(origin)]) {
+          assert.equal(headers['Access-Control-Allow-Origin'], origin);
+        }
+      }
+      assert.equal(allows(`https://a${'.'.repeat(280)}a`), false);
+    });
+
+    it(`${surface} rejects 60000 internal dots within a generous CPU budget`, () => {
+      const origin = `https://a${'.'.repeat(60_000)}a`;
+      const start = performance.now();
+      assert.equal(allows(origin), false);
+      const elapsed = performance.now() - start;
+      assert.ok(elapsed < 250, `${surface} validation took ${elapsed.toFixed(1)}ms`);
+    });
+  }
+
+  it('rejects oversized origins before URL parsing in all three implementations', () => {
+    const origin = 'https://worldmonitor.app' + '.'.repeat(300);
+    const req = new Request('https://api.worldmonitor.app/x', { headers: { Origin: origin } });
+    const OriginalURL = globalThis.URL;
+    let parses = 0;
+    globalThis.URL = class extends OriginalURL {
+      constructor(input: string | URL, base?: string | URL) {
+        parses++;
+        super(input, base);
+      }
+    };
+    try {
+      assert.equal(isDisallowedOriginJs(req), true);
+      assert.equal(isAllowedOrigin(origin), false);
+      assert.equal(isAllowedOriginWorker(origin), false);
+      assert.equal(parses, 0);
+    } finally {
+      globalThis.URL = OriginalURL;
+    }
+  });
+
+  it('Worker keeps oversized preflight denials readable without granting successful responses', async () => {
+    const origin = 'https://worldmonitor.app' + '.'.repeat(300);
+    const req = new Request('https://api.worldmonitor.app/api/test', { method: 'OPTIONS', headers: { Origin: origin } });
+    const response = await corsWorker.fetch(req, {}, {});
+    assert.equal(response.status, 204);
+    assert.equal(response.headers.get('Access-Control-Allow-Origin'), origin);
+    assert.equal(buildCorsHeadersWorker(origin)['Access-Control-Allow-Origin'], 'https://worldmonitor.app');
+  });
+});
+
+describe('CORS triplet parity — no vercel.app name pattern in any twin', () => {
+  // Any Vercel account can claim `<project>.vercel.app`, so a vercel.app name
+  // pattern in a credentialed allowlist trusts third-party projects. Previews
+  // are trusted by exact own hostname on the function side only.
   const TWINS = [
     '../server/cors.ts',
     '../api/_cors.js',
@@ -293,18 +450,21 @@ describe('CORS triplet parity — eliewm preview pattern stays tight in all thre
   ];
 
   for (const rel of TWINS) {
-    it(`${rel} scopes Vercel previews to the eliewm team`, async () => {
+    it(`${rel} has no vercel.app origin pattern`, async () => {
       const source = await readFile(new URL(rel, import.meta.url), 'utf8');
       assert.ok(
-        source.includes('-eliewm\\.vercel\\.app'),
-        `${rel} must allow worldmonitor-*-eliewm.vercel.app previews`,
-      );
-      assert.ok(
-        !source.includes('worldmonitor-[a-z0-9-]+\\.vercel\\.app'),
-        `${rel} must not widen to a bare *.vercel.app wildcard (security allowlist)`,
+        !/\\\.vercel\\\.app/.test(source),
+        `${rel} must not allowlist Vercel previews by name pattern`,
       );
     });
   }
+
+  it('Worker rejects a third-party eliewm-shaped project and falls back to the canonical origin', () => {
+    const origin = 'https://worldmonitor-attacker-eliewm.vercel.app';
+    assert.equal(isAllowedOriginWorker(origin), false);
+    const headers = buildCorsHeadersWorker(origin);
+    assert.equal(headers['Access-Control-Allow-Origin'], 'https://worldmonitor.app');
+  });
 });
 
 describe('CORS Worker superset invariant — edge allowlist ⊇ function allowlist', () => {
@@ -314,11 +474,8 @@ describe('CORS Worker superset invariant — edge allowlist ⊇ function allowli
   // the preflight echoes the canonical worldmonitor.app fallback and the
   // browser blocks the request before it reaches Vercel.
   //
-  // The Worker's own test (workers/api-cors-preflight/index.test.mjs) lives
-  // OUTSIDE the test:data glob and only runs in deploy-worker.yml on
-  // workers/** changes — so a function-only change can silently leave the
-  // Worker narrower. THIS gate-resident check is what actually catches
-  // function↔Worker drift (the bug that left eliewm previews dark).
+  // The Worker suites also run in test:data. This cross-boundary check catches
+  // function/Worker drift when either allowlist changes.
   //
   // Localhost/127 are intentionally omitted: they are DEV-only on the function
   // side (NODE_ENV-gated) and never reach the prod-only Worker.
@@ -334,12 +491,12 @@ describe('CORS Worker superset invariant — edge allowlist ⊇ function allowli
     'https://www-worldmonitor-app.translate.goog',
     'https://worldmonitor-app.translate.goog',
     'https://tech-worldmonitor-app.translate.goog',
-    'https://worldmonitor-git-feature-eliewm.vercel.app',
-    'https://worldmonitor-abc123def456-eliewm.vercel.app',
     'tauri://localhost',
     'asset://localhost',
     // Negatives — the function rejects these, so the superset assertion is a
     // no-op for them; included to document the boundary.
+    'https://worldmonitor-git-feature-eliewm.vercel.app',
+    'https://worldmonitor-attacker-eliewm.vercel.app',
     'https://some-other-app-eliewm.vercel.app',
     'https://worldmonitor-git-feature-attacker.vercel.app',
     'https://worldmonitor-feature-elie-abc123.vercel.app',

@@ -9,26 +9,30 @@
 // delta and chokepoint exposure scores are not published, so they never appear.
 
 import { getCachedJson } from '../../../_shared/redis';
-import { CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
-import { displayNameForIso2 } from '../../../_shared/country-normalize';
+import { CII_RISK_SCORE_CACHE_KEYS, ORBITAL_COUNTRY_KEY_PREFIX, ORBITAL_SITES_KEY } from '../../../_shared/cache-keys';
+import { displayNameForIso2, normalizeCountryToIso2 } from '../../../_shared/country-normalize';
 import { CHOKEPOINT_REGISTRY } from '../../../_shared/chokepoint-registry';
 import { sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
 import { instabilityBand } from '../../../../shared/cii-band.js';
 import { CHOKEPOINT_COUNTRY_CODES } from '../../../../shared/chokepoint-countries.js';
 import { countryMentionTerms, mentionsCountry } from '../../../../shared/country-mention.js';
+import { confirmedSiteFlags, readCountryRollup, type ConfirmedSiteFlag } from '../../../../shared/orbital/country-rollup.js';
+import { MONITORED_AIRPORTS } from '../../../../src/config/airports';
 import { TIER1_COUNTRIES } from './_shared';
 import type { ResolvedEnergyImportDependency } from './_energy-import-dependency';
 
 export type CountryBriefEvidenceKind =
   | 'cii'
   | 'advisory'
+  | 'airport'
   | 'sanctions'
   | 'resilience'
   | 'resilience-dimension'
   | 'energy'
   | 'chokepoint'
   | 'market'
-  | 'forecast';
+  | 'forecast'
+  | 'imagery';
 
 export interface CountryBriefEvidenceItem {
   id: string;
@@ -42,7 +46,19 @@ export interface CountryBriefEvidenceItem {
 
 export interface CountryBriefEvidenceOptions {
   energyImportDependency: ResolvedEnergyImportDependency;
+  // The handler reads these first to key its cache; passing them here keeps
+  // the brief and its key on one read.
+  airportNotams?: CountryAirportNotam[];
+  imageryFlags?: ConfirmedSiteFlag[];
   nowMs?: number;
+}
+
+export interface CountryAirportNotam {
+  icao: string;
+  iata: string;
+  name: string;
+  status: 'closed' | 'restricted';
+  asOfMs: number;
 }
 
 const ADVISORIES_KEY = 'intelligence:advisories:v1';
@@ -55,6 +71,10 @@ const SANCTIONS_COUNTS_KEY = 'sanctions:country-counts:v1';
 // The counts map carries no timestamp of its own; the seeder writes this meta
 // record beside it in the same publish.
 const SANCTIONS_COUNTS_META_KEY = 'seed-meta:sanctions:country-counts';
+// Merged FAA NMS + ICAO NOTAM closures for the monitored airports, written by
+// scripts/seed-aviation.mjs with its seed-meta beside it.
+const NOTAM_CLOSURES_KEY = 'aviation:notam:closures:v2';
+const NOTAM_CLOSURES_META_KEY = 'seed-meta:aviation:notam';
 const MARKETS_COUNTRY_INDEX_KEY = 'prediction:markets-country-index:v1';
 // The ~41 KB dashboard projection, not the 188 KB canonical key with dossiers.
 const FORECASTS_KEY = 'forecast:predictions-bootstrap:v1';
@@ -75,6 +95,9 @@ const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 export const EVIDENCE_MAX_AGE_MS = Object.freeze({
   cii: 2 * HOUR_MS,
   advisory: 6 * HOUR_MS,
+  // seed-aviation runs every 30 minutes; a closure list older than two hours
+  // may describe an airport that has since reopened.
+  airport: 2 * HOUR_MS,
   sanctions: 36 * HOUR_MS,
   resilience: 14 * DAY_MS,
   market: 6 * HOUR_MS,
@@ -84,6 +107,8 @@ export const EVIDENCE_MAX_AGE_MS = Object.freeze({
 const MAX_WEAKEST_DIMENSIONS = 3;
 const MAX_MARKETS = 5;
 const MAX_FORECASTS = 3;
+const MAX_AIRPORTS = 3;
+const MAX_IMAGERY_FLAGS = 3;
 const MAX_TITLE_LENGTH = 160;
 
 // Public labels from the country page (formatAdvisory in
@@ -248,6 +273,61 @@ function advisoryEvidence(raw: unknown, code: string, name: string, nowMs: numbe
     factText: `The most severe government travel advisory World Monitor tracks for ${name} is ${label}, as of ${formatDate(fetchedAt)}.`,
     asOf: new Date(fetchedAt).toISOString(),
   }];
+}
+
+const AIRPORT_BY_ICAO: ReadonlyMap<string, (typeof MONITORED_AIRPORTS)[number]> = new Map(
+  MONITORED_AIRPORTS.map((airport) => [airport.icao, airport]),
+);
+
+/**
+ * The monitored airports in `countryCode` that a NOTAM closes or restricts,
+ * closures first, at most three. Empty when the closure list or its seed-meta
+ * is missing, malformed or stale. Pure, so the handler's cache key and the
+ * evidence pack derive from one read.
+ */
+export function countryAirportNotamsFrom(raw: unknown, meta: unknown, countryCode: string, nowMs: number): CountryAirportNotam[] {
+  const closures = isObject(raw) && isObject(raw.data) && '_seed' in raw ? raw.data : raw;
+  if (!isObject(closures) || !isObject(meta)) return [];
+  const fetchedAt = timestampMs(meta.fetchedAt);
+  if (!isFresh(fetchedAt, EVIDENCE_MAX_AGE_MS.airport, nowMs)) return [];
+  const out: CountryAirportNotam[] = [];
+  const seen = new Set<string>();
+  for (const [status, list] of [['closed', closures.closedIcaos], ['restricted', closures.restrictedIcaos]] as const) {
+    if (!Array.isArray(list)) continue;
+    for (const icao of [...list].map(String).sort()) {
+      if (out.length >= MAX_AIRPORTS || seen.has(icao)) continue;
+      const airport = AIRPORT_BY_ICAO.get(icao);
+      if (!airport || normalizeCountryToIso2(airport.country) !== countryCode) continue;
+      seen.add(icao);
+      out.push({ icao, iata: airport.iata, name: airport.name, status, asOfMs: fetchedAt });
+    }
+  }
+  return out;
+}
+
+export async function readCountryAirportNotams(countryCode: string, nowMs: number = Date.now()): Promise<CountryAirportNotam[]> {
+  const code = String(countryCode ?? '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return [];
+  try {
+    const [raw, meta] = await Promise.all([readKey(NOTAM_CLOSURES_KEY), readKey(NOTAM_CLOSURES_META_KEY)]);
+    return countryAirportNotamsFrom(raw, meta, code, nowMs);
+  } catch {
+    return [];
+  }
+}
+
+// Status only. The NOTAM's own text is operator shorthand with phone numbers
+// and times the claim validator would have to license, so it stays out.
+function airportEvidence(notams: CountryAirportNotam[], name: string): EvidenceDraft[] {
+  return notams.map((notam) => ({
+    kind: 'airport' as const,
+    label: 'NOTAM airport status',
+    value: notam.status,
+    factText: notam.status === 'closed'
+      ? `${notam.name} (${notam.iata}) in ${name} is closed under a NOTAM, as of ${formatDate(notam.asOfMs)}.`
+      : `${notam.name} (${notam.iata}) in ${name} has a NOTAM restriction in force, as of ${formatDate(notam.asOfMs)}.`,
+    asOf: new Date(notam.asOfMs).toISOString(),
+  }));
 }
 
 function sanctionsEvidence(raw: unknown, meta: unknown, code: string, name: string, nowMs: number): EvidenceDraft[] {
@@ -423,6 +503,55 @@ function forecastEvidence(raw: unknown, code: string, name: string, nowMs: numbe
   return items;
 }
 
+/**
+ * The newest confirmed watched-site change flags in `countryCode`, at most three,
+ * from the country's one rollup key. Empty when the rollup is missing, malformed or
+ * stale, and while change scoring is shadowed (the rollup then carries no flag).
+ * Pure over the read, so the handler's cache key and the evidence pack agree.
+ */
+export function countryImageryFlagsFrom({ rollup, index }: WatchedSiteRead, countryCode: string, nowMs: number): ConfirmedSiteFlag[] {
+  const read = readCountryRollup(rollup, index, countryCode, nowMs);
+  return read.status === 'current' ? confirmedSiteFlags(read.rollup).slice(0, MAX_IMAGERY_FLAGS) : [];
+}
+
+export interface WatchedSiteRead { rollup: unknown; index: unknown }
+
+/** The raw watched-site rollup the site seeder publishes for one country, and the sites index that names its revision. */
+export async function readCountryWatchedSiteRollup(countryCode: string): Promise<WatchedSiteRead> {
+  const [rollup, index] = await Promise.all([readKey(`${ORBITAL_COUNTRY_KEY_PREFIX}${countryCode}`), readKey(ORBITAL_SITES_KEY)]);
+  return { rollup, index };
+}
+
+export async function readCountryImageryFlags(countryCode: string, nowMs: number = Date.now()): Promise<ConfirmedSiteFlag[]> {
+  const code = String(countryCode ?? '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return [];
+  try {
+    return countryImageryFlagsFrom(await readCountryWatchedSiteRollup(code), code, nowMs);
+  } catch {
+    return [];
+  }
+}
+
+// One item per confirmed flag, naming the site, the satellites and the dates of the
+// scenes that raised and confirmed it. The wording is fixed: statistics changed, never
+// what changed or why.
+function imageryEvidence(flags: ConfirmedSiteFlag[], name: string): EvidenceDraft[] {
+  return flags.map((flag) => {
+    const site = thirdPartyTitle(flag.name);
+    const confirmedAt = formatDate(Date.parse(flag.confirmed.datetime));
+    const by = (platform: string | null) => (platform ? `a ${thirdPartyTitle(platform)} radar scene` : 'a radar scene');
+    return {
+      kind: 'imagery' as const,
+      label: 'Satellite imagery statistics changed',
+      value: site,
+      factText: flag.raised
+        ? `Imagery statistics changed at ${site} in ${name}: ${by(flag.raised.platform)} on ${formatDate(Date.parse(flag.raised.datetime))} raised the change and ${by(flag.confirmed.platform)} on ${confirmedAt} confirmed it.`
+        : `Imagery statistics changed at ${site} in ${name}: ${by(flag.confirmed.platform)} on ${confirmedAt} confirmed the change.`,
+      asOf: new Date(Date.parse(flag.confirmed.datetime)).toISOString(),
+    };
+  });
+}
+
 async function readKey(key: string): Promise<unknown> {
   return getCachedJson(key, true);
 }
@@ -442,6 +571,8 @@ export async function buildCountryBriefEvidence(
   const name = countryDisplayName(code);
 
   const reads = await Promise.allSettled([
+    opts.airportNotams ? Promise.resolve(opts.airportNotams) : readCountryAirportNotams(code, nowMs),
+    opts.imageryFlags ? Promise.resolve(opts.imageryFlags) : readCountryImageryFlags(code, nowMs),
     readKey(CII_RISK_SCORE_CACHE_KEYS.stale),
     readKey(ADVISORIES_KEY),
     readKey(SANCTIONS_COUNTS_KEY),
@@ -450,7 +581,7 @@ export async function buildCountryBriefEvidence(
     readKey(MARKETS_COUNTRY_INDEX_KEY),
     readKey(FORECASTS_KEY),
   ]);
-  const [cii, advisories, sanctions, sanctionsMeta, resilience, markets, forecasts] = reads
+  const [airportNotams, imageryFlags, cii, advisories, sanctions, sanctionsMeta, resilience, markets, forecasts] = reads
     .map((read) => (read.status === 'fulfilled' ? read.value : null));
 
   // Each builder is isolated too: one source's unexpected shape must not
@@ -458,12 +589,14 @@ export async function buildCountryBriefEvidence(
   const sections: Array<() => EvidenceDraft[]> = [
     () => ciiEvidence(cii, code, name, nowMs),
     () => advisoryEvidence(advisories, code, name, nowMs),
+    () => airportEvidence(Array.isArray(airportNotams) ? airportNotams as CountryAirportNotam[] : [], name),
     () => sanctionsEvidence(sanctions, sanctionsMeta, code, name, nowMs),
     () => resilienceEvidence(resilience, name, nowMs),
     () => energyEvidence(opts.energyImportDependency, name),
     () => chokepointEvidence(code, name, nowMs),
     () => marketEvidence(markets, code, name, nowMs),
     () => forecastEvidence(forecasts, code, name, nowMs),
+    () => imageryEvidence(Array.isArray(imageryFlags) ? imageryFlags as ConfirmedSiteFlag[] : [], name),
   ];
   const drafts = sections.flatMap((section) => {
     try {

@@ -123,6 +123,21 @@ describe('pro-mcp-token', () => {
   // -----------------------------------------------------------------------
 
   describe('validateProMcpToken', () => {
+    it('can validate a refresh without recording MCP use', async () => {
+      const redis = makeRedisStub();
+      let requestBody;
+      const stub = makeFetchStub(redis, (url, init) => {
+        requestBody = JSON.parse(init.body);
+        return new Response(JSON.stringify({ userId: 'user_123' }), { status: 200 });
+      });
+      globalThis.fetch = stub;
+      assert.deepEqual(
+        await mod.validateProMcpToken('tok_refresh', { recordUsage: false }),
+        { ok: 'valid', userId: 'user_123' },
+      );
+      assert.deepEqual(requestBody, { tokenId: 'tok_refresh', recordUsage: false });
+    });
+
     it('hits Convex on every call when the token is valid (NO positive cache) — returns ok:valid', async () => {
       const redis = makeRedisStub();
       const convex = (url) => {

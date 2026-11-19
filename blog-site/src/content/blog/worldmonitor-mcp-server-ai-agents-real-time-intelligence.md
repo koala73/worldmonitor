@@ -9,7 +9,7 @@ pubDate: "2026-06-10"
 modifiedDate: "2026-07-22"
 ---
 
-Ask any LLM what is happening in the Strait of Hormuz right now and you get a polite version of "my training data ends months ago." Large language models are brilliant reasoners with no eyes. They cannot see today's vessel traffic, this morning's conflict events, or the country risk score that moved overnight.
+Ask any LLM what is happening in the Strait of Hormuz right now and you get a polite version of "my training data ends months ago." Large language models are brilliant reasoners with no eyes. They cannot see today's vessel traffic, this morning's conflict events, or the [country risk score](https://www.worldmonitor.app/countries/) that moved overnight.
 
 The Model Context Protocol (MCP) fixes the plumbing problem: it gives AI assistants a standard way to call live tools. World Monitor fixes the data problem: it exposes the entire intelligence platform, the same one behind the [free real-time dashboard](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/), as an MCP server with a **live tool registry**.
 
@@ -34,7 +34,7 @@ It speaks streamable HTTP (JSON-RPC 2.0), handles OAuth automatically on first c
 | `get_conflict_events` | Active conflict and unrest events with coordinates |
 | `get_market_data` | Equities, commodities, crypto, FX, fear-greed composite |
 | `analyze_situation` | Ad-hoc geopolitical deduction from a query, with confidence and supporting signals |
-| `generate_forecasts` | Fresh probability estimates for developing situations |
+| `get_forecast_predictions` | Published probability forecasts for developing situations, with case files |
 
 The rest cover sanctions, cyber threats, energy intelligence, displacement, natural disasters, aviation status, prediction markets, supply chains, and more. Your agent can call `describe_tool` to pull the full definition of any tool. That call is quota-exempt, so exploration is free.
 
@@ -70,7 +70,7 @@ You do not have to design prompts from scratch. The server ships six prompt temp
 - **conflict-pulse:** active conflict events plus alert-flagged news, globally or per country
 - **market-open-prep:** equity, commodity, and crypto movers before the bell
 - **energy-shock-watch:** active energy disruptions, fuel shortages, crisis policies
-- **route-risk-check:** chokepoint transit summary and risk posture for a shipping corridor
+- **route-risk-check:** [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/) transit summary and risk posture for a shipping corridor
 - **freshness-audit:** verifies the underlying data caches are current before you trust them
 
 Each template pre-bakes the right tool calls and projections, so the first execution lands on the right data shape instead of burning a round-trip on discovery.

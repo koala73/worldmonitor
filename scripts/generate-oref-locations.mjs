@@ -19,7 +19,7 @@ function normalize(s) {
 
 async function main() {
   console.log('Fetching cities.json...');
-  const res = await fetch(CITIES_URL);
+  const res = await fetch(CITIES_URL, { signal: AbortSignal.timeout(30_000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const cities = await res.json();
 

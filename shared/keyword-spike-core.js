@@ -35,6 +35,10 @@ export const LEADER_PATTERNS = LEADER_NAMES.map(name => ({
 export const ROLLING_WINDOW_MS = 2 * 60 * 60 * 1000;
 export const BASELINE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 export const MIN_TOKEN_LENGTH = 3;
+// Real headlines are far shorter. Only this much of a title feeds term
+// extraction, so one title of thousands of words cannot become thousands of
+// terms (each rescanned per spike check, or returned by get_keyword_spikes).
+export const MAX_TERM_TITLE_CHARS = 500;
 export const MIN_SPIKE_SOURCE_COUNT = 2;
 export const DEFAULT_MIN_SPIKE_COUNT = 5;
 export const DEFAULT_SPIKE_MULTIPLIER = 3;
@@ -90,7 +94,7 @@ export function stripSourceAttribution(title) {
 
 export function buildBaseTermCandidates(title) {
   const termCandidates = new Map();
-  const cleanTitle = stripSourceAttribution(title);
+  const cleanTitle = stripSourceAttribution(title).slice(0, MAX_TERM_TITLE_CHARS);
 
   for (const token of tokenize(cleanTitle)) {
     const termKey = toTermKey(token);

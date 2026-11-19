@@ -1,0 +1,586 @@
+{
+  "d": [
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 398,
+      "Date": "/Date(1785110400000)/",
+      "Impressions": 3017
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 393,
+      "Date": "/Date(1785196800000)/",
+      "Impressions": 2560
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 418,
+      "Date": "/Date(1785283200000)/",
+      "Impressions": 2841
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 421,
+      "Date": "/Date(1785369600000)/",
+      "Impressions": 2613
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 270,
+      "Date": "/Date(1785456000000)/",
+      "Impressions": 1841
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 352,
+      "Date": "/Date(1785542400000)/",
+      "Impressions": 1708
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 425,
+      "Date": "/Date(1785628800000)/",
+      "Impressions": 2117
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 369,
+      "Date": "/Date(1785715200000)/",
+      "Impressions": 2725
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 351,
+      "Date": "/Date(1785801600000)/",
+      "Impressions": 2651
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 334,
+      "Date": "/Date(1785888000000)/",
+      "Impressions": 2296
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 310,
+      "Date": "/Date(1785974400000)/",
+      "Impressions": 2875
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 271,
+      "Date": "/Date(1786060800000)/",
+      "Impressions": 3159
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 234,
+      "Date": "/Date(1786147200000)/",
+      "Impressions": 2703
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 260,
+      "Date": "/Date(1786233600000)/",
+      "Impressions": 2313
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 342,
+      "Date": "/Date(1786320000000)/",
+      "Impressions": 3274
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 437,
+      "Date": "/Date(1786406400000)/",
+      "Impressions": 3641
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 357,
+      "Date": "/Date(1786492800000)/",
+      "Impressions": 4092
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 365,
+      "Date": "/Date(1786579200000)/",
+      "Impressions": 4013
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 257,
+      "Date": "/Date(1786665600000)/",
+      "Impressions": 3063
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 217,
+      "Date": "/Date(1786752000000)/",
+      "Impressions": 4174
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 273,
+      "Date": "/Date(1786838400000)/",
+      "Impressions": 3124
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 295,
+      "Date": "/Date(1786924800000)/",
+      "Impressions": 3350
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 279,
+      "Date": "/Date(1787011200000)/",
+      "Impressions": 4994
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 273,
+      "Date": "/Date(1787097600000)/",
+      "Impressions": 5851
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 341,
+      "Date": "/Date(1787184000000)/",
+      "Impressions": 3972
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 249,
+      "Date": "/Date(1787270400000)/",
+      "Impressions": 4463
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 249,
+      "Date": "/Date(1787356800000)/",
+      "Impressions": 3198
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 310,
+      "Date": "/Date(1787443200000)/",
+      "Impressions": 3303
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 358,
+      "Date": "/Date(1787529600000)/",
+      "Impressions": 3272
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 363,
+      "Date": "/Date(1787616000000)/",
+      "Impressions": 2657
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 419,
+      "Date": "/Date(1787702400000)/",
+      "Impressions": 2221
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 299,
+      "Date": "/Date(1787788800000)/",
+      "Impressions": 1876
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 274,
+      "Date": "/Date(1787875200000)/",
+      "Impressions": 2861
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 214,
+      "Date": "/Date(1787961600000)/",
+      "Impressions": 2169
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 244,
+      "Date": "/Date(1788048000000)/",
+      "Impressions": 2281
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 296,
+      "Date": "/Date(1788134400000)/",
+      "Impressions": 2902
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 394,
+      "Date": "/Date(1788220800000)/",
+      "Impressions": 4246
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 338,
+      "Date": "/Date(1788307200000)/",
+      "Impressions": 3764
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 341,
+      "Date": "/Date(1788393600000)/",
+      "Impressions": 2511
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 258,
+      "Date": "/Date(1788480000000)/",
+      "Impressions": 2211
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 221,
+      "Date": "/Date(1788566400000)/",
+      "Impressions": 1834
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 255,
+      "Date": "/Date(1788652800000)/",
+      "Impressions": 2059
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 281,
+      "Date": "/Date(1788739200000)/",
+      "Impressions": 2786
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 299,
+      "Date": "/Date(1788825600000)/",
+      "Impressions": 4364
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 420,
+      "Date": "/Date(1788912000000)/",
+      "Impressions": 4973
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 292,
+      "Date": "/Date(1788998400000)/",
+      "Impressions": 3690
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 274,
+      "Date": "/Date(1789084800000)/",
+      "Impressions": 3429
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 217,
+      "Date": "/Date(1789171200000)/",
+      "Impressions": 2417
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 267,
+      "Date": "/Date(1789257600000)/",
+      "Impressions": 2762
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 267,
+      "Date": "/Date(1789344000000)/",
+      "Impressions": 3229
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 321,
+      "Date": "/Date(1789430400000)/",
+      "Impressions": 3337
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 312,
+      "Date": "/Date(1789516800000)/",
+      "Impressions": 3284
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 245,
+      "Date": "/Date(1789603200000)/",
+      "Impressions": 3081
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 234,
+      "Date": "/Date(1789689600000)/",
+      "Impressions": 3073
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 197,
+      "Date": "/Date(1789776000000)/",
+      "Impressions": 2362
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 279,
+      "Date": "/Date(1789862400000)/",
+      "Impressions": 2527
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 315,
+      "Date": "/Date(1789948800000)/",
+      "Impressions": 3719
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 274,
+      "Date": "/Date(1790035200000)/",
+      "Impressions": 3834
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 251,
+      "Date": "/Date(1790121600000)/",
+      "Impressions": 3752
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 253,
+      "Date": "/Date(1790208000000)/",
+      "Impressions": 3662
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 190,
+      "Date": "/Date(1790294400000)/",
+      "Impressions": 3533
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 171,
+      "Date": "/Date(1790380800000)/",
+      "Impressions": 2236
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 187,
+      "Date": "/Date(1790467200000)/",
+      "Impressions": 3868
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 239,
+      "Date": "/Date(1790553600000)/",
+      "Impressions": 4195
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 261,
+      "Date": "/Date(1790640000000)/",
+      "Impressions": 3626
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 230,
+      "Date": "/Date(1790726400000)/",
+      "Impressions": 3183
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 220,
+      "Date": "/Date(1790812800000)/",
+      "Impressions": 2822
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 199,
+      "Date": "/Date(1790899200000)/",
+      "Impressions": 4342
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 197,
+      "Date": "/Date(1790985600000)/",
+      "Impressions": 2304
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 211,
+      "Date": "/Date(1791072000000)/",
+      "Impressions": 2439
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 251,
+      "Date": "/Date(1791158400000)/",
+      "Impressions": 3615
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 238,
+      "Date": "/Date(1791244800000)/",
+      "Impressions": 2061
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 223,
+      "Date": "/Date(1791331200000)/",
+      "Impressions": 1742
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 248,
+      "Date": "/Date(1791417600000)/",
+      "Impressions": 1758
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 201,
+      "Date": "/Date(1791504000000)/",
+      "Impressions": 1302
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 184,
+      "Date": "/Date(1791590400000)/",
+      "Impressions": 1087
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 197,
+      "Date": "/Date(1791676800000)/",
+      "Impressions": 1206
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 234,
+      "Date": "/Date(1791763200000)/",
+      "Impressions": 1852
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 238,
+      "Date": "/Date(1791849600000)/",
+      "Impressions": 2254
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 209,
+      "Date": "/Date(1791936000000)/",
+      "Impressions": 2059
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 228,
+      "Date": "/Date(1792022400000)/",
+      "Impressions": 1965
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 190,
+      "Date": "/Date(1792108800000)/",
+      "Impressions": 1683
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 146,
+      "Date": "/Date(1792195200000)/",
+      "Impressions": 1291
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 166,
+      "Date": "/Date(1792281600000)/",
+      "Impressions": 1903
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 249,
+      "Date": "/Date(1792368000000)/",
+      "Impressions": 2518
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 225,
+      "Date": "/Date(1792454400000)/",
+      "Impressions": 2388
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 273,
+      "Date": "/Date(1792540800000)/",
+      "Impressions": 2674
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 228,
+      "Date": "/Date(1792627200000)/",
+      "Impressions": 2725
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 209,
+      "Date": "/Date(1792713600000)/",
+      "Impressions": 2135
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 194,
+      "Date": "/Date(1792800000000)/",
+      "Impressions": 1630
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 206,
+      "Date": "/Date(1792886400000)/",
+      "Impressions": 1725
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 193,
+      "Date": "/Date(1792972800000)/",
+      "Impressions": 1922
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 247,
+      "Date": "/Date(1793059200000)/",
+      "Impressions": 2307
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 260,
+      "Date": "/Date(1793145600000)/",
+      "Impressions": 2503
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 217,
+      "Date": "/Date(1793232000000)/",
+      "Impressions": 2235
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 197,
+      "Date": "/Date(1793318400000)/",
+      "Impressions": 1831
+    },
+    {
+      "__type": "RankAndTrafficStats:#Microsoft.Bing.Webmaster.Api",
+      "Clicks": 162,
+      "Date": "/Date(1793404800000)/",
+      "Impressions": 1200
+    }
+  ]
+}

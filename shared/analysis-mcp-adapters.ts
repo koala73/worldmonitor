@@ -347,7 +347,7 @@ export function crossSourceSignalsToSignalSummary(
 }
 
 /**
- * `risk:scores:sebuf:v8` -> the `MilitarySurgeCiiLookup` contract, also used as
+ * `risk:scores:sebuf:v14` -> the `MilitarySurgeCiiLookup` contract, also used as
  * per-focal-point CII context. `region` on a CII row is the ISO-2 country code.
  */
 export function riskScoresToCiiLookup(payload: unknown): (countryCode: string) => number | null {
@@ -441,7 +441,19 @@ export function submarineCablesToCableInputs(payload: unknown): CableInput[] {
       });
     }
 
+    // Route geometry ([lon, lat] pairs) is what chokepoint crossing detection
+    // reads; without it a cable that passes a strait without landing nearby
+    // (Bab el-Mandeb, Suez) is never counted as crossing it.
+    const points: [number, number][] = [];
+    for (const entry of asArray(record.points)) {
+      if (!Array.isArray(entry)) continue;
+      const lon = finiteNumber(entry[0]);
+      const lat = finiteNumber(entry[1]);
+      if (lon !== null && lat !== null) points.push([lon, lat]);
+    }
+
     const cable: CableInput = { id, name, countriesServed, landingPoints };
+    if (points.length > 0) cable.points = points;
     const rfsYear = finiteNumber(record.rfsYear);
     if (rfsYear !== null) cable.rfsYear = rfsYear;
     const owners = asArray(record.owners).map((owner) => nonEmptyString(owner)).filter(Boolean);

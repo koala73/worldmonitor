@@ -10,8 +10,9 @@ import {
   readCachedJson,
   setCachedJson,
   setCachedJsonIfAbsent,
+  type CacheReadResult,
 } from '../../../_shared/redis';
-import { resolveFireDetectionTotalCount } from '../../../../src/services/wildfires/payload';
+import { summarizeWildfireDetections } from '../../../../scripts/shared/wildfire-fires-summary.mjs';
 import {
   BASELINE_TTL,
   MIN_SAMPLES,
@@ -65,6 +66,24 @@ function formatMessage(type: string, count: number, mean: number, multiplier: nu
 
 async function tryAcquireLock(): Promise<boolean> {
   return setCachedJsonIfAbsent(BASELINE_LOCK_KEY, 1, BASELINE_LOCK_TTL);
+}
+
+/**
+ * The fires count source is the derived summary (#9509). seed-fire-detections
+ * writes it right after the canonical key in the same run, so a miss means the
+ * reader deployed before the seeder's next tick or that extra-key write failed:
+ * recompute the projection from the canonical key then, and only then. A
+ * present-but-unusable summary keeps its own verdict, a read error on either
+ * key stays an error, and a canonical payload that cannot be summarized is
+ * handed over as read so the parser rejects it: present and undatable, which
+ * fails the content clock closed, never "absent".
+ */
+async function readFiresSummary(summaryKey: string): Promise<CacheReadResult> {
+  const summary = await readCachedJson(summaryKey, true);
+  if (summary.status !== 'miss') return summary;
+  const canonical = await readCachedJson('wildfire:fires:v1', true);
+  if (canonical.status !== 'hit') return canonical;
+  return { status: 'hit', value: summarizeWildfireDetections(canonical.value) ?? canonical.value };
 }
 
 /**
@@ -201,15 +220,14 @@ async function writeTemporalAnomaliesSeedMeta(
  */
 const COUNT_EXTRACTORS: Record<keyof CountSourcePayloads, (data: Record<string, unknown>) => number> = {
   news: (data) => (data.topStories as unknown[] | undefined)?.length ?? 0,
-  satellite_fires: (data) =>
-    // wildfire:fires:v1 is itself capped at WILDFIRE_CANONICAL_DETECTION_LIMIT (#5866)
-    // and carries the pre-cap FIRMS total in `pagination`. Counting the array instead
-    // would saturate this baseline at the cap, silently flattening every fire-volume
-    // anomaly above it — the z-score would read "normal" during a record fire season.
-    resolveFireDetectionTotalCount({
-      fireDetections: (data.fireDetections as unknown[] | undefined) ?? [],
-      pagination: data.pagination as { totalCount?: number } | undefined,
-    }),
+  // The summary's totalCount is the pre-cap total: wildfire:fires:v1 is capped at
+  // WILDFIRE_CANONICAL_DETECTION_LIMIT (#5866), and counting a capped array would
+  // saturate this baseline at the cap, flattening every fire-volume anomaly above
+  // it — the z-score would read "normal" during a record fire season.
+  satellite_fires: (data) => {
+    const total = Number(data.totalCount);
+    return Number.isFinite(total) && total >= 0 ? total : 0;
+  },
   // military:flights:v1 is a RAW payload (no seed envelope): the globally
   // tracked military flights from the seeder/RPC producer.
   military_flights: (data) => (data.flights as unknown[] | undefined)?.length ?? 0,
@@ -283,7 +301,9 @@ export async function listTemporalAnomalies(
           // Railway seeders (same convention as every other seed-key read in
           // server/). The prefixing default made preview rebuilds request
           // rows nothing ever writes, silently emptying the route (#7575).
-          await readCachedJson(sourceKey, true),
+          type === 'satellite_fires'
+            ? await readFiresSummary(sourceKey)
+            : await readCachedJson(sourceKey, true),
         ] as const),
       );
       const erroredSourceTypes = countReads

@@ -3,17 +3,17 @@
 // can render without dragging maplibre+deck.gl into the entry bundle.
 // maplibre-using helpers live in `./basemap-styles.ts` and are loaded
 // lazily alongside MapContainer/DeckGLMap when the map panel mounts.
+import { isDesktopRuntime } from '@/config/desktop-runtime';
 
 const R2_PROXY = import.meta.env.VITE_PMTILES_URL ?? '';
 const R2_PUBLIC = import.meta.env.VITE_PMTILES_URL_PUBLIC ?? '';
-const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
+// isDesktopRuntime() already answers false without a window (#5912).
+const isTauri = isDesktopRuntime();
 export const R2_BASE = isTauri && R2_PUBLIC ? R2_PUBLIC : R2_PROXY;
 
 const hasTilesUrl = !!R2_BASE;
 
 export type PMTilesTheme = 'black' | 'dark' | 'grayscale' | 'light' | 'white';
-export type OpenFreeMapTheme = 'dark' | 'positron';
-export type CartoTheme = 'dark-matter' | 'voyager' | 'positron';
 
 export const FALLBACK_DARK_STYLE = 'https://tiles.openfreemap.org/styles/dark';
 export const FALLBACK_LIGHT_STYLE = 'https://tiles.openfreemap.org/styles/positron';
