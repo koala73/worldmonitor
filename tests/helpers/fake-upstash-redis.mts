@@ -1,4 +1,5 @@
 import { SEED_LOCK_FENCED_SET_SCRIPT, SEED_LOCK_RENEW_SCRIPT } from '../../scripts/_seed-utils.mjs';
+import { RSS_FEED_RENEW_SCRIPT } from '../../shared/rss-feed-renew-script.mjs';
 
 export interface FakeRedisSortedSetEntry {
   member: string;
@@ -251,6 +252,17 @@ export function createRedisFetch(
         if (normalizedVerb === 'EVAL') {
           const keyCount = Number(command[2] ?? 0);
           const script = String(command[1] ?? '');
+          if (script === RSS_FEED_RENEW_SCRIPT) {
+            // Mirrors shared/rss-feed-renew-script.mjs (executed for real in
+            // tests/rss-feed-renew-script.test.mjs): renew only the same parse.
+            const feedKey = String(command[3] ?? '');
+            const [parsedAt, renewed, ttl] = command.slice(4).map(String);
+            let current: { parsedAt?: unknown } | null = null;
+            try { current = JSON.parse(redis.get(feedKey) ?? 'null'); } catch { current = null; }
+            if (!current || current.parsedAt !== Number(parsedAt)) return { result: 0 };
+            writeValue(feedKey, renewed!, Number(ttl));
+            return { result: 1 };
+          }
           if (Number.isInteger(keyCount) && keyCount > 0 && script.includes("ARGV[i] == ''")) {
             const keys = command.slice(3, 3 + keyCount).map(String);
             const argv = command.slice(3 + keyCount);

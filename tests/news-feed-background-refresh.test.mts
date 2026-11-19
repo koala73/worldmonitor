@@ -131,6 +131,24 @@ describe('feed cache background refresh', () => {
     assert.ok(redis.expires.get(KEY)! > 3000, 'a 304 restores the full healthy TTL');
   });
 
+  it('on 304 re-dates the parse it read, and leaves a newer parse a foreground fetch stored meanwhile', async () => {
+    install(() => new Response(null, { status: 304 }));
+    const parsedAt = Date.now() - 10 * 60_000;
+    const stale = await parsed(['Story'], { fetchedAt: parsedAt, parsedAt, validators: { etag: '"v1"' } });
+    seed(stale);
+    assert.equal(await refreshFeedCache(FEED, VARIANT, stale), 'not-modified');
+    assert.equal(cachedEntry().parsedAt, parsedAt);
+    assert.ok(cachedEntry().fetchedAt! > parsedAt, 'the same parse is re-dated');
+
+    // The entry expired during the request and a foreground fetch stored a
+    // newer parse, whose country pool is keyed to that newer parsedAt.
+    redis.redis.delete(`rss:feed-refresh-lock:v1:${VARIANT}:${FEED.url}`);
+    const newer = await parsed(['Newer story'], { fetchedAt: Date.now(), parsedAt: Date.now() });
+    seed(newer);
+    assert.equal(await refreshFeedCache(FEED, VARIANT, stale), 'not-modified');
+    assert.deepEqual(cachedEntry(), newer, 'the older entry is not put back');
+  });
+
   it('replaces the parse and its validators when upstream has new items', async () => {
     install(() => new Response(rss(['Breaking update']), { status: 200, headers: { etag: '"v2"' } }));
     const stale = await parsed(['Story'], { fetchedAt: Date.now() - 10 * 60_000, validators: { etag: '"v1"' } });

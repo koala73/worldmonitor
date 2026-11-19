@@ -91,6 +91,7 @@ import {
 import { newsPublisherCoverageKey, stripAttributionSuffix } from '../../../../shared/story-identity.js';
 // @ts-expect-error — JS module, no declaration file
 import { STORY_ALIAS_PUBLISH_SCRIPT } from '../../../../shared/story-alias-publish-script.mjs';
+import { RSS_FEED_RENEW_SCRIPT } from '../../../../shared/rss-feed-renew-script.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../../../_shared/feelgood-classifier.js';
 import { classifyEphemeralLiveCoverage } from '../../../../shared/ephemeral-live-classifier.js';
@@ -1199,6 +1200,24 @@ const FEED_REFRESH_CONCURRENCY = 20;
 
 export type FeedRefreshOutcome = 'locked' | 'not-modified' | 'updated' | 'failed';
 
+/**
+ * Re-dates the entry a refresh read, only while Redis still holds that parse
+ * (shared/rss-feed-renew-script.mjs). If the entry expired during the request
+ * and a foreground fetch stored a newer parse and country pool, a blind
+ * rewrite would restore the older entry and orphan the newer pool. An entry
+ * from before the split still carries its pool inline and is renewed as it is.
+ */
+async function renewFeedEntry(cacheKey: string, renewed: ParseResult): Promise<void> {
+  if (typeof renewed.parsedAt !== 'number' || process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    await setCachedJson(cacheKey, renewed, CACHE_TTL_HEALTHY_S);
+    return;
+  }
+  await runRedisPipeline([[
+    'EVAL', RSS_FEED_RENEW_SCRIPT, 1, cacheKey,
+    String(renewed.parsedAt), JSON.stringify(renewed), CACHE_TTL_HEALTHY_S,
+  ]]);
+}
+
 export function isDueForRefresh(cached: ParseResult, now: number): boolean {
   return cached.parsedTotal > 0
     && typeof cached.fetchedAt === 'number'
@@ -1227,9 +1246,7 @@ export async function refreshFeedCache(
   const conditional = Date.now() - lastFullParse < CACHE_TTL_HEALTHY_S * 1000;
   const direct = await fetchRssText(feed.url, signal, conditional ? cached.validators : undefined);
   if (direct.notModified) {
-    // An entry from before the split still carries its pool inline; renew it
-    // as it is, since no country entry exists for it to fall back on.
-    await setCachedJson(cacheKey, { ...cached, fetchedAt: Date.now() }, CACHE_TTL_HEALTHY_S);
+    await renewFeedEntry(cacheKey, { ...cached, fetchedAt: Date.now() });
     return 'not-modified';
   }
   let text = direct.text;
