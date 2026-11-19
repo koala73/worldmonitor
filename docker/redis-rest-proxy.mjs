@@ -228,6 +228,18 @@ const STORY_ALIAS_PUBLISH_SCRIPT = [
   'return 1',
 ].join('\n');
 
+// PINNED COPY of shared/rss-feed-renew-script.mjs. A 304 renews a cached feed
+// parse only while Redis still holds that parse, so a delayed refresh cannot
+// put an older entry back over a newer parse and its country pool.
+const RSS_FEED_RENEW_SCRIPT = [
+  "local current = redis.call('GET', KEYS[1])",
+  'if not current then return 0 end',
+  'local ok, entry = pcall(cjson.decode, current)',
+  "if not ok or type(entry) ~= 'table' or entry.parsedAt ~= tonumber(ARGV[1]) then return 0 end",
+  "redis.call('SET', KEYS[1], ARGV[2], 'PXAT', ARGV[3])",
+  'return 1',
+].join('\n');
+
 // PINNED COPY of shared/mcp-quota-reserve-script.mjs. The script atomically
 // reserves a Pro MCP daily-quota slot, rolls back only the rejecting request,
 // and — when the caller enables the clamp via ARGV[4] — clamps failed-rollback
@@ -918,6 +930,7 @@ const ALLOWED_EVAL_SCRIPTS = new Set([
   SOURCE_RETRY_CLAIM_SCRIPT,
   DIGEST_LASTGOOD_PUBLISH_SCRIPT,
   STORY_ALIAS_PUBLISH_SCRIPT,
+  RSS_FEED_RENEW_SCRIPT,
   MCP_QUOTA_RESERVE_SCRIPT,
   RESERVE_FREE_ACCOUNT_ALLOWANCE_SCRIPT,
   READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT,
