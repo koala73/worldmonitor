@@ -256,7 +256,17 @@ async function expectTapTargets(page: Page, label: string, key = 'politics', con
 
 for (const { mobile, checkMarkets, narrowTouchWidth, ...viewport } of VIEWPORTS) {
   test.describe(`panel headers at ${viewport.width}px`, () => {
+    // The test and afterEach have separate deadlines. Each includes one
+    // 90-second readiness poll plus time for navigation or layout checks.
+    test.describe.configure({ timeout: 150_000 });
     test.use({ viewport, isMobile: mobile, hasTouch: mobile, colorScheme: 'dark' });
+
+    if (checkMarkets) {
+      test.afterEach('watchlist title, badge and tap targets', async ({ page }, testInfo) => {
+        await page.emulateMedia({ forcedColors: 'none' });
+        await checkWatchlistHeader(page, viewport.width, mobile, testInfo);
+      });
+    }
 
     test('titles, badges and controls fit', async ({ page }, testInfo) => {
       const settings = {
@@ -390,10 +400,6 @@ for (const { mobile, checkMarkets, narrowTouchWidth, ...viewport } of VIEWPORTS)
             error: data.unavailable,
           });
         }
-      }
-      if (checkMarkets) {
-        await page.emulateMedia({ forcedColors: 'none' });
-        await test.step('watchlist title, badge and tap targets', () => checkWatchlistHeader(page, viewport.width, mobile, testInfo));
       }
     });
   });
