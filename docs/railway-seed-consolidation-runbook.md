@@ -1668,7 +1668,8 @@ fetch('https://backboard.railway.com/graphql/v2',{method:'POST',
 | seed-market-breadth | `node scripts/seed-market-breadth.mjs` | daily (30d history window) | S&P 500 breadth (% above 20/50/200-day, computed from the TradingView constituent scan) |
 | seed-weather-alerts | `node scripts/seed-weather-alerts.mjs` | **planned — not provisioned** | NWS active weather alerts |
 | seed-fx-yoy | `node scripts/seed-fx-yoy.mjs` | daily (25h TTL) | Wide-coverage FX YoY + 24m drawdown (resilience FX-stress inputs) |
-| seed-comtrade-bilateral-hs4 | `node scripts/seed-comtrade-bilateral-hs4.mjs` | **`0 6 1 * *` (monthly, verified 2026-07-27)** | UN Comtrade bilateral HS4 trade flows — only scheduled consumer of the keyed 500/mo Comtrade quota |
+| seed-comtrade-bilateral-hs4 | `node scripts/seed-comtrade-bilateral-hs4.mjs` | **`0 6 1 * *` (monthly, verified 2026-07-27)** | UN Comtrade bilateral HS4 trade flows — scheduled consumer of the keyed 500-call daily Comtrade quota, which it shares with seed-comtrade-bilateral-hs4-ext on the 15th |
+| seed-comtrade-bilateral-hs4-ext | `node scripts/seed-comtrade-bilateral-hs4-ext.mjs` | **`0 6 15 * *` (monthly, provisioned 2026-11-18, service `0d46fcc7-19ec-484f-ab8e-506510205704`)** | UN Comtrade bilateral HS4 for 16 extended headings (rubber, cocoa, coconut and palm kernel oil, fruit, fish and seafood, processed food, oleochemicals), one request per reporter (~197 calls) into `comtrade:bilateral-hs4-ext:*`; mid-month so it does not share a day of the 500/day quota with the core run |
 | seed-hs2-chokepoint-exposure | `node scripts/seed-hs2-chokepoint-exposure.mjs` | periodic (TTL-extended) | HS2 chokepoint trade-exposure (derived) |
 | seed-service-statuses | `node scripts/seed-service-statuses.mjs` | **planned — not provisioned** | Service-status warm-ping; primary seeder is the AIS relay loop |
 | seed-live-video-resolved | `node seed-live-video-resolved.mjs` | **`0 */6 * * *` (verified 2026-09-24)** (health budget 1080 min) | The video each catalog YouTube channel has live now, for the Live News and Live Webcams players (#8545); scripts-root service `11581ac4-24ea-4cfc-bf17-471e41305364` (Railpack, `rootDirectory` `scripts`), reads channel `/live` pages through `LIVE_VIDEO_PROXY_URL` or `PROXY_URL` |
@@ -1692,8 +1693,79 @@ unset, so the seeder uses `PROXY_URL`. The service is enrolled in
 `scripts/railway-native-autodeploy-fleet.json` with `source.checkSuites`
 `false`, like the rest of the fleet.
 
+`seed-comtrade-bilateral-hs4-ext` was provisioned on 2026-11-18 after #10939
+merged. Its config copies `seed-comtrade-bilateral-hs4`: Railpack, build
+command `echo skip`, `rootDirectory` `scripts`, restart `NEVER`,
+asia-southeast1-eqsg3a, 0.5 vCPU and 500 MB, source `main` with
+`source.checkSuites` `false`, and the registry's watch patterns. Its cron is
+`0 6 15 * *`. `COMTRADE_API_KEYS` and `RAILPACK_NODE_VERSION` are Railway
+reference variables to `seed-comtrade-bilateral-hs4`, so both runs use the same
+key. `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `PROXY_URL` and
+`NODE_OPTIONS` reference the shared variables. A deploy does not run a cron
+service, so the first publish comes from the first tick. To publish sooner,
+trigger an off-schedule run of the deployed image on Railway:
+`npx -y @railway/cli@5.71.0 cron run --project 29419572-0b0d-437f-8e71-4fa68daf514f --environment production --service seed-comtrade-bilateral-hs4-ext --yes`
+(pinned: 5.71.0 is the reviewed release that ships the `cron` subcommand, which
+older installed CLIs and the automation pin `5.30.1` lack; never float this on
+`@latest`, since it runs with your Railway token). Its output lands in the
+active deployment's log. The local alternative,
+`railway run --project 29419572-0b0d-437f-8e71-4fa68daf514f --environment production --service seed-comtrade-bilateral-hs4-ext -- node scripts/seed-comtrade-bilateral-hs4-ext.mjs`
+from the repository root, runs your checkout's code on your machine with the
+production service's variables; name the project and environment so a checkout
+linked elsewhere cannot publish outside production. `railway run` without a
+command runs nothing. Either way a full pass spends about 200 calls (up to its
+260-call budget) of the 500-call daily Comtrade quota on the key it shares with
+the core run, which spends about 400 on the 1st of each month. Never start an
+off-schedule run on the 1st, or on a day the core run was retried: the run that
+reaches the quota last is refused and writes partial coverage until its next
+tick. An off-schedule run also moves the 24-day freshness gate
+(`FRESHNESS_GATE_MS`): a scheduled tick less than 24 days after it skips
+without extending the 40-day shard TTLs, so the shards can expire before the
+following tick (a run on December 2 skips December 15, expires around January
+11 and is not replaced until January 15). The gate measures from the
+`fetchedAt` the run writes when it finishes, not from when it starts, so start
+an off-schedule run only when the next 15th is at least 25 days away, which
+leaves a day for the run itself; a run on 2026-11-18 is 27 days before
+December 15 and is safe. If a run lands inside that window, re-run on the next
+15th with the gate bypassed:
+`FORCE_RESEED=true railway run --project 29419572-0b0d-437f-8e71-4fa68daf514f --environment production --service seed-comtrade-bilateral-hs4-ext -- node scripts/seed-comtrade-bilateral-hs4-ext.mjs`.
+A failed run usually arms the same gate: the seeder writes seed-meta with a
+fresh `fetchedAt` even when it publishes no country (a zero-country run, or the
+error path), so a retry from either command above exits at the gate with
+`skipping (set FORCE_RESEED=true to override)` and fetches nothing, and the
+activation marker stays unwritten. The seed-meta write is itself best-effort
+(a failure is logged as `Failed to write seed-meta`), so a run that loses Redis
+partway can leave the old `fetchedAt` in place, and a plain retry then fetches
+again. Before any retry, read `fetchedAt` from
+`GET seed-meta:comtrade:bilateral-hs4-ext` to see whether the gate will stop it,
+and apply the quota rule below either way. To retry within 24 days, prefix the
+local command with `FORCE_RESEED=true`.
+Every retry on the same UTC day adds to the calls the failed run already made,
+whether or not that run ended in HTTP 429. Take the failed run's count from its
+log: the `seed_complete` line's `requests` field, or `Request budget reached
+(N/260)` when the run stopped at its budget, which is a full pass spent without
+any 429. If the run's fetches were refused with HTTP 429 (the breaker logs
+`ABORTING after ... consecutive refused fetches`), the day's quota is spent. A
+same-day retry needs room for another full pass of up to 260 calls, so wait
+until the next UTC day unless the failed run made fewer than 240 calls; an
+error-path run logs no `seed_complete` line, so count it as 260. Comtrade
+exposes no remaining-quota endpoint, so the log and the date rules above are
+the check.
+The first publish sets the durable
+activation marker `seed-activated:comtrade:bilateral-hs4-ext`, which ends the
+health probe's soft state. The marker write is best-effort: a failure is logged
+as `Failed to write activation marker` and the run still succeeds. After the
+first publish, confirm with `EXISTS seed-activated:comtrade:bilateral-hs4-ext`
+(it should return 1). If it is absent, every later run that writes a country
+attempts the write again, but that does not guarantee recovery: the next tick
+can exit at the freshness gate without running, and the retried write can fail
+too, so check the marker again after each run that publishes. To clear the soft
+state without waiting, set it once by hand with
+`SET seed-activated:comtrade:bilateral-hs4-ext 1` (no TTL), only after
+`comtrade:bilateral-hs4-ext:*` keys exist.
+
 The bilateral HS4 cron uses `COMTRADE_API_KEYS` and a 480-request hard budget
-under the provider's 500-call monthly quota. The authenticated route requests
+under the provider's 500-call daily quota (corrected in #7990). The authenticated route requests
 one four-year window (`Y-2` through `Y-5`) in each of two HS4 batches and keeps
 the newest row per product/partner. The public-preview fallback cannot accept
 that period list and tries `Y-2`, then `Y-3`. A 24-day freshness gate prevents

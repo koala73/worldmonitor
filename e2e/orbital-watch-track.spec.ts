@@ -4,7 +4,8 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { findPasses, parseOrbitElements, type GeoPoint, type OmmRecord } from '../shared/orbital/pass-geometry.js';
 import { matchSensorProfile } from '../shared/orbital/sensor-profiles.js';
-import { buildPassTrack, type PassTrack, type TrackPoint } from '../src/services/orbital/track-geometry';
+import { buildPassTrack } from '../src/services/orbital/pass-track';
+import type { PassTrack, TrackPoint } from '../src/services/orbital/track-geometry';
 import { evidenceScreenshot } from './evidence-screenshot';
 
 type HarnessWindow = Window & {

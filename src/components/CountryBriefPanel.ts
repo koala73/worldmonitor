@@ -21,6 +21,8 @@ export interface CountryIntelData {
   skipped?: boolean;
   reason?: string;
   fallback?: boolean;
+  /** The brief is one signal per line (no sentences), not prose. */
+  signalRows?: boolean;
   sources?: BriefSource[];
   evidence?: IntelBriefEvidence[];
 }
@@ -226,6 +228,8 @@ export interface CountryBriefPanel {
   getCode(): string | null;
   getName(): string | null;
   isVisible(): boolean;
+  /** A map click or map menu is opening this brief: closing it returns focus to `target`. */
+  returnFocusTo?(target: HTMLElement): void;
   getTimelineMount(): HTMLElement | null;
   readonly signal: AbortSignal;
   onClose(cb: () => void): void;
@@ -236,7 +240,8 @@ export interface CountryBriefPanel {
   updateInfrastructure(code: string): void;
   showGeoError?(onRetry: () => void): void;
   updateScore?(score: CountryScore | null, signals: CountrySignalCounts): void;
-  isFallbackBrief?(): boolean;
+  /** True when the shown brief is the one-signal-per-line fallback, not prose. */
+  isSignalRowsBrief?(): boolean;
   updateSignals?(signals: CountrySignalCounts, notes?: readonly string[]): void;
   getSignalCounts?(): CountrySignalCounts | null;
   updateSignalDetails?(details: CountryDeepDiveSignalDetails): void;

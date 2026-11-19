@@ -7,6 +7,7 @@ import { loadCountryStockIndexes } from './_country-stock-index-registry.mjs';
 import { MOEX_SOURCE, fetchMoexCountryStockIndexSnapshot } from './_country-stock-index-moex.mjs';
 import { getUsEquitySession, isMultiMarketEquityTradingDay } from './shared/market-hours.cjs';
 import { mergeLastGoodQuotes, resolveMergedQuotesAsOf } from './shared/market-quote-refresh.cjs';
+import { capQuoteSparklines } from './shared/quote-sparkline.cjs';
 import { countCatalogFreshQuotes, loadMarketSeedUniverse } from './shared/market-seed-universe.cjs';
 import {
   authorizedProvidersMissingReason,
@@ -83,7 +84,7 @@ async function fetchMarketQuotes() {
   const fetchedAt = Date.now();
 
   return {
-    quotes: mergedQuotes,
+    quotes: capQuoteSparklines(mergedQuotes),
     finnhubSkipped: !finnhubKey && !avKey,
     skipReason: (!finnhubKey && !avKey) ? authorizedProvidersMissingReason() : '',
     rateLimited: false,

@@ -447,7 +447,8 @@
       "trendRising": "emelkedő",
       "trendFalling": "csökkenő",
       "trendStable": "stabil",
-      "situationLink": "Figyelje a helyzetet: válságok, főcímek, szűk keresztmetszetek és leállások egy felületen"
+      "situationLink": "Figyelje a helyzetet: válságok, főcímek, szűk keresztmetszetek és leállások egy felületen",
+      "pizzaIndexLink": "Pentagon pizzaindex: mennyire zsúfoltak a pizzériák a Pentagon környékén"
     },
     "moments": {
       "eyebrow": "Korrelációs motor",

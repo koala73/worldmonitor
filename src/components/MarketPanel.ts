@@ -2,7 +2,7 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { sparklineSpanHtml } from './_sparkline-span';
 import type { MarketData, CryptoData, TokenData } from '@/types';
-import { formatPrice, formatChange, getChangeClass, getHeatmapClass } from '@/utils';
+import { formatPrice, formatQuotePrice, formatChange, getChangeClass, getHeatmapClass } from '@/utils';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { miniSparkline } from '@/utils/sparkline';
 import { SITE_VARIANT } from '@/config';
@@ -110,7 +110,7 @@ export class MarketPanel extends Panel {
         </div>
         <div class="market-data">
           ${miniSparkline(stock.sparkline, stock.change)}
-          <span class="market-price">${escapeHtml(formatPrice(stock.price!))}</span>
+          <span class="market-price">${escapeHtml(formatQuotePrice(stock.symbol, stock.price))}</span>
           <span class="market-change ${getChangeClass(stock.change!)}">${formatChange(stock.change!)}</span>
         </div>
       </div>

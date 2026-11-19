@@ -1,7 +1,6 @@
 import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
-import { loadOrbitalCatalog } from '@/services/orbital/catalog';
-import { ICESAT2_PROFILE_ID, reservoirNextPassExpiresAt, type ReservoirNextPass, type ReservoirPassSite } from '@/services/orbital/reservoir-next-pass';
-import { getOrbitalPassClient } from '@/services/orbital/pass-client';
+import type { ReservoirPassSite } from '@/services/orbital/reservoir-next-pass';
+import { ICESAT2_PROFILE_ID, reservoirNextPassExpiresAt, type ReservoirNextPass } from '@/services/orbital/reservoir-next-pass-expiry';
 import type { ReservoirLevel } from './reservoir-levels';
 import { fetchReservoirLevels } from './index';
 
@@ -44,8 +43,11 @@ export function loadReservoirNextPasses(sites: readonly ReservoirPassSite[], opt
 function startNextPassScan(sites: readonly ReservoirPassSite[]): NextPassEntry {
   const entry: NextPassEntry = { until: Date.now() + NEXT_PASS_REUSE_MS, passes: Promise.resolve(null), waiting: 0, work: new AbortController() };
   const forget = () => { if (pending === entry) pending = null; return null; };
-  entry.passes = loadOrbitalCatalog()
-    .then(catalog => {
+  // The catalog and pass client load on the first scan: the map popup and the reservoir panel import
+  // this module on every dashboard visit, and the pass engine behind them is only needed for a scan.
+  entry.passes = Promise.all([import('@/services/orbital/catalog'), import('@/services/orbital/pass-client')])
+    .then(async ([{ loadOrbitalCatalog }, { getOrbitalPassClient }]) => {
+      const catalog = await loadOrbitalCatalog();
       const satellites = catalog.satellites.filter(sat => sat.profileId === ICESAT2_PROFILE_ID);
       return getOrbitalPassClient().reservoirNextPasses({ satellites, sites: [...sites], nowMs: Date.now() }, { signal: entry.work.signal });
     })

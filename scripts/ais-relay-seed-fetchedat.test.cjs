@@ -30,6 +30,7 @@ const {
   planYahooRefresh,
   resolveMergedQuotesAsOf,
 } = require('./shared/market-quote-refresh.cjs');
+const { QUOTE_SPARKLINE_MAX_POINTS, capQuoteSparklines } = require('./shared/quote-sparkline.cjs');
 
 const relaySource = readFileSync(join(__dirname, 'ais-relay.cjs'), 'utf8');
 
@@ -52,6 +53,8 @@ function loadFunctions(names) {
 const { envelopeWrite, buildEnvelope } = loadFunctions(['buildEnvelope', 'envelopeWrite']);
 void buildEnvelope; // pulled in only so envelopeWrite can call it
 globalThis.envelopeWrite = envelopeWrite;
+// seedMarketQuotes caps the sparklines it publishes with the shared helper the relay requires at load.
+globalThis.capQuoteSparklines = capQuoteSparklines;
 
 // Records every upstashSet(key, value, ttlSeconds) call — both the ones made
 // indirectly through envelopeWrite and the seeder's own bare seed-meta write.
@@ -241,4 +244,46 @@ test('seedMarketQuotes: two consecutive cycles refresh only NQ auxiliaries after
 
   assert.deepEqual(fetchedByCycle[0], ['^GSPC', ...nqAuxiliary]);
   assert.deepEqual(fetchedByCycle[1], nqAuxiliary);
+});
+
+test('seedMarketQuotes: publishes 1-minute stock sparklines capped to the dashboard sample', async () => {
+  const { seedMarketQuotes } = loadFunctions(['seedMarketQuotes']);
+  const minuteCloses = Array.from({ length: 764 }, (_, i) => 100 + i);
+
+  globalThis.MARKET_SYMBOLS = ['^NSEI'];
+  globalThis.MARKET_AUXILIARY_SYMBOLS = [];
+  globalThis.YAHOO_ONLY = new Set(globalThis.MARKET_SYMBOLS);
+  globalThis.MARKET_META = new Map([['^NSEI', { name: 'Nifty 50', display: 'NIFTY' }]]);
+  globalThis.FINNHUB_API_KEY = '';
+  globalThis.fetchFinnhubQuoteDirect = async () => null;
+  globalThis.envelopeRead = async () => null;
+  globalThis.planYahooRefresh = planYahooRefresh;
+  globalThis.mergeLastGoodQuotes = mergeLastGoodQuotes;
+  globalThis.resolveMergedQuotesAsOf = resolveMergedQuotesAsOf;
+  globalThis._lastYahooMarketRefreshAt = 0;
+  globalThis.MARKET_YAHOO_REFRESH_INTERVAL_MS = 300_000;
+  globalThis.fetchYahooChartDirect = async () => ({ price: 200, change: 1, sparkline: minuteCloses });
+  globalThis.sleep = async () => {};
+  globalThis.MARKET_SEED_TTL = 7200;
+  globalThis.CHINA_COUNTRY_STOCK_SYMBOL = '000001.SS';
+  globalThis.writeChinaCountryStockIndex = async () => {};
+  globalThis._lastEquityQuoteCount = 0;
+  globalThis.publishNotificationEvent = async () => {};
+  globalThis.marketAlertCoalesceKey = () => 'coalesce-key';
+  const { calls, upstashSet } = captureUpstashSet();
+  globalThis.upstashSet = upstashSet;
+
+  const restoreClock = mockIncrementingClock();
+  try {
+    assert.equal(await seedMarketQuotes(), 1);
+  } finally {
+    restoreClock();
+  }
+
+  const bootstrap = calls.find((c) => c.key === 'market:stocks-bootstrap:v1');
+  assert.ok(bootstrap, 'expected a stocks-bootstrap write');
+  const [quote] = bootstrap.value.data.quotes;
+  assert.equal(quote.sparkline.length, QUOTE_SPARKLINE_MAX_POINTS);
+  assert.equal(quote.sparkline[0], minuteCloses[0]);
+  assert.equal(quote.sparkline.at(-1), minuteCloses.at(-1));
 });

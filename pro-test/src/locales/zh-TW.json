@@ -447,7 +447,8 @@
       "trendRising": "上升",
       "trendFalling": "下降",
       "trendStable": "穩定",
-      "situationLink": "監控局勢：在一個看板上彙總危機、頭條、卡點和中斷事件"
+      "situationLink": "監控局勢：在一個看板上彙總危機、頭條、卡點和中斷事件",
+      "pizzaIndexLink": "五角大樓披薩指數：五角大樓附近披薩店的忙碌程度"
     },
     "moments": {
       "eyebrow": "關聯引擎",

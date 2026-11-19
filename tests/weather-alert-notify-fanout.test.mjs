@@ -368,7 +368,9 @@ describe('weather_alert notification fan-out — per-country slots (#7243)', () 
     // publisher's title-hash dedup.
     assert.match(
       AIS_RELAY_SOURCE,
-      /const coalesceKey = weatherAlertFamilyKey\(a\);/,
+      // Plus the severity band (#10873), so a Severe -> Extreme upgrade of one
+      // family is not swallowed by the first alert's lifetime-long dedup.
+      /const coalesceKey = notifyPolicy\.weatherAlertCoalesceKey\(weatherAlertFamilyKey\(a\), a\.severity\);/,
       'the publisher must key dedup on the same family key the selector partitions by',
     );
   });

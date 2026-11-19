@@ -85,7 +85,7 @@
     "predictionMarkets": "पूर्वानुमान बाजार",
     "loadingMarkets": "पूर्वानुमान बाजार लोड कर रहे हैं...",
     "infrastructure": "बुनियादी ढांचे का प्रदर्शन",
-    "briefUnavailable": "AI ब्रीफ उपलब्ध नहीं — सेटिंग्स में OPENROUTER_API_KEY सेट करें।",
+    "briefUnavailable": "AI ब्रीफ़ अभी उपलब्ध नहीं है।",
     "cached": "कैश किए गए",
     "fresh": "ताजा",
     "noMarkets": "इस देश के लिए कोई सक्रिय बाजार नहीं।",
@@ -195,13 +195,13 @@
     },
     "fallback": {
       "instabilityIndex": "**अस्थिरता सूचकांक: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} सक्रिय प्रदर्शन पाए गए",
-      "aircraftTracked": "{{count}} सैनिक विमान ट्रैक किए गए",
-      "vesselsTracked": "{{count}} सैनिक जहाज ट्रैक किए गए",
-      "internetOutages": "{{count}} इंटरनेट बाधाएं",
-      "recentEarthquakes": "{{count}} हाल के भूकंप",
+      "protestsDetected": "सक्रिय प्रदर्शन: {{count}}",
+      "aircraftTracked": "ट्रैक किए गए सैन्य विमान: {{count}}",
+      "vesselsTracked": "ट्रैक किए गए सैन्य पोत: {{count}}",
+      "internetOutages": "इंटरनेट व्यवधान: {{count}}",
+      "recentEarthquakes": "हाल के भूकंप: {{count}}",
       "stockIndex": "स्टॉक इंडेक्स: {{value}}",
-      "activeStrikes": "{{count}} सक्रिय हड़तालें पाई गईं"
+      "activeStrikes": "हमले और अवरोधन: {{count}}"
     },
     "countryFacts": "देश की जानकारी",
     "loadingFacts": "देश की जानकारी लोड कर रहे हैं...",
@@ -702,14 +702,17 @@
         "techevent": "टेक इवेंट",
         "techhq": "टेक मुख्यालय",
         "accelerator": "एक्सेलेरेटर",
-        "flight": "उड़ान"
+        "flight": "उड़ान",
+        "alert": "अलर्ट"
       },
       "flightOnGround": "जमीं पर",
       "flightAirborne": "FL{{fl}} · {{kts}} नॉट",
       "flightMilitary": "सैन्य · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "सैन्य · {{type}} · जमीन पर",
       "flightSearchHint": "लाइव स्थिति देखने के लिए Enter दबाएं या क्लिक करें",
-      "flightNotFound": "{{callsign}} के लिए कोई लाइव स्थिति नहीं मिली"
+      "flightNotFound": "{{callsign}} के लिए कोई लाइव स्थिति नहीं मिली",
+      "sentAlerts": "आपको भेजे गए अलर्ट",
+      "sentAlertTime": "{{time}} को भेजा गया"
     },
     "signal": {
       "title": "इंटेलिजेंस खोज",
@@ -877,7 +880,7 @@
       "fresh": "ताजा",
       "noMarkets": "कोई अनुमान बाजार नहीं मिला",
       "predictionMarkets": "अनुमान बाजार",
-      "unavailable": "AI सारांश उपलब्ध नहीं — सेटिंग्स में OPENROUTER_API_KEY सेट करें।"
+      "unavailable": "AI ब्रीफ़ अभी उपलब्ध नहीं है।"
     },
     "countryBrief": {
       "identifying": "देश पहचान रहे हैं...",
@@ -893,7 +896,7 @@
       "predictionMarkets": "अनुमान बाजार",
       "loadingMarkets": "अनुमान बाजार लोड हो रहे हैं...",
       "infrastructure": "इन्फ्रास्ट्रक्चर एक्सपोजर",
-      "briefUnavailable": "AI सारांश उपलब्ध नहीं — सेटिंग्स में OPENROUTER_API_KEY सेट करें।",
+      "briefUnavailable": "AI ब्रीफ़ अभी उपलब्ध नहीं है।",
       "cached": "कैश हुआ",
       "fresh": "ताजा",
       "noMarkets": "कोई अनुमान बाजार नहीं मिला",
@@ -5859,6 +5862,13 @@
       "seasonalHint": "सतर्क करें जब नवीनतम मापा गया स्तर वर्ष के इस समय उस जलाशय द्वारा आमतौर पर मापे जाने वाले स्तर से काफ़ी नीचे हो।",
       "quietNote": "ये सतर्कताएं तब भी आती हैं जब रीयल-टाइम सतर्कताएं केवल गंभीर पर सेट हों। शांत घंटों में ये मौन रहती हैं।",
       "quietNoteBatch": "ये सतर्कताएं तब भी आती हैं जब रीयल-टाइम सतर्कताएं केवल गंभीर पर सेट हों। शांत घंटों में ये मौन रहती हैं, या यदि आप Batch चुनते हैं तो शांत घंटे समाप्त होने तक रोक ली जाती हैं।"
+    },
+    "briefLanguage": {
+      "label": "ब्रीफ़ की भाषा",
+      "hint": "आपका दैनिक ब्रीफ़ {{language}} में लिखा जाएगा।",
+      "sameAsApp": "ऐप की भाषा के समान",
+      "loadFailed": "लोड करने में विफल",
+      "saveFailed": "वह सहेजा नहीं जा सका। फिर से कोशिश करें।"
     }
   }
 }

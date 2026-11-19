@@ -203,10 +203,6 @@ describe('flushStaleRefreshes behavior', () => {
     timers.runAll();
   });
 
-  it('loads flushStaleRefreshes from App.ts source', () => {
-    assert.equal(typeof flushStaleRefreshes, 'function');
-  });
-
   it('re-triggers services hidden longer than their interval', () => {
     const flushed = [];
 

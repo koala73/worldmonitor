@@ -30,8 +30,10 @@ import {
   checkFailClosedScopedIpRateLimit,
   formatTrustedRateLimitPrincipal,
   hasEndpointRatePolicy,
+  isGlobalRateLimitDenialKnown,
   RATE_LIMIT_DEGRADED_HEADERS,
   TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER,
+  type RateLimitOptions,
 } from './_shared/rate-limit';
 import {
   drainResponseHeaders,
@@ -388,6 +390,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/trade/v1/get-trade-restrictions': 'daily',
   '/api/trade/v1/get-customs-revenue': 'daily',
   '/api/trade/v1/list-comtrade-flows': 'daily',
+  '/api/trade/v1/get-monthly-sitc-trade': 'daily',
   '/api/economic/v1/list-world-bank-indicators': 'daily',
   '/api/economic/v1/get-energy-capacity': 'daily',
   '/api/economic/v1/list-grocery-basket-prices': 'daily',
@@ -452,6 +455,8 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/news/v1/list-country-headlines': 'fast',
   '/api/news/v1/list-media-perspective': 'fast',
   '/api/news/v1/list-news-pool': 'fast',
+  // Account-private: one user's delivered alerts must never enter a shared cache.
+  '/api/news/v1/list-sent-alerts': 'no-store',
   // #9796: cached feed rows for a panel's enabled sources below the category cap.
   '/api/news/v1/list-source-items': 'fast',
   '/api/news/v1/list-label-changes': 'fast',
@@ -461,6 +466,13 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/news/v1/search-fact-checks': 'slow',
   // /verify claim search over the feed caches; the CDN key includes the claim.
   '/api/news/v1/search-claim-headlines': 'fast',
+  // Cmd+K headline search. Never stored: an operator revocation is applied on
+  // every request the handler answers, and a stored answer (the caller's own
+  // browser kept one for five minutes, thirty on an error) would go on
+  // listing the revoked article. The browser search source remembers answers
+  // itself for backspacing.
+  '/api/news/v1/search-headlines': 'no-store',
+  '/api/news/v1/search-headline-archive': 'no-store',
   '/api/intelligence/v1/get-country-facts': 'daily',
   '/api/intelligence/v1/list-security-advisories': 'slow',
   '/api/intelligence/v1/list-satellites': 'static',
@@ -593,6 +605,30 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
 };
 
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
+
+/**
+ * Routes that answer with one account's private data, read by the user id the
+ * gateway stamps on the request.
+ *
+ * On these routes only a verified Clerk session is the account. A `wm_` key is
+ * never looked up, so it can never select whose data is read:
+ *   - A desktop that stores user A's key while user B is signed in forwards
+ *     both credentials. B gets B's data, on B's own entitlement.
+ *   - The same desktop forwards no bearer for a signed-in user who is not Pro,
+ *     and none while a session token is slow to load. That request is key-only
+ *     and indistinguishable from an API client's, so a key alone is refused.
+ *
+ * Every other route keeps the rule that a valid `wm_` key outranks the bearer.
+ *
+ * Each path here must be tier-gated (ENDPOINT_ENTITLEMENTS): only a tier gate
+ * resolves the session and lets it stand in for a key.
+ * server/__tests__/gateway-list-sent-alerts.test.ts fails for one that is not.
+ * Give it `no-store` in RPC_CACHE_TIER as well.
+ */
+export const ACCOUNT_PRIVATE_RPC_PATHS = new Set<string>([
+  '/api/news/v1/list-sent-alerts',
+]);
+const ACCOUNT_PRIVATE_SESSION_ERROR = 'Sign in to read account data; an API key cannot select the account';
 
 export const PUBLIC_NO_AUTH_RPC_PATHS = new Set<string>([
   '/api/scorecard/v1/get-five-factor-scorecard',
@@ -1087,6 +1123,11 @@ const MARKDOWN_TWIN_CALLER_HEADERS = [
 export function hasCredentialBearingHeader(request: Request): boolean {
   return CREDENTIAL_BEARING_HEADERS.some((header) => Boolean(request.headers.get(header)));
 }
+
+// Only handlers with bounded Redis cache reads, no upstream fetches or side effects.
+const GLOBAL_RATE_LIMIT_OVERLAP_PATHS = new Set([
+  '/api/news/v1/list-source-items',
+]);
 
 function stripTrailingSlashes(value: string): string {
   let end = value.length;
@@ -1699,6 +1740,11 @@ export function createDomainGateway(
     // a valid bearer session and an X-Api-Key wm_ header; when that happens, the
     // wm_ key is still an explicit authenticating credential and its owner must
     // pass the #4611 apiAccess gate.
+    //
+    // Except on ACCOUNT_PRIVATE_RPC_PATHS: there the key is never looked up, so
+    // its owner cannot become the account. A request with a session is admitted
+    // as that session by the Clerk-session override below; one without is a 401.
+    const isAccountPrivateRpc = ACCOUNT_PRIVATE_RPC_PATHS.has(pathname);
     let isUserApiKey = false;
     // The validated wm_ principal with its kind (plan 2026-10-25-001). Set
     // together with isUserApiKey; the #4611 gate below reads the kind.
@@ -1709,7 +1755,9 @@ export function createDomainGateway(
       keyCheck.valid &&
       !keyCheck.required &&
       keyCheck.kind === 'session';
-    if (keyCheck.required && !keyCheck.valid && wmKey.startsWith('wm_')) {
+    if (isAccountPrivateRpc && keyCheck.required && !keyCheck.valid && wmKey.startsWith('wm_')) {
+      keyCheck = { ...keyCheck, error: ACCOUNT_PRIVATE_SESSION_ERROR };
+    } else if (keyCheck.required && !keyCheck.valid && wmKey.startsWith('wm_')) {
       // Unknown wm_ credentials require a Convex-backed hash lookup before we
       // know the account principal. Bound that unattributed work by IP first:
       // otherwise an attacker can rotate syntactically-valid keys and evade the
@@ -2117,9 +2165,12 @@ export function createDomainGateway(
         return createGatewayAuthErrorResponse(403, 'Request intent required for cookie-authorized AI work', corsHeaders);
       }
     }
+    // On ACCOUNT_PRIVATE_RPC_PATHS the session is the account, so its own
+    // entitlement decides even when an operator key rides along. With no
+    // session the handler refuses the operator key itself (401).
     if (
       !dockerSelfHostSessionAuthorized &&
-      !isEnterpriseAuth &&
+      (!isEnterpriseAuth || (isAccountPrivateRpc && Boolean(sessionUserId))) &&
       !internalMcpVerified &&
       !seedRefreshVerified &&
       !relayWarmPingVerified
@@ -2360,6 +2411,8 @@ export function createDomainGateway(
     // If dispatch throws later (e.g. a handler response body that fails to
     // stream), the outer wrapper releases the charge.
     pendingDailyMeterReleases.set(originalRequest, releaseDailyMeter);
+
+    let pendingGlobalRateLimit: Promise<Response | null> | null = null;
 
     // Internal-MCP verified requests skip the remaining gateway layer: the MCP edge
     // already enforced 50/day + 60/min per userId in api/mcp.ts. A second
@@ -2606,12 +2659,24 @@ export function createDomainGateway(
         // so without this a customer's own scraper drains the 600/min budget
         // and their dashboard 429s. In production on 2026-09-11 that was 598
         // scraper successes against 2 for the same person's browser.
-        const rateLimitResponse = rateLimitPrincipalUserId
-          ? await checkRateLimit(request, corsHeaders, {
+        const rateLimitOptions: RateLimitOptions = rateLimitPrincipalUserId
+          ? {
               principalUserId: rateLimitPrincipalUserId,
               principalScope: isUserApiKey ? 'api_key' : 'session',
-            })
-          : await checkRateLimit(request, corsHeaders);
+            }
+          : {};
+        // Read before checkRateLimit, which may record a new denial.
+        const denialKnown = isGlobalRateLimitDenialKnown(request, rateLimitOptions);
+        const rateLimitCheck = checkRateLimit(request, corsHeaders, rateLimitOptions);
+        // All remaining pre-handler gates must be inactive before speculating.
+        // A caller already denied in this window waits, so its handler never
+        // runs: repeat 429s cost no handler Redis reads.
+        if (GLOBAL_RATE_LIMIT_OVERLAP_PATHS.has(pathname) && request.method === 'GET' && !denialKnown
+          && !pendingPostToGetCompatError && !requiresDirectLlmQuota && !hasIdempotencyKey && !isCountryHistoryRpc) {
+          pendingGlobalRateLimit = rateLimitCheck;
+          void pendingGlobalRateLimit.catch(() => {});
+        }
+        const rateLimitResponse = pendingGlobalRateLimit ? null : await rateLimitCheck;
         if (rateLimitResponse) {
           await releaseDailyMeter();
           const reason = getRateLimitTelemetryReason(
@@ -2793,7 +2858,7 @@ export function createDomainGateway(
       bindCountryHistoryAccess(requestForHandler, isEnterpriseAuth ? 365 : countryHistoryDays(ent));
     }
     try {
-      response = await runWithUsageScope(
+      const handlerResult = runWithUsageScope(
         {
           ctx: ctx ?? { waitUntil: () => {} },
           requestId: deriveRequestId(originalRequest),
@@ -2803,6 +2868,18 @@ export function createDomainGateway(
         },
         () => handlerCall(requestForHandler),
       );
+      if (pendingGlobalRateLimit) {
+        // A denied request discards even a rejected handler result.
+        void handlerResult.catch(() => {});
+        const rateLimitResponse = await pendingGlobalRateLimit;
+        if (rateLimitResponse) {
+          await releaseDailyMeter();
+          const reason = getRateLimitTelemetryReason(rateLimitResponse, 'rate_limit_429_global');
+          emitRequest(rateLimitResponse.status, reason, null);
+          return rateLimitResponse;
+        }
+      }
+      response = await handlerResult;
     } catch (err) {
       console.error('[gateway] Unhandled handler error:', err);
       // A crash in our handler is not a served request; do not bill it.

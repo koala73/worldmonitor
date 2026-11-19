@@ -1,0 +1,275 @@
+{
+  "_doc": "Recorded alert incidents replayed by tests/alert-replay.test.mts (#10976). Each wording is one row of shadow:score-log:v5 as production queued it: source label (often a topic feed, not the publisher), classifier label, edition (variant), publisher timestamp, the time the relay queued it (seenAt), corroboration count and logged score. expected is what should happen; knownMiss names the issue that should make an expected alert pass. Corroboration and source are frozen inputs here, so a fix that changes how production derives them leaves these scores unchanged and the pin stays green: the fix must replay its changed inputs through this set, and the entry is updated when the pin then fails. scoreNow, when present, is the score today's code gives because a later change moved it (for example a source tier), with the change in scoreNowBecause.",
+  "incidents": [
+    {
+      "id": "adnoc-hormuz-vessel-attack",
+      "date": "2026-11-18",
+      "summary": "ADNOC said one of its vessels was attacked in the Strait of Hormuz, 11 crew injured and one missing. No realtime subscriber was alerted.",
+      "evidence": "https://github.com/koala73/worldmonitor/issues/10975",
+      "expected": "alert",
+      "knownMiss": "#10977",
+      "wordings": [
+        {
+          "source": "Gulf News",
+          "title": "Middle East War: Iran attacks Bahrain, ADNOC vessel hit in Hormuz, Kuwait drone threats keep Gulf on high alert as US hits Iran’s Qeshm",
+          "label": "critical",
+          "variant": "full",
+          "publishedAt": "2026-11-18T03:21:05.000Z",
+          "seenAt": "2026-11-18T07:01:46.475Z",
+          "corroboration": 1,
+          "observedScore": 81
+        },
+        {
+          "source": "Shipping & Freight",
+          "title": "ADNOC Says One of Its Vessels Attacked in Strait of Hormuz - - WANA News Agency",
+          "label": "critical",
+          "variant": "commodity",
+          "publishedAt": "2026-11-18T08:00:25.000Z",
+          "seenAt": "2026-11-18T08:26:28.576Z",
+          "corroboration": 1,
+          "observedScore": 73
+        },
+        {
+          "source": "Tanker & Shipping",
+          "title": "UAE's ADNOC L&S says one crew member missing after attack on its vessel in Hormuz - Reuters",
+          "label": "high",
+          "variant": "energy",
+          "publishedAt": "2026-11-18T07:41:00.000Z",
+          "seenAt": "2026-11-18T08:55:28.678Z",
+          "corroboration": 1,
+          "observedScore": 59
+        },
+        {
+          "source": "Tanker & Shipping",
+          "title": "UAE's ADNOC L&S says one crew member missing after attack on its vessel in Hormuz - Rock Hill Herald",
+          "label": "high",
+          "variant": "energy",
+          "publishedAt": "2026-11-18T08:24:06.000Z",
+          "seenAt": "2026-11-18T09:42:08.364Z",
+          "corroboration": 2,
+          "observedScore": 62
+        },
+        {
+          "source": "OilPrice.com",
+          "title": "ADNOC Ship Attacked in Hormuz as Maritime Security Risks Rise",
+          "label": "critical",
+          "variant": "energy",
+          "publishedAt": "2026-11-18T10:00:00.000Z",
+          "seenAt": "2026-11-18T10:02:28.652Z",
+          "corroboration": 1,
+          "observedScore": 73
+        }
+      ]
+    },
+    {
+      "id": "hormuz-lpg-tanker-strike",
+      "date": "2026-11-17",
+      "summary": "An LPG tanker was struck in the Strait of Hormuz and its crew abandoned ship. Every critical label came from an energy or commodity topic feed (tier 4, 72 to 73); the full-edition copies were labelled high. No realtime subscriber was alerted.",
+      "evidence": "https://github.com/koala73/worldmonitor/issues/10976",
+      "expected": "alert",
+      "knownMiss": "#10977",
+      "wordings": [
+        {
+          "source": "Times of India",
+          "title": "Missile attack targets LPG tanker with 24 Indians in Strait of Hormuz; all crew safe",
+          "label": "high",
+          "variant": "full",
+          "publishedAt": "2026-11-17T09:57:21.000Z",
+          "seenAt": "2026-11-17T10:33:38.775Z",
+          "corroboration": 1,
+          "observedScore": 69
+        },
+        {
+          "source": "Tanker & Shipping",
+          "title": "Crew abandon gas tanker off Hormuz after being hit by projectile, sources say - Reuters",
+          "label": "high",
+          "variant": "energy",
+          "publishedAt": "2026-11-17T14:27:07.000Z",
+          "seenAt": "2026-11-17T15:02:44.043Z",
+          "corroboration": 1,
+          "observedScore": 59
+        },
+        {
+          "source": "Strategic Chokepoints",
+          "title": "Second Strike on LPG Tanker in Strait of Hormuz Leaves One Missing, Two Injured - gCaptain",
+          "label": "critical",
+          "variant": "energy",
+          "publishedAt": "2026-11-17T15:00:21.000Z",
+          "seenAt": "2026-11-17T15:33:47.828Z",
+          "corroboration": 1,
+          "observedScore": 73
+        },
+        {
+          "source": "Shipping & Freight",
+          "title": "Inferno engulfs gas tanker in strait of Hormuz after reported strike – video - The Guardian",
+          "label": "critical",
+          "variant": "commodity",
+          "publishedAt": "2026-11-17T18:20:00.000Z",
+          "seenAt": "2026-11-17T18:37:32.699Z",
+          "corroboration": 1,
+          "observedScore": 73
+        },
+        {
+          "source": "Reuters — Panama",
+          "title": "Crew abandons gas tanker off Oman after being hit by projectile, sources say - Reuters",
+          "label": "high",
+          "variant": "full",
+          "publishedAt": "2026-11-17T18:46:04.000Z",
+          "seenAt": "2026-11-17T21:52:35.769Z",
+          "corroboration": 1,
+          "observedScore": 73
+        },
+        {
+          "source": "Tanker & Shipping",
+          "title": "Gas tanker in Strait of Hormuz set ablaze - NBC News",
+          "label": "critical",
+          "variant": "energy",
+          "publishedAt": "2026-11-18T02:16:00.000Z",
+          "seenAt": "2026-11-18T04:35:14.205Z",
+          "corroboration": 1,
+          "observedScore": 72
+        },
+        {
+          "source": "The Independent",
+          "title": "Dramatic moment oil tanker erupts into huge inferno in Strait of Hormuz",
+          "label": "high",
+          "variant": "full",
+          "publishedAt": "2026-11-18T09:38:08.000Z",
+          "seenAt": "2026-11-18T09:50:44.030Z",
+          "corroboration": 1,
+          "observedScore": 69
+        },
+        {
+          "source": "Shipping & Freight",
+          "title": "Dramatic moment oil tanker erupts into huge inferno in Strait of Hormuz - The Independent",
+          "label": "critical",
+          "variant": "commodity",
+          "publishedAt": "2026-11-18T09:38:00.000Z",
+          "seenAt": "2026-11-18T10:14:57.039Z",
+          "corroboration": 1,
+          "observedScore": 73
+        }
+      ]
+    },
+    {
+      "id": "crimean-bridge-collapse",
+      "date": "2026-11-18",
+      "summary": "A section of the Crimean Bridge collapsed after Ukrainian strikes. The BBC copy scored 83 on 2026-11-17 and reached 13 realtime subscribers. The 2026-11-18 copies scored under the bar, but they repeat a story that had already alerted.",
+      "evidence": "https://github.com/koala73/worldmonitor/issues/10975",
+      "expected": "alert",
+      "wordings": [
+        {
+          "source": "BBC World",
+          "title": "Putin's Crimean Bridge partly collapses as Zelensky hails 'unprecedented' attack by Ukraine",
+          "label": "critical",
+          "variant": "full",
+          "publishedAt": "2026-11-17T16:56:38.000Z",
+          "seenAt": "2026-11-17T17:16:23.788Z",
+          "corroboration": 1,
+          "observedScore": 83
+        },
+        {
+          "source": "Kyiv Independent",
+          "title": "Ukraine war latest: Entire section of Crimean Bridge collapses after 'seven-phase operation,' Zelensky reveals - The Kyiv Independent",
+          "label": "critical",
+          "variant": "full",
+          "publishedAt": "2026-11-17T19:20:42.000Z",
+          "seenAt": "2026-11-18T00:31:15.981Z",
+          "corroboration": 1,
+          "observedScore": 81
+        },
+        {
+          "source": "The Hindu",
+          "title": "Ukraine strikes Russia’s Crimean bridge with drones and missiles as aerial attacks escalate",
+          "label": "critical",
+          "variant": "full",
+          "publishedAt": "2026-11-18T03:57:22.000Z",
+          "seenAt": "2026-11-18T04:08:34.669Z",
+          "corroboration": 1,
+          "observedScore": 73
+        },
+        {
+          "source": "NDTV",
+          "title": "Ukrainian Drones, Missiles Strike Kerch Bridge That Links Russia With Crimea",
+          "label": "critical",
+          "variant": "full",
+          "publishedAt": "2026-11-18T03:48:49.000Z",
+          "seenAt": "2026-11-18T04:08:35.217Z",
+          "corroboration": 1,
+          "observedScore": 73
+        }
+      ]
+    },
+    {
+      "id": "us-strike-near-hormuz",
+      "date": "2026-11-12",
+      "summary": "US strikes on Iranian missile launchers near the Strait of Hormuz.",
+      "evidence": "https://github.com/koala73/worldmonitor/issues/10975",
+      "expected": "alert",
+      "knownMiss": "#10977",
+      "wordings": [
+        {
+          "source": "Strategic Chokepoints",
+          "title": "U.S. Strikes Iranian Launchers Near Strait of Hormuz, Sending Oil Prices Higher - EnergyNow.com",
+          "label": "critical",
+          "variant": "energy",
+          "publishedAt": "2026-11-11T20:08:58.000Z",
+          "seenAt": "2026-11-12T01:58:08.336Z",
+          "corroboration": 1,
+          "observedScore": 71
+        }
+      ]
+    },
+    {
+      "id": "hormuz-mine-strikes",
+      "date": "2026-11-14",
+      "summary": "Two oil tankers hit mines and caught fire in the Strait of Hormuz. The National's copy scored 83 twelve minutes after CNA's 73, so the story cleared the bar at the time; delivery is unverified because the sent-alert history starts on 2026-11-17. CNA now resolves to tier 2 as well.",
+      "evidence": "https://github.com/koala73/worldmonitor/issues/10975",
+      "expected": "alert",
+      "wordings": [
+        {
+          "source": "CNA",
+          "title": "Iran says two oil tankers hit by mines in Strait of Hormuz",
+          "label": "critical",
+          "variant": "full",
+          "publishedAt": "2026-11-14T04:43:50.000Z",
+          "seenAt": "2026-11-14T05:01:22.231Z",
+          "corroboration": 1,
+          "observedScore": 73,
+          "scoreNow": 83,
+          "scoreNowBecause": "#10941 read CNA as a tier-2 publisher (was unlisted, tier 4)"
+        },
+        {
+          "source": "The National",
+          "title": "Middle East latest: IRGC says two oil tankers caught fire after hitting sea mines in Hormuz",
+          "label": "critical",
+          "variant": "full",
+          "publishedAt": "2026-11-14T04:42:53.000Z",
+          "seenAt": "2026-11-14T05:13:34.625Z",
+          "corroboration": 1,
+          "observedScore": 83
+        },
+        {
+          "source": "Shipping & Freight",
+          "title": "Iran says oil tanker on fire after naval mine strike in eastern Strait of Hormuz - The Jerusalem Post",
+          "label": "critical",
+          "variant": "commodity",
+          "publishedAt": "2026-11-14T12:00:58.000Z",
+          "seenAt": "2026-11-14T12:45:32.504Z",
+          "corroboration": 1,
+          "observedScore": 73
+        },
+        {
+          "source": "Strategic Chokepoints",
+          "title": "Oil tanker on fire after hitting mine in Strait of Hormuz - The Independent",
+          "label": "critical",
+          "variant": "energy",
+          "publishedAt": "2026-11-14T11:28:00.000Z",
+          "seenAt": "2026-11-14T13:04:30.884Z",
+          "corroboration": 1,
+          "observedScore": 72
+        }
+      ]
+    }
+  ]
+}

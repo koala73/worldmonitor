@@ -64,9 +64,22 @@ COPY scripts/lib/occurrence-events.cjs ./scripts/lib/occurrence-events.cjs
 COPY scripts/lib/x-news-accounts.cjs ./scripts/lib/x-news-accounts.cjs
 COPY scripts/lib/poll-generation-guard.cjs ./scripts/lib/poll-generation-guard.cjs
 COPY scripts/lib/x-poll-cycle.cjs ./scripts/lib/x-poll-cycle.cjs
+COPY scripts/lib/wsb-tickers.cjs ./scripts/lib/wsb-tickers.cjs
 COPY scripts/lib/x-post-budget.cjs ./scripts/lib/x-post-budget.cjs
 # Stale-digest alert gate required by ais-relay.cjs (#7084).
 COPY scripts/lib/digest-stale-gate.cjs ./scripts/lib/digest-stale-gate.cjs
+COPY scripts/lib/news-story-key.cjs ./scripts/lib/news-story-key.cjs
+# news-story-key.cjs loads this copy, not /app/shared/: it imports
+# @noble/hashes, which resolves from scripts/node_modules only.
+COPY scripts/shared/story-identity.js ./scripts/shared/story-identity.js
+# Cross-wording corroboration (#10977) and its import closure.
+COPY scripts/lib/news-corroboration.mjs ./scripts/lib/news-corroboration.mjs
+COPY scripts/lib/brief-embedding.mjs ./scripts/lib/brief-embedding.mjs
+COPY scripts/lib/brief-dedup-consts.mjs ./scripts/lib/brief-dedup-consts.mjs
+COPY scripts/lib/brief-dedup-jaccard.mjs ./scripts/lib/brief-dedup-jaccard.mjs
+COPY scripts/lib/_upstash-pipeline.mjs ./scripts/lib/_upstash-pipeline.mjs
+COPY scripts/lib/llm-chain.cjs ./scripts/lib/llm-chain.cjs
+COPY scripts/shared/publisher-families.js ./scripts/shared/publisher-families.js
 # Publisher-link relay gate required by digest-stale-gate.cjs (#8398):
 # relay-emitted rss_alert events must not carry off-publisher links.
 COPY scripts/lib/publisher-link-relay-gate.cjs ./scripts/lib/publisher-link-relay-gate.cjs
@@ -75,6 +88,7 @@ COPY scripts/lib/classify-digest-request.cjs ./scripts/lib/classify-digest-reque
 COPY scripts/lib/news-digest-warm.cjs ./scripts/lib/news-digest-warm.cjs
 COPY scripts/lib/saudi-civil-defense-alerts.cjs ./scripts/lib/saudi-civil-defense-alerts.cjs
 COPY scripts/lib/chokepoint-disruption-alerts.cjs ./scripts/lib/chokepoint-disruption-alerts.cjs
+COPY scripts/lib/notification-publish-policy.cjs ./scripts/lib/notification-publish-policy.cjs
 # Middle East strike feed (conflict:iran-events:v1), required at relay startup;
 # the gazetteer reads outbreak-places.json at require time. The GDELT backstop
 # lazily imports _conflict-gdelt-bulk.mjs and its two helpers below.

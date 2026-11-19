@@ -19,6 +19,7 @@ import type { Clerk } from '@clerk/clerk-js';
 import {
   getClerk,
   isClerkSignInOpen,
+  registerSignUpEscapeHook,
   registerSignUpResumeHook,
   subscribeClerk,
 } from '@/services/clerk';
@@ -166,6 +167,13 @@ export interface SignUpResumeController {
    * after the click was taken.
    */
   resumeOnUserIntent: (fallback: () => void, surface?: ResumeSurfaceIntent) => boolean;
+  /**
+   * The customer left this attempt for sign-in (they already have an account).
+   * Closes the resume card and stops the automatic resume (hydration) and the
+   * Sign In click from resuming it, so Sign In reaches Clerk's sign-in form. An
+   * explicit Create account click still resumes it, as after any dismissal.
+   */
+  releaseAttempt: () => void;
 }
 
 /**
@@ -177,10 +185,15 @@ export interface SignUpResumeController {
 export type ResumeSurfaceIntent = 'sign-in' | 'sign-up';
 
 export function createSignUpResumeController(ports: SignUpResumePorts): SignUpResumeController {
+  // Released in this page even when storage rejects the persisted marker.
+  const released = new Set<SignUpAttemptId>();
+  // Bumped by each release, so only a resend that was pending across one is dropped.
+  let releaseGeneration = 0;
+  const isDismissed = (id: SignUpAttemptId): boolean => released.has(id) || ports.markers.dismissed(id);
   const decide = (trigger: ResumeTrigger): ResumeDecision => {
     const snap = ports.readSnapshot();
     if (!snap) return { kind: 'none', reason: 'no-attempt' };
-    const dismissedAttemptId = snap.signUp.kind === 'pending' && ports.markers.dismissed(snap.signUp.id)
+    const dismissedAttemptId = snap.signUp.kind === 'pending' && isDismissed(snap.signUp.id)
       ? snap.signUp.id
       : null;
     return decideResume({ ...snap, trigger, dismissedAttemptId, clerkModalOpen: ports.clerkModalOpen() }, ports.now());
@@ -200,7 +213,12 @@ export function createSignUpResumeController(ports: SignUpResumePorts): SignUpRe
       mount();
       return;
     }
-    void ports.resendCode().then(mount, onResendFailed);
+    // The customer may leave for sign-in while the resend is in flight.
+    const generation = releaseGeneration;
+    void ports.resendCode().then(
+      () => { if (generation === releaseGeneration) mount(); },
+      () => { if (generation === releaseGeneration) onResendFailed(); },
+    );
   };
 
   return {
@@ -215,9 +233,17 @@ export function createSignUpResumeController(ports: SignUpResumePorts): SignUpRe
     resumeOnUserIntent(fallback, intent = 'sign-up') {
       const decision = decide('user');
       if (decision.kind !== 'resume') return false;
-      if (intent === 'sign-in' && (decision.code !== 'live' || ports.markers.dismissed(decision.attemptId))) return false;
+      if (intent === 'sign-in' && (decision.code !== 'live' || isDismissed(decision.attemptId))) return false;
       open(decision, 'user', fallback);
       return true;
+    },
+    releaseAttempt() {
+      const snap = ports.readSnapshot();
+      if (snap?.signUp.kind !== 'pending') return;
+      released.add(snap.signUp.id);
+      releaseGeneration += 1;
+      ports.markers.markDismissed(snap.signUp.id);
+      if (ports.surface.isOpen()) ports.surface.close();
     },
   };
 }
@@ -270,5 +296,7 @@ export function installSignUpResume(surface: ResumeSurface): SignUpResumeControl
     first = false;
   });
   registerSignUpResumeHook(controller.resumeOnUserIntent);
+  // Sign in on the sign-up code card leaves this attempt for good.
+  registerSignUpEscapeHook(controller.releaseAttempt);
   return controller;
 }

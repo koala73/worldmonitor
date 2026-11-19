@@ -34,7 +34,30 @@
 // made `//evil.example/x` and `/\\evil.example/x` unparseable here (so they
 // bypassed `host:evil.example`) while the classifier resolved them to
 // https://evil.example/x and every text sink delivered that.
-const { NOTIFY_DASHBOARD_URL } = require('./notify-fields.cjs');
+const {
+  NOTIFY_DASHBOARD_URL,
+  NOTIFY_ALERT_UTM_SOURCE,
+  NOTIFY_ALERT_UTM_MEDIUM,
+  NOTIFY_ALERT_CHANNELS,
+} = require('./notify-fields.cjs');
+
+// The relay tags an alert's article link with a referrer at delivery
+// (withAlertReferrer in ./notify-fields.cjs). The tag is not part of the
+// link's identity: an entry written from the feed's URL must block the tagged
+// link a channel delivered, and an entry pasted from a delivered alert must
+// block the untagged payload link. Only these exact parameters are dropped; a
+// publisher's own UTM values still tell two URLs apart.
+const ALERT_REFERRER_PARAMS = new Set([
+  `utm_source=${NOTIFY_ALERT_UTM_SOURCE}`,
+  `utm_medium=${NOTIFY_ALERT_UTM_MEDIUM}`,
+  ...NOTIFY_ALERT_CHANNELS.map((channel) => `utm_campaign=${channel}`),
+]);
+
+function withoutAlertReferrer(search) {
+  if (search.length < 2) return search;
+  const kept = search.slice(1).split('&').filter((part) => !ALERT_REFERRER_PARAMS.has(part));
+  return kept.length > 0 ? `?${kept.join('&')}` : '';
+}
 
 const RESOLVABLE_LINK_PATTERN = /^(?:[a-z][a-z0-9+.-]*:|\/)/i;
 
@@ -74,7 +97,7 @@ function normalizeSuppressedUrl(raw) {
   } catch {
     // Malformed % sequences stay encoded — still comparable, just verbatim.
   }
-  return `${protocol}//${host}${path}${parsed.search}${parsed.hash}`;
+  return `${protocol}//${host}${path}${withoutAlertReferrer(parsed.search)}${parsed.hash}`;
 }
 
 /**

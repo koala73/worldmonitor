@@ -108,6 +108,11 @@ COPY scripts/shared/notify-fields.cjs ./scripts/shared/
 COPY shared/publisher-families.js shared/publisher-families.d.ts ./shared/
 COPY scripts/shared/publisher-families.js ./scripts/shared/
 COPY shared/brief-llm-core.js shared/brief-llm-core.d.ts ./shared/
+# Brief localization (scripts/lib/brief-l10n.mjs) names the target language.
+COPY shared/ui-languages.js shared/ui-languages.d.ts ./shared/
+# Fixed brief chrome strings (magazine, email, chat, Teams, subjects).
+COPY shared/brief-strings.js shared/brief-strings.d.ts shared/brief-strings.data.js ./shared/
+COPY shared/brief-text.js shared/brief-text.d.ts ./shared/
 COPY server/_shared/brief-render.js server/_shared/brief-render.d.ts server/_shared/brief-fonts.generated.js ./server/_shared/
 # llm-sanitize is imported by scripts/lib/brief-llm.mjs on the fallback
 # path (legacy whyMatters generator) to strip prompt-injection patterns

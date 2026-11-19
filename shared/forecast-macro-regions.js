@@ -534,3 +534,14 @@ export function getForecastMacroRegion(region) {
 
   return null;
 }
+
+/**
+ * ISO2 codes assigned to a macro region, sorted. The chat analyst expands a
+ * region named in a question ("Latin America") to its countries (#10863).
+ *
+ * @param {ForecastMacroRegionId} regionId
+ * @returns {string[]}
+ */
+export function getForecastMacroRegionMembers(regionId) {
+  return Object.keys(ISO2_TO_REGION).filter((code) => ISO2_TO_REGION[code] === regionId).sort();
+}

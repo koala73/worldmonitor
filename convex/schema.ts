@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { deliveryAttemptValidator, deliveryFailureValidator } from "./lib/notificationDelivery";
 import {
   agentFeedbackKindValidator,
   agentFeedbackStatusValidator,
@@ -146,6 +147,8 @@ export default defineSchema({
         channelType: v.literal("telegram"),
         chatId: v.string(),
         verified: v.boolean(),
+        deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         telegramOwnership: v.optional(v.literal("verified_callback")),
         linkedAt: v.number(),
       }),
@@ -154,6 +157,8 @@ export default defineSchema({
         channelType: v.literal("slack"),
         webhookEnvelope: v.string(),
         verified: v.boolean(),
+        deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         linkedAt: v.number(),
         slackChannelName: v.optional(v.string()),
         slackTeamName: v.optional(v.string()),
@@ -165,6 +170,8 @@ export default defineSchema({
         email: v.string(),
         emailOwnership: v.optional(v.literal("verified_account")),
         verified: v.boolean(),
+        deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         linkedAt: v.number(),
       }),
       v.object({
@@ -172,6 +179,8 @@ export default defineSchema({
         channelType: v.literal("discord"),
         webhookEnvelope: v.string(),
         verified: v.boolean(),
+        deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         linkedAt: v.number(),
         discordGuildId: v.optional(v.string()),
         discordChannelId: v.optional(v.string()),
@@ -184,6 +193,8 @@ export default defineSchema({
         channelType: v.literal("teams"),
         webhookEnvelope: v.string(),
         verified: v.boolean(),
+        deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         linkedAt: v.number(),
       }),
       v.object({
@@ -191,6 +202,8 @@ export default defineSchema({
         channelType: v.literal("webhook"),
         webhookEnvelope: v.string(),
         verified: v.boolean(),
+        deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         linkedAt: v.number(),
         webhookLabel: v.optional(v.string()),
         webhookSecret: v.optional(v.string()),
@@ -209,6 +222,8 @@ export default defineSchema({
         p256dh: v.string(),
         auth: v.string(),
         verified: v.boolean(),
+        deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         linkedAt: v.number(),
         userAgent: v.optional(v.string()),
       }),
@@ -273,6 +288,28 @@ export default defineSchema({
   // `country` is a canonical ISO 3166-1 alpha-2 code (uppercase, e.g. "US",
   // "GB", "JP"). Validation against the canonical alpha-2 registry happens
   // at the mutation boundary (U13: `convex/lib/iso2.ts::isValidIso2`).
+  // One row per alert rule the realtime scope migration (#10873) visited: the
+  // rule's presence here is the one-time marker, so a re-run never re-scopes a
+  // rule its owner has since set back to no countries. Also the outbox for the
+  // one-time notice email (one email per user, however many variant rows).
+  alertScopeNotices: defineTable({
+    userId: v.string(),
+    ruleId: v.id("alertRules"),
+    variant: v.string(),
+    // scoped: the user's followed countries were copied into the rule.
+    // global_only: the user follows no country, so the rule was left empty
+    // and receives global critical events only.
+    outcome: v.union(v.literal("scoped"), v.literal("global_only")),
+    countries: v.array(v.string()),
+    createdAt: v.number(),
+    emailStatus: apiPlanLimitEmailStatus,
+    emailAttempts: v.optional(v.number()),
+    emailedAt: v.optional(v.number()),
+  })
+    .index("by_rule", ["ruleId"])
+    .index("by_user", ["userId"])
+    .index("by_emailStatus", ["emailStatus"]),
+
   followedCountries: defineTable({
     userId: v.string(),
     country: v.string(),
@@ -1103,6 +1140,10 @@ export default defineSchema({
     normalizedEmail: v.optional(v.string()), // Lowercased mirror of email; joined against registrations
     localeTag: v.optional(v.string()), // Full BCP 47 tag (e.g. "zh-CN", "en-US"); kept for future analytics
     localePrimary: v.optional(v.string()), // Lowercased primary subtag (e.g. "zh", "en"); broadcast filter target
+    // Explicit Settings → Language choice (wm-locale-explicit). Absent = never chosen.
+    uiLanguage: v.optional(v.string()),
+    // Notification-settings override for the brief. Absent = follow uiLanguage.
+    briefLanguage: v.optional(v.string()),
     timezone: v.optional(v.string()), // IANA zone (e.g. "Asia/Shanghai")
     country: v.optional(v.string()), // ISO 3166-1 alpha-2; CLIENT-REPORTED — see warning above
     firstSeenAt: v.number(),
