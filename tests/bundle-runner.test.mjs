@@ -1979,7 +1979,7 @@ test('a stalled section that failed at the source since its last good fetch is r
   }));
   assert.equal(code, 1, 'a stale section stays loud whatever the cause');
   assert.match(stdout, /\[Bundle:test\] Finished .* ran:1 skipped:10 deferred:1 failed:0 graceful:0 stalled:1/);
-  assert.match(stderr, /\[VICTIM\] Deferred, but its data is \d+min old .* This is a failing source, not starvation: its last admitted run at \S+ ended GRACEFUL_FAIL \(graceful fetch failure \(exit 75\)\), and no tick has deferred it since/);
+  assert.match(stderr, /\[VICTIM\] Deferred, but its data is \d+min old .* This is a failing source, not starvation: its last admitted run at \S+ ended GRACEFUL_FAIL \(graceful fetch failure \(exit 75\)\), and no deferral has been recorded since/);
   assert.match(stderr, /older than 2x their interval — 1 failing at the source, 0 starved by the budget\. Exiting non-zero\./);
   assert.doesNotMatch(stderr, /starvation, not pressure/);
 });
@@ -1997,6 +1997,18 @@ test('a stalled section deferred after its last failed run is not blamed on the 
   assert.match(stderr, /\[VICTIM\] .* This is starvation, not pressure: its last admitted run at \S+ ended GRACEFUL_FAIL \(graceful fetch failure \(exit 75\)\), and a tick deferred it again at \S+\. Check both the upstream and the budget\./);
   assert.match(stderr, /older than 2x their interval — starvation while the bundle reported progress/);
   assert.doesNotMatch(stderr, /failing source/);
+});
+
+test('an unreadable failure record leaves the stall cause unknown', async () => {
+  const { code, stderr } = await runStalledVictim(
+    'unreadable-failure',
+    (fetchedAt) => ({ at: fetchedAt + 60_000, status: 'GRACEFUL_FAIL', reason: 'graceful fetch failure (exit 75)' }),
+    undefined,
+    { failGet: (key) => key === sectionFailureKey('test', 'VICTIM') },
+  );
+  assert.equal(code, 1);
+  assert.match(stderr, /\[VICTIM\] .* The cause is unknown: its failure record could not be read/);
+  assert.doesNotMatch(stderr, /failing source, not starvation|starvation, not pressure/);
 });
 
 test('an unreadable deferral record does not let a stall be blamed on the source', async () => {

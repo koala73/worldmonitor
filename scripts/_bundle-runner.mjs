@@ -865,9 +865,10 @@ export async function runBundle(label, sections, opts = {}) {
   // the stall does not count as a deferral after the failure.
   const stallCauses = await Promise.all(stalledSections.map(async (stall) => {
     const [failure, deferral] = await Promise.all([
-      readRedisKey(sectionFailureKey(label, stall.section.label)),
+      readRedisKeyOrUndefined(sectionFailureKey(label, stall.section.label)),
       readRedisKeyOrUndefined(sectionDeferralKey(label, stall.section.label)),
     ]);
+    if (failure === undefined) return { historyUnread: true };
     // Only a failure after the last good fetch explains the age. An older one
     // was followed by a success, so the section has been starved since.
     if (!Number.isFinite(failure?.at) || failure.at <= stall.fetchedAt) return null;
@@ -883,10 +884,15 @@ export async function runBundle(label, sections, opts = {}) {
     const intervalMin = Math.round(section.intervalMs / 60_000);
     const head = `  [${section.label}] Deferred, but its data is ${ageMin}min old — over ${STALL_AGE_INTERVAL_MULTIPLE}x its ${intervalMin}min interval. `;
     const cause = stallCauses[i];
-    const lastRun = cause
+    const lastRun = cause?.failure
       ? `its last admitted run at ${new Date(cause.failure.at).toISOString()} ended ${cause.failure.status} (${cause.failure.reason})`
       : '';
-    if (cause?.deferralUnknown) {
+    if (cause?.historyUnread) {
+      console.error(
+        `${head}The cause is unknown: its failure record could not be read, so a failing source cannot be ruled out. `
+        + 'Check both the upstream and the budget.',
+      );
+    } else if (cause?.deferralUnknown) {
       console.error(
         `${head}This may be starvation: ${lastRun}, but its deferral record could not be read, `
         + 'so a later budget loss cannot be ruled out. Check both the upstream and the budget.',
@@ -894,7 +900,7 @@ export async function runBundle(label, sections, opts = {}) {
     } else if (cause && cause.deferredAfter == null) {
       failingAtSource++;
       console.error(
-        `${head}This is a failing source, not starvation: ${lastRun}, and no tick has deferred it since. `
+        `${head}This is a failing source, not starvation: ${lastRun}, and no deferral has been recorded since. `
         + 'Check the upstream before changing budget or order.',
       );
     } else if (cause) {
