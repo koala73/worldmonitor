@@ -74,17 +74,23 @@ const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 export const REDIS_READ_TIMEOUT_MS = 5_000;
 
 async function readRedisKey(key) {
-  if (!REDIS_URL || !REDIS_TOKEN) return null;
+  return (await readRedisKeyOrUndefined(key)) ?? null;
+}
+
+// Like readRedisKey, but a failed read returns undefined so callers that must
+// not mistake an unreadable key for a missing one can tell them apart.
+async function readRedisKeyOrUndefined(key) {
+  if (!REDIS_URL || !REDIS_TOKEN) return undefined;
   try {
     const resp = await fetch(`${REDIS_URL}/get/${encodeURIComponent(key)}`, {
       headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
       signal: AbortSignal.timeout(REDIS_READ_TIMEOUT_MS),
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) return undefined;
     const body = await resp.json();
     return body.result ? JSON.parse(body.result) : null;
   } catch {
-    return null;
+    return undefined;
   }
 }
 
@@ -860,13 +866,15 @@ export async function runBundle(label, sections, opts = {}) {
   const stallCauses = await Promise.all(stalledSections.map(async (stall) => {
     const [failure, deferral] = await Promise.all([
       readRedisKey(sectionFailureKey(label, stall.section.label)),
-      readRedisKey(sectionDeferralKey(label, stall.section.label)),
+      readRedisKeyOrUndefined(sectionDeferralKey(label, stall.section.label)),
     ]);
     // Only a failure after the last good fetch explains the age. An older one
     // was followed by a success, so the section has been starved since.
     if (!Number.isFinite(failure?.at) || failure.at <= stall.fetchedAt) return null;
+    // An unreadable deferral record is not proof that nothing deferred it.
+    if (deferral === undefined) return { failure, deferredAfter: null, deferralUnknown: true };
     const deferredAfter = Number.isFinite(deferral?.at) && deferral.at > failure.at ? deferral.at : null;
-    return { failure, deferredAfter };
+    return { failure, deferredAfter, deferralUnknown: false };
   }));
   await writeSectionOutcomes(label, outcomeWrites);
   let failingAtSource = 0;
@@ -878,7 +886,12 @@ export async function runBundle(label, sections, opts = {}) {
     const lastRun = cause
       ? `its last admitted run at ${new Date(cause.failure.at).toISOString()} ended ${cause.failure.status} (${cause.failure.reason})`
       : '';
-    if (cause && cause.deferredAfter == null) {
+    if (cause?.deferralUnknown) {
+      console.error(
+        `${head}This may be starvation: ${lastRun}, but its deferral record could not be read, `
+        + 'so a later budget loss cannot be ruled out. Check both the upstream and the budget.',
+      );
+    } else if (cause && cause.deferredAfter == null) {
       failingAtSource++;
       console.error(
         `${head}This is a failing source, not starvation: ${lastRun}, and no tick has deferred it since. `

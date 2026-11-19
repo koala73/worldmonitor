@@ -464,6 +464,8 @@ async function startFakeUpstash({
   // the runner's REDIS_READ_TIMEOUT_MS or the read aborts and the section reads
   // as due instead of fresh.
   getDelayMs = 0,
+  // Answer a GET for a matching key with HTTP 503, as a failed Upstash read.
+  failGet,
 } = {}) {
   const pipelines = [];
   const commands = [];
@@ -528,6 +530,10 @@ async function startFakeUpstash({
     if (req.method === 'GET' && req.url?.startsWith('/get/')) {
       const key = decodeURIComponent(req.url.slice('/get/'.length));
       reads.push(key);
+      if (failGet?.(key)) {
+        res.writeHead(503).end();
+        return;
+      }
       const send = () => {
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({ result: strings.get(key) ?? null }));
@@ -1927,7 +1933,7 @@ test('a deferred section older than 2x its interval fails the tick even when sib
   }
 });
 
-async function runStalledVictim(prefix, failureRecord, deferralRecord) {
+async function runStalledVictim(prefix, failureRecord, deferralRecord, redisOptions = {}) {
   // Same budget shape as the stall test above: ten slow freshness reads leave
   // VICTIM too little budget, and its 3h-old seed-meta (3x a 1h interval)
   // makes the deferral a stall.
@@ -1942,7 +1948,7 @@ async function runStalledVictim(prefix, failureRecord, deferralRecord) {
   ]);
   if (failureRecord) strings.set(sectionFailureKey('test', 'VICTIM'), JSON.stringify(failureRecord(fetchedAt)));
   if (deferralRecord) strings.set(sectionDeferralKey('test', 'VICTIM'), JSON.stringify(deferralRecord(fetchedAt)));
-  const redis = await startFakeUpstash({ getDelayMs: 2_000 / STARVE_TIME_SCALE, strings });
+  const redis = await startFakeUpstash({ getDelayMs: 2_000 / STARVE_TIME_SCALE, strings, ...redisOptions });
   try {
     const run = await runBundleWith(
       [
@@ -1989,6 +1995,21 @@ test('a stalled section deferred after its last failed run is not blamed on the 
   );
   assert.equal(code, 1);
   assert.match(stderr, /\[VICTIM\] .* This is starvation, not pressure: its last admitted run at \S+ ended GRACEFUL_FAIL \(graceful fetch failure \(exit 75\)\), and a tick deferred it again at \S+\. Check both the upstream and the budget\./);
+  assert.match(stderr, /older than 2x their interval — starvation while the bundle reported progress/);
+  assert.doesNotMatch(stderr, /failing source/);
+});
+
+test('an unreadable deferral record does not let a stall be blamed on the source', async () => {
+  // A 503 on the deferral read must not read as "no deferral since".
+  const { code, stdout, stderr } = await runStalledVictim(
+    'unreadable',
+    (fetchedAt) => ({ at: fetchedAt + 60_000, status: 'GRACEFUL_FAIL', reason: 'graceful fetch failure (exit 75)' }),
+    (fetchedAt) => ({ at: fetchedAt + 120_000 }),
+    { failGet: (key) => key === sectionDeferralKey('test', 'VICTIM') },
+  );
+  assert.equal(code, 1);
+  assert.match(stdout, /stalled:1/);
+  assert.match(stderr, /\[VICTIM\] .* This may be starvation: its last admitted run at \S+ ended GRACEFUL_FAIL .*, but its deferral record could not be read/);
   assert.match(stderr, /older than 2x their interval — starvation while the bundle reported progress/);
   assert.doesNotMatch(stderr, /failing source/);
 });
