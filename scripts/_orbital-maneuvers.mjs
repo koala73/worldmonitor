@@ -170,14 +170,21 @@ function cleanHistory(entries) {
  * Each epoch's elements replaced by the median of a three-epoch window, so a one-epoch refit drops
  * out. The first and last epochs have one neighbour, so their window is the epoch, its neighbour and
  * the line through the next two extended to the epoch: a refit on the newest epoch stays out of the J2
- * rate of the step it confirms, and a steady drift is not pulled back by a day.
+ * rate of the step it confirms, and a steady drift is not pulled back by a day. The line is extended
+ * by the actual epoch spacing, so a gap before the newest epoch does not pull a drift back either.
  */
 function smoothedElements(history) {
   const n = history.length;
+  // The line through epochs a and b, evaluated at epoch k (epochs are distinct after cleanHistory).
+  const extend = (a, b, k, field) => {
+    const ya = history[a][field];
+    const yb = history[b][field];
+    return yb + ((yb - ya) * (history[k].epoch - history[b].epoch)) / (history[b].epoch - history[a].epoch);
+  };
   const mid = (k, field) => {
     if (n < 3) return history[k][field];
-    if (k === 0) return median([history[0][field], history[1][field], 2 * history[1][field] - history[2][field]]);
-    if (k === n - 1) return median([history[k][field], history[k - 1][field], 2 * history[k - 1][field] - history[k - 2][field]]);
+    if (k === 0) return median([history[0][field], history[1][field], extend(2, 1, 0, field)]);
+    if (k === n - 1) return median([history[k][field], history[k - 1][field], extend(k - 2, k - 1, k, field)]);
     return median([history[k - 1][field], history[k][field], history[k + 1][field]]);
   };
   return history.map((_, k) => ({
