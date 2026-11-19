@@ -16,7 +16,7 @@ import {
 import { isProUser } from '@/services/widget-store';
 import { SITE_VARIANT } from '@/config/variant';
 import { I18N_RESOURCES_LOADED_EVENT, t } from '@/services/i18n';
-import { copyText } from '@/utils/copy-text';
+import { copyText, dismissSecretCopyFallback } from '@/utils/copy-text';
 import { replaceRawI18nKeyPlaceholders } from '@/utils/i18n-raw-key-healer';
 import { createSettingsButton } from '@/components/settings-button';
 import { confirmDialog } from '@/components/confirm-dialog';
@@ -532,11 +532,11 @@ export class UnifiedSettings {
       if (target.closest('.api-keys-copy-btn')) {
         const key = this.newlyCreatedKey;
         if (key) {
-          void copyText(key).then((copied) => {
-            if (!copied) return;
-            const btn = this.overlay.querySelector<HTMLElement>('.api-keys-copy-btn');
-            if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 1500); }
-          });
+          this.copyOwnedSecret(
+            key,
+            () => this.overlay.classList.contains('active') && this.newlyCreatedKey === key,
+            '.api-keys-copy-btn',
+          );
         }
         return;
       }
@@ -555,11 +555,11 @@ export class UnifiedSettings {
       if (target.closest('.embed-keys-copy-btn')) {
         const key = this.newlyCreatedEmbedKey;
         if (key) {
-          void copyText(key).then((copied) => {
-            if (!copied) return;
-            const btn = this.overlay.querySelector<HTMLElement>('.embed-keys-copy-btn');
-            if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 1500); }
-          });
+          this.copyOwnedSecret(
+            key,
+            () => this.overlay.classList.contains('active') && this.newlyCreatedEmbedKey === key,
+            '.embed-keys-copy-btn',
+          );
         }
         return;
       }
@@ -689,9 +689,25 @@ export class UnifiedSettings {
     this.unsubscribeSelfHostKey = subscribeSelfHostKey(() => this.refreshSelfHostKeySection());
   }
 
+  private copyOwnedSecret(secret: string, stillHeld: () => boolean, buttonSelector: string): void {
+    void copyText(secret, { secret: true }).then((copied) => {
+      if (!stillHeld()) {
+        dismissSecretCopyFallback();
+        return;
+      }
+      if (!copied) return;
+      const btn = this.overlay.querySelector<HTMLElement>(buttonSelector);
+      if (btn) {
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+      }
+    });
+  }
+
   private handleAccountIdentityChange(nextUserId: string | null): void {
     if (nextUserId === this.accountUserId) return;
 
+    dismissSecretCopyFallback();
     this.closeDeletionDialog();
     this.accountUserId = nextUserId;
     this.accountDataGeneration += 1;
@@ -911,6 +927,7 @@ export class UnifiedSettings {
   }
 
   private teardownSettings(origin: OverlayCloseOrigin = 'control'): void {
+    dismissSecretCopyFallback();
     this.releasePageEntry();
     if (origin === 'control' && this.historyRegistered) {
       overlayHistory.close('settings');
@@ -998,6 +1015,7 @@ export class UnifiedSettings {
   }
 
   public destroy(): void {
+    dismissSecretCopyFallback();
     this.releasePageEntry();
     if (this.historyRegistered) overlayHistory.close('settings');
     this.historyRegistered = false;

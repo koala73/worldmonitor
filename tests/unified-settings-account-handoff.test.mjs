@@ -51,6 +51,7 @@ describe('UnifiedSettings account handoff', () => {
     const keysResult = new Promise((resolve) => {
       resolveKeys = resolve;
     });
+    let dismissedSecrets = 0;
     const Harness = transpileHarness(
       [
         extractMethod(settingsSource, 'private handleAccountIdentityChange('),
@@ -59,10 +60,11 @@ describe('UnifiedSettings account handoff', () => {
         extractMethod(settingsSource, 'private isAccountRequestCurrent('),
         extractMethod(settingsSource, 'private async loadApiKeys('),
       ],
-      ['getAuthState', 'listApiKeys'],
+      ['getAuthState', 'listApiKeys', 'dismissSecretCopyFallback'],
     )(
       () => ({ user: currentUserId ? { id: currentUserId } : null }),
       () => keysResult,
+      () => { dismissedSecrets += 1; },
     );
     const instance = new Harness();
     const renders = [];
@@ -115,6 +117,7 @@ describe('UnifiedSettings account handoff', () => {
     assert.deepEqual(instance.apiKeys, []);
     assert.equal(instance.apiKeysLoading, false);
     assert.equal(instance.apiKeysError, '');
+    assert.equal(dismissedSecrets, 1, 'a revealed API key must leave the page with the account that owned it');
     assert.equal(instance.newlyCreatedKey, null);
     assert.deepEqual(instance.embedKeys, []);
     assert.equal(instance.embedKeysLoading, false);

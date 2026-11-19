@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
-import { copyText } from '@/utils/copy-text';
+import { copyText, dismissSecretCopyFallback } from '@/utils/copy-text';
 import { createBrowserEnvironment } from './helpers/mini-dom.mts';
 
 const SHARE_URL = 'https://www.worldmonitor.app/dashboard?c=UA';
@@ -108,7 +108,7 @@ describe('copyText', () => {
 
     assert.equal(copied, false);
     assert.equal(fallbackValue(), SHARE_URL);
-    assert.equal(document.querySelector('textarea'), null);
+    assert.equal((document.querySelector('.wm-copy-fallback-input') as { tagName?: string } | null)?.tagName, 'TEXTAREA');
 
     install('missing', 'throw');
     const thrown = await copyText(SHARE_URL).then(
@@ -130,5 +130,58 @@ describe('copyText', () => {
     assert.equal(copied, true);
     assert.deepEqual(harness.commands, ['copy']);
     assert.equal(fallbackValue(), undefined);
+  });
+
+  it('keeps line breaks in the manual copy field', async () => {
+    install('missing', 'missing');
+    const text = 'Use the tool.\nCountries: Ukraine (UA).';
+
+    const copied = await copyText(text);
+
+    assert.equal(copied, false);
+    assert.equal(fallbackValue(), text);
+  });
+
+  it('returns focus to the control that started an execCommand copy', async () => {
+    install('missing', 'success');
+    const button = document.createElement('button');
+    document.body.appendChild(button);
+    button.focus();
+
+    const copied = await copyText(SHARE_URL);
+
+    assert.equal(copied, true);
+    assert.equal(document.activeElement, button);
+  });
+
+  it('returns focus when the manual copy field is closed', async () => {
+    install('missing', 'missing');
+    const button = document.createElement('button');
+    document.body.appendChild(button);
+    button.focus();
+
+    await copyText(SHARE_URL);
+    assert.equal(document.activeElement, document.querySelector('.wm-copy-fallback-input'));
+
+    (document.querySelector('.wm-copy-fallback-close') as HTMLButtonElement | null)?.click();
+
+    assert.equal(document.querySelector('.wm-copy-fallback'), null);
+    assert.equal(document.activeElement, button);
+  });
+
+  it('removes a revealed secret and leaves an ordinary fallback in place', async () => {
+    install('missing', 'missing');
+    await copyText(SHARE_URL);
+
+    dismissSecretCopyFallback();
+
+    assert.equal(fallbackValue(), SHARE_URL);
+    await copyText('wm_live_secret', { secret: true });
+    assert.equal(fallbackValue(), 'wm_live_secret');
+    assert.ok(document.querySelector('.wm-copy-fallback[data-copy-secret]'));
+
+    dismissSecretCopyFallback();
+
+    assert.equal(document.querySelector('.wm-copy-fallback'), null);
   });
 });

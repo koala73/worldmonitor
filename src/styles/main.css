@@ -5024,6 +5024,10 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 6px 8px;
+  resize: none;
+  min-height: 32px;
+  max-height: 9em;
+  overflow: auto;
 }
 
 .wm-copy-fallback-close {
