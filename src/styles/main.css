@@ -11627,16 +11627,27 @@ button.popup-link {
   opacity: 1;
 }
 
-.map-wrapper[data-layer-hidden-bases="true"] .base-marker,
-.map-wrapper[data-layer-hidden-iranAttacks="true"] .iran-event-marker,
-.map-wrapper[data-layer-hidden-nuclear="true"] .nuclear-marker,
-.map-wrapper[data-layer-hidden-natural="true"] .earthquake-marker,
-.map-wrapper[data-layer-hidden-natural="true"] .nat-event-marker,
-.map-wrapper[data-layer-hidden-natural="true"] .nat-event-icon,
-.map-wrapper[data-layer-hidden-economic="true"] .economic-marker,
+.map-wrapper[data-layer-hidden-bases="true"] #mapOverlays .base-marker,
+.map-wrapper[data-layer-hidden-bases="true"] #mapOverlays .base-marker::before,
+.map-wrapper[data-layer-hidden-iranAttacks="true"] #mapOverlays .iran-event-marker,
+.map-wrapper[data-layer-hidden-iranAttacks="true"] #mapOverlays .iran-event-marker::before,
+.map-wrapper[data-layer-hidden-nuclear="true"] #mapOverlays .nuclear-marker,
+.map-wrapper[data-layer-hidden-nuclear="true"] #mapOverlays .nuclear-marker::before,
+.map-wrapper[data-layer-hidden-natural="true"] #mapOverlays .earthquake-marker,
+.map-wrapper[data-layer-hidden-natural="true"] #mapOverlays .earthquake-marker::before,
+.map-wrapper[data-layer-hidden-natural="true"] #mapOverlays .nat-event-marker,
+.map-wrapper[data-layer-hidden-natural="true"] #mapOverlays .nat-event-icon,
+.map-wrapper[data-layer-hidden-natural="true"] #mapOverlays .nat-event-icon::before,
+.map-wrapper[data-layer-hidden-economic="true"] #mapOverlays .economic-marker,
+.map-wrapper[data-layer-hidden-economic="true"] #mapOverlays .economic-marker::before,
+.map-wrapper[data-layer-hidden-conflicts="true"] #mapOverlays .conflict-click-area,
+.map-wrapper[data-layer-hidden-conflicts="true"] #mapOverlays .conflict-click-area::before {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .map-wrapper[data-layer-hidden-conflicts="true"] .conflicts,
-.map-wrapper[data-layer-hidden-conflicts="true"] .conflict-label-overlay,
-.map-wrapper[data-layer-hidden-conflicts="true"] .conflict-click-area {
+.map-wrapper[data-layer-hidden-conflicts="true"] .conflict-label-overlay {
   opacity: 0;
   pointer-events: none;
 }
@@ -16107,11 +16118,6 @@ button.popup-link {
     border-radius: 50%;
     pointer-events: auto;
     /* Uncomment to debug: background: rgba(255, 0, 0, 0.2); */
-  }
-
-  /* A zoom-hidden natural layer takes no taps, on the icon's touch area either. */
-  .map-wrapper[data-layer-hidden-natural='true'] #mapOverlays .nat-event-icon::before {
-    pointer-events: none;
   }
 
   .conflict-click-area {
