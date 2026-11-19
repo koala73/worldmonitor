@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/services/country-geometry', () => ({
   getCountryAtCoordinates: vi.fn(() => ({ code: 'AE', name: 'United Arab Emirates' })),
-  getCountryBbox: vi.fn(),
+  getCountryMapBbox: vi.fn(),
 }));
 
 import { MapComponent, type MapContextMenuPayload } from '@/components/Map';

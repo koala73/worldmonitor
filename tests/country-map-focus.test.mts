@@ -74,7 +74,7 @@ describe('country map focus zoom buckets', () => {
     });
   });
 
-  it('focuses bundled Russia on the Eurasian arc, not 0°', async () => {
+  it('focuses Russia on the Eurasian arc and France on metropolitan France', async () => {
     const geojson = JSON.parse(
       await readFile(fileURLToPath(new URL('../public/data/countries.geojson', import.meta.url)), 'utf8'),
     ) as unknown;
@@ -100,21 +100,25 @@ describe('country map focus zoom buckets', () => {
     }) as typeof fetch;
 
     try {
-      const geometry = await import(
-        `../src/services/country-geometry.ts?focus=${Date.now()}-${Math.random()}`
-      );
+      const geometry = await import('../src/services/country-geometry.ts');
       await geometry.preloadCountryGeometry();
       const naive = geometry.getCountryBbox('RU') as [number, number, number, number] | null;
       assert.ok(naive);
       assert.ok(naive[2] - naive[0] > 300, `bundled Russia AABB should still span 360°: ${naive.join(',')}`);
-      const polygons = geometry.getCountryPolygons('RU');
-      assert.ok(polygons);
-      const wrap = wrappingBboxFromPolygons(polygons);
-      assert.ok(wrap);
-      assert.ok(wrap[2] - wrap[0] < 200, `wrapped Russia span should not be 360°: ${wrap[2] - wrap[0]}`);
-      const focus = focusFromCountryBbox(wrap);
+      const focus = getCountryMapFocus('RU');
+      assert.ok(focus);
+      assert.ok(focus.bbox[2] - focus.bbox[0] < 200, `wrapped Russia bbox: ${focus.bbox.join(',')}`);
       assert.ok(focus.lon > 60 && focus.lon < 140, `Russia center should be Siberia, not ${focus.lon}`);
       assert.equal(focus.zoom, 3);
+
+      const france = getCountryMapFocus('fr');
+      assert.ok(france);
+      assert.ok(france.lat > 44 && france.lat < 49 && france.lon > 0 && france.lon < 6,
+        `France center should be in metropolitan France, got ${france.lat}, ${france.lon}`);
+      assert.equal(france.zoom, 5);
+      assert.deepEqual(geometry.getCountryMapBbox('FR'), france.bbox);
+      assert.deepEqual(geometry.getCountryMapBbox('DE'), geometry.getCountryBbox('DE'));
+      assert.equal(geometry.isCoordinateInCountry(4, -53, 'FR'), true);
     } finally {
       globalThis.fetch = originalFetch;
     }
