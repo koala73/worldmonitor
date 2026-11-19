@@ -10,6 +10,8 @@ import {
 } from '../../shared/country-timeline-events';
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const COUNTRY_HEADLINE_CANDIDATES = 30;
+const COUNTRY_HEADLINE_LIMIT = 5;
 const EVENT_QUERY = 'protest OR demonstration OR riot OR conflict OR attack OR military OR earthquake OR flood OR wildfire';
 
 export type CountryCoverageEvent = CountryTimelineIncident;
@@ -84,7 +86,7 @@ export async function fetchCountryCoverage(
     fetchFeed({
       name: `Country coverage: ${country}`,
       url: googleNewsFeedUrl(`"${country}" when:7d`),
-    }, feedOptions),
+    }, { ...feedOptions, maxItems: COUNTRY_HEADLINE_CANDIDATES }),
     fetchFeed({
       name: `Country events: ${country}`,
       url: googleNewsFeedUrl(`(${eventTerms}) (${EVENT_QUERY}) when:7d`),
@@ -101,7 +103,8 @@ export async function fetchCountryCoverage(
       const family = PUBLISHER_FAMILIES[publisherFamilyFor(item.source)];
       const reviewedSource = family?.labels.find(hasReviewedSourceType);
       return reviewedSource ? [{ ...item, source: reviewedSource }] : [];
-    });
+    })
+    .slice(0, COUNTRY_HEADLINE_LIMIT);
   const timelineEvents = clusterCountryTimelineIncidents(
     eventItems
       .filter(item => effectivePubDateMs(item) >= cutoff)

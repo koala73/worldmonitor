@@ -106,12 +106,10 @@ describe('country coverage', () => {
     const coverage = await fetchCountryCoverage('France', ['france', 'french', 'paris']);
 
     expect(rssMocks.fetchFeed).toHaveBeenCalledTimes(2);
-    for (const [, options] of rssMocks.fetchFeed.mock.calls) {
-      expect(options).toEqual({
-        policy: BRIEF_ONLY_RSS_FETCH_POLICY,
-        signal: undefined,
-      });
-    }
+    expect(rssMocks.fetchFeed.mock.calls.map(([, options]) => options)).toEqual([
+      { policy: BRIEF_ONLY_RSS_FETCH_POLICY, signal: undefined, maxItems: 30 },
+      { policy: BRIEF_ONLY_RSS_FETCH_POLICY, signal: undefined },
+    ]);
     const queries = rssMocks.fetchFeed.mock.calls.map(([feed]) => {
       const proxyUrl = new URL(feed.url, 'https://worldmonitor.test');
       expect(proxyUrl.pathname).toBe('/api/rss-proxy');
