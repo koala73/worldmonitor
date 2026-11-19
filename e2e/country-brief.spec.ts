@@ -54,7 +54,11 @@ for (const width of [1280, 390]) {
         points: [17, 18, 19].map((day, index) => ({
           date: `2026-10-${day}`, capturedAt: Date.UTC(2026, 9, day, 0, 30),
           cii: { score: 50 + index * 6, version: index === 2 ? 'v11' : 'v10', observedAt: Date.UTC(2026, 9, day) },
-          resilience: { score: 45 + index, version: 'v29:pc', observedAt: Date.UTC(2026, 9, day) },
+          resilience: {
+            score: 45 + index,
+            version: 'pc:schema-2.0:energy-v2:education-active:financial-system-active',
+            observedAt: Date.UTC(2026, 9, day),
+          },
           topEvents: [{ title: `Controlled Ukraine reporting for October ${day}`, link: `https://example.com/ukraine-${day}`, source: 'Controlled publisher', category: 'politics' }],
           keySignals: [], ciiVersionBreak: index === 2, resilienceVersionBreak: false,
         })),
@@ -85,6 +89,7 @@ for (const width of [1280, 390]) {
     await expect(history.locator('a[href="https://example.com/ukraine-17"]')).toHaveAttribute('rel', 'noopener noreferrer');
     expect(await history.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     await history.locator('[data-history-date="2026-10-19"]').click();
+    await expect(history.locator('.country-history-detail p').first()).toHaveText('CII 62 · v11 / Resilience 47');
     await captureHistory('recovered');
     expect(reads).toBe(2);
     await page.reload();
