@@ -1524,13 +1524,33 @@ describe('one unreachable GDELT tick rides on last-good data', () => {
       (error) => error.preservableFetchFailure === true && /fetch failed/.test(error.message));
   });
 
+  // 2026-11-19 00:03 UTC: GDELT sent headers, then the body stalled until the
+  // 30 s request timeout aborted the read.
+  const stalledBody = async () => new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('partial'));
+      controller.error(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+    },
+  }), { status: 206 });
+
+  it('tags a body GDELT stopped sending as an outage the seeder may ride out', async () => {
+    await assert.rejects(fetchGdeltBulkFiles({ fetchImpl: stalledBody }),
+      (error) => error.preservableFetchFailure === true && error.name === 'TimeoutError');
+  });
+
+  it('keeps a body over its size cap alarming', async () => {
+    const oversized = async () => new Response(new Uint8Array(70_000), { status: 206 });
+    await assert.rejects(fetchGdeltBulkFiles({ fetchImpl: oversized }),
+      (error) => error.preservableFetchFailure !== true && /exceeds/.test(error.message));
+  });
+
   it('keeps an HTTP error that GDELT did answer alarming', async () => {
     const notFound = async () => new Response('missing', { status: 404 });
     await assert.rejects(fetchGdeltBulkFiles({ fetchImpl: notFound }),
       (error) => error.preservableFetchFailure !== true && /HTTP 404/.test(error.message));
   });
 
-  async function runUnreachableTick(lastGoodAgeMin) {
+  async function runUnreachableTick(lastGoodAgeMin, fetchImpl = connectTimeout) {
     const { runSeed } = await import('../scripts/_seed-utils.mjs');
     const { withSeedLockFence } = await import('./helpers/seed-lock-fence.mjs');
     const originalFetch = globalThis.fetch;
@@ -1555,7 +1575,7 @@ describe('one unreachable GDELT tick rides on last-good data', () => {
     console.log = (...args) => logs.push(args.join(' '));
     try {
       await runSeed('intelligence', 'gdelt-intel', GDELT_INTEL_KEY,
-        () => fetchGdeltBulkFiles({ fetchImpl: connectTimeout }), RUN_SEED_OPTS);
+        () => fetchGdeltBulkFiles({ fetchImpl }), RUN_SEED_OPTS);
       return { exitCode: null, logs };
     } catch (error) {
       if (error.message !== '__test_exit__') throw error;
@@ -1575,6 +1595,12 @@ describe('one unreachable GDELT tick rides on last-good data', () => {
   it('exits 0 when the last good publish is one tick old', async () => {
     const { exitCode, logs } = await runUnreachableTick(15);
     assert.equal(exitCode, 0, 'Railway must not mark the deployment crashed for one missed tick');
+    assert.ok(logs.some((line) => line.includes('=== Refresh failed; last-good retained')));
+  });
+
+  it('exits 0 when the body stalls and the last good publish is one tick old', async () => {
+    const { exitCode, logs } = await runUnreachableTick(16, stalledBody);
+    assert.equal(exitCode, 0, 'a stalled download is the same outage as a refused connect');
     assert.ok(logs.some((line) => line.includes('=== Refresh failed; last-good retained')));
   });
 
