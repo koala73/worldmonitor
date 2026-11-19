@@ -14,7 +14,7 @@ import { lua, lauxlib, lualib, to_luastring, to_jsstring } from 'fengari';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GRACEFUL_FETCH_FAILURE_EXIT_CODE, PUBLISH_BLOCKED_EXIT_CODE } from '../scripts/_seed-utils.mjs';
-import { DAY, readSectionFreshness, bundleHeartbeatKey, BUNDLE_HEARTBEAT_TTL_SECONDS } from '../scripts/_bundle-runner.mjs';
+import { DAY, readSectionFreshness, bundleHeartbeatKey, BUNDLE_HEARTBEAT_TTL_SECONDS, sectionFailureKey, sectionDeferralKey } from '../scripts/_bundle-runner.mjs';
 import { OWID_SOURCE_VERSION } from '../scripts/seed-owid-energy-mix.mjs';
 import { JODI_OIL_SOURCE_VERSION } from '../scripts/seed-jodi-oil.mjs';
 import {
@@ -464,6 +464,8 @@ async function startFakeUpstash({
   // the runner's REDIS_READ_TIMEOUT_MS or the read aborts and the section reads
   // as due instead of fresh.
   getDelayMs = 0,
+  // Answer a GET for a matching key with HTTP 503, as a failed Upstash read.
+  failGet,
 } = {}) {
   const pipelines = [];
   const commands = [];
@@ -528,6 +530,10 @@ async function startFakeUpstash({
     if (req.method === 'GET' && req.url?.startsWith('/get/')) {
       const key = decodeURIComponent(req.url.slice('/get/'.length));
       reads.push(key);
+      if (failGet?.(key)) {
+        res.writeHead(503).end();
+        return;
+      }
       const send = () => {
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({ result: strings.get(key) ?? null }));
@@ -1921,6 +1927,175 @@ test('a deferred section older than 2x its interval fails the tick even when sib
     assert.match(stderr, /starvation, not pressure/, `expected the per-section stall line; stderr:\n${stderr}`);
     assert.match(stderr, /older than 2x their interval — starvation while the bundle reported progress/);
     assert.doesNotMatch(stdout, /ran:0 while/);
+  } finally {
+    cleanup();
+    await redis.close();
+  }
+});
+
+async function runStalledVictim(prefix, failureRecord, deferralRecord, redisOptions = {}) {
+  // Same budget shape as the stall test above: ten slow freshness reads leave
+  // VICTIM too little budget, and its 3h-old seed-meta (3x a 1h interval)
+  // makes the deferral a stall.
+  const HOUR = 60 * 60 * 1000;
+  const script = `_bundle-fixture-${prefix}-run.mjs`;
+  const cleanup = writeFixture(script, `console.log('${prefix}-ran');\n`);
+  const fetchedAt = Date.now() - 3 * HOUR;
+  const freshKeys = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
+  const strings = new Map([
+    ...freshKeys.map((key) => [`seed-meta:${prefix}:${key}`, JSON.stringify({ fetchedAt: Date.now(), recordCount: 1 })]),
+    [`seed-meta:${prefix}:victim`, JSON.stringify({ fetchedAt, recordCount: 1 })],
+  ]);
+  if (failureRecord) strings.set(sectionFailureKey('test', 'VICTIM'), JSON.stringify(failureRecord(fetchedAt)));
+  if (deferralRecord) strings.set(sectionDeferralKey('test', 'VICTIM'), JSON.stringify(deferralRecord(fetchedAt)));
+  const redis = await startFakeUpstash({ getDelayMs: 2_000 / STARVE_TIME_SCALE, strings, ...redisOptions });
+  try {
+    const run = await runBundleWith(
+      [
+        ...freshKeys.map((k) => ({
+          label: `FRESH_${k.toUpperCase()}`, script, seedMetaKey: `${prefix}:${k}`, intervalMs: DAY, timeoutMs: 5_000,
+        })),
+        { label: 'RUNS', script, intervalMs: 1, timeoutMs: 5_000 },
+        { label: 'VICTIM', script, seedMetaKey: `${prefix}:victim`, intervalMs: HOUR, timeoutMs: 35_000 },
+      ],
+      { maxBundleMs: 60_000 },
+      { UPSTASH_REDIS_REST_URL: redis.url, UPSTASH_REDIS_REST_TOKEN: redis.token },
+      { compressTime: { clock: STARVE_TIME_SCALE } },
+    );
+    return { ...run, redis };
+  } finally {
+    cleanup();
+    await redis.close();
+  }
+}
+
+test('a stalled section that failed at the source since its last good fetch is reported as failing, not starved', async () => {
+  // seed-bundle-macro, 2026-11-19: Food-MIT was admitted on three ticks and
+  // got HTTP 500 from viwanda.go.tz each time, then lost the next budget race.
+  // The stall line called that starvation, which sends the operator to budget
+  // and order instead of the dead upstream. The tick still fails.
+  const { code, stdout, stderr } = await runStalledVictim('failing', (fetchedAt) => ({
+    at: fetchedAt + 60_000, status: 'GRACEFUL_FAIL', reason: 'graceful fetch failure (exit 75)',
+  }));
+  assert.equal(code, 1, 'a stale section stays loud whatever the cause');
+  assert.match(stdout, /\[Bundle:test\] Finished .* ran:1 skipped:10 deferred:1 failed:0 graceful:0 stalled:1/);
+  assert.match(stderr, /\[VICTIM\] Deferred, but its data is \d+min old .* This is a failing source, not starvation: its last admitted run at \S+ ended GRACEFUL_FAIL \(graceful fetch failure \(exit 75\)\), and no deferral has been recorded since/);
+  assert.match(stderr, /older than 2x their interval — 1 failing at the source, 0 starved by the budget\. Exiting non-zero\./);
+  assert.doesNotMatch(stderr, /starvation, not pressure/);
+});
+
+test('a stalled section deferred after its last failed run is not blamed on the source', async () => {
+  // The source failed once, may have recovered, and the section has lost the
+  // budget race since. Ruling out starvation would send the operator away from
+  // the budget problem that now blocks recovery.
+  const { code, stderr } = await runStalledVictim(
+    'refailed',
+    (fetchedAt) => ({ at: fetchedAt + 60_000, status: 'GRACEFUL_FAIL', reason: 'graceful fetch failure (exit 75)' }),
+    (fetchedAt) => ({ at: fetchedAt + 120_000 }),
+  );
+  assert.equal(code, 1);
+  assert.match(stderr, /\[VICTIM\] .* This is starvation, not pressure: its last admitted run at \S+ ended GRACEFUL_FAIL \(graceful fetch failure \(exit 75\)\), and a tick deferred it again at \S+\. Check both the upstream and the budget\./);
+  assert.match(stderr, /older than 2x their interval — starvation while the bundle reported progress/);
+  assert.doesNotMatch(stderr, /failing source/);
+});
+
+test('an unreadable failure record leaves the stall cause unknown', async () => {
+  const { code, stderr } = await runStalledVictim(
+    'unreadable-failure',
+    (fetchedAt) => ({ at: fetchedAt + 60_000, status: 'GRACEFUL_FAIL', reason: 'graceful fetch failure (exit 75)' }),
+    undefined,
+    { failGet: (key) => key === sectionFailureKey('test', 'VICTIM') },
+  );
+  assert.equal(code, 1);
+  assert.match(stderr, /\[VICTIM\] .* The cause is unknown: its failure record could not be read/);
+  assert.match(stderr, /0 failing at the source, 0 starved by the budget, 1 with an unknown cause\. Exiting non-zero\./);
+  assert.doesNotMatch(stderr, /failing source, not starvation|starvation, not pressure/);
+});
+
+test('an unreadable deferral record does not let a stall be blamed on the source', async () => {
+  // A 503 on the deferral read must not read as "no deferral since".
+  const { code, stdout, stderr } = await runStalledVictim(
+    'unreadable',
+    (fetchedAt) => ({ at: fetchedAt + 60_000, status: 'GRACEFUL_FAIL', reason: 'graceful fetch failure (exit 75)' }),
+    (fetchedAt) => ({ at: fetchedAt + 120_000 }),
+    { failGet: (key) => key === sectionDeferralKey('test', 'VICTIM') },
+  );
+  assert.equal(code, 1);
+  assert.match(stdout, /stalled:1/);
+  assert.match(stderr, /\[VICTIM\] .* This may be starvation: its last admitted run at \S+ ended GRACEFUL_FAIL .*, but its deferral record could not be read/);
+  assert.match(stderr, /older than 2x their interval — 0 failing at the source, 0 starved by the budget, 1 with an unknown cause\. Exiting non-zero\./);
+  assert.doesNotMatch(stderr, /failing source/);
+});
+
+test('a deferral is recorded for the next stall, after this tick classifies the stall', async () => {
+  const { redis } = await runStalledVictim('deferral-record', (fetchedAt) => ({
+    at: fetchedAt + 60_000, status: 'GRACEFUL_FAIL', reason: 'graceful fetch failure (exit 75)',
+  }));
+  const set = redis.pipelines.flat().find((command) => command[0] === 'SET' && command[1] === sectionDeferralKey('test', 'VICTIM'));
+  assert.ok(set, `expected SET ${sectionDeferralKey('test', 'VICTIM')}; pipelines=${JSON.stringify(redis.pipelines)}`);
+  assert.ok(Number.isFinite(JSON.parse(set[2]).at));
+  // 1h interval: the 1-day floor applies.
+  assert.deepEqual(set.slice(3), ['EX', 24 * 60 * 60]);
+});
+
+test('a failure record older than the last good fetch does not excuse a stall', async () => {
+  // The section succeeded after that failure, so its data has aged since then
+  // only because it kept losing the budget race.
+  const { code, stderr } = await runStalledVictim('healed', (fetchedAt) => ({
+    at: fetchedAt - 60_000, status: 'GRACEFUL_FAIL', reason: 'graceful fetch failure (exit 75)',
+  }));
+  assert.equal(code, 1);
+  assert.match(stderr, /starvation, not pressure/);
+  assert.match(stderr, /older than 2x their interval — starvation while the bundle reported progress/);
+  assert.doesNotMatch(stderr, /failing source/);
+});
+
+test('a failed section run records its status and reason for the stall guard', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-failure-record.mjs',
+    `console.log('=== Failed gracefully ===');\nprocess.exit(${GRACEFUL_FETCH_FAILURE_EXIT_CODE});\n`,
+  );
+  const redis = await startFakeUpstash();
+  try {
+    const before = Date.now();
+    const { code } = await runBundleWith(
+      [{ label: 'FLAKY', script: '_bundle-fixture-failure-record.mjs', intervalMs: 7 * DAY, timeoutMs: 5_000 }],
+      {},
+      { UPSTASH_REDIS_REST_URL: redis.url, UPSTASH_REDIS_REST_TOKEN: redis.token },
+    );
+    assert.equal(code, 0, 'recording the failure does not change the graceful exit');
+    const set = redis.pipelines.flat().find((command) => command[0] === 'SET' && command[1] === sectionFailureKey('test', 'FLAKY'));
+    assert.ok(set, `expected SET ${sectionFailureKey('test', 'FLAKY')}; pipelines=${JSON.stringify(redis.pipelines)}`);
+    const record = JSON.parse(set[2]);
+    assert.equal(record.status, 'GRACEFUL_FAIL');
+    assert.equal(record.reason, `graceful fetch failure (exit ${GRACEFUL_FETCH_FAILURE_EXIT_CODE})`);
+    assert.ok(record.at >= before);
+    // Outlives the 2x-interval stall threshold: 3 x 7 days.
+    assert.deepEqual(set.slice(3), ['EX', 21 * 24 * 60 * 60]);
+  } finally {
+    cleanup();
+    await redis.close();
+  }
+});
+
+test('a rejected section outcome write is reported, not silent', async () => {
+  // Upstash answers a failed command with HTTP 200 and an error entry. A
+  // record lost that way would turn the next stall back into "starvation".
+  const cleanup = writeFixture(
+    '_bundle-fixture-failure-record-rejected.mjs',
+    `process.exit(${GRACEFUL_FETCH_FAILURE_EXIT_CODE});\n`,
+  );
+  const redis = await startFakeUpstash({
+    failCommand: ({ command }) => (command[0] === 'SET' && command[1] === sectionFailureKey('test', 'FLAKY') ? 'OOM command not allowed' : null),
+  });
+  try {
+    const { code, stderr } = await runBundleWith(
+      [{ label: 'FLAKY', script: '_bundle-fixture-failure-record-rejected.mjs', intervalMs: DAY, timeoutMs: 5_000 }],
+      {},
+      { UPSTASH_REDIS_REST_URL: redis.url, UPSTASH_REDIS_REST_TOKEN: redis.token },
+    );
+    assert.equal(code, 0, 'a lost outcome record does not change the exit');
+    assert.match(stderr, new RegExp(`\\[Bundle:test\\] section outcome records not written: ${sectionFailureKey('test', 'FLAKY')}`));
   } finally {
     cleanup();
     await redis.close();
