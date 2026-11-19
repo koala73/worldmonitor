@@ -22,6 +22,7 @@ async function openFreeDashboard(page: Page, path = '/'): Promise<void> {
 }
 
 async function bannerLayout(page: Page) {
+  await expect(page.locator('.pro-banner-cta')).toBeVisible();
   return page.locator('.pro-banner').evaluate((banner) => {
     const text = banner.querySelector<HTMLElement>('.pro-banner-text')!;
     const headline = text.querySelector<HTMLElement>('strong')!;
@@ -36,22 +37,6 @@ async function bannerLayout(page: Page) {
       ctaRight: cta.right,
       viewport: window.innerWidth,
     };
-  });
-}
-
-for (const width of [360, 390]) {
-  test.describe(`Pro strip at ${width}px`, () => {
-    test.use({ viewport: { width, height: 800 }, isMobile: true, hasTouch: true });
-
-    test('names a concrete Pro feature in full, inside the reserved slot', async ({ page }) => {
-      await openFreeDashboard(page);
-      const layout = await bannerLayout(page);
-      expect(layout.headline).toBe(HEADLINE);
-      expect(layout.headlineClipped, 'headline must not be cut off').toBe(false);
-      expect(layout.taglineVisible, 'the tagline is desktop-only').toBe(false);
-      expect(layout.height).toBeLessThanOrEqual(SLOT_HEIGHT);
-      expect(layout.ctaRight).toBeLessThanOrEqual(layout.viewport);
-    });
   });
 }
 
@@ -72,6 +57,7 @@ test.describe('Pro strip at 360px in every language', () => {
       await openFreeDashboard(page, `/?lang=${lang}`);
       await expect(page.locator('.pro-banner-text strong')).toHaveText(headline);
       const layout = await bannerLayout(page);
+      expect(layout.taglineVisible).toBe(false);
       expect(layout.headlineClipped, `${lang}: "${headline}" is cut off`).toBe(false);
       expect(layout.height).toBeLessThanOrEqual(SLOT_HEIGHT);
       expect(layout.ctaRight).toBeLessThanOrEqual(layout.viewport);
@@ -120,6 +106,12 @@ for (const colorScheme of ['light', 'dark'] as const) {
 
     test('the headline has readable contrast', async ({ page }) => {
       await openFreeDashboard(page);
+      const layout = await bannerLayout(page);
+      expect(layout.headline).toBe(HEADLINE);
+      expect(layout.headlineClipped).toBe(false);
+      expect(layout.taglineVisible).toBe(false);
+      expect(layout.height).toBeLessThanOrEqual(SLOT_HEIGHT);
+      expect(layout.ctaRight).toBeLessThanOrEqual(layout.viewport);
       const { background, ratio } = await page.locator('.pro-banner').evaluate((banner) => {
         const rgb = (value: string) => (value.match(/[\d.]+/g) ?? []).map(Number);
         const luminance = ([r, g, b]: number[]) => {
