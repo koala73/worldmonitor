@@ -763,7 +763,7 @@ test('country military observations render under one allocation and survive an A
   await frame.getByRole('button', { name: 'Security', exact: true }).click();
   const military = frame.locator('[data-brief-section=military]');
   await expect(military).toContainText('Flight counts include observations licensed');
-  await expect(military).toContainText('bounded to 1,500 reports');
+  await expect(military).toContainText('military operations reports and known naval vessels from the relay sample of up to 1,500 candidates');
   const aisCalls = host.calls.filter(call => call.arguments.section === 'vessels');
   expect(aisCalls).toHaveLength(1);
   expect(aisCalls[0]?.arguments.arguments).toMatchObject({ ne_lat: 0, ne_lon: 0, sw_lat: 0, sw_lon: 0 });
