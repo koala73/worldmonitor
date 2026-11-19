@@ -55,30 +55,35 @@ function candidateLinkFor(item, resolveFamily) {
   return gateRelayStoryLink(link, family);
 }
 
-function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs, resolveFamily) {
+// `poolItems` are fresh items the digest's category cap kept off the
+// dashboard (#10978). They follow the served items, so a title in both keeps
+// the served copy and its story tracking. Pool candidates carry `fromPool`.
+function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs, resolveFamily, poolItems = []) {
   const candidates = new Map();
   const oldestAllowedAt = now - recencyMs;
 
   if (!isStaleDigestReplay(digest) && digest?.categories) {
-    for (const bucket of Object.values(digest.categories)) {
-      for (const item of bucket?.items ?? []) {
-        if (!item?.title) continue;
-        if (item.publishedAt && item.publishedAt < oldestAllowedAt) continue;
-        if (!candidates.has(item.title)) {
-          candidates.set(item.title, {
-            // #10977: score on the publisher a topic feed carries, not the feed.
-            source: item.originPublisher || item.source || variant,
-            publishedAt: item.publishedAt ?? now,
-            corroborationCount: item.corroborationCount ?? 1,
-            // #8398: relay-emitted rss_alert events must not carry a link
-            // outside the item's registered publisher set. An unverified
-            // link is blanked; the title still classifies and alerts.
-            link: candidateLinkFor(item, resolveFamily),
-            // When digest story tracking first saw the headline, in any
-            // edition or language. Only for the latency log.
-            ...(item.storyMeta?.firstSeen > 0 ? { firstSeen: Number(item.storyMeta.firstSeen) } : {}),
-          });
-        }
+    // Spread, so a bucket whose items are not a list still throws.
+    const served = Object.values(digest.categories).flatMap(bucket => [...(bucket?.items ?? [])]);
+    const pool = Array.isArray(poolItems) ? poolItems : [];
+    for (const [index, item] of [...served, ...pool].entries()) {
+      if (!item?.title) continue;
+      if (item.publishedAt && item.publishedAt < oldestAllowedAt) continue;
+      if (!candidates.has(item.title)) {
+        candidates.set(item.title, {
+          // #10977: score on the publisher a topic feed carries, not the feed.
+          source: item.originPublisher || item.source || variant,
+          publishedAt: item.publishedAt ?? now,
+          corroborationCount: item.corroborationCount ?? 1,
+          // #8398: relay-emitted rss_alert events must not carry a link
+          // outside the item's registered publisher set. An unverified
+          // link is blanked; the title still classifies and alerts.
+          link: candidateLinkFor(item, resolveFamily),
+          // When digest story tracking first saw the headline, in any
+          // edition or language. Only for the latency log.
+          ...(item.storyMeta?.firstSeen > 0 ? { firstSeen: Number(item.storyMeta.firstSeen) } : {}),
+          ...(index >= served.length ? { fromPool: true } : {}),
+        });
       }
     }
   }

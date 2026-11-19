@@ -2791,6 +2791,47 @@ async function recordPublisherCoverage(
   }
 }
 
+export const ALERT_POOL_MAX_ITEMS = 300;
+const ALERT_POOL_WINDOW_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * #10978: the relay classifies only the served digest, so the category cap
+ * decided what could alert. Write the newest fresh items the cap kept off the
+ * dashboard (6 h, the relay's recency gate) for the relay to classify too.
+ * The classify cache keeps each title to one model call a day.
+ */
+export function alertPoolItems(servable: readonly ParsedItem[], served: readonly ParsedItem[], now: number) {
+  const taken = new Set(served.map(item => item.title));
+  return [...servable]
+    .filter(item => item.publishedAt >= now - ALERT_POOL_WINDOW_MS)
+    .sort((a, b) => b.publishedAt - a.publishedAt)
+    .filter(item => !taken.has(item.title) && taken.add(item.title))
+    .slice(0, ALERT_POOL_MAX_ITEMS)
+    .map(item => ({
+      title: item.title,
+      source: item.source,
+      // The relay scores a topic feed's item on this publisher, as for served items (#10977).
+      ...(toProtoItem(item).originPublisher ? { originPublisher: toProtoItem(item).originPublisher } : {}),
+      link: item.link,
+      ...(item.linkVerified === true ? { linkVerified: true } : {}),
+      publishedAt: item.publishedAt,
+      corroborationCount: item.corroborationCount,
+    }));
+}
+
+async function recordAlertPool(
+  servable: readonly ParsedItem[],
+  served: readonly ParsedItem[],
+  variant: string,
+  now: number,
+  deadlineAt: number,
+): Promise<void> {
+  const timeout = redisTimeoutForDeadline(deadlineAt);
+  if (!timeout) return;
+  const items = alertPoolItems(servable, served, now);
+  await runRedisTransaction([['SET', `news:alert-pool:v1:${variant}`, JSON.stringify({ generatedAt: now, items }), 'EX', 1800]], false, timeout);
+}
+
 function redisPipelineConfirmed(
   results: Array<{ result?: unknown; error?: string }>,
   expectedCommands: number,
@@ -3943,6 +3984,8 @@ async function buildDigest(
     // category cap. Runs alongside story tracking within the same deadline.
     const publisherCoverageWrite = recordPublisherCoverage(servableItems, allSliced, buildStart, storyTrackingDeadlineAt)
       .catch((err: unknown) => console.warn('[digest] publisher coverage unavailable:', err));
+    const alertPoolWrite = (lang === 'en' ? recordAlertPool(servableItems, allSliced, variant, now, storyTrackingDeadlineAt) : Promise.resolve())
+      .catch((err: unknown) => console.warn('[digest] alert pool unavailable:', err));
 
     // Read existing story tracking BEFORE writing so we know the previous cycle's
     // mentionCount. We merge read state + this cycle's increment in memory to
@@ -4026,7 +4069,7 @@ async function buildDigest(
       };
     }
 
-    await Promise.all([headlineHistoryWrite, publisherCoverageWrite]);
+    await Promise.all([headlineHistoryWrite, publisherCoverageWrite, alertPoolWrite]);
 
     // #4920: publish the coverage ledger — every gate's drop count plus
     // what survived — as a side key. Best-effort: ledger failures never
