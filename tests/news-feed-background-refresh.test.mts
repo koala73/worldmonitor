@@ -140,11 +140,16 @@ describe('feed cache background refresh', () => {
     assert.equal(cachedEntry().parsedAt, parsedAt);
     assert.ok(cachedEntry().fetchedAt! > parsedAt, 'the same parse is re-dated');
 
-    // The entry expired during the request and a foreground fetch stored a
-    // newer parse, whose country pool is keyed to that newer parsedAt.
+    // While the conditional request is in flight, the entry expires and a
+    // foreground fetch stores a newer parse, whose country pool is keyed to
+    // that newer parsedAt.
     redis.redis.delete(`rss:feed-refresh-lock:v1:${VARIANT}:${FEED.url}`);
     const newer = await parsed(['Newer story'], { fetchedAt: Date.now(), parsedAt: Date.now() });
-    seed(newer);
+    const origin = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === FEED.url) seed(newer);
+      return origin(input, init);
+    }) as typeof fetch;
     assert.equal(await refreshFeedCache(FEED, VARIANT, stale), 'not-modified');
     assert.deepEqual(cachedEntry(), newer, 'the older entry is not put back');
   });
