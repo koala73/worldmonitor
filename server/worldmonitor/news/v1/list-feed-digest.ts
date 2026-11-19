@@ -1208,13 +1208,25 @@ export type FeedRefreshOutcome = 'locked' | 'not-modified' | 'updated' | 'failed
  * from before the split still carries its pool inline and is renewed as it is.
  */
 async function renewFeedEntry(cacheKey: string, renewed: ParseResult): Promise<void> {
-  if (typeof renewed.parsedAt !== 'number' || process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+  const parsedAt = renewed.parsedAt;
+  if (typeof parsedAt !== 'number') {
     await setCachedJson(cacheKey, renewed, CACHE_TTL_HEALTHY_S);
+    return;
+  }
+  // The conditional request starts inside the hour but its 304 can land
+  // later; never keep the entry past the pool its parse wrote.
+  const ttlSeconds = Math.min(CACHE_TTL_HEALTHY_S, Math.floor((parsedAt + CACHE_TTL_COUNTRY_S * 1000 - Date.now()) / 1000));
+  if (ttlSeconds <= 0) return;
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    // The sidecar cache is synchronous, so this compare and set cannot interleave.
+    const { sidecarCacheGet, sidecarCacheSet } = await import('../../../_shared/sidecar-cache');
+    const current = sidecarCacheGet(cacheKey) as { parsedAt?: unknown } | null;
+    if (current?.parsedAt === parsedAt) sidecarCacheSet(cacheKey, renewed, ttlSeconds);
     return;
   }
   await runRedisPipeline([[
     'EVAL', RSS_FEED_RENEW_SCRIPT, 1, cacheKey,
-    String(renewed.parsedAt), JSON.stringify(renewed), CACHE_TTL_HEALTHY_S,
+    String(parsedAt), JSON.stringify(renewed), ttlSeconds,
   ]]);
 }
 

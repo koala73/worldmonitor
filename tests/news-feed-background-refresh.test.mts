@@ -149,6 +149,52 @@ describe('feed cache background refresh', () => {
     assert.deepEqual(cachedEntry(), newer, 'the older entry is not put back');
   });
 
+  it('on 304 never keeps the entry past the country pool written with its parse', async () => {
+    // The conditional request starts inside the hour; its 304 lands 1700s later.
+    const realNow = Date.now;
+    const start = realNow();
+    let skew = 0;
+    Date.now = () => realNow() + skew;
+    try {
+      install(() => {
+        skew = 1700_000;
+        return new Response(null, { status: 304 });
+      });
+      const parsedAt = start - 3500_000;
+      const stale = await parsed(['Story'], { fetchedAt: parsedAt, parsedAt, validators: { etag: '"v1"' } });
+      seed(stale);
+      assert.equal(await refreshFeedCache(FEED, VARIANT, stale), 'not-modified');
+      assert.equal(upstreamCalls[0]!.get('if-none-match'), '"v1"', 'fixture premise: a conditional request');
+      const ttl = redis.expires.get(KEY)!;
+      assert.ok(ttl > 0 && ttl <= 2000, `renewed for ${ttl}s; the pool expires 7200s after the parse, 5200s ago`);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it('on 304 in the desktop sidecar leaves a newer parse a foreground fetch stored meanwhile', async () => {
+    process.env.LOCAL_API_MODE = 'tauri-sidecar';
+    install(() => new Response(null, { status: 304 }));
+    const { sidecarCacheGet, sidecarCacheSet } = await import('../server/_shared/sidecar-cache');
+    const parsedAt = Date.now() - 10 * 60_000;
+    const stale = await parsed(['Story'], { fetchedAt: parsedAt, parsedAt, validators: { etag: '"v1"' } });
+    const newer = await parsed(['Newer story'], { fetchedAt: Date.now(), parsedAt: Date.now() });
+    sidecarCacheSet(KEY, newer, 3600);
+    assert.equal(await refreshFeedCache(FEED, VARIANT, stale), 'not-modified');
+    assert.deepEqual(sidecarCacheGet(KEY), newer, 'the older entry is not put back');
+
+    // A second feed, so its refresh lock is free: an unchanged parse is re-dated.
+    const other = { name: 'Reuters Europe', url: 'https://feeds.example.org/europe.xml' };
+    const otherKey = rssFeedCacheKey(VARIANT, other.url);
+    const origin = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => (
+      String(input) === other.url ? new Response(null, { status: 304 }) : origin(input, init)
+    )) as typeof fetch;
+    sidecarCacheSet(otherKey, stale, 3600);
+    assert.equal(await refreshFeedCache(other, VARIANT, stale), 'not-modified');
+    assert.ok((sidecarCacheGet(otherKey) as ParseResult).fetchedAt! > parsedAt, 'the same parse is re-dated');
+  });
+
   it('replaces the parse and its validators when upstream has new items', async () => {
     install(() => new Response(rss(['Breaking update']), { status: 200, headers: { etag: '"v2"' } }));
     const stale = await parsed(['Story'], { fetchedAt: Date.now() - 10 * 60_000, validators: { etag: '"v1"' } });
