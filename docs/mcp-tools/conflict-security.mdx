@@ -97,7 +97,7 @@ An OFAC designation takes its country from its address. `pressure.flagRegistries
 
 | Name | Type | Description |
 |------|------|-------------|
-| `country` | string | Country to filter sanctioned entities and pressure scores to, as an ISO 3166-1 alpha-2 or alpha-3 code or a country name. Unresolved inputs return Invalid params. |
+| `country` | string | Country to filter sanctioned entities and pressure scores to, as an ISO 3166-1 alpha-2 or alpha-3 code or a country name. Unresolved inputs return Invalid params. Omit this filter to include rows with no country code, including all entries from the four US restricted-party lists. |
 | `entity_type` | string | Entity type to keep, matched as a case-insensitive substring: "vessel", "aircraft", "individual" or "entity". Consolidated Screening List rows are typed "unspecified". |
 | `query` | string | Keep only sanctioned entities whose name contains this text (case-insensitive). |
 | `screen` | string | Name, alias or IMO number to screen against the seeded lists. Names are fuzzy-matched by tokens; an IMO number must match exactly. Cannot be combined with changes_since_days. |
