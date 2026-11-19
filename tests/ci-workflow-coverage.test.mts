@@ -1091,13 +1091,33 @@ describe('MCP live smoke — the production detection net', () => {
     assert.match(pushBlock, /^\s+- 'scripts\/mcp-smoke-http\.mjs'\s*$/m);
   });
 
+  // A push that also changes web paths starts a Vercel build, and the push run
+  // probed production minutes before that build was live. Every PR that changed
+  // MCP behaviour and its smoke expectation together went red on main (#7572,
+  // #10293, #11012) and green on its own deployment_status run. Smoke-only
+  // merges never deploy, so the push trigger must still probe those.
+  it('leaves a deploying push to the deployment_status run', () => {
+    const smokeJob = YAML.parse(smokeWorkflow).jobs.smoke;
+    const gateIndex = smokeJob.steps.findIndex((step: { id?: string }) => step.id === 'deploy');
+    const gate = smokeJob.steps[gateIndex];
+    assert.ok(gate, 'a step with id "deploy" decides whether this push deploys');
+    assert.equal(gate.if, "github.event_name == 'push'");
+    assert.equal(gate.env?.BEFORE, '${{ github.event.before }}');
+    assert.match(gate.run, /VERCEL_GIT_COMMIT_REF=main VERCEL_GIT_PREVIOUS_SHA="\$BEFORE" bash scripts\/vercel-ignore\.sh/);
+    assert.match(gate.run, /pending=true/);
+
+    const probeIndex = smokeJob.steps.findIndex((step: { run?: string }) => step.run?.includes('mcp-live-smoke.mjs'));
+    assert.ok(gateIndex < probeIndex, 'the deploy check runs before the probe');
+    assert.equal(smokeJob.steps[probeIndex].if, "steps.deploy.outputs.pending != 'true'");
+  });
+
   it('writes and uploads a diagnostic report for both passing and failing runs', () => {
     const smokeJob = YAML.parse(smokeWorkflow).jobs.smoke;
     const probe = smokeJob.steps.find((step: { run?: string }) => step.run?.includes('mcp-live-smoke.mjs'));
     assert.match(probe?.run ?? '', /--report\s+"\$RUNNER_TEMP\/mcp-live-smoke-report\.json"/);
 
     const upload = smokeJob.steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/upload-artifact@'));
-    assert.equal(upload?.if, '${{ always() }}');
+    assert.equal(upload?.if, "${{ always() && steps.deploy.outputs.pending != 'true' }}");
     assert.equal(upload?.uses, 'actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f');
     assert.equal(upload?.with?.path, '${{ runner.temp }}/mcp-live-smoke-report.json');
     assert.equal(upload?.with?.['if-no-files-found'], 'error');

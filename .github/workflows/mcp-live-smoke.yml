@@ -38,7 +38,9 @@ name: MCP Live Smoke
 #   - push to main touching the script/workflow: validates edits on merge.
 #     Kept alongside deployment_status because scripts/vercel-ignore.sh does
 #     NOT list these paths as web-relevant, so a smoke-only merge produces no
-#     Vercel build and therefore no deployment_status event at all.
+#     Vercel build and therefore no deployment_status event at all. A push
+#     that ALSO changes web paths does deploy, so the probe is skipped there
+#     and left to that deploy's deployment_status run (see the `deploy` step).
 #   - workflow_dispatch: manual re-runs from the Actions UI.
 # NOT pull_request: the target is live production, not PR code — a PR run
 # could neither exercise its own changes nor fail for reasons the PR caused.
@@ -120,12 +122,35 @@ jobs:
       # behind another, or one following a rollback, can measure a build later
       # or earlier than the commit that triggered it, so treat green as "the
       # production surface is healthy now", NOT as "this deployment is good".
+      # A push that also changes web paths starts a Vercel production build,
+      # and probing now measures the build before it. Each PR that changed MCP
+      # behaviour and its smoke expectation together went red here and green
+      # on its own deployment_status run minutes later (#7572, #10293, #11012).
+      # Ask the same ignored-build script Vercel runs; when it would build,
+      # leave the probe to that deployment_status run. github.event.before
+      # stands in for Vercel's last deployed SHA, so this diff is never wider
+      # than Vercel's: a push it calls web-free can still deploy and probe
+      # early, which is the old behaviour, never a lost probe.
+      - name: Defer a deploying push to its production deploy
+        id: deploy
+        if: github.event_name == 'push'
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BEFORE"
+          if VERCEL_GIT_COMMIT_REF=main VERCEL_GIT_PREVIOUS_SHA="$BEFORE" bash scripts/vercel-ignore.sh; then
+            echo "pending=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "pending=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::This push deploys to Vercel; its deployment_status run probes production once the deploy is live."
+          fi
       - name: Live MCP production smoke
+        if: steps.deploy.outputs.pending != 'true'
         env:
           MCP_SMOKE_RUN_BUDGET_MS: '600000'
         run: node scripts/mcp-live-smoke.mjs --report "$RUNNER_TEMP/mcp-live-smoke-report.json"
       - name: Upload MCP smoke report
-        if: ${{ always() }}
+        if: ${{ always() && steps.deploy.outputs.pending != 'true' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: mcp-live-smoke-${{ github.run_id }}-${{ github.run_attempt }}
