@@ -11620,8 +11620,6 @@ button.popup-link {
   opacity: 1;
 }
 
-/* Name #mapOverlays so this beats #mapOverlays > * and the mobile 44px ::before.
-   .conflicts is the SVG group, which is not inside #mapOverlays. */
 .map-wrapper[data-layer-hidden-bases="true"] #mapOverlays .base-marker,
 .map-wrapper[data-layer-hidden-bases="true"] #mapOverlays .base-marker::before,
 .map-wrapper[data-layer-hidden-iranAttacks="true"] #mapOverlays .iran-event-marker,
@@ -11635,10 +11633,14 @@ button.popup-link {
 .map-wrapper[data-layer-hidden-natural="true"] #mapOverlays .nat-event-icon::before,
 .map-wrapper[data-layer-hidden-economic="true"] #mapOverlays .economic-marker,
 .map-wrapper[data-layer-hidden-economic="true"] #mapOverlays .economic-marker::before,
-.map-wrapper[data-layer-hidden-conflicts="true"] .conflicts,
-.map-wrapper[data-layer-hidden-conflicts="true"] .conflict-label-overlay,
 .map-wrapper[data-layer-hidden-conflicts="true"] #mapOverlays .conflict-click-area,
 .map-wrapper[data-layer-hidden-conflicts="true"] #mapOverlays .conflict-click-area::before {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.map-wrapper[data-layer-hidden-conflicts="true"] .conflicts,
+.map-wrapper[data-layer-hidden-conflicts="true"] .conflict-label-overlay {
   opacity: 0;
   pointer-events: none;
 }

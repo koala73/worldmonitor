@@ -9,6 +9,9 @@ const LAYERS = [
   { name: 'conflicts', attr: 'data-layer-hidden-conflicts', selector: '.conflict-click-area', className: 'conflict-click-area', width: '80px', height: '40px' },
 ] as const;
 
+const MOBILE_TOUCH_RADIUS_PX = 22;
+const PAST_EDGE_PX = 2;
+
 type Probe = {
   name: string;
   visibleCentre: boolean;
@@ -20,7 +23,7 @@ type Probe = {
 
 async function probe(page: Page): Promise<Probe[]> {
   await page.goto('/tests/runtime-harness.html');
-  return page.evaluate(async (layers) => {
+  return page.evaluate(async ({ layers, touchRadius, pastEdge }) => {
     await import('/src/styles/main.css');
     document.getElementById('runtime-harness')?.remove();
     const wrapper = document.createElement('div');
@@ -55,15 +58,13 @@ async function probe(page: Page): Promise<Probe[]> {
       const rect = el.getBoundingClientRect();
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
-      // Just outside the border box. The mobile ::before is a 44px circle, so
-      // this point is inside that circle only when the marker is smaller than it.
-      const ringX = cx + rect.width / 2 + 2;
-      const touch = window.matchMedia('(max-width: 768px)').matches && ringX - cx < 22;
+      const pastEdgeX = cx + rect.width / 2 + pastEdge;
+      const inTouchCircle = window.matchMedia('(max-width: 768px)').matches && pastEdgeX - cx < touchRadius;
       const onMarker = (x: number, y: number) => !!document.elementFromPoint(x, y)?.closest(layer.selector);
       return {
         name: layer.name,
         centre: onMarker(cx, cy),
-        ring: touch ? onMarker(ringX, cy) : null,
+        ring: inTouchCircle ? onMarker(pastEdgeX, cy) : null,
       };
     });
 
@@ -80,7 +81,7 @@ async function probe(page: Page): Promise<Probe[]> {
       visibleRing: row.ring,
       hiddenRing: hidden[index]!.ring,
     }));
-  }, LAYERS);
+  }, { layers: LAYERS, touchRadius: MOBILE_TOUCH_RADIUS_PX, pastEdge: PAST_EDGE_PX });
 }
 
 for (const viewport of [
