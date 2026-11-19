@@ -442,10 +442,16 @@ export function getCountryBbox(code: string): [number, number, number, number] |
   return entry?.bbox ?? null;
 }
 
-/** Polygon rings for focus math. The stored bbox stays a naive AABB for hit-tests. */
-export function getCountryPolygons(code: string): [number, number][][][] | null {
+/** Camera bounds, with optional renderer-specific longitude wrapping. */
+export function getCountryMapBbox(
+  code: string,
+  project?: (polygons: IndexedCountryGeometry['polygons']) => IndexedCountryGeometry['bbox'] | null,
+): IndexedCountryGeometry['bbox'] | null {
   const entry = countryIndex.get(code.toUpperCase());
-  return entry?.polygons ?? null;
+  if (!entry) return null;
+  // Frame metropolitan France and Corsica without spanning the Atlantic.
+  if (entry.code === 'FR') return [-5.2, 41.3, 9.7, 51.2];
+  return project?.(entry.polygons) ?? entry.bbox;
 }
 
 export function getCountryCentroid(
