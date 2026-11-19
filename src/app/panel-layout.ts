@@ -473,6 +473,7 @@ export interface PanelLayoutManagerCallbacks {
   loadTelegramIntel?: () => Promise<void>;
   applyMapLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'programmatic') => void;
   isFreeTierFallbackActive?: () => boolean;
+  syncUrlState?: () => void;
 }
 
 interface DeferredPanelMount {
@@ -573,6 +574,7 @@ export class PanelLayoutManager implements AppModule {
   private unsubscribeWidgetAccess: (() => void) | null = null;
   private proBlockUnsubscribe: (() => void) | null = null;
   private proBlockEntitlementUnsubscribe: (() => void) | null = null;
+  private proBlockAccessUnsubscribe: (() => void) | null = null;
   private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
   private unsubscribeEntitlementChange: (() => void) | null = null;
   private gatingPrincipal: string | null | undefined = undefined;
@@ -586,6 +588,8 @@ export class PanelLayoutManager implements AppModule {
   });
   private teamBusy = false;
   private premiumPanelsUnlocked = new Set<string>();
+  /** Lazy panels registered with lockedFeatures: they load locked, outside the gating pass. */
+  private staticallyLockedPanels = new Set<string>();
   private unsubscribeSubscriptionChange: (() => void) | null = null;
   private unsubscribePaymentFailureBanner: (() => void) | null = null;
   private scheduledLoadAllRaf: number | null = null;
@@ -986,6 +990,8 @@ export class PanelLayoutManager implements AppModule {
     this.proBlockUnsubscribe = null;
     this.proBlockEntitlementUnsubscribe?.();
     this.proBlockEntitlementUnsubscribe = null;
+    this.proBlockAccessUnsubscribe?.();
+    this.proBlockAccessUnsubscribe = null;
 
     const destroyedTargets = new Set<{ destroy?: () => void }>();
     const destroyOnce = (target: { destroy?: () => void } | null | undefined): void => {
@@ -1123,41 +1129,11 @@ export class PanelLayoutManager implements AppModule {
     // the same verdict at a period-end boundary.
     const billingAwareFreeTier = resolveBillingAwareGateReason(PanelGateReason.FREE_TIER);
     for (const [key, panel] of Object.entries(this.ctx.panels)) {
-      const isPremium = WEB_PREMIUM_PANELS.has(key)
-        || (this.ctx.isDesktopApp && key === 'telegram-intel');
-      let reason = getPanelGateReason(state, isPremium);
-
-      // Clerk-pro-only panels: even when hasPremiumAccess() returns
-      // true via API/tester key, these panels need a Clerk userId
-      // bound to a PRO entitlement. We DO NOT trust client-side
-      // entitlement state as an authoritative gate — the server-side
-      // /api/latest-brief check is authoritative. We only downgrade
-      // the gate reason here as AFFIRMATIVE DENIAL: when we KNOW
-      // (snapshot loaded AND tier < 1) the user is free. In every
-      // other case — snapshot not yet loaded, Convex subscription
-      // skipped, transient failure — we leave the panel unlocked
-      // and let the server 403 path drive the upgrade CTA inside
-      // the panel's refresh() catch block.
-      //
-      // Prior iterations of this code tried the opposite — gating
-      // positively on hasTier(1) — and locked legitimate Pro users
-      // out whenever the Convex snapshot was late, skipped, or
-      // failed. Affirmative-denial-only is the right shape: never
-      // over-gate, accept the one-doomed-fetch-per-session cost
-      // for API-key-only + free-Clerk users as the lesser harm.
-      if (
-        reason === PanelGateReason.NONE &&
-        WEB_CLERK_PRO_ONLY_PANELS.has(key) &&
-        getEntitlementState() !== null &&
-        !hasTier(1)
-      ) {
-        reason = state.user ? PanelGateReason.FREE_TIER : PanelGateReason.ANONYMOUS;
-      }
-
-      // #4771: a FREE_TIER verdict for a customer with stale paid evidence
-      // becomes a billing-state reason (verifying renewal / update payment /
-      // resubscribe) so we never push a paying user toward duplicate checkout.
-      if (reason === PanelGateReason.FREE_TIER) reason = billingAwareFreeTier;
+      // A static lock (lazyPanel lockedFeatures) is decided at boot and holds
+      // until reload. These panels are not gated, so their verdict is NONE and
+      // unlocking them here would open a locked panel whose setup never ran.
+      if (this.staticallyLockedPanels.has(key)) continue;
+      const { isPremium, reason } = this.gateReasonFor(key, state, billingAwareFreeTier);
 
       const gatedPanel = panel as Panel;
       const principal = state.user?.id ?? null;
@@ -1184,6 +1160,14 @@ export class PanelLayoutManager implements AppModule {
         this.premiumPanelsUnlocked.delete(key);
       }
     }
+    // A locked panel takes one grid row (main.css, .panel-is-locked). Give a
+    // deferred shell the same footprint now, so a panel that mounts locked
+    // into it does not shrink and pull the panels below it up.
+    for (const [key, deferred] of this.deferredPanelMounts) {
+      if (!deferred.placeholder) continue;
+      const { reason } = this.gateReasonFor(key, state, billingAwareFreeTier);
+      deferred.placeholder.classList.toggle('panel-is-locked', this.staticallyLockedPanels.has(key) || reason !== PanelGateReason.NONE);
+    }
     this.gatingPrincipal = state.user?.id ?? null;
     // Also retries a failed team load for the same user.
     this.team.setPrincipal(state.user?.id ?? null);
@@ -1193,6 +1177,50 @@ export class PanelLayoutManager implements AppModule {
     // An auth-only subscription would miss the post-checkout snapshot — the
     // bug documented at the proBlock wiring below.
     this.updateTabCapLock();
+  }
+
+  private gateReasonFor(
+    key: string,
+    state: AuthSession,
+    billingAwareFreeTier: PanelGateReason,
+  ): { isPremium: boolean; reason: PanelGateReason } {
+    const isPremium = WEB_PREMIUM_PANELS.has(key)
+      || (this.ctx.isDesktopApp && key === 'telegram-intel');
+    let reason = getPanelGateReason(state, isPremium);
+
+    // Clerk-pro-only panels: even when hasPremiumAccess() returns
+    // true via API/tester key, these panels need a Clerk userId
+    // bound to a PRO entitlement. We DO NOT trust client-side
+    // entitlement state as an authoritative gate — the server-side
+    // /api/latest-brief check is authoritative. We only downgrade
+    // the gate reason here as AFFIRMATIVE DENIAL: when we KNOW
+    // (snapshot loaded AND tier < 1) the user is free. In every
+    // other case — snapshot not yet loaded, Convex subscription
+    // skipped, transient failure — we leave the panel unlocked
+    // and let the server 403 path drive the upgrade CTA inside
+    // the panel's refresh() catch block.
+    //
+    // Prior iterations of this code tried the opposite — gating
+    // positively on hasTier(1) — and locked legitimate Pro users
+    // out whenever the Convex snapshot was late, skipped, or
+    // failed. Affirmative-denial-only is the right shape: never
+    // over-gate, accept the one-doomed-fetch-per-session cost
+    // for API-key-only + free-Clerk users as the lesser harm.
+    if (
+      reason === PanelGateReason.NONE &&
+      WEB_CLERK_PRO_ONLY_PANELS.has(key) &&
+      getEntitlementState() !== null &&
+      !hasTier(1)
+    ) {
+      reason = state.user ? PanelGateReason.FREE_TIER : PanelGateReason.ANONYMOUS;
+    }
+
+    // #4771: a FREE_TIER verdict for a customer with stale paid evidence
+    // becomes a billing-state reason (verifying renewal / update payment /
+    // resubscribe) so we never push a paying user toward duplicate checkout.
+    if (reason === PanelGateReason.FREE_TIER) reason = billingAwareFreeTier;
+
+    return { isPremium, reason };
   }
 
   /** #5159/#5205/#5201: storage access can throw (blocked cookies, sandboxed
@@ -3202,6 +3230,14 @@ export class PanelLayoutManager implements AppModule {
       ? createDeferredPanelShell(key, this.ctx.panelSettings[key]?.name ?? key, this.getDeferredPanelShellFootprint(key))
       : null;
     if (placeholder && grid) {
+      // Match the lock footprint the panel will mount with: a static lock, or
+      // the verdict of the last gating pass.
+      if (this.staticallyLockedPanels.has(key)) {
+        placeholder.classList.add('panel-is-locked');
+      } else if (this.gatingPrincipal !== undefined) {
+        const { reason } = this.gateReasonFor(key, getAuthState(), resolveBillingAwareGateReason(PanelGateReason.FREE_TIER));
+        placeholder.classList.toggle('panel-is-locked', reason !== PanelGateReason.NONE);
+      }
       applyPanelFontScale(placeholder, this.ctx.panelSettings[key]?.fontScale);
       this.insertByOrder(grid, placeholder, key);
       this.mobilePanelNav?.applyToNewPanel(placeholder);
@@ -4187,6 +4223,8 @@ export class PanelLayoutManager implements AppModule {
     reapply();
     this.proBlockUnsubscribe = subscribeAuthState(reapply);
     this.proBlockEntitlementUnsubscribe = onEntitlementChange(reapply);
+    // A tester-key session or self-host key verdict can land after both of those settle.
+    this.proBlockAccessUnsubscribe = subscribeWidgetAccess(reapply);
 
     const bottomGrid = document.getElementById('mapBottomGrid');
     if (bottomGrid) {
@@ -4238,6 +4276,9 @@ export class PanelLayoutManager implements AppModule {
     this.ctx.map.onTimeRangeChanged((range) => {
       this.ctx.currentTimeRange = range;
       this.applyTimeRangeFilterDebounced();
+      // The URL otherwise follows map movement only, so a reload or shared
+      // link restored the previous range.
+      this.callbacks.syncUrlState?.();
     });
 
     this.applyPanelSettings();
@@ -4799,6 +4840,7 @@ export class PanelLayoutManager implements AppModule {
   ): boolean {
     if (!this.shouldCreatePanel(key)) return false;
     if (this.ctx.panels[key] || this.lazyPanelRegistrations.has(key)) return false;
+    if (lockedFeatures) this.staticallyLockedPanels.add(key);
     this.lazyPanelRegistrations.set(key, {
       loading: null,
       load: async () => {

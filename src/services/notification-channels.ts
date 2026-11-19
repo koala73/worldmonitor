@@ -15,6 +15,7 @@ export interface NotificationChannel {
   channelType: ChannelType;
   verified: boolean;
   linkedAt: number;
+  deliveryFailure?: { count: number; firstFailedAt: number; lastError: string; disabledAt?: number };
   chatId?: string;
   email?: string;
   slackChannelName?: string;
@@ -507,6 +508,8 @@ export async function setNotificationConfig(args: {
   chokepoints?: string[];
   orbitalSites?: string[];
   reservoirAlert?: ReservoirAlertSettings;
+  /** Scope a rule with no stored countries to the followed countries, server-side (#10873). */
+  seedCountriesFromFollowed?: boolean;
 }, expectedUserId?: string, signal?: AbortSignal): Promise<void> {
   const res = await authFetch('/api/notification-channels', {
     method: 'POST',

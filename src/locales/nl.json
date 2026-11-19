@@ -242,7 +242,8 @@
         "techevent": "Tech-evenement",
         "techhq": "Tech-hoofdkantoor",
         "accelerator": "Gaspedaal",
-        "flight": "Vlucht"
+        "flight": "Vlucht",
+        "alert": "Melding"
       },
       "placeholderTech": "Zoeken of commando typen...",
       "placeholderFinance": "Zoeken of commando typen...",
@@ -256,7 +257,9 @@
       "flightMilitaryOnGround": "Militair · {{type}} · op de grond",
       "flightSearchHint": "Druk op Enter of klik om live positie op te zoeken",
       "flightNotFound": "Geen live positie gevonden voor {{callsign}}",
-      "addPanel": "Toevoegen"
+      "addPanel": "Toevoegen",
+      "sentAlerts": "Meldingen die naar u zijn verzonden",
+      "sentAlertTime": "Verzonden {{time}}"
     },
     "signal": {
       "source": "Source",
@@ -363,7 +366,7 @@
       "loadingIndex": "Index laden...",
       "loadingMarkets": "Voorspellingsmarkten laden...",
       "generatingBrief": "Inlichtingenoverzicht genereren...",
-      "unavailable": "AI-overzicht niet beschikbaar: configureer OPENROUTER_API_KEY in Instellingen.",
+      "unavailable": "AI-briefing momenteel niet beschikbaar.",
       "cached": "in cache",
       "fresh": "Vers",
       "noMarkets": "Geen voorspellingsmarkten gevonden",
@@ -403,7 +406,7 @@
       "predictionMarkets": "Voorspellingsmarkten",
       "loadingMarkets": "Voorspellingsmarkten laden...",
       "infrastructure": "Blootstelling aan infrastructuur",
-      "briefUnavailable": "AI-overzicht niet beschikbaar: configureer OPENROUTER_API_KEY in Instellingen.",
+      "briefUnavailable": "AI-briefing momenteel niet beschikbaar.",
       "cached": "in cache",
       "fresh": "Vers",
       "noMarkets": "Geen voorspellingsmarkten gevonden",
@@ -4175,7 +4178,7 @@
     "predictionMarkets": "Voorspellingsmarkten",
     "loadingMarkets": "Voorspellingsmarkten laden...",
     "infrastructure": "Blootstelling aan infrastructuur",
-    "briefUnavailable": "AI-overzicht niet beschikbaar — configureer OPENROUTER_API_KEY in Instellingen.",
+    "briefUnavailable": "AI-briefing momenteel niet beschikbaar.",
     "cached": "In cache",
     "fresh": "Vers",
     "noMarkets": "Geen voorspellingsmarkten gevonden",
@@ -4227,13 +4230,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Instabiliteitsindex: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} actieve protesten gedetecteerd",
-      "aircraftTracked": "{{count}} militaire vliegtuigen gevolgd",
-      "vesselsTracked": "{{count}} militaire schepen gevolgd",
-      "internetOutages": "{{count}} internetstoringen",
-      "recentEarthquakes": "{{count}} recente aardbevingen",
+      "protestsDetected": "Actieve protesten: {{count}}",
+      "aircraftTracked": "Militaire vliegtuigen gemonitord: {{count}}",
+      "vesselsTracked": "Militaire schepen gemonitord: {{count}}",
+      "internetOutages": "Internetverstoringen: {{count}}",
+      "recentEarthquakes": "Recente aardbevingen: {{count}}",
       "stockIndex": "Beursindex: {{value}}",
-      "activeStrikes": "{{count}} actieve stakingen gedetecteerd"
+      "activeStrikes": "Aanvallen en onderscheppingen: {{count}}"
     },
     "militaryActivity": "Militaire activiteit",
     "defenseIndustrial": {
@@ -5867,6 +5870,13 @@
       "seasonalHint": "Waarschuwing wanneer het laatst gemeten niveau aanzienlijk lager is dan wat dat reservoir op dit moment van het jaar gewoonlijk meet.",
       "quietNote": "Deze waarschuwingen komen binnen, ook als real-time waarschuwingen alleen op kritiek zijn ingesteld. Stille uren dempen ze.",
       "quietNoteBatch": "Deze waarschuwingen komen binnen, ook als real-time waarschuwingen alleen op kritiek zijn ingesteld. Stille uren dempen ze, of houden ze tot het einde van de stille uren als je Batch kiest."
+    },
+    "briefLanguage": {
+      "label": "Taal van de briefing",
+      "hint": "Je dagelijkse briefing wordt geschreven in het {{language}}.",
+      "sameAsApp": "Zelfde als de app-taal",
+      "loadFailed": "Laden mislukt",
+      "saveFailed": "Dit kon niet worden opgeslagen. Probeer het opnieuw."
     }
   }
 }

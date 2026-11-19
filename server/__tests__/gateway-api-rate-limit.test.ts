@@ -316,7 +316,8 @@ describe("#3199 U4 — gateway per-account rate-limit wiring", () => {
       userId: hashKeySync('enterprise-browser-key'),
       allowance: OPERATOR_KEY_DAILY_CEILINGS.restRequests,
     }));
-    expect(checkRateLimit).toHaveBeenCalledWith(expect.any(Request), expect.any(Object));
+    // No principal: the IP-scoped bucket, as for an anonymous caller.
+    expect(checkRateLimit).toHaveBeenCalledWith(expect.any(Request), expect.any(Object), {});
   });
 
   test("an existing endpoint policy still owns fallback protection during burst outage", async () => {

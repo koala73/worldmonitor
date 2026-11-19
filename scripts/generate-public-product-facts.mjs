@@ -339,7 +339,7 @@ const PROVIDERS_ACROSS_HOSTS = { pattern: /\b\d+ attributed providers across \d+
 const CONSENT_PROVIDERS = { pattern: /\bIntelligence data from \d+ attributed providers\b/g, occurrences: 1, keys: ['providers'] };
 const RESTATED_FACT_PHRASES = new Map([
   ['docs/about.mdx', [
-    { pattern: /\b\d+ news and OSINT feeds from \d+ attributed providers\b/g, occurrences: 1, keys: ['feeds', 'providers'] },
+    { pattern: /\b\d+ news and OSINT feed hosts from \d+ attributed providers\b/g, occurrences: 1, keys: ['feeds', 'providers'] },
     { pattern: /\ball \d+ attributed providers\b/g, occurrences: 1, keys: ['providers'] },
     { pattern: /\b\d+ (?:toggleable )?layer types\b/g, occurrences: 2, keys: ['mapLayers'] },
     { pattern: /\b\d+ Tier-1 countries\b/g, occurrences: 1, keys: ['instabilityCountries'] },
@@ -348,7 +348,7 @@ const RESTATED_FACT_PHRASES = new Map([
     { pattern: /\b\d+ subsea cables\b/g, occurrences: 1, keys: ['submarineCables'] },
   ]],
   ['index.html', [
-    { pattern: /\b\d+ news and OSINT feeds from \d+ attributed providers across \d+ observed source hosts\b/g, occurrences: 1, keys: ['feeds', 'providers', 'sourceHosts'] },
+    { pattern: /\b\d+ news and OSINT feed hosts from \d+ attributed providers across \d+ observed source hosts\b/g, occurrences: 1, keys: ['feeds', 'providers', 'sourceHosts'] },
   ]],
   ['ARCHITECTURE.md', [{ pattern: /\b\d+ observed source hosts\b/g, occurrences: 1, keys: ['sourceHosts'] }]],
   ['public/llms-full.txt', [PROVIDERS_ACROSS_HOSTS]],

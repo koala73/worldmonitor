@@ -183,7 +183,30 @@ function buildQuoteSparkline(chart, history) {
   };
 }
 
+// Stock quotes carry Yahoo's raw 1-minute closes, up to ~760 in a session, and ship in the fast
+// bootstrap tier that every dashboard visit downloads. The dashboard draws them 50 px wide
+// (miniSparkline), so an even sample that keeps the first and last close draws the same line.
+// Both writers of market:stocks-bootstrap:v1 (ais-relay.cjs and seed-market-quotes.mjs) apply it.
+const QUOTE_SPARKLINE_MAX_POINTS = 96;
+
+/** An evenly spaced sample of at most `maxPoints` values that keeps the first and last. */
+function downsampleSparkline(values, maxPoints) {
+  if (values.length <= maxPoints) return values;
+  const step = (values.length - 1) / (maxPoints - 1);
+  return Array.from({ length: maxPoints }, (_, i) => values[Math.round(i * step)]);
+}
+
+/** Quotes whose sparkline is longer than the cap, sampled down; every other quote is returned as is. */
+function capQuoteSparklines(quotes, maxPoints = QUOTE_SPARKLINE_MAX_POINTS) {
+  return quotes.map((quote) => (Array.isArray(quote?.sparkline) && quote.sparkline.length > maxPoints
+    ? { ...quote, sparkline: downsampleSparkline(quote.sparkline, maxPoints) }
+    : quote));
+}
+
 module.exports = {
+  QUOTE_SPARKLINE_MAX_POINTS,
+  capQuoteSparklines,
+  downsampleSparkline,
   SPARKLINE_INTERVAL_SECONDS,
   SPARKLINE_WINDOW_SECONDS,
   SPARKLINE_HISTORY_QUERY,

@@ -16,7 +16,7 @@
     "predictionMarkets": "Marchés de prédiction",
     "loadingMarkets": "Chargement des marchés...",
     "infrastructure": "Exposition infrastructure",
-    "briefUnavailable": "Brief IA indisponible — configurez OPENROUTER_API_KEY dans les paramètres.",
+    "briefUnavailable": "Résumé IA indisponible pour le moment.",
     "cached": "En cache",
     "fresh": "Frais",
     "noMarkets": "Aucun marché trouvé",
@@ -68,13 +68,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Indice d'instabilité : {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} manifestations actives détectées",
-      "aircraftTracked": "{{count}} aéronefs militaires suivis",
-      "vesselsTracked": "{{count}} navires militaires suivis",
-      "internetOutages": "{{count}} pannes Internet",
-      "recentEarthquakes": "{{count}} séismes récents",
+      "protestsDetected": "Manifestations actives : {{count}}",
+      "aircraftTracked": "Aéronefs militaires suivis : {{count}}",
+      "vesselsTracked": "Navires militaires suivis : {{count}}",
+      "internetOutages": "Perturbations Internet : {{count}}",
+      "recentEarthquakes": "Tremblements de terre récents : {{count}}",
       "stockIndex": "Indice boursier : {{value}}",
-      "activeStrikes": "{{count}} frappes actives détectées"
+      "activeStrikes": "Attaques et interceptions : {{count}}"
     },
     "militaryActivity": "Activité militaire",
     "defenseIndustrial": {
@@ -629,7 +629,8 @@
         "techevent": "Événement Tech",
         "techhq": "Siège Tech",
         "accelerator": "Accélérateur",
-        "flight": "Vol"
+        "flight": "Vol",
+        "alert": "Alerte"
       },
       "placeholderTech": "Rechercher ou saisir une commande...",
       "placeholderFinance": "Rechercher ou saisir une commande...",
@@ -643,7 +644,9 @@
       "flightMilitaryOnGround": "Militaire · {{type}} · au sol",
       "flightSearchHint": "Appuyez sur Entrée ou cliquez pour consulter la position en direct",
       "flightNotFound": "Aucune position en direct trouvée pour {{callsign}}",
-      "addPanel": "Ajouter"
+      "addPanel": "Ajouter",
+      "sentAlerts": "Alertes qui vous ont été envoyées",
+      "sentAlertTime": "Envoyée {{time}}"
     },
     "signal": {
       "title": "DÉCOUVERTE RENSEIGNEMENT",
@@ -811,7 +814,7 @@
       "fresh": "Frais",
       "noMarkets": "Aucun marché de prédiction trouvé",
       "predictionMarkets": "Marchés de Prédiction",
-      "unavailable": "Briefing IA indisponible — configurez OPENROUTER_API_KEY dans les Paramètres."
+      "unavailable": "Résumé IA indisponible pour le moment."
     },
     "countryBrief": {
       "components": {
@@ -847,7 +850,7 @@
       "predictionMarkets": "Marchés de prédiction",
       "loadingMarkets": "Chargement des marchés de prédiction...",
       "infrastructure": "Exposition aux infrastructures",
-      "briefUnavailable": "Brief AI indisponible – configurez OPENROUTER_API_KEY dans Paramètres.",
+      "briefUnavailable": "Résumé IA indisponible pour le moment.",
       "cached": "En cache",
       "fresh": "Récent",
       "noMarkets": "Aucun marché de prédiction trouvé",
@@ -5903,6 +5906,13 @@
       "seasonalHint": "Alerte lorsque le dernier niveau mesuré est bien inférieur à ce que ce réservoir mesure généralement à cette période de l'année.",
       "quietNote": "Ces alertes arrivent même quand les alertes en temps réel sont définies sur critique uniquement. Les heures silencieuses les désactivent.",
       "quietNoteBatch": "Ces alertes arrivent même quand les alertes en temps réel sont définies sur critique uniquement. Les heures silencieuses les désactivent, ou les mettent en attente jusqu'à la fin des heures silencieuses si vous choisissez Batch."
+    },
+    "briefLanguage": {
+      "label": "Langue du briefing",
+      "hint": "Votre briefing quotidien sera rédigé en {{language}}.",
+      "sameAsApp": "Identique à la langue de l'application",
+      "loadFailed": "Échec du chargement",
+      "saveFailed": "Impossible d'enregistrer. Réessayez."
     }
   }
 }

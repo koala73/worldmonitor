@@ -5,6 +5,8 @@ vi.mock('../db/client.js', () => ({ query: mockQuery }));
 
 const { buildOverviewSnapshot, buildBasketSeriesSnapshot, buildCategoriesSnapshot } = await import('./worldmonitor.js');
 const { INDEX_METHODOLOGY_VERSION } = await import('../index-methodology.js');
+const CURRENT = INDEX_METHODOLOGY_VERSION;
+const EARLIER = String(Number(CURRENT) - 1);
 
 type Period = 'today' | 'week' | 'month';
 interface IndexRow { period: Period; metric_key: string; metric_value: string; methodology_version: string }
@@ -26,13 +28,13 @@ function overviewDb(rows: IndexRow[]) {
 
 beforeEach(() => { mockQuery.mockReset(); });
 
-it('does not compare a version-2 index against version-1 fallback history', async () => {
+it('does not compare a current-methodology index against earlier-methodology history', async () => {
   overviewDb([
-    { period: 'today', metric_key: 'essentials_index', metric_value: '116.15', methodology_version: '2' },
-    { period: 'today', metric_key: 'value_index', metric_value: '110', methodology_version: '2' },
-    { period: 'today', metric_key: 'coverage_pct', metric_value: '80', methodology_version: '2' },
-    { period: 'week', metric_key: 'essentials_index', metric_value: '100', methodology_version: '1' },
-    { period: 'month', metric_key: 'essentials_index', metric_value: '100', methodology_version: '1' },
+    { period: 'today', metric_key: 'essentials_index', metric_value: '116.15', methodology_version: CURRENT },
+    { period: 'today', metric_key: 'value_index', metric_value: '110', methodology_version: CURRENT },
+    { period: 'today', metric_key: 'coverage_pct', metric_value: '80', methodology_version: CURRENT },
+    { period: 'week', metric_key: 'essentials_index', metric_value: '100', methodology_version: EARLIER },
+    { period: 'month', metric_key: 'essentials_index', metric_value: '100', methodology_version: EARLIER },
   ]);
   const o = await buildOverviewSnapshot('ae');
   expect(o.essentialsIndex).toBe(116.2);
@@ -41,23 +43,23 @@ it('does not compare a version-2 index against version-1 fallback history', asyn
   expect(o.momPct).toBe(0);
 });
 
-it('compares against version-2 history once it exists', async () => {
+it('compares against current-methodology history once it exists', async () => {
   overviewDb([
-    { period: 'today', metric_key: 'essentials_index', metric_value: '110', methodology_version: '2' },
-    { period: 'today', metric_key: 'coverage_pct', metric_value: '80', methodology_version: '2' },
-    { period: 'week', metric_key: 'essentials_index', metric_value: '100', methodology_version: '2' },
-    { period: 'month', metric_key: 'essentials_index', metric_value: '88', methodology_version: '2' },
+    { period: 'today', metric_key: 'essentials_index', metric_value: '110', methodology_version: CURRENT },
+    { period: 'today', metric_key: 'coverage_pct', metric_value: '80', methodology_version: CURRENT },
+    { period: 'week', metric_key: 'essentials_index', metric_value: '100', methodology_version: CURRENT },
+    { period: 'month', metric_key: 'essentials_index', metric_value: '88', methodology_version: CURRENT },
   ]);
   const o = await buildOverviewSnapshot('ae');
   expect(o.wowPct).toBe(10);
   expect(o.momPct).toBe(25);
 });
 
-it('keeps non-index metrics from version-1 rows', async () => {
+it('keeps non-index metrics from earlier-methodology rows', async () => {
   overviewDb([
-    { period: 'today', metric_key: 'essentials_index', metric_value: '100', methodology_version: '1' },
-    { period: 'today', metric_key: 'essentials_index', metric_value: '103', methodology_version: '2' },
-    { period: 'today', metric_key: 'coverage_pct', metric_value: '75', methodology_version: '1' },
+    { period: 'today', metric_key: 'essentials_index', metric_value: '100', methodology_version: EARLIER },
+    { period: 'today', metric_key: 'essentials_index', metric_value: '103', methodology_version: CURRENT },
+    { period: 'today', metric_key: 'coverage_pct', metric_value: '75', methodology_version: EARLIER },
   ]);
   const o = await buildOverviewSnapshot('ae');
   expect(o.coveragePct).toBe(75);

@@ -16,7 +16,7 @@
     "predictionMarkets": "Prognosemärkte",
     "loadingMarkets": "Prognosemärkte werden geladen...",
     "infrastructure": "Infrastrukturexposition",
-    "briefUnavailable": "KI-Lagebericht nicht verfügbar – konfigurieren Sie OPENROUTER_API_KEY in den Einstellungen.",
+    "briefUnavailable": "KI-Briefing momentan nicht verfügbar.",
     "cached": "Zwischengespeichert",
     "fresh": "Aktuell",
     "noMarkets": "Keine aktiven Märkte für dieses Land.",
@@ -68,13 +68,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Instabilitätsindex: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} aktive Proteste erkannt",
-      "aircraftTracked": "{{count}} Militärflugzeuge verfolgt",
-      "vesselsTracked": "{{count}} Militärschiffe verfolgt",
-      "internetOutages": "{{count}} Internetausfälle",
-      "recentEarthquakes": "{{count}} jüngste Erdbeben",
+      "protestsDetected": "Aktive Proteste: {{count}}",
+      "aircraftTracked": "Militärflugzeuge überwacht: {{count}}",
+      "vesselsTracked": "Kriegsschiffe überwacht: {{count}}",
+      "internetOutages": "Internetstörungen: {{count}}",
+      "recentEarthquakes": "Jüngste Erdbeben: {{count}}",
       "stockIndex": "Aktienindex: {{value}}",
-      "activeStrikes": "{{count}} aktive Angriffe erkannt"
+      "activeStrikes": "Angriffe und Abfangeinsätze: {{count}}"
     },
     "militaryActivity": "Militärische Aktivität",
     "defenseIndustrial": {
@@ -626,7 +626,8 @@
         "techevent": "Tech-Event",
         "techhq": "Tech-Zentrale",
         "accelerator": "Accelerator",
-        "flight": "Flug"
+        "flight": "Flug",
+        "alert": "Benachrichtigung"
       },
       "placeholderTech": "Suchen oder Befehl eingeben...",
       "placeholderFinance": "Suchen oder Befehl eingeben...",
@@ -640,7 +641,9 @@
       "flightMilitaryOnGround": "Militär · {{type}} · am Boden",
       "flightSearchHint": "Drücken Sie die Eingabetaste oder klicken Sie, um die aktuelle Position nachzuschlagen",
       "flightNotFound": "Keine aktuelle Position für {{callsign}} gefunden",
-      "addPanel": "Hinzufügen"
+      "addPanel": "Hinzufügen",
+      "sentAlerts": "An dich gesendete Benachrichtigungen",
+      "sentAlertTime": "Gesendet {{time}}"
     },
     "signal": {
       "title": "NACHRICHTENDIENSTLICHE ERKENNTNIS",
@@ -765,7 +768,7 @@
       "fresh": "Aktuell",
       "noMarkets": "Keine Prognosemärkte gefunden",
       "predictionMarkets": "Prognosemärkte",
-      "unavailable": "KI-Lagebericht nicht verfügbar – konfigurieren Sie OPENROUTER_API_KEY in den Einstellungen."
+      "unavailable": "KI-Briefing momentan nicht verfügbar."
     },
     "countryBrief": {
       "components": {
@@ -801,7 +804,7 @@
       "predictionMarkets": "Prognosemärkte",
       "loadingMarkets": "Prognosemärkte werden geladen...",
       "infrastructure": "Infrastrukturexposition",
-      "briefUnavailable": "KI-Lagebericht nicht verfügbar – konfigurieren Sie OPENROUTER_API_KEY in den Einstellungen.",
+      "briefUnavailable": "KI-Briefing momentan nicht verfügbar.",
       "cached": "Zwischengespeichert",
       "fresh": "Aktuell",
       "noMarkets": "Keine Prognosemärkte gefunden",
@@ -5867,6 +5870,13 @@
       "seasonalHint": "Warnung, wenn der zuletzt gemessene Pegel deutlich unter dem liegt, was dieser Stausee normalerweise zu dieser Jahreszeit aufweist.",
       "quietNote": "Diese Benachrichtigungen treffen ein, auch wenn Echtzeit-Benachrichtigungen nur auf kritisch eingestellt sind. Ruhezeiten stellen sie stumm.",
       "quietNoteBatch": "Diese Benachrichtigungen treffen ein, auch wenn Echtzeit-Benachrichtigungen nur auf kritisch eingestellt sind. Ruhezeiten stellen sie stumm oder halten sie bis zum Ende der Ruhezeiten zurück, wenn Sie Batch wählen."
+    },
+    "briefLanguage": {
+      "label": "Sprache des Briefings",
+      "hint": "Ihr tägliches Briefing wird auf {{language}} verfasst.",
+      "sameAsApp": "Wie die App-Sprache",
+      "loadFailed": "Fehler beim Laden",
+      "saveFailed": "Das konnte nicht gespeichert werden. Versuche es nochmal."
     }
   }
 }

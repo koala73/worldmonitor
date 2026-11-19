@@ -2,7 +2,7 @@ import { DASHBOARD_TAB_NAME_MAX_LENGTH, type PanelTab, type TabsState } from '@/
 import { t } from '@/services/i18n';
 import { PanelGateReason } from '@/services/panel-gating';
 import { lockSvg, upgradeSvg } from '@/components/gate-icons';
-import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { isImeEnter, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { billingAwareGateCopy, type GateCopy } from '@/components/ExportGateControl';
 
 export interface PanelTabBarCallbacks {
@@ -635,7 +635,7 @@ export class PanelTabBar {
       this.render();
     };
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') commit();
+      if (e.key === 'Enter') { if (!isImeEnter(e)) commit(); }
       else if (e.key === 'Escape') cancel();
       e.stopPropagation();
     });

@@ -2,7 +2,6 @@ import { footprintBand, groundTrack, parseOrbitElements, ORBIT_ELEMENTS_MAX_AGE_
 import type { OrbitalCatalog } from './catalog-shape';
 import { profileFor } from './pass-query';
 
-export const ICESAT2_PROFILE_ID = 'icesat-2';
 export const RESERVOIR_NEXT_PASS_WINDOW_DAYS = 7;
 const TRACK_STEP_S = 10;
 const KM_PER_DEG_LAT = 111.32;
@@ -12,8 +11,8 @@ const DAY_MS = 86_400_000;
 export type ReservoirExtent = readonly [number, number, number, number];
 export interface ReservoirPassSite { id: string; core: ReservoirExtent }
 
-export { reservoirNextPassExpiresAt, type ReservoirNextPass } from './reservoir-next-pass-expiry';
-import type { ReservoirNextPass } from './reservoir-next-pass-expiry';
+export { ICESAT2_PROFILE_ID, reservoirNextPassExpiresAt, type ReservoirNextPass } from './reservoir-next-pass-expiry';
+import { ICESAT2_PROFILE_ID, type ReservoirNextPass } from './reservoir-next-pass-expiry';
 
 function crossesExtent(a: { lat: number; lon: number }, b: { lat: number; lon: number }, [w, s, e, n]: ReservoirExtent): number | null {
   // Liang-Barsky clip of the straight segment a->b against the box; returns the entry fraction.

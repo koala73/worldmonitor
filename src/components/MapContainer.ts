@@ -1329,8 +1329,11 @@ export class MapContainer {
       status = document.createElement('div');
       status.className = 'ukmto-map-status';
       status.setAttribute('role', 'status');
-      this.container.appendChild(status);
     }
+    // A row inside the time-range panel, so it cannot cover the range buttons
+    // or the layer panel. The globe has no time slider and keeps the overlay.
+    const host = this.container.querySelector<HTMLElement>('.time-slider') ?? this.container;
+    if (status.parentElement !== host) host.appendChild(status);
     const key = !snapshot.dataAvailable ? 'unavailable' : snapshot.stale ? 'stale' : snapshot.incidents.length === 0 ? 'empty' : 'current';
     const checked = snapshot.fetchedAt ? ` · ${new Date(snapshot.fetchedAt).toISOString().slice(0, 16).replace('T', ' ')} UTC` : '';
     status.textContent = `UKMTO · ${t(`ukmto.${key}`)}${checked}`;

@@ -3,6 +3,7 @@ import type { Infer } from "convex/values";
 import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { lookupVerifiedAccountEmail, requireVerifiedAccountEmail } from "./lib/notificationEmail";
+import { isDeliveryError } from "./lib/notificationDelivery";
 import { timingSafeEqualStrings } from "./lib/svixVerify";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import { briefOnlyUserIds, type BriefRuleFlags } from "./alertRules";
@@ -18,6 +19,7 @@ import { channelTypeValidator, USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
 import { ALERT_CAPABILITY_VIOLATION_CODES, ALERT_UPGRADE_URL } from "../shared/alert-capabilities";
 import { isPreferenceVariant } from "../shared/cloud-preferences-contract";
 import { normalizeAcquisitionSource } from "../shared/acquisition-source";
+import { briefL10nDeliverableLanguages } from "../shared/ui-languages";
 import { verifyDunningPortalToken } from "./lib/identitySigning";
 import { buildUnsubscribeUrl, EMAIL_UNSUBSCRIBE_PATH, verifyUnsubscribeToken } from "./lib/emailUnsubscribe";
 import {
@@ -1019,6 +1021,35 @@ function isChannelType(value: unknown): value is Infer<typeof channelTypeValidat
 }
 
 http.route({
+  path: "/relay/delivery-result",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+    if (unauthorized) return unauthorized;
+    const body = await parseJsonObjectBody<Record<string, unknown>>(request);
+    const inputs = body && Array.isArray(body.results) ? body.results : [body];
+    if (inputs.length === 0 || inputs.length > 100) {
+      return Response.json({ error: "INVALID_DELIVERY_RESULT" }, { status: 400 });
+    }
+    const results = [];
+    for (const input of inputs) {
+      const delivery = input?.delivery;
+      if (!input || typeof input.userId !== "string" || !input.userId || !isChannelType(input.channelType)
+        || !delivery || typeof delivery.channelId !== "string" || !delivery.channelId
+        || typeof delivery.linkedAt !== "number" || !Number.isFinite(delivery.linkedAt)
+        || (delivery.sequence !== undefined && (!Number.isSafeInteger(delivery.sequence) || delivery.sequence < 1))
+        || (delivery.error !== null && !isDeliveryError(delivery.error))) {
+        return Response.json({ error: "INVALID_DELIVERY_RESULT" }, { status: 400 });
+      }
+      results.push({ userId: input.userId, channelType: input.channelType,
+        delivery: { channelId: delivery.channelId, linkedAt: delivery.linkedAt, sequence: delivery.sequence, error: delivery.error } });
+    }
+    await ctx.runMutation(internal.notificationChannels.recordDeliveryResult, { results });
+    return Response.json({ ok: true });
+  }),
+});
+
+http.route({
   path: "/relay/deactivate",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
@@ -1156,7 +1187,7 @@ http.route({
     const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
     if (unauthorized) return unauthorized;
 
-    const body = await parseJsonObjectBody<{ userId?: string }>(request);
+    const body = await parseJsonObjectBody<{ userId?: string; deliveryChannels?: unknown }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
@@ -1171,10 +1202,16 @@ http.route({
       });
     }
 
-    const channels: Array<{ channelType?: string; email?: string }> =
-      await ctx.runQuery((internal as any).notificationChannels.getChannelsByUserId, {
-        userId: body.userId,
-      }) ?? [];
+    const deliveryChannels = body.deliveryChannels;
+    if (deliveryChannels !== undefined && (!Array.isArray(deliveryChannels)
+      || deliveryChannels.length > CHANNEL_TYPES.size || !deliveryChannels.every(isChannelType))) {
+      return Response.json({ error: "INVALID_DELIVERY_CHANNELS" }, { status: 400 });
+    }
+    const channels = deliveryChannels === undefined
+      ? await ctx.runQuery(internal.notificationChannels.getChannelsByUserId, { userId: body.userId })
+      : await ctx.runMutation(internal.notificationChannels.beginChannelDeliveries, {
+        userId: body.userId, channelTypes: deliveryChannels,
+      });
 
     // Delivery workers send alert and digest mail to whatever this returns.
     // Drop email channels whose address bounced, complained or was suppressed
@@ -1257,6 +1294,7 @@ http.route({
       orbitalSites?: string[];
       reservoirAlert?: unknown;
       scheduleWelcome?: boolean;
+      seedCountriesFromFollowed?: boolean;
     }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
@@ -1566,6 +1604,7 @@ http.route({
             orbitalSites: Array.isArray(body.orbitalSites) ? (body.orbitalSites as string[]) : undefined,
             // Reservoir level alert; the mutation validates the shape and gates it to Pro.
             reservoirAlert: body.reservoirAlert as ReservoirAlertBody | undefined,
+            seedCountriesFromFollowed: body.seedCountriesFromFollowed === true ? true : undefined,
           });
         } catch (err: unknown) {
           // Translate structured ConvexError codes into machine-readable HTTP
@@ -1630,6 +1669,23 @@ http.route({
   }),
 });
 
+// Service-to-service: the digest cron reads the brief localization switch once
+// per run. BRIEF_L10N_ENABLED / BRIEF_L10N_LANGS on this deployment are the only
+// switch; users.getBriefLanguage serves the same list to the Settings page.
+http.route({
+  path: "/relay/brief-l10n-config",
+  method: "GET",
+  handler: httpAction(async (_ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+    if (unauthorized) return unauthorized;
+    const langs = briefL10nDeliverableLanguages(process.env);
+    return new Response(JSON.stringify({ enabled: langs.length > 0, langs }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
 // Service-to-service: the digest cron fetches paid users who need a default
 // in-app brief (no digest rule of their own). Returns user ids only.
 http.route({
@@ -1685,7 +1741,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
     if (unauthorized) return unauthorized;
-    const body = await parseJsonObjectBody<{ userId?: string; variant?: string }>(request);
+    const body = await parseJsonObjectBody<{ userId?: string; variant?: string; includeBriefLanguage?: boolean }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
@@ -1708,7 +1764,18 @@ http.route({
       (internal as any).userPreferences.getPreferencesByUserId,
       { userId: body.userId, variant: body.variant },
     );
-    return new Response(JSON.stringify(prefs?.data ?? null), {
+    // Opt-in wrapped shape for the digest cron (brief l10n #10877). Without
+    // the flag the response stays the raw prefs blob older callers expect.
+    const payload = body.includeBriefLanguage === true
+      ? {
+        data: prefs?.data ?? null,
+        briefLanguage: await ctx.runQuery(
+          (internal as any).users.getBriefLanguageForUser,
+          { userId: body.userId },
+        ),
+      }
+      : prefs?.data ?? null;
+    return new Response(JSON.stringify(payload), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });

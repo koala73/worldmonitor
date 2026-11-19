@@ -253,6 +253,7 @@ const SEED_DOMAINS = {
   'intelligence:wsb-tickers': { key: 'seed-meta:intelligence:wsb-tickers', intervalMin: 270 }, // 180min relay loop (3h); intervalMin = maxStaleMin / 2 (540 / 2), matching api/health.js
   'trade:customs-revenue':    { key: 'seed-meta:trade:customs-revenue',    intervalMin: 720 },
   'trade:us-hts:catalog':     { key: 'seed-meta:trade:us-hts:catalog',     intervalMin: 720, minRecordCount: 100, activationKey: 'seed-activated:trade:us-hts' }, // intervalMin = maxStaleMin / 2, matching api/health.js
+  'comtrade:bilateral-hs4-ext': { key: 'seed-meta:comtrade:bilateral-hs4-ext', intervalMin: 25200, minRecordCount: 110 }, // monthly extended-headings seed on the 15th; same budget and floor as the core run
   'comtrade:bilateral-hs4':   { key: 'seed-meta:comtrade:bilateral-hs4',   intervalMin: 25200, minRecordCount: 110 }, // intervalMin*2 = health.js 35d budget for the monthly Railway seed; minRecordCount matches api/health.js + MIN_COUNTRY_COVERAGE
   'supply-chain:vulnerability': {
     key: 'seed-meta:supply-chain:vulnerability',

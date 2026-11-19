@@ -16,7 +16,7 @@
     "predictionMarkets": "Piețe de predicții",
     "loadingMarkets": "Se încarcă piețele de predicții...",
     "infrastructure": "Expunerea infrastructurii",
-    "briefUnavailable": "Brief AI indisponibil — configurați OPENROUTER_API_KEY în Setări.",
+    "briefUnavailable": "Rezumat AI indisponibil momentan.",
     "cached": "În cache",
     "fresh": "Proaspăt",
     "noMarkets": "Nu există piețe active pentru această țară.",
@@ -126,13 +126,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Index de instabilitate: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} au fost detectate proteste active",
-      "aircraftTracked": "{{count}} aeronave militare urmărite",
-      "vesselsTracked": "{{count}} navele militare urmărite",
-      "internetOutages": "{{count}} întreruperi de internet",
-      "recentEarthquakes": "{{count}} cutremure recente",
+      "protestsDetected": "Proteste active: {{count}}",
+      "aircraftTracked": "Aeronave militare monitorizate: {{count}}",
+      "vesselsTracked": "Nave militare monitorizate: {{count}}",
+      "internetOutages": "Întreruperi de internet: {{count}}",
+      "recentEarthquakes": "Cutremure recente: {{count}}",
       "stockIndex": "Indice bursier: {{value}}",
-      "activeStrikes": "{{count}} avertismente active detectate"
+      "activeStrikes": "Atacuri și interceptări: {{count}}"
     },
     "countryFacts": "Date despre țară",
     "loadingFacts": "Se încarcă datele țării...",
@@ -635,7 +635,8 @@
         "techevent": "Eveniment tehnic",
         "techhq": "Sediu central tech",
         "accelerator": "Accelerator",
-        "flight": "Zbor"
+        "flight": "Zbor",
+        "alert": "Alertă"
       },
       "flightOnGround": "Pe sol",
       "flightAirborne": "FL{{fl}} · {{kts}} noduri",
@@ -643,7 +644,9 @@
       "flightMilitaryOnGround": "Militar · {{type}} · pe sol",
       "flightSearchHint": "Apăsați Enter sau faceți clic pentru a căuta poziția live",
       "flightNotFound": "Nu s-a găsit poziție live pentru {{callsign}}",
-      "addPanel": "Adaugă"
+      "addPanel": "Adaugă",
+      "sentAlerts": "Alerte trimise către tine",
+      "sentAlertTime": "Trimisă {{time}}"
     },
     "signal": {
       "title": "DESCOPERIRE INFORMAȚII",
@@ -811,7 +814,7 @@
       "fresh": "Proaspăt",
       "noMarkets": "Nu au fost găsite piețe de predicție",
       "predictionMarkets": "Piețe de predicții",
-      "unavailable": "Brief AI indisponibil — configurați OPENROUTER_API_KEY în Setări."
+      "unavailable": "Rezumat AI indisponibil momentan."
     },
     "countryBrief": {
       "identifying": "Se identifică țara...",
@@ -827,7 +830,7 @@
       "predictionMarkets": "Piețe de predicții",
       "loadingMarkets": "Se încarcă piețele de predicții...",
       "infrastructure": "Expunerea infrastructurii",
-      "briefUnavailable": "Brief AI indisponibil — configurați OPENROUTER_API_KEY în Setări.",
+      "briefUnavailable": "Rezumat AI indisponibil momentan.",
       "cached": "În cache",
       "fresh": "Proaspăt",
       "noMarkets": "Nu au fost găsite piețe de predicție",
@@ -5903,6 +5906,13 @@
       "seasonalHint": "Avertizează când cel mai recent nivel măsurat este mult sub ceea ce măsoară de obicei acel rezervor în această perioadă a anului.",
       "quietNote": "Aceste alerte sosesc chiar și atunci când alertele în timp real sunt setate numai la critic. Orele liniștite le opresc.",
       "quietNoteBatch": "Aceste alerte sosesc chiar și atunci când alertele în timp real sunt setate numai la critic. Orele liniștite le opresc, sau le rețin până la sfârșitul orelor liniștite dacă alegi Batch."
+    },
+    "briefLanguage": {
+      "label": "Limba rezumatului",
+      "hint": "Rezumatul zilnic va fi scris în {{language}}.",
+      "sameAsApp": "La fel ca limba aplicației",
+      "loadFailed": "Încărcarea a eșuat",
+      "saveFailed": "Nu am putut salva. Încearcă din nou."
     }
   }
 }

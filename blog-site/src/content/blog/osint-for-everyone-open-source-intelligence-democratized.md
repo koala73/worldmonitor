@@ -1,146 +1,76 @@
 ---
-title: "OSINT for Everyone: Open Source Intelligence with World Monitor"
-description: "World Monitor brings professional-grade OSINT to everyone. Curated feeds, live tracking, AI threat analysis, and map layers in one free open source dashboard."
-metaTitle: "OSINT for Everyone: Free Intelligence Dashboard"
+title: "Free OSINT Dashboard and Live Tracker Map"
+description: "Track conflict, ships and aircraft on World Monitor's free live OSINT map. Follow a regional workflow and understand AI access, timestamps and coverage limits."
+metaTitle: "Free OSINT Dashboard and Live Tracker Map | World Monitor"
 keywords: "OSINT tools free, open source intelligence software, OSINT dashboard, intelligence gathering tools, OSINT for beginners"
 audience: "OSINT researchers, security analysts, journalists, hobbyist investigators"
 heroImage: "/blog/images/blog/osint-for-everyone-open-source-intelligence-democratized.jpg"
 pubDate: "2026-02-17"
-modifiedDate: "2026-09-20"
+modifiedDate: "2026-11-17"
 ---
 
-Open source intelligence used to require a dozen subscriptions, custom scrapers, and years of domain expertise. A professional OSINT analyst's browser might have 50+ tabs open at any given time: flight trackers, ship trackers, earthquake monitors, conflict databases, Telegram channels, RSS readers, and satellite imagery viewers.
+World Monitor combines attributed news, conflict context, available aircraft observations and maritime signals in a free public dashboard. It helps researchers compare sources and follow links back to evidence. Hosted analyst tools and some integrations have separate access requirements. A shared map does not make every observation complete, current or independently verified.
 
-World Monitor collapses that entire workflow into a single interactive dashboard.
+**[Open the live OSINT map](https://www.worldmonitor.app/dashboard)** to track conflict reports, ships and aircraft as they update. The map is free and needs no account.
 
-## The Tab Sprawl Problem
+*Cover: an archived dashboard image. Displayed readings and interface details are illustrative, not current observations.*
 
-If you've ever tried to monitor a developing situation, whether it's a military escalation, a [natural disaster](/blog/posts/natural-disaster-monitoring-earthquakes-fires-volcanoes/), or a supply chain disruption, you know the drill:
+## Start with a question, not every layer
 
-1. Open [FlightRadar24](https://www.flightradar24.com/) for aircraft movements
-2. Open [MarineTraffic](https://www.marinetraffic.com/) for ship positions
-3. Open [USGS](https://earthquake.usgs.gov/) for earthquake data
-4. Open [ACLED](https://acleddata.com/) for conflict events
-5. Open [Liveuamap](https://liveuamap.com/) for real-time mapping
-6. Open [Reuters](https://www.reuters.com/), [AP](https://apnews.com/), and [Al Jazeera](https://www.aljazeera.com/) for news
-7. Open Telegram for raw OSINT channels
-8. Open [Polymarket](https://polymarket.com/) for prediction markets
-9. Open [gpsjam.org](https://gpsjam.org/) for GPS interference
-10. Open [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) for fire detection
+Suppose you want to investigate reports of disruption near a port. Keep the location and time window fixed while checking reporting, ship observations and relevant aviation context. This is a hypothetical research exercise, not a report of a current incident.
 
-Each tool has its own interface, its own refresh cycle, its own learning curve. Cross-referencing between them is manual and slow. By the time you've built a picture, the situation has moved.
+1. Open [World Monitor](https://www.worldmonitor.app) and locate the area.
+2. Read the attributed reports. Identify their original sources and publication times; several outlets may repeat one statement.
+3. Enable relevant map layers, such as **Ship Traffic** or **Military Activity**, rather than assuming every marker is relevant.
+4. Inspect each observation's time and source. A recent page refresh does not mean a position was observed recently.
+5. Write a short evidence note: what is reported, what was observed, what remains unknown and which source to check next.
 
-World Monitor integrates all of these data sources (and many more) into a single, layered map with real-time updates. Learn more about [what World Monitor is and how it works](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/).
+The useful result is a better research question. Nearby aircraft, ships and news reports may have unrelated explanations.
 
-## Curated Intelligence Feeds, Zero Configuration
+## What is free, and what needs another plan?
 
-World Monitor aggregates a **curated RSS catalog** organized by signal category:
+The public dashboard supports general situational awareness. Hosted analyst chat, custom widgets, Scenario Engine and integrations have their own entitlements. Export and programmatic access also depend on the workflow and plan. Check [current plans](/docs/pricing) before building a process around a paid action.
 
-- Geopolitics and defense
-- Middle East and North Africa
-- Africa and Sub-Saharan
-- Think tanks and policy institutes
-- Technology and AI
-- Finance and markets
-- Energy and commodities
-- Cybersecurity
+Open-source code and access to the hosted service are different things. Running an installation yourself also requires its providers, configuration and credentials where applicable. Do not assume that every external dataset or model becomes free with the code.
 
-Each feed is classified by a **4-tier credibility system**, so you always know whether you're reading a primary source or secondary analysis. Server-side aggregation reduces API calls by 95%, and per-feed circuit breakers ensure one broken source doesn't take down the dashboard.
+## Where AI fits
 
-## Live Tracking: Ships, Planes, and Signals
+World Monitor has browser-side summarization paths when a supported model can load, alongside entitled server-side tools and configured local options. Device capability, model downloads and provider availability matter. “AI included” does not mean every request runs locally, every model is available anonymously or every answer is correct.
 
-Three of World Monitor's most powerful layers bring live tracking to your screen:
+Use summaries to identify material to read. Check the linked source before repeating a factual claim, and preserve qualifications such as “reported” or “unconfirmed.” The [AI reliability guide](/blog/posts/ai-intelligence-summary-reliability/) explains how to evaluate generated analysis.
 
-### ADS-B Aircraft Tracking
+## Read aircraft and maritime observations carefully
 
-Military and civilian aircraft positions update in real time via OpenSky and Wingbits enrichment. The system automatically identifies military aircraft and displays their callsigns, types, and flight paths on the map.
+Flight and vessel displays show available observations, not a complete inventory of activity. Receivers, transmission behavior, provider coverage and classification affect what appears. A missing position does not establish that a vessel has switched off a transponder deliberately; an aircraft label does not establish its mission.
 
-For source coverage, observation timing, and historical-data limits, see [military flight tracking for OSINT](/blog/posts/military-flight-tracking-osint/).
+For a deeper workflow, read [military flight tracking for OSINT](/blog/posts/military-flight-tracking-osint/) and [AIS observation accuracy](/blog/posts/ais-vessel-tracking-accuracy/). Keep a source's observation time separate from the time you opened the dashboard.
 
-### AIS Maritime Monitoring
+## Build a repeatable daily review
 
-Ship positions from AISStream.io are merged with **USNI Fleet Reports**, giving you both transponder data and editorial context from the U.S. Naval Institute. This combination reveals the complete order-of-battle for major naval deployments, something that usually requires a classified briefing.
+Use the same region and a short watchlist. Review new reporting, inspect the layers relevant to that question, and record changed observations separately from new interpretations. Scores and alerts can prioritize attention; they are not independent witnesses.
 
-### GPS/GNSS Jamming Detection
+A useful note might say: “Two articles repeat the port authority's statement. The available vessel observation predates that statement. We have not established whether operations changed.” That is more useful than calling a blank map proof of normal activity.
 
-ADS-B anomaly data is processed through an H3 hexagonal grid to identify zones where GPS signals are being jammed or spoofed. This is a critical indicator of electronic warfare activity, and World Monitor maps it automatically.
+Read [what real-time data means](/blog/posts/real-time-intelligence-data-freshness/) before comparing timestamps across different sources. Specialist archives and primary reporting remain necessary when the dashboard does not cover your question. For an event class with its own authoritative catalogue, go to the publisher: the [USGS earthquake catalog](https://earthquake.usgs.gov/earthquakes/search/) for seismic events, [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) for active-fire detections, [gpsjam.org](https://gpsjam.org/) for reported GPS interference and [ACLED](https://acleddata.com/) for coded conflict events. Those catalogues can corroborate a specific claim; they do not authenticate an image or an eyewitness account.
 
-## Telegram OSINT Channels
-
-World Monitor integrates curated Telegram channels via MTProto, organized by reliability tier:
-
-- **Tier 1:** Verified primary sources
-- **Tier 2:** Established OSINT accounts (Aurora Intel, BNO News, DeepState, OSINT Defender, LiveUAMap)
-- **Tier 3:** Secondary aggregators (Bellingcat, NEXTA, War Monitor)
-
-These channels often break news 15-30 minutes before traditional media. Having them integrated alongside verified feeds gives you both speed and context.
-
-## AI-Powered Threat Classification
-
-Raw intelligence is only useful if you can process it. World Monitor runs a **3-stage threat classification pipeline**:
-
-1. **Keyword matching** for immediate categorization
-2. **Browser-based ML** (Transformers.js running in Web Workers) for sentiment and entity extraction
-3. **LLM classification** for nuanced threat assessment
-
-This runs locally in your browser. No data leaves your machine unless you explicitly choose a cloud LLM provider.
-
-## The Country Instability Index
-
-One of World Monitor's original contributions to OSINT is the **[Country Instability Index (CII)](/country-instability-index/)**, a real-time 0-100 score computed for every monitored nation:
-
-- **Baseline risk (40%):** Historical conflict data, governance indicators
-- **Unrest indicators (20%):** Protests, strikes, civil disorder events
-- **Security events (20%):** Military activity, terrorism, border incidents
-- **Information velocity (20%):** News volume spikes that indicate developing situations
-
-The CII is boosted by real-time signals: proximity to active hotspots, OREF rocket alerts, GPS jamming activity, and travel advisory changes. The result is a heatmap overlay that shows, at a glance, where instability is rising.
-
-## Hotspot Escalation Scoring
-
-World Monitor doesn't just show you where things are happening. It tells you where they're getting worse. The **Hotspot Escalation Score** combines:
-
-- News activity (35%)
-- CII score (25%)
-- [Geographic convergence](https://www.worldmonitor.app/docs/geographic-convergence) (25%): when 3+ event types co-occur within the same 1-degree grid cell in 24 hours
-- Military indicators (15%)
-
-When a region's escalation score spikes, it surfaces in the Strategic Risk panel before traditional media picks up the story.
-
-## Sharing Intelligence
-
-Found something significant? World Monitor's story sharing lets you export intelligence briefs to Twitter/X, LinkedIn, WhatsApp, Telegram, and Reddit, complete with auto-generated Open Graph images for social previews.
-
-You can also share map states via URL: the map position, active layers, time range, and selected data points are all encoded in a shareable link. Send a colleague a URL and they see exactly what you see.
-
-## Getting Started with World Monitor for OSINT
-
-1. **Open worldmonitor.app** in any modern browser
-2. **Toggle layers** using the left sidebar: start with "Conflicts" and "Military Bases"
-3. **Click any data point** on the map for details and source links
-4. **Open the [Command Palette](/blog/posts/command-palette-search-everything-instantly/)** (Cmd+K / Ctrl+K) to fuzzy-search across 24 result types and 250+ country commands
-5. **Click any country** for its full intelligence dossier with CII score
-6. **Set up keyword monitors** for topics you want to track persistently
-
-No account needed. No API keys required for the web version. For local AI analysis, install Ollama and point World Monitor at your local instance. You can also explore [AI-powered intelligence without the cloud](/blog/posts/ai-powered-intelligence-without-the-cloud/).
-
-## Why Open Source Matters for OSINT
-
-Closed-source intelligence tools are black boxes. You can't verify how they score threats, where their data comes from, or whether their algorithms have blind spots.
-
-World Monitor's AGPL-3.0 license means every [scoring algorithm](https://www.worldmonitor.app/docs/algorithms), every data pipeline, and every AI prompt is open for inspection. Security researchers can audit it. Academics can cite it. Developers can extend it. And anyone can self-host it for complete operational security.
+The public [summarization implementation](https://github.com/koala73/worldmonitor/blob/5c50df116c/src/services/summarization.ts) documents the behavior behind this guide.
 
 ## Frequently Asked Questions
 
-**Is World Monitor really free for OSINT research?**
-Yes. Every feature, data source, and AI capability is available at no cost with no account required. The platform is open source under AGPL-3.0, so you can also self-host it.
+**Is World Monitor free for OSINT research?**
 
-**Do I need technical skills to use World Monitor for OSINT?**
-No. The interface is designed for analysts of all skill levels. Toggle layers on the sidebar, click data points for details, and use the Command Palette (Cmd+K) to search across all intelligence sources instantly.
+The public dashboard is free. Hosted tools, integrations and exports have separate requirements; consult current plans for the particular task.
 
-**How does World Monitor compare to traditional OSINT tools?**
-World Monitor consolidates curated feeds, live tracking, AI analysis, and map layers into one dashboard. Traditional tools require juggling separate platforms. See our [detailed comparison with traditional intelligence tools](/blog/posts/worldmonitor-vs-traditional-intelligence-tools/).
+**Can I use AI without sending every request to a hosted model?**
 
----
+Some summarization paths run in the browser when a supported model is available. Other tools use hosted services or configured providers. Check the specific feature rather than assuming one inference location for the platform.
 
-**Start your OSINT workflow at [worldmonitor.app](https://www.worldmonitor.app). Free, open source, and no login required.**
+**Does combining sources verify an event?**
+
+No. Compare provenance, time and coverage. Multiple displays can reuse the same underlying source, and geographic proximity does not establish a connection.
+
+**What should I save from a research session?**
+
+Keep source links, observation and publication times, your question, and unresolved gaps in your own notes. This manual practice does not require or imply a universal product export.
+
+Open [the dashboard](https://www.worldmonitor.app), choose one region and follow one claim back to its sources.

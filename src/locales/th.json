@@ -16,7 +16,7 @@
     "predictionMarkets": "ตลาดพยากรณ์",
     "loadingMarkets": "กำลังโหลดตลาดพยากรณ์...",
     "infrastructure": "โครงสร้างพื้นฐานที่เปิดเผย",
-    "briefUnavailable": "สรุป AI ไม่พร้อมใช้งาน — กรุณาตั้งค่า OPENROUTER_API_KEY ในการตั้งค่า",
+    "briefUnavailable": "บทวิเคราะห์ AI ไม่พร้อมใช้งานในขณะนี้",
     "cached": "แคชแล้ว",
     "fresh": "ใหม่",
     "noMarkets": "ไม่พบตลาดพยากรณ์",
@@ -126,13 +126,13 @@
     },
     "fallback": {
       "instabilityIndex": "**ดัชนีความไม่มั่นคง: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "ตรวจพบการประท้วงที่ยังดำเนินอยู่ {{count}} รายการ",
-      "aircraftTracked": "ติดตามอากาศยานทหาร {{count}} ลำ",
-      "vesselsTracked": "ติดตามเรือรบ {{count}} ลำ",
-      "internetOutages": "การหยุดชะงักอินเทอร์เน็ต {{count}} รายการ",
-      "recentEarthquakes": "แผ่นดินไหวล่าสุด {{count}} ครั้ง",
+      "protestsDetected": "การประท้วงที่กำลังเกิดขึ้น: {{count}}",
+      "aircraftTracked": "เครื่องบินทหารที่ติดตามอยู่: {{count}}",
+      "vesselsTracked": "เรือทหารที่ติดตามอยู่: {{count}}",
+      "internetOutages": "การหยุดชะงักของอินเทอร์เน็ต: {{count}}",
+      "recentEarthquakes": "แผ่นดินไหวเมื่อเร็ว ๆ นี้: {{count}}",
       "stockIndex": "ดัชนีหุ้น: {{value}}",
-      "activeStrikes": "ตรวจพบการนัดหยุดงาน {{count}} รายการ"
+      "activeStrikes": "การโจมตีและการสกัดกั้น: {{count}}"
     },
     "countryFacts": "ข้อมูลประเทศ",
     "loadingFacts": "กำลังโหลดข้อมูลประเทศ...",
@@ -629,7 +629,8 @@
         "techevent": "งานเทคโนโลยี",
         "techhq": "สำนักงานใหญ่เทคโนโลยี",
         "accelerator": "แอคเซเลอเรเตอร์",
-        "flight": "เที่ยวบิน"
+        "flight": "เที่ยวบิน",
+        "alert": "การแจ้งเตือน"
       },
       "flightOnGround": "บนพื้นดิน",
       "flightAirborne": "FL{{fl}} · {{kts}} นอต",
@@ -637,7 +638,9 @@
       "flightMilitaryOnGround": "ทหาร · {{type}} · บนพื้นดิน",
       "flightSearchHint": "กด Enter หรือคลิกเพื่อค้นหาตำแหน่งสด",
       "flightNotFound": "ไม่พบตำแหน่งสดสำหรับ {{callsign}}",
-      "addPanel": "เพิ่ม"
+      "addPanel": "เพิ่ม",
+      "sentAlerts": "การแจ้งเตือนที่ส่งให้คุณ",
+      "sentAlertTime": "ส่งแล้ว {{time}}"
     },
     "signal": {
       "title": "ผลการตรวจสอบข่าวกรอง",
@@ -805,7 +808,7 @@
       "fresh": "ใหม่",
       "noMarkets": "ไม่พบตลาดพยากรณ์",
       "predictionMarkets": "ตลาดพยากรณ์",
-      "unavailable": "สรุป AI ไม่พร้อมใช้งาน — กรุณาตั้งค่า OPENROUTER_API_KEY ในการตั้งค่า"
+      "unavailable": "บทวิเคราะห์ AI ไม่พร้อมใช้งานในขณะนี้"
     },
     "countryBrief": {
       "identifying": "กำลังระบุประเทศ...",
@@ -821,7 +824,7 @@
       "predictionMarkets": "ตลาดพยากรณ์",
       "loadingMarkets": "กำลังโหลดตลาดพยากรณ์...",
       "infrastructure": "โครงสร้างพื้นฐานที่เปิดเผย",
-      "briefUnavailable": "สรุป AI ไม่พร้อมใช้งาน — กรุณาตั้งค่า OPENROUTER_API_KEY ในการตั้งค่า",
+      "briefUnavailable": "บทวิเคราะห์ AI ไม่พร้อมใช้งานในขณะนี้",
       "cached": "แคชแล้ว",
       "fresh": "ใหม่",
       "noMarkets": "ไม่พบตลาดพยากรณ์",
@@ -5831,6 +5834,13 @@
       "seasonalHint": "แจ้งเตือนเมื่อระดับน้ำที่วัดได้ล่าสุดต่ำกว่าระดับปกติของอ่างเก็บน้ำในช่วงเวลาของปีนี้เป็นอย่างมาก",
       "quietNote": "การแจ้งเตือนเหล่านี้มาถึงแม้ว่าการแจ้งเตือนแบบเรียลไทม์ตั้งไว้เฉพาะที่สำคัญเท่านั้น เวลาเงียบจะปิดเสียงการแจ้งเตือนเหล่านี้",
       "quietNoteBatch": "การแจ้งเตือนเหล่านี้มาถึงแม้ว่าการแจ้งเตือนแบบเรียลไทม์ตั้งไว้เฉพาะที่สำคัญเท่านั้น เวลาเงียบจะปิดเสียงการแจ้งเตือน หรือเก็บไว้จนกว่าเวลาเงียบจะสิ้นสุดหากคุณเลือก Batch"
+    },
+    "briefLanguage": {
+      "label": "ภาษาของสรุปข่าว",
+      "hint": "สรุปข่าวประจำวันของคุณจะเขียนเป็นภาษา{{language}}",
+      "sameAsApp": "เหมือนกับภาษาของแอป",
+      "loadFailed": "การโหลดล้มเหลว",
+      "saveFailed": "ไม่สามารถบันทึกได้ ลองใหม่อีกครั้ง"
     }
   }
 }

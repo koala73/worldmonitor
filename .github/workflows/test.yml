@@ -1,4 +1,9 @@
 name: Test
+# Records which pull request and base a run tested. GitHub keeps no reliable
+# record of it after the PR merges, and the push-to-main verdict reuse in the
+# `changes` job credits only runs named for that PR into main. Other events
+# get the default name.
+run-name: "${{ github.event_name == 'pull_request' && format('PR #{0} into {1}: {2}', github.event.pull_request.number, github.event.pull_request.base.ref, github.event.pull_request.title) || '' }}"
 
 on:
   pull_request:
@@ -23,11 +28,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
+      # The push-only verdict reuse below reads commits, compares and Test runs.
+      actions: read
+      contents: read
     outputs:
-      code: ${{ steps.diff.outputs.code }}
-      browser: ${{ steps.diff.outputs.browser }}
+      # A push to main whose tree a green pull_request run already tested may
+      # switch these off (the reuse step); it can never switch one on.
+      code: ${{ steps.reuse.outputs.code || steps.diff.outputs.code }}
+      browser: ${{ steps.reuse.outputs.browser || steps.diff.outputs.browser }}
       digest: ${{ steps.diff.outputs.digest }}
-      validation: ${{ steps.diff.outputs.validation }}
+      validation: ${{ steps.reuse.outputs.validation || steps.diff.outputs.validation }}
       umami: ${{ steps.diff.outputs.umami }}
       consumer_prices: ${{ steps.diff.outputs.consumer_prices }}
       desktop_config: ${{ steps.diff.outputs.desktop_config }}
@@ -126,6 +136,7 @@ jobs:
             emit_all_true
             exit 0
           fi
+          echo "files_json=$(printf '%s\n' "$FILES" | jq -Rsc 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
           CODE=$(printf '%s\n' "$FILES" | awk '
             /^docs\/research\/seo-ai-visibility\// { count++; next }
             # Committed resilience acceptance artifacts are docs-path data that
@@ -296,6 +307,33 @@ jobs:
             END { print count + 0 }
           ')
           echo "desktop_rust=$( [ "$DESKTOP_RUST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+      # A squash merge whose PR head already contained main's previous tip has
+      # the same tree that PR's runs tested (18 of the last 100 merges on
+      # 2026-11-17, 15% of main-push Test job-minutes). Same tree, same verdict:
+      # the script switches off the unit and browser groups a green
+      # pull_request run on that head passed within 24 h. It never reuses when
+      # a lockfile, .npmrc, vendor/, .github/ or scripts/download-node.sh
+      # changed (main saves the shared caches those key), only trusts runs of
+      # that PR against main, and any lookup doubt or error leaves every job on.
+      - name: Check out the verdict reuse script
+        if: github.event_name == 'push'
+        continue-on-error: true
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          sparse-checkout: |
+            .github/scripts/reuse-pr-test-verdict.mjs
+            scripts/lib/main-module.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Reuse a green pull request verdict on an identical tree
+        id: reuse
+        if: github.event_name == 'push'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+          FILES_JSON: ${{ steps.diff.outputs.files_json }}
+        run: node .github/scripts/reuse-pr-test-verdict.mjs
 
   zapier:
     needs: changes
@@ -761,6 +799,20 @@ jobs:
     if: needs.changes.outputs.consumer_prices == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        env:
+          POSTGRES_DB: consumer_prices_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready --username=postgres --dbname=consumer_prices_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -771,6 +823,8 @@ jobs:
       - uses: ./.github/actions/install-redis
       - run: npm ci --prefix consumer-prices-core
       - run: npm test --prefix consumer-prices-core
+        env:
+          CONSUMER_PRICES_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/consumer_prices_test
 
   umami-postgres:
     needs: changes
@@ -1000,7 +1054,10 @@ jobs:
         with:
           node-version: '24'
       - uses: ./.github/actions/install-root-deps
-      - run: npm run test:convex
+      # Vitest defaults to one worker fewer than the CPU count, which leaves one
+      # of the runner's 4 vCPUs idle. Four workers took the suite from 48.8s
+      # (81% CPU busy) to 45.5s (94%), alternating on one VM (bench run 44274790851).
+      - run: npm run test:convex -- --maxWorkers=4
 
   # DOM-behavioral gate tests (#5634). Kept OUT of the `unit` job's tsx glob:
   # the components under test import `@/services/i18n`, which uses
@@ -1021,7 +1078,14 @@ jobs:
       # never be type-checked — the first run of this config caught four real
       # type errors in them.
       - run: npm run typecheck:dom-tests
+      # Vitest defaults to one worker fewer than the CPU count. Four workers, one
+      # per vCPU, took the suite from 196.5s (74% CPU busy) to 176.1s (89%),
+      # alternating on one VM; six reached 170.5s at 95% (bench run 44274790851).
+      # VITEST_MAX_THREADS is the config's existing override, so local runs keep
+      # Vitest's default.
       - run: npm run test:dom
+        env:
+          VITEST_MAX_THREADS: '4'
 
   variant-smoke-shards:
     name: variant-smoke (${{ matrix.shard }})
@@ -1211,13 +1275,16 @@ jobs:
     # full setup: each builds /pro (the legacy WebMCP tests load
     # /pro/welcome.html).
     #
-    # The plugin parts run the MCP Apps view specs (news and country views) on
-    # the built views in dist/plugin. No other job ran them, so a change could
-    # break a view spec and still merge green (#10494 broke 31 metering tests).
+    # The plugin parts run the MCP Apps view specs on the built views in
+    # dist/plugin. No other job ran them, so a change could break a view spec
+    # and still merge green (#10494 broke 31 metering tests). plugin-news runs
+    # the news metering spec alone and plugin-views runs the rest: with all
+    # news specs in one part it was the last browser job in 43 of 73 green PR
+    # runs (258s of work against 123s for the country view).
     strategy:
       fail-fast: false
       matrix:
-        part: [webmcp, pro-gates, plugin-news, plugin-country]
+        part: [webmcp, pro-gates, plugin-news, plugin-views]
     runs-on: ubuntu-latest
     # No secrets are injected here. The smoke allows provider-level
     # unavailable/stale states and gates app-level boot, variant, 401,
@@ -1228,16 +1295,19 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
           # node_modules comes from install-root-deps, so ~/.npm serves only
           # the pro-test install inside build:pro. Keyed on the root lockfile
           # it restored the 583 MB root download cache, and both parts pulling
-          # it at once took 12-62s instead of ~6s.
+          # it at once took 12-62s instead of ~6s. The plugin parts never build
+          # /pro, so they skip the restore (8s median).
+          cache: ${{ !startsWith(matrix.part, 'plugin-') && 'npm' || '' }}
           cache-dependency-path: pro-test/package-lock.json
       - uses: ./.github/actions/install-root-deps
         with:
-          # setup-node restores the npm cache for this job's other install.
-          npm-cache: 'false'
+          # The /pro parts restore ~/.npm through setup-node. The plugin parts
+          # restore nothing there, so a node_modules miss uses the action's
+          # root download cache instead.
+          npm-cache: ${{ startsWith(matrix.part, 'plugin-') && 'true' || 'false' }}
       - name: Resolve Playwright version
         id: playwright-version
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"

@@ -16,7 +16,7 @@
     "predictionMarkets": "Tahmin Piyasalari",
     "loadingMarkets": "Tahmin piyasalari yukleniyor...",
     "infrastructure": "Altyapi Maruziyeti",
-    "briefUnavailable": "Yapay zeka brifingi kullanilamaz — Ayarlar'dan OPENROUTER_API_KEY yapilandiriniz.",
+    "briefUnavailable": "AI özeti şu anda kullanılamıyor.",
     "cached": "Onbellekten",
     "fresh": "Guncel",
     "noMarkets": "Tahmin piyasasi bulunamadi",
@@ -126,13 +126,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Istikrarsizlik Endeksi: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} aktif protesto tespit edildi",
-      "aircraftTracked": "{{count}} askeri ucak takip ediliyor",
-      "vesselsTracked": "{{count}} askeri gemi takip ediliyor",
-      "internetOutages": "{{count}} internet kesintisi",
-      "recentEarthquakes": "{{count}} son deprem",
+      "protestsDetected": "Etkin protestolar: {{count}}",
+      "aircraftTracked": "İzlenen askeri uçak: {{count}}",
+      "vesselsTracked": "İzlenen askeri gemi: {{count}}",
+      "internetOutages": "İnternet kesintileri: {{count}}",
+      "recentEarthquakes": "Son depremler: {{count}}",
       "stockIndex": "Borsa endeksi: {{value}}",
-      "activeStrikes": "{{count}} aktif grev tespit edildi"
+      "activeStrikes": "Saldırılar ve önlemeler: {{count}}"
     },
     "countryFacts": "Ülke bilgileri",
     "loadingFacts": "Ülke bilgileri yükleniyor...",
@@ -632,7 +632,8 @@
         "techevent": "Teknoloji Etkinligi",
         "techhq": "Teknoloji Merkezi",
         "accelerator": "Hizlandirici",
-        "flight": "Uçuş"
+        "flight": "Uçuş",
+        "alert": "Uyarı"
       },
       "flightOnGround": "Yerdeki",
       "flightAirborne": "FL{{fl}} · {{kts}} knot",
@@ -640,7 +641,9 @@
       "flightMilitaryOnGround": "Askeri · {{type}} · yerdeki",
       "flightSearchHint": "Canlı konumu sorgulamak için Enter tuşuna basın veya tıklayın",
       "flightNotFound": "{{callsign}} için canlı konum bulunamadı",
-      "addPanel": "Ekle"
+      "addPanel": "Ekle",
+      "sentAlerts": "Size gönderilen uyarılar",
+      "sentAlertTime": "{{time}} tarihinde gönderildi"
     },
     "signal": {
       "title": "ISTIHBARAT BULGULARI",
@@ -808,7 +811,7 @@
       "fresh": "Guncel",
       "noMarkets": "Tahmin piyasasi bulunamadi",
       "predictionMarkets": "Tahmin Piyasalari",
-      "unavailable": "Yapay zeka brifingi kullanilamaz — Ayarlar'dan OPENROUTER_API_KEY yapilandiriniz."
+      "unavailable": "AI özeti şu anda kullanılamıyor."
     },
     "countryBrief": {
       "identifying": "Ulke belirleniyor...",
@@ -824,7 +827,7 @@
       "predictionMarkets": "Tahmin Piyasalari",
       "loadingMarkets": "Tahmin piyasalari yukleniyor...",
       "infrastructure": "Altyapi Maruziyeti",
-      "briefUnavailable": "Yapay zeka brifingi kullanilamaz — Ayarlar'dan OPENROUTER_API_KEY yapilandiriniz.",
+      "briefUnavailable": "AI özeti şu anda kullanılamıyor.",
       "cached": "Onbellekten",
       "fresh": "Guncel",
       "noMarkets": "Tahmin piyasasi bulunamadi",
@@ -5867,6 +5870,13 @@
       "seasonalHint": "En son ölçülen seviye, o rezervuarın yılın bu döneminde genellikle ölçtüğü değerin önemli ölçüde altında olduğunda uyarı alın.",
       "quietNote": "Bu uyarılar, gerçek zamanlı uyarılar yalnızca kritik olarak ayarlanmış olsa bile gelir. Sessiz saatler bunları susturur.",
       "quietNoteBatch": "Bu uyarılar, gerçek zamanlı uyarılar yalnızca kritik olarak ayarlanmış olsa bile gelir. Sessiz saatler bunları susturur veya Batch seçeneğini seçerseniz sessiz saatler bitene kadar bekletir."
+    },
+    "briefLanguage": {
+      "label": "Brifing dili",
+      "hint": "Günlük brifinginiz {{language}} dilinde yazılacak.",
+      "sameAsApp": "Uygulama diliyle aynı",
+      "loadFailed": "Yükleme başarısız",
+      "saveFailed": "Kaydedilemedi. Lütfen tekrar deneyin."
     }
   }
 }

@@ -242,7 +242,8 @@
         "techevent": "Teknikevenemang",
         "techhq": "Teknikhuvudkontor",
         "accelerator": "Accelerator",
-        "flight": "Flyg"
+        "flight": "Flyg",
+        "alert": "Avisering"
       },
       "placeholderTech": "Sök eller skriv ett kommando...",
       "placeholderFinance": "Sök eller skriv ett kommando...",
@@ -256,7 +257,9 @@
       "flightMilitaryOnGround": "Militär · {{type}} · på marken",
       "flightSearchHint": "Tryck Enter eller klicka för att slå upp live-position",
       "flightNotFound": "Ingen live-position hittad för {{callsign}}",
-      "addPanel": "Lägg till"
+      "addPanel": "Lägg till",
+      "sentAlerts": "Aviseringar skickade till dig",
+      "sentAlertTime": "Skickat {{time}}"
     },
     "signal": {
       "source": "Source",
@@ -363,7 +366,7 @@
       "loadingIndex": "Laddar index...",
       "loadingMarkets": "Laddar förutsägelsemarknader...",
       "generatingBrief": "Genererar underrättelseöversikt...",
-      "unavailable": "AI-kort inte tillgänglig — konfigurera OPENROUTER_API_KEY i Inställningar.",
+      "unavailable": "AI-sammanfattning är inte tillgänglig just nu.",
       "cached": "cachelagrad",
       "fresh": "Färsk",
       "noMarkets": "Inga förutsägande marknader hittades",
@@ -403,7 +406,7 @@
       "predictionMarkets": "Förutsägelsemarknader",
       "loadingMarkets": "Laddar förutsägelsemarknader...",
       "infrastructure": "Infrastrukturexponering",
-      "briefUnavailable": "AI-kort inte tillgänglig — konfigurera OPENROUTER_API_KEY i Inställningar.",
+      "briefUnavailable": "AI-sammanfattning är inte tillgänglig just nu.",
       "cached": "cachelagrad",
       "fresh": "Färsk",
       "noMarkets": "Inga förutsägande marknader hittades",
@@ -4175,7 +4178,7 @@
     "predictionMarkets": "Förutsägelsemarknader",
     "loadingMarkets": "Laddar förutsägelsemarknader...",
     "infrastructure": "Infrastrukturexponering",
-    "briefUnavailable": "AI-sammanfattning ej tillgänglig — konfigurera OPENROUTER_API_KEY i Inställningar.",
+    "briefUnavailable": "AI-sammanfattning är inte tillgänglig just nu.",
     "cached": "Cachelagrad",
     "fresh": "Aktuell",
     "noMarkets": "Inga förutsägelsemarknader hittades",
@@ -4227,13 +4230,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Instabilitetsindex: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} aktiva protester upptäckta",
-      "aircraftTracked": "{{count}} militära flygplan spårade",
-      "vesselsTracked": "{{count}} militära fartyg spårade",
-      "internetOutages": "{{count}} internetavbrott",
-      "recentEarthquakes": "{{count}} senaste jordbävningar",
+      "protestsDetected": "Aktiva protester: {{count}}",
+      "aircraftTracked": "Militära flygplan övervakade: {{count}}",
+      "vesselsTracked": "Militära fartyg övervakade: {{count}}",
+      "internetOutages": "Internetavbrott: {{count}}",
+      "recentEarthquakes": "Nya jordbävningar: {{count}}",
       "stockIndex": "Aktieindex: {{value}}",
-      "activeStrikes": "{{count}} aktiva strejker upptäckta"
+      "activeStrikes": "Attacker och nedskjutningar: {{count}}"
     },
     "militaryActivity": "Militär aktivitet",
     "defenseIndustrial": {
@@ -5867,6 +5870,13 @@
       "seasonalHint": "Få varning när den senaste uppmätta nivån är väsentligt lägre än vad denna reservoar normalt mäter vid denna årstid.",
       "quietNote": "Dessa aviseringar kommer fram även när realtidsaviseringar är inställda på endast kritiska. Tysta timmar tystar dem.",
       "quietNoteBatch": "Dessa aviseringar kommer fram även när realtidsaviseringar är inställda på endast kritiska. Tysta timmar tystar dem, eller håller kvar dem tills de tysta timmarna är slut om du väljer Batch."
+    },
+    "briefLanguage": {
+      "label": "Språk för sammanfattningen",
+      "hint": "Din dagliga sammanfattning skrivs på {{language}}.",
+      "sameAsApp": "Samma som appens språk",
+      "loadFailed": "Det gick inte att läsa in",
+      "saveFailed": "Kunde inte spara det. Försök igen."
     }
   }
 }

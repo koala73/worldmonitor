@@ -797,6 +797,15 @@ describe('readServiceWorkerContainer', () => {
     assert.doesNotThrow(() => installSwUpdateHandler({}));
   });
 
+  it('returns null when the container is a stub without addEventListener (WORLDMONITOR-1FB)', () => {
+    // An automation browser replaced navigator.serviceWorker with a plain
+    // object. Returning it let installSwUpdateHandler throw at module scope.
+    for (const stub of [{}, { controller: null }, { controller: null, addEventListener: 'nope' }]) {
+      const nav = { serviceWorker: stub } as unknown as Navigator;
+      assert.equal(readServiceWorkerContainer(nav), null);
+    }
+  });
+
   it('returns the container when it is readable', () => {
     const container = { controller: null, addEventListener() {} };
     assert.equal(readServiceWorkerContainer({ serviceWorker: container } as unknown as Navigator), container);

@@ -87,7 +87,7 @@
     "predictionMarkets": "Masoko ya Utabiri",
     "loadingMarkets": "Inapakia masoko ya ubashiri...",
     "infrastructure": "Ufichuzi wa Miundombinu",
-    "briefUnavailable": "Muhtasari wa AI haupatikani - sanidi OPENROUTER_API_KEY katika Mipangilio.",
+    "briefUnavailable": "Muhtasari wa AI haupatikani sasa.",
     "cached": "Imehifadhiwa",
     "fresh": "Safi",
     "noMarkets": "Hakuna masoko amilifu kwa nchi hii.",
@@ -230,13 +230,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Kielezo cha Kutoimarika: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "Maandamano {{count}} yanayoendelea yametambuliwa",
-      "aircraftTracked": "{{count}} ndege za kijeshi zimefuatiliwa",
-      "vesselsTracked": "Meli {{count}} za kijeshi zimefuatiliwa",
-      "internetOutages": "Kukatizwa kwa mtandao kwa {{count}}",
-      "recentEarthquakes": "{{count}} matetemeko ya ardhi ya hivi majuzi",
+      "protestsDetected": "Maandamano yanayoendelea: {{count}}",
+      "aircraftTracked": "Ndege za kijeshi zinazofuatiliwa: {{count}}",
+      "vesselsTracked": "Meli za kijeshi zinazofuatiliwa: {{count}}",
+      "internetOutages": "Kuvunjika kwa mtandao: {{count}}",
+      "recentEarthquakes": "Matetemeko ya ardhi ya hivi karibuni: {{count}}",
       "stockIndex": "Faharasa ya hisa: {{value}}",
-      "activeStrikes": "Imetambua maonyo {{count}} yanayoendelea"
+      "activeStrikes": "Mashambulizi na uzuiaji: {{count}}"
     },
     "countryFacts": "Mambo ya Nchi",
     "loadingFacts": "Inapakia ukweli wa nchi...",
@@ -702,14 +702,17 @@
         "techevent": "Tukio la Teknolojia",
         "techhq": "Makao makuu ya teknolojia",
         "accelerator": "Kiongeza kasi",
-        "flight": "Ndege"
+        "flight": "Ndege",
+        "alert": "Arifa"
       },
       "flightOnGround": "Juu ya ardhi",
       "flightAirborne": "FL{{fl}} · noti {{kts}}",
       "flightMilitary": "Wanajeshi · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Wanajeshi · {{type}} · ardhini",
       "flightSearchHint": "Bonyeza Enter au ubofye ili kutafuta nafasi ya moja kwa moja",
-      "flightNotFound": "Hakuna nafasi ya moja kwa moja iliyopatikana ya {{callsign}}"
+      "flightNotFound": "Hakuna nafasi ya moja kwa moja iliyopatikana ya {{callsign}}",
+      "sentAlerts": "Arifa zilizokupelekwa",
+      "sentAlertTime": "Zilipelekwa {{time}}"
     },
     "signal": {
       "title": "KUTAFUTA AKILI",
@@ -877,7 +880,7 @@
       "fresh": "Safi",
       "noMarkets": "Hakuna masoko ya utabiri yaliyopatikana",
       "predictionMarkets": "Masoko ya Utabiri",
-      "unavailable": "Muhtasari wa AI haupatikani - sanidi OPENROUTER_API_KEY katika Mipangilio."
+      "unavailable": "Muhtasari wa AI haupatikani sasa."
     },
     "countryBrief": {
       "identifying": "Inatambulisha nchi...",
@@ -893,7 +896,7 @@
       "predictionMarkets": "Masoko ya Utabiri",
       "loadingMarkets": "Inapakia masoko ya ubashiri...",
       "infrastructure": "Ufichuzi wa Miundombinu",
-      "briefUnavailable": "Muhtasari wa AI haupatikani - sanidi OPENROUTER_API_KEY katika Mipangilio.",
+      "briefUnavailable": "Muhtasari wa AI haupatikani sasa.",
       "cached": "Imehifadhiwa",
       "fresh": "Safi",
       "noMarkets": "Hakuna masoko ya utabiri yaliyopatikana",
@@ -5867,6 +5870,13 @@
       "seasonalHint": "Pokea onyo wakati kiwango kilichopimwa karibuni kiko chini sana ya kile ambacho bwawa hilo hupimwa kwa kawaida wakati huu wa mwaka.",
       "quietNote": "Arifa hizi hufika hata wakati arifa za wakati halisi zimewekwa kwa muhimu tu. Saa za kimya huzinyamazisha.",
       "quietNoteBatch": "Arifa hizi hufika hata wakati arifa za wakati halisi zimewekwa kwa muhimu tu. Saa za kimya huzinyamazisha, au huzishikilia hadi saa za kimya ziishe ukichagua Batch."
+    },
+    "briefLanguage": {
+      "label": "Lugha ya muhtasari",
+      "hint": "Muhtasari wako wa kila siku utaandikwa kwa {{language}}.",
+      "sameAsApp": "Sawa na lugha ya programu",
+      "loadFailed": "Imeshindwa kupakia",
+      "saveFailed": "Haiwezi kufanya hivyo. Jaribu tena."
     }
   }
 }

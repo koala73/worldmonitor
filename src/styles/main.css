@@ -1717,7 +1717,12 @@ canvas,
   min-width: 0;
   order: 0;
 }
+/* position: relative makes the row the containing block for its visually
+   hidden reason span, so overflow: hidden clips it. Without it the absolute
+   span escaped to the end of the unclipped text and widened the page at
+   800px (PR #10989). */
 .digest-coverage-row {
+  position: relative;
   font-family: var(--font-mono, monospace);
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
@@ -1950,6 +1955,18 @@ canvas,
     grid-row: span 4 !important;
     height: 100%;
   }
+}
+
+/* A Pro-locked panel holds only its lock card (about 150px), so the row
+   spans and height pins above left up to 660px of empty panel and pushed
+   the panels below it down the column. Give it one row until it unlocks.
+   The attribute selector matches the pins' specificity, and this rule comes
+   later, so it wins. A size the user set (.resized) and a collapsed panel
+   keep their own footprint. */
+#panelsGrid > .panel[data-panel].panel-is-locked:not(.resized):not(.panel-collapsed) {
+  grid-row: span 1 !important;
+  height: auto !important;
+  min-height: var(--dashboard-panel-row-min) !important;
 }
 
 /* #8276: Reserve enough grid rows for the natural wide video panels.
@@ -7464,24 +7481,48 @@ body.playback-mode .status-dot {
   display: flex;
   flex-direction: column;
   align-items: center;
-  cursor: pointer;
   z-index: 54;
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
-.nat-event-marker:hover {
-  transform: translate(-50%, -50%) scale(calc(var(--marker-scale, 1) * 1.2));
+/* Only the icon takes taps. A labelled marker sits above its neighbours, so
+   its text rows would otherwise catch taps meant for the icons beneath. The ID
+   outranks `#mapOverlays > *`, which turns taps on for every overlay child. */
+#mapOverlays > .nat-event-marker {
+  pointer-events: none;
+}
+
+/* The one marker in a crowd whose text is shown paints above its neighbours' icons. */
+.nat-event-marker.nat-event-texted {
+  z-index: 55;
+}
+
+.nat-event-texted .nat-event-label,
+.nat-event-texted .nat-event-magnitude {
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  border-radius: 2px;
+}
+
+/* Only the icon grows on hover, so the text keeps the box Map.ts declutters with. */
+.nat-event-marker:hover .nat-event-icon {
+  transform: scale(1.2);
 }
 
 .nat-event-icon {
+  position: relative;
   font-size: calc(20px * var(--wm-panel-effective-scale, 1));
   filter: drop-shadow(0 0 4px var(--shadow-color));
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.2s ease;
 }
 
 .nat-event-label {
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
   color: var(--accent);
   text-shadow: 0 0 4px var(--bg), 0 0 8px var(--bg);
+  /* Map.ts sizes the declutter boxes for this font, so it ignores the body-font setting. */
+  font-family: var(--font-mono);
   font-weight: bold;
   white-space: nowrap;
   margin-top: 2px;
@@ -7491,6 +7532,7 @@ body.playback-mode .status-dot {
 }
 
 .nat-event-magnitude {
+  font-family: var(--font-mono);
   font-size: calc(7px * var(--wm-panel-effective-scale, 1));
   color: var(--yellow-text, var(--yellow));
   text-shadow: 0 0 4px var(--bg);
@@ -11578,15 +11620,27 @@ button.popup-link {
   opacity: 1;
 }
 
-.map-wrapper[data-layer-hidden-bases="true"] .base-marker,
-.map-wrapper[data-layer-hidden-iranAttacks="true"] .iran-event-marker,
-.map-wrapper[data-layer-hidden-nuclear="true"] .nuclear-marker,
-.map-wrapper[data-layer-hidden-natural="true"] .earthquake-marker,
-.map-wrapper[data-layer-hidden-natural="true"] .nat-event-marker,
-.map-wrapper[data-layer-hidden-economic="true"] .economic-marker,
+.map-wrapper[data-layer-hidden-bases="true"] #mapOverlays .base-marker,
+.map-wrapper[data-layer-hidden-bases="true"] #mapOverlays .base-marker::before,
+.map-wrapper[data-layer-hidden-iranAttacks="true"] #mapOverlays .iran-event-marker,
+.map-wrapper[data-layer-hidden-iranAttacks="true"] #mapOverlays .iran-event-marker::before,
+.map-wrapper[data-layer-hidden-nuclear="true"] #mapOverlays .nuclear-marker,
+.map-wrapper[data-layer-hidden-nuclear="true"] #mapOverlays .nuclear-marker::before,
+.map-wrapper[data-layer-hidden-natural="true"] #mapOverlays .earthquake-marker,
+.map-wrapper[data-layer-hidden-natural="true"] #mapOverlays .earthquake-marker::before,
+.map-wrapper[data-layer-hidden-natural="true"] #mapOverlays .nat-event-marker,
+.map-wrapper[data-layer-hidden-natural="true"] #mapOverlays .nat-event-icon,
+.map-wrapper[data-layer-hidden-natural="true"] #mapOverlays .nat-event-icon::before,
+.map-wrapper[data-layer-hidden-economic="true"] #mapOverlays .economic-marker,
+.map-wrapper[data-layer-hidden-economic="true"] #mapOverlays .economic-marker::before,
+.map-wrapper[data-layer-hidden-conflicts="true"] #mapOverlays .conflict-click-area,
+.map-wrapper[data-layer-hidden-conflicts="true"] #mapOverlays .conflict-click-area::before {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .map-wrapper[data-layer-hidden-conflicts="true"] .conflicts,
-.map-wrapper[data-layer-hidden-conflicts="true"] .conflict-label-overlay,
-.map-wrapper[data-layer-hidden-conflicts="true"] .conflict-click-area {
+.map-wrapper[data-layer-hidden-conflicts="true"] .conflict-label-overlay {
   opacity: 0;
   pointer-events: none;
 }
@@ -13400,8 +13454,11 @@ button.popup-link {
   margin: 2px 0;
 }
 
+/* Flex-wrap already moves whole items to the next line; normal white-space
+   lets an item longer than the card wrap instead of running past its edge. */
 .sc-metric-row span {
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .sc-disrupt-red { color: var(--red, #ff5252); }
@@ -14000,6 +14057,10 @@ button.popup-link {
   .search-overlay.search-mobile .search-section-header { min-height: 32px; padding: 0 14px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); }
   .search-overlay.search-mobile .search-result-subtitle,
   .search-overlay.search-mobile .search-result-type { display: none; }
+  /* A history headline keeps its publisher and age on a phone: they are how a reader tells which story, and how old, before opening the article. */
+  .search-overlay.search-mobile .search-result-headline .search-result-subtitle { display: block; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
+  /* An alert is recognised by its publisher and sent time, so its second line stays on a phone. */
+  .search-overlay.search-mobile .search-result-alert .search-result-subtitle { display: block; }
   .search-overlay.search-mobile .search-launch-grid { grid-template-columns: minmax(0, 1fr); }
   .search-overlay.search-mobile .search-launch-grid .search-result-item { min-height: 60px; }
 }
@@ -16033,7 +16094,9 @@ button.popup-link {
   /* Expand touch targets for all map markers using ::before pseudo-element */
   /* This creates an invisible touch area around small markers */
 
-  #mapOverlays [class*='-marker']::before,
+  /* A natural-event marker takes taps on its icon only (its text sits above neighbours). */
+  #mapOverlays [class*='-marker']:not(.nat-event-marker)::before,
+  #mapOverlays .nat-event-icon::before,
   #mapOverlays .hotspot::before,
   #mapOverlays .conflict-click-area::before {
     content: '';
@@ -16062,6 +16125,10 @@ button.popup-link {
 
   .nat-event-marker:hover {
     transform: translate(-50%, -50%) scale(var(--marker-scale, 1));
+  }
+
+  .nat-event-marker:hover .nat-event-icon {
+    transform: none;
   }
 
   /* Ensure hotspot container is large enough for touch */
@@ -19646,8 +19713,9 @@ button.popup-link {
   width: calc(100% - 16px);
   margin: 4px 8px;
   padding: 4px 8px;
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.15);
+  /* Theme tokens: hard-coded white alpha left the box invisible in light mode. */
+  background: var(--overlay-light);
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
   color: inherit;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
@@ -19655,11 +19723,11 @@ button.popup-link {
   outline: none;
 }
 .deckgl-layer-toggles .layer-search::placeholder {
-  color: rgba(255,255,255,0.4);
+  color: var(--text-dim);
 }
 .deckgl-layer-toggles .layer-search:focus {
-  border-color: rgba(255,255,255,0.3);
-  background: rgba(255,255,255,0.12);
+  border-color: var(--text-dim);
+  background: var(--overlay-medium);
 }
 
 .deckgl-layer-toggles .layer-toggle {

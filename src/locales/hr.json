@@ -85,7 +85,7 @@
     "predictionMarkets": "Tržišta predviđanja",
     "loadingMarkets": "Učitavanje tržišta predviđanja...",
     "infrastructure": "Izloženost infrastrukture",
-    "briefUnavailable": "AI pregled nije dostupan — konfiguriraj OPENROUTER_API_KEY u Postavkama.",
+    "briefUnavailable": "AI sažetak nije dostupan sada.",
     "cached": "Keširano",
     "fresh": "Novo",
     "noMarkets": "Nema aktivnih tržišta za ovu zemlju.",
@@ -195,13 +195,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Indeks nestabilnosti: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} aktivnih prosvjeda otkriveno",
-      "aircraftTracked": "{{count}} vojnih zrakoplova praćeno",
-      "vesselsTracked": "{{count}} vojnih brodova praćeno",
-      "internetOutages": "{{count}} prekida interneta",
-      "recentEarthquakes": "{{count}} nedavnih potresa",
+      "protestsDetected": "Aktivni prosvjedi: {{count}}",
+      "aircraftTracked": "Praćeni vojni zrakoplovi: {{count}}",
+      "vesselsTracked": "Praćeni vojni brodovi: {{count}}",
+      "internetOutages": "Prekidi interneta: {{count}}",
+      "recentEarthquakes": "Nedavni potresi: {{count}}",
       "stockIndex": "Indeks dionica: {{value}}",
-      "activeStrikes": "{{count}} aktivnih štrajkova otkriveno"
+      "activeStrikes": "Napadi i presretanja: {{count}}"
     },
     "countryFacts": "Činjenice o zemlji",
     "loadingFacts": "Učitavanje činjenica o zemlji...",
@@ -704,7 +704,8 @@
         "techevent": "Tehnološki događaj",
         "techhq": "Tehnološka sjedišta",
         "accelerator": "Akcelerator",
-        "flight": "Let"
+        "flight": "Let",
+        "alert": "Upozorenje"
       },
       "flightOnGround": "Na zemlji",
       "flightAirborne": "FL{{fl}} · {{kts}} čv",
@@ -712,7 +713,9 @@
       "flightMilitaryOnGround": "Vojni · {{type}} · na zemlji",
       "flightSearchHint": "Pritisnite Enter ili kliknite za pronalaženje pozicije",
       "flightNotFound": "Nijedna aktivna pozicija pronađena za {{callsign}}",
-      "addPanel": "Dodaj"
+      "addPanel": "Dodaj",
+      "sentAlerts": "Upozorenja poslana vama",
+      "sentAlertTime": "Poslano {{time}}"
     },
     "signal": {
       "title": "OBAVJEŠTAJNI NALAZ",
@@ -880,7 +883,7 @@
       "fresh": "Novo",
       "noMarkets": "Nema pronađenih tržišta predviđanja",
       "predictionMarkets": "Tržišta predviđanja",
-      "unavailable": "AI izvještaj nije dostupan — konfigurirajte OPENROUTER_API_KEY u Postavkama."
+      "unavailable": "AI sažetak nije dostupan sada."
     },
     "countryBrief": {
       "identifying": "Prepoznavanje zemlje...",
@@ -896,7 +899,7 @@
       "predictionMarkets": "Tržišta predviđanja",
       "loadingMarkets": "Učitavanje tržišta predviđanja...",
       "infrastructure": "Izloženost infrastrukture",
-      "briefUnavailable": "AI izvještaj nije dostupan — konfigurirajte OPENROUTER_API_KEY u Postavkama.",
+      "briefUnavailable": "AI sažetak nije dostupan sada.",
       "cached": "Cache",
       "fresh": "Novo",
       "noMarkets": "Nema pronađenih tržišta predviđanja",
@@ -5913,6 +5916,13 @@
       "seasonalHint": "Upozorenje kada je posljednja izmjerena razina značajno ispod onoga što ta akumulacija obično mjeri u isto vrijeme godine.",
       "quietNote": "Ove obavijesti stižu čak i kada su obavijesti u stvarnom vremenu postavljene samo na kritične. Tihi sati ih utišavaju.",
       "quietNoteBatch": "Ove obavijesti stižu čak i kada su obavijesti u stvarnom vremenu postavljene samo na kritične. Tihi sati ih utišavaju ili ih, ako odaberete Batch, zadržavaju do kraja tihih sati."
+    },
+    "briefLanguage": {
+      "label": "Jezik sažetka",
+      "hint": "Vaš dnevni sažetak bit će na jeziku: {{language}}.",
+      "sameAsApp": "Isto kao jezik aplikacije",
+      "loadFailed": "Učitavanje nije uspjelo",
+      "saveFailed": "Nisam mogao to spremiti. Pokušajte ponovno."
     }
   },
   "app": {}

@@ -21,7 +21,7 @@ import { flightBoardTime } from '@/services/aviation/board-time';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 import { Panel } from './Panel';
-import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { isImeEnter, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import type { ResolvedScope } from '@/services/tab-focus';
 import { airportCountry, headlineCountries, withoutOwnSourceSuffix } from '@/services/scope-attribution';
 import { PanelScopeFilter, focusedEmptyHtml, scopeTagHtml, type ScopeCountries } from './panel-scope-filter';
@@ -185,7 +185,7 @@ export class AirlineIntelPanel extends Panel {
         });
 
         this.content.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && (e.target as HTMLElement).id === 'trackQueryInput') {
+            if (e.key === 'Enter' && !isImeEnter(e) && (e.target as HTMLElement).id === 'trackQueryInput') {
                 this.handleTrackSearch();
             }
         });

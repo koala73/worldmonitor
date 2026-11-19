@@ -6,7 +6,8 @@ import { findPasses, parseOrbitElements } from '../shared/orbital/pass-geometry.
 import type { GeoPoint, OmmRecord, OrbitElements, Pass } from '../shared/orbital/pass-geometry.js';
 import { matchSensorProfile } from '../shared/orbital/sensor-profiles.js';
 import type { SensorProfile } from '../shared/orbital/sensor-profiles.js';
-import { buildPassTrack, continuousTrack, framingBounds, pointNear, sweptSwath, trackPositionAt, type FootprintRing, type PassTrack } from '../src/services/orbital/track-geometry.ts';
+import { buildPassTrack } from '../src/services/orbital/pass-track.ts';
+import { continuousTrack, framingBounds, pointNear, sweptSwath, trackPositionAt, type FootprintRing, type PassTrack } from '../src/services/orbital/track-geometry.ts';
 
 const { records } = JSON.parse(readFileSync(new URL('./fixtures/orbital/celestrak-gp-2026-11-13.json', import.meta.url), 'utf8')) as { records: OmmRecord[] };
 

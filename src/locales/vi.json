@@ -16,7 +16,7 @@
     "predictionMarkets": "Thị trường Dự đoán",
     "loadingMarkets": "Đang tải thị trường dự đoán...",
     "infrastructure": "Mức độ phơi bày Hạ tầng",
-    "briefUnavailable": "Bản tin AI không khả dụng — cấu hình OPENROUTER_API_KEY trong Cài đặt.",
+    "briefUnavailable": "Tóm tắt AI không khả dụng lúc này.",
     "cached": "Đã lưu cache",
     "fresh": "Mới cập nhật",
     "noMarkets": "Không tìm thấy thị trường dự đoán",
@@ -126,13 +126,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Chỉ số Bất ổn: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "Phát hiện {{count}} cuộc biểu tình đang diễn ra",
-      "aircraftTracked": "Đang theo dõi {{count}} máy bay quân sự",
-      "vesselsTracked": "Đang theo dõi {{count}} tàu quân sự",
-      "internetOutages": "{{count}} sự cố gián đoạn internet",
-      "recentEarthquakes": "{{count}} trận động đất gần đây",
+      "protestsDetected": "Cuộc biểu tình đang hoạt động: {{count}}",
+      "aircraftTracked": "Máy bay quân sự được theo dõi: {{count}}",
+      "vesselsTracked": "Tàu quân sự được theo dõi: {{count}}",
+      "internetOutages": "Gián đoạn Internet: {{count}}",
+      "recentEarthquakes": "Các trận động đất gần đây: {{count}}",
       "stockIndex": "Chỉ số chứng khoán: {{value}}",
-      "activeStrikes": "Phát hiện {{count}} cuộc đình công đang diễn ra"
+      "activeStrikes": "Các cuộc tấn công và đánh chặn: {{count}}"
     },
     "countryFacts": "Thông tin quốc gia",
     "loadingFacts": "Đang tải thông tin quốc gia...",
@@ -629,7 +629,8 @@
         "techevent": "Sự kiện Công nghệ",
         "techhq": "Trụ sở Công nghệ",
         "accelerator": "Vườn ươm",
-        "flight": "Chuyến bay"
+        "flight": "Chuyến bay",
+        "alert": "Cảnh báo"
       },
       "flightOnGround": "Đang đỗ tại sân bay",
       "flightAirborne": "FL{{fl}} · {{kts}} hải lý/giờ",
@@ -637,7 +638,9 @@
       "flightMilitaryOnGround": "Quân sự · {{type}} · đang đỗ tại sân bay",
       "flightSearchHint": "Nhấn Enter hoặc nhấp để tra cứu vị trí trực tiếp",
       "flightNotFound": "Không tìm thấy vị trí trực tiếp cho {{callsign}}",
-      "addPanel": "Thêm"
+      "addPanel": "Thêm",
+      "sentAlerts": "Cảnh báo được gửi cho bạn",
+      "sentAlertTime": "Được gửi {{time}}"
     },
     "signal": {
       "title": "PHÁT HIỆN TÌNH BÁO",
@@ -805,7 +808,7 @@
       "fresh": "Mới cập nhật",
       "noMarkets": "Không tìm thấy thị trường dự đoán",
       "predictionMarkets": "Thị trường Dự đoán",
-      "unavailable": "Bản tin AI không khả dụng — cấu hình OPENROUTER_API_KEY trong Cài đặt."
+      "unavailable": "Tóm tắt AI không khả dụng lúc này."
     },
     "countryBrief": {
       "identifying": "Đang xác định quốc gia...",
@@ -821,7 +824,7 @@
       "predictionMarkets": "Thị trường Dự đoán",
       "loadingMarkets": "Đang tải thị trường dự đoán...",
       "infrastructure": "Mức độ phơi bày Hạ tầng",
-      "briefUnavailable": "Bản tin AI không khả dụng — cấu hình OPENROUTER_API_KEY trong Cài đặt.",
+      "briefUnavailable": "Tóm tắt AI không khả dụng lúc này.",
       "cached": "Đã lưu cache",
       "fresh": "Mới cập nhật",
       "noMarkets": "Không tìm thấy thị trường dự đoán",
@@ -5831,6 +5834,13 @@
       "seasonalHint": "Cảnh báo khi mức nước đo được mới nhất thấp hơn đáng kể so với những gì hồ chứa thường đo được vào thời điểm này trong năm.",
       "quietNote": "Những cảnh báo này đến ngay cả khi cảnh báo thời gian thực chỉ được đặt ở mức quan trọng. Giờ yên tĩnh sẽ tắt chúng.",
       "quietNoteBatch": "Những cảnh báo này đến ngay cả khi cảnh báo thời gian thực chỉ được đặt ở mức quan trọng. Giờ yên tĩnh sẽ tắt chúng hoặc giữ lại chúng cho đến khi giờ yên tĩnh kết thúc nếu bạn chọn Batch."
+    },
+    "briefLanguage": {
+      "label": "Ngôn ngữ bản tin",
+      "hint": "Bản tin hằng ngày của bạn sẽ được viết bằng {{language}}.",
+      "sameAsApp": "Giống ngôn ngữ ứng dụng",
+      "loadFailed": "Không tải được",
+      "saveFailed": "Không thể lưu. Vui lòng thử lại."
     }
   }
 }

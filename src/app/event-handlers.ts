@@ -164,7 +164,7 @@ import {
 } from '@/app/responsive-zone-listener';
 import { stageVariantSelection } from '@/services/variant-panel-ownership';
 import { isMapUrlCentreClaimed, publishedMapCentre } from '@/app/orbital-map-focus';
-import { transferSourceGateOwnershipToUser as releaseSourceGateOwnership } from '@/services/source-cap';
+import { transferSourceGateOwnershipToUser as releaseSourceGateOwnership, stringSetsEqual } from '@/services/source-cap';
 
 /** Bound on each wait before the About-you card abstains for this load. */
 const ABOUT_YOU_WAIT_MS = 8_000;
@@ -263,6 +263,10 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
 
   refreshPanelToggles(): void {
     this.instance?.refreshPanelToggles();
+  }
+
+  refreshSourceToggles(): void {
+    this.instance?.refreshSourceToggles();
   }
 
   close(): void {
@@ -407,6 +411,7 @@ export class EventHandlerManager implements AppModule {
     try { history.replaceState(history.state, '', withUrlFragment(url, window.location.hash)); } catch { }
   };
   private readonly debouncedUrlSync = debounce(this.writeUrlState, 250);
+  private urlStateSyncReady = false;
 
   private readonly debouncedWebcamReload = debounce(() => {
     if (this.ctx.mapLayers?.webcams) {
@@ -1419,6 +1424,7 @@ export class EventHandlerManager implements AppModule {
 
     this.applyPanelSettings();
     this.callbacks.applySavedPanelOrder?.(applied.panelOrder);
+    this.showPanelsFromTop();
     this.ctx.unifiedSettings?.refreshPanelToggles();
     this.ctx.map?.setLayers(mapLayers);
     this.applyMissionMapLayerTransitions(previousMapLayers, mapLayers);
@@ -1547,6 +1553,34 @@ export class EventHandlerManager implements AppModule {
     this.renderMissionPresetControl();
   }
 
+  /**
+   * A mission apply or reset replaces the panel layout, so the old scroll
+   * position points into a different list. Start the new layout at its first
+   * panel: the grid scrolls on desktop. On mobile the main column scrolls and
+   * the sticky category bar covers its top, so when the user is scrolled into
+   * the panels, the first panel the bar's filter shows is brought up to just
+   * below the bar (the second half of MobilePanelNav.scrollToPanels). When the
+   * bar isn't stuck yet, the user is above the panels, which a layout change
+   * doesn't move, so the view stays where it is rather than scrolling the map
+   * out of sight.
+   */
+  private showPanelsFromTop(): void {
+    const grid = document.getElementById('panelsGrid');
+    if (!grid) return;
+    grid.scrollTop = 0;
+    const first = grid.querySelector<HTMLElement>(':scope > [data-panel]:not(.hidden):not(.mobile-cat-hidden)');
+    if (!first) return;
+    const bar = document.querySelector<HTMLElement>('.mobile-panel-nav');
+    const scroller = bar?.parentElement;
+    if (!bar || !scroller) {
+      if (first.getBoundingClientRect().top < 0) first.scrollIntoView({ block: 'start' });
+      return;
+    }
+    const target = scroller.scrollTop + first.getBoundingClientRect().top
+      - scroller.getBoundingClientRect().top - bar.getBoundingClientRect().height;
+    if (scroller.scrollTop > target) scroller.scrollTop = Math.max(0, target);
+  }
+
   private resetMissionPreset(): void {
     const reset = resetMissionPresetState(
       this.ctx.panelSettings,
@@ -1566,6 +1600,7 @@ export class EventHandlerManager implements AppModule {
 
     this.applyPanelSettings();
     this.callbacks.applySavedPanelOrder?.(reset.panelOrder);
+    this.showPanelsFromTop();
     this.ctx.unifiedSettings?.refreshPanelToggles();
     this.ctx.map?.setLayers(mapLayers);
     this.applyMissionMapLayerTransitions(previousMapLayers, mapLayers);
@@ -1634,18 +1669,31 @@ export class EventHandlerManager implements AppModule {
       // and may finish before this listener is attached, so this settled write
       // is also what preserves its initial lat/lon URL state.
       void this.ctx.map.whenViewportSettled().then(() => {
+        this.urlStateSyncReady = true;
         if (!this.ctx.isDestroyed) this.debouncedUrlSync();
       }).catch(() => {
         // A superseding interaction or renderer switch owns the newer state;
         // its normal state-change listener will sync that viewport.
+        this.urlStateSyncReady = true;
       });
     } else {
       this.debouncedUrlSync();
+      this.urlStateSyncReady = true;
     }
   }
 
   syncUrlState(): void {
     this.debouncedUrlSync();
+  }
+
+  /**
+   * For map changes that also fire during boot, such as the deep link's time
+   * range. Until setupUrlStateSync() has run and any deep-link flyTo has
+   * settled, a write would record the map mid-flight; the settled write then
+   * carries the current state, time range included.
+   */
+  syncUrlStateIfStarted(): void {
+    if (this.urlStateSyncReady) this.debouncedUrlSync();
   }
 
   syncUrlStateNow(): void {
@@ -2391,9 +2439,7 @@ export class EventHandlerManager implements AppModule {
         } else {
           this.ctx.disabledSources.add(name);
         }
-        if (this.transferSourceGateOwnershipToUser([name])) {
-          saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
-        }
+        this.persistSourcePreferences([name]);
       },
       setSourcesEnabled: (names: string[], enabled: boolean) => {
         if (enabled && !isProUser()) {
@@ -2409,9 +2455,7 @@ export class EventHandlerManager implements AppModule {
           if (enabled) this.ctx.disabledSources.delete(name);
           else this.ctx.disabledSources.add(name);
         }
-        if (this.transferSourceGateOwnershipToUser(names)) {
-          saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
-        }
+        this.persistSourcePreferences(names);
       },
       getAllSourceNames: () => this.getAllSourceNames(),
       // Sources are applied to ctx.disabledSources on click, but DataLoader
@@ -3154,19 +3198,32 @@ export class EventHandlerManager implements AppModule {
     return getPanelDisplayName(panelKey, fallback);
   }
 
-  private transferSourceGateOwnershipToUser(names: Iterable<string>): boolean {
-    const gateOwned = new Set(
+  private persistSourcePreferences(names: Iterable<string>): void {
+    const persistedGateOwned = new Set(
       loadFromStorage<string[]>(STORAGE_KEYS.sourceGateOwnership, []),
     );
-    const nextGateOwned = releaseSourceGateOwnership(gateOwned, names);
-    if (nextGateOwned.size === gateOwned.size) return true;
-    // A deliberate source preference can only outlive the gate safely after
-    // ownership transfers. If this sidecar write fails, keep the live toggle
-    // for the session but do not persist a preference Pro could later undo.
-    return writeStorageValue(
-      STORAGE_KEYS.sourceGateOwnership,
-      JSON.stringify([...nextGateOwned]),
-    );
+    const pending = this.ctx.pendingSourcePreferences;
+    const gateOwned = pending?.gateOwned ?? persistedGateOwned;
+    const edits = new Map(pending?.edits);
+    const editedNames = [...names];
+    for (const name of editedNames) edits.set(name, this.ctx.disabledSources.has(name));
+    const nextGateOwned = releaseSourceGateOwnership(gateOwned, editedNames);
+    this.ctx.pendingSourcePreferences = {
+      gateOwned: nextGateOwned,
+      baselineGateOwned: pending?.baselineGateOwned ?? persistedGateOwned,
+      fallbackDisabledSources: pending?.fallbackDisabledSources,
+      edits,
+      migrationMarkers: pending?.migrationMarkers ?? [],
+    };
+    if (!stringSetsEqual(persistedGateOwned, nextGateOwned)
+      && !writeStorageValue(STORAGE_KEYS.sourceGateOwnership, JSON.stringify([...nextGateOwned]))) return;
+    if (!saveToStorage(STORAGE_KEYS.disabledFeeds, [...this.ctx.disabledSources])) return;
+    this.ctx.pendingSourcePreferences.baselineGateOwned = nextGateOwned;
+    this.ctx.pendingSourcePreferences.fallbackDisabledSources = undefined;
+    for (const marker of pending?.migrationMarkers ?? []) {
+      if (!writeStorageValue(marker, 'done')) return;
+    }
+    this.ctx.pendingSourcePreferences = undefined;
   }
 
   getAllSourceNames(): string[] {

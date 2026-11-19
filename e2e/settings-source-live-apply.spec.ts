@@ -187,6 +187,79 @@ async function disableFirstSources(page: Page, count: number): Promise<string[]>
 }
 
 test.describe('settings source live apply (#6380)', () => {
+  test('cloud source choices apply over pending migrations and session toggles', async ({ page }, testInfo) => {
+    await seedProFullVariant(page, true);
+    await page.addInitScript(() => {
+      localStorage.setItem('worldmonitor-disabled-feeds', '["BBC World"]');
+      for (const key of [
+        'worldmonitor-frontline-europe-enable-v1', 'worldmonitor-strategic-defaults-enable-v1',
+        'worldmonitor-regional-feed-rollout-reconcile-v1', 'worldmonitor-canada-arctic-optin-v1',
+        'worldmonitor-canada-depth-optin-v1', 'worldmonitor-crisis-desk-optin-v1',
+        'worldmonitor-curated-regional-optin-v1', 'worldmonitor-german-rss-sources-v1',
+      ]) localStorage.setItem(key, 'done');
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key: string, value: string) {
+        if (this === localStorage && !sessionStorage.getItem('__source_writes_allowed__') && (
+          key === 'worldmonitor-disabled-feeds' || key === 'worldmonitor-free-tier-source-ownership'
+          || key === 'worldmonitor-country-coverage-optin-v1' || key === 'worldmonitor-brazil-optin-v1'
+        )) throw new DOMException('Test preference quota', 'QuotaExceededError');
+        original.call(this, key, value);
+      };
+    });
+    await bootUntilNewsSettles(page);
+    await openSourcesTab(page);
+    const source = (name: string) => page.locator(`#usSourceToggles .source-toggle-item[data-source="${name}"]`);
+    const showSource = async (name: string) => {
+      await page.locator('.sources-search input').fill(name);
+      await expect(source(name)).toBeVisible();
+      return source(name);
+    };
+    await expect(await showSource('BBC World')).not.toHaveClass(/\bactive\b/);
+    await evidenceScreenshot(page, { path: testInfo.outputPath('pending-before-cloud.png') });
+    await expect(await showSource('Guardian Brazil')).not.toHaveClass(/\bactive\b/);
+    await source('Guardian Brazil').click();
+    await expect(source('Guardian Brazil')).toHaveClass(/\bactive\b/);
+    await showSource('BBC World');
+
+    // Emulate the existing cloud-applied boundary: a new snapshot landed, but
+    // subsequent preference and migration-marker writes still fail.
+    await source('BBC World').focus();
+    await page.evaluate(() => {
+      sessionStorage.setItem('__source_writes_allowed__', '1');
+      localStorage.setItem('worldmonitor-disabled-feeds', '["CNN World", "Guardian Brazil"]');
+      sessionStorage.removeItem('__source_writes_allowed__');
+      window.dispatchEvent(new CustomEvent('wm:cloud-prefs-applied', {
+        detail: { keys: ['worldmonitor-disabled-feeds'], syncVersion: 10 },
+      }));
+    });
+    await expect(source('BBC World')).toHaveClass(/\bactive\b/);
+    await expect(source('BBC World')).toBeFocused();
+    await evidenceScreenshot(page, { path: testInfo.outputPath('pending-after-cloud.png') });
+    await expect(await showSource('CNN World')).not.toHaveClass(/\bactive\b/);
+    await expect(await showSource('Guardian Brazil')).toHaveClass(/\bactive\b/);
+    await expect(await showSource('Brazil Reports')).not.toHaveClass(/\bactive\b/);
+    expect(await page.evaluate(() => localStorage.getItem('worldmonitor-country-coverage-optin-v1'))).toBeNull();
+
+    await page.evaluate(() => sessionStorage.setItem('__source_writes_allowed__', '1'));
+    await source('Brazil Reports').click();
+    await expect(source('Brazil Reports')).toHaveClass(/\bactive\b/);
+    const saved = await page.evaluate(() => ({
+      disabled: JSON.parse(localStorage.getItem('worldmonitor-disabled-feeds') ?? '[]') as string[],
+      country: localStorage.getItem('worldmonitor-country-coverage-optin-v1'),
+      brazil: localStorage.getItem('worldmonitor-brazil-optin-v1'),
+    }));
+    expect(saved.disabled).toContain('CNN World');
+    expect(saved.disabled).not.toContain('BBC World');
+    expect(saved.disabled).not.toContain('Guardian Brazil');
+    expect(saved.disabled).not.toContain('Brazil Reports');
+    expect(saved.country).toBe('done');
+    expect(saved.brazil).toBe('done');
+    await evidenceScreenshot(page, { path: testInfo.outputPath('storage-recovered.png') });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(source('Brazil Reports')).toBeVisible();
+    await evidenceScreenshot(page, { path: testInfo.outputPath('storage-recovered-mobile.png') });
+  });
+
   for (const preference of ['missing', 'empty', 'write-failure'] as const) {
     test(`German RSS startup handles ${preference} preferences without losing opt-in rules`, async ({ page }) => {
       await seedProFullVariant(page, true);

@@ -41,6 +41,7 @@ export interface CatalogFeed {
   depthUrl?: string;
   channelDated?: boolean;
   linkHosts?: string[];
+  excludePathSegments?: string[];
   browser?: {
     url?: CatalogUrl;
     lang?: string | null;
@@ -85,6 +86,7 @@ export interface ServerCatalogFeed {
   depthUrl?: string;
   channelDated?: boolean;
   linkHosts?: string[];
+  excludePathSegments?: string[];
 }
 
 function indexServerPlacements(catalog: NewsCatalog): Map<string, CatalogFeed[]> {
@@ -126,6 +128,7 @@ function toServerFeed(feed: CatalogFeed): ServerCatalogFeed {
   if (feed.depthUrl !== undefined) entry.depthUrl = feed.depthUrl;
   if (feed.channelDated !== undefined) entry.channelDated = feed.channelDated;
   if (feed.linkHosts !== undefined) entry.linkHosts = feed.linkHosts;
+  if (feed.excludePathSegments !== undefined) entry.excludePathSegments = feed.excludePathSegments;
   return entry;
 }
 
@@ -192,6 +195,28 @@ export function buildServerVariantFeeds(): Record<string, Record<string, ServerC
 
 export function buildServerIntelSources(): ServerCatalogFeed[] {
   return serverPlacedFeeds(INTEL_EDITION, INTEL_EDITION).map(toServerFeed);
+}
+
+/** Everything the server feed registry reads, in catalog order. */
+export interface ServerNewsCatalog {
+  variantFeeds: Record<string, Record<string, ServerCatalogFeed[]>>;
+  intelSources: ServerCatalogFeed[];
+  editions: string[];
+  gateExempt: Record<string, string[]>;
+}
+
+/**
+ * The server's slice. Generated into shared/news-catalog.server.generated.ts
+ * so the digest and MCP bundles ship only server fetch metadata, not the
+ * catalog's browser URLs, placements and notes.
+ */
+export function buildServerCatalog(): ServerNewsCatalog {
+  return {
+    variantFeeds: buildServerVariantFeeds(),
+    intelSources: buildServerIntelSources(),
+    editions: Object.keys(NEWS_CATALOG.layout.server),
+    gateExempt: NEWS_CATALOG.gateExempt,
+  };
 }
 
 export interface DigestWarmCell {

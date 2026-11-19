@@ -456,11 +456,21 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
 
 const AVIATIONSTACK_URL = 'https://api.aviationstack.com/v1/flights';
 
-function aviationDetermineSeverity(avgDelay, delayedPct) {
-  if (avgDelay >= 60 || (delayedPct && delayedPct >= 60)) return 'severe';
-  if (avgDelay >= 45 || (delayedPct && delayedPct >= 45)) return 'major';
-  if (avgDelay >= 30 || (delayedPct && delayedPct >= 30)) return 'moderate';
-  if (avgDelay >= 15 || (delayedPct && delayedPct >= 15)) return 'minor';
+// Delay severity from the average delay of the delayed flights, with the
+// delayed share only able to lift a band when the delays themselves are
+// material and the sample is big enough to mean something (#10873, #3936).
+// The old rule let the share alone reach 'severe' (a critical notification):
+// "GRU: Avg 28min delay, 100% delayed" and "BOG: 20 min delay" both went out
+// as critical. Severe now needs an hour's average delay; major needs 45
+// minutes, or 30 minutes on most flights. A sample under
+// AVIATION_MIN_FLIGHTS_FOR_CLOSURE flights is capped at moderate.
+export function aviationDetermineSeverity(avgDelay, delayedPct, sampleSize = AVIATION_MIN_FLIGHTS_FOR_CLOSURE) {
+  const enoughFlights = sampleSize >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE;
+  const pct = Number.isFinite(delayedPct) ? delayedPct : 0;
+  if (enoughFlights && avgDelay >= 60) return 'severe';
+  if (enoughFlights && (avgDelay >= 45 || (avgDelay >= 30 && pct >= 60))) return 'major';
+  if (avgDelay >= 30 || (avgDelay >= 15 && pct >= 45)) return 'moderate';
+  if (avgDelay >= 15 || (enoughFlights && pct >= 30)) return 'minor';
   return 'normal';
 }
 
@@ -617,7 +627,9 @@ function aviationAggregateFlights(iata, flights) {
   const cancelledCount = fromDue || closed ? cancelled : 0;
   const cancelledPct = (cancelledCount / total) * 100;
   const delayedPct = (delayed / total) * 100;
-  const avgDelay = delayed > 0 ? Math.round(totalDelay / delayed) : 0;
+  // Classify on the exact average; round only for display (59.5 min is not an hour).
+  const exactAvgDelay = delayed > 0 ? totalDelay / delayed : 0;
+  const avgDelay = Math.round(exactAvgDelay);
 
   let severity, delayType, reason;
   if (closed) {
@@ -633,8 +645,8 @@ function aviationAggregateFlights(iata, flights) {
     severity = 'minor'; delayType = 'general';
     reason = `${Math.round(cancelledPct)}% flights cancelled`;
   } else if (avgDelay > 0) {
-    severity = aviationDetermineSeverity(avgDelay, delayedPct);
-    delayType = avgDelay >= 60 ? 'ground_delay' : 'general';
+    severity = aviationDetermineSeverity(exactAvgDelay, delayedPct, total);
+    delayType = exactAvgDelay >= 60 ? 'ground_delay' : 'general';
     reason = `Avg ${avgDelay}min delay, ${Math.round(delayedPct)}% delayed`;
   } else {
     return null;

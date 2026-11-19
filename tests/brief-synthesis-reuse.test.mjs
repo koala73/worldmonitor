@@ -153,3 +153,36 @@ describe('resolveNonDueSynthesisReuse (#4917)', () => {
     assert.equal(DEFAULT_NONDUE_SYNTHESIS_REUSE_MIN, 360);
   });
 });
+
+// l10n PR 3 (#10884): the brief-language lookup result is reused for the
+// synthesis profile, so l10n adds no second relay call.
+describe('buildSynthesisCtx preference reuse', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { runInNewContext } = await import('node:vm');
+  const cron = readFileSync(new URL('../scripts/seed-digest-notifications.mjs', import.meta.url), 'utf8');
+  const start = cron.indexOf('async function buildSynthesisCtx(');
+  const src = cron.slice(start, cron.indexOf('\n}\n', start) + 2);
+  function load(fetchCalls) {
+    return runInNewContext(`${src}\nbuildSynthesisCtx`, {
+      fetchUserPreferences: async (...args) => { fetchCalls.push(args); return { data: { fetched: true }, error: false }; },
+      extractUserContext: (prefs) => prefs,
+      formatUserProfile: (ctx) => (ctx.fetched ? 'fetched-profile' : 'reused-profile'),
+      toLocalHour: () => 9,
+      console,
+    });
+  }
+
+  it('uses a provided preference result without calling the relay', async () => {
+    const calls = [];
+    const ctx = await load(calls)({ userId: 'u1', variant: 'full' }, 0, { data: { reused: true }, error: false });
+    assert.equal(calls.length, 0);
+    assert.equal(ctx.profile, 'reused-profile');
+  });
+
+  it('fetches preferences when no result is provided', async () => {
+    const calls = [];
+    const ctx = await load(calls)({ userId: 'u1', variant: 'full' }, 0);
+    assert.equal(calls.length, 1);
+    assert.equal(ctx.profile, 'fetched-profile');
+  });
+});

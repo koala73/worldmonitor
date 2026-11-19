@@ -19,6 +19,9 @@
  * evict copies already in shared caches. See the purge note in
  * server/worldmonitor/news/v1/_lastgood.ts.
  *
+ * Each instance keeps a successful read for REVOCATION_MEMO_TTL_MS, so a new
+ * SADD reaches every serving path within that many seconds.
+ *
  * Matching is exact string equality on `item.link`; normalize the URL the way
  * the feed emits it (scheme, trailing slash, and query string all count).
  */
@@ -29,7 +32,8 @@ export const REVOKED_URLS_KEY = 'news:digest:revoked-urls:v1';
 
 /** Result of reading the revocation set: an empty set is not a failed read. */
 export interface RevocationRead {
-  urls: Set<string>;
+  /** Shared between callers on this instance: never mutate it. */
+  urls: ReadonlySet<string>;
   /** False when the set could not be read at all — suppression is fail-open but not silent. */
   readable: boolean;
 }
@@ -68,13 +72,59 @@ export function filterRevokedUrls<T extends { link?: unknown }>(
  *    fail CLOSED on this one: a suppression control that cannot be read must
  *    not be assumed empty.
  */
-export async function readRevokedUrlSet(): Promise<RevocationRead> {
+export async function readRevokedUrlSet(opts: { fresh?: boolean } = {}): Promise<RevocationRead> {
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
     return { urls: new Set(), readable: true };
   }
   if (!isRedisConfigured()) {
     return { urls: new Set(), readable: true };
   }
+  // A caller that stores what it builds from this set for longer than the
+  // memo window reads Redis directly.
+  if (opts.fresh) return readFromRedis();
+  const now = Date.now();
+  if (memo && memo.expiresAt > now) return memo.read;
+  // Join a read only while it is younger than the window: with a long
+  // REDIS_PIPELINE_TIMEOUT_MS a read can stay pending past it.
+  if (pending && now - pending.startedAt < REVOCATION_MEMO_TTL_MS) return pending.read;
+  const generation = memoGeneration;
+  // The window starts when the read starts, so a slow reply cannot stretch
+  // how old a reused set may be.
+  const startedAt = now;
+  const read = readFromRedis().then((result) => {
+    // A failed read is not kept: the next request retries rather than
+    // failing closed for the whole window. Neither is a read that outlived a
+    // reset, nor one older than the set already kept.
+    if (result.readable && generation === memoGeneration && (!memo || memo.startedAt < startedAt)) {
+      memo = { read: result, startedAt, expiresAt: startedAt + REVOCATION_MEMO_TTL_MS };
+    }
+    return result;
+  }).finally(() => {
+    if (pending?.read === read) pending = null;
+  });
+  pending = { read, startedAt };
+  return read;
+}
+
+/**
+ * How long one instance reuses a successful read. Every news serving path
+ * reads this set (about 8.3M SMEMBERS a week, nearly all from
+ * list-source-items), while operators SADD to it rarely.
+ */
+export const REVOCATION_MEMO_TTL_MS = 10_000;
+
+let memo: { read: RevocationRead; startedAt: number; expiresAt: number } | null = null;
+// Concurrent callers on one instance share a single SMEMBERS.
+let pending: { read: Promise<RevocationRead>; startedAt: number } | null = null;
+let memoGeneration = 0;
+
+export function __resetRevocationMemoForTest(): void {
+  memo = null;
+  pending = null;
+  memoGeneration += 1;
+}
+
+async function readFromRedis(): Promise<RevocationRead> {
   try {
     const results = await runRedisPipeline([['SMEMBERS', REVOKED_URLS_KEY]]);
     const entry = results[0];

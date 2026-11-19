@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { t } from './i18n';
 import { ensureClerk, showCheckoutErrorToast, tryResumeCheckoutFromUrl } from './services/checkout';
-import { scheduleClerkLoad, SITE_DATA_BLOCKED_MESSAGE, SiteDataBlockedError, subscribeClerkLoaded } from './services/clerk';
+import { scheduleClerkLoad, setAuthReturnUrls, SITE_DATA_BLOCKED_MESSAGE, SiteDataBlockedError, subscribeClerkLoaded } from './services/clerk';
 import { startClerkUserStateSync, type ClerkUserState } from './services/clerk-user-state';
 import { hasLiveClientSession } from './services/clerk-session';
 import { createTimeoutSignal, isTimeoutOrAbortError } from './services/timeout-signal';
@@ -153,7 +153,11 @@ function appendRefToUrl(url: string, refCode: string | undefined): string {
 }
 
 function openSignIn(): void {
-  ensureClerk().then(c => c.openSignIn()).catch((err) => {
+  ensureClerk().then((c) => {
+    // Nav sign-in: no checkout to resume, so drop any earlier checkout's URLs.
+    setAuthReturnUrls(null);
+    c.openSignIn();
+  }).catch((err) => {
     if (err instanceof SiteDataBlockedError) {
       showCheckoutErrorToast(SITE_DATA_BLOCKED_MESSAGE);
       return;
@@ -593,7 +597,7 @@ const Pillars = () => {
           {items.map((item, i) => (
             <div key={i} className="bg-wm-card border border-wm-border p-6 hover:border-wm-green/30 transition-colors">
               <div className="text-wm-green mb-4">{item.icon}</div>
-              <h3 className="font-display text-xl font-bold mb-2">{item.title}</h3>
+              <h2 className="font-display text-xl font-bold mb-2">{item.title}</h2>
               <p className="text-sm text-wm-muted leading-relaxed">{item.desc}</p>
             </div>
           ))}
@@ -853,9 +857,10 @@ const ApiSection = () => (
         <div className="bg-black border border-wm-border rounded-lg overflow-hidden font-mono text-sm">
           <div className="bg-wm-card px-4 py-2 border-b border-wm-border flex items-center gap-2">
             <Terminal className="w-4 h-4 text-wm-muted" aria-hidden="true" />
-            <span className="text-wm-muted text-xs">api.worldmonitor.app</span>
+            <span id="api-example-title" className="text-wm-muted text-xs">api.worldmonitor.app</span>
           </div>
-          <div className="p-6 text-gray-300 overflow-x-auto">
+          {/* Focusable so keyboard users can scroll the wide example sideways. */}
+          <div className="p-6 text-gray-300 overflow-x-auto" tabIndex={0} role="region" aria-labelledby="api-example-title">
             <pre><code>
 <span className="text-wm-blue">curl</span> \<br/>
   <span className="text-wm-green">"https://api.worldmonitor.app/v1/intelligence/convergence?region=MENA&time_window=6h"</span> \<br/>

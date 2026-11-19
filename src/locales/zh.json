@@ -16,7 +16,7 @@
     "predictionMarkets": "预测市场",
     "loadingMarkets": "正在加载预测市场...",
     "infrastructure": "基础设施暴露",
-    "briefUnavailable": "AI简报不可用 — 请在设置中配置OPENROUTER_API_KEY。",
+    "briefUnavailable": "AI 简报暂时无法生成。",
     "cached": "已缓存",
     "fresh": "最新",
     "noMarkets": "未找到预测市场",
@@ -126,13 +126,13 @@
     },
     "fallback": {
       "instabilityIndex": "**不稳定指数：{{score}}/100**（{{level}}，{{trend}}）",
-      "protestsDetected": "检测到{{count}}起活跃抗议",
-      "aircraftTracked": "追踪到{{count}}架军用飞机",
-      "vesselsTracked": "追踪到{{count}}艘军用舰艇",
-      "internetOutages": "{{count}}起互联网中断",
-      "recentEarthquakes": "{{count}}起近期地震",
+      "protestsDetected": "活跃抗议活动：{{count}}",
+      "aircraftTracked": "被监控的军用飞机：{{count}}",
+      "vesselsTracked": "被监控的军用舰船：{{count}}",
+      "internetOutages": "互联网中断：{{count}}",
+      "recentEarthquakes": "最近的地震：{{count}}",
       "stockIndex": "股票指数：{{value}}",
-      "activeStrikes": "检测到{{count}}起活跃罢工"
+      "activeStrikes": "攻击和拦截：{{count}}"
     },
     "countryFacts": "国家概况",
     "loadingFacts": "正在加载国家概况...",
@@ -629,7 +629,8 @@
         "techevent": "科技活动",
         "techhq": "科技总部",
         "accelerator": "加速器",
-        "flight": "航班"
+        "flight": "航班",
+        "alert": "警报"
       },
       "flightOnGround": "地面停靠",
       "flightAirborne": "FL{{fl}} · {{kts}} 节",
@@ -637,7 +638,9 @@
       "flightMilitaryOnGround": "军用 · {{type}} · 地面停靠",
       "flightSearchHint": "按 Enter 或点击查看实时位置",
       "flightNotFound": "未找到 {{callsign}} 的实时位置",
-      "addPanel": "添加"
+      "addPanel": "添加",
+      "sentAlerts": "发送给您的警报",
+      "sentAlertTime": "发送于 {{time}}"
     },
     "signal": {
       "title": "情报发现",
@@ -805,7 +808,7 @@
       "fresh": "最新",
       "noMarkets": "未找到预测市场",
       "predictionMarkets": "预测市场",
-      "unavailable": "AI简报不可用 — 请在设置中配置OPENROUTER_API_KEY。"
+      "unavailable": "AI 简报暂时无法生成。"
     },
     "countryBrief": {
       "identifying": "正在识别国家...",
@@ -821,7 +824,7 @@
       "predictionMarkets": "预测市场",
       "loadingMarkets": "正在加载预测市场...",
       "infrastructure": "基础设施暴露",
-      "briefUnavailable": "AI简报不可用 — 请在设置中配置OPENROUTER_API_KEY。",
+      "briefUnavailable": "AI 简报暂时无法生成。",
       "cached": "已缓存",
       "fresh": "最新",
       "noMarkets": "未找到预测市场",
@@ -5831,6 +5834,13 @@
       "seasonalHint": "当最新测量水位明显低于该水库在一年中该时期的通常测量值时发出告警。",
       "quietNote": "这些提醒即使在实时提醒设为仅限严重时也会送达。静默时段内不会收到。",
       "quietNoteBatch": "这些提醒即使在实时提醒设为仅限严重时也会送达。静默时段内不会收到;如果选择 Batch,则会暂存至静默时段结束。"
+    },
+    "briefLanguage": {
+      "label": "简报语言",
+      "hint": "您的每日简报将使用{{language}}撰写。",
+      "sameAsApp": "与应用语言相同",
+      "loadFailed": "加载失败",
+      "saveFailed": "保存失败。请重试。"
     }
   }
 }
