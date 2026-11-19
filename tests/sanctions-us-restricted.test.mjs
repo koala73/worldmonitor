@@ -72,14 +72,10 @@ describe('US restricted-party list parsing', () => {
     assert.deepEqual(records.map(r => r.name), ['Acme']);
   });
 
-  it('rejects lists without recent upstream fetch evidence', () => {
+  it('rejects lists without a valid upstream fetch timestamp', () => {
     const list = 'us_far_889';
     const entry = manifest.lists[list];
     const body = file(entry.file);
-    const maxAge = 72 * 60 * 60 * 1000;
-    const fetchedAt = Date.parse(entry.fetched_at);
-    assert.equal(parseUrpList(list, body, entry, fetchedAt + maxAge).error, null);
-    assert.equal(parseUrpList(list, body, entry, fetchedAt + maxAge + 1).error, 'URP_FETCH_UNCONFIRMED');
     for (const fetched_at of [null, 'invalid', '2027-01-01T00:00:00Z']) {
       const result = parseUrpList(list, body, { ...entry, fetched_at }, now);
       assert.equal(result.error, 'URP_FETCH_UNCONFIRMED');
@@ -111,14 +107,18 @@ describe('US restricted-party list ingest', () => {
     assert.equal(lists['US-UFLPA'].error, null);
   });
 
-  it('rejects a list with an explicit upstream error while accepting the other lists', async () => {
+  it('rejects a reported upstream failure while keeping the other lists from an older release', async () => {
     const reportedFailure = { ...manifest, errors: { us_fcc_covered: 'agency request failed' } };
     const { fetchFn, seen } = release({ files: { 'manifest.json': JSON.stringify(reportedFailure) } });
-    const { lists, error } = await ingestUsRestrictedEntries({ fetchFn, now });
+    const { lists, error } = await ingestUsRestrictedEntries({ fetchFn, now: now + 30 * 86400_000 });
     assert.equal(error, null);
     assert.equal(lists['US-FCC'].error, 'URP_UPSTREAM_FAILED');
     assert.ok(!seen.some(({ url }) => url.endsWith('us_fcc_covered.jsonl')));
-    assert.equal(lists['US-UFLPA'].error, null);
+    for (const source of ['US-1260H', 'US-889', 'US-UFLPA']) {
+      const verified = lists[source];
+      assert.equal(verified.error, null);
+      assert.ok(verified.records.length > 0);
+    }
   });
 
   it('keeps completed lists when another request runs out of time', async t => {

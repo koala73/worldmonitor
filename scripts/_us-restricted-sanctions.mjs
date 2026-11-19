@@ -26,9 +26,6 @@ export const URP_MAX_BYTES = 4 * 1024 * 1024;
 // Runs alongside SEMA (45s), so it adds nothing to the fetch phase.
 export const URP_TIMEOUT_MS = 30_000;
 const URP_MIN_BUDGET_MS = 5_000;
-// Releases may be skipped when bytes are unchanged. After three daily build
-// intervals without published evidence of a successful fetch, coverage is unknown.
-const URP_MAX_FETCH_AGE_MS = 72 * 60 * 60 * 1000;
 // Release downloads redirect from github.com to GitHub's asset host.
 const URP_ASSET_ORIGIN = 'https://release-assets.githubusercontent.com';
 const URP_HOSTS = new Set([
@@ -115,9 +112,10 @@ export function parseUrpList(list, body, entry, nowMs) {
     return { records: [], publishedAt: 0, error: 'URP_COUNT_MISMATCH' };
   }
   if (!records.size) return { records: [], publishedAt: 0, error: 'URP_LIST_MISSING' };
+  // This timestamp comes from the published build. Unchanged bytes can
+  // suppress a release, so its age does not tell us if a later fetch failed.
   const fetchedAt = Date.parse(text(entry.fetched_at));
-  if (!Number.isSafeInteger(fetchedAt) || fetchedAt <= 0 || fetchedAt > nowMs
-      || nowMs - fetchedAt > URP_MAX_FETCH_AGE_MS) {
+  if (!Number.isSafeInteger(fetchedAt) || fetchedAt <= 0 || fetchedAt > nowMs) {
     return { records: [], publishedAt: 0, error: 'URP_FETCH_UNCONFIRMED' };
   }
   return { records: [...records.values()], publishedAt: fetchedAt, error: null };
