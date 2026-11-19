@@ -26,6 +26,18 @@ test('the registry projection reproduces the published card tools list', () => {
   assert.deepEqual(serverCardTools(), JSON.parse(read(SERVER_CARD_PATH)).tools);
 });
 
+test('a registry tool without a category does not break the served card', () => {
+  // The deploy build does not run the product-facts generator that rejects
+  // this mismatch, so the runtime projection must not throw on it.
+  const tools = serverCardTools(
+    [{ name: 'uncategorised_tool', description: 'd', _freeTier: true }],
+    {},
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(tools)), [
+    { name: 'uncategorised_tool', description: 'd', _meta: { 'worldmonitor/access': 'free' } },
+  ]);
+});
+
 test('the card skeleton keeps the tools key in place and empties it', () => {
   const skeleton = JSON.parse(serverCardWithoutTools('{"name":"a","tools":[{"name":"t"}],"tags":["x"]}'));
   assert.deepEqual(Object.keys(skeleton), ['name', 'tools', 'tags']);

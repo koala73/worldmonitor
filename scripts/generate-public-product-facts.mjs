@@ -481,6 +481,8 @@ transform('public/.well-known/mcp/server-card.json', (source) => {
   card.toolCategories = MCP_TOOL_CATEGORIES.map((category) => category.id);
   card.tags = [...MCP_TAGS];
   card.tools = serverCardTools();
+  const uncategorised = card.tools.filter((tool) => !tool._meta['worldmonitor/category']).map((tool) => tool.name);
+  if (uncategorised.length) throw new Error(`${uncategorised.join(', ')} has no category in api/mcp/domains.ts`);
   return renderJsonDomainSurface(json(card), SERVER_CARD_DOMAIN_SURFACE, MCP_DOMAIN_SUMMARY);
 });
 
