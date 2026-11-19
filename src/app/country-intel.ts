@@ -58,7 +58,6 @@ import { collectStoryData } from '@/services/story-data';
 // (post-paint), so the import() latency is hidden.
 
 import { hasPremiumAccess, readClientEntitlementBelief } from '@/services/panel-gating';
-import { classifyDenialResponse, reconcileSessionDenial } from '@/services/premium-denial';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
 import { showMapContextMenu, type MapContextMenuItem } from '@/components/MapContextMenu';
@@ -860,9 +859,9 @@ export class CountryIntelManager implements AppModule {
           // A denial can arrive after a sign-in or an entitlement change.
           presentation.briefAccessRevision = this.briefAccessRevision;
           briefResult = await this.fetchCountryIntelBrief(code, contextSnapshot, countryFw?.systemPromptAppend ?? '');
-          if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
           briefText = briefResult.brief;
         } catch { /* server unreachable */ }
+        if (!this.isCurrentBriefRequest(request) || !this.isCurrentPresentation(presentation)) return;
 
         const accessNotice = briefResult?.accessNotice;
         presentation.briefAccessNotice = accessNotice;
@@ -887,10 +886,10 @@ export class CountryIntelManager implements AppModule {
                 : `Summarize the current situation in ${country} based on these headlines: ${briefHeadlines.slice(0, 8).join('. ')}`;
 
               const [summary] = await mlWorker.summarize([prompt], BETA_MODE ? 'summarization-beta' : undefined);
-              if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
               if (summary && summary.length > 20) fallbackBrief = summary;
             } catch { /* T5 failed */ }
           }
+          if (!this.isCurrentBriefRequest(request) || !this.isCurrentPresentation(presentation)) return;
 
           if (fallbackBrief) {
             this.ctx.countryBriefPage?.updateBrief({ brief: fallbackBrief, country, code, fallback: true, accessNotice, sources: briefSources });
@@ -1067,7 +1066,8 @@ export class CountryIntelManager implements AppModule {
     });
     if (!resp.ok) {
       let accessNotice: CountryIntelBriefResult['accessNotice'];
-      if (!isDesktopRuntime()) {
+      if (!isDesktopRuntime() && (resp.status === 401 || resp.status === 403)) {
+        const { classifyDenialResponse, reconcileSessionDenial } = await import('@/services/premium-denial');
         const denial = await classifyDenialResponse(resp, readClientEntitlementBelief(getAuthState()));
         if (denial) {
           const auth = getAuthState();

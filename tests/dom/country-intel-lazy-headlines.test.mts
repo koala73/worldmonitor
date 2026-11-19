@@ -383,6 +383,41 @@ describe('CountryIntelManager lazy coverage headlines', () => {
     })));
   });
 
+  it.each(['fetch', 'summary'])('ignores a superseded brief when its %s rejects', async (phase) => {
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
+    coverageMocks.localSummaryAvailable = true;
+    let rejectOldRequest = (_reason: Error) => {};
+    const oldRequest = new Promise<never>((_resolve, reject) => { rejectOldRequest = reject; });
+    const beforeReopen = vi.fn();
+    let requestCount = 0;
+    coverageMocks.premiumFetch.mockImplementation(async (input: unknown) => {
+      if (!String(input).includes('/get-country-intel-brief?')) throw new Error('offline');
+      if (++requestCount > 1) return Response.json({ brief: 'Current assessment.' });
+      if (phase === 'summary') return Response.json({}, { status: 401 });
+      beforeReopen();
+      return oldRequest;
+    });
+    coverageMocks.summarize.mockImplementation(async () => {
+      beforeReopen();
+      return oldRequest;
+    });
+    const headlines = [newsItem('United States energy policy'), newsItem('United States trade policy')];
+    const harness = createBriefHarness(headlines, { realBriefFetch: true });
+    try {
+      const staleOpen = harness.open();
+      await vi.waitFor(() => expect(beforeReopen).toHaveBeenCalledOnce());
+      await harness.open();
+      const updateCount = harness.briefUpdates.length;
+      expect(harness.briefUpdates[updateCount - 1]).toMatchObject({ brief: 'Current assessment.' });
+
+      rejectOldRequest(new Error('old request failed'));
+      await staleOpen;
+      expect(harness.briefUpdates).toHaveLength(updateCount);
+    } finally {
+      harness.manager.destroy();
+    }
+  });
+
   it('keeps coverage alive on close but aborts it when another brief opens', async () => {
     const signals: AbortSignal[] = [];
     let resolveCoverage!: (value: { headlines: NewsItem[]; timelineEvents: [] }) => void;
