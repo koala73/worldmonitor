@@ -98,7 +98,8 @@ function projectItems(xml: string) {
 }
 
 // Expected values were produced by the regex implementation (origin/main
-// edd67c893) and are identical under the scanners.
+// edd67c893) and are identical under the scanners. Items are newest first
+// since #10978 ranks every feed by date.
 describe('digest feed parser: output on fixture feeds is unchanged', () => {
   it('RSS 2.0 (CDATA, mixed-case tags, attributes, dc dates, U+00A0, İ)', () => {
     assert.deepEqual(projectItems(RSS_FIXTURE), {
@@ -106,10 +107,10 @@ describe('digest feed parser: output on fixture feeds is unchanged', () => {
       droppedUndated: 1,
       items: [
         {
-          title: 'Ceasefire talks resume in Cairo',
-          link: 'https://example.com/a',
-          publishedAt: 1704103200000,
-          description: 'Negotiators from both sides met on Monday & agreed to continue.',
+          title: 'İstanbul summit opens',
+          link: 'https://example.com/c',
+          publishedAt: 1704240000000,
+          description: 'Leaders gathered in İstanbul for the opening session of the summit.',
         },
         {
           title: 'Markets & oil prices rise sharply',
@@ -118,10 +119,10 @@ describe('digest feed parser: output on fixture feeds is unchanged', () => {
           description: 'Brent crude climbed above ninety dollars a barrel on supply fears.',
         },
         {
-          title: 'İstanbul summit opens',
-          link: 'https://example.com/c',
-          publishedAt: 1704240000000,
-          description: 'Leaders gathered in İstanbul for the opening session of the summit.',
+          title: 'Ceasefire talks resume in Cairo',
+          link: 'https://example.com/a',
+          publishedAt: 1704103200000,
+          description: 'Negotiators from both sides met on Monday & agreed to continue.',
         },
       ],
     });
@@ -133,16 +134,16 @@ describe('digest feed parser: output on fixture feeds is unchanged', () => {
       droppedUndated: 0,
       items: [
         {
-          title: 'Flood warnings issued & roads closed',
-          link: 'https://example.com/e',
-          publishedAt: 1706788800000,
-          description: 'Heavy rain forced closures across the region overnight.',
-        },
-        {
           title: 'Election results certified',
           link: 'https://example.com/f',
           publishedAt: 1706864400000,
           description: 'The commission certified the results after a final count.',
+        },
+        {
+          title: 'Flood warnings issued & roads closed',
+          link: 'https://example.com/e',
+          publishedAt: 1706788800000,
+          description: 'Heavy rain forced closures across the region overnight.',
         },
       ],
     });
@@ -157,11 +158,11 @@ describe('digest feed parser: output on fixture feeds is unchanged', () => {
     assert.deepEqual(
       projected.items.map((item) => [item.title, new Date(item.publishedAt).toISOString()]),
       [
-        ['No travel advice', '2026-10-07T12:00:00.000Z'],
         ['Guam', '2026-10-20T12:00:00.000Z'],
+        ['No travel advice', '2026-10-07T12:00:00.000Z'],
+        ['Libya', '2026-08-13T12:00:00.000Z'],
         ['Armenia', '2026-06-17T12:00:00.000Z'],
         ['Mauritania', '2026-05-14T12:00:00.000Z'],
-        ['Libya', '2026-08-13T12:00:00.000Z'],
       ],
     );
   });

@@ -139,7 +139,9 @@ describe('reworded alert check (#10916)', () => {
     const { rewriteCheckApplies } = await import('../scripts/lib/news-alert-coverage.mjs');
     assert.equal(rewriteCheckApplies(event), true);
     assert.equal(rewriteCheckApplies({ ...event, severity: 'high' }), false);
-    assert.equal(rewriteCheckApplies({ ...event, payload: { ...event.payload, importanceScore: 81 } }), false);
+    // Local news on a country-scoped rule is delivered from 78 (#10977).
+    assert.equal(rewriteCheckApplies({ ...event, payload: { ...event.payload, importanceScore: 78 } }), true);
+    assert.equal(rewriteCheckApplies({ ...event, payload: { ...event.payload, importanceScore: 77 } }), false);
     assert.equal(rewriteCheckApplies({ ...event, userId: 'user' }), false);
     assert.equal(rewriteCheckApplies({ ...event, eventType: 'oref_siren' }), false);
     assert.equal(rewriteCheckApplies({ ...event, variant: undefined }), false);

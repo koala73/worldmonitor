@@ -1925,6 +1925,25 @@ describe('marketingBeforeSend — injected numeric-literal parse failure on docu
     assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], MSG, 'TypeError')), null);
   });
 
+  it('drops the V8 quoted-token shapes at document line 1', () => {
+    for (const value of ["Unexpected identifier 'href'", "Unexpected token 'else'", "SyntaxError: Unexpected token 'for'"]) {
+      assert.equal(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], value)), null, value);
+    }
+  });
+
+  it('keeps the quoted-token shapes below line 1, beside a first-party frame, or with extra text', () => {
+    const value = "Unexpected identifier 'href'";
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 40 }], value)), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([
+      { filename: 'https://www.worldmonitor.app/', lineno: 1 },
+      { filename: 'https://www.worldmonitor.app/pro/assets/index-a1b2c3.js', lineno: 1 },
+    ], value)), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([], value)), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], `${value}. Expected ';'`)), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], 'Unexpected token')), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], value, 'TypeError')), null);
+  });
+
   it('pins line 1 of every marketing document to the doctype alone, which is what licenses the rule', () => {
     for (const rel of ['pro-test/welcome.html', 'pro-test/index.html']) {
       const firstLine = readFileSync(resolve(root, rel), 'utf-8').split('\n', 1)[0]!.trim();

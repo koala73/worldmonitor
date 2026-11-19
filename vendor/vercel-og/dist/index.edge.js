@@ -1,4 +1,13 @@
-import harfbuzzWasm from "./harfbuzz.js";
+import harfbuzzModule from "./harfbuzz.wasm?module";
+import harfbuzzFn0 from "./harfbuzz-fn-iiiii.wasm?module";
+import harfbuzzFn1 from "./harfbuzz-fn-iiiiii.wasm?module";
+import harfbuzzFn2 from "./harfbuzz-fn-iiiiiii.wasm?module";
+import harfbuzzFn3 from "./harfbuzz-fn-vi.wasm?module";
+import harfbuzzFn4 from "./harfbuzz-fn-viiiffffffi.wasm?module";
+import harfbuzzFn5 from "./harfbuzz-fn-viiiffffi.wasm?module";
+import harfbuzzFn6 from "./harfbuzz-fn-viiiffi.wasm?module";
+import harfbuzzFn7 from "./harfbuzz-fn-viiii.wasm?module";
+var harfbuzzTrampolines = { "iiiii": harfbuzzFn0, "iiiiii": harfbuzzFn1, "iiiiiii": harfbuzzFn2, "vi": harfbuzzFn3, "viiiffffffi": harfbuzzFn4, "viiiffffi": harfbuzzFn5, "viiiffi": harfbuzzFn6, "viiii": harfbuzzFn7 };
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -4100,7 +4109,7 @@ var require_hb = __commonJS({
         }));
         var convertJsFunctionToWasm = (func, sig) => {
           var bytes = Uint8Array.of(0, 97, 115, 109, 1, 0, 0, 0, 1, ...uleb128EncodeWithLen([1, 96, ...generateTypePack(sig.slice(1)), ...generateTypePack(sig[0] === "v" ? "" : sig[0])]), 2, 7, 1, 1, 101, 1, 102, 0, 0, 7, 5, 1, 1, 102, 0, 0);
-          var module2 = new WebAssembly.Module(bytes);
+          var module2 = harfbuzzTrampolines[Array.from(sig, (type) => type === "p" ? "i" : type).join("")] ?? new WebAssembly.Module(bytes);
           var instance = new WebAssembly.Instance(module2, { e: { f: func } });
           var wrappedFunc = instance.exports["f"];
           return wrappedFunc;
@@ -4347,7 +4356,7 @@ var require_harfbuzzjs = __commonJS({
     var hbjs = require_hbjs();
     var hb = require_hb();
     module.exports = new Promise(function(resolve, reject) {
-      hb({ wasmBinary: harfbuzzWasm }).then((instance) => {
+      hb({ instantiateWasm(imports, receiveInstance) { WebAssembly.instantiate(harfbuzzModule, imports).then((instance) => receiveInstance(instance, harfbuzzModule), reject); return {}; } }).then((instance) => {
         resolve(hbjs(instance));
       }, reject);
     });

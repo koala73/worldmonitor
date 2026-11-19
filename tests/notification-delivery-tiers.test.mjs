@@ -198,11 +198,54 @@ describe('relay wiring', () => {
   const src = readFileSync(resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'), 'utf8');
 
   it('matches rules, counts scope drops and clamps free rules through the tier gate', () => {
-    assert.equal((src.match(/eventMatchesDeliveryScope\(/g) || []).length >= 5, true);
-    const matchBlock = src.slice(src.indexOf('const matching = enabledRules.filter'), src.indexOf('const countryScopeDrops'));
-    assert.match(matchBlock, /eventMatchesDeliveryScope\(event, r\)/);
+    assert.equal((src.match(/eventMatchesDeliveryScope\(/g) || []).length >= 4, true);
+    const matchBlock = src.slice(src.indexOf('const RULE_GATES'), src.indexOf('function ruleDropReason'));
+    assert.match(matchBlock, /eventMatchesDeliveryScope\(event, rule\)/);
     assert.doesNotMatch(matchBlock, /eventMatchesCountryScope\(/);
     assert.match(src, /!eventMatchesDeliveryScope\(event, \{ \.\.\.rule, countries: scope\.countries \}\)/);
     assert.match(src, /!eventMatchesDeliveryScope\(ev, \{ countries: drainScope\.countries \}\)/);
   });
+});
+
+describe('local news has its own realtime bar (#10977)', () => {
+  const JP_RULE = { countries: ['JP'], eventTypes: [], sensitivity: 'critical', digestMode: 'realtime' };
+  const ALL_RULE = { countries: [], eventTypes: [], sensitivity: 'critical', digestMode: 'realtime' };
+  const story = (importanceScore) => ev('rss_alert', { primaryCountryCode: 'JP', importanceScore });
+  const delivers = (rule, event) => relay.shouldNotify(rule, event) && relay.eventMatchesDeliveryScope(event, rule);
+
+  function withScoreGate(fn) {
+    const previous = process.env.IMPORTANCE_SCORE_LIVE;
+    process.env.IMPORTANCE_SCORE_LIVE = '1';
+    try { fn(); } finally {
+      if (previous === undefined) delete process.env.IMPORTANCE_SCORE_LIVE;
+      else process.env.IMPORTANCE_SCORE_LIVE = previous;
+    }
+  }
+
+  it('delivers a local critical story under 82 to a rule scoped to its country', () => withScoreGate(() => {
+    assert.equal(tiers.NEWS_LOCAL_IMPORTANCE_SCORE, 78);
+    assert.equal(delivers(JP_RULE, story(78)), true);
+    assert.equal(delivers(ALL_RULE, story(78)), false);
+  }));
+
+  it('still holds a lone tier-4 critical copy (73) for everyone', () => withScoreGate(() => {
+    assert.equal(delivers(JP_RULE, story(73)), false);
+    assert.equal(delivers(JP_RULE, story(77)), false);
+    assert.equal(delivers(ALL_RULE, story(73)), false);
+  }));
+
+  it('keeps the global bar of 82 for a rule scoped to another country', () => withScoreGate(() => {
+    assert.equal(relay.shouldNotify(JP_RULE, story(80)), true);
+    assert.equal(relay.shouldNotify(US_RULE, story(80)), false);
+    assert.equal(relay.shouldNotify(ALL_RULE, story(80)), false);
+    assert.equal(delivers(US_RULE, story(80)), false);
+    assert.equal(delivers(US_RULE, story(82)), true);
+    assert.equal(delivers(ALL_RULE, story(82)), true);
+  }));
+
+  it('applies the local bar wherever the country scope matches', () => withScoreGate(() => {
+    const ukStory = ev('rss_alert', { countryCode: 'UK', importanceScore: 79 });
+    assert.equal(relay.eventMatchesDeliveryScope(ukStory, { ...US_RULE, countries: ['GB'] }), true);
+    assert.equal(delivers({ ...JP_RULE, countries: ['GB'] }, ukStory), true);
+  }));
 });

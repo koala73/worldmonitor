@@ -166,6 +166,7 @@ describe('Saudi Civil Defense notification producer', () => {
       publishNotificationEvent: h.deps.publish, CLASSIFY_VARIANTS: ['full'],
       seedClassifyForVariant: async () => ({ fetchFailed: true, total: 0, classified: 0, skipped: 0 }),
       shouldWriteClassifySeedMeta: () => false,
+      CROSS_WORDING_MAX_CHECKS: 8,
     };
     vm.createContext(context);
     await vm.runInContext(`${relay.slice(start, end)}\nseedClassify()`, context);
