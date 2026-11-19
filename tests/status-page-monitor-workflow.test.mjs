@@ -53,3 +53,15 @@ test('reporter survives monitor failure and isolates write permissions', () => {
   assert.equal(workflow.jobs.fixtures.permissions, undefined);
   assert.equal(workflow.jobs.report.steps.some((step) => step.uses?.startsWith('actions/checkout')), false);
 });
+
+test('browser install avoids apt and retries within the job budget', () => {
+  for (const name of ['fixtures', 'monitor']) {
+    const job = workflow.jobs[name];
+    const install = job.steps.find((step) => step.name === 'Install Chromium');
+    assert.ok(install, `${name} must install Chromium in a named step`);
+    for (const step of job.steps) assert.doesNotMatch(step.run ?? '', /--with-deps|apt-get/, `${name} must not depend on apt mirrors`);
+    assert.match(install.run, /for attempt in 1 2 3/);
+    assert.match(install.run, /timeout 90 npx playwright install chromium/);
+    assert.ok(install['timeout-minutes'] <= 5, `${name} install must leave time for the probe`);
+  }
+});
