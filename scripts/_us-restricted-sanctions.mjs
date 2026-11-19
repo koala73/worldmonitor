@@ -30,7 +30,12 @@ const URP_MIN_BUDGET_MS = 5_000;
 // intervals without published evidence of a successful fetch, coverage is unknown.
 const URP_MAX_FETCH_AGE_MS = 72 * 60 * 60 * 1000;
 // Release downloads redirect from github.com to GitHub's asset host.
-const URP_HOSTS = /^(?:github\.com|(?:release-assets|objects)\.githubusercontent\.com)$/;
+const URP_ASSET_ORIGIN = 'https://release-assets.githubusercontent.com';
+const URP_HOSTS = new Set([
+  new URL(URP_RELEASE_URL).hostname,
+  new URL(URP_ASSET_ORIGIN).hostname,
+  'objects.githubusercontent.com',
+]);
 const NOTICE_MAX = 200;
 const ALIAS_MAX = 10;
 
@@ -130,7 +135,7 @@ async function download(fetchFn, url, { accept, signal, maxBytes, observe = () =
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   if (response.url) {
     const landed = new URL(response.url);
-    if (landed.protocol !== 'https:' || !URP_HOSTS.test(landed.hostname)) throw new Error('URP_UNEXPECTED_HOST');
+    if (landed.protocol !== 'https:' || !URP_HOSTS.has(landed.hostname)) throw new Error('URP_UNEXPECTED_HOST');
   }
   const { text: body } = await readResponseLimited(response, maxBytes);
   return Buffer.from(body, 'utf8');
