@@ -18,3 +18,9 @@ it('bounds the pool', () => {
   const servable = Array.from({ length: ALERT_POOL_MAX_ITEMS + 50 }, (_, i) => item(`t${i}`, i % 300));
   assert.equal(alertPoolItems(servable, [], now).length, ALERT_POOL_MAX_ITEMS);
 });
+
+it('keeps the original publisher a topic feed carries, so the relay scores on its tier (#10977)', () => {
+  const topic = item('topic', 1, { source: 'Strategic Chokepoints', originPublisher: 'Reuters', originPublisherTrusted: true });
+  const untrusted = item('untrusted', 2, { source: 'Strategic Chokepoints', originPublisher: 'Reuters', originPublisherTrusted: false });
+  assert.deepEqual(alertPoolItems([topic, untrusted], [], now).map(i => [i.title, (i as { originPublisher?: string }).originPublisher]), [['topic', 'Reuters'], ['untrusted', undefined]]);
+});

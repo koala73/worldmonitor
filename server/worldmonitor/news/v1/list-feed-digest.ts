@@ -2810,6 +2810,8 @@ export function alertPoolItems(servable: readonly ParsedItem[], served: readonly
     .map(item => ({
       title: item.title,
       source: item.source,
+      // The relay scores a topic feed's item on this publisher, as for served items (#10977).
+      ...(toProtoItem(item).originPublisher ? { originPublisher: toProtoItem(item).originPublisher } : {}),
       link: item.link,
       ...(item.linkVerified === true ? { linkVerified: true } : {}),
       publishedAt: item.publishedAt,
