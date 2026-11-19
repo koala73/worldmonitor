@@ -2,7 +2,6 @@ import type { EventCategory, NewsItem, ThreatLevel } from '@/types';
 import { rssProxyUrl } from '@/utils';
 import { effectivePubDateMs } from './feed-date';
 import { BRIEF_ONLY_RSS_FETCH_POLICY, fetchFeed } from './rss';
-import { PUBLISHER_FAMILIES, publisherFamilyFor } from '../../shared/publisher-families.js';
 import { hasReviewedSourceType } from '../../shared/source-provenance';
 import {
   clusterCountryTimelineIncidents,
@@ -12,6 +11,11 @@ import {
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const COUNTRY_HEADLINE_CANDIDATES = 30;
 const COUNTRY_HEADLINE_LIMIT = 5;
+const HEADLINE_PUBLISHER_ALIASES = new Map([
+  ['cnn', 'CNN World'],
+  ['the new york times', 'New York Times World'],
+  ['new york times', 'New York Times World'],
+]);
 const EVENT_QUERY = 'protest OR demonstration OR riot OR conflict OR attack OR military OR earthquake OR flood OR wildfire';
 
 export type CountryCoverageEvent = CountryTimelineIncident;
@@ -100,9 +104,8 @@ export async function fetchCountryCoverage(
     // Keyword search also returns reference pages and promotional material.
     .flatMap(item => {
       if (hasReviewedSourceType(item.source)) return [item];
-      const family = PUBLISHER_FAMILIES[publisherFamilyFor(item.source)];
-      const reviewedSource = family?.labels.find(hasReviewedSourceType);
-      return reviewedSource ? [{ ...item, source: reviewedSource }] : [];
+      const source = HEADLINE_PUBLISHER_ALIASES.get(item.source.toLowerCase());
+      return source && hasReviewedSourceType(source) ? [{ ...item, source }] : [];
     })
     .slice(0, COUNTRY_HEADLINE_LIMIT);
   const timelineEvents = clusterCountryTimelineIncidents(

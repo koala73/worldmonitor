@@ -65,6 +65,7 @@ describe('country coverage', () => {
       newsItem('Patriots Players Take a Historic Tour of Munich, Germany - Patriots.com', 'general', recent),
       newsItem('Germany reports a rise in factory orders - Reuters', 'economic', recent),
       newsItem('Germany publishes its latest trade figures - CNN', 'economic', recent),
+      newsItem('Manufacturers in Germany brace for changes - The New York Times', 'economic', recent),
     ] : []);
 
     const coverage = await fetchCountryCoverage('Germany');
@@ -72,6 +73,7 @@ describe('country coverage', () => {
     expect(coverage.headlines.map(({ title, source }) => ({ title, source }))).toEqual([
       { title: 'Germany reports a rise in factory orders', source: 'Reuters' },
       { title: 'Germany publishes its latest trade figures', source: 'CNN World' },
+      { title: 'Manufacturers in Germany brace for changes', source: 'New York Times World' },
     ]);
   });
 
