@@ -146,6 +146,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DEPLOY_WAIT_SECONDS: '1200'
           DEPLOY_POLL_SECONDS: '30'
+          # Bounds each gh call so a stalled request cannot outrun the
+          # deadline and the step's timeout-minutes, which would skip the
+          # fallback probe.
+          GH_CALL_TIMEOUT_SECONDS: '30'
         run: |
           git fetch --no-tags --depth=1 origin "$BEFORE"
           if VERCEL_GIT_COMMIT_REF=main VERCEL_GIT_PREVIOUS_SHA="$BEFORE" bash scripts/vercel-ignore.sh; then
@@ -155,10 +159,10 @@ jobs:
           deadline=$((SECONDS + DEPLOY_WAIT_SECONDS))
           while :; do
             state=""
-            url=$(gh api "repos/$REPO/deployments?sha=$SHA&environment=Production&per_page=20" \
+            url=$(timeout "$GH_CALL_TIMEOUT_SECONDS" gh api "repos/$REPO/deployments?sha=$SHA&environment=Production&per_page=20" \
               --jq '[.[] | select(.creator.login == "vercel[bot]")][0].statuses_url // empty' || true)
             if [ -n "$url" ]; then
-              state=$(gh api "$url" --jq '.[0].state // empty' || true)
+              state=$(timeout "$GH_CALL_TIMEOUT_SECONDS" gh api "$url" --jq '.[0].state // empty' || true)
             fi
             case "$state" in
               success)

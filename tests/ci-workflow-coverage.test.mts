@@ -1104,7 +1104,7 @@ describe('MCP live smoke — the production detection net', () => {
     // Runs the step's real shell with stub `git`, `gh` and vercel-ignore.sh.
     // `deployment` is what GitHub lists for this SHA: a vercel[bot]
     // Production deployment with that latest status, or none at all.
-    function runGate({ vercelBuilds, deployment }: { vercelBuilds: boolean; deployment: 'success' | 'failure' | 'none' }) {
+    function runGate({ vercelBuilds, deployment }: { vercelBuilds: boolean; deployment: 'success' | 'failure' | 'none' | 'hang' }) {
       const dir = mkdtempSync(resolve(tmpdir(), 'mcp-smoke-gate-'));
       try {
         const bin = resolve(dir, 'bin');
@@ -1116,7 +1116,7 @@ describe('MCP live smoke — the production detection net', () => {
         writeFileSync(
           resolve(bin, 'gh'),
           `#!/bin/bash\necho "$*" >> ${JSON.stringify(ghLog)}\n`
-            + (deployment === 'none' ? 'exit 0\n' : `echo ${deployment}\n`),
+            + (deployment === 'none' ? 'exit 0\n' : deployment === 'hang' ? 'exec sleep 600\n' : `echo ${deployment}\n`),
           { mode: 0o755 },
         );
         const output = resolve(dir, 'output');
@@ -1124,6 +1124,7 @@ describe('MCP live smoke — the production detection net', () => {
         const result = spawnSync('bash', ['-e', '-c', gate.run], {
           cwd: dir,
           encoding: 'utf8',
+          timeout: 60_000,
           env: {
             ...process.env,
             PATH: `${bin}:${process.env.PATH}`,
@@ -1133,6 +1134,7 @@ describe('MCP live smoke — the production detection net', () => {
             REPO: 'koala73/worldmonitor',
             DEPLOY_WAIT_SECONDS: '2',
             DEPLOY_POLL_SECONDS: '1',
+            GH_CALL_TIMEOUT_SECONDS: '1',
           },
         });
         assert.equal(result.status, 0, result.stderr);
@@ -1176,6 +1178,14 @@ describe('MCP live smoke — the production detection net', () => {
     // the smoke. The B→C diff predicts a build, but Vercel compares against A,
     // the last successful deploy, and skips. No deployment_status run follows,
     // so the push run must still probe.
+    // A gh api call with no limit can stall past the deadline; the step then
+    // hits timeout-minutes without setting `pending`, and the probe is lost.
+    it('probes when the deployments API hangs', () => {
+      const started = Date.now();
+      assert.equal(runGate({ vercelBuilds: true, deployment: 'hang' }).pending, 'false');
+      assert.ok(Date.now() - started < 30_000, 'each gh call is bounded, so the deadline still applies');
+    });
+
     it('probes when the predicted deploy never appears', () => {
       const { pending, ghCalls } = runGate({ vercelBuilds: true, deployment: 'none' });
       assert.equal(pending, 'false');
