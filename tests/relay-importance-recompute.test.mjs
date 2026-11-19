@@ -31,7 +31,7 @@ describe('ais-relay importanceScore publish path', () => {
   it('carries corroborationCount into allTitles', () => {
     assert.match(
       relaySrc,
-      /buildClassifyCandidateMap\(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS\)/,
+      /buildClassifyCandidateMap\(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS, undefined, poolItems\)/,
       'the relay must build allTitles through the executable candidate helper',
     );
     assert.match(
@@ -96,5 +96,10 @@ describe('ais-relay importanceScore publish path', () => {
   it('relayComputeImportanceScore is defined once at module scope', () => {
     const defs = relaySrc.match(/function\s+relayComputeImportanceScore\s*\(/g) || [];
     assert.equal(defs.length, 1, `expected single definition of relayComputeImportanceScore, found ${defs.length}`);
+  });
+  it('keeps a pool headline\'s label per edition, apart from the shared label (#10978)', () => {
+    const body = relaySrc.slice(relaySrc.indexOf('async function seedClassifyForVariant'), relaySrc.indexOf('\nasync function seedClassify()'));
+    assert.match(body, /fromPool \? `\$\{classifyCacheKey\(t\)\}:pool:\$\{variant\}` : classifyCacheKey\(t\)/);
+    assert.equal((body.match(/classifyCacheKey\(/g) || []).length, 2, 'every read and write goes through classifyKeyFor');
   });
 });

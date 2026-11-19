@@ -344,16 +344,21 @@ test('a headline served again every cycle alerts once', async (t) => {
   assert.deepEqual(titles(upstash.alerts()), [CNN_TITLE], output());
 });
 
-test('a cached tier-4 headline alerts once when more outlets carry it', async (t) => {
+test('a cached tier-4 headline alerts once per audience as more outlets carry it', async (t) => {
   const { upstash, llm, cycle, output } = await startRelay(t);
   // The digest serves the same title every cycle with a rising outlet count.
   for (const corroborationCount of [1, 2, 3, 4, 5]) {
     await cycle([{ title: AGGREGATED_TITLE, source: 'An Unlisted Aggregator', corroborationCount }]);
   }
   assert.deepEqual(llm.state.asked, [AGGREGATED_TITLE], output());
-  const scores = upstash.alerts().map((e) => e.payload.importanceScore);
-  assert.equal(scores.length, 2, output());
-  assert.ok(scores[0] < 82 && scores[1] >= 82, `scored ${scores}`);
+  // The fresh label at 73 reaches no rule. The headline names Iran, so the
+  // cached copy at 78 or more reaches Iran-scoped rules (#10977), and at 82
+  // every realtime rule. Each audience is alerted once.
+  const keys = upstash.alerts().map((e) => e.payload.importanceScore);
+  assert.equal(keys.length, 3, output());
+  assert.ok(keys[0] < 78, `scored ${keys}`);
+  assert.ok(keys[1] >= 78 && keys[1] < 82, `scored ${keys}`);
+  assert.ok(keys[2] >= 82, `scored ${keys}`);
 });
 
 test('a critical sighting scored below the delivery bar does not use up the story', async (t) => {
@@ -380,6 +385,19 @@ test('publishers seen carrying the headline in earlier builds and other editions
   // The payload keeps the build's own count; the history is re-read on render.
   assert.equal(alert.payload.corroborationCount, 1);
   assert.ok(alert.payload.importanceScore >= 82, `scored ${alert.payload.importanceScore}`);
+});
+
+test('a cached copy alerts once the coverage history lifts it over the realtime bar', async (t) => {
+  const { upstash, llm, cycle, output } = await startRelay(t);
+  await cycle([{ title: AGGREGATED_TITLE, source: 'An Unlisted Aggregator' }]);
+  // #10977 on the cache-hit path (#10976): five families carry it later.
+  upstash.state.coverage.set(newsPublisherCoverageKey(AGGREGATED_TITLE), ['a', 'b', 'c', 'd', 'e'].map((family) => [family, Date.now()]));
+  await cycle([{ title: AGGREGATED_TITLE, source: 'An Unlisted Aggregator' }]);
+  await cycle([{ title: AGGREGATED_TITLE, source: 'An Unlisted Aggregator' }]);
+  assert.deepEqual(llm.state.asked, [AGGREGATED_TITLE], output());
+  const scores = upstash.alerts().map((e) => e.payload.importanceScore);
+  assert.equal(scores.length, 2, output());
+  assert.ok(scores[0] < 78 && scores[1] >= 82, `scored ${scores}`);
 });
 
 test('publishers last seen over a day ago do not count toward the score', async (t) => {
