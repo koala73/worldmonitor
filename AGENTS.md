@@ -100,3 +100,20 @@ The browser import direction is `types -> config -> services -> components -> ap
 Run the smallest meaningful proof first. Preserve useful regression coverage. Run heavy checks sequentially. Report failures honestly. Keep locally verified, PR ready, merged, deployed, observed in production, and acceptance complete as separate claims.
 
 A green pre-push hook proves only its local checks. After pushing, monitor required CI on the exact PR head. Repair relevant failures on the existing branch and verify the new head. Do not report CI success while required checks are failed or pending. Inspect the failed job's first actionable error before retrying or changing code.
+
+## Wait for PR events instead of polling
+
+With GitHub CLI 2.105 or newer, `gh event listen` blocks until a pull request event arrives. Run it in the background and act when it exits. Never wrap `gh pr checks`, `gh pr view`, or `gh api` in a sleep loop.
+
+```bash
+gh event listen --resource https://github.com/koala73/worldmonitor/pull/<number> \
+  --event com.github.pull_request.check_suite.status.changed.v1,com.github.pull_request.review.submitted.v1,com.github.pull_request.head.changed.v1,com.github.pull_request.state.changed.v1 \
+  --timeout 45m
+```
+
+- The command exits after the first event. Events are not replayed, so read the current state once with `gh pr checks <number>` after the listener attaches, and again after each event.
+- Each check suite sends its own event. When `gh pr checks` still shows pending required checks, start the listener again. When a suite fails, inspect that job instead of waiting for the rest.
+- A `head.changed` event means a new push. Pin the new head SHA before acting on earlier findings or check results.
+- Exit status 8 means the timeout passed with no event. Read the state once, then decide whether to listen again.
+- Exit status 1 with `Event subscriptions are not enabled for this account` means the account lacks the Event Streams preview. Use one background `gh pr checks <number> --watch` instead. The owner account returned this error on 2026-11-19.
+- Subscriptions expire after 24 hours, and each account has a limited number. Delete a subscription you no longer need with `gh event subscription delete <id>`.
