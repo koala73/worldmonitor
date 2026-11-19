@@ -63,7 +63,7 @@ function install(clipboard: 'present' | 'missing', exec: 'success' | 'throw' | '
 }
 
 function fallbackValue(): string | undefined {
-  const input = document.querySelector('.wm-copy-fallback-input') as { value?: string } | null;
+  const input = document.querySelector('.wm-copy-input') as { value?: string } | null;
   return input?.value;
 }
 
@@ -108,7 +108,7 @@ describe('copyText', () => {
 
     assert.equal(copied, false);
     assert.equal(fallbackValue(), SHARE_URL);
-    assert.equal((document.querySelector('.wm-copy-fallback-input') as { tagName?: string } | null)?.tagName, 'TEXTAREA');
+    assert.equal((document.querySelector('.wm-copy-input') as { tagName?: string } | null)?.tagName, 'TEXTAREA');
 
     install('missing', 'throw');
     const thrown = await copyText(SHARE_URL).then(
@@ -183,11 +183,11 @@ describe('copyText', () => {
     button.focus();
 
     await copyText(SHARE_URL);
-    assert.equal(document.activeElement, document.querySelector('.wm-copy-fallback-input'));
+    assert.equal(document.activeElement, document.querySelector('.wm-copy-input'));
 
-    (document.querySelector('.wm-copy-fallback-close') as HTMLButtonElement | null)?.click();
+    (document.querySelector('.wm-copy-close') as HTMLButtonElement | null)?.click();
 
-    assert.equal(document.querySelector('.wm-copy-fallback'), null);
+    assert.equal(document.querySelector('.wm-copy'), null);
     assert.equal(document.activeElement, button);
   });
 
@@ -200,11 +200,11 @@ describe('copyText', () => {
     assert.equal(fallbackValue(), SHARE_URL);
     await copyText('wm_live_secret', { secret: true });
     assert.equal(fallbackValue(), 'wm_live_secret');
-    assert.ok(document.querySelector('.wm-copy-fallback[data-copy-secret]'));
+    assert.ok(document.querySelector('.wm-copy[data-copy]'));
 
     dismissSecretCopyFallback();
 
-    assert.equal(document.querySelector('.wm-copy-fallback'), null);
+    assert.equal(document.querySelector('.wm-copy'), null);
   });
 
   it('dismisses a secret field only for the surface that opened it', async () => {
@@ -215,6 +215,6 @@ describe('copyText', () => {
 
     assert.equal(fallbackValue(), 'wm_live_secret');
     dismissSecretCopyFallback('settings');
-    assert.equal(document.querySelector('.wm-copy-fallback'), null);
+    assert.equal(document.querySelector('.wm-copy'), null);
   });
 });

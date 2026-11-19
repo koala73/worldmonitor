@@ -4988,7 +4988,7 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   transform: translateX(-50%) translateY(0);
 }
 
-.wm-copy-fallback {
+.wm-copy {
   position: fixed;
   /* Above the trip assessment and embed dialogs (10020) and the trip toast
      (10021). Confirm and account-deletion dialogs stay above this at 10050. */
@@ -5008,7 +5008,7 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   border-radius: 8px;
 }
 
-.wm-copy-fallback-label {
+.wm-copy-label {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -5017,7 +5017,7 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
-.wm-copy-fallback-input {
+.wm-copy-input {
   width: 100%;
   box-sizing: border-box;
   font: inherit;
@@ -5032,7 +5032,7 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   overflow: auto;
 }
 
-.wm-copy-fallback-close {
+.wm-copy-close {
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
@@ -5050,7 +5050,7 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
     max-width: calc(100vw - 32px);
   }
 
-  .wm-copy-fallback {
+  .wm-copy {
     bottom: calc(58px + 12px + env(safe-area-inset-bottom, 0px));
   }
 }

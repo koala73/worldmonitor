@@ -100,36 +100,32 @@ function restoreFocus(previous: Element | null): void {
 
 export function dismissSecretCopyFallback(owner?: string): void {
   if (typeof document === 'undefined') return;
-  const field = document.querySelector('.wm-copy-fallback[data-copy-secret]');
+  const field = document.querySelector('.wm-copy[data-copy]');
   if (!field) return;
-  if (owner !== undefined && field.getAttribute('data-copy-owner') !== owner) return;
+  if (owner !== undefined && field.getAttribute('data-copy') !== owner) return;
   field.remove();
 }
 
 function revealCopyText(text: string, label: string, closeLabel: string, secret: boolean, owner?: string): void {
-  if (typeof document === 'undefined' || !document.body) {
-    if (typeof window !== 'undefined' && typeof window.prompt === 'function') window.prompt(label, text);
-    return;
-  }
+  if (typeof document === 'undefined' || !document.body) return;
   const previous = document.activeElement;
-  document.querySelector('.wm-copy-fallback')?.remove();
+  document.querySelector('.wm-copy')?.remove();
   const root = document.createElement('div');
-  root.className = 'wm-copy-fallback';
+  root.className = 'wm-copy';
   root.setAttribute('role', 'status');
-  if (secret) root.setAttribute('data-copy-secret', '');
-  if (secret && owner) root.setAttribute('data-copy-owner', owner);
+  if (secret) root.setAttribute('data-copy', owner ?? '');
   const labelEl = document.createElement('label');
-  labelEl.className = 'wm-copy-fallback-label';
+  labelEl.className = 'wm-copy-label';
   labelEl.textContent = label;
   const field = document.createElement('textarea');
-  field.className = 'wm-copy-fallback-input';
+  field.className = 'wm-copy-input';
   field.readOnly = true;
   field.rows = Math.min(6, Math.max(1, text.split('\n').length));
   field.value = text;
   field.setAttribute('aria-label', label);
   const close = document.createElement('button');
   close.type = 'button';
-  close.className = 'wm-copy-fallback-close';
+  close.className = 'wm-copy-close';
   close.textContent = closeLabel;
   close.addEventListener('click', () => {
     root.remove();

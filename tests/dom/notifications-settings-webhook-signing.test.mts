@@ -252,12 +252,12 @@ describe('notification settings webhook signing', () => {
 
     container.querySelector<HTMLButtonElement>('.us-notif-tg-copy-btn')!.click();
     await vi.waitFor(() => {
-      expect(document.querySelector<HTMLTextAreaElement>('.wm-copy-fallback-input')?.value).toBe(SECRET);
+      expect(document.querySelector<HTMLTextAreaElement>('.wm-copy-input')?.value).toBe(SECRET);
     });
-    expect(document.querySelector('.wm-copy-fallback')?.hasAttribute('data-copy-secret')).toBe(true);
+    expect(document.querySelector('.wm-copy')?.hasAttribute('data-copy')).toBe(true);
 
     cleanups.pop()?.();
-    expect(document.querySelector('.wm-copy-fallback')).toBeNull();
+    expect(document.querySelector('.wm-copy')).toBeNull();
   });
 
   it('does not leave the signing secret up when copying fails after unmount', async () => {
@@ -279,7 +279,7 @@ describe('notification settings webhook signing', () => {
     cleanups.pop()?.();
     rejectWrite(new Error('denied'));
     await vi.waitFor(() => {
-      expect(document.querySelector('.wm-copy-fallback')).toBeNull();
+      expect(document.querySelector('.wm-copy')).toBeNull();
     });
   });
 
@@ -298,12 +298,12 @@ describe('notification settings webhook signing', () => {
     });
     container.querySelector<HTMLButtonElement>('.us-notif-tg-copy-btn')!.click();
     await vi.waitFor(() => {
-      expect(document.querySelector<HTMLTextAreaElement>('.wm-copy-fallback-input')?.value).toBe(SECRET);
+      expect(document.querySelector<HTMLTextAreaElement>('.wm-copy-input')?.value).toBe(SECRET);
     });
 
     channelMocks.getChannelsData.mockResolvedValue(webhookChannel(true));
     container.querySelector<HTMLButtonElement>('#usWebhookSecretDone')!.click();
-    expect(document.querySelector('.wm-copy-fallback')).toBeNull();
+    expect(document.querySelector('.wm-copy')).toBeNull();
   });
 
   it('does not reveal the signing secret when copy fails after Done', async () => {
@@ -326,7 +326,7 @@ describe('notification settings webhook signing', () => {
     container.querySelector<HTMLButtonElement>('#usWebhookSecretDone')!.click();
     rejectWrite(new Error('denied'));
     await vi.waitFor(() => {
-      expect(document.querySelector('.wm-copy-fallback')).toBeNull();
+      expect(document.querySelector('.wm-copy')).toBeNull();
     });
   });
 
@@ -338,7 +338,7 @@ describe('notification settings webhook signing', () => {
     });
     Object.defineProperty(document, 'execCommand', { configurable: true, value: () => false });
     const container = await mount({
-      channels: [{ channelType: 'email', verified: true, linkedAt: 1, address: 'ops@example.com' }],
+      channels: [{ channelType: 'email', verified: true, linkedAt: 1, email: 'ops@example.com' }],
       alertRules: [],
     });
     container.querySelector<HTMLButtonElement>('#usConnectWebhook')!.click();
@@ -349,12 +349,12 @@ describe('notification settings webhook signing', () => {
     });
     container.querySelector<HTMLButtonElement>('.us-notif-tg-copy-btn')!.click();
     await vi.waitFor(() => {
-      expect(document.querySelector<HTMLTextAreaElement>('.wm-copy-fallback-input')?.value).toBe(SECRET);
+      expect(document.querySelector<HTMLTextAreaElement>('.wm-copy-input')?.value).toBe(SECRET);
     });
 
     container.querySelector<HTMLButtonElement>('.us-notif-disconnect[data-channel="email"]')!.click();
     await vi.waitFor(() => {
-      expect(document.querySelector('.wm-copy-fallback')).toBeNull();
+      expect(document.querySelector('.wm-copy')).toBeNull();
     });
   });
 
