@@ -1020,19 +1020,35 @@ const CACHE_TTL_COUNTRY_S = CACHE_TTL_HEALTHY_S * 2;
 /**
  * Stores a parse: digest rows under the feed key, the full variant's
  * retained country rows under their own key (see rssFeedCountryCacheKey).
- * Returns the feed entry as stored, which is what a cache hit returns.
+ * Both keys go in one MULTI/EXEC: two separate writes from concurrent parses
+ * could interleave into a feed entry and a pool from different parses, and
+ * readers would then drop the pool. Returns the feed entry as stored, which is
+ * what a cache hit returns.
  */
 async function writeFeedParse(feed: ServerFeed, variant: string, result: ParseResult, ttlSeconds: number): Promise<ParseResult> {
   const { countryItems, ...entry } = result;
-  const writes: Promise<boolean>[] = [setCachedJson(rssFeedCacheKey(variant, feed.url), entry, ttlSeconds)];
-  if (countryItems && countryItems.length > 0 && typeof entry.parsedAt === 'number') {
-    writes.push(setCachedJson(
-      rssFeedCountryCacheKey(variant, feed.url),
-      { parsedAt: entry.parsedAt, items: countryItems },
-      CACHE_TTL_COUNTRY_S,
-    ));
+  const feedKey = rssFeedCacheKey(variant, feed.url);
+  if (!countryItems || countryItems.length === 0 || typeof entry.parsedAt !== 'number') {
+    await setCachedJson(feedKey, entry, ttlSeconds);
+    return entry;
   }
-  await Promise.all(writes);
+  const pool = { parsedAt: entry.parsedAt, items: countryItems };
+  const countryKey = rssFeedCountryCacheKey(variant, feed.url);
+  // The desktop sidecar cache is one in-process map with no transaction endpoint.
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    await setCachedJson(countryKey, pool, CACHE_TTL_COUNTRY_S);
+    await setCachedJson(feedKey, entry, ttlSeconds);
+    return entry;
+  }
+  const commands = [
+    ['SET', countryKey, JSON.stringify(pool), 'EX', CACHE_TTL_COUNTRY_S],
+    ['SET', feedKey, JSON.stringify(entry), 'EX', ttlSeconds],
+  ];
+  const results = await runRedisTransaction(commands);
+  if (results.length !== commands.length || results.some(item => item?.error)) {
+    // Nothing is cached, so the next build fetches the feed again.
+    console.warn(`[feed-cache] parse write unconfirmed variant=${variant} feed=${feed.name}`);
+  }
   return entry;
 }
 

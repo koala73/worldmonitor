@@ -104,6 +104,7 @@ describe('country headlines from existing curated RSS caches', () => {
     const readPipeline = globalThis.fetch;
     let publisherReads = 0;
     const ttls = new Map<string, number>();
+    const transactions: string[][] = [];
     globalThis.fetch = async (url, init) => {
       if (String(url) === source.url) {
         publisherReads++;
@@ -112,13 +113,15 @@ describe('country headlines from existing curated RSS caches', () => {
       if (String(url) === `https://redis.example.test/get/${encodeURIComponent(key)}`) {
         return Response.json({ result: cache.has(key) ? JSON.stringify(cache.get(key)) : null });
       }
-      if (String(url) === 'https://redis.example.test/') {
-        const command = JSON.parse(String(init?.body));
-        assert.equal(command[0], 'SET');
-        assert.ok(command[1] === key || command[1] === countryKey, `unexpected write to ${command[1]}`);
-        cache.set(command[1], JSON.parse(command[2]));
-        ttls.set(command[1], Number(command[4]));
-        return Response.json({ result: 'OK' });
+      if (String(url) === 'https://redis.example.test/multi-exec') {
+        const batch = JSON.parse(String(init?.body)) as string[][];
+        transactions.push(batch.map(command => command[1]!));
+        for (const command of batch) {
+          assert.equal(command[0], 'SET');
+          cache.set(command[1]!, JSON.parse(command[2]!));
+          ttls.set(command[1]!, Number(command[4]));
+        }
+        return Response.json(batch.map(() => ({ result: 'OK' })));
       }
       return readPipeline(url, init);
     };
@@ -135,6 +138,8 @@ describe('country headlines from existing curated RSS caches', () => {
     assert.equal(country.parsedAt, stored.parsedAt, 'the country pool names the parse it came from');
     assert.deepEqual(country.items, parsed.countryItems);
     assert.ok(ttls.get(countryKey)! > ttls.get(key)!, 'the country pool outlives a feed entry that 304s keep renewing');
+    // Concurrent parses must not interleave into a mismatched pair.
+    assert.deepEqual(transactions, [[countryKey, key]], 'both keys are written in one transaction');
     const { payload } = await request(['CM', 'NE', 'MU']);
     assert.deepEqual(Object.keys(payload.countries), ['CM', 'NE']);
     assert.equal(payload.countries.CM.items[0].source, source.name);
