@@ -26,6 +26,7 @@ beforeEach(() => {
   vi.useFakeTimers();
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   setViewportWidth(realInnerWidth);
   document.body.innerHTML = '';
@@ -115,7 +116,37 @@ for (const { label, width, tap } of [
       expect(added.size).toBeGreaterThan(0);
       popup.hide();
       expect([...added.keys()].filter((k) => !removed.has(k))).toEqual([]);
-      vi.restoreAllMocks();
+    });
+
+    for (const opener of ['click', 'pointerup'] as const) {
+      it(`replaces the open popup when another marker opens one from ${opener}`, () => {
+        const { popup, marker, outside } = mountMarkerAndPopup(opener);
+        const second = document.createElement('button');
+        marker.after(second);
+        second.addEventListener(opener, () => popup.show({ type: 'hotspot', data: { ...(HOTSPOT as object), id: 'h2', name: 'Second Hotspot' } as never, x: 20, y: 20 }));
+        tap(marker);
+        tap(second);
+        expect(popupCount()).toBe(1);
+        expect(document.querySelector('.map-popup .popup-title')?.textContent).toMatch(/second hotspot/i);
+        tap(outside);
+        expect(popupCount()).toBe(0);
+      });
+    }
+
+    it('closes on an outside click activated from the keyboard', () => {
+      const { marker, outside } = mountMarkerAndPopup();
+      tap(marker);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      fire(outside, 'click');
+      expect(popupCount()).toBe(0);
+    });
+
+    it('closes on a click with no press before it once the fallback timer has run', () => {
+      const { marker, outside } = mountMarkerAndPopup();
+      tap(marker);
+      vi.runAllTimers();
+      fire(outside, 'click');
+      expect(popupCount()).toBe(0);
     });
   });
 }
@@ -155,6 +186,20 @@ describe('route breakdown popup', () => {
     const { marker, outside } = mountRouteBreakdown();
     mouseClick(marker);
     mouseClick(outside);
+    expect(document.querySelectorAll('.map-popup-route-breakdown')).toHaveLength(0);
+  });
+
+  it('closes on an outside tap', () => {
+    const { marker, outside } = mountRouteBreakdown();
+    mouseClick(marker);
+    touchTap(outside);
+    expect(document.querySelectorAll('.map-popup-route-breakdown')).toHaveLength(0);
+  });
+
+  it('closes on Escape', () => {
+    const { marker } = mountRouteBreakdown();
+    mouseClick(marker);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(document.querySelectorAll('.map-popup-route-breakdown')).toHaveLength(0);
   });
 });

@@ -316,6 +316,7 @@ export class MapPopup {
   private sheetCurrentOffset = 0;
   private readonly mobileDismissThreshold = 96;
   private outsideDismissArmed = false;
+  private outsideDismissArmTimeoutId: number | null = null;
   private mapPopupHistoryOpen: OverlayOpenHandle | null = null;
 
   constructor(container: HTMLElement) {
@@ -683,7 +684,7 @@ export class MapPopup {
       if ((e.target as HTMLElement).closest('.popup-close')) this.hide();
     });
 
-    this.listenForOutsideDismiss();
+    this.listenForOutsideDismiss(200);
   }
 
   /**
@@ -831,10 +832,16 @@ export class MapPopup {
    * a marker's click handler) or have a trailing click to come (deck.gl opens
    * on pointerup). Its press began before the popup opened, so an outside
    * event counts only after a new press or key starts: the capture listeners
-   * arm the dismissal before the bubbling handler sees that event.
+   * arm the dismissal before the bubbling handler sees that event. A click
+   * with no press before it (a scripted click, some assistive technology)
+   * still dismisses once the fallback timer has armed it, as it did before.
    */
-  private listenForOutsideDismiss(): void {
-    this.outsideDismissArmed = false;
+  private listenForOutsideDismiss(pressLessArmDelayMs = 0): void {
+    this.removeOutsideDismissListeners();
+    this.outsideDismissArmTimeoutId = window.setTimeout(() => {
+      this.outsideDismissArmTimeoutId = null;
+      this.armOutsideDismiss();
+    }, pressLessArmDelayMs);
     document.addEventListener('pointerdown', this.armOutsideDismiss, true);
     document.addEventListener('touchstart', this.armOutsideDismiss, true);
     document.addEventListener('keydown', this.armOutsideDismiss, true);
@@ -845,6 +852,10 @@ export class MapPopup {
 
   private removeOutsideDismissListeners(): void {
     this.outsideDismissArmed = false;
+    if (this.outsideDismissArmTimeoutId !== null) {
+      window.clearTimeout(this.outsideDismissArmTimeoutId);
+      this.outsideDismissArmTimeoutId = null;
+    }
     document.removeEventListener('pointerdown', this.armOutsideDismiss, true);
     document.removeEventListener('touchstart', this.armOutsideDismiss, true);
     document.removeEventListener('keydown', this.armOutsideDismiss, true);
