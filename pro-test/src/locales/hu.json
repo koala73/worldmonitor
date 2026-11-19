@@ -35,16 +35,16 @@
     "askIt": "Kérdezze",
     "askItDesc": "WM Analyst chat. Élő szolgáltatások lekérdezhetők egyszerű angolsággal.",
     "subscribeIt": "Iratkozzon fel rá",
-    "subscribeItDesc": "AI digest az Ön ütemezése szerint — naponta, naponta kétszer vagy hetente. Slack, Discord, Telegram, e-mail, webhook.",
+    "subscribeItDesc": "AI digest az Ön ütemezése szerint — naponta, naponta kétszer vagy hetente. Slack, Teams, Discord, Telegram, e-mail, webhook.",
     "buildOnIt": "Építsen rá",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) és MCP Claude-hoz, GPT-hez, saját LLM-ekhez."
   },
   "deliveryDesk": {
     "eyebrow": "KÉZBESÍTŐPULT",
     "title": "Mi az a személyes intelligence desk?",
-    "body": "Legfeljebb 30 rangsorolt elem küldésenként, forrásokon közösen eltávolítva, figyelőlistádhoz képest pontozva. Válaszd meg az ütemezésedet — napi, naponta kétszer vagy hetente — AI Assessment és Signals to watch mellett a Slackre, Discordra, Telegramba, e-mailbe vagy webhookra.",
+    "body": "Legfeljebb 30 rangsorolt elem küldésenként, forrásokon közösen eltávolítva, figyelőlistádhoz képest pontozva. Válaszd meg az ütemezésedet — napi, naponta kétszer vagy hetente — AI Assessment és Signals to watch mellett a Slackre, Microsoft Teamsre, Discordra, Telegramba, e-mailbe vagy webhookra.",
     "closer": "Nem hírlevél. Elemző.",
-    "channels": "Slack · Discord · Telegram · E-mail · Webhook · AES-256 titkosítás · Csendes órák"
+    "channels": "Slack · Teams · Discord · Telegram · E-mail · Webhook · AES-256 titkosítás · Csendes órák"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Élő irányítópult",
@@ -56,8 +56,7 @@
   "socialProof": {
     "uniqueVisitors": "Egyedi látogatók",
     "peakDailyUsers": "Napi csúcsfelhasználók",
-    "countriesReached": "Elért országok",
-    "liveDataSources": "Élő adatforrások"
+    "countriesReached": "Elért országok"
   },
   "audience": {
     "title": "Kinek készült a World Monitor?",
@@ -77,34 +76,6 @@
     "aiTeamsDesc": "Lássa el cége asszisztensét élő világkontextussal MCP-n keresztül, írásos belső felhasználási jogokkal.",
     "teamsTitle": "Csapatok és szervezetek",
     "teamsDesc": "Lépjen túl az egyéni használaton: közös munkafolyamatok, API-hozzáférés, TV-appok és menedzselt telepítések."
-  },
-  "dataCoverage": {
-    "title": "Mit követ nyomon a World Monitor?",
-    "subtitle": "Szolgáltatási tartományok párhuzamosan feldolgozva. Piacok, makroökonómia, geopolitika, energia, infrastruktúra — minden normalizálva és megjelenítve egy WebGL-földgömbön.",
-    "markets": "Pénzügyi piacok és részvények",
-    "marketsDesc": "Globális részvényelemzés, árupiacok, kripto, ETF-áramlások, elemzői célárak és FRED makróadatok",
-    "economy": "Gazdaság és jegybankok",
-    "economyDesc": "GDP, infláció, kamatlábak, növekedési ciklusok és monetáris politika követése a nagy gazdaságokban",
-    "geopolitical": "Geopolitikai elemzés",
-    "geopoliticalDesc": "ACLED és UCDP események eszkalációs pontozással, kockázati keretekkel és trendelemzéssel",
-    "maritime": "Hajózás és kereskedelem",
-    "maritimeDesc": "Hajómozgások, hajódetektálás, kikötői aktivitás és rakománykövetkeztetés",
-    "aviation": "Légiközlekedés követése",
-    "aviationDesc": "ADS-B transzponderes követés globális repülési mintákhoz",
-    "infra": "Kritikus infrastruktúra",
-    "infraDesc": "Atomerőművek, elektromos hálózatok, vezetékek, finomítók — feltérképezett eszközök",
-    "fire": "Műholdas tűzdetektálás",
-    "fireDesc": "NASA FIRMS közel valós idejű adatok tüzekről és hőpontokról",
-    "cables": "Tenger alatti kábelek",
-    "cablesDesc": "Tenger alatti kábelútvonalak és parti csatlakozási állomások",
-    "internet": "Internet és GPS",
-    "internetDesc": "Kimaradásdetektálás, BGP-anomáliák, GPS-zavarási zónák",
-    "cyber": "Kiberfenyegetések",
-    "cyberDesc": "Ransomware feedek, BGP-hijackek, DDoS-detektálás",
-    "gdelt": "GDELT és hírek",
-    "gdeltDesc": "Válogatott RSS feedek, AI-pontozottan GDELT-események, élő közvetítések",
-    "seismology": "Szeizmológia és természeti események",
-    "seismologyDesc": "USGS földrengések, vulkáni aktivitás, szélsőséges időjárás"
   },
   "tiers": {
     "free": "Ingyenes",
@@ -127,13 +98,12 @@
     "riskMonitoring": "Kockázatmonitoring és forgatókönyvek",
     "riskMonitoringDesc": "Globális kockázati pontozás, forgatókönyv-elemzés és geopolitikai kockázatértékelés. Konvergenciadetektálás piaci és politikai jelek között.",
     "morningBriefs": "Személyes hírszerzési desk",
-    "morningBriefsDesc": "Legfeljebb 30 rangsorolt történet összefoglalónként, forrásokon közösen eltávolítva. Válaszd meg a napi, naponta kétszer vagy heti ütemezést — vagy valós idejű riasztások kritikus eseményekhez. AI Assessment és Signals to watch a Slackre, Discordra, Telegramba, e-mailbe vagy webhookra. Nem hírlevél — egy elemzés.",
+    "morningBriefsDesc": "Legfeljebb 30 rangsorolt történet összefoglalónként, forrásokon közösen eltávolítva. Válaszd meg a napi, naponta kétszer vagy heti ütemezést — vagy valós idejű riasztások kritikus eseményekhez. AI Assessment és Signals to watch a Slackre, Microsoft Teamsre, Discordra, Telegramba, e-mailbe vagy webhookra. Nem hírlevél — egy elemzés.",
     "oneKey": "Élő Szolgáltatások, 1 Kulcs",
-    "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky és még sok más — mind aktív, külön regisztrációk nélkül.",
+    "oneKeyDesc": "Finnhub, FRED, UCDP, NASA FIRMS, AISStream, OpenSky és még sok más — mind aktív, külön regisztrációk nélkül.",
     "deliveryLabel": "Válassza ki, hogyan találjon Önre az intelligencia",
     "supplyChainLab": "Ellátásilánc-stresszlabor",
-    "supplyChainLabDesc": "Költségsokkot szimulálhat országok és szektorok között. Rangsorolhatja az árucikkek sebezhetőségét szűk keresztmetszetek függőségei alapján. Nyomon követheti a bánya-finomítókoncentrációt és az SGE–COMEX fizikai prémium divergenciáját — azt a mutatót, amely a hírek előtt változik meg.",
-    "roadmapNote": "A terv szerint: hosszabb előzmények, prémium térképrétegek."
+    "supplyChainLabDesc": "Költségsokkot szimulálhat országok és szektorok között. Rangsorolhatja az árucikkek sebezhetőségét szűk keresztmetszetek függőségei alapján. Nyomon követheti a bánya-finomítókoncentrációt és az SGE–COMEX fizikai prémium divergenciáját — azt a mutatót, amely a hírek előtt változik meg."
   },
   "apiSection": {
     "apiTier": "API SZINT",
@@ -560,7 +530,7 @@
       "n5Title": "Tengeralattjáró kábelek",
       "n5Desc": "{{submarineCables}} tengeralatti kábelek, amelyek az internetet szállítják, leállási és fenyegetési jelekkel átfedve.",
       "n6Title": "Tüntetéskövetés",
-      "n6Desc": "Tüntetésdetektálás az ACLED-ből és a GDELT-ből; az egy forrásból származó, azonos napon és azonos 0,1° cellában lévő beszámolók egy eseménnyé egyesülnek — jelzés, nem pletyka.",
+      "n6Desc": "Tüntetésdetektálás a GDELT-ből; az egy forrásból származó, azonos napon és azonos 0,1° cellában lévő beszámolók egy eseménnyé egyesülnek — jelzés, nem pletyka.",
       "faith": "Ne higgy csak a számoknak —",
       "faithCta": "nyisd meg az alkalmazást és számolj.",
       "faithNote": "A források minden panelen fel vannak tüntetve."
@@ -617,7 +587,7 @@
       "q2": "Mi az a globális hírszerzési irányítópult?",
       "a2": "Egy egyetlen élő nézet, amely olyan jeleket egyesít, amelyeket a legtöbb eszköz külön tárol: konfliktusesemények, hajó- és légiforgalom-követés, szállítási szűk keresztmetszetek, műholdak, tengeralatti kábelek, vezetékek, piacok és kiberfenyegetések — egy valós idejű világtérképen, AI-pontozással és összefoglalókkal. A World Monitor egy ingyenes ilyen.",
       "q3": "Honnan származnak az adatok?",
-      "a3": "{{providers}} szerzett szolgáltatótól. Közöttük az ACLED és UCDP konfliktusokra, az AISStream az élő hajók­ra, az OpenSky a repülőgépekre, a NASA FIRMS a tüzekre, az USGS a földrengésekre, az IMF, BIS, FRED és Finnhub piacok és makrogazdaságra — plusz kurátori hírcsa­tornák. Minden panel citálja forrásait és időbélyegét beágyazottan.",
+      "a3": "{{providers}} szerzett szolgáltatótól. Közöttük a GDELT és UCDP konfliktusokra, az AISStream az élő hajók­ra, az OpenSky a repülőgépekre, a NASA FIRMS a tüzekre, az USGS a földrengésekre, az IMF, BIS, FRED és Finnhub piacok és makrogazdaságra — plusz kurátori hírcsa­tornák. Minden panel citálja forrásait és időbélyegét beágyazottan.",
       "q4": "Valós időben tudom követni a szűk keresztmetszetek, például Hormuz vagy Bab el-Mandeb?",
       "a4": "Igen. {{chokepoints}} szűk keresztmetszet – szorosok és csatornák egyaránt, a Hormúztól és Bab el-Mandébtől a Szuezcsatornáig – élő AIS hajleletszámmal nyomon követett, hétről hétre mért tranzitváltozással és zavarási pontszámozással — és a sűrűségi anomáliák minden szűk keresztmetszet gördülő alapértékéhez képest jelzésre kerülnek.",
       "q5": "Miben különbözik ez egy konfliktustérképtől, mint a Liveuamap?",

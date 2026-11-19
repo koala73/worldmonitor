@@ -35,16 +35,16 @@
     "askIt": "Vraag het",
     "askItDesc": "WM Analyst chat. Live services querybaar in gewoon Engels.",
     "subscribeIt": "Abonneer je",
-    "subscribeItDesc": "AI digest op jouw cadans: dagelijks, tweemaal daags of wekelijks. Slack, Discord, Telegram, E-mail, webhook.",
+    "subscribeItDesc": "AI digest op jouw cadans: dagelijks, tweemaal daags of wekelijks. Slack, Teams, Discord, Telegram, E-mail, webhook.",
     "buildOnIt": "Bouw erop voort",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) en MCP voor Claude, GPT, eigen LLM's."
   },
   "deliveryDesk": {
     "eyebrow": "AFLEVERBALIE",
     "title": "Wat is het persoonlijke inlichtingenburo?",
-    "body": "Tot 30 gerangschikte items per verzending, gededupliceerd over bronnen, gescoord tegen je watchlist. Kies je ritme — dagelijks, tweemaal per dag of wekelijks — met een AI-beoordeling en signalen om op te letten, verzonden naar Slack, Discord, Telegram, Email of webhook.",
+    "body": "Tot 30 gerangschikte items per verzending, gededupliceerd over bronnen, gescoord tegen je watchlist. Kies je ritme — dagelijks, tweemaal per dag of wekelijks — met een AI-beoordeling en signalen om op te letten, verzonden naar Slack, Microsoft Teams, Discord, Telegram, Email of webhook.",
     "closer": "Geen nieuwsbrief. Een analist.",
-    "channels": "Slack · Discord · Telegram · E-mail · Webhook · AES-256 versleuteld · Stille uren"
+    "channels": "Slack · Teams · Discord · Telegram · E-mail · Webhook · AES-256 versleuteld · Stille uren"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Live dashboard",
@@ -56,8 +56,7 @@
   "socialProof": {
     "uniqueVisitors": "Unieke bezoekers",
     "peakDailyUsers": "Piek dagelijkse gebruikers",
-    "countriesReached": "Bereikte landen",
-    "liveDataSources": "Live databronnen"
+    "countriesReached": "Bereikte landen"
   },
   "audience": {
     "title": "Voor wie is World Monitor gebouwd?",
@@ -77,34 +76,6 @@
     "aiTeamsDesc": "Voorzie de assistent van uw bedrijf via MCP van actuele wereldcontext, met schriftelijke rechten voor intern gebruik.",
     "teamsTitle": "Teams en organisaties",
     "teamsDesc": "Ga van individueel gebruik naar gedeelde workflows, API-toegang, TV-apps en beheerde deployments."
-  },
-  "dataCoverage": {
-    "title": "Wat volgt World Monitor?",
-    "subtitle": "Servicedomein tegelijk opgenomen. Markten, macro-economie, geopolitiek, energie, infrastructuur — alles genormaliseerd en weergegeven op een WebGL-globe.",
-    "markets": "Financiële markten en aandelen",
-    "marketsDesc": "Wereldwijde aandelenanalyse, grondstoffen, crypto, ETF-stromen, analistenkoersen en FRED macro-data",
-    "economy": "Economie en centrale banken",
-    "economyDesc": "BBP, inflatie, rente, groeicycli en tracking van monetair beleid van belangrijkste economieën",
-    "geopolitical": "Geopolitieke analyse",
-    "geopoliticalDesc": "ACLED- en UCDP-events met escalatiescoring, risico-frameworks en trendanalyse",
-    "maritime": "Maritiem en handel",
-    "maritimeDesc": "Scheepsbewegingen, detectie van vaartuigen, havenactiviteit en cargo-inferentie",
-    "aviation": "Luchtvaart-tracking",
-    "aviationDesc": "ADS-B-tracking van wereldwijde vluchtpatronen",
-    "infra": "Kritieke infrastructuur",
-    "infraDesc": "Nucleaire sites, elektriciteitsnetwerken, pijpleidingen, raffinaderijen — assetkaarten",
-    "fire": "Satelliet-branddetectie",
-    "fireDesc": "NASA FIRMS bijna-realtime brand- en hotspot-data",
-    "cables": "Onderzeese kabels",
-    "cablesDesc": "Onderzeese kabelroutes en landingsstations",
-    "internet": "Internet en GPS",
-    "internetDesc": "Storingsdetectie, BGP-anomalieën, GPS-jamming-zones",
-    "cyber": "Cyberdreigingen",
-    "cyberDesc": "Ransomware-feeds, BGP-kapingen, DDoS-detectie",
-    "gdelt": "GDELT en nieuws",
-    "gdeltDesc": "Samengestelde RSS-feeds, AI-gescoorde GDELT-events, live-uitzendingen",
-    "seismology": "Seismologie en natuurrampen",
-    "seismologyDesc": "USGS-aardbevingen, vulkanische activiteit, extreem weer"
   },
   "tiers": {
     "free": "Gratis",
@@ -127,13 +98,12 @@
     "riskMonitoring": "Risicomonitoring en scenario's",
     "riskMonitoringDesc": "Wereldwijde risicoscoring, scenario-analyse en geopolitieke risicobeoordeling. Detectie van convergentie tussen markt- en politieke signalen.",
     "morningBriefs": "Persoonlijk intelligence desk",
-    "morningBriefsDesc": "Tot 30 gerangschikte verhalen per digest, gededupliceerd over bronnen. Kies dagelijks, tweemaal per dag of wekelijks ritme — of real-time waarschuwingen voor kritieke events. AI-beoordeling en signalen om op te letten verzonden naar Slack, Discord, Telegram, Email of webhook. Geen nieuwsbrief — een analist.",
+    "morningBriefsDesc": "Tot 30 gerangschikte verhalen per digest, gededupliceerd over bronnen. Kies dagelijks, tweemaal per dag of wekelijks ritme — of real-time waarschuwingen voor kritieke events. AI-beoordeling en signalen om op te letten verzonden naar Slack, Microsoft Teams, Discord, Telegram, Email of webhook. Geen nieuwsbrief — een analist.",
     "oneKey": "Live Services, 1 Sleutel",
-    "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky en meer — alles actief, geen aparte registraties.",
+    "oneKeyDesc": "Finnhub, FRED, UCDP, NASA FIRMS, AISStream, OpenSky en meer — alles actief, geen aparte registraties.",
     "deliveryLabel": "Kies hoe intelligence jou vindt",
     "supplyChainLab": "Stresslab voor de toeleveringsketen",
-    "supplyChainLabDesc": "Model een kostenschok over landen en sectoren. Rank grondstoffengevoeligheid op basis van chokepoint-afhankelijkheid. Volg concentratie van mijn tot raffinaderij en de SGE–COMEX fysieke premiumafwijking — de reeks die vóór het bericht beweegt.",
-    "roadmapNote": "Op de roadmap: langere geschiedenis, premium kaartlagen."
+    "supplyChainLabDesc": "Model een kostenschok over landen en sectoren. Rank grondstoffengevoeligheid op basis van chokepoint-afhankelijkheid. Volg concentratie van mijn tot raffinaderij en de SGE–COMEX fysieke premiumafwijking — de reeks die vóór het bericht beweegt."
   },
   "apiSection": {
     "apiTier": "API-NIVEAU",
@@ -560,7 +530,7 @@
       "n5Title": "Onderzeese kabels",
       "n5Desc": "{{submarineCables}} onderzeeëse kabels die het internet dragen, met storingen en dreigingssignalen.",
       "n6Title": "Protesttracking",
-      "n6Desc": "Protestdetectie van ACLED en GDELT; meldingen van één bron in dezelfde 0,1°-cel op dezelfde dag worden samengevoegd tot één gebeurtenis — daadwerkelijk signaal, geen gerucht.",
+      "n6Desc": "Protestdetectie van GDELT; meldingen van één bron in dezelfde 0,1°-cel op dezelfde dag worden samengevoegd tot één gebeurtenis — daadwerkelijk signaal, geen gerucht.",
       "faith": "Vertrouw de getallen niet zomaar op hun woord —",
       "faithCta": "open de app en tel zelf.",
       "faithNote": "Bronnen worden op elk paneel geciteerd."
@@ -617,7 +587,7 @@
       "q2": "Wat is een global intelligence dashboard?",
       "a2": "Een enkele live weergave die signalen samenvoegt die de meeste tools gescheiden houden: conflictgebeurtenissen, schip- en vliegtuigtracking, scheepvaartknelpunten, satellieten, onderzeese kabels, pijpleidingen, markten en cyberbedreigingen — op één realtime wereldkaart, met AI-scoring en samenvattingen erbovenop. World Monitor is een gratis versie.",
       "q3": "Waar komen de gegevens vandaan?",
-      "a3": "Van {{providers}} geattribueerde bronnen. Benoemde bronnen zijn onder meer ACLED en UCDP voor conflicten, AISStream voor live schepen, OpenSky voor vliegtuigen, NASA FIRMS voor branden, USGS voor aardbevingen, IMF, BIS, FRED en Finnhub voor markten en macro — plus gecureerde nieuwsfeeds. Elk paneel vermeldt zijn bronnen en timestamps inline.",
+      "a3": "Van {{providers}} geattribueerde bronnen. Benoemde bronnen zijn onder meer GDELT en UCDP voor conflicten, AISStream voor live schepen, OpenSky voor vliegtuigen, NASA FIRMS voor branden, USGS voor aardbevingen, IMF, BIS, FRED en Finnhub voor markten en macro — plus gecureerde nieuwsfeeds. Elk paneel vermeldt zijn bronnen en timestamps inline.",
       "q4": "Kan ik knelpunten zoals Hormuz of Bab el-Mandeb in real time volgen?",
       "a4": "Ja. {{chokepoints}} chokepunten, zowel zeestraten als kanalen, van Hormuz en Bab el-Mandeb tot Suez, worden gemonitord met live AIS-scheepstellingen, week-over-week verandering in doorvoer en verstoringsscores — en dichtheidsafwijkingen worden gemarkeerd tegen de rolling baseline van elk chokepunt.",
       "q5": "Hoe verschilt dit van een conflictkaart zoals Liveuamap?",
