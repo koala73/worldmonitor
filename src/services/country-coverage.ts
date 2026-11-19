@@ -2,6 +2,7 @@ import type { EventCategory, NewsItem, ThreatLevel } from '@/types';
 import { rssProxyUrl } from '@/utils';
 import { effectivePubDateMs } from './feed-date';
 import { BRIEF_ONLY_RSS_FETCH_POLICY, fetchFeed } from './rss';
+import { hasReviewedSourceType } from '../../shared/source-provenance';
 import {
   clusterCountryTimelineIncidents,
   type CountryTimelineIncident,
@@ -92,7 +93,9 @@ export async function fetchCountryCoverage(
   const cutoff = Date.now() - SEVEN_DAYS_MS;
   const headlines = headlineItems
     .filter(item => effectivePubDateMs(item) >= cutoff)
-    .map(normalizeGoogleNewsItem);
+    .map(normalizeGoogleNewsItem)
+    // Keyword search also returns reference pages and promotional material.
+    .filter(item => hasReviewedSourceType(item.source));
   const timelineEvents = clusterCountryTimelineIncidents(
     eventItems
       .filter(item => effectivePubDateMs(item) >= cutoff)

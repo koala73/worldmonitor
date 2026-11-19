@@ -57,6 +57,22 @@ describe('country coverage', () => {
     vi.useRealTimers();
   });
 
+  it('keeps reviewed reporting and omits encyclopedia and sports PR from Top News', async () => {
+    vi.setSystemTime(new Date('2026-09-01T12:00:00Z'));
+    const recent = new Date('2026-08-31T10:00:00Z');
+    rssMocks.fetchFeed.mockImplementation(async feed => feed.name === 'Country coverage: Germany' ? [
+      newsItem('Germany - Federalism, Democracy, Unity - Britannica', 'general', recent),
+      newsItem('Patriots Players Take a Historic Tour of Munich, Germany - Patriots.com', 'general', recent),
+      newsItem('Germany reports a rise in factory orders - Reuters', 'economic', recent),
+    ] : []);
+
+    const coverage = await fetchCountryCoverage('Germany');
+
+    expect(coverage.headlines.map(({ title, source }) => ({ title, source }))).toEqual([
+      { title: 'Germany reports a rise in factory orders', source: 'Reuters' },
+    ]);
+  });
+
   it('loads recent country headlines and maps only timeline event categories', async () => {
     vi.setSystemTime(new Date('2026-09-01T12:00:00Z'));
     const recentMilitary = newsItem(

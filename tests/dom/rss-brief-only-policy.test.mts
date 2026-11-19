@@ -59,7 +59,7 @@ import { fetchCountryCoverage } from '@/services/country-coverage';
 function overlappingRss(titles: string[]): string {
   const items = titles.map((title, index) => `
     <item>
-      <title>${title}</title>
+      <title>${title} - Reuters</title>
       <link>https://news.example/${index + 1}</link>
       <pubDate>Mon, 31 Aug 2026 10:00:00 GMT</pubDate>
     </item>
