@@ -11,6 +11,7 @@ import { RSS_FEED_RENEW_SCRIPT } from '../shared/rss-feed-renew-script.mjs';
 
 const KEY = 'rss:feed:v11:full:https://feeds.example.org/world.xml';
 const PARSED_AT = 1_795_000_000_123;
+const EXPIRES_AT = PARSED_AT + 7_200_000;
 
 function makeRedis(initial = {}) {
   const store = new Map(Object.entries(initial));
@@ -23,7 +24,7 @@ function makeRedis(initial = {}) {
       if (verb === 'GET') return store.get(args[0]) ?? null;
       if (verb === 'SET') {
         store.set(args[0], args[1]);
-        if (String(args[2] ?? '').toUpperCase() === 'EX') ttls.set(args[0], Number(args[3]));
+        if (String(args[2] ?? '').toUpperCase() === 'PXAT') ttls.set(args[0], Number(args[3]));
         return 'OK';
       }
       throw new Error(`redis double: unimplemented command ${verb}`);
@@ -104,26 +105,26 @@ describe('RSS feed 304 renewal script', () => {
   it('renews the entry while Redis still holds the parse the refresh read', () => {
     const redis = makeRedis({ [KEY]: entry(PARSED_AT, PARSED_AT) });
     const renewed = entry(PARSED_AT, PARSED_AT + 600_000);
-    assert.equal(runRenew({ argv: [PARSED_AT, renewed, 3600], redis }), 1);
+    assert.equal(runRenew({ argv: [PARSED_AT, renewed, EXPIRES_AT], redis }), 1);
     assert.equal(redis.store.get(KEY), renewed);
-    assert.equal(redis.ttls.get(KEY), 3600);
+    assert.equal(redis.ttls.get(KEY), EXPIRES_AT, 'an absolute expiry, not a TTL');
   });
 
   it('leaves a newer parse in place', () => {
     const newer = entry(PARSED_AT + 1, PARSED_AT + 1);
     const redis = makeRedis({ [KEY]: newer });
-    assert.equal(runRenew({ argv: [PARSED_AT, entry(PARSED_AT, PARSED_AT + 600_000), 3600], redis }), 0);
+    assert.equal(runRenew({ argv: [PARSED_AT, entry(PARSED_AT, PARSED_AT + 600_000), EXPIRES_AT], redis }), 0);
     assert.equal(redis.store.get(KEY), newer);
     assert.equal(redis.ttls.has(KEY), false);
   });
 
   it('does not recreate an entry that expired, or overwrite one it cannot read', () => {
     const empty = makeRedis();
-    assert.equal(runRenew({ argv: [PARSED_AT, entry(PARSED_AT, PARSED_AT), 3600], redis: empty }), 0);
+    assert.equal(runRenew({ argv: [PARSED_AT, entry(PARSED_AT, PARSED_AT), EXPIRES_AT], redis: empty }), 0);
     assert.equal(empty.store.has(KEY), false);
 
     const garbled = makeRedis({ [KEY]: 'not json' });
-    assert.equal(runRenew({ argv: [PARSED_AT, entry(PARSED_AT, PARSED_AT), 3600], redis: garbled }), 0);
+    assert.equal(runRenew({ argv: [PARSED_AT, entry(PARSED_AT, PARSED_AT), EXPIRES_AT], redis: garbled }), 0);
     assert.equal(garbled.store.get(KEY), 'not json');
   });
 

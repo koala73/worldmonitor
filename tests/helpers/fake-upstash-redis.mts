@@ -256,11 +256,12 @@ export function createRedisFetch(
             // Mirrors shared/rss-feed-renew-script.mjs (executed for real in
             // tests/rss-feed-renew-script.test.mjs): renew only the same parse.
             const feedKey = String(command[3] ?? '');
-            const [parsedAt, renewed, ttl] = command.slice(4).map(String);
+            const [parsedAt, renewed, expiresAtMs] = command.slice(4).map(String);
             let current: { parsedAt?: unknown } | null = null;
             try { current = JSON.parse(redis.get(feedKey) ?? 'null'); } catch { current = null; }
             if (!current || current.parsedAt !== Number(parsedAt)) return { result: 0 };
-            writeValue(feedKey, renewed!, Number(ttl));
+            // SET ... PXAT: an absolute deadline; one already passed deletes the key.
+            writeValue(feedKey, renewed!, (Number(expiresAtMs) - now()) / 1000);
             return { result: 1 };
           }
           if (Number.isInteger(keyCount) && keyCount > 0 && script.includes("ARGV[i] == ''")) {

@@ -9,7 +9,7 @@ import {
   type ParseResult,
 } from '../server/worldmonitor/news/v1/list-feed-digest';
 import { rssFeedCacheKey } from '../server/worldmonitor/news/v1/_rss-cache';
-import { REDIS_PIPELINE_TIMEOUT_MS, __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
+import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
 import { createRedisFetch, type FakeRedisState } from './helpers/fake-upstash-redis.mts';
 
 const FEED = { name: 'Reuters World', url: 'https://feeds.example.org/world.xml' };
@@ -171,8 +171,40 @@ describe('feed cache background refresh', () => {
       assert.equal(await refreshFeedCache(FEED, VARIANT, stale), 'not-modified');
       assert.equal(upstreamCalls[0]!.get('if-none-match'), '"v1"', 'fixture premise: a conditional request');
       const ttl = redis.expires.get(KEY)!;
-      // 2000s left on the pool, less the slowest Redis write the client waits for.
-      assert.ok(ttl > 0 && ttl <= 2000 - REDIS_PIPELINE_TIMEOUT_MS / 1000, `renewed for ${ttl}s; the pool expires 7200s after the parse, 5200s ago`);
+      assert.ok(ttl > 1990 && ttl <= 2000, `renewed for ${ttl}s; the pool expires 7200s after the parse, 5200s ago`);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it('on 304 a renewal that reaches Redis after the pool expired cannot keep the entry', async () => {
+    const realNow = Date.now;
+    const start = realNow();
+    let skew = 0;
+    Date.now = () => realNow() + skew;
+    try {
+      install(() => {
+        skew = 1700_000;
+        return new Response(null, { status: 304 });
+      });
+      // The write lands 2100s after the 304, past any client timeout and past
+      // the pool's expiry 2000s after the 304.
+      const redisFetch = redis.fetchImpl;
+      let renewal: unknown[] | undefined;
+      redis.fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const body = String(init?.body ?? '');
+        if (body.includes('EVAL')) {
+          renewal = (JSON.parse(body) as unknown[][])[0];
+          skew += 2100_000;
+        }
+        return redisFetch(input, init);
+      }) as typeof fetch;
+      const parsedAt = start - 3500_000;
+      const stale = await parsed(['Story'], { fetchedAt: parsedAt, parsedAt, validators: { etag: '"v1"' } });
+      seed(stale);
+      assert.equal(await refreshFeedCache(FEED, VARIANT, stale), 'not-modified');
+      assert.equal(renewal?.[6], String(parsedAt + 7200_000), 'the expiry sent is the pool deadline itself, not a TTL');
+      assert.equal(redis.redis.has(KEY), false, 'the entry ends no later than its country pool');
     } finally {
       Date.now = realNow;
     }
