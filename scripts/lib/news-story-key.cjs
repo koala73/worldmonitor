@@ -37,11 +37,13 @@ const MIN_STORY_WORDS = 4;
 
 // Keep exact-title delivery available if the scripts image lacks the shared module.
 let normalizeNewsStoryTitle = () => '';
+let newsPublisherCoverageKey = () => '';
 let loadError = null;
 try {
   const identity = require('../shared/story-identity.js');
   if (typeof identity.normalizeNewsStoryTitle !== 'function') throw new Error('normalizeNewsStoryTitle is not exported');
   normalizeNewsStoryTitle = identity.normalizeNewsStoryTitle;
+  if (typeof identity.newsPublisherCoverageKey === 'function') newsPublisherCoverageKey = identity.newsPublisherCoverageKey;
 } catch (err) {
   loadError = err;
 }
@@ -96,6 +98,7 @@ module.exports = {
   REALTIME_CRITICAL_IMPORTANCE_SCORE,
   LOCAL_CRITICAL_IMPORTANCE_SCORE,
   normalizeNewsStoryTitle,
+  newsPublisherCoverageKey,
   newsStoryKey,
   reachesRealtimeRules,
   reachesLocalRules,

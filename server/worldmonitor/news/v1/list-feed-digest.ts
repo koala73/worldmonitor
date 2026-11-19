@@ -142,6 +142,7 @@ import {
   publisherFamilyFor,
   publisherFamilyForItem,
 } from '../../../../shared/publisher-families.js';
+import { detectSyndication } from '../../../../shared/syndication.js';
 
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
@@ -2733,7 +2734,7 @@ export async function listFeedDigest(
 // Two commands per key, so 400 keys stay under Upstash's 1,000-command cap.
 const PUBLISHER_COVERAGE_BATCH_KEYS = 400;
 
-// Each exact headline owns one sorted set. GT keeps a slower build from
+// Each exact headline owns one sorted set, shared by every edition. GT keeps a slower build from
 // moving a family's last observation backwards; retries replace the same member.
 //
 // Only served headlines get a key: the relay alerts on the digest response, so
@@ -2744,20 +2745,32 @@ const PUBLISHER_COVERAGE_BATCH_KEYS = 400;
 async function recordPublisherCoverage(
   items: readonly ParsedItem[],
   servedItems: readonly ParsedItem[],
-  variant: string,
   observedAt: number,
   deadlineAt: number,
 ): Promise<void> {
-  const groups = new Map<string, Set<string>>();
+  const carriers = new Map<string, ParsedItem[]>();
   for (const item of servedItems) {
-    const key = newsPublisherCoverageKey(variant, item.title);
-    if (key && !groups.has(key)) groups.set(key, new Set());
+    const key = newsPublisherCoverageKey(item.title);
+    if (key && !carriers.has(key)) carriers.set(key, []);
   }
-  for (const item of items) {
-    const families = groups.get(newsPublisherCoverageKey(variant, item.title));
-    if (!families) continue;
-    const family = publisherFamilyForItem(item);
-    if (family) families.add(family);
+  for (const item of items) carriers.get(newsPublisherCoverageKey(item.title))?.push(item);
+  // The relay scores on this history (#10977), so families that carried one
+  // copy count once, as in the build's own corroborationCount (#9095). Each
+  // merged group is written under one member that does not depend on item order.
+  const groups = new Map<string, Set<string>>();
+  for (const [key, sharing] of carriers) {
+    const { groups: sameCopy } = detectSyndication(sharing);
+    const memberOf = new Map<string, string>();
+    for (const { families } of sameCopy) {
+      const member = families.find((family) => !family.startsWith('label:')) ?? families[0]!;
+      for (const family of families) memberOf.set(family, member);
+    }
+    const families = new Set<string>();
+    for (const item of sharing) {
+      const family = publisherFamilyForItem(item);
+      if (family) families.add(memberOf.get(family) ?? family);
+    }
+    groups.set(key, families);
   }
   const entries = [...groups].filter(([, families]) => families.size > 0);
   for (let start = 0; start < entries.length; start += PUBLISHER_COVERAGE_BATCH_KEYS) {
@@ -3928,7 +3941,7 @@ async function buildDigest(
     const now = Date.now();
     // Served headlines only, with families from accepted sightings below the
     // category cap. Runs alongside story tracking within the same deadline.
-    const publisherCoverageWrite = recordPublisherCoverage(servableItems, allSliced, variant, buildStart, storyTrackingDeadlineAt)
+    const publisherCoverageWrite = recordPublisherCoverage(servableItems, allSliced, buildStart, storyTrackingDeadlineAt)
       .catch((err: unknown) => console.warn('[digest] publisher coverage unavailable:', err));
 
     // Read existing story tracking BEFORE writing so we know the previous cycle's
