@@ -569,6 +569,7 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/oref-subscription-lifecycle.spec.ts',
   'e2e/rag-vector-store.spec.ts',
   'e2e/reservoir-levels.spec.ts',
+  'e2e/zoom-hidden-marker-hits.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [
