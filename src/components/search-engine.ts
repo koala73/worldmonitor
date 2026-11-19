@@ -87,7 +87,7 @@ function matchCommands(
   // three, Sudan two), then on how well: exact beats prefix beats substring,
   // so "brief ukraine" picks Ukraine over Russia, whose aliases mention Ukraine.
   const words = query.split(/\s+/).filter((word) => word.length >= 2);
-  const coverage = new Map<SearchCommandMatch, { matched: number; strength: number }>();
+  const coverage = new Map<SearchCommandMatch, { matched: number; strength: number; countryNamePrefix: number }>();
   const wordScore = (terms: string[], word: string): number => Math.max(0, ...terms.map((term) => (
     term === word ? 3 : term.startsWith(word) ? 2 : term.includes(word) ? 1 : 0
   )));
@@ -112,7 +112,7 @@ function matchCommands(
     let bestScore = 0;
     for (const term of terms) {
       if (term.includes(query) || (term.length >= 3 && query.includes(term))) {
-        const score = term === query ? 3 : term.startsWith(query) ? 2 : 1;
+        const score = term.trim() === query ? 3 : term.startsWith(query) ? 2 : 1;
         if (score > bestScore) bestScore = score;
       }
     }
@@ -125,15 +125,18 @@ function matchCommands(
         subtitle: options.resolveCommandCategoryLabel(command),
       };
       matched.push(match);
-      coverage.set(match, wordCoverage(terms));
+      const isCountry = command.category === 'country' || command.id.startsWith('country-map:');
+      const countryNamePrefix = Number(isCountry && command.label.toLowerCase().startsWith(query));
+      coverage.set(match, { ...wordCoverage(terms), countryNamePrefix });
     }
   }
 
-  // Whole-query exact, then whole-query prefix, then matched words, then strength.
+  // Break remaining ties in favor of a country whose name starts with the query.
   return matched
     .sort((left, right) => (right.score - left.score)
       || (coverage.get(right)!.matched - coverage.get(left)!.matched)
-      || (coverage.get(right)!.strength - coverage.get(left)!.strength))
+      || (coverage.get(right)!.strength - coverage.get(left)!.strength)
+      || (coverage.get(right)!.countryNamePrefix - coverage.get(left)!.countryNamePrefix))
     .slice(0, MAX_COMMANDS);
 }
 

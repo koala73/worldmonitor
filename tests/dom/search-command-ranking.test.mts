@@ -70,6 +70,13 @@ describe('search command ranking', () => {
     expect(topCommands('australia', undefined, translatedAustralia)).toContain('nav:oceania');
   });
 
+  it('ranks the United Kingdom and Ukraine above aliases for other countries when searching uk', () => {
+    const commands = topCommands('uk');
+    expect(commands.slice(0, 4)).toEqual(['country-map:GB', 'country:GB', 'country-map:UA', 'country:UA']);
+    expect(commands).not.toContain('country-map:RU');
+    expect(commands).not.toContain('country:RU');
+  });
+
   it('ranks the map command first when the query is a country name', () => {
     const countryNames = [
       ...Object.entries(CURATED_COUNTRIES).map(([code, country]) => ({ code, query: country.name })),
