@@ -574,6 +574,8 @@ const APPEND_CHILD_PARSE_FAILURE = /^Failed to execute 'appendChild' on 'Node': 
  */
 /** JavaScriptCore's and SpiderMonkey's wording for a malformed numeric literal (`3foo`). */
 const NUMERIC_LITERAL_PARSE_FAILURE = /^(?:SyntaxError: )?No identifiers allowed directly after numeric literal$/;
+/** V8's wording for a script that breaks on one quoted token: `Unexpected identifier 'https'`, `Unexpected token 'else'`. */
+const QUOTED_TOKEN_PARSE_FAILURE = /^(?:SyntaxError: )?Unexpected (?:identifier|token) '[^']+'$/;
 const PARSE_FAILURE = /^(?:Unexpected token|Unexpected identifier|Invalid or unexpected token|Unexpected end of (?:script|input))\b/;
 /**
  * The `action` tags our third-party-SDK loader call sites stamp on a capture.
@@ -986,10 +988,15 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // with `<!doctype html>` on its own line (pinned by the test suite), so no
   // inline script of ours can sit there. An inline parse failure of ours
   // would also fire for every visitor on that engine, not as a one-off.
+  // V8 reports the same injected-script class as a quoted-token failure:
+  // `Unexpected identifier 'https'` (Chrome WebView 138 / Android 15) and
+  // `Unexpected token 'else'` (Chrome WebView 88 / Android 11), each at
+  // document line 1 on `/` (WORLDMONITOR-10B, 2026-11-18). Bare
+  // `Unexpected end of input` stays reporting: it names no token.
   if ((excType === 'SyntaxError' || /^SyntaxError: /.test(msg))
       && exceptionValues.length === 1
       && !hasFirstParty
-      && NUMERIC_LITERAL_PARSE_FAILURE.test(msg)
+      && (NUMERIC_LITERAL_PARSE_FAILURE.test(msg) || QUOTED_TOKEN_PARSE_FAILURE.test(msg))
       && frames.every((f) => Boolean(f.filename?.trim()))
       && nonInfraFrames.length > 0
       && nonInfraFrames.every((f) => MARKETING_DOCUMENT_FRAME.test(f.filename ?? '') && f.lineno === 1)) return null;
