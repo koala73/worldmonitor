@@ -87,7 +87,7 @@ const {
   xPostBudgetServiceStatus,
 } = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
-const { newsStoryKey, newsStoryKeyLoadError, newsPublisherCoverageKey, classifyCacheIdentity, reachesRealtimeRules, reachesLocalRules, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
+const { newsStoryKey, newsAlertClaimKey, newsStoryKeyLoadError, newsPublisherCoverageKey, classifyCacheIdentity, reachesRealtimeRules, reachesLocalRules, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
 if (newsStoryKeyLoadError()) {
   // Alerts still publish, on the exact-title identity; a repeated headline can alert twice.
   console.warn('[Notify] News story key unavailable, falling back to exact-title dedup:', newsStoryKeyLoadError().message);
@@ -5915,7 +5915,8 @@ async function seedClassifyForVariant(variant, seenTitles) {
     const primaryCountryCode = notifyPolicy.primaryNewsCountryCode(countriesNamedInHeadline(title));
     // One alert per story per day, not per title string: a second
     // publisher carrying an alerted headline is the same story.
-    const storyKey = newsStoryKey(title, { severity: level, importanceScore, primaryCountryCode });
+    // A headline too short for a story key claims its exact title for the day.
+    const storyKey = newsAlertClaimKey(title, { severity: level, importanceScore, primaryCountryCode });
     // A cached label was published when it was written. Re-publish only a copy
     // a realtime or local rule can deliver, with a story key to stop repeats
     // (#10976). Its score can have risen since: more publishers carried it.

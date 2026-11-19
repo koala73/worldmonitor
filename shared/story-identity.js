@@ -646,8 +646,8 @@ export function clusterTexts(texts, opts = {}) {
 // Delivery and cross-build coverage must agree on punctuation and attribution.
 const NORMALIZED_TITLE_SCAN = 2_000;
 const CLASSIFY_QUESTION_RE = /[\u003F\u061F\uFF1F\u2E2E\u2047\u2048\u2049\u2753\uFE16\uFE56][^\p{L}\p{N}]*(?:[-–—|][^?\u061F\uFF1F]*)?$/u;
-// Anything drawn as a dash or an invisible word break between letters.
-const IN_WORD_HYPHEN_RE = /(?<=[\p{L}\p{N}])[\p{Pd}\p{Cf}\u2212\u02D7\u2043\u2044\u30FB\u2796\u268A](?=[\p{L}\p{N}])/gu;
+// Any run of dashes or invisible word breaks between letters.
+const IN_WORD_HYPHEN_RE = /(?<=[\p{L}\p{N}])[\p{Pd}\p{Cf}\u2212\u02D7\u2043\u2044\u30FB\u2796\u268A]+(?=[\p{L}\p{N}])/gu;
 // A credit is a bare outlet host: name.tld, www.name.tld, or name under a
 // country second level (bbc.co.uk). Any other dotted or underscored run
 // (mines.confirmed.com) is headline text.

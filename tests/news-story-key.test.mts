@@ -13,6 +13,7 @@ import { __testing__ as digest } from '../server/worldmonitor/news/v1/list-feed-
 const require = createRequire(import.meta.url);
 const {
   NEWS_STORY_DEDUP_TTL_SECONDS,
+  newsAlertClaimKey,
   REALTIME_CRITICAL_IMPORTANCE_SCORE,
   newsStoryKey,
   newsStoryKeyLoadError,
@@ -69,6 +70,14 @@ test('a critical sighting without a score counts as delivered, as the relay trea
 
 test('the score bar is the one realtime delivery uses', () => {
   assert.equal(REALTIME_CRITICAL_IMPORTANCE_SCORE, NEWS_GLOBAL_IMPORTANCE_SCORE);
+});
+
+test('a headline too short for a story key claims its exact title, per audience', () => {
+  assert.equal(newsAlertClaimKey(CNN, DELIVERABLE), newsStoryKey(CNN, DELIVERABLE));
+  assert.equal(newsAlertClaimKey('Israel strikes Lebanon', DELIVERABLE), 'news-title:realtime:israel strikes lebanon');
+  assert.notEqual(newsAlertClaimKey('Israel strikes Lebanon', DELIVERABLE), newsAlertClaimKey('Israel strikes Lebanon!', DELIVERABLE));
+  assert.equal(newsAlertClaimKey('Israel strikes Lebanon', { severity: 'high' }), 'news-title:standard:israel strikes lebanon');
+  assert.equal(newsAlertClaimKey('', DELIVERABLE), '');
 });
 
 test('a headline too short to stand for one story keeps the exact-title identity', () => {

@@ -36,7 +36,7 @@ function loadVariant(url, observedErrors, { timeoutMs, digests = [], pools = [],
     // default it scores 0 and publishes nothing.
     reachesRealtimeRules, reachesLocalRules, upstashSetNx: async () => true,
     shouldDropRelaySourceForTier: () => false, RELAY_GATES_READY: false, RELAY_TIER4_SOURCES: new Set(),
-    relayComputeImportanceScore: () => 0, newsStoryKey: () => '', NEWS_STORY_DEDUP_TTL_SECONDS: 86_400,
+    relayComputeImportanceScore: () => 0, newsAlertClaimKey: () => '', NEWS_STORY_DEDUP_TTL_SECONDS: 86_400,
     matchCountryNamesInText: () => [], countriesNamedInHeadline: () => [],
     notifyPolicy: { primaryNewsCountryCode: () => null }, publishNotificationEvent: async () => {},
     RELAY_SOURCE_TIERS: {}, buildClassifyCandidateMap: (digest, _x, _v, _n, _r, _f, pool) => { digests.push(digest); pools.push(pool); return new Map(); },
@@ -172,7 +172,7 @@ test('the first read of an edition\'s pool is a backlog that never alerts, and h
         notifyPolicy: { primaryNewsCountryCode: () => null },
         shouldDropRelaySourceForTier: () => false, RELAY_GATES_READY: false, RELAY_TIER4_SOURCES: new Set(), RELAY_RECENCY_MS: 900_000,
         // A story key, so a cached critical label re-publishes unless it is backlog (#10976).
-        relayComputeImportanceScore: () => 88, newsStoryKey: () => 'news-story:realtime:x', NEWS_STORY_DEDUP_TTL_SECONDS: 86_400,
+        relayComputeImportanceScore: () => 88, newsAlertClaimKey: () => 'news-story:realtime:x', NEWS_STORY_DEDUP_TTL_SECONDS: 86_400,
         recordAlertLatency() {}, alertLatency: () => ({}), observeJevShadow: async () => null,
         CLASSIFY_VALID_LEVELS: ['critical', 'high', 'medium', 'low', 'info'], CLASSIFY_VALID_CATEGORIES: ['conflict'],
         CLASSIFY_BATCH_SIZE: 50, CLASSIFY_SKIP_TTL: 1800, CLASSIFY_CACHE_TTL: 86_400,

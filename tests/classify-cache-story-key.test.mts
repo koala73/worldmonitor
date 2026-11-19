@@ -63,6 +63,14 @@ describe('classify cache key is the story, not the title string (#10976)', () =>
         `U+${dash.codePointAt(0)!.toString(16)}`,
       );
     }
+    // A stacked run of breaks is one break.
+    for (const run of ['\u00ad\u200b', '--', '\u2060\u2013']) {
+      assert.notEqual(
+        await buildClassifyCacheKey(`Minister will re${run}sign trade agreement`),
+        await buildClassifyCacheKey('Minister will resign trade agreement'),
+        JSON.stringify(run),
+      );
+    }
   });
 
   it('keeps a several-word clause ending in a domain on the exact title', async () => {

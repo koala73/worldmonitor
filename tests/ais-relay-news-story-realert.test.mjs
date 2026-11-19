@@ -332,8 +332,9 @@ test('a cached headline too short for a story key never alerts again', async (t)
   await cycle([{ title: short, source: 'Reuters' }]);
   assert.deepEqual(upstash.alerts().map((e) => [e.payload.title, e.payload.importanceScore >= 82]), [[short, true]], output());
 
-  // The exact-title claim lasts 30 minutes; the label lasts a day.
-  for (const key of [...upstash.store.keys()]) if (key.startsWith('wm:notif:scan-dedup:')) upstash.store.delete(key);
+  // The 30-minute title claims expire; the exact-title story claim and the
+  // label last a day.
+  for (const key of [...upstash.store.keys()]) if (key.startsWith('wm:notif:scan-dedup:') && !key.includes(':story-')) upstash.store.delete(key);
   await cycle([{ title: short, source: 'Reuters' }]);
   assert.deepEqual(titles(upstash.alerts()), [short], output());
 });
@@ -349,6 +350,19 @@ test('a trusted copy alerts when the copy that wrote its label was dropped by th
   assert.equal(llm.state.asked.length, 1, output());
   assert.deepEqual(titles(upstash.alerts()), [CNN_TITLE], output());
   assert.deepEqual(titles(upstash.apiEvents()), [CNN_TITLE], output());
+});
+
+test('a short headline alerts from a trusted copy when the copy that wrote its label was dropped', async (t) => {
+  const short = 'Iran invades Iraq';
+  const { upstash, llm, cycle, output } = await startRelay(t, { env: { RELAY_GATES_READY: '1' } });
+  llm.state.levels = { [short]: 'high' };
+  await cycle([{ title: short, source: 'Agriculture' }]);
+  assert.deepEqual(upstash.alerts(), [], output());
+  await cycle([{ title: short, source: 'CNN World' }]);
+  for (const key of [...upstash.store.keys()]) if (key.startsWith('wm:notif:scan-dedup:') && !key.includes(':story-')) upstash.store.delete(key);
+  await cycle([{ title: short, source: 'CNN World' }]);
+  assert.equal(llm.state.asked.length, 1, output());
+  assert.deepEqual(titles(upstash.alerts()), [short], output());
 });
 
 test('the newest copy of a story is the one asked, so the recency gate keeps it', async (t) => {
