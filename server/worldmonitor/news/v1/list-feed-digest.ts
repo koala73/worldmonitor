@@ -2891,8 +2891,9 @@ const ALERT_POOL_WINDOW_MS = 6 * 60 * 60 * 1000;
  * the pool once filled with those and alerted each story in every language.
  */
 export function alertPoolItems(servable: readonly ParsedItem[], served: readonly ParsedItem[], now: number, lang: string) {
-  const taken = new Set(served.map(item => item.title));
   const inLanguage = (item: ParsedItem) => headlineLanguagesBySource().get(item.source)?.has(lang) ?? item.lang === lang;
+  // A served copy the relay will not alert leaves its title free for a copy it will.
+  const taken = new Set(served.filter(inLanguage).map(item => item.title));
   return [...servable]
     .filter(item => inLanguage(item) && item.publishedAt >= now - ALERT_POOL_WINDOW_MS)
     .sort((a, b) => b.publishedAt - a.publishedAt)

@@ -57,3 +57,10 @@ it('the pool keeps exactly the feeds the relay lets alert, for every feed in the
   assert.deepEqual(names.filter(name => alerting.includes(name) !== poolKeeps(name)), []);
   assert.ok(alerting.length > 500 && alerting.length < names.length);
 });
+
+it('a served copy that cannot alert does not keep an English copy of the same headline out of the pool', () => {
+  const title = 'Ukraine says missiles damaged Kerch Bridge';
+  const served = [item(title, 1, { source: 'Hromadske', lang: 'uk' })];
+  const servable = [...served, item(title, 2, { source: 'Kyiv Independent' })];
+  assert.deepEqual(alertPoolItems(servable, served, now, 'en').map(i => i.source), ['Kyiv Independent']);
+});

@@ -83,7 +83,11 @@ function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs,
     for (const [index, item] of [...served, ...pool].entries()) {
       if (!item?.title) continue;
       if (item.publishedAt && item.publishedAt < oldestAllowedAt) continue;
-      if (!candidates.has(item.title)) {
+      // A copy that can alert replaces one that cannot. A served headline
+      // stays served, so it keeps its label key and its place in the summary.
+      const otherLanguage = OTHER_LANGUAGE_FEEDS.has(item.source);
+      const prior = candidates.get(item.title);
+      if (!prior || (prior.otherLanguage && !otherLanguage)) {
         candidates.set(item.title, {
           // #10977: score on the publisher a topic feed carries, not the feed.
           source: item.originPublisher || item.source || variant,
@@ -96,8 +100,8 @@ function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs,
           // When digest story tracking first saw the headline, in any
           // edition or language. Only for the latency log.
           ...(item.storyMeta?.firstSeen > 0 ? { firstSeen: Number(item.storyMeta.firstSeen) } : {}),
-          ...(index >= served.length ? { fromPool: true } : {}),
-          ...(OTHER_LANGUAGE_FEEDS.has(item.source) ? { otherLanguage: true } : {}),
+          ...((prior ? prior.fromPool : index >= served.length) ? { fromPool: true } : {}),
+          ...(otherLanguage ? { otherLanguage: true } : {}),
         });
       }
     }
