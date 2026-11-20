@@ -171,11 +171,10 @@ describe('root dependency cache (#8710)', () => {
   // 'unit-built-output nested dependency cache' blocks), so they are in the
   // first group.
   for (const [workflowText, jobIds, setupCache] of [
-    [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'resilience-validation-smoke', 'unit-shards', 'unit-built-output'], undefined],
-    [testWorkflow, ['variant-smoke-pro-webmcp'], "${{ !startsWith(matrix.part, 'plugin-') && 'npm' || '' }}"],
+    [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'resilience-validation-smoke', 'unit-shards', 'unit-built-output', 'variant-smoke-pro-webmcp'], undefined],
     [read(resolve(workflowsDir, 'perf-style-layout-budget.yml')), ['measure'], undefined],
     [lintCodeWorkflow, ['biome', 'markdown'], undefined],
-    [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck'], 'npm'],
+    [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck'], undefined],
   ] as const) {
     for (const jobId of jobIds) {
       it(`${jobId} uses the shared action after Node 24 setup with npm fallback`, () => {
@@ -3645,8 +3644,12 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
   });
 
   it('builds /pro in the webmcp and pro-gates parts and runs each suite in exactly one', () => {
-    const build = flat.find((step) => step.run === 'npm run build:pro');
+    const installPro = flat.find((step) => (step as { uses?: string }).uses === './.github/actions/install-pro-deps');
+    assert.ok(installPro, 'the job must restore/install /pro dependencies via the shared action');
+    assert.equal(installPro.if, "${{ !startsWith(matrix.part, 'plugin-') }}");
+    const build = flat.find((step) => step.run === 'npm --prefix pro-test run build');
     assert.ok(build, 'the job must build /pro');
+    assert.ok(flat.indexOf(installPro) < flat.indexOf(build), 'install-pro-deps must run before the /pro build');
     // The legacy WebMCP tests load /pro/welcome.html; the MCP Apps view parts never read /pro.
     assert.equal(build.if, "${{ !startsWith(matrix.part, 'plugin-') }}");
     const partOf = (script: string) => {
@@ -3679,16 +3682,25 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
     assert.deepEqual([...covered].sort(), [...specs].sort(), 'each e2e/plugin-*.spec.ts must run in exactly one plugin part');
   });
 
-  it('keys setup-node\'s npm cache to the only install that reads it', () => {
-    // node_modules comes from install-root-deps, so ~/.npm serves only
-    // `npm --prefix pro-test ci` inside build:pro. Keyed on the root lockfile
-    // it restored the 583 MB root download cache, and the two parts pulling
-    // that blob at the same moment took 12-62s instead of ~6s (PR #9626).
+  it('restores pro-test/node_modules via install-pro-deps instead of setup-node npm download cache', () => {
     const setup = flat.find((step) => (step as { uses?: string }).uses?.startsWith('actions/setup-node@')) as
       { with: Record<string, string> } | undefined;
-    // The plugin parts never build /pro, so they restore nothing.
-    assert.equal(setup?.with.cache, "${{ !startsWith(matrix.part, 'plugin-') && 'npm' || '' }}");
-    assert.equal(setup?.with['cache-dependency-path'], 'pro-test/package-lock.json');
+    assert.equal(setup?.with.cache, undefined);
+    const proAction = YAML.parse(read(resolve(root, '.github/actions/install-pro-deps/action.yml')));
+    const proSteps = proAction.runs.steps;
+    const restore = proSteps.find((s: { id?: string }) => s.id === 'pro-deps');
+    const install = proSteps.find((s: { run?: string }) => s.run === 'npm --prefix pro-test ci --prefer-offline');
+    const save = proSteps.find((s: { uses?: string }) => s.uses?.startsWith('actions/cache/save@'));
+    assert.ok(restore && install && save, 'install-pro-deps must restore, install on miss, and save pro-test/node_modules');
+    assert.equal(restore.with.path, 'pro-test/node_modules');
+    assert.equal(install.env?.npm_config_allow_scripts, '');
+    assert.equal(install.if, "steps.pro-deps.outputs.cache-hit != 'true'");
+    assert.equal(save.if, "steps.pro-deps.outputs.cache-hit != 'true'");
+    assert.equal(save.with.path, 'pro-test/node_modules');
+    assert.equal(save.with.key, '${{ steps.pro-deps.outputs.cache-primary-key }}');
+    for (const input of ['pro-test/package.json', 'pro-test/package-lock.json', 'pro-test/.npmrc', '.npmrc', 'vendor/**']) {
+      assert.ok(restore.with.key.includes(`'${input}'`), `install-pro-deps key must hash ${input}`);
+    }
   });
 
   it('runs the /pro browser gates in one Playwright run', () => {

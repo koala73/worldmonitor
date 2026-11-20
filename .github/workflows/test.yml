@@ -1300,19 +1300,10 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          # node_modules comes from install-root-deps, so ~/.npm serves only
-          # the pro-test install inside build:pro. Keyed on the root lockfile
-          # it restored the 583 MB root download cache, and both parts pulling
-          # it at once took 12-62s instead of ~6s. The plugin parts never build
-          # /pro, so they skip the restore (8s median).
-          cache: ${{ !startsWith(matrix.part, 'plugin-') && 'npm' || '' }}
-          cache-dependency-path: pro-test/package-lock.json
       - uses: ./.github/actions/install-root-deps
-        with:
-          # The /pro parts restore ~/.npm through setup-node. The plugin parts
-          # restore nothing there, so a node_modules miss uses the action's
-          # root download cache instead.
-          npm-cache: ${{ startsWith(matrix.part, 'plugin-') && 'true' || 'false' }}
+      - name: Install /pro dependencies
+        if: ${{ !startsWith(matrix.part, 'plugin-') }}
+        uses: ./.github/actions/install-pro-deps
       - name: Resolve Playwright version
         id: playwright-version
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
@@ -1399,9 +1390,10 @@ jobs:
             # public/pro/ is built output since #6898. Keep this explicit and
             # immediately before the focused specs so the browser checks cannot
             # run against missing or stale bytes from another build.
-            # The plugin parts never load /pro.
+            # The plugin parts never load /pro. Dependencies are restored above
+            # via install-pro-deps (matching the install half of build:pro).
             if: ${{ !startsWith(matrix.part, 'plugin-') }}
-            run: npm run build:pro
+            run: npm --prefix pro-test run build
       - name: Run fail-closed prehydration browser checks
         id: prehydration
         if: matrix.part == 'pro-gates'
