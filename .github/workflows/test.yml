@@ -366,7 +366,11 @@ jobs:
         with:
           # Docs page dates derive from git history; a shallow checkout would
           # resolve every file to HEAD instead of its last content change.
+          # Blobless: git log --name-only reads commits and trees, not
+          # historical blobs (matching unit-shards, unit-built-output, and
+          # scripts/generate-docs-page-dates.mjs --fetch-history).
           fetch-depth: 0
+          filter: blob:none
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
