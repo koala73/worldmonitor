@@ -10764,7 +10764,7 @@
     },
     {
       "name": "Asia-Plus",
-      "url": "https://asiaplustj.info/rss",
+      "url": "https://asiaplus.news/feed/",
       "lang": "ru",
       "fetchInAllLanguages": true,
       "placements": [
@@ -13396,7 +13396,7 @@
     },
     {
       "name": "Korea Times",
-      "url": "https://www.koreatimes.co.kr/www/rss/rss.xml",
+      "url": "https://feed.koreatimes.co.kr/k/allnews.xml",
       "lang": "en",
       "fetchInAllLanguages": true,
       "placements": [
@@ -17078,9 +17078,12 @@
     },
     {
       "name": "Tages-Anzeiger",
-      "url": "https://www.tagesanzeiger.ch/rss.html",
+      "url": "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/",
       "lang": "de",
       "fetchInAllLanguages": true,
+      "linkHosts": [
+        "tagesanzeiger.ch"
+      ],
       "placements": [
         {
           "edition": "full",
