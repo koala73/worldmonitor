@@ -96,10 +96,11 @@ jobs:
           node-version: '24'
       - uses: ./.github/actions/install-root-deps
       - name: Run lint and invariant checks
-        # Biome already saturates all 4 vCPUs, so run `lint` alone first to avoid
-        # CPU contention, then run the 13 single-threaded Node/tsx checks in parallel.
+        # Biome already saturates the runner's 2 physical cores, so run `lint`
+        # alone first, then run the 13 single-threaded Node/tsx checks at
+        # concurrency=2 (matching the 2 physical cores to avoid SMT thrashing).
         run: >-
-          node scripts/run-parallel-checks.mjs --concurrency=4 --serial=lint
+          node scripts/run-parallel-checks.mjs --concurrency=2 --serial=lint
           lint:overlay-reload-policy
           lint:outbound-deadlines
           lint:rate-limit-policies
