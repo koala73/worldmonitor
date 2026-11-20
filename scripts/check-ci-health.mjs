@@ -251,6 +251,9 @@ export function attributeFlakes(findings, { readLog, changeSince, limit = FLAKE_
 const SUPERSEDE_CANCEL_SECONDS = 120;
 
 function supersededBy(job, run, mainRuns) {
+  // Only Test shares a concurrency group across main pushes; every other
+  // monitored workflow keeps each main run, so its cancel is a real timeout.
+  if (run.name !== 'Test') return false;
   const cancelledAt = Date.parse(job.completed_at);
   return mainRuns.some((other) => {
     if (other.id === run.id || other.name !== run.name) return false;
@@ -446,9 +449,10 @@ export function collect({ gh, repository, now }) {
     // at a time, then cut to the exact window.
     const days = new Set();
     for (let ms = eventStart; ms < now + DAY_MS; ms += DAY_MS) days.add(day(Math.min(ms, now)));
-    const window = [...days]
+    const listed = [...days]
       .flatMap((date) => listRuns(gh, repository, workflow, `created=${date}`))
-      .filter((run) => Date.parse(run.created_at) >= eventStart && run.status === 'completed');
+      .filter((run) => Date.parse(run.created_at) >= eventStart);
+    const window = listed.filter((run) => run.status === 'completed');
 
     // Days are read oldest first; the cap keeps the newest re-runs.
     const newestReruns = window.filter((item) => item.run_attempt > 1)
@@ -459,7 +463,8 @@ export function collect({ gh, repository, now }) {
     }
     // A timed-out attempt survives a later successful re-run, so every
     // attempt of a re-run or unsuccessful main push is read.
-    mainRuns.push(...window.filter((item) => item.event === 'push' && item.head_branch === 'main'));
+    // Unfinished runs too: the run that superseded a cancelled one may still be going.
+    mainRuns.push(...listed.filter((item) => item.event === 'push' && item.head_branch === 'main'));
     for (const run of window.filter((item) => item.event === 'push' && item.head_branch === 'main'
       && (item.run_attempt > 1 || item.conclusion === 'cancelled' || item.conclusion === 'failure'))) {
       allAttempts(run).forEach((jobs, index) => mainAttempts.push({ run, attempt: index + 1, jobs }));

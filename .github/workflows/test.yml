@@ -96,8 +96,29 @@ jobs:
               emit_all_true
               exit 0
             fi
+            # A newer main push cancels the run in progress (see concurrency),
+            # so the previous commit may have no verdict. Diff from the newest
+            # main commit whose Test run decided, or a code commit cancelled by
+            # a docs-only one would never be tested on main.
+            if ! RUNS_JSON=$(gh api "repos/${{ github.repository }}/actions/workflows/test.yml/runs?event=push&branch=main&status=completed&per_page=50") ||
+               ! DECIDED=$(jq -er --argjson self "${{ github.run_id }}" '
+                 [.workflow_runs[]? | select(.id != $self and (.conclusion == "success" or .conclusion == "failure"))]
+                 | first | .head_sha | strings' <<< "$RUNS_JSON"); then
+              echo "No decided main Test run found; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+            if [ "$DECIDED" != "$BEFORE" ]; then
+              echo "Main Test runs after $DECIDED did not decide; diffing from it instead of $BEFORE."
+            fi
+            BEFORE="$DECIDED"
             if ! COMPARE_JSON=$(gh api "repos/${{ github.repository }}/compare/${BEFORE}...${{ github.sha }}"); then
               echo "Compare API failed; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+            if ! jq -e '.status == "ahead"' <<< "$COMPARE_JSON" >/dev/null; then
+              echo "This commit does not descend from $BEFORE; running every Test job."
               emit_all_true
               exit 0
             fi
