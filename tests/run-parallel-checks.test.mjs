@@ -80,6 +80,30 @@ describe('run-parallel-checks', () => {
     });
   });
 
+  it('runs --serial checks first and still runs parallel checks when a serial check fails', async () => {
+    await withFixture(
+      {
+        s1: 'echo serial-fail >&2; exit 4',
+        p1: 'echo parallel-ok',
+        p2: 'echo parallel-fail >&2; exit 5',
+      },
+      async (dir) => {
+        const out = makeBufferStream();
+        const err = makeBufferStream();
+        const code = await main(['--concurrency=2', '--serial=s1', 'p1', 'p2'], {
+          cwd: dir,
+          stdout: out.stream,
+          stderr: err.stream,
+        });
+        assert.equal(code, 1);
+        assert.match(out.read(), /PASS p1 /);
+        assert.match(err.read(), /FAIL s1 .*exit 4/);
+        assert.match(err.read(), /FAIL p2 .*exit 5/);
+        assert.match(err.read(), /Failed checks \(2\): s1, p2/);
+      },
+    );
+  });
+
   it('Lint Code biome job keeps every required lint and sync check wired', () => {
     const root = resolve(import.meta.dirname, '..');
     const workflow = YAML.parse(readFileSync(join(root, '.github/workflows/lint-code.yml'), 'utf8'));
@@ -102,7 +126,7 @@ describe('run-parallel-checks', () => {
       'version:check',
     ]) {
       assert.ok(
-        new RegExp(`(?:^|\\s)${script.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s|$)`).test(runText),
+        new RegExp(`(?:^|\\s|--serial=)${script.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s|$)`).test(runText),
         `biome job must run ${script}`,
       );
     }

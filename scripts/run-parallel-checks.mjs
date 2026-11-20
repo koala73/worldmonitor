@@ -60,16 +60,24 @@ function runOne({ name, command }, cwd, env) {
   });
 }
 
-export async function runParallelChecks(names, { concurrency = 4, cwd = process.cwd() } = {}) {
+export async function runParallelChecks(names, { concurrency = 4, cwd = process.cwd(), serial = [] } = {}) {
   if (!Number.isSafeInteger(concurrency) || concurrency < 1) {
     throw new Error('Concurrency must be a positive integer');
   }
-  const jobs = resolveScripts(names, cwd);
+  const serialJobs = serial.length ? resolveScripts(serial, cwd) : [];
+  const jobs = names.length ? resolveScripts(names, cwd) : [];
+  if (!serialJobs.length && !jobs.length) {
+    throw new Error('Supply at least one package.json script name');
+  }
   const binDir = resolve(cwd, 'node_modules/.bin');
   const env = {
     ...process.env,
     PATH: process.env.PATH ? `${binDir}${delimiter}${process.env.PATH}` : binDir,
   };
+  const serialResults = [];
+  for (const job of serialJobs) {
+    serialResults.push(await runOne(job, cwd, env));
+  }
   const results = new Array(jobs.length);
   let nextIndex = 0;
   const workerCount = Math.min(concurrency, jobs.length);
@@ -81,7 +89,7 @@ export async function runParallelChecks(names, { concurrency = 4, cwd = process.
       }
     }),
   );
-  return results;
+  return [...serialResults, ...results];
 }
 
 export async function main(args, { cwd = process.cwd(), stdout = process.stdout, stderr = process.stderr } = {}) {
@@ -90,6 +98,7 @@ export async function main(args, { cwd = process.cwd(), stdout = process.stdout,
     allowPositionals: true,
     options: {
       concurrency: { type: 'string', default: '4' },
+      serial: { type: 'string', multiple: true, default: [] },
     },
   });
   if (!/^[1-9]\d*$/.test(values.concurrency) || !Number.isSafeInteger(Number(values.concurrency))) {
@@ -99,6 +108,7 @@ export async function main(args, { cwd = process.cwd(), stdout = process.stdout,
   const results = await runParallelChecks(positionals, {
     concurrency: Number(values.concurrency),
     cwd,
+    serial: values.serial,
   });
   const totalMs = Math.round(performance.now() - t0);
   const failed = results.filter((r) => r.code !== 0 || r.signal !== null);
