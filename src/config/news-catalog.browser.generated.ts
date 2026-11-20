@@ -859,7 +859,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Asia-Plus",
-          "url": "https://asiaplustj.info/rss",
+          "url": "https://asiaplus.news/feed/",
           "lang": "ru",
           "fetchInAllLanguages": true
         },
@@ -1507,7 +1507,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Tages-Anzeiger",
-          "url": "https://www.tagesanzeiger.ch/rss.html",
+          "url": "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/",
           "lang": "de",
           "fetchInAllLanguages": true
         },
@@ -5099,7 +5099,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Korea Times",
-          "url": "https://www.koreatimes.co.kr/www/rss/rss.xml",
+          "url": "https://feed.koreatimes.co.kr/k/allnews.xml",
           "lang": "en",
           "fetchInAllLanguages": true
         },

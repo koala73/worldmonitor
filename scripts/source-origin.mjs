@@ -229,6 +229,7 @@ const HOST_ORIGINS = Object.freeze({
   "ammonnews.net": "JO",
   "antigua.news": "AG",
   "antiguaobserver.com": "AG",
+  "asiaplus.news": "TJ",
   "asiaplustj.info": "TJ",
   "awate.com": "US",
   "azathabar.com": "CZ",
