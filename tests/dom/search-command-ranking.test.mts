@@ -42,8 +42,23 @@ describe('search command ranking', () => {
     expect(topCommands('brief china')).toEqual(['country:CN']);
     expect(topCommands('map france')).toEqual(['country-map:FR']);
     expect(topCommands('brief south sudan')).toEqual(['country:SS']);
+    // Connective words do not need a matching command term.
+    expect(topCommands('map of france')).toEqual(['country-map:FR']);
+    expect(topCommands('brief on china')).toEqual(['country:CN']);
+    expect(topCommands('brief for the ukraine')[0]).toBe('country:UA');
+    expect(topCommands('brief for the ukraine')).not.toContain('country:AD');
     // Single-word prefix still lists brief commands so typing "brief" remains discoverable.
-    expect(topCommands('brief').length).toBe(5);
+    const brief = topCommands('brief');
+    expect(brief).toHaveLength(5);
+    expect(brief.filter((id) => id.startsWith('country:')).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('keeps the word-coverage order when no command covers every query word', () => {
+    const commands: Command[] = [
+      { id: 'panel:fewer', keywords: ['brief'], label: 'Fewer', icon: '', category: 'panels' },
+      { id: 'panel:more', keywords: ['briefing', 'china'], label: 'More', icon: '', category: 'panels' },
+    ];
+    expect(topCommands('brief china zzzz', undefined, commands)).toEqual(['panel:more', 'panel:fewer']);
   });
 
   it('ranks more matched words above stronger matches on fewer words', () => {
