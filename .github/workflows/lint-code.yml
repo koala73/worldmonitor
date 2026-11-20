@@ -95,21 +95,23 @@ jobs:
         with:
           node-version: '24'
       - uses: ./.github/actions/install-root-deps
-      - run: npm run lint:unicode
-      - run: npm run lint
-      - run: npm run lint:boundaries
-      - run: npm run lint:api-contract
-      - run: npm run sync:bootstrap-tier-keys:check
-      - run: npm run sync:live-video-channels:check
-      - run: npm run sync:tui-catalog:check
-      - run: npm run lint:rate-limit-policies
-      - run: npm run lint:premium-fetch
-      - run: npm run lint:outbound-deadlines
-      - run: npm run lint:safe-local-storage
-      - run: npm run lint:overlay-reload-policy
-      - run: npm run security:vite-env-secrets
-      - name: Version sync check
-        run: npm run version:check
+      - name: Run lint and invariant checks in parallel
+        run: >-
+          node scripts/run-parallel-checks.mjs --concurrency=4
+          lint
+          lint:overlay-reload-policy
+          lint:outbound-deadlines
+          lint:rate-limit-policies
+          lint:unicode
+          lint:premium-fetch
+          lint:safe-local-storage
+          lint:api-contract
+          sync:tui-catalog:check
+          lint:boundaries
+          sync:live-video-channels:check
+          security:vite-env-secrets
+          version:check
+          sync:bootstrap-tier-keys:check
 
   # One owner for markdown lint (#7772). It used to run inside biome as well
   # as in a path-filtered lint.yml, so a code+markdown PR linted twice, and
