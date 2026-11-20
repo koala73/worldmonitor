@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 import { EventHandlerManager } from '@/app/event-handlers';
 import { CountryDeepDivePanel } from '@/components/CountryDeepDivePanel';
@@ -119,17 +119,16 @@ describe('UI SVG icons replacing missing-glyph Unicode symbols (#11065)', () => 
     }
   });
 
-  it('contains no raw missing-glyph symbol codepoints in the affected UI modules', () => {
-    const files = [
-      'src/components/SearchModal.ts',
-      'src/components/CountryDeepDivePanel.ts',
-      'src/app/panel-layout.ts',
-      'src/app/event-handlers.ts',
-      'src/config/commands.ts',
-    ];
-    for (const relPath of files) {
-      const src = readFileSync(resolve(process.cwd(), relPath), 'utf8');
-      expect(src, `${relPath} should not use U+2316/U+26F6/U+229F`).not.toMatch(/\\u2316|\\u26F6|\\u229F|⌖|⛶|⊟/);
+  it('contains no raw missing-glyph symbol codepoints anywhere in src/', () => {
+    const root = resolve(process.cwd(), 'src');
+    const sources = readdirSync(root, { recursive: true, encoding: 'utf8' })
+      .filter((relPath) => /\.(?:ts|tsx|js|mjs|css|html)$/.test(relPath))
+      // The icon module names the codepoints it replaces in its doc comment.
+      .filter((relPath) => relPath !== join('utils', 'ui-icons.ts'));
+    expect(sources.length).toBeGreaterThan(100);
+    for (const relPath of sources) {
+      const src = readFileSync(join(root, relPath), 'utf8');
+      expect(src, `src/${relPath} should not use U+2316/U+26F6/U+229F`).not.toMatch(/\\u2316|\\u26F6|\\u229F|⌖|⛶|⊟/i);
     }
   });
 });

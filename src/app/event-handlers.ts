@@ -910,10 +910,8 @@ export class EventHandlerManager implements AppModule {
     if (!this.ctx.isDesktopApp && fullscreenBtn) {
       fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
       this.boundFullscreenHandler = () => {
-        const activeFullscreen = Boolean(
-          document.fullscreenElement
-          ?? (document as Document & { webkitFullscreenElement?: Element | null }).webkitFullscreenElement,
-        );
+        const fullscreenDocument = this.getFullscreenDocument();
+        const activeFullscreen = Boolean(fullscreenDocument.fullscreenElement ?? fullscreenDocument.webkitFullscreenElement);
         setTrustedHtml(
           fullscreenBtn,
           trustedHtml(
