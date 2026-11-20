@@ -917,7 +917,7 @@ jobs:
         run: |
           export PATH="$PWD/src-tauri/sidecar/node:$PATH"
           node --version
-          npm run test:sidecar
+          npm run test:sidecar:desktop
           # Every route the app ships must load from the shipped files alone
           # on this runtime (#9906).
           node scripts/check-sidecar-shipped-routes.mjs
