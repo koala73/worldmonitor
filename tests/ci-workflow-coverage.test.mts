@@ -539,6 +539,7 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/map-tooltip-external-values.spec.ts',
   'e2e/mcp-webcam.spec.ts',
   'e2e/mission-preview.spec.ts',
+  'e2e/natural-event-labels.spec.ts',
   'e2e/news-context.spec.ts',
   'e2e/news-panel-resize-hit-target.spec.ts',
   'e2e/oil-price-freshness.spec.ts',
@@ -568,6 +569,7 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/oref-subscription-lifecycle.spec.ts',
   'e2e/rag-vector-store.spec.ts',
   'e2e/reservoir-levels.spec.ts',
+  'e2e/zoom-hidden-marker-hits.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [
@@ -1089,13 +1091,132 @@ describe('MCP live smoke — the production detection net', () => {
     assert.match(pushBlock, /^\s+- 'scripts\/mcp-smoke-http\.mjs'\s*$/m);
   });
 
+  // A push that also changes web paths starts a Vercel build, and the push run
+  // probed production minutes before that build was live. Every PR that changed
+  // MCP behaviour and its smoke expectation together went red on main (#7572,
+  // #10293, #11012) and green on its own deployment_status run. Smoke-only
+  // merges never deploy, so the push trigger must still probe those.
+  describe('push runs defer only to a production deploy that exists', () => {
+    const smokeJob = YAML.parse(smokeWorkflow).jobs.smoke;
+    const gateIndex = smokeJob.steps.findIndex((step: { id?: string }) => step.id === 'deploy');
+    const gate = smokeJob.steps[gateIndex];
+
+    // Runs the step's real shell with stub `git`, `gh` and vercel-ignore.sh.
+    // `deployment` is what GitHub lists for this SHA: a vercel[bot]
+    // Production deployment with that latest status, or none at all.
+    function runGate({ vercelBuilds, deployment }: { vercelBuilds: boolean; deployment: 'success' | 'failure' | 'none' | 'hang' }) {
+      const dir = mkdtempSync(resolve(tmpdir(), 'mcp-smoke-gate-'));
+      try {
+        const bin = resolve(dir, 'bin');
+        mkdirSync(bin);
+        mkdirSync(resolve(dir, 'scripts'));
+        writeFileSync(resolve(dir, 'scripts/vercel-ignore.sh'), `exit ${vercelBuilds ? 1 : 0}\n`);
+        writeFileSync(resolve(bin, 'git'), '#!/bin/bash\nexit 0\n', { mode: 0o755 });
+        const ghLog = resolve(dir, 'gh.log');
+        // The list call yields a statuses URL; only the status call yields a state.
+        const listReply = deployment === 'none' ? '' : 'echo https://api.github.test/statuses/1';
+        const statusReply = deployment === 'none' ? '' : `echo ${deployment}`;
+        writeFileSync(
+          resolve(bin, 'gh'),
+          `#!/bin/bash\necho "$*" >> ${JSON.stringify(ghLog)}\n`
+            + (deployment === 'hang' ? 'exec sleep 600\n' : '')
+            + `case "$2" in\n  repos/*/deployments\\?*) ${listReply || ':'} ;;\n  */statuses/*) ${statusReply || ':'} ;;\n esac\n`,
+          { mode: 0o755 },
+        );
+        const output = resolve(dir, 'output');
+        writeFileSync(output, '');
+        const result = spawnSync('bash', ['-e', '-c', gate.run], {
+          cwd: dir,
+          encoding: 'utf8',
+          timeout: 60_000,
+          env: {
+            ...process.env,
+            PATH: `${bin}:${process.env.PATH}`,
+            GITHUB_OUTPUT: output,
+            BEFORE: 'b'.repeat(40),
+            SHA: 'c'.repeat(40),
+            REPO: 'koala73/worldmonitor',
+            DEPLOY_WAIT_SECONDS: '2',
+            DEPLOY_POLL_SECONDS: '1',
+            GH_CALL_TIMEOUT_SECONDS: '1',
+          },
+        });
+        assert.equal(result.status, 0, result.stderr);
+        return {
+          pending: readFileSync(output, 'utf8').match(/^pending=(.*)$/m)?.[1],
+          ghCalls: existsSync(ghLog) ? readFileSync(ghLog, 'utf8').trim().split('\n') : [],
+        };
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+
+    it('gates the probe and report on a push-only deploy step', () => {
+      assert.ok(gate, 'a step with id "deploy" decides whether this push deploys');
+      assert.equal(gate.if, "github.event_name == 'push'");
+      assert.equal(gate.env?.BEFORE, '${{ github.event.before }}');
+      assert.equal(gate.env?.SHA, '${{ github.sha }}');
+      const probeIndex = smokeJob.steps.findIndex((step: { run?: string }) => step.run?.includes('mcp-live-smoke.mjs'));
+      assert.ok(gateIndex < probeIndex, 'the deploy check runs before the probe');
+      assert.equal(smokeJob.steps[probeIndex].if, "steps.deploy.outputs.pending != 'true'");
+      assert.equal(YAML.parse(smokeWorkflow).permissions?.deployments, 'read');
+      assert.ok(
+        smokeJob['timeout-minutes'] >= 20 + 12,
+        'the job must outlast the deploy wait plus the probe budget',
+      );
+    });
+
+    it('probes a smoke-only push at once without asking for deployments', () => {
+      assert.deepEqual(runGate({ vercelBuilds: false, deployment: 'none' }), { pending: 'false', ghCalls: [] });
+    });
+
+    // Skipping is safe only for a vercel[bot] Production deployment of THIS
+    // SHA, so the query must keep all three identity checks.
+    it('skips the probe once Vercel deploys this SHA to production', () => {
+      const { pending, ghCalls } = runGate({ vercelBuilds: true, deployment: 'success' });
+      assert.equal(pending, 'true');
+      assert.equal(ghCalls.length, 2, 'one deployment lookup, then one status lookup');
+      assert.ok(
+        ghCalls[0].includes(`api repos/koala73/worldmonitor/deployments?sha=${'c'.repeat(40)}&environment=Production`),
+        `deployment lookup must filter by this SHA and Production; got: ${ghCalls[0]}`,
+      );
+      assert.ok(
+        ghCalls[0].includes('select(.creator.login == "vercel[bot]")'),
+        `deployment lookup must keep only vercel[bot] deployments; got: ${ghCalls[0]}`,
+      );
+      assert.match(ghCalls[1], /^api https:\/\/api\.github\.test\/statuses\/1 /);
+    });
+
+    it('probes when the production deploy of this SHA fails', () => {
+      assert.equal(runGate({ vercelBuilds: true, deployment: 'failure' }).pending, 'false');
+    });
+
+    // B changes a web file and its deploy fails; C reverts that file and edits
+    // the smoke. The B→C diff predicts a build, but Vercel compares against A,
+    // the last successful deploy, and skips. No deployment_status run follows,
+    // so the push run must still probe.
+    // A gh api call with no limit can stall past the deadline; the step then
+    // hits timeout-minutes without setting `pending`, and the probe is lost.
+    it('probes when the deployments API hangs', () => {
+      const started = Date.now();
+      assert.equal(runGate({ vercelBuilds: true, deployment: 'hang' }).pending, 'false');
+      assert.ok(Date.now() - started < 30_000, 'each gh call is bounded, so the deadline still applies');
+    });
+
+    it('probes when the predicted deploy never appears', () => {
+      const { pending, ghCalls } = runGate({ vercelBuilds: true, deployment: 'none' });
+      assert.equal(pending, 'false');
+      assert.ok(ghCalls.length >= 2, 'it polled for the deployment before giving up');
+    });
+  });
+
   it('writes and uploads a diagnostic report for both passing and failing runs', () => {
     const smokeJob = YAML.parse(smokeWorkflow).jobs.smoke;
     const probe = smokeJob.steps.find((step: { run?: string }) => step.run?.includes('mcp-live-smoke.mjs'));
     assert.match(probe?.run ?? '', /--report\s+"\$RUNNER_TEMP\/mcp-live-smoke-report\.json"/);
 
     const upload = smokeJob.steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/upload-artifact@'));
-    assert.equal(upload?.if, '${{ always() }}');
+    assert.equal(upload?.if, "${{ always() && steps.deploy.outputs.pending != 'true' }}");
     assert.equal(upload?.uses, 'actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f');
     assert.equal(upload?.with?.path, '${{ runner.temp }}/mcp-live-smoke-report.json');
     assert.equal(upload?.with?.['if-no-files-found'], 'error');

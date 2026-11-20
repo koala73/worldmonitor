@@ -1,0 +1,181 @@
+name: Weekly Dogfood Review
+
+# An agent explores the live site once a week as an anonymous visitor with agent-browser, and the findings land in
+# one review issue per ISO week ("Dogfood review: <week>"). Nothing is filed or fixed automatically: a maintainer
+# reviews the list and files what is real.
+#
+# The dashboard renders third-party headlines, so the agent reads text anyone can write. It therefore runs in its
+# own job with read-only permissions, no checked-out credentials, agent-browser as its only shell command (a
+# wrapper allows only its browsing commands and forces an empty read-only config) and file access only inside its
+# output directory. The browser runs as a separate user with an empty environment, so a
+# file:// page cannot read ANTHROPIC_API_KEY from /proc. The publish
+# job holds the issue write permission, treats the findings file as data and renders every agent-written field
+# as an inert code span.
+
+on:
+  schedule:
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      focus:
+        description: 'Focus area for this run (default: the week''s rotation)'
+        required: false
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: dogfood-weekly
+  cancel-in-progress: false
+
+env:
+  OUT_DIR: /tmp/dogfood-output
+  TARGET_URL: https://www.worldmonitor.app
+  AGENT_BROWSER_USER: dogfood-browser
+  AGENT_BROWSER_EXECUTABLE_PATH: /usr/bin/google-chrome
+
+jobs:
+  explore:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
+    runs-on: ubuntu-latest
+    # About 3 for installs, at most 40 for the agent, 2 for the rest.
+    timeout-minutes: 50
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/dogfood
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
+      # The runner image's Google Chrome and its libraries are used as they are. `agent-browser install --with-deps`
+      # stalled for the whole step on an apt mirror (run 44384562753). npm skips install scripts unless allowed, and
+      # both packages fetch their native binary in one.
+      - name: Install agent-browser and Claude Code
+        timeout-minutes: 5
+        run: |
+          npm install -g --allow-scripts=@anthropic-ai/claude-code,agent-browser agent-browser@0.43.0 @anthropic-ai/claude-code@2.1.327
+          sudo useradd --create-home "$AGENT_BROWSER_USER"
+          "$AGENT_BROWSER_EXECUTABLE_PATH" --version
+          agent-browser --version
+          claude --version
+
+      # The separation the agent step relies on: the browser user cannot read this job's process environment.
+      - name: Check the browser user cannot read the runner's environment
+        run: |
+          if sudo -n -u "$AGENT_BROWSER_USER" cat "/proc/$$/environ" > /dev/null 2>&1; then
+            echo "::error::$AGENT_BROWSER_USER can read /proc/$$/environ, so the agent could reach ANTHROPIC_API_KEY."
+            exit 1
+          fi
+          echo "$AGENT_BROWSER_USER cannot read /proc/$$/environ."
+
+      # Five areas in rotation, so each comes round every five weeks. A manual run can name its own.
+      - name: Pick this week's focus
+        id: focus
+        env:
+          FOCUS_INPUT: ${{ inputs.focus }}
+        run: |
+          areas=(
+            "The dashboard map at /dashboard: layer toggles, zoom, markers, popups and the map legend, at 1440x900"
+            "Dashboard panels at /dashboard: presets, adding, moving and closing panels, settings, panel content and empty or error states, at 1440x900"
+            "Search and country briefs at /dashboard: the search box, opening a country brief, news items and their links, at 1440x900"
+            "The whole dashboard at a phone viewport (390x844): map, panels, menus, briefs and anything that overflows or overlaps"
+            "The landing page at /, the /pro page and the links from them into the dashboard and docs, at 1440x900 and 390x844"
+          )
+          focus="${FOCUS_INPUT:-${areas[$(( 10#$(date -u +%V) % ${#areas[@]} ))]}}"
+          echo "focus=$focus" >> "$GITHUB_OUTPUT"
+          echo "Focus: $focus" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: List open issues for duplicate checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$OUT_DIR"
+          gh issue list -R "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title > "$OUT_DIR/open-issues.json"
+
+      # A failed or over-budget agent still uploads what it wrote; the publish job fails if no findings file exists.
+      - name: Explore the live site
+        timeout-minutes: 40
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          FOCUS: ${{ steps.focus.outputs.focus }}
+        run: |
+          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "::error::ANTHROPIC_API_KEY is not set, so the dogfood agent cannot run."
+            exit 1
+          fi
+          bash scripts/dogfood/run-agent.sh
+
+      - name: Record the agent's cost
+        if: always()
+        run: |
+          node - <<'EOF'
+          const fs = require('fs');
+          // run-agent.sh writes this outside OUT_DIR, beyond the agent's edit scope; the values are still checked.
+          const file = `${process.env.OUT_DIR}.result.json`;
+          if (!fs.existsSync(file)) { console.log('No agent result file.'); process.exit(0); }
+          // A killed agent can leave the file empty or cut short; that is no reason to fail the job.
+          let r;
+          try { r = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { console.log('Agent result file is not valid JSON.'); process.exit(0); }
+          const subtype = ['success', 'error_max_turns', 'error_max_budget_usd', 'error_during_execution'].includes(r.subtype) ? r.subtype : 'unknown';
+          const turns = Number.isInteger(r.num_turns) ? r.num_turns : '?';
+          const cost = Number.isFinite(r.total_cost_usd) ? r.total_cost_usd.toFixed(2) : '?';
+          const line = `Agent: ${subtype}, ${turns} turns, $${cost}`;
+          console.log(line);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${line}\n`);
+          EOF
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: dogfood-output
+          path: ${{ env.OUT_DIR }}
+          retention-days: 30
+          if-no-files-found: warn
+
+  publish:
+    needs: explore
+    if: ${{ !cancelled() && needs.explore.result != 'skipped' && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/report-dogfood-review.mjs
+            scripts/lib/main-module.mjs
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dogfood-output
+          path: ${{ runner.temp }}/dogfood-output
+
+      # Listed again here: the artifact's copy sits in the directory the agent can edit, so a run steered by page
+      # text could otherwise add any issue or pull request number and have the review link it as a duplicate.
+      - name: List open issues for duplicate links
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue list -R "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title > "$RUNNER_TEMP/open-issues.json"
+
+      - name: Publish the review issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DOGFOOD_FINDINGS: ${{ runner.temp }}/dogfood-output/findings.json
+          DOGFOOD_OPEN_ISSUES: ${{ runner.temp }}/open-issues.json
+        run: node scripts/report-dogfood-review.mjs

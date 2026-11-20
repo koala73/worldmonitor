@@ -6625,6 +6625,9 @@
           "path": "api/health.js"
         },
         {
+          "path": "scripts/_us-restricted-sanctions.mjs"
+        },
+        {
           "path": "scripts/build-accuracy-page.mjs"
         },
         {
@@ -6641,6 +6644,9 @@
         },
         {
           "path": "scripts/seed-research.mjs"
+        },
+        {
+          "path": "scripts/source-attribution.mjs"
         },
         {
           "path": "server/_shared/agent-feedback.ts"
@@ -11813,6 +11819,20 @@
       "references": [
         {
           "path": "scripts/publish-mcp-registry.mjs"
+        }
+      ]
+    },
+    {
+      "host": "release-assets.githubusercontent.com",
+      "provider": "US Restricted Parties feed (Tensorust LLC)",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC BY 4.0 (Creative Commons Attribution 4.0 International)",
+      "attribution": "US Restricted Parties feed by Tensorust LLC (https://github.com/Mattbusel/us-restricted-parties), CC BY 4.0.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/_us-restricted-sanctions.mjs"
         }
       ]
     },
@@ -22591,9 +22611,6 @@
         },
         {
           "path": "api/mcp/auth.ts"
-        },
-        {
-          "path": "api/mcp/handler.ts"
         },
         {
           "path": "api/mcp/skill-extension/generated.ts"

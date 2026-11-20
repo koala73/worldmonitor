@@ -103,6 +103,7 @@ import type { ComputeEnergyShockScenarioResponse, CrudeShareBaseline, ImageryCha
 import { IMAGERY_CONTEXT_EXCLUSION, IMAGERY_CONTEXT_METHODOLOGY_HREF, imageryChangeSummary } from './_risk-imagery-context';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { confirmShareLinkCopied, createShareLinkButton } from './share-link-button';
+import { copyText } from '@/utils/copy-text';
 import { overlayHistory, type OverlayCloseOrigin } from '@/utils/overlay-history';
 import type { GetDefenseIndustrialBaseResponse } from '@/generated/client/worldmonitor/military/v1/service_client';
 import { regionalFeedStatusNote, regionalFeedTitle, regionalLatestPeriod, regionalSeriesRows } from './regional-energy-presentation';
@@ -370,9 +371,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   public showLoading(): void {
+    const focusWasInside = this.panel.contains(document.activeElement);
     this.currentCode = '__loading__';
     this.currentName = null;
     this.renderLoading();
+    this.keepFocusInside(focusWasInside);
     this.open();
   }
 
@@ -403,6 +406,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   public show(country: string, code: string, score: CountryScore | null, signals: CountrySignalCounts | null): void {
+    const focusWasInside = this.panel.contains(document.activeElement);
     this.qualifiedCountrySignals = null;
     this.abortController.abort();
     this.abortController = new AbortController();
@@ -427,6 +431,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
     if (this.source?.mode === 'host') this.renderAtlasExposure(true);
     this.content.scrollTop = 0;
+    this.keepFocusInside(focusWasInside);
     // open() reports only a closed-to-open change. Opened by showLoading(),
     // the panel now has its real country, so report that too.
     if (!this.open()) this.onStateChangeCallback?.({ visible: true, maximized: this.isMaximizedState });
@@ -3507,13 +3512,34 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   public updateBrief(data: CountryIntelData): void {
     if (!this.briefBody || data.code !== this.currentCode) return;
     this.briefBody.replaceChildren();
+    if (data.accessNotice) {
+      const notice = this.el('div', 'cdp-brief-access');
+      const message = data.accessNotice === 'sign-in' ? 'premium.signInToUnlock'
+        : data.accessNotice === 'pro' ? 'premium.upgradeDesc' : 'countryBrief.briefUnavailable';
+      notice.append(this.el('p', 'panel-locked-desc', t(message)));
+      if (data.accessNotice === 'sign-in') {
+        const button = this.el('button', 'panel-locked-cta', t('auth.signIn'));
+        button.type = 'button';
+        button.addEventListener('click', () => {
+          void import('@/services/clerk')
+            .then(({ openSignIn }) => openSignIn())
+            .catch(() => showToast(t('countryBrief.briefUnavailable')));
+        });
+        notice.append(button);
+      } else if (data.accessNotice === 'pro') {
+        const link = this.el('a', 'panel-locked-cta', t('premium.upgradeToPro'));
+        link.href = '/pro#pricing';
+        notice.append(link);
+      }
+      this.briefBody.append(notice);
+    }
 
     if (data.error || data.skipped || !data.brief) {
       this.currentBrief = null;
       this.currentBriefGeneratedAt = null;
       this.currentBriefCached = null;
       this.currentBriefIsSignalRows = false;
-      this.briefBody.append(this.makeEmpty(data.error || data.reason || t('countryBrief.assessmentUnavailable')));
+      if (!data.accessNotice) this.briefBody.append(this.makeEmpty(data.error || data.reason || t('countryBrief.assessmentUnavailable')));
       return;
     }
 
@@ -3525,14 +3551,15 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const briefSources = collectBriefSources(data.sources ?? [], 6);
     // Signal rows have no sentence punctuation; summarizing them joined every
     // line into a single run-on paragraph.
-    const summary = data.signalRows ? data.brief.split('\n').slice(0, 5).join('\n') : summarizeCountryBrief(data.brief);
+    const signalRows = data.signalRows ? data.brief.split('\n') : null;
+    const summary = signalRows ? signalRows.slice(0, 5).join('\n') : summarizeCountryBrief(data.brief);
     const summaryHtml = this.formatBrief(summary, briefSources, 0, data.evidence);
     const text = this.el('div', 'cdp-assessment-text cdp-summary-only');
     setTrustedHtml(text, trustedHtml(summaryHtml, "legacy direct innerHTML migration"));
 
     const metaTokens: string[] = [];
     if (data.cached) metaTokens.push('Cached');
-    if (data.fallback) metaTokens.push('Fallback');
+    if (data.fallback && !data.accessNotice) metaTokens.push('Fallback');
     if (data.generatedAt) metaTokens.push(`Updated ${new Date(data.generatedAt).toLocaleTimeString()}`);
     const meta = this.el('div', 'cdp-assessment-meta', metaTokens.join(' • '));
     this.briefBody.append(text, meta);
@@ -3554,10 +3581,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       expandedBrief.append(sources);
     }
     this.briefBody.append(expandedBrief);
-    const readFull = this.el('button', 'cdp-inline-action cdp-summary-only', 'Read the full brief and sources ↗');
-    readFull.type = 'button';
-    readFull.addEventListener('click', () => this.presentation?.selectTopic('sources'));
-    this.briefBody.append(readFull);
+    if (!data.accessNotice || !signalRows || signalRows.length > 5 || sourcesFooter) {
+      const readFull = this.el('button', 'cdp-inline-action cdp-summary-only', 'Read the full brief and sources ↗');
+      readFull.type = 'button';
+      readFull.addEventListener('click', () => this.presentation?.selectTopic('sources'));
+      this.briefBody.append(readFull);
+    }
   }
 
   /**
@@ -3672,7 +3701,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     shareBtn.addEventListener('click', () => {
       if (!this.currentCode || !this.currentName) return;
       const url = `${this.source?.mode === 'host' ? 'https://www.worldmonitor.app' : window.location.origin}/dashboard?c=${encodeURIComponent(this.currentCode)}`;
-      navigator.clipboard.writeText(url).then(() => confirmShareLinkCopied(shareBtn)).catch(() => {});
+      void copyText(url).then((copied) => {
+        if (copied) confirmShareLinkCopied(shareBtn);
+      });
     });
 
     const storyButton = this.el('button', 'cdp-action-btn', 'Create story') as HTMLButtonElement;
@@ -4599,6 +4630,31 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const assets = this.infrastructureByType.get(type) ?? [];
     if (assets.length === 0) return;
     this.map.flashAssets(type, assets.map((asset) => asset.id));
+  }
+
+  /**
+   * A rebuild of a visible brief removes its controls. If one of them had
+   * focus, focus would drop to the page, so it moves to the close button.
+   * Focus on a control that survives, or outside the brief, stays put.
+   */
+  private keepFocusInside(focusWasInside: boolean): void {
+    if (!focusWasInside || !this.panel.classList.contains('active')) return;
+    if (!this.panel.contains(document.activeElement)) this.closeButton.focus();
+  }
+
+  /**
+   * A map click or map menu is opening this brief. A closed brief saves its
+   * return target when it opens (the map, which the caller has just focused).
+   * A visible brief reloads in place without reopening, so it takes the map
+   * as its return target now, and focus moves into the brief as on a first
+   * open. Background refreshes don't call this, so they never move focus.
+   */
+  public returnFocusTo(target: HTMLElement): void {
+    if (!this.panel.classList.contains('active')) return;
+    this.lastFocusedElement = target;
+    requestAnimationFrame(() => {
+      if (this.panel.classList.contains('active') && !this.panel.contains(document.activeElement)) this.closeButton.focus();
+    });
   }
 
   /** Returns true when the panel was closed and is now open. */

@@ -70,6 +70,11 @@ message NewsItem {
   // is false whenever `link` is empty. Computed by the server; never read
   // from the feed.
   bool link_verified = 15;
+  // The original publisher a trusted aggregator (Google News) names for this
+  // item, resolved to its curated source name, so consumers can score it on
+  // that publisher's tier instead of the feed's. Empty when the feed is not
+  // a trusted aggregator, or the publisher it names has no curated tier.
+  string origin_publisher = 16;
 }
 
 // StoryMeta carries cross-cycle persistence data attached to each news item.

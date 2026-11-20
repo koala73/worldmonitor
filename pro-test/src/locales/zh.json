@@ -35,16 +35,16 @@
     "askIt": "问它",
     "askItDesc": "WM Analyst 聊天。实时服务可用英文纯文本查询。",
     "subscribeIt": "订阅它",
-    "subscribeItDesc": "AI 摘要按您的频率: 每日、每日两次或每周。Slack、Discord、Telegram、邮件、webhook。",
+    "subscribeItDesc": "AI 摘要按您的频率: 每日、每日两次或每周。Slack、Teams、Discord、Telegram、邮件、webhook。",
     "buildOnIt": "在其上构建",
     "buildOnItDesc": "自定义小组件构建器(HTML/CSS/JS + AI)与 MCP,适用于 Claude、GPT 与自定义 LLM。"
   },
   "deliveryDesk": {
     "eyebrow": "交付工作台",
     "title": "什么是个人情报桌面？",
-    "body": "每次发送最多30条排序项目，跨源去重，按你的监控名单计分。选择你的频率——每日、两次每日或每周——附带AI评估和监控信号，发送至Slack、Discord、Telegram、Email或webhook。",
+    "body": "每次发送最多30条排序项目，跨源去重，按你的监控名单计分。选择你的频率——每日、两次每日或每周——附带AI评估和监控信号，发送至Slack、Microsoft Teams、Discord、Telegram、Email或webhook。",
     "closer": "不是邮件通讯。是分析师。",
-    "channels": "Slack · Discord · Telegram · 邮件 · Webhook · AES-256 加密 · 静音时段"
+    "channels": "Slack · Teams · Discord · Telegram · 邮件 · Webhook · AES-256 加密 · 静音时段"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — 实时仪表板",
@@ -56,8 +56,7 @@
   "socialProof": {
     "uniqueVisitors": "独立访客",
     "peakDailyUsers": "日用户峰值",
-    "countriesReached": "覆盖国家",
-    "liveDataSources": "实时数据源"
+    "countriesReached": "覆盖国家"
   },
   "audience": {
     "title": "World Monitor 为谁而构建？",
@@ -77,34 +76,6 @@
     "aiTeamsDesc": "通过 MCP 为公司助手提供实时全球背景，并以书面形式授予内部使用权。",
     "teamsTitle": "团队与组织",
     "teamsDesc": "从个人使用迈向共享工作流、API 访问、TV 应用与托管部署。"
-  },
-  "dataCoverage": {
-    "title": "World Monitor 监控什么？",
-    "subtitle": "服务域同步摄入。市场、宏观、地缘政治、能源、基础设施——全部规范化并渲染在WebGL地球上。",
-    "markets": "金融市场与股票",
-    "marketsDesc": "全球股票分析、大宗商品、加密货币、ETF 资金流、分析师目标与 FRED 宏观数据",
-    "economy": "经济与央行",
-    "economyDesc": "主要经济体的 GDP、通胀、利率、增长周期与货币政策追踪",
-    "geopolitical": "地缘政治分析",
-    "geopoliticalDesc": "具升级评分、风险框架与趋势分析的 ACLED 与 UCDP 事件",
-    "maritime": "海事与贸易",
-    "maritimeDesc": "船舶动向、船只检测、港口活动与货物推断",
-    "aviation": "航空追踪",
-    "aviationDesc": "全球飞行模式的 ADS-B 追踪",
-    "infra": "关键基础设施",
-    "infraDesc": "核设施、电网、管道、炼油厂——映射的资产",
-    "fire": "卫星火灾检测",
-    "fireDesc": "NASA FIRMS 近实时火灾与热点数据",
-    "cables": "海底电缆",
-    "cablesDesc": "海底电缆路线与登陆站",
-    "internet": "互联网与 GPS",
-    "internetDesc": "中断检测、BGP 异常、GPS 干扰区",
-    "cyber": "网络威胁",
-    "cyberDesc": "勒索软件 feed、BGP 劫持、DDoS 检测",
-    "gdelt": "GDELT 与新闻",
-    "gdeltDesc": "精选RSS源、AI评分的GDELT事件、实时广播",
-    "seismology": "地震与自然",
-    "seismologyDesc": "USGS 地震、火山活动、极端天气"
   },
   "tiers": {
     "free": "免费",
@@ -127,13 +98,12 @@
     "riskMonitoring": "风险监测与情景分析",
     "riskMonitoringDesc": "全球风险评分、情景分析与地缘政治风险评估。跨市场与政治信号的收敛检测。",
     "morningBriefs": "个人情报工作台",
-    "morningBriefsDesc": "每份摘要最多30条排序新闻，跨源去重。选择每日、两次每日或每周的频率——或针对重要事件的实时警报。AI评估和监控信号发送至Slack、Discord、Telegram、Email或webhook。不是新闻通讯——是分析师。",
+    "morningBriefsDesc": "每份摘要最多30条排序新闻，跨源去重。选择每日、两次每日或每周的频率——或针对重要事件的实时警报。AI评估和监控信号发送至Slack、Microsoft Teams、Discord、Telegram、Email或webhook。不是新闻通讯——是分析师。",
     "oneKey": "实时服务，1个密钥",
-    "oneKeyDesc": "Finnhub、FRED、ACLED、UCDP、NASA FIRMS、AISStream、OpenSky 等 — 全部开启,无需单独注册。",
+    "oneKeyDesc": "Finnhub、FRED、UCDP、NASA FIRMS、AISStream、OpenSky 等 — 全部开启,无需单独注册。",
     "deliveryLabel": "选择情报如何找到您",
     "supplyChainLab": "供应链压力实验室",
-    "supplyChainLabDesc": "对各国和行业进行成本冲击建模。按瓶颈依赖度对商品脆弱性排名。追踪矿山到炼油厂的浓度和上期所-COMEX 现货溢价差异 — 这是在头条新闻出现前就会变动的数据序列。",
-    "roadmapNote": "规划中：更长的历史记录、高级地图图层。"
+    "supplyChainLabDesc": "对各国和行业进行成本冲击建模。按瓶颈依赖度对商品脆弱性排名。追踪矿山到炼油厂的浓度和上期所-COMEX 现货溢价差异 — 这是在头条新闻出现前就会变动的数据序列。"
   },
   "apiSection": {
     "apiTier": "API 等级",
@@ -560,7 +530,7 @@
       "n5Title": "海底电缆",
       "n5Desc": "{{submarineCables}}条承载互联网的海底光缆，叠加中断和威胁信号。",
       "n6Title": "抗议追踪",
-      "n6Desc": "来自 ACLED 和 GDELT 的抗议活动检测；同一天内同一 0.1° 网格单元中来自一个信源的报告合并为一个事件——实际信号，而非谣言。",
+      "n6Desc": "来自 GDELT 的抗议活动检测；同一天内同一 0.1° 网格单元中来自一个信源的报告合并为一个事件——实际信号，而非谣言。",
       "faith": "不要盲目相信这些数字——",
       "faithCta": "打开应用并自己计数。",
       "faithNote": "每个面板都标注了来源。"
@@ -617,7 +587,7 @@
       "q2": "什么是全球智能仪表板？",
       "a2": "一个单一的实时视图，融合大多数工具分开保存的信号：冲突事件、船舶和飞机追踪、航运枢纽、卫星、海底电缆、管道、市场和网络威胁 — 在一个实时世界地图上，带有 AI 评分和摘要。World Monitor 是一个免费的。",
       "q3": "数据来自哪里？",
-      "a3": "来自 {{providers}} 家归属提供商。具名的提供商包括冲突数据源 ACLED 和 UCDP、船舶实时监测的 AISStream、飞机的 OpenSky、火灾的 NASA FIRMS、地震的 USGS，以及市场和宏观数据的 IMF、BIS、FRED 和 Finnhub — 还有精选新闻源。每个面板都在行内标注来源和时间戳。",
+      "a3": "来自 {{providers}} 家归属提供商。具名的提供商包括冲突数据源 GDELT 和 UCDP、船舶实时监测的 AISStream、飞机的 OpenSky、火灾的 NASA FIRMS、地震的 USGS，以及市场和宏观数据的 IMF、BIS、FRED 和 Finnhub — 还有精选新闻源。每个面板都在行内标注来源和时间戳。",
       "q4": "我可以实时监视霍尔木兹海峡或曼德海峡等枢纽吗？",
       "a4": "可以。{{chokepoints}} 个战略要道（包括霍尔木兹海峡、曼德海峡到苏伊士运河等海峡和运河）通过实时 AIS 船舶计数、周环比过境变化和中断评分进行监测 — 密度异常会根据各要道的滚动基准进行标记。",
       "q5": "这与 Liveuamap 之类的冲突地图有何不同？",

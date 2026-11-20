@@ -10,7 +10,7 @@ import { readRevokedUrlSet } from '../../../_shared/digest-revocations';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { CLAIM_MAX_CHARS, claimCandidates } from '../../../_shared/claim-match';
 import { INTEL_SOURCES, isServerFeedReachableForLanguage, VARIANT_FEEDS } from './_feeds';
-import { FUTURE_DATE_TOLERANCE_MS, resolveMaxAgeMs, rssFeedCacheKey } from './_rss-cache';
+import { FUTURE_DATE_TOLERANCE_MS, feedRowsWithCountryItems, resolveMaxAgeMs, rssFeedCacheKey, rssFeedCountryCacheKey } from './_rss-cache';
 
 /**
  * #9092 follow-up: /verify and verify_claim searched only the served digest,
@@ -79,9 +79,10 @@ function poolItem(
   return { source, title, link, pubDate: new Date(row.publishedAt), isAlert: false };
 }
 
-function cachedRows(entry: unknown): unknown[] | null {
+function cachedRows(cached: Map<string, unknown>, url: string): unknown[] | null {
+  const entry = cached.get(rssFeedCacheKey('full', url));
   if (!entry || typeof entry !== 'object' || !('items' in entry) || !Array.isArray(entry.items)) return null;
-  return 'countryItems' in entry && Array.isArray(entry.countryItems) ? [...entry.items, ...entry.countryItems] : entry.items;
+  return feedRowsWithCountryItems(entry as { items: unknown[] }, cached.get(rssFeedCountryCacheKey('full', url)));
 }
 
 /**
@@ -100,10 +101,11 @@ async function readPool(): Promise<ClaimPool> {
   const feeds = [...Object.values(VARIANT_FEEDS.full ?? {}).flat(), ...INTEL_SOURCES]
     .filter(feed => isServerFeedReachableForLanguage(feed, 'en'));
   const unique = [...new Map(feeds.map(feed => [rssFeedCacheKey('full', feed.url), feed])).entries()];
-  const depthKeys = unique.flatMap(([, feed]) => feed.depthUrl ? [rssFeedCacheKey('full', feed.depthUrl)] : []);
+  const depthUrls = unique.flatMap(([, feed]) => feed.depthUrl ? [feed.depthUrl] : []);
+  const countryKeys = [...unique.map(([, feed]) => feed.url), ...depthUrls].map(url => rssFeedCountryCacheKey('full', url));
   const now = Date.now();
   const [cached, revoked] = await Promise.all([
-    getCachedJsonBatch([...unique.map(([key]) => key), ...depthKeys]),
+    getCachedJsonBatch([...unique.map(([key]) => key), ...depthUrls.map(url => rssFeedCacheKey('full', url)), ...countryKeys]),
     readRevokedUrlSet(),
   ]);
   if (!revoked.readable) return { items: [], feedsSearched: 0, feedTotal: unique.length, feedCached: 0, readable: false, readAt: now };
@@ -112,11 +114,11 @@ async function readPool(): Promise<ClaimPool> {
   const seen = new Set<string>();
   let feedCached = 0;
   let feedsSearched = 0;
-  for (const [key, feed] of unique) {
-    const rows = cachedRows(cached.get(key));
+  for (const [, feed] of unique) {
+    const rows = cachedRows(cached, feed.url);
     if (rows) feedCached++;
     // Coverage totals count catalog feeds only; a depth feed adds headlines.
-    const depthRows = feed.depthUrl ? cachedRows(cached.get(rssFeedCacheKey('full', feed.depthUrl))) : null;
+    const depthRows = feed.depthUrl ? cachedRows(cached, feed.depthUrl) : null;
     const multiPublisher = isMultiPublisherFeed(feed.url);
     const before = items.length;
     const titles = new Set<string>();

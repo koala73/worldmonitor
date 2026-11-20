@@ -31,15 +31,17 @@ const PANELS = [
 // must follow the text, not a fixed column width.
 // A phone puts each panel at full width (about 377px at 393px), and a panel
 // widened to two sidebar columns keeps the five-column disruptions table.
-const VIEWPORTS: Array<{ width: number; height: number; fontScale: number; mobile?: boolean; colSpans?: Record<string, number> }> = [
-  { width: 1920, height: 1200, fontScale: 1 },
-  { width: 1845, height: 1100, fontScale: 1 },
-  { width: 1366, height: 768, fontScale: 1 },
-  { width: 1440, height: 900, fontScale: 1 },
-  { width: 1920, height: 1200, fontScale: 1.25 },
-  { width: 1920, height: 1200, fontScale: 2 },
-  { width: 393, height: 852, fontScale: 1, mobile: true },
-  { width: 1920, height: 1200, fontScale: 1, colSpans: { 'energy-disruptions': 2 } },
+type Size = { width: number; height: number };
+const DESKTOP = { width: 1920, height: 1200 };
+
+// Reuse the loaded fixtures when only the viewport changes. Font scale,
+// touch support and saved column spans are separate startup profiles.
+const PROFILES: Array<{ sizes: [Size, ...Size[]]; fontScale: number; mobile?: boolean; colSpans?: Record<string, number> }> = [
+  { sizes: [DESKTOP, { width: 1845, height: 1100 }, { width: 1366, height: 768 }, { width: 1440, height: 900 }], fontScale: 1 },
+  { sizes: [DESKTOP], fontScale: 1.25 },
+  { sizes: [DESKTOP], fontScale: 2 },
+  { sizes: [{ width: 393, height: 852 }], fontScale: 1, mobile: true },
+  { sizes: [DESKTOP], fontScale: 1, colSpans: { 'energy-disruptions': 2 } },
 ];
 
 interface TableFit {
@@ -146,10 +148,8 @@ test('energy table values and names stay whole inside their column', async ({ br
   let stackedNarrowPanels = 0;
   let wideTables = 0;
   let styledTables = 0;
-  for (const viewport of VIEWPORTS) {
-    const cellStyles = new Map<string, { th: Record<string, string>; td: Record<string, string> }>();
-    const { fontScale, mobile = false, colSpans, ...size } = viewport;
-    const context = await browser.newContext({ viewport: size, colorScheme: 'dark', isMobile: mobile, hasTouch: mobile });
+  for (const { sizes, fontScale, mobile = false, colSpans } of PROFILES) {
+    const context = await browser.newContext({ viewport: sizes[0], colorScheme: 'dark', isMobile: mobile, hasTouch: mobile });
     const page = await context.newPage();
     const settings = Object.fromEntries(PANELS.map(({ key }) => [key, { name: key, enabled: true, priority: 0 }]));
     await seedAnonymousDashboard(page, 'full', {
@@ -168,42 +168,46 @@ test('energy table values and names stay whole inside their column', async ({ br
     await page.route(/list-energy-disruptions/, (route) => route.fulfill({ json: FIXTURES.disruptions }));
 
     await page.goto('/dashboard');
-    const variant = `${viewport.width}-${fontScale * 100}${mobile ? '-phone' : ''}${colSpans ? '-wide' : ''}`;
-    for (const { key, rows, valueColumns, words, stackEm } of PANELS) {
-      const panel = page.locator(`#panelsGrid .panel[data-panel="${key}"]`);
-      await expect
-        .poll(async () => {
-          await panel.scrollIntoViewIfNeeded().catch(() => {});
-          return panel.locator('tbody tr').count();
-        }, { message: `${key} rows at ${variant}`, timeout: 90_000 })
-        .toBe(rows);
-      await evidenceScreenshot(panel, { path: testInfo.outputPath(`${key}-${variant}.png`) });
-      const fit = await measure(page, key, valueColumns, words, stackEm);
-      const label = `${key} at ${variant} (panel ${fit.panel}px)`;
-      expect.soft(fit.split, `${label}: values broken across lines`).toEqual([]);
-      expect.soft(fit.brokenWords, `${label}: name words broken mid-word`).toEqual([]);
-      expect.soft(fit.missingRoles, `${label}: table semantics`).toEqual([]);
-      expect.soft(fit.table, `${label}: table wider than its column`).toBeLessThanOrEqual(fit.host + 1);
-      expect.soft(fit.stacked, `${label}: rows stack only below ${stackEm}em of text`).toBe(fit.shouldStack);
-      if (fit.stacked) {
-        expect.soft(fit.narrowFirstCells, `${label}: stacked name cells narrower than their row`).toBe(0);
-        expect.soft(fit.headerHeight, `${label}: stacked header still occupies space`).toBeLessThanOrEqual(1);
-        if (fit.panel <= 340 && fontScale === 1) stackedNarrowPanels += 1;
-      } else {
-        expect.soft(fit.headerHeight, `${label}: column headers hidden in the table layout`).toBeGreaterThan(1);
-        if (key === 'energy-disruptions') wideTables += 1;
-        if (fontScale === 1) {
-          expect.soft(fit.th, `${label}: header cell uses the shared table style`).toMatchObject(WM_TABLE_TH);
-          expect.soft(fit.td, `${label}: body cell uses the shared table style`).toMatchObject(WM_TABLE_TD);
-          cellStyles.set(key, { th: fit.th, td: fit.td });
-          styledTables += 1;
+    for (const [index, viewport] of sizes.entries()) {
+      if (index > 0) await page.setViewportSize(viewport);
+      const cellStyles = new Map<string, { th: Record<string, string>; td: Record<string, string> }>();
+      const variant = `${viewport.width}-${fontScale * 100}${mobile ? '-phone' : ''}${colSpans ? '-wide' : ''}`;
+      for (const { key, rows, valueColumns, words, stackEm } of PANELS) {
+        const panel = page.locator(`#panelsGrid .panel[data-panel="${key}"]`);
+        await expect
+          .poll(async () => {
+            await panel.scrollIntoViewIfNeeded().catch(() => {});
+            return panel.locator('tbody tr').count();
+          }, { message: `${key} rows at ${variant}`, timeout: 90_000 })
+          .toBe(rows);
+        await evidenceScreenshot(panel, { path: testInfo.outputPath(`${key}-${variant}.png`) });
+        const fit = await measure(page, key, valueColumns, words, stackEm);
+        const label = `${key} at ${variant} (panel ${fit.panel}px)`;
+        expect.soft(fit.split, `${label}: values broken across lines`).toEqual([]);
+        expect.soft(fit.brokenWords, `${label}: name words broken mid-word`).toEqual([]);
+        expect.soft(fit.missingRoles, `${label}: table semantics`).toEqual([]);
+        expect.soft(fit.table, `${label}: table wider than its column`).toBeLessThanOrEqual(fit.host + 1);
+        expect.soft(fit.stacked, `${label}: rows stack only below ${stackEm}em of text`).toBe(fit.shouldStack);
+        if (fit.stacked) {
+          expect.soft(fit.narrowFirstCells, `${label}: stacked name cells narrower than their row`).toBe(0);
+          expect.soft(fit.headerHeight, `${label}: stacked header still occupies space`).toBeLessThanOrEqual(1);
+          if (fit.panel <= 340 && fontScale === 1) stackedNarrowPanels += 1;
+        } else {
+          expect.soft(fit.headerHeight, `${label}: column headers hidden in the table layout`).toBeGreaterThan(1);
+          if (key === 'energy-disruptions') wideTables += 1;
+          if (fontScale === 1) {
+            expect.soft(fit.th, `${label}: header cell uses the shared table style`).toMatchObject(WM_TABLE_TH);
+            expect.soft(fit.td, `${label}: body cell uses the shared table style`).toMatchObject(WM_TABLE_TD);
+            cellStyles.set(key, { th: fit.th, td: fit.td });
+            styledTables += 1;
+          }
         }
       }
-    }
-    // Colours and row borders match across every energy table in this view.
-    const colours = [...cellStyles.values()].map(({ th, td }) => ({ th: [th.color, th.borderBottom], td: [td.color, td.borderBottom] }));
-    for (const style of colours.slice(1)) {
-      expect.soft(style, `${variant}: energy tables share header and cell colours`).toEqual(colours[0]);
+      // Colours and row borders match across every energy table in this view.
+      const colours = [...cellStyles.values()].map(({ th, td }) => ({ th: [th.color, th.borderBottom], td: [td.color, td.borderBottom] }));
+      for (const style of colours.slice(1)) {
+        expect.soft(style, `${variant}: energy tables share header and cell colours`).toEqual(colours[0]);
+      }
     }
     await context.close();
   }

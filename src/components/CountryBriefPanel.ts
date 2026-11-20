@@ -21,6 +21,7 @@ export interface CountryIntelData {
   skipped?: boolean;
   reason?: string;
   fallback?: boolean;
+  accessNotice?: 'sign-in' | 'pro' | 'unavailable';
   /** The brief is one signal per line (no sentences), not prose. */
   signalRows?: boolean;
   sources?: BriefSource[];
@@ -228,6 +229,8 @@ export interface CountryBriefPanel {
   getCode(): string | null;
   getName(): string | null;
   isVisible(): boolean;
+  /** A map click or map menu is opening this brief: closing it returns focus to `target`. */
+  returnFocusTo?(target: HTMLElement): void;
   getTimelineMount(): HTMLElement | null;
   readonly signal: AbortSignal;
   onClose(cb: () => void): void;

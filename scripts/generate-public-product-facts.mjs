@@ -26,8 +26,9 @@ import { getCompleteLayerCatalogKeys } from '../src/config/map-layer-definitions
 import { INTEL_HOTSPOTS } from '../shared/geo-data.ts';
 import { PIPELINES } from '../shared/pipelines-data.ts';
 import { ORBITAL_WATCH_PLAN_LINES, orbitalWatchAccess } from '../shared/orbital-watch-pricing.ts';
-import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
-import { MCP_DOMAIN_SUMMARY, MCP_TAGS, MCP_TOOL_CATEGORIES, TOOL_CATEGORY_BY_NAME } from '../api/mcp/domains.ts';
+import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { MCP_DOMAIN_SUMMARY, MCP_TAGS, MCP_TOOL_CATEGORIES } from '../api/mcp/domains.ts';
+import { serverCardTools } from '../api/mcp/server-card-tools.ts';
 import { UI_RESOURCE_LIST_RESPONSE } from '../api/mcp/ui/registry.ts';
 import { FREE_ACCOUNT_CALLS_PER_DAY } from '../api/mcp/upgrade-constants.ts';
 import { publishedRankedCountries } from './build-crawlable-corpus.mjs';
@@ -279,6 +280,13 @@ export const FALLBACK_PRICES = ${JSON.stringify(fallbackPrices, null, 2)};
 `;
 emit('api/_product-catalog.generated.js', edgeModule);
 
+// Annual catalog entries carry no marketing copy of their own; their Offer
+// describes the same plan as the monthly entry of the same tier group.
+function offerDescription(plan) {
+  if (plan.description) return plan.description;
+  return plans.find((other) => other.tierGroup === plan.tierGroup && other.description)?.description ?? '';
+}
+
 function offerFor(plan) {
   const offer = {
     '@type': 'Offer',
@@ -287,7 +295,7 @@ function offerFor(plan) {
     priceCurrency: plan.priceCurrency,
     availability: plan.availability,
     url: plan.url,
-    description: plan.description,
+    description: offerDescription(plan),
   };
   if (plan.billingDuration) {
     offer.priceSpecification = {
@@ -472,19 +480,9 @@ transform('public/.well-known/mcp/server-card.json', (source) => {
   // authenticate still sees which tools render an app.
   card.toolCategories = MCP_TOOL_CATEGORIES.map((category) => category.id);
   card.tags = [...MCP_TAGS];
-  card.tools = TOOL_REGISTRY.map((tool) => {
-    const category = TOOL_CATEGORY_BY_NAME[tool.name];
-    if (!category) throw new Error(`${tool.name} has no category in api/mcp/domains.ts`);
-    return {
-      name: tool.name,
-      description: tool.description,
-      _meta: {
-        ...(tool._uiResourceUri ? { ui: { resourceUri: tool._uiResourceUri } } : {}),
-        'worldmonitor/access': toolAccess(tool),
-        'worldmonitor/category': category,
-      },
-    };
-  });
+  card.tools = serverCardTools();
+  const uncategorised = card.tools.filter((tool) => !tool._meta['worldmonitor/category']).map((tool) => tool.name);
+  if (uncategorised.length) throw new Error(`${uncategorised.join(', ')} has no category in api/mcp/domains.ts`);
   return renderJsonDomainSurface(json(card), SERVER_CARD_DOMAIN_SURFACE, MCP_DOMAIN_SUMMARY);
 });
 

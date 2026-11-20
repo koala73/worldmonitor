@@ -2,7 +2,9 @@
 
 const { createDeliveryReporter, deliveryErrorClass } = require('./lib/notification-delivery.cjs');
 const { createSentAlertLog } = require('./lib/sent-alert-history.cjs');
+const { execFile } = require('node:child_process');
 const { createHash, randomUUID } = require('node:crypto');
+const path = require('node:path');
 const { Resend } = require('resend');
 const { appendUnsubscribeText, injectUnsubscribeFooterHtml, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
 const { buildAlertEmailHtml, buildHeldAlertsEmailHtml, buildWelcomeEmailHtml } = require('./lib/notification-email-html.cjs');
@@ -42,7 +44,7 @@ const {
 const { COMPARE_AND_DELETE_SCRIPT } = require('./shared/compare-and-delete-script.cjs');
 const { ORBITAL_SITE_EVENT_TYPES } = require('./lib/orbital-site-alerts.cjs');
 const { RESERVOIR_ALERT_EVENT_TYPE, reservoirAlertDecision } = require('./lib/reservoir-level-alerts.cjs');
-const { TIER_GLOBAL, TIER_OPT_IN, resolveDeliveryTier } = require('./lib/notification-delivery-tiers.cjs');
+const { TIER_GLOBAL, TIER_LOCAL, TIER_OPT_IN, NEWS_LOCAL_IMPORTANCE_SCORE, resolveDeliveryTier } = require('./lib/notification-delivery-tiers.cjs');
 const {
   parseSuppressionEntries,
   isLinkSuppressed,
@@ -1621,11 +1623,24 @@ function webPushTagFor(event, userId) {
     : `${event.eventType}:${userId}`;
 }
 
+// A local news story reaches only rules scoped to its country
+// (eventMatchesDeliveryScope), and those rules get their own bar.
+function isLocalNewsForRule(rule, event) {
+  const { tier, country } = resolveDeliveryTier(event);
+  return tier === TIER_LOCAL && country != null && !event.userId && eventMatchesDeliveryScope(event, rule);
+}
+
 function shouldNotify(rule, event) {
+  return notifyBlockReason(rule, event) === null;
+}
+
+// Why a rule's sensitivity refuses the event: its severity, or its score under
+// the rule's bar while IMPORTANCE_SCORE_LIVE is on. null when the rule accepts it.
+function notifyBlockReason(rule, event) {
   // Reservoir level alerts are scoped by the rule's own reservoir list, threshold and event-type
   // opt-in, so the realtime critical-only gate does not apply. They are not critical, so quiet
   // hours still silence them, or hold them under Batch (resolveQuietAction).
-  if (event?.eventType === RESERVOIR_ALERT_EVENT_TYPE) return true;
+  if (event?.eventType === RESERVOIR_ALERT_EVENT_TYPE) return null;
 
   // Coerce (effective realtime + non-critical) → 'critical' before consulting
   // sensitivity in either branch. The mutation validators + migration make this
@@ -1649,27 +1664,27 @@ function shouldNotify(rule, event) {
   // Watched-site alerts are scoped by the rule's own site list and event-type
   // opt-in, so the realtime critical-only gate does not apply; quiet hours still
   // treat them by their real (non-critical) severity.
-  if (ORBITAL_SITE_EVENT_TYPES.includes(event?.eventType)) return true;
+  if (ORBITAL_SITE_EVENT_TYPES.includes(event?.eventType)) return null;
 
   // The all-clear for a national air traffic collapse (scripts/shared/
   // air-traffic-detector.cjs) goes to the realtime rules that got the critical
   // alert. It stays high, so quiet hours silence it or hold it for Batch.
-  if (event?.eventType === 'aviation_traffic_collapse' && event?.payload?.kind === 'recovery') return true;
+  if (event?.eventType === 'aviation_traffic_collapse' && event?.payload?.kind === 'recovery') return null;
 
   const passesLegacy = matchesSensitivity(effectiveSensitivity, event.severity ?? 'high');
-  if (!passesLegacy) return false;
+  if (!passesLegacy) return 'severity';
 
   if (process.env.IMPORTANCE_SCORE_LIVE === '1' && event.payload?.importanceScore != null) {
     // Calibrated from v5 shadow-log recalibration (2026-04-20).
     // IMPORTANCE_SCORE_MIN env var controls the 'all' floor at both the
     // relay ingress gate AND per-rule sensitivity — single tuning surface.
-    const threshold = effectiveSensitivity === 'critical' ? 82
+    const threshold = effectiveSensitivity === 'critical' ? (isLocalNewsForRule(rule, event) ? NEWS_LOCAL_IMPORTANCE_SCORE : 82)
                     : effectiveSensitivity === 'high' ? 69
                     : IMPORTANCE_SCORE_MIN;
-    return event.payload.importanceScore >= threshold;
+    return event.payload.importanceScore >= threshold ? null : 'score_bar';
   }
 
-  return true;
+  return null;
 }
 
 // ── RSS-origin event contract (audit codified in
@@ -1994,6 +2009,7 @@ async function shadowLogScore(event) {
     source: event.payload?.source ?? '',
     publishedAt: event.payload?.publishedAt ?? null,
     corroborationCount: event.payload?.corroborationCount ?? null,
+    ...(Array.isArray(event.payload?.corroboratedBy) ? { corroboratedBy: event.payload.corroboratedBy.slice(0, 10) } : {}),
     variant: event.variant ?? '',
   };
   const member = JSON.stringify(record);
@@ -2243,6 +2259,31 @@ async function finishAlertRewrite(event, rewrite, reachedUsers, skippedUsers) {
   }));
 }
 
+// Realtime rule gates in evaluation order; each returns why it drops the rule,
+// or null. delivery_scope is last so its count is the rules that passed every
+// other gate (the #5359 country-scope line).
+const gate = (reason, passes) => (rule, event) => (passes(rule, event) ? null : reason);
+const RULE_GATES = [
+  gate('digest_mode', (rule) => !rule.digestMode || rule.digestMode === 'realtime'),
+  gate('other_user', (rule, event) => !event.userId || rule.userId === event.userId),
+  gate('edition', (rule, event) => !event.variant || !rule.variant || rule.variant === event.variant),
+  gate('event_type', ruleMatchesEventType),
+  notifyBlockReason,
+  gate('ticker_scope', (rule, event) => eventMatchesTickerScope(event, rule)),
+  gate('chokepoint_scope', (rule, event) => eventMatchesChokepointScope(event, rule)),
+  gate('orbital_site_scope', (rule, event) => eventMatchesOrbitalSiteScope(event, rule)),
+  gate('reservoir_scope', (rule, event) => eventMatchesReservoirScope(event, rule)),
+  gate('delivery_scope', (rule, event) => eventMatchesDeliveryScope(event, rule)),
+];
+
+function ruleDropReason(rule, event) {
+  for (const check of RULE_GATES) {
+    const reason = check(rule, event);
+    if (reason) return reason;
+  }
+  return null;
+}
+
 async function processEvent(event) {
   return withDeliveryReports(() => withSentAlertLog(() => processEventDelivery(event)));
 }
@@ -2285,39 +2326,24 @@ async function processEventDelivery(event) {
   // regional-snapshot) have no userId and fan out to all matching Pro users.
   // Without this guard, a Pro user can POST arbitrary rss_alert events that
   // fan out to every other Pro subscriber — see todo #196.
-  const matching = enabledRules.filter(r =>
-    (!r.digestMode || r.digestMode === 'realtime') &&
-    ruleMatchesEventType(r, event) &&
-    shouldNotify(r, event) &&
-    eventMatchesDeliveryScope(event, r) &&
-    eventMatchesTickerScope(event, r) &&
-    eventMatchesChokepointScope(event, r) &&
-    eventMatchesOrbitalSiteScope(event, r) &&
-    eventMatchesReservoirScope(event, r) &&
-    (!event.variant || !r.variant || r.variant === event.variant) &&
-    (!event.userId || r.userId === event.userId)
-  );
+  const dropReasons = {};
+  const matching = enabledRules.filter((rule) => {
+    const reason = ruleDropReason(rule, event);
+    if (reason) dropReasons[reason] = (dropReasons[reason] ?? 0) + 1;
+    return reason === null;
+  });
 
-  // Deploy observability for the #5359 default-DROP change: count rules that
-  // passed every OTHER gate but were excluded by country scope, so support can
+  // Deploy observability for the #5359 default-DROP change: rules that passed
+  // every OTHER gate but were excluded by country scope, so support can
   // distinguish "working as intended" from "delivery bug" for scoped users.
   // No userIds in the line — event identity + count is enough to correlate.
-  const countryScopeDrops = enabledRules.filter(r =>
-    (!r.digestMode || r.digestMode === 'realtime') &&
-    ruleMatchesEventType(r, event) &&
-    shouldNotify(r, event) &&
-    !eventMatchesDeliveryScope(event, r) &&
-    eventMatchesTickerScope(event, r) &&
-    eventMatchesChokepointScope(event, r) &&
-    eventMatchesOrbitalSiteScope(event, r) &&
-    eventMatchesReservoirScope(event, r) &&
-    (!event.variant || !r.variant || r.variant === event.variant) &&
-    (!event.userId || r.userId === event.userId)
-  ).length;
-  if (countryScopeDrops > 0) {
+  if (dropReasons.delivery_scope > 0) {
     const rawAttribution = event?.payload?.countryCode ?? event?.payload?.country ?? event?.country ?? '(unattributed)';
     const attribution = String(rawAttribution).replace(/[\r\n]/g, ' ').slice(0, 60);
-    console.log(`[relay] Country-scope drop: ${event.eventType} attribution=${attribution} excluded ${countryScopeDrops} scoped rule(s)`);
+    console.log(`[relay] Country-scope drop: ${event.eventType} attribution=${attribution} excluded ${dropReasons.delivery_scope} scoped rule(s)`);
+  }
+  if (matching.length === 0) {
+    console.log(`[relay] No rule matched: ${JSON.stringify(event.eventType)} severity=${JSON.stringify(event.severity ?? 'high')} score=${JSON.stringify(event.payload?.importanceScore ?? 'n/a')} edition=${JSON.stringify(event.variant || 'any')} rules=${enabledRules.length} drops=${JSON.stringify(dropReasons)}`);
   }
 
   // Operator link suppression (#8401): consult the blocked set BEFORE any
@@ -2599,7 +2625,19 @@ async function subscribe() {
   }
 }
 
+// #10976: once a day, list the critical stories that reached nobody.
+const MISS_AUDIT_INTERVAL_MS = 24 * 60 * 60 * 1000;
+function runMissAudit() {
+  execFile(process.execPath, [path.join(__dirname, 'audit-alert-misses.mjs')], { timeout: 5 * 60_000 }, (err, stdout) => {
+    for (const line of String(stdout).split('\n')) if (line.trim()) console.log(`[relay][miss-audit] ${line}`);
+    if (err) console.warn(`[relay][miss-audit] failed: ${err.message}`);
+  });
+}
+
 if (require.main === module) {
+  // Also once shortly after boot, so redeploys cannot keep pushing the run out.
+  setTimeout(runMissAudit, 10 * 60_000).unref();
+  setInterval(runMissAudit, MISS_AUDIT_INTERVAL_MS);
   process.on('SIGTERM', () => {
     console.log('[relay] SIGTERM received — shutting down');
     process.exit(0);
@@ -2644,6 +2682,7 @@ module.exports = {
   // Exported so the effective-sensitivity coercion and the importance-score
   // threshold ladder are exercised directly rather than grepped from source.
   shouldNotify,
+  ruleDropReason,
   // Exported for the same reason as eventMatchesCountryScope: the
   // notify-field-validation tests must exercise the real formatter, not a
   // hand-copied mirror that cannot fail when the real one changes.

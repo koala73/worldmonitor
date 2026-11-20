@@ -163,16 +163,16 @@
     "askIt": "Uliza",
     "askItDesc": "Mazungumzo ya WM Analyst. Huduma za moja kwa moja zinaweza kuulizwa katika Kiingereza safi.",
     "subscribeIt": "Jisajili kwake",
-    "subscribeItDesc": "Muhtasari wa AI kulingana na ratiba yako — kila siku, mara mbili kwa siku, au kila wiki. Slack, Discord, Telegram, Barua pepe, webhook.",
+    "subscribeItDesc": "Muhtasari wa AI kulingana na ratiba yako — kila siku, mara mbili kwa siku, au kila wiki. Slack, Teams, Discord, Telegram, Barua pepe, webhook.",
     "buildOnIt": "Jenga juu yake",
     "buildOnItDesc": "Jeneza la Widget la Kawaida (HTML/CSS/JS + AI) na MCP kwa Claude, GPT, LLM za kawaida."
   },
   "deliveryDesk": {
     "eyebrow": "MEZA YA UTOAJI",
     "title": "Meza ya akili binafsi ni nini?",
-    "body": "Hadi 50 vipengee vilivyoainishwa kwa kila kutuma, vilivyokataliwa katika vyanzo, vilivyokadiriwa dhidi ya orodha yako ya ufuatiliaji. Chagua matangatanga yako — kila siku, mara mbili kwa siku, au kila wiki — na Tathmini ya AI na Ishara za ufuatiliaji zilitumwa kwa Slack, Discord, Telegram, Barua pepe, au webhook.",
+    "body": "Hadi 50 vipengee vilivyoainishwa kwa kila kutuma, vilivyokataliwa katika vyanzo, vilivyokadiriwa dhidi ya orodha yako ya ufuatiliaji. Chagua matangatanga yako — kila siku, mara mbili kwa siku, au kila wiki — na Tathmini ya AI na Ishara za ufuatiliaji zilitumwa kwa Slack, Microsoft Teams, Discord, Telegram, Barua pepe, au webhook.",
     "closer": "Sio chapisho la habari. Mtahlili.",
-    "channels": "Slack · Discord · Telegram · Barua pepe · Webhook · AES-256 iliyofungwa · Saa nyingine"
+    "channels": "Slack · Teams · Discord · Telegram · Barua pepe · Webhook · AES-256 iliyofungwa · Saa nyingine"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Dashibodi ya Moja kwa Moja",
@@ -184,8 +184,7 @@
   "socialProof": {
     "uniqueVisitors": "Wageni wa kipekee",
     "peakDailyUsers": "Watumiaji wa juu zaidi kila siku",
-    "countriesReached": "Nchi zilizofikiwa",
-    "liveDataSources": "Vyanzo vya data vya moja kwa moja"
+    "countriesReached": "Nchi zilizofikiwa"
   },
   "audience": {
     "title": "World Monitor imejengwa kwa nani?",
@@ -205,34 +204,6 @@
     "aiTeamsDesc": "Mpe msaidizi wa kampuni yako muktadha hai wa dunia kupitia MCP, pamoja na haki za maandishi za matumizi ya ndani.",
     "teamsTitle": "Timu na mashirika",
     "teamsDesc": "Hama kutoka kwa matumizi ya mtu binafsi hadi mtiririko wa kazi ulioshirikiwa, API access, programu za TV, na imani iliyodhibitwa."
-  },
-  "dataCoverage": {
-    "title": "World Monitor inafuatilia nini?",
-    "subtitle": "Vikoa vya huduma vinavyoingizwa kwa wakati mmoja. Soko, macro, geopolitiki, nishati, miundombinu — kila kitu kinachokadiriwa na kuonyeshwa kwenye globo ya WebGL.",
-    "markets": "Masoko ya Fedha na Hisa",
-    "marketsDesc": "Uchambuzi wa hisa duniani, bidhaa, crypto, mtiririko wa ETF, malengo ya wachanganuzi, na data ya makro ya FRED",
-    "economy": "Uchumi na Benki Kuu",
-    "economyDesc": "GDP, mfumuko wa bei, viwango vya riba, mizani ya ukuaji, na ufuatiliaji wa sera ya pesa katika uchumi mkubwa",
-    "geopolitical": "Uchambuzi wa Kisiasa",
-    "geopoliticalDesc": "Matukio ya ACLED na UCDP yenye alama ya kupanda, mifumo ya hatari, na uchambuzi wa mwelekeo",
-    "maritime": "Bahari na Biashara",
-    "maritimeDesc": "Harakati za vyombo, kugundua vyombo, shughuli za bandari, na tathmini ya mizigo",
-    "aviation": "Ufuatiliaji wa Ndege",
-    "aviationDesc": "Ufuatiliaji wa kibadilishaji cha ADS-B kwa mifumo ya ndege duniani",
-    "infra": "Miundombinu Muhimu",
-    "infraDesc": "Tovuti za nyukilia, mtandao wa umeme, mabomba, rafinery — rasilimali iliyochorwa ramani",
-    "fire": "Kugundua Moto kutoka Satelaiti",
-    "fireDesc": "Data ya NASA FIRMS ya moto na moto-moto karibu wa wakati halisi",
-    "cables": "Kebo za Chini ya Bahari",
-    "cablesDesc": "Njia za kebo chini ya bahari na vituo vya kupimia",
-    "internet": "Mtandao na GPS",
-    "internetDesc": "Kugundua vurugu, anumali ya BGP, kuzuia GPS",
-    "cyber": "Hatari za Kiberanis",
-    "cyberDesc": "Mhimili wa ransomware, BGP hijacks, kugundua DDoS",
-    "gdelt": "GDELT na Habari",
-    "gdeltDesc": "Milo ya RSS iliyoteuliwa, matukio ya GDELT yaliyokadiriwa na AI, mtangazo wa moja kwa moja",
-    "seismology": "Seismolojia na Asili",
-    "seismologyDesc": "Tetemeko kutoka USGS, shughuli za volkeno, hali mbaya ya mabingu"
   },
   "tiers": {
     "free": "Bure",
@@ -255,13 +226,12 @@
     "riskMonitoring": "Ufuatiliaji wa Hatari & Mifumo",
     "riskMonitoringDesc": "Alama za hatari ya ulimwengu, uchambuzi wa mifumo, na tathmini ya hatari ya kijiyeolojia. Kugundua muunganisho katika miazo ya soko na simu za kisiasa.",
     "morningBriefs": "Meza ya Akili za Kibinafsi",
-    "morningBriefsDesc": "Hadi 50 hadithi iliyoainishwa kwa kila muhtasari, ikaduliwe katika vyanzo. Chagua matangatanga ya kila siku, mara mbili kwa siku, au kila wiki — au onyo za moja kwa moja kwa matukio muhimu. Tathmini ya AI na Ishara za ufuatiliaji zilitumwa kwa Slack, Discord, Telegram, Barua pepe, au webhook. Sio jarida — mchambuzi.",
+    "morningBriefsDesc": "Hadi 50 hadithi iliyoainishwa kwa kila muhtasari, ikaduliwe katika vyanzo. Chagua matangatanga ya kila siku, mara mbili kwa siku, au kila wiki — au onyo za moja kwa moja kwa matukio muhimu. Tathmini ya AI na Ishara za ufuatiliaji zilitumwa kwa Slack, Microsoft Teams, Discord, Telegram, Barua pepe, au webhook. Sio jarida — mchambuzi.",
     "oneKey": "Huduma za Moja kwa Moja, Ufunguo 1",
-    "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky, na zaidi — zote amilifu, bila kazi za kujiandikisha tofauti.",
+    "oneKeyDesc": "Finnhub, FRED, UCDP, NASA FIRMS, AISStream, OpenSky, na zaidi — zote amilifu, bila kazi za kujiandikisha tofauti.",
     "deliveryLabel": "Chagua jinsi akili inakukamatia",
     "supplyChainLab": "Kiwanda cha Matatizo ya Mlangalanga wa Ugavi",
-    "supplyChainLabDesc": "Unda mfano wa mshtuko wa gharama katika nchi na sekta. Weka cheo cha ukubwa wa haba ya bidhaa kulingana na utegemezi wa njia nyingi. Fuatilia mkusanyo wa konsentresheni kutoka kwa migodi hadi kwa rafinery na tofauti ya bhabharimu ya SGE–COMEX — safu inayobadilika kabla ya maneno makuu yanajitokeza.",
-    "roadmapNote": "Katika mpango: historia ndefu zaidi, tabaka za ramani za premium."
+    "supplyChainLabDesc": "Unda mfano wa mshtuko wa gharama katika nchi na sekta. Weka cheo cha ukubwa wa haba ya bidhaa kulingana na utegemezi wa njia nyingi. Fuatilia mkusanyo wa konsentresheni kutoka kwa migodi hadi kwa rafinery na tofauti ya bhabharimu ya SGE–COMEX — safu inayobadilika kabla ya maneno makuu yanajitokeza."
   },
   "apiSection": {
     "apiTier": "NGAZI YA API",
@@ -560,7 +530,7 @@
       "n5Title": "Kebo chini ya bahari",
       "n5Desc": "{{submarineCables}} nyaya za chini ya bahari zinazobeba intaneti, zikiwa zimewekwa juu yake ishara za kukatika kwa huduma na vitisho.",
       "n6Title": "Ufuatiliaji wa maandamano",
-      "n6Desc": "Ugunduzi wa maandamano kutoka ACLED na GDELT; ripoti kutoka chanzo kimoja katika seli ileile ya 0.1° siku hiyo hiyo huunganishwa kuwa tukio moja — ishara, si uvumi.",
+      "n6Desc": "Ugunduzi wa maandamano kutoka GDELT; ripoti kutoka chanzo kimoja katika seli ileile ya 0.1° siku hiyo hiyo huunganishwa kuwa tukio moja — ishara, si uvumi.",
       "faith": "Usitegemee namba kwa imani tu —",
       "faithCta": "fungua programu na hesabu.",
       "faithNote": "Vyanzo vinacitwa kwa kila paneli."
@@ -617,7 +587,7 @@
       "q2": "KDashboard ya ujumbe wa ulimwengu ni nini?",
       "a2": "Muonekano mmoja hai unaounganisha ishara ambazo zana nyingi huziweka tofauti: matukio ya migogoro, ufuatiliaji wa meli na ndege, vituo vya utoaji, satelaiti, nyuzinyuzi chini ya bahari, bomba la kuweka, soko na hatari za kiberaneti — kwenye ramani moja ya ulimwengu halisi, na alama ya AI na briefing juu. World Monitor ni moja bure.",
       "q3": "Data inatoka wapi?",
-      "a3": "Kutoka kwa {{providers}} watoa huduma wenye jina maalum. Kati yao ni ACLED na UCDP kwa migogoro, AISStream kwa chombo hai, OpenSky kwa ndege, NASA FIRMS kwa moto, USGS kwa tetemeko, IMF, BIS, FRED na Finnhub kwa soko na macro — pamoja na mitindo ya habari iliyochaguliwa. Kila paneli hutaja vyanzo vyake na wakati wake mwenyewe.",
+      "a3": "Kutoka kwa {{providers}} watoa huduma wenye jina maalum. Kati yao ni GDELT na UCDP kwa migogoro, AISStream kwa chombo hai, OpenSky kwa ndege, NASA FIRMS kwa moto, USGS kwa tetemeko, IMF, BIS, FRED na Finnhub kwa soko na macro — pamoja na mitindo ya habari iliyochaguliwa. Kila paneli hutaja vyanzo vyake na wakati wake mwenyewe.",
       "q4": "Je, naweza kuandamana vituo vikuu kama Hormuz au Bab el-Mandeb wakati halisi?",
       "a4": "Ndiyo. {{chokepoints}} vituo vya kubana njia za meli, vikiwemo mlango bahari na mifereji, kutoka Hormuz na Bab el-Mandeb hadi Suez, vinafuatiliwa kwa hesabu hai za meli za AIS, mabadiliko ya upitaji wiki kwa wiki na alama za usumbufu — na hitilafu za msongamano zinaripotiwa dhidi ya kipimo cha msingi kinachosonga cha kila kituo.",
       "q5": "Hii ni tofauti gani na ramani ya migogoro kama Liveuamap?",

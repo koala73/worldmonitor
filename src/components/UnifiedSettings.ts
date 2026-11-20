@@ -16,6 +16,7 @@ import {
 import { isProUser } from '@/services/widget-store';
 import { SITE_VARIANT } from '@/config/variant';
 import { I18N_RESOURCES_LOADED_EVENT, t } from '@/services/i18n';
+import { copyText, dismissSecretCopyFallback } from '@/utils/copy-text';
 import { replaceRawI18nKeyPlaceholders } from '@/utils/i18n-raw-key-healer';
 import { createSettingsButton } from '@/components/settings-button';
 import { confirmDialog } from '@/components/confirm-dialog';
@@ -240,6 +241,8 @@ export class UnifiedSettings {
   private apiKeysLoading = false;
   private apiKeysError = '';
   private newlyCreatedKey: string | null = null;
+  /** Bumped when settings closes so a pending copy cannot reveal into the next open. */
+  private secretCopySession = 0;
   // ---- Embeds tab (partner-embed `wme_` keys) ----
   private embedKeys: EmbedKeyInfo[] = [];
   private embedKeysLoading = false;
@@ -531,10 +534,11 @@ export class UnifiedSettings {
       if (target.closest('.api-keys-copy-btn')) {
         const key = this.newlyCreatedKey;
         if (key) {
-          void navigator.clipboard.writeText(key).then(() => {
-            const btn = this.overlay.querySelector<HTMLElement>('.api-keys-copy-btn');
-            if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 1500); }
-          });
+          this.copyOwnedSecret(
+            key,
+            () => this.overlay.isConnected && this.overlay.classList.contains('active') && this.newlyCreatedKey === key,
+            '.api-keys-copy-btn',
+          );
         }
         return;
       }
@@ -553,10 +557,11 @@ export class UnifiedSettings {
       if (target.closest('.embed-keys-copy-btn')) {
         const key = this.newlyCreatedEmbedKey;
         if (key) {
-          void navigator.clipboard.writeText(key).then(() => {
-            const btn = this.overlay.querySelector<HTMLElement>('.embed-keys-copy-btn');
-            if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 1500); }
-          });
+          this.copyOwnedSecret(
+            key,
+            () => this.overlay.isConnected && this.overlay.classList.contains('active') && this.newlyCreatedEmbedKey === key,
+            '.embed-keys-copy-btn',
+          );
         }
         return;
       }
@@ -606,13 +611,9 @@ export class UnifiedSettings {
           mcpCopyBtn.textContent = text;
           setTimeout(() => { mcpCopyBtn.textContent = label; }, 1500);
         };
-        // navigator.clipboard is async + can reject (insecure context, perms);
-        // fall back gracefully so the button never silently no-ops.
-        if (navigator.clipboard?.writeText) {
-          void navigator.clipboard.writeText(value).then(() => flash('Copied!')).catch(() => flash('Copy failed'));
-        } else {
-          flash('Copy unavailable');
-        }
+        void copyText(value).then((copied) => {
+          flash(copied ? 'Copied!' : 'Copy failed');
+        });
         return;
       }
     });
@@ -690,9 +691,24 @@ export class UnifiedSettings {
     this.unsubscribeSelfHostKey = subscribeSelfHostKey(() => this.refreshSelfHostKeySection());
   }
 
+  private copyOwnedSecret(secret: string, stillHeld: () => boolean, buttonSelector: string): void {
+    const session = this.secretCopySession;
+    const held = () => stillHeld() && this.secretCopySession === session;
+    void copyText(secret, { secret: true, owner: 'settings', retain: held }).then((copied) => {
+      if (!held() || !copied) return;
+      const btn = this.overlay.querySelector<HTMLElement>(buttonSelector);
+      if (btn) {
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+      }
+    });
+  }
+
   private handleAccountIdentityChange(nextUserId: string | null): void {
     if (nextUserId === this.accountUserId) return;
 
+    this.secretCopySession += 1;
+    dismissSecretCopyFallback();
     this.closeDeletionDialog();
     this.accountUserId = nextUserId;
     this.accountDataGeneration += 1;
@@ -912,6 +928,8 @@ export class UnifiedSettings {
   }
 
   private teardownSettings(origin: OverlayCloseOrigin = 'control'): void {
+    this.secretCopySession += 1;
+    dismissSecretCopyFallback();
     this.releasePageEntry();
     if (origin === 'control' && this.historyRegistered) {
       overlayHistory.close('settings');
@@ -999,6 +1017,8 @@ export class UnifiedSettings {
   }
 
   public destroy(): void {
+    this.secretCopySession += 1;
+    dismissSecretCopyFallback();
     this.releasePageEntry();
     if (this.historyRegistered) overlayHistory.close('settings');
     this.historyRegistered = false;

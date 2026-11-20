@@ -54,7 +54,11 @@ for (const width of [1280, 390]) {
         points: [17, 18, 19].map((day, index) => ({
           date: `2026-10-${day}`, capturedAt: Date.UTC(2026, 9, day, 0, 30),
           cii: { score: 50 + index * 6, version: index === 2 ? 'v11' : 'v10', observedAt: Date.UTC(2026, 9, day) },
-          resilience: { score: 45 + index, version: 'v29:pc', observedAt: Date.UTC(2026, 9, day) },
+          resilience: {
+            score: 45 + index,
+            version: 'pc:schema-2.0:energy-v2:education-active:financial-system-active',
+            observedAt: Date.UTC(2026, 9, day),
+          },
           topEvents: [{ title: `Controlled Ukraine reporting for October ${day}`, link: `https://example.com/ukraine-${day}`, source: 'Controlled publisher', category: 'politics' }],
           keySignals: [], ciiVersionBreak: index === 2, resilienceVersionBreak: false,
         })),
@@ -85,6 +89,7 @@ for (const width of [1280, 390]) {
     await expect(history.locator('a[href="https://example.com/ukraine-17"]')).toHaveAttribute('rel', 'noopener noreferrer');
     expect(await history.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     await history.locator('[data-history-date="2026-10-19"]').click();
+    await expect(history.locator('.country-history-detail p').first()).toHaveText('CII 62 · v11 / Resilience 47');
     await captureHistory('recovered');
     expect(reads).toBe(2);
     await page.reload();
@@ -183,6 +188,36 @@ function marketsCard(page: Page) {
   });
 }
 
+for (const status of [401, 403]) {
+  test(`explains AI brief access after a ${status} response`, async ({ page, countryBrief }, testInfo) => {
+    void countryBrief;
+    await page.route('**/api/intelligence/v1/get-country-intel-brief?*', route => route.fulfill({
+      status, json: { error: status === 403 ? 'Upgrade required' : 'Authentication required' },
+    }));
+    await page.goto('/dashboard?country=UA');
+    await expectCountry(page);
+
+    const panel = page.locator('#country-deep-dive-panel');
+    const overview = panel.getByRole('button', { name: 'Overview', exact: true });
+    await panel.getByRole('button', { name: 'Summary', exact: true }).click();
+    await overview.click();
+    const brief = panel.locator('#cdp-section-assessment');
+    const action = status === 401
+      ? brief.getByRole('button', { name: 'Sign In', exact: true })
+      : brief.getByRole('link', { name: 'Upgrade to Pro', exact: true });
+    await expect(action).toBeVisible();
+    if (status === 403) await expect(action).toHaveAttribute('href', '/pro#pricing');
+    await expect(brief.locator('.cdp-summary-only.cdp-assessment-text')).toBeVisible();
+    await expect(brief).not.toContainText('Fallback');
+    await expect(brief.getByText('Read the full brief and sources', { exact: false })).toHaveCount(0);
+    await evidenceScreenshot(brief, { path: testInfo.outputPath(`ai-brief-access-${status}.png`) });
+
+    await panel.getByRole('button', { name: 'Full brief', exact: true }).click();
+    await overview.click();
+    await expect(action).toBeVisible();
+  });
+}
+
 async function expectCountry(page: Page) {
   const panel = page.locator('#country-deep-dive-panel');
   await expect(panel).toHaveAttribute('aria-hidden', 'false');
@@ -207,7 +242,9 @@ async function expectMarkets(page: Page) {
   await expect(card.locator('.cdp-market-item').nth(1)).toBeVisible();
 }
 
-async function screenshot(page: Page, testInfo: TestInfo, name: string) {
+async function screenshot(page: Page, testInfo: TestInfo, name: string, mobile = false) {
+  if (process.env.WM_E2E_EVIDENCE !== '1') return;
+  if (mobile) await page.setViewportSize({ width: 390, height: 844 });
   await marketsCard(page).scrollIntoViewIfNeeded();
   await marketsCard(page).evaluate(card => card.scrollIntoView({ block: 'center' }));
   const path = testInfo.outputPath(`${name}.png`);
@@ -264,8 +301,7 @@ test('country brief renders exact RPC records and preserves the country after re
   expect(countryBrief.requests.length).toBeGreaterThan(requestsBeforeReload);
   expect(countryBrief.requests.every(request => request.category === 'country:UA' && request.status === 200)).toBe(true);
   await screenshot(page, testInfo, 'rpc-after-reload');
-  await page.setViewportSize({ width: 390, height: 844 });
-  await screenshot(page, testInfo, 'website-clock-known-mobile');
+  await screenshot(page, testInfo, 'website-clock-known-mobile', true);
 });
 
 test('country brief content is never subject to content-visibility skipping', async ({ page, countryBrief: _countryBrief }) => {
@@ -295,8 +331,7 @@ test('country brief uses bootstrap fallback when the country index is unavailabl
   await expect(card.locator('.cdp-section-source')).toHaveText('Snapshot time unavailable. Quote times are not supplied.');
   expect(countryBrief.requests).toContainEqual({ method: 'GET', category: 'country:UA', pageSize: '5', status: 200 });
   await screenshot(page, testInfo, 'bootstrap-fallback');
-  await page.setViewportSize({ width: 390, height: 844 });
-  await screenshot(page, testInfo, 'website-clock-fallback-mobile');
+  await screenshot(page, testInfo, 'website-clock-fallback-mobile', true);
 });
 
 test('country brief honors an authoritative empty index over bootstrap fallback', async ({ page, countryBrief }, testInfo) => {
@@ -309,8 +344,7 @@ test('country brief honors an authoritative empty index over bootstrap fallback'
   await expect(marketsCard(page).locator('.cdp-section-source')).toHaveText('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.');
   expect(countryBrief.requests).toContainEqual({ method: 'GET', category: 'country:UA', pageSize: '5', status: 200 });
   await screenshot(page, testInfo, 'authoritative-empty');
-  await page.setViewportSize({ width: 390, height: 844 });
-  await screenshot(page, testInfo, 'website-clock-empty-mobile');
+  await screenshot(page, testInfo, 'website-clock-empty-mobile', true);
 });
 
 test('country brief recovers from a failed RPC when the user reloads', async ({ page, countryBrief }, testInfo) => {

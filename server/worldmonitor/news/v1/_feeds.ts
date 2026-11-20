@@ -35,16 +35,21 @@ export interface ServerFeed {
    */
   linkHosts?: string[];
   /**
-   * The feed lists items in editorial order, not by date. The parser ranks
-   * them newest first before taking the digest's top items.
-   */
-  newestFirst?: boolean;
-  /**
    * Link path segments that mark items outside this feed's scope (CNN's
    * site-wide news sitemap lists video clips and shopping pages). An item
    * whose link path has one of these segments is dropped before ranking.
    */
   excludePathSegments?: string[];
+}
+
+/**
+ * The language a feed's headlines are written in. `lang` routes a feed to a
+ * digest; an English Google News query returns English headlines whatever it
+ * is routed to. scripts/lib/digest-stale-gate.cjs applies the same rule to the
+ * catalog (tests/news-alert-pool.test.mts holds the two together).
+ */
+export function feedHeadlineLanguage(feed: Pick<ServerFeed, 'lang' | 'url'>): string {
+  return !feed.lang || /^https:\/\/news\.google\.com\/.*[?&]hl=en\b/.test(feed.url) ? 'en' : feed.lang;
 }
 
 /** Match the digest language unless the catalog explicitly permits cross-language fetching. */

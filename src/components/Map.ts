@@ -65,7 +65,7 @@ import {
 } from '@/services/hotspot-escalation';
 import { getCachedCountryScoreValue } from '@/services/cached-risk-scores';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
-import { getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
+import { getCountryAtCoordinates, getCountryMapBbox } from '@/services/country-geometry';
 import { installLongPressContextMenu } from '@/utils/long-press';
 
 import type { CountryClickPayload } from './DeckGLMap';
@@ -166,6 +166,25 @@ const RENDERABLE_AI_DATA_CENTERS = AI_DATA_CENTERS.filter(
  * the counterpart of FOCUS_FIT_MAX_ZOOM for the MapLibre map.
  */
 const SVG_FOCUS_MAX_ZOOM = 6;
+// Screen sizes of a natural-event marker (main.css .nat-event-*): a 30px icon
+// row, then 8px and 7px bold rows in --font-mono, whatever the body font.
+const NAT_EVENT_ICON_ROW_PX = 30;
+const NAT_EVENT_LABEL_ROW_PX = 14;
+const NAT_EVENT_LABEL_CHAR_PX = 4.8;
+const NAT_EVENT_LABEL_MAX_PX = 120;
+const NAT_EVENT_MAGNITUDE_ROW_PX = 10.5;
+const NAT_EVENT_MAGNITUDE_CHAR_PX = 4.2;
+const NAT_EVENT_LABEL_MIN_ZOOM = 2;
+
+/** A natural-event marker's text rows, with offsets from the top of its column. */
+type NaturalEventText = {
+  marker: HTMLElement;
+  x: number;
+  y: number;
+  priority: number;
+  columnHeight: number;
+  rows: Array<{ el: HTMLElement; needsZoom: boolean; top: number; height: number; width: number }>;
+};
 
 type OrbitalLabelSide = 'right' | 'left' | 'below';
 
@@ -314,6 +333,9 @@ export class MapComponent {
   private readonly lowEndDevice = isLowEndDevice();
   private readonly canToggleLayer: NonNullable<MapComponentOptions['canToggleLayer']>;
   private overlayAppendTarget: ParentNode | null = null;
+  /** Text under each natural-event icon, largest event first, for declutterNaturalEventTexts. */
+  private naturalEventTexts: NaturalEventText[] = [];
+  private naturalEventTextsZoom = Number.NaN;
   // #7112 overlay marker budget. `overlayMarkerCut` holds the marker objects
   // this render pass withheld; it is consulted by identity, so a feed that is
   // NOT in the plan simply never appears here and renders in full. That makes a
@@ -1476,6 +1498,43 @@ export class MapComponent {
     return this.lastContainerSize.width > 0 && this.lastContainerSize.height > 0
       ? this.lastContainerSize
       : this.readContainerSize();
+  }
+
+  /**
+   * A natural event prints its title and size under its icon, so close events
+   * (icebergs off South Georgia) printed on top of each other. Keep the text of
+   * the largest event in each crowd; the others keep their icon and popup.
+   * Zoom moves markers apart or together without a rebuild, so this reruns on
+   * every zoom change, and it also shows titles once zoom reaches
+   * NAT_EVENT_LABEL_MIN_ZOOM. Hidden rows keep their space (visibility, not
+   * display), so an icon never moves off its point. Markers keep a fixed
+   * screen size and the text is monospace, so the boxes come from character
+   * counts, with no layout read.
+   */
+  private declutterNaturalEventTexts(zoom: number): void {
+    this.naturalEventTextsZoom = zoom;
+    const placed: Array<{ left: number; right: number; top: number; bottom: number }> = [];
+    for (const text of this.naturalEventTexts) {
+      const rows = text.rows.filter((row) => !row.needsZoom || zoom >= NAT_EVENT_LABEL_MIN_ZOOM);
+      let clear = false;
+      if (rows.length) {
+        // The marker column is centred on its point: the icon, then the text rows.
+        const x = text.x * zoom;
+        const columnTop = text.y * zoom - text.columnHeight / 2;
+        const width = Math.max(...rows.map((row) => row.width));
+        const box = {
+          left: x - width / 2 - 2,
+          right: x + width / 2 + 2,
+          top: columnTop + Math.min(...rows.map((row) => row.top)) - 1,
+          bottom: columnTop + Math.max(...rows.map((row) => row.top + row.height)) + 1,
+        };
+        clear = !placed.some((p) => box.left < p.right && box.right > p.left && box.top < p.bottom && box.bottom > p.top);
+        if (clear) placed.push(box);
+      }
+      for (const row of text.rows) row.el.style.visibility = clear && rows.includes(row) ? '' : 'hidden';
+      // A neighbour's icon would otherwise paint over the shown text.
+      text.marker.classList.toggle('nat-event-texted', clear);
+    }
   }
 
   private appendOverlay(node: Node): void {
@@ -3878,6 +3937,7 @@ export class MapComponent {
     }
 
     // Natural Events (NASA EONET) - part of NATURAL layer
+    this.naturalEventTexts = [];
     if (this.state.layers.natural) {
       slices.naturalEvents.forEach((event) => {
         if (this.isOverlayMarkerCut(event)) return;
@@ -3894,19 +3954,31 @@ export class MapComponent {
         icon.textContent = getNaturalEventIcon(event.category);
         div.appendChild(icon);
 
-        if (this.state.zoom >= 2) {
-          const label = document.createElement('div');
-          label.className = 'nat-event-label';
-          label.textContent = event.title.length > 25 ? event.title.slice(0, 25) + '…' : event.title;
-          div.appendChild(label);
-        }
+        const text: NaturalEventText = { marker: div, x: pos[0], y: pos[1], priority: event.magnitude ?? 0, columnHeight: NAT_EVENT_ICON_ROW_PX, rows: [] };
+        // Built at every zoom and shown from NAT_EVENT_LABEL_MIN_ZOOM by
+        // declutterNaturalEventTexts, which runs on each zoom change.
+        const label = document.createElement('div');
+        label.className = 'nat-event-label';
+        label.textContent = event.title.length > 25 ? event.title.slice(0, 25) + '…' : event.title;
+        div.appendChild(label);
+        text.rows.push({
+          el: label, needsZoom: true, top: text.columnHeight, height: NAT_EVENT_LABEL_ROW_PX,
+          width: Math.min(NAT_EVENT_LABEL_MAX_PX, [...label.textContent].length * NAT_EVENT_LABEL_CHAR_PX),
+        });
+        text.columnHeight += NAT_EVENT_LABEL_ROW_PX;
 
         if (event.magnitude) {
           const mag = document.createElement('div');
           mag.className = 'nat-event-magnitude';
           mag.textContent = `${event.magnitude}${event.magnitudeUnit ? ` ${event.magnitudeUnit}` : ''}`;
           div.appendChild(mag);
+          text.rows.push({
+            el: mag, needsZoom: false, top: text.columnHeight, height: NAT_EVENT_MAGNITUDE_ROW_PX,
+            width: [...mag.textContent].length * NAT_EVENT_MAGNITUDE_CHAR_PX,
+          });
+          text.columnHeight += NAT_EVENT_MAGNITUDE_ROW_PX;
         }
+        this.naturalEventTexts.push(text);
 
         div.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -3921,6 +3993,8 @@ export class MapComponent {
 
         this.appendOverlay(div);
       });
+      this.naturalEventTexts.sort((a, b) => b.priority - a.priority);
+      this.declutterNaturalEventTexts(this.state.zoom);
     }
 
     // Satellite Fires (NASA FIRMS) - separate fires layer
@@ -4918,6 +4992,9 @@ export class MapComponent {
       this.wrapper.style.setProperty('--marker-scale', String(markerScale));
       this.wrapper.style.setProperty('--zoom', String(zoom));
     }
+    // Exact zoom, not the rounded CSS key: 1.99999 and 2 share a key but sit on
+    // either side of the title threshold.
+    if (zoom !== this.naturalEventTextsZoom) this.declutterNaturalEventTexts(zoom);
 
     // Smart label hiding based on zoom level and overlap
     if (this.shouldUpdateLabelVisibility()) this.updateLabelVisibility(zoom);
@@ -5404,7 +5481,7 @@ export class MapComponent {
   }
 
   public fitCountry(code: string): void {
-    const bbox = getCountryBbox(code);
+    const bbox = getCountryMapBbox(code);
     if (!bbox) return;
     const [minLon, minLat, maxLon, maxLat] = bbox;
     const midLon = (minLon + maxLon) / 2;

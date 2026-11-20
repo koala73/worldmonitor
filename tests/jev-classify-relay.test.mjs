@@ -215,15 +215,15 @@ describe('relay wiring: shadow mode decides nothing', () => {
 
   it('observes AFTER the label is cached and the alert is published, and never feeds back', () => {
     const body = main('seedClassifyForVariant');
-    const write = body.indexOf('upstashSet(classifyCacheKey(chunk[idx])');
-    const publish = body.indexOf("eventType: 'rss_alert'");
+    const write = body.indexOf('upstashSet(classifyKeyFor(chunk[idx])');
+    const publish = body.indexOf('publishAlert(title', write);
     const observe = body.indexOf('observeJevShadow(');
     assert.ok(write > 0 && publish > write && observe > publish, 'order: cache write, alert publish, shadow observe');
-    assert.doesNotMatch(body, /=\s*await observeJevShadow\([^)]*\);[\s\S]{0,400}upstashSet\(classifyCacheKey/, 'the tally must not reach a label write');
+    assert.doesNotMatch(body, /=\s*await observeJevShadow\([^)]*\);[\s\S]{0,400}upstashSet\(classifyKeyFor/, 'the tally must not reach a label write');
   });
 
   it('the cached row and the alert rule are exactly main\'s: no Jev field, no gate', () => {
-    assert.match(relay, /upstashSet\(classifyCacheKey\(chunk\[idx\]\), \{ level, category, timestamp: Date\.now\(\) \}, CLASSIFY_CACHE_TTL\)/);
+    assert.match(relay, /upstashSet\(classifyKeyFor\(chunk\[idx\]\), \{ level, category, timestamp: Date\.now\(\) \}, CLASSIFY_CACHE_TTL\)/);
     assert.doesNotMatch(relay, /pAlert|jevGateAllowsAlert|shouldPublishClassifiedAlert/);
   });
 

@@ -35,16 +35,16 @@
     "askIt": "Pitajte ga",
     "askItDesc": "WM Analyst chat. Live Services koje možeš upitati na običnom engleskom jeziku.",
     "subscribeIt": "Pretplatite se",
-    "subscribeItDesc": "AI sažetak prema vašem rasporedu — dnevno, dvaput dnevno ili tjedno. Slack, Discord, Telegram, e-pošta, webhook.",
+    "subscribeItDesc": "AI sažetak prema vašem rasporedu — dnevno, dvaput dnevno ili tjedno. Slack, Teams, Discord, Telegram, e-pošta, webhook.",
     "buildOnIt": "Gradite na njemu",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) i MCP za Claude, GPT i vlastite LLM-ove."
   },
   "deliveryDesk": {
     "eyebrow": "DOSTAVNI PULT",
     "title": "Što je osobni obavještajni stol?",
-    "body": "Do 30 rangiranih stavki po slanju, deduplikovano kroz izvore, ocijenjeno prema tvojoj watchlisti. Odaberi ritam — dnevno, dva puta dnevno ili tjedno — s AI Procjenom i Signalima za praćenje dostavljenim na Slack, Discord, Telegram, Email ili webhook.",
+    "body": "Do 30 rangiranih stavki po slanju, deduplikovano kroz izvore, ocijenjeno prema tvojoj watchlisti. Odaberi ritam — dnevno, dva puta dnevno ili tjedno — s AI Procjenom i Signalima za praćenje dostavljenim na Slack, Microsoft Teams, Discord, Telegram, Email ili webhook.",
     "closer": "Nije newsletter. To je analitičar.",
-    "channels": "Slack · Discord · Telegram · E-pošta · Webhook · AES-256 šifrirano · Mirni sati"
+    "channels": "Slack · Teams · Discord · Telegram · E-pošta · Webhook · AES-256 šifrirano · Mirni sati"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Nadzorna ploča uživo",
@@ -56,8 +56,7 @@
   "socialProof": {
     "uniqueVisitors": "Jedinstveni posjetitelji",
     "peakDailyUsers": "Najviši dnevni broj korisnika",
-    "countriesReached": "Dosegnute zemlje",
-    "liveDataSources": "Izvori podataka uživo"
+    "countriesReached": "Dosegnute zemlje"
   },
   "audience": {
     "title": "Za koga je World Monitor napravljen?",
@@ -77,34 +76,6 @@
     "aiTeamsDesc": "Opskrbite asistenta svoje tvrtke živim svjetskim kontekstom putem MCP-a, uz pisana prava interne upotrebe.",
     "teamsTitle": "Timovi i organizacije",
     "teamsDesc": "Prijeđite s individualnog korištenja na zajedničke radne tokove, API pristup, TV aplikacije i upravljane implementacije."
-  },
-  "dataCoverage": {
-    "title": "Što World Monitor prati?",
-    "subtitle": "Domene servisa uključene istovremeno. Tržišta, makroekonomija, geopolitika, energija, infrastruktura — sve normalizirano i prikazano na WebGL globusu.",
-    "markets": "Financijska tržišta i dionice",
-    "marketsDesc": "Globalna analiza dionica, robe, kripto, ETF tokovi, ciljne cijene analitičara i FRED makro podaci",
-    "economy": "Ekonomija i središnje banke",
-    "economyDesc": "BDP, inflacija, kamatne stope, ciklusi rasta i praćenje monetarne politike kroz glavna gospodarstva",
-    "geopolitical": "Geopolitička analiza",
-    "geopoliticalDesc": "ACLED i UCDP događaji s bodovanjem eskalacije, okvirima rizika i analizom trendova",
-    "maritime": "Pomorstvo i trgovina",
-    "maritimeDesc": "Kretanja brodova, detekcija plovila, aktivnost luka i inferencija tereta",
-    "aviation": "Praćenje zrakoplovstva",
-    "aviationDesc": "ADS-B transpondersko praćenje globalnih obrazaca letova",
-    "infra": "Kritična infrastruktura",
-    "infraDesc": "Nuklearne lokacije, elektroenergetske mreže, naftovodi, rafinerije — mapirana sredstva",
-    "fire": "Satelitska detekcija požara",
-    "fireDesc": "NASA FIRMS podaci gotovo u stvarnom vremenu o požarima i toplinskim točkama",
-    "cables": "Podmorski kabeli",
-    "cablesDesc": "Rute podmorskih kabela i pristanišne stanice",
-    "internet": "Internet i GPS",
-    "internetDesc": "Detekcija prekida, BGP anomalije, zone GPS ometanja",
-    "cyber": "Cyber prijetnje",
-    "cyberDesc": "Ransomware feedovi, BGP otmice, detekcija DDoS-a",
-    "gdelt": "GDELT i vijesti",
-    "gdeltDesc": "Kurirani RSS feedovi, AI-ocijenjeni GDELT eventi, live emisije",
-    "seismology": "Seizmologija i prirodne pojave",
-    "seismologyDesc": "USGS potresi, vulkanska aktivnost, ekstremno vrijeme"
   },
   "tiers": {
     "free": "Besplatno",
@@ -127,13 +98,12 @@
     "riskMonitoring": "Monitoring rizika i scenariji",
     "riskMonitoringDesc": "Globalno bodovanje rizika, analiza scenarija i procjena geopolitičkog rizika. Detekcija konvergencije tržišnih i političkih signala.",
     "morningBriefs": "Osobni obavještajni desk",
-    "morningBriefsDesc": "Do 30 rangiranih članaka po sažetku, deduplikovano kroz izvore. Odaberi dnevni, dva puta dnevni ili tjedno ritam — ili upozorenja u stvarnom vremenu za kritične događaje. AI Procjena i Signali za praćenje dostavljeni na Slack, Discord, Telegram, Email ili webhook. Nije newsletter — to je analyst.",
+    "morningBriefsDesc": "Do 30 rangiranih članaka po sažetku, deduplikovano kroz izvore. Odaberi dnevni, dva puta dnevni ili tjedno ritam — ili upozorenja u stvarnom vremenu za kritične događaje. AI Procjena i Signali za praćenje dostavljeni na Slack, Microsoft Teams, Discord, Telegram, Email ili webhook. Nije newsletter — to je analyst.",
     "oneKey": "Live Services, 1 ključ",
-    "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky i drugi — svi aktivni, bez zasebnih registracija.",
+    "oneKeyDesc": "Finnhub, FRED, UCDP, NASA FIRMS, AISStream, OpenSky i drugi — svi aktivni, bez zasebnih registracija.",
     "deliveryLabel": "Odaberite kako obavještajni uvidi dolaze do vas",
     "supplyChainLab": "Laboratorij za stres u lancu opskrbe",
-    "supplyChainLabDesc": "Simulirajte šok troškova u zemljama i sektorima. Rangujte ranjivost roba prema ovisnosti o uskim grlima. Pratite koncentraciju od rudnika do rafinerije i divergenciju premije SGE–COMEX — seriju koja se mijenja prije nego što se vijest pojavi.",
-    "roadmapNote": "Na planu razvoja: duža povijest, premium kartografski slojevi."
+    "supplyChainLabDesc": "Simulirajte šok troškova u zemljama i sektorima. Rangujte ranjivost roba prema ovisnosti o uskim grlima. Pratite koncentraciju od rudnika do rafinerije i divergenciju premije SGE–COMEX — seriju koja se mijenja prije nego što se vijest pojavi."
   },
   "apiSection": {
     "apiTier": "API RAZINA",
@@ -560,7 +530,7 @@
       "n5Title": "Podmorski kabeli",
       "n5Desc": "{{submarineCables}} podmorskih kabela koji nose internet, preklapanja sa signalima prekida i prijetnje.",
       "n6Title": "Praćenje protesta",
-      "n6Desc": "Detekcija protesta iz ACLED i GDELT; izvještaji iz jednog izvora u istoj ćeliji od 0,1° istoga dana spajaju se u jedan događaj — signal, a ne glasina.",
+      "n6Desc": "Detekcija protesta iz GDELT; izvještaji iz jednog izvora u istoj ćeliji od 0,1° istoga dana spajaju se u jedan događaj — signal, a ne glasina.",
       "faith": "Ne vjerujte brojevima na samo vjeru —",
       "faithCta": "otvorite aplikaciju i prebrojite.",
       "faithNote": "Izvori su navedeni na svakom panelu."
@@ -617,7 +587,7 @@
       "q2": "Što je globalni intelligence dashboard?",
       "a2": "Jedan živu prikaz koji spaja signale koje većina alata čuva odvojeno: događaje sukoba, praćenje brodova i zrakoplova, trgovačke uske grlo, satelite, podmorske kabele, cjevovode, tržišta i cyber prijetnje — na jednoj karta u stvarnom vremenu, s AI ocjenom i sažecima na vrhu. World Monitor je besplatan.",
       "q3": "Gdje dolaze podaci?",
-      "a3": "Od {{providers}} atribuiranih davatelja. Imenovani uključuju ACLED i UCDP za konflikte, AISStream za brodove u realnom vremenu, OpenSky za zrakoplove, NASA FIRMS za požare, USGS za potrese, IMF, BIS, FRED i Finnhub za tržišta i makro — plus kurirane vijesti feedove. Svaka ploča navodi svoje izvore i vremenske oznake u redu.",
+      "a3": "Od {{providers}} atribuiranih davatelja. Imenovani uključuju GDELT i UCDP za konflikte, AISStream za brodove u realnom vremenu, OpenSky za zrakoplove, NASA FIRMS za požare, USGS za potrese, IMF, BIS, FRED i Finnhub za tržišta i makro — plus kurirane vijesti feedove. Svaka ploča navodi svoje izvore i vremenske oznake u redu.",
       "q4": "Mogu li pratiti uska grla poput Hormuza ili Bab el-Mandeba u stvarnom vremenu?",
       "a4": "Da. {{chokepoints}} uskih grla, i tjesnaci i kanali, od Hormoza i Bab el-Mandeba do Sueske, prate se s izvještajima o broju brodova u realnom vremenu putem AIS-a, promjenom tranzita tjedan za tjedan i ocjenom poremećaja — a anomalije u gustoći se označavaju prema tekućoj liniji svakog uskog grla.",
       "q5": "Kako se ovo razlikuje od konfliktne karte kao što je Liveuamap?",

@@ -271,6 +271,8 @@ export interface FreshnessCheck {
   key: string;
   maxStaleMin: number;
   minRecordCount?: number;
+  // A producer can publish a current snapshot with incomplete source coverage.
+  honorSourceError?: boolean;
   // When true, `stale` additionally reflects the seed-meta content-age trio
   // (newestItemAt / oldestItemAt / maxContentAgeMin) via the shared assessor
   // in api/_content-age.js — the same rule api/health.js classifyKey applies,

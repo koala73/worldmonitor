@@ -41,6 +41,7 @@
       "scripts/lib/jev-classify-relay.cjs",
       "scripts/lib/llm-model-policy.cjs",
       "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/news-corroboration.mjs",
       "scripts/lib/news-story-key.cjs",
       "scripts/lib/notification-webhook-ssrf.cjs",
       "scripts/lib/occurrence-events.cjs",
@@ -82,6 +83,7 @@
       "scripts/shared/country-names.json",
       "scripts/shared/news-digest-editions.json",
       "scripts/shared/news-digest-warm-cells.json",
+      "scripts/shared/news-catalog.json",
       "scripts/shared/news-places.json",
       "scripts/shared/iso2-to-region.json",
       "scripts/shared/iso3-to-iso2.json",
@@ -153,7 +155,13 @@
       "shared/stablecoin-classifier.cjs",
       "shared/stablecoins.json",
       "shared/stocks.json",
-      "scripts/shared/pizzint-location.cjs"
+      "scripts/shared/pizzint-location.cjs",
+      "scripts/lib/brief-embedding.mjs",
+      "scripts/lib/brief-dedup-consts.mjs",
+      "scripts/lib/brief-dedup-jaccard.mjs",
+      "scripts/lib/_upstash-pipeline.mjs",
+      "scripts/lib/llm-chain.cjs",
+      "scripts/shared/publisher-families.js"
     ],
     "documentedAt": "Dockerfile.relay"
   },
@@ -250,8 +258,11 @@
       "CONVEX_NOTIFICATION_RELAY_SECRET"
     ],
     "watchPatterns": [
+      "scripts/_env-file.mjs",
+      "scripts/audit-alert-misses.mjs",
       "scripts/lib/_upstash-pipeline.mjs",
       "scripts/lib/ai-routing-policy.cjs",
+      "scripts/lib/alert-miss-audit.mjs",
       "scripts/lib/brief-dedup-consts.mjs",
       "scripts/lib/brief-dedup-jaccard.mjs",
       "scripts/lib/brief-embedding.mjs",
@@ -2436,6 +2447,7 @@
       "scripts/_seed-utils.mjs",
       "scripts/_sema-sanctions.mjs",
       "scripts/_upstash-rest.mjs",
+      "scripts/_us-restricted-sanctions.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/source-request-diagnostics.mjs",
       "scripts/nixpacks.toml",

@@ -52,11 +52,12 @@ import {
   orderServerFeedEntries,
   VARIANT_FEEDS,
   INTEL_SOURCES,
+  feedHeadlineLanguage,
   SERVER_EDITIONS,
   digestGateProfile,
   type ServerFeed,
 } from './_feeds';
-import { FUTURE_DATE_TOLERANCE_MS, resolveMaxAgeMs, rssFeedCacheKey } from './_rss-cache';
+import { FUTURE_DATE_TOLERANCE_MS, resolveMaxAgeMs, rssFeedCacheKey, rssFeedCountryCacheKey } from './_rss-cache';
 import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
 import {
   buildDigestCoverage,
@@ -91,6 +92,7 @@ import {
 import { newsPublisherCoverageKey, stripAttributionSuffix } from '../../../../shared/story-identity.js';
 // @ts-expect-error — JS module, no declaration file
 import { STORY_ALIAS_PUBLISH_SCRIPT } from '../../../../shared/story-alias-publish-script.mjs';
+import { RSS_FEED_RENEW_SCRIPT } from '../../../../shared/rss-feed-renew-script.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../../../_shared/feelgood-classifier.js';
 import { classifyEphemeralLiveCoverage } from '../../../../shared/ephemeral-live-classifier.js';
@@ -98,7 +100,7 @@ import { deriveCoreStoryPhase } from '../../../../shared/story-phase.js';
 import { buildTickerDictionary, extractTickers } from '../../../../shared/ticker-extract.js';
 import stocksData from '../../../../shared/stocks.json';
 import { buildClassifyCacheKey, isValidClassifyHit } from '../../intelligence/v1/_shared';
-import { declaredSourceTier, getSourceTier } from '../../../_shared/source-tiers';
+import { SOURCE_TIERS, declaredSourceTier, getSourceTier } from '../../../_shared/source-tiers';
 import {
   getSourcePropagandaRisk,
   hasReviewedPropagandaRisk,
@@ -142,6 +144,7 @@ import {
   publisherFamilyFor,
   publisherFamilyForItem,
 } from '../../../../shared/publisher-families.js';
+import { detectSyndication } from '../../../../shared/syndication.js';
 
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
@@ -199,6 +202,13 @@ const ITEMS_PER_FEED = 5;
 // the whole feed grows the pool from about 4,400 to 8,300 headlines.
 const COUNTRY_ITEMS_PER_FEED = 100;
 const MAX_ITEMS_PER_CATEGORY = 20;
+const FEED_CAP_LEDGER_TOP = 20;
+
+// #10976: the feeds that lost the most items to ITEMS_PER_FEED, so a missed
+// story can be traced to the feed whose cap dropped it.
+function topFeedCapDrops(drops: Map<string, number>): Record<string, number> {
+  return Object.fromEntries([...drops].sort((a, b) => b[1] - a[1]).slice(0, FEED_CAP_LEDGER_TOP));
+}
 const FEED_TIMEOUT_MS = 8_000;
 // Vercel Edge functions have a 25s initial-response ceiling. The digest
 // must fail closed to the warmed in-isolate fallback before the platform does.
@@ -1012,6 +1022,46 @@ export interface ParseResult {
 // upstream bounded while still recovering quickly when upstream heals.
 const CACHE_TTL_HEALTHY_S = 3600;
 const CACHE_TTL_EMPTY_S = 300;
+// A 304 renews the feed entry without reparsing, but only within an hour of
+// the last full parse, so a feed entry outlives its parse by at most two
+// hours. The country pool, written only by a full parse, must last as long.
+const CACHE_TTL_COUNTRY_S = CACHE_TTL_HEALTHY_S * 2;
+
+/**
+ * Stores a parse: digest rows under the feed key, the full variant's
+ * retained country rows under their own key (see rssFeedCountryCacheKey).
+ * Both keys go in one MULTI/EXEC: two separate writes from concurrent parses
+ * could interleave into a feed entry and a pool from different parses, and
+ * readers would then drop the pool. Returns the feed entry as stored, which is
+ * what a cache hit returns.
+ */
+async function writeFeedParse(feed: ServerFeed, variant: string, result: ParseResult, ttlSeconds: number): Promise<ParseResult> {
+  const feedKey = rssFeedCacheKey(variant, feed.url);
+  // The desktop sidecar cache is an in-process map, so the split saves no
+  // bandwidth there. Two keys would also let its LRU evict a pool while the
+  // feed entry stays. Keep the country rows inline (readers accept both forms).
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    await setCachedJson(feedKey, result, ttlSeconds);
+    return result;
+  }
+  const { countryItems, ...entry } = result;
+  if (!countryItems || countryItems.length === 0 || typeof entry.parsedAt !== 'number') {
+    await setCachedJson(feedKey, entry, ttlSeconds);
+    return entry;
+  }
+  const pool = { parsedAt: entry.parsedAt, items: countryItems };
+  const countryKey = rssFeedCountryCacheKey(variant, feed.url);
+  const commands = [
+    ['SET', countryKey, JSON.stringify(pool), 'EX', CACHE_TTL_COUNTRY_S],
+    ['SET', feedKey, JSON.stringify(entry), 'EX', ttlSeconds],
+  ];
+  const results = await runRedisTransaction(commands);
+  if (results.length !== commands.length || results.some(item => item?.error)) {
+    // Nothing is cached, so the next build fetches the feed again.
+    console.warn(`[feed-cache] parse write unconfirmed variant=${variant} feed=${feed.name}`);
+  }
+  return entry;
+}
 
 /**
  * Fetch one feed and parse it: direct, then the relay when direct is blocked,
@@ -1129,8 +1179,7 @@ export async function fetchAndParseRss(
     // Long cache only for healthy parses; short cache for zero-from-zero so
     // transient upstream issues don't sticky-fail for an hour.
     const ttl = result.parsedTotal > 0 ? CACHE_TTL_HEALTHY_S : CACHE_TTL_EMPTY_S;
-    await setCachedJson(cacheKey, result, ttl);
-    return result;
+    return await writeFeedParse(feed, variant, result, ttl);
   } catch {
     return {
       items: [],
@@ -1152,6 +1201,39 @@ const FEED_REFRESH_LOCK_S = 120;
 const FEED_REFRESH_CONCURRENCY = 20;
 
 export type FeedRefreshOutcome = 'locked' | 'not-modified' | 'updated' | 'failed';
+
+/**
+ * Re-dates the entry a refresh read, only while Redis still holds that parse
+ * (shared/rss-feed-renew-script.mjs). If the entry expired during the request
+ * and a foreground fetch stored a newer parse and country pool, a blind
+ * rewrite would restore the older entry and orphan the newer pool. An entry
+ * from before the split still carries its pool inline and is renewed as it is.
+ */
+async function renewFeedEntry(cacheKey: string, renewed: ParseResult): Promise<void> {
+  const parsedAt = renewed.parsedAt;
+  if (typeof parsedAt !== 'number') {
+    await setCachedJson(cacheKey, renewed, CACHE_TTL_HEALTHY_S);
+    return;
+  }
+  // The conditional request starts inside the hour but its 304 can land
+  // later; never keep the entry past the pool its parse wrote. The expiry is
+  // absolute, so a write that reaches Redis late cannot extend it.
+  const now = Date.now();
+  const expiresAtMs = Math.min(now + CACHE_TTL_HEALTHY_S * 1000, parsedAt + CACHE_TTL_COUNTRY_S * 1000);
+  const ttlSeconds = Math.floor((expiresAtMs - now) / 1000);
+  if (ttlSeconds <= 0) return;
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    // The sidecar cache is synchronous, so this compare and set cannot interleave.
+    const { sidecarCacheGet, sidecarCacheSet } = await import('../../../_shared/sidecar-cache');
+    const current = sidecarCacheGet(cacheKey) as { parsedAt?: unknown } | null;
+    if (current?.parsedAt === parsedAt) sidecarCacheSet(cacheKey, renewed, ttlSeconds);
+    return;
+  }
+  await runRedisPipeline([[
+    'EVAL', RSS_FEED_RENEW_SCRIPT, 1, cacheKey,
+    String(parsedAt), JSON.stringify(renewed), String(expiresAtMs),
+  ]]);
+}
 
 export function isDueForRefresh(cached: ParseResult, now: number): boolean {
   return cached.parsedTotal > 0
@@ -1181,7 +1263,7 @@ export async function refreshFeedCache(
   const conditional = Date.now() - lastFullParse < CACHE_TTL_HEALTHY_S * 1000;
   const direct = await fetchRssText(feed.url, signal, conditional ? cached.validators : undefined);
   if (direct.notModified) {
-    await setCachedJson(cacheKey, { ...cached, fetchedAt: Date.now() }, CACHE_TTL_HEALTHY_S);
+    await renewFeedEntry(cacheKey, { ...cached, fetchedAt: Date.now() });
     return 'not-modified';
   }
   let text = direct.text;
@@ -1204,7 +1286,7 @@ export async function refreshFeedCache(
     parsedAt: now,
   };
   if (source === 'direct' && direct.validators) result.validators = direct.validators;
-  await setCachedJson(cacheKey, result, CACHE_TTL_HEALTHY_S);
+  await writeFeedParse(feed, variant, result, CACHE_TTL_HEALTHY_S);
   return 'updated';
 }
 
@@ -1322,16 +1404,16 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
   const isAtom = !sitemap && matches.length === 0;
   if (isAtom) matches = scanTagBlocks(xml, xmlLower, 'entry');
   const excluded = feed.excludePathSegments?.length ? new Set(feed.excludePathSegments) : null;
-  if (sitemap || feed.newestFirst || excluded) {
-    // News sitemaps can be ordered by last modification, and some RSS feeds
-    // (NYT World) list items in editorial order. Rank once by publication
-    // date so older or updated items cannot crowd new ones out of the top
-    // items. Excluded paths drop out first so they never take a slot.
+  {
+    // Rank every feed once by publication date, before the per-feed cap, so
+    // a fresh item cannot sit below the cap in a relevance-ordered Google News
+    // search, an editorial-order feed (NYT World) or a sitemap ordered by last
+    // modification (#10978). Undated items keep feed order after dated ones.
+    // Excluded paths drop out first so they never take a slot.
     const ranked = matches.flatMap((block, index) => {
       const lower = asciiLower(block);
       if (sitemap && (!extractTag(block, 'news:title', lower) || !extractTag(block, 'loc', lower))) return [];
       if (excluded && hasExcludedPathSegment(feedItemLink(block, lower, sitemap, isAtom), excluded)) return [];
-      if (!sitemap && !feed.newestFirst) return [{ block, index, publishedAt: 0 }];
       const raw = sitemap ? extractTag(block, 'news:publication_date', lower) : extractFirstDateTag(block, isAtom, lower);
       return [{ block, index, publishedAt: usableFeedDateMs(raw) ?? -Infinity }];
     });
@@ -2357,8 +2439,15 @@ async function readAdoptionState(
 }
 
 export function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsItem {
+  const resolved = item.originPublisherTrusted === true && typeof item.originPublisher === 'string' && item.originPublisher.trim()
+    ? resolveCredibilitySourceName(item).toLowerCase()
+    : '';
+  // The tier table's spelling: the relay's tier lookup is exact-key.
+  const origin = resolved ? Object.keys(SOURCE_TIERS).find((name) => name.toLowerCase() === resolved) ?? '' : '';
   return {
     source: item.source,
+    // Only a publisher with a curated tier: the aggregator's text alone is not an identity.
+    originPublisher: origin,
     title: item.title,
     link: item.link,
     publishedAt: item.publishedAt,
@@ -2719,7 +2808,7 @@ export async function listFeedDigest(
 // Two commands per key, so 400 keys stay under Upstash's 1,000-command cap.
 const PUBLISHER_COVERAGE_BATCH_KEYS = 400;
 
-// Each exact headline owns one sorted set. GT keeps a slower build from
+// Each exact headline owns one sorted set, shared by every edition. GT keeps a slower build from
 // moving a family's last observation backwards; retries replace the same member.
 //
 // Only served headlines get a key: the relay alerts on the digest response, so
@@ -2730,20 +2819,32 @@ const PUBLISHER_COVERAGE_BATCH_KEYS = 400;
 async function recordPublisherCoverage(
   items: readonly ParsedItem[],
   servedItems: readonly ParsedItem[],
-  variant: string,
   observedAt: number,
   deadlineAt: number,
 ): Promise<void> {
-  const groups = new Map<string, Set<string>>();
+  const carriers = new Map<string, ParsedItem[]>();
   for (const item of servedItems) {
-    const key = newsPublisherCoverageKey(variant, item.title);
-    if (key && !groups.has(key)) groups.set(key, new Set());
+    const key = newsPublisherCoverageKey(item.title);
+    if (key && !carriers.has(key)) carriers.set(key, []);
   }
-  for (const item of items) {
-    const families = groups.get(newsPublisherCoverageKey(variant, item.title));
-    if (!families) continue;
-    const family = publisherFamilyForItem(item);
-    if (family) families.add(family);
+  for (const item of items) carriers.get(newsPublisherCoverageKey(item.title))?.push(item);
+  // The relay scores on this history (#10977), so families that carried one
+  // copy count once, as in the build's own corroborationCount (#9095). Each
+  // merged group is written under one member that does not depend on item order.
+  const groups = new Map<string, Set<string>>();
+  for (const [key, sharing] of carriers) {
+    const { groups: sameCopy } = detectSyndication(sharing);
+    const memberOf = new Map<string, string>();
+    for (const { families } of sameCopy) {
+      const member = families.find((family) => !family.startsWith('label:')) ?? families[0]!;
+      for (const family of families) memberOf.set(family, member);
+    }
+    const families = new Set<string>();
+    for (const item of sharing) {
+      const family = publisherFamilyForItem(item);
+      if (family) families.add(memberOf.get(family) ?? family);
+    }
+    groups.set(key, families);
   }
   const entries = [...groups].filter(([, families]) => families.size > 0);
   for (let start = 0; start < entries.length; start += PUBLISHER_COVERAGE_BATCH_KEYS) {
@@ -2762,6 +2863,69 @@ async function recordPublisherCoverage(
       return;
     }
   }
+}
+
+export const ALERT_POOL_MAX_ITEMS = 300;
+
+let headlineLanguages: Map<string, Set<string>> | undefined;
+/** Feed name to the languages its headlines come in (a name can have a feed per edition). */
+function headlineLanguagesBySource(): Map<string, Set<string>> {
+  if (!headlineLanguages) {
+    headlineLanguages = new Map();
+    const feeds = [...Object.values(VARIANT_FEEDS).flatMap(byCategory => Object.values(byCategory).flat()), ...INTEL_SOURCES];
+    for (const feed of feeds) {
+      const languages = headlineLanguages.get(feed.name) ?? new Set<string>();
+      headlineLanguages.set(feed.name, languages.add(feedHeadlineLanguage(feed)));
+    }
+  }
+  return headlineLanguages;
+}
+const ALERT_POOL_WINDOW_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * #10978: the relay classifies only the served digest, so the category cap
+ * decided what could alert. Write the newest fresh items the cap kept off the
+ * dashboard (6 h, the relay's recency gate) for the relay to classify too.
+ * The classify cache keeps each title to one model call a day. Only headlines
+ * in the digest language: the build also fetches local-language outlets, and
+ * the pool once filled with those and alerted each story in every language.
+ */
+export function alertPoolItems(servable: readonly ParsedItem[], served: readonly ParsedItem[], now: number, lang: string) {
+  const inLanguage = (item: ParsedItem) => headlineLanguagesBySource().get(item.source)?.has(lang) ?? item.lang === lang;
+  // A served copy the relay will not alert leaves its title free for a copy it will.
+  const taken = new Set(served.filter(inLanguage).map(item => item.title));
+  return [...servable]
+    .filter(item => inLanguage(item) && item.publishedAt >= now - ALERT_POOL_WINDOW_MS)
+    .sort((a, b) => b.publishedAt - a.publishedAt)
+    .filter(item => !taken.has(item.title) && taken.add(item.title))
+    .slice(0, ALERT_POOL_MAX_ITEMS)
+    .map(item => ({
+      title: item.title,
+      source: item.source,
+      // The relay scores a topic feed's item on this publisher, as for served items (#10977).
+      ...(toProtoItem(item).originPublisher ? { originPublisher: toProtoItem(item).originPublisher } : {}),
+      link: item.link,
+      ...(item.linkVerified === true ? { linkVerified: true } : {}),
+      publishedAt: item.publishedAt,
+      corroborationCount: item.corroborationCount,
+    }));
+}
+
+async function recordAlertPool(
+  servable: readonly ParsedItem[],
+  served: readonly ParsedItem[],
+  variant: string,
+  lang: string,
+  now: number,
+  deadlineAt: number,
+): Promise<void> {
+  const timeout = redisTimeoutForDeadline(deadlineAt);
+  if (!timeout) return;
+  const items = alertPoolItems(servable, served, now, lang);
+  // v2: language-filtered. A relay still reading v1 loses the pool within its
+  // 30 minute TTL, and the first v2 read is recorded as backlog, so the
+  // refilled pool cannot alert hours-old headlines whichever side deploys first.
+  await runRedisTransaction([['SET', `news:alert-pool:v2:${variant}`, JSON.stringify({ generatedAt: now, items }), 'EX', 1800]], false, timeout);
 }
 
 function redisPipelineConfirmed(
@@ -3591,6 +3755,7 @@ async function buildDigest(
   // #4920 coverage ledger: count every silent drop gate so "how much did
   // we NOT show" is a queryable number instead of a feeling.
   const ledgerDrops = { perFeedCap: 0, undated: 0, freshnessFloor: 0, perCategoryCap: 0 };
+  const feedCapDrops = new Map<string, number>();
   const categories: Record<string, CategoryBucket> = {};
   const digestStartedAt = Date.now();
 
@@ -3635,6 +3800,7 @@ async function buildDigest(
           outcome,
           value: {
             category,
+            feedName: feed.name,
             items: result.items,
             droppedUndated: result.droppedUndated,
             droppedFeedCap: result.droppedFeedCap ?? 0,
@@ -3646,12 +3812,13 @@ async function buildDigest(
     await depthWarming;
 
     for (const { value } of attempts.fulfilled) {
-      const { category, items, droppedUndated, droppedFeedCap } = value;
+      const { category, feedName, items, droppedUndated, droppedFeedCap } = value;
       const existing = results.get(category) ?? [];
       existing.push(...items);
       results.set(category, existing);
       ledgerDrops.undated += droppedUndated;
       ledgerDrops.perFeedCap += droppedFeedCap;
+      if (droppedFeedCap > 0) feedCapDrops.set(feedName, (feedCapDrops.get(feedName) ?? 0) + droppedFeedCap);
     }
 
     const deadlineAborted = deadlineController.signal.aborted;
@@ -3911,8 +4078,10 @@ async function buildDigest(
     const now = Date.now();
     // Served headlines only, with families from accepted sightings below the
     // category cap. Runs alongside story tracking within the same deadline.
-    const publisherCoverageWrite = recordPublisherCoverage(servableItems, allSliced, variant, buildStart, storyTrackingDeadlineAt)
+    const publisherCoverageWrite = recordPublisherCoverage(servableItems, allSliced, buildStart, storyTrackingDeadlineAt)
       .catch((err: unknown) => console.warn('[digest] publisher coverage unavailable:', err));
+    const alertPoolWrite = (lang === 'en' ? recordAlertPool(servableItems, allSliced, variant, lang, now, storyTrackingDeadlineAt) : Promise.resolve())
+      .catch((err: unknown) => console.warn('[digest] alert pool unavailable:', err));
 
     // Read existing story tracking BEFORE writing so we know the previous cycle's
     // mentionCount. We merge read state + this cycle's increment in memory to
@@ -3996,7 +4165,7 @@ async function buildDigest(
       };
     }
 
-    await Promise.all([headlineHistoryWrite, publisherCoverageWrite]);
+    await Promise.all([headlineHistoryWrite, publisherCoverageWrite, alertPoolWrite]);
 
     // #4920: publish the coverage ledger — every gate's drop count plus
     // what survived — as a side key. Best-effort: ledger failures never
@@ -4012,6 +4181,7 @@ async function buildDigest(
       itemsServed: allSliced.length,
       distinctSources,
       drops: { ...ledgerDrops },
+      perFeedCapTop: topFeedCapDrops(feedCapDrops),
     };
     // Key-cardinality clamp: variant/lang are request-supplied — only write
     // ledgers for known variants and well-formed 2-letter langs so a caller
@@ -4097,6 +4267,7 @@ async function publishAcceptedLabelCounts(response: ListFeedDigestResponse, dead
 
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
+  topFeedCapDrops,
   recordPublisherCoverage,
   writeCoverageLedger,
   storyCorroborationByHash,

@@ -53,11 +53,11 @@
 //      lives in the CDN and is invisible to every in-process test, so the
 //      probe warms the cache with the plain GET first and only then issues
 //      the SSE GET.
-//   6. Retired production aliases (www and the dashboard variants) are a
+//   6. Retired production aliases (the dashboard variants) are a
 //      client-migration surface: ordinary GET/HEAD 308 to apex, transport
 //      POST/SSE/replay 410. They are not additional servers and do not get a
-//      second capability walk. The served alias (api) keeps the transport for
-//      connectors already configured with it; it gets only the connect-time
+//      second capability walk. The served aliases (api, www) keep the transport for
+//      connectors already configured with them; each gets only the connect-time
 //      challenge probe, which must name its own OAuth document.
 //   7. Direct www `/api/mcp-proxy` liveness (OPTIONS 204 + anonymous GET 401).
 //      An apex redirect alone does not prove that function is healthy.
@@ -112,10 +112,10 @@ import { runMcpProxyProbe } from './mcp-proxy-live-smoke.mjs';
 const CANONICAL_ORIGIN = 'https://worldmonitor.app';
 const CANONICAL_MCP = `${CANONICAL_ORIGIN}/mcp`;
 const CANONICAL_LINK_RE = /<https:\/\/worldmonitor\.app\/mcp>;\s*rel="canonical"/i;
-const DEFAULT_ALIAS_LABELS = ['www', 'tech', 'finance', 'commodity', 'happy', 'energy'];
+const DEFAULT_ALIAS_LABELS = ['tech', 'finance', 'commodity', 'happy', 'energy'];
 // Served aliases keep the transport (shared/mcp-host-policy.ts). The smoke
 // checks their connect-time challenge names the alias's own OAuth document.
-const DEFAULT_SERVED_ALIAS_LABELS = ['api'];
+const DEFAULT_SERVED_ALIAS_LABELS = ['api', 'www'];
 
 function csvList(raw) {
   return String(raw ?? '').split(',').map((part) => part.trim()).filter(Boolean);

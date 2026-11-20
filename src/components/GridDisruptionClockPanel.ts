@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { fetchGridDisruptionClock } from '@/services/grid-disruption-clock';
 import { getLocale, t } from '@/services/i18n';
-import { h, type DomChild } from '@/utils/dom-utils';
+import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
 import { validateUrl } from '@/utils/sanitize';
 import {
   deriveGridClock, GRID_CLOCK_MAX_AGE_MS, GRID_CLOCK_REGIONS, type GridClockRegion, type GridClockSnapshot, type GridClockWarning,
@@ -96,6 +96,9 @@ export class GridDisruptionClockPanel extends Panel {
   private selected: GridClockRegion['code'] = 'CA';
   private refreshFailed = false;
   private clockTimer: ReturnType<typeof setInterval>;
+  private readonly selector = h('div', { className: 'grid-clock-selector', role: 'group' });
+  private readonly readings = h('div');
+  private readonly clock = h('div', { className: 'grid-clock' }, this.selector, this.readings);
 
   constructor() {
     super({
@@ -129,6 +132,10 @@ export class GridDisruptionClockPanel extends Panel {
   private render(): void {
     const region = this.snapshot?.regions.find(item => item.code === this.selected);
     if (!region) return;
+    if (this.isLocked) {
+      this.clearErrorState();
+      return;
+    }
     // A local clock tick must not close disclosures or steal keyboard focus.
     const openDetails = new Set([...this.content.querySelectorAll<HTMLDetailsElement>('details[open]')]
       .map(detail => detail.dataset.clockDisclosure));
@@ -141,15 +148,22 @@ export class GridDisruptionClockPanel extends Panel {
     const state = deriveGridClock(region, now);
     const point = state.freshness === 'unavailable' ? null : region.current;
     const number = new Intl.NumberFormat(getLocale());
-    const bar = h('div', { className: 'grid-clock-selector', role: 'group', 'aria-label': label('region') },
-      ...this.snapshot!.regions.map(({ code }) => h('button', {
-        type: 'button', 'aria-pressed': String(code === this.selected), 'data-region': code,
-        onclick: () => {
+    const regions = this.snapshot!.regions;
+    this.selector.setAttribute('aria-label', label('region'));
+    if (this.selector.children.length !== regions.length
+      || regions.some(({ code }, index) => this.selector.children[index]?.getAttribute('data-region') !== code)) {
+      this.selector.replaceChildren(...regions.map(({ code }) => h('button', {
+        type: 'button', 'data-region': code,
+        onclick: (event: MouseEvent) => {
+          (event.currentTarget as HTMLButtonElement).focus({ preventScroll: true });
           this.selected = code;
           this.render();
-          this.content.querySelector<HTMLButtonElement>(`button[data-region="${code}"]`)?.focus({ preventScroll: true });
         },
       }, GRID_CLOCK_REGIONS[code].name)));
+    }
+    for (const button of this.selector.children) {
+      button.setAttribute('aria-pressed', String(button.getAttribute('data-region') === this.selected));
+    }
     const firstWarning = state.activeWarnings.length
       ? Math.min(...state.activeWarnings.map(warning => warning.issuedAt)) : null;
     const ageLabel = elapsed(firstWarning ?? point?.observedAt ?? null, now);
@@ -158,7 +172,8 @@ export class GridDisruptionClockPanel extends Panel {
     else if (state.freshness === 'fresh' || state.warningsFresh) this.setDataBadge('live');
     else if (state.freshness === 'stale') this.setDataBadge('cached');
     else this.setDataBadge('unavailable');
-    this.setContentNodes(h('div', { className: 'grid-clock', dataset: { phase: state.phase } }, bar,
+    this.clock.dataset.phase = state.phase;
+    replaceChildren(this.readings,
       this.refreshFailed ? h('p', { className: 'grid-clock-meta', role: 'status' }, label('retained')) : null,
       h('div', { className: 'grid-clock-readout' },
         h('div', h('span', { className: 'grid-clock-phase' }, label('phase.' + state.phase)),
@@ -170,13 +185,15 @@ export class GridDisruptionClockPanel extends Panel {
         h('span', { className: 'grid-clock-attribution' }, source(point.sourceName, point.sourceUrl), ' · ', time(point.observedAt)),
         point.detail ? h('span', { className: 'grid-clock-attribution' }, point.detail) : null)
         : h('p', { className: 'grid-clock-coverage' }, label('noObservation')),
-      warnings(region, state), recovery(region, state)));
+      warnings(region, state), recovery(region, state));
+    if (this.clock.parentElement !== this.content) this.setContentNodes(this.clock);
+    else this.clearErrorState();
     for (const detail of this.content.querySelectorAll('details')) {
       const summary = detail.querySelector('summary');
       detail.open = openDetails.has(detail.dataset.clockDisclosure);
       if (focusedSummary && detail.dataset.clockDisclosure === focusedDisclosure) summary?.focus({ preventScroll: true });
     }
-    if (focusedRegion) {
+    if (focusedRegion && !focused?.isConnected) {
       this.content.querySelector<HTMLButtonElement>(`button[data-region="${focusedRegion}"]`)?.focus({ preventScroll: true });
     }
     if (focusedHref) {

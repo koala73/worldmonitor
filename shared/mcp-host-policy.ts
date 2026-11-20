@@ -26,8 +26,13 @@ export const MCP_PRODUCTION_ALIAS_LABELS = [
 // well-known server cards keep redirecting. api. stays served because its OAuth
 // discovery names itself as the resource: connectors configured with the api.
 // host's /mcp (Claude-User sent ~1,300 requests a day on 2026-11-06) completed
-// consent and token exchange, then got 410 on every call.
-export const MCP_SERVED_ALIAS_LABELS = ['api'] as const;
+// consent and token exchange, then got 410 on every call. www. is served for
+// the same reason: its discovery names itself too, and a connector given
+// the www. host's /mcp got 410 before any sign-in challenge
+// ("Couldn't start sign-in"). A POST redirect cannot fix either host: the
+// OAuth resource is bound to the URL the user typed, and a cross-origin
+// redirect drops the Authorization header.
+export const MCP_SERVED_ALIAS_LABELS = ['api', 'www'] as const;
 
 // Aliases whose MCP paths are retired: GET/HEAD 308, transport operations 410.
 export const MCP_RETIRED_ALIAS_LABELS = MCP_PRODUCTION_ALIAS_LABELS.filter(
