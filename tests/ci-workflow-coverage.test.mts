@@ -3224,7 +3224,7 @@ describe('docker-publish conditions', () => {
     for (const command of ['node scripts/check-crawlable-live-pulse.mjs', 'node scripts/github-stars-snapshot.mjs']) {
       const gate = job.steps.findIndex((step) => step.run === command);
       assert.ok(gate >= 0 && gate < firstBuild, `${command} must run before the first Docker build`);
-      assert.match(String(job.steps[gate].if), /worldmonitor-selfhosted/);
+      assert.equal(job.steps[gate].if, "matrix.image == 'worldmonitor-selfhosted'");
       assert.equal(job.steps[gate]['continue-on-error'], undefined);
     }
   });
