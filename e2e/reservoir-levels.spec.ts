@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { openComponentHarness } from './component-harness';
 import { test, expect, type Page } from '@playwright/test';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
 import { evidenceScreenshot } from './evidence-screenshot';
@@ -87,7 +88,7 @@ test('Strategic Water Levels shows the empty state', async ({ page }) => {
 test('Water Levels markers follow the layer toggle and open a popup in each renderer', async ({ page }) => {
   test.setTimeout(150_000);
   await page.route('**/api/**', (route) => route.fulfill({ json: {} }));
-  await page.goto('/tests/map-harness.html');
+  await openComponentHarness(page);
   const results = await page.evaluate(async (fixture) => {
     const { toDisplayReservoirLevel } = await import(/* @vite-ignore */ '/src/services/climate/reservoir-levels.ts');
     const reservoirs = fixture.reservoirs.map(toDisplayReservoirLevel);
@@ -145,18 +146,16 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
   test(`Water Levels follows the focus editor at ${viewport.width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
-    await page.goto('/tests/map-harness.html');
+    await openComponentHarness(page);
     // Component integration surface: real editor, resolver, panels and styles;
     // controlled reservoir snapshot, no account entitlement or deployed API proof.
     await page.evaluate(async (fixture) => {
       const paths = ['/src/components/ReservoirLevelsPanel.ts', '/src/services/climate/reservoir-levels.ts',
-        '/src/components/FocusEditor.ts', '/shared/tab-scope-resolve.ts', '/src/services/i18n.ts',
+        '/src/components/FocusEditor.ts', '/shared/tab-scope-resolve.ts',
         '/src/components/ClimateAnomalyPanel.ts', '/src/components/PopulationExposurePanel.ts',
         '/src/components/panel-scope-notice.ts', '/src/config/panel-scope.ts'];
-      const [water, data, editor, resolver, i18n, climate, population, notice, registry] = await Promise.all(paths.map(p => import(/* @vite-ignore */ p)));
-      await i18n.initI18n();
+      const [water, data, editor, resolver, climate, population, notice, registry] = await Promise.all(paths.map(p => import(/* @vite-ignore */ p)));
       const panel = new water.ReservoirLevelsPanel();
-      document.body.replaceChildren();
       document.body.style.cssText = 'margin:0;padding:12px;background:var(--bg);box-sizing:border-box';
       const host = document.createElement('main');
       host.style.cssText = 'width:100%;max-width:620px;margin:auto';

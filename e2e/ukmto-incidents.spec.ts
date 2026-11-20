@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openComponentHarness } from './component-harness';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
 import { evidenceScreenshot } from './evidence-screenshot';
 
@@ -67,7 +68,7 @@ for (const state of ['fresh', 'stale', 'empty', 'unavailable'] as const) {
 
 test('UKMTO markers follow the Ships toggle in each renderer', async ({ page }) => {
   await page.route('**/api/**', route => route.fulfill({ json: {} }));
-  await page.goto('/tests/map-harness.html');
+  await openComponentHarness(page);
   const results = await page.evaluate(async () => {
     const modulePaths = ['/src/components/DeckGLMap.ts', '/src/components/Map.ts', '/src/components/GlobeMap.ts'];
     const result = [];
@@ -118,11 +119,9 @@ test('UKMTO markers follow the Ships toggle in each renderer', async ({ page }) 
 
 test('UKMTO map status distinguishes empty and unavailable with the report panel absent', async ({ page }, testInfo) => {
   await page.route('**/api/**', route => route.fulfill({ json: {} }));
-  await page.goto('/tests/map-harness.html');
+  await openComponentHarness(page);
   await page.evaluate(async () => {
     const modulePath = '/src/components/MapContainer.ts';
-    const i18nPath = '/src/services/i18n.ts';
-    await (await import(/* @vite-ignore */ i18nPath)).initI18n({ waitForFullTranslation: true });
     const { MapContainer } = await import(/* @vite-ignore */ modulePath);
     const host = document.createElement('div');
     host.id = 'ukmto-map-proof';
