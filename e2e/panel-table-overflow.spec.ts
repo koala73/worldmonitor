@@ -310,7 +310,8 @@ async function expectCue(page: Page, s: Scroll, id: string, label: string): Prom
 // columns and scroll with the cue.
 // Keep cold starts at both narrow widths. Chromium can retain the previous
 // scroll-driven mask when resizing directly between overflowing columns.
-const DESKTOP_VIEWPORT_GROUPS = [
+type DesktopViewport = { width: number; height: number; fit: string[] };
+const DESKTOP_VIEWPORT_GROUPS: [DesktopViewport, ...DesktopViewport[]][] = [
   [
     { width: 1400, height: 800, fit: [] },
     { width: 1920, height: 1080, fit: ['energy-disruptions', 'ucdp-events', 'climate', 'radiation-watch'] },
