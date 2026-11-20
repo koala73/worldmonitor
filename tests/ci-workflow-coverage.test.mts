@@ -3203,6 +3203,15 @@ describe('docker-publish conditions', () => {
     );
 
   const dockerPublish = YAML.parse(read(resolve(workflowsDir, 'docker-publish.yml')));
+  it('checks live-pulse freshness before any Docker build can use its cache', () => {
+    const steps = dockerPublish.jobs.docker.steps;
+    const gate = steps.findIndex((step: { run?: string }) => step.run === 'node scripts/check-crawlable-live-pulse.mjs');
+    const firstBuild = steps.findIndex((step: { uses?: string }) => step.uses?.startsWith('docker/build-push-action@'));
+    assert.ok(gate >= 0 && gate < firstBuild);
+    assert.equal(steps[gate].if, undefined);
+    assert.equal(steps[gate]['continue-on-error'], undefined);
+  });
+
   const tagEnableExpressions = () => {
     const metaStep = dockerPublish.jobs.docker.steps.find(
       (step: { id?: string }) => step.id === 'meta',

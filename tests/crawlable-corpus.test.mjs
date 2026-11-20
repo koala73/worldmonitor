@@ -1835,16 +1835,16 @@ describe('crawlable corpus generator', () => {
     );
   });
 
-  it('picks the newest live-pulse snapshot among several candidates', () => {
+  it('selects a stale committed pulse for builds but rejects it for publishing', () => {
     const fixtureRoot = mkdtempSync(join(tmpdir(), 'wm-pulse-resolve-'));
     try {
       const snapshotDir = join(fixtureRoot, 'docs', 'snapshots');
       mkdirSync(snapshotDir, { recursive: true });
-      const today = new Date().toISOString().slice(0, 10);
+      const latest = '2026-01-12';
       const sections = {
-        countries: [], chokepoints: [], crises: [], signalConvergence: { capturedAt: today },
+        countries: [], chokepoints: [], crises: [], signalConvergence: {},
       };
-      for (const capturedAt of ['2026-01-05', today, '2026-01-09']) {
+      for (const capturedAt of ['2026-01-05', latest, '2026-01-09']) {
         writeFileSync(
           join(snapshotDir, `crawlable-live-pulse-${capturedAt}.json`),
           JSON.stringify({ capturedAt, ...sections }),
@@ -1852,9 +1852,21 @@ describe('crawlable corpus generator', () => {
       }
       assert.equal(
         resolveLatestLivePulseSnapshotPath(fixtureRoot),
-        join('docs', 'snapshots', `crawlable-live-pulse-${today}.json`),
+        join('docs', 'snapshots', `crawlable-live-pulse-${latest}.json`),
         'the resolver must pick the highest-dated snapshot, not the first or last written',
       );
+      const freshnessCheck = join(repoRoot, 'scripts/check-crawlable-live-pulse.mjs');
+      const check = () => execFileSync(process.execPath, [freshnessCheck], {
+        cwd: fixtureRoot, encoding: 'utf8', stdio: 'pipe',
+      });
+      assert.throws(check, { status: 1, stderr: /2026-01-12\.json is \d+ days old \(max 10\)/ });
+
+      const today = new Date().toISOString().slice(0, 10);
+      writeFileSync(
+        join(snapshotDir, `crawlable-live-pulse-${today}.json`),
+        JSON.stringify({ capturedAt: today, ...sections }),
+      );
+      assert.match(check(), /Live-pulse snapshot is fresh/);
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
     }
