@@ -250,10 +250,12 @@ export function attributeFlakes(findings, { readLog, changeSince, limit = FLAKE_
 // on its own clock, so a newer run created this close to the cancel is the cause.
 const SUPERSEDE_CANCEL_SECONDS = 120;
 
-function supersededBy(job, run, mainRuns) {
+function supersededBy(job, run, attempt, conclusion, mainRuns) {
   // Only Test shares a concurrency group across main pushes; every other
   // monitored workflow keeps each main run, so its cancel is a real timeout.
-  if (run.name !== 'Test') return false;
+  // Only a first attempt joins that group, and a superseded attempt ends
+  // cancelled; a job that timed out inside a failed attempt stays reported.
+  if (run.name !== 'Test' || attempt !== 1 || conclusion !== 'cancelled') return false;
   const cancelledAt = Date.parse(job.completed_at);
   return mainRuns.some((other) => {
     if (other.id === run.id || other.name !== run.name) return false;
@@ -264,15 +266,17 @@ function supersededBy(job, run, mainRuns) {
   });
 }
 
-// mainAttempts: [{ run, attempt, jobs }] for push runs on main
+// mainAttempts: [{ run, attempt, jobs, conclusion? }] for push runs on main;
+// conclusion is that attempt's own, defaulting to the run's for its latest
+// attempt (unknown for an earlier one, which then cannot count as superseded)
 // mainRuns: every push run on main in the window, to recognise supersession
 export function findTimeouts(mainAttempts, mainRuns = []) {
   const findings = new Map();
-  for (const { run, attempt, jobs } of mainAttempts) {
+  for (const { run, attempt, jobs, conclusion = attempt === (run.run_attempt ?? 1) ? run.conclusion : undefined } of mainAttempts) {
     for (const job of jobs) {
       const seconds = jobSeconds(job);
       if (job.conclusion !== 'cancelled' || seconds === null || seconds < TIMEOUT_MIN_SECONDS) continue;
-      if (supersededBy(job, run, mainRuns)) continue;
+      if (supersededBy(job, run, attempt, conclusion, mainRuns)) continue;
       const workflow = safeLabel(run.name);
       const name = safeLabel(job.name);
       addFinding(findings, {
@@ -467,7 +471,14 @@ export function collect({ gh, repository, now }) {
     mainRuns.push(...listed.filter((item) => item.event === 'push' && item.head_branch === 'main'));
     for (const run of window.filter((item) => item.event === 'push' && item.head_branch === 'main'
       && (item.run_attempt > 1 || item.conclusion === 'cancelled' || item.conclusion === 'failure'))) {
-      allAttempts(run).forEach((jobs, index) => mainAttempts.push({ run, attempt: index + 1, jobs }));
+      // A re-run hides the first attempt's own conclusion behind the run's;
+      // read it where supersession could apply.
+      const firstConclusion = run.name === 'Test' && run.run_attempt > 1
+        ? api(gh, `repos/${repository}/actions/runs/${run.id}/attempts/1`).conclusion
+        : undefined;
+      allAttempts(run).forEach((jobs, index) => mainAttempts.push({
+        run, attempt: index + 1, jobs, ...(index === 0 && firstConclusion !== undefined ? { conclusion: firstConclusion } : {}),
+      }));
     }
 
     failing.push(...findFailingMain(newestMainRuns(gh, repository, workflow)));
