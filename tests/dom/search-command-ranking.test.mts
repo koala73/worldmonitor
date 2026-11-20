@@ -38,6 +38,14 @@ describe('search command ranking', () => {
     expect(topCommands('brief guinea')[0]).toBe('country:GN');
   });
 
+  it('does not fill slots 2-5 with unrelated countries for multi-word brief/map queries (#11066)', () => {
+    expect(topCommands('brief china')).toEqual(['country:CN']);
+    expect(topCommands('map france')).toEqual(['country-map:FR']);
+    expect(topCommands('brief south sudan')).toEqual(['country:SS']);
+    // Single-word prefix still lists brief commands so typing "brief" remains discoverable.
+    expect(topCommands('brief').length).toBe(5);
+  });
+
   it('ranks more matched words above stronger matches on fewer words', () => {
     const commands: Command[] = [
       { id: 'panel:fewer', keywords: ['brief'], label: 'Fewer', icon: '', category: 'panels' },

@@ -133,8 +133,16 @@ function matchCommands(
     }
   }
 
+  // For multi-word queries ("brief china", "map france"), drop commands that
+  // only matched a subset of words (e.g., boilerplate "brief" across every
+  // country) once at least one command covers every query word.
+  const fullCoverage = words.length >= 2
+    ? matched.filter((match) => coverage.get(match)!.matched === words.length)
+    : [];
+  const candidates = fullCoverage.length > 0 ? fullCoverage : matched;
+
   // Break remaining ties in favor of a country whose name starts with the query.
-  return matched
+  return candidates
     .sort((left, right) => (right.score - left.score)
       || (coverage.get(right)!.matched - coverage.get(left)!.matched)
       || (coverage.get(right)!.strength - coverage.get(left)!.strength)
