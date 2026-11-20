@@ -129,13 +129,14 @@ describe('search-gdelt-documents country query', () => {
       topicRow({ url: 'https://birminghamstar.com/news/xi', source: 'birminghamstar.com' }),
       topicRow({ url: 'https://irishsun.com/news/xi', source: 'irishsun.com', title: 'Xi vows to resist protectionism as Putin attacks Western tariffs - Irish Sun' }),
       topicRow({ url: 'https://milwaukeesun.com/news/xi', source: 'milwaukeesun.com', title: 'Xi vows to resist protectionism as Putin attacks Western tariffs | Milwaukee Sun' }),
-      topicRow({ url: 'https://reuters.com/world/b', source: 'reuters.com', title: 'NATO naval group enters Baltic exercise' }),
-      topicRow({ url: 'https://apnews.com/world/c', source: 'apnews.com', title: 'UN Security Council convenes on maritime corridors' }),
-    ], 2);
+      topicRow({ url: 'https://reuters.com/world/aid-ukraine', source: 'reuters.com', title: 'Military aid package approved today - Ukraine' }),
+      topicRow({ url: 'https://apnews.com/world/aid-israel', source: 'apnews.com', title: 'Military aid package approved today - Israel' }),
+    ], 3);
 
     assert.deepEqual(result.map((article) => article.url), [
       'https://birminghamstar.com/news/xi',
-      'https://reuters.com/world/b',
+      'https://reuters.com/world/aid-ukraine',
+      'https://apnews.com/world/aid-israel',
     ]);
   });
 });

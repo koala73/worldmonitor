@@ -355,19 +355,60 @@ export function toArticle(record) {
   };
 }
 
-// Strip a trailing publisher tag ("Headline - Irish Sun", "Headline | Reuters")
-// only when the remaining prefix is a full headline and the suffix is short,
-// so hyphenated clauses ("Iran - US talks") stay intact.
-const TRAILING_PUBLISHER_SUFFIX_RE = /\s+[-|—–]\s+([^-|—–]{1,45})$/;
+// Strip a trailing publisher tag ("Headline - Birmingham Star", "Headline | Irish Sun")
+// only when the suffix identifies the article's own source domain, so meaningful
+// trailing clauses ("Military aid package approved today - Ukraine" vs "- Israel")
+// remain distinct stories.
+const TRAILING_PUBLISHER_SUFFIX_RE = /\s+[-|—–]\s+([^-|—–]{1,60})$/;
 
-export function gdeltHeadlineDedupeKey(title) {
+function compactPublisherToken(value) {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+function sourceDomainStem(source, url) {
+  let host = String(source || '').trim().toLowerCase();
+  if (!host && url) {
+    try {
+      host = new URL(url).hostname.toLowerCase();
+    } catch {
+      host = '';
+    }
+  }
+  host = host.replace(/^(?:www|m|amp)\./, '');
+  const parts = host.split('.').filter(Boolean);
+  if (parts.length >= 3 && parts.at(-1).length === 2 && parts.at(-2).length <= 3) {
+    parts.splice(-2);
+  } else if (parts.length >= 2) {
+    parts.pop();
+  }
+  return compactPublisherToken(parts.join(''));
+}
+
+function suffixMatchesPublisher(suffix, source, url) {
+  const hostStem = sourceDomainStem(source, url);
+  const suffixToken = compactPublisherToken(suffix);
+  if (hostStem.length < 3 || suffixToken.length < 3) return false;
+  const suffixWithoutThe = suffixToken.startsWith('the') && suffixToken.length > 5
+    ? suffixToken.slice(3)
+    : suffixToken;
+  return hostStem === suffixToken
+    || hostStem === suffixWithoutThe
+    || hostStem.includes(suffixToken)
+    || hostStem.includes(suffixWithoutThe)
+    || (hostStem.length >= 4 && suffixToken.includes(hostStem));
+}
+
+export function gdeltHeadlineDedupeKey(title, source = '', url = '') {
   let text = String(title || '').trim();
   const suffixMatch = text.match(TRAILING_PUBLISHER_SUFFIX_RE);
   if (suffixMatch) {
     const prefix = text.slice(0, suffixMatch.index).trim();
-    const suffixWords = suffixMatch[1].trim().split(/\s+/).filter(Boolean).length;
     const prefixWords = prefix.split(/\s+/).filter(Boolean).length;
-    if (prefix.length >= 20 && prefixWords >= 4 && suffixWords <= 6) {
+    if (prefix.length >= 20 && prefixWords >= 4 && suffixMatchesPublisher(suffixMatch[1], source, url)) {
       text = prefix;
     }
   }
@@ -375,7 +416,7 @@ export function gdeltHeadlineDedupeKey(title) {
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ')
     .trim();
 }
 
@@ -401,7 +442,7 @@ function mergeArticles(
   const seenHeadlines = new Set();
   const deduped = [];
   for (const article of sorted) {
-    const headlineKey = gdeltHeadlineDedupeKey(article.title);
+    const headlineKey = gdeltHeadlineDedupeKey(article.title, article.source, article.url);
     if (headlineKey) {
       if (seenHeadlines.has(headlineKey)) continue;
       seenHeadlines.add(headlineKey);

@@ -410,6 +410,38 @@ describe('GDELT bulk derived products', () => {
         title: 'Iran - US talks resume',
         themes: 'MILITARY,1',
       }),
+      gkgRow({
+        id: 'clause-ukraine',
+        timestamp: '20260730115800',
+        domain: 'reuters.com',
+        url: 'https://reuters.com/world/aid-ukraine',
+        title: 'Military aid package approved today - Ukraine',
+        themes: 'MILITARY,1',
+      }),
+      gkgRow({
+        id: 'clause-israel',
+        timestamp: '20260730115800',
+        domain: 'apnews.com',
+        url: 'https://apnews.com/world/aid-israel',
+        title: 'Military aid package approved today - Israel',
+        themes: 'MILITARY,1',
+      }),
+      gkgRow({
+        id: 'hindi-1',
+        timestamp: '20260730115700',
+        domain: 'hindi1.example',
+        url: 'https://hindi1.example/pul',
+        title: 'भारत में पुल गिरा',
+        themes: 'MILITARY,1',
+      }),
+      gkgRow({
+        id: 'hindi-2',
+        timestamp: '20260730115700',
+        domain: 'hindi2.example',
+        url: 'https://hindi2.example/pol',
+        title: 'भारत में पोल गिरा',
+        themes: 'MILITARY,1',
+      }),
     ].join('\n'));
 
     const previous = {
@@ -438,12 +470,17 @@ describe('GDELT bulk derived products', () => {
 
     const military = result.intel.topics.find((topic) => topic.id === 'military');
     // All 4 copies of the Xi story (3 fresh across domains + 1 prior) collapse to 1,
-    // while both distinct Arabic stories and the short hyphenated headline are preserved.
+    // while distinct trailing clauses (- Ukraine vs - Israel), Hindi vowel marks
+    // (पुल vs पोल), distinct Arabic stories, and short hyphenated titles are preserved.
     assert.deepEqual(military.articles.map((article) => article.url), [
       'https://arabic1.example/a',
       'https://arabic2.example/b',
       'https://birminghamstar.com/news/xi-protectionism',
       'https://reuters.com/world/iran-us-talks',
+      'https://apnews.com/world/aid-israel',
+      'https://reuters.com/world/aid-ukraine',
+      'https://hindi1.example/pul',
+      'https://hindi2.example/pol',
     ]);
   });
 

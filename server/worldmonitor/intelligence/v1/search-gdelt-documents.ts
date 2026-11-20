@@ -50,18 +50,58 @@ export interface SeededCountryIndex {
 }
 
 const COUNTRY_QUERY_RE = /^country:([a-z]{2})$/i;
-const TRAILING_PUBLISHER_SUFFIX_RE = /\s+[-|—–]\s+([^-|—–]{1,45})$/;
+const TRAILING_PUBLISHER_SUFFIX_RE = /\s+[-|—–]\s+([^-|—–]{1,60})$/;
 const DEFAULT_MAX_RECORDS = 10;
 const MAX_RECORDS_CAP = 20;
 
-function topicHeadlineKey(title: string): string {
+function compactPublisherToken(value: string): string {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+function sourceDomainStem(source: string, url: string): string {
+  let host = String(source || '').trim().toLowerCase();
+  if (!host && url) {
+    try {
+      host = new URL(url).hostname.toLowerCase();
+    } catch {
+      host = '';
+    }
+  }
+  host = host.replace(/^(?:www|m|amp)\./, '');
+  const parts = host.split('.').filter(Boolean);
+  if (parts.length >= 3 && parts[parts.length - 1]!.length === 2 && parts[parts.length - 2]!.length <= 3) {
+    parts.splice(-2);
+  } else if (parts.length >= 2) {
+    parts.pop();
+  }
+  return compactPublisherToken(parts.join(''));
+}
+
+function suffixMatchesPublisher(suffix: string, source: string, url: string): boolean {
+  const hostStem = sourceDomainStem(source, url);
+  const suffixToken = compactPublisherToken(suffix);
+  if (hostStem.length < 3 || suffixToken.length < 3) return false;
+  const suffixWithoutThe = suffixToken.startsWith('the') && suffixToken.length > 5
+    ? suffixToken.slice(3)
+    : suffixToken;
+  return hostStem === suffixToken
+    || hostStem === suffixWithoutThe
+    || hostStem.includes(suffixToken)
+    || hostStem.includes(suffixWithoutThe)
+    || (hostStem.length >= 4 && suffixToken.includes(hostStem));
+}
+
+function topicHeadlineKey(title: string, source = '', url = ''): string {
   let text = String(title || '').trim();
   const suffixMatch = text.match(TRAILING_PUBLISHER_SUFFIX_RE);
   if (suffixMatch && suffixMatch.index !== undefined) {
     const prefix = text.slice(0, suffixMatch.index).trim();
-    const suffixWords = suffixMatch[1]!.trim().split(/\s+/).filter(Boolean).length;
     const prefixWords = prefix.split(/\s+/).filter(Boolean).length;
-    if (prefix.length >= 20 && prefixWords >= 4 && suffixWords <= 6) {
+    if (prefix.length >= 20 && prefixWords >= 4 && suffixMatchesPublisher(suffixMatch[1]!, source, url)) {
       text = prefix;
     }
   }
@@ -69,15 +109,15 @@ function topicHeadlineKey(title: string): string {
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ')
     .trim();
 }
 
 /**
- * Collapse verbatim syndicated copies (including trailing publisher tags) before
- * applying the per-topic display cap. Mirrors `gdeltHeadlineDedupeKey` in
- * `scripts/_gdelt-bulk-materializer.mjs` so cached snapshots written before the
- * next seeder tick still serve distinct stories.
+ * Collapse verbatim syndicated copies (including source-matched trailing
+ * publisher tags) before applying the per-topic display cap. Mirrors
+ * `gdeltHeadlineDedupeKey` in `scripts/_gdelt-bulk-materializer.mjs` so cached
+ * snapshots written before the next seeder tick still serve distinct stories.
  */
 export function dedupeTopicArticles(articles: GdeltArticle[], maxRecords: number): GdeltArticle[] {
   const limit = boundedMaxRecords(maxRecords);
@@ -87,7 +127,7 @@ export function dedupeTopicArticles(articles: GdeltArticle[], maxRecords: number
   for (const article of articles) {
     if (seenUrls.has(article.url)) continue;
     seenUrls.add(article.url);
-    const headlineKey = topicHeadlineKey(article.title);
+    const headlineKey = topicHeadlineKey(article.title, article.source, article.url);
     if (headlineKey) {
       if (seenHeadlines.has(headlineKey)) continue;
       seenHeadlines.add(headlineKey);
