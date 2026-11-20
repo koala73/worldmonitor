@@ -29,7 +29,7 @@ const GLOB = /[*[\]{}]/;
 const SUITE_ROOTS = ['api', 'src-tauri', 'scripts', 'workers/api-cors-preflight'];
 // The scripts test.yml runs on every code PR (unit-shards, unit-built-output and sidecar). A
 // suite owned only by a script no workflow invokes still runs nowhere.
-const CI_OWNERS = ['test:data', 'test:sidecar'];
+const CI_OWNERS = ['test:data', 'test:sidecar', 'test:sidecar:desktop'];
 
 function testScripts() {
   return Object.entries(scripts).filter(([name]) => TEST_SCRIPT.test(name));
@@ -128,7 +128,12 @@ test('every guarded suite is run by a script CI invokes', () => {
 
 test('test:sidecar and test:data never run the same file', () => {
   const data = coveredFiles(scripts['test:data']);
-  const sidecar = [...coveredFiles(scripts['test:sidecar'])];
+  assert.match(scripts['test:sidecar'], /^npm run test:sidecar:desktop -- /);
+  const relay = [...coveredFiles(scripts['test:sidecar'])];
+  assert.deepEqual(relay.sort(), globSync('scripts/ais-relay-*.test.cjs', { cwd: root }).sort());
+  const desktop = [...coveredFiles(scripts['test:sidecar:desktop'])];
+  assert.ok(desktop.every(file => !relay.includes(file)));
+  const sidecar = [...desktop, ...relay];
   assert.ok(sidecar.length >= 10, `expected test:sidecar to list its suites, parsed ${sidecar.length}`);
   assert.deepEqual(
     sidecar.filter((file) => data.has(file)),
