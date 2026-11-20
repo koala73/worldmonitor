@@ -132,6 +132,9 @@ jobs:
       - name: Check the crawlable live pulse before publishing
         run: node scripts/check-crawlable-live-pulse.mjs
 
+      - name: Check the GitHub star snapshot before publishing
+        run: node scripts/github-stars-snapshot.mjs
+
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4

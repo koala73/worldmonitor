@@ -112,11 +112,15 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      # Only the app image builds the crawlable corpus. Run outside Docker so
-      # the wall-clock check cannot reuse a cached layer.
+      # Only the app image builds the crawlable corpus and /pro. Run outside
+      # Docker so the wall-clock checks cannot reuse a cached layer.
       - name: Check the crawlable live pulse before publishing
         if: matrix.image == 'worldmonitor-selfhosted'
         run: node scripts/check-crawlable-live-pulse.mjs
+
+      - name: Check the GitHub star snapshot before publishing
+        if: matrix.image == 'worldmonitor-selfhosted'
+        run: node scripts/github-stars-snapshot.mjs
 
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
 

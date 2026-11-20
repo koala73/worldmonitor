@@ -3203,26 +3203,30 @@ describe('docker-publish conditions', () => {
     );
 
   const dockerPublish = YAML.parse(read(resolve(workflowsDir, 'docker-publish.yml')));
-  it('checks live-pulse freshness before any Docker build can use its cache', () => {
+  it('checks snapshot freshness before any Docker build can use its cache', () => {
     const steps = dockerPublish.jobs.docker.steps;
-    const gate = steps.findIndex((step: { run?: string }) => step.run === 'node scripts/check-crawlable-live-pulse.mjs');
     const firstBuild = steps.findIndex((step: { uses?: string }) => step.uses?.startsWith('docker/build-push-action@'));
-    assert.ok(gate >= 0 && gate < firstBuild);
-    assert.equal(steps[gate].if, undefined);
-    assert.equal(steps[gate]['continue-on-error'], undefined);
+    for (const command of ['node scripts/check-crawlable-live-pulse.mjs', 'node scripts/github-stars-snapshot.mjs']) {
+      const gate = steps.findIndex((step: { run?: string }) => step.run === command);
+      assert.ok(gate >= 0 && gate < firstBuild, `${command} must run before the first Docker build`);
+      assert.equal(steps[gate].if, undefined);
+      assert.equal(steps[gate]['continue-on-error'], undefined);
+    }
   });
 
-  it('checks live-pulse freshness before the self-hosted app image builds', () => {
+  it('checks snapshot freshness before the self-hosted app image builds', () => {
     const selfHosted = YAML.parse(read(resolve(workflowsDir, 'docker-publish-self-hosted.yml')));
     const job = Object.values(selfHosted.jobs).find((candidate: any) =>
       candidate.strategy?.matrix?.include?.some((leg: { dockerfile?: string }) => leg.dockerfile === 'Dockerfile'),
     ) as { steps: Array<{ run?: string; uses?: string; if?: string; 'continue-on-error'?: unknown }> };
     assert.ok(job, 'docker-publish-self-hosted.yml must build the root Dockerfile');
-    const gate = job.steps.findIndex((step) => step.run === 'node scripts/check-crawlable-live-pulse.mjs');
     const firstBuild = job.steps.findIndex((step) => step.uses?.startsWith('docker/build-push-action@'));
-    assert.ok(gate >= 0 && gate < firstBuild);
-    assert.equal(job.steps[gate].if, "matrix.image == 'worldmonitor-selfhosted'");
-    assert.equal(job.steps[gate]['continue-on-error'], undefined);
+    for (const command of ['node scripts/check-crawlable-live-pulse.mjs', 'node scripts/github-stars-snapshot.mjs']) {
+      const gate = job.steps.findIndex((step) => step.run === command);
+      assert.ok(gate >= 0 && gate < firstBuild, `${command} must run before the first Docker build`);
+      assert.match(String(job.steps[gate].if), /worldmonitor-selfhosted/);
+      assert.equal(job.steps[gate]['continue-on-error'], undefined);
+    }
   });
 
   const tagEnableExpressions = () => {

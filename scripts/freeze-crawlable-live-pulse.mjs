@@ -105,8 +105,8 @@ const MAX_COUNTRY_CAPTURE_SHORTFALL = 5;
 // A shortfall is recorded and warned about, NOT thrown. This step runs last,
 // just before the only write, so throwing here would discard ~196 successfully
 // captured countries over a news-content problem -- and two such Mondays in a
-// row would push the snapshot past MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS and hard-
-// fail the whole crawlable corpus build. The strip degrades to fewer rows (or
+// row would push the snapshot past MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS and block
+// official publishing of the whole crawlable corpus. The strip degrades to fewer rows (or
 // none); it can never fill the gap with something unattributable, because the
 // generator publishes exactly what this capture vouched for.
 const HEADLINE_CAPTURE_COUNT = 4;

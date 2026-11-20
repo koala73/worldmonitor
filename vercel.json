@@ -1,5 +1,5 @@
 {
-  "buildCommand": "node scripts/check-crawlable-live-pulse.mjs && npm run build:full",
+  "buildCommand": "node scripts/check-crawlable-live-pulse.mjs && node scripts/github-stars-snapshot.mjs && npm run build:full",
   "ignoreCommand": "bash scripts/vercel-ignore.sh",
   "crons": [],
   "redirects": [

@@ -1898,7 +1898,7 @@ describe('crawlable corpus generator', () => {
 
     assert.ok(
       MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS > cadenceDays,
-      `the ${MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS}-day ceiling must exceed the ${cadenceDays}-day refresh cadence, or a healthy refresh cycle reds the build`,
+      `the ${MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS}-day ceiling must exceed the ${cadenceDays}-day refresh cadence, or a healthy refresh cycle blocks publishing`,
     );
     assert.ok(
       MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS <= cadenceDays * 2,
