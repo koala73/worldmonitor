@@ -301,19 +301,6 @@ test('country brief renders exact RPC records and preserves the country after re
   await screenshot(page, testInfo, 'website-clock-known-mobile', true);
 });
 
-test('country brief content is never subject to content-visibility skipping', async ({ page, countryBrief: _countryBrief }) => {
-  await page.goto('/dashboard?country=UA');
-  await expectCountry(page);
-  // The dashboard's `.panel-content { content-visibility: auto }` must not reach the
-  // brief: the panel slides in from off-screen, so its paint would depend on
-  // Chrome's off-screen judgement during the slide-in.
-  const content = page.locator('#deep-dive-content');
-  await expect(content).toHaveCSS('content-visibility', 'visible');
-  await page.locator('#deep-dive-close').click();
-  await expect(page.locator('#country-deep-dive-panel')).toHaveAttribute('aria-hidden', 'true');
-  await expect(content).toHaveCSS('content-visibility', 'visible');
-});
-
 test('country brief uses bootstrap fallback when the country index is unavailable', async ({ page, countryBrief }, testInfo) => {
   countryBrief.hydrate = true;
   countryBrief.response = { markets: [], dataAvailable: false, fetchedAt: Date.parse('2026-10-09T07:41:45.410Z') };
@@ -391,8 +378,14 @@ test('a country deep link keeps ?country when the brief chunk loads slowly, and 
   const writes = await page.evaluate(() => (window as unknown as { __wmUrlWrites: string[] }).__wmUrlWrites);
   expect(writes.length).toBeGreaterThan(0);
   for (const url of writes) expect(new URL(url, page.url()).searchParams.get('country'), url).toBe('UA');
+  // The dashboard's `.panel-content { content-visibility: auto }` must not reach the
+  // brief: the panel slides in from off-screen, so its paint would depend on
+  // Chrome's off-screen judgement during the slide-in.
+  const content = page.locator('#deep-dive-content');
+  await expect(content).toHaveCSS('content-visibility', 'visible');
   await page.locator('#deep-dive-close').click();
   await expect(page.locator('#country-deep-dive-panel')).toHaveAttribute('aria-hidden', 'true');
+  await expect(content).toHaveCSS('content-visibility', 'visible');
   await expect.poll(() => new URL(page.url()).searchParams.get('country')).toBeNull();
 });
 

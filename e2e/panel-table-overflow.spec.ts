@@ -114,16 +114,17 @@ function measure(page: Page, id: string): Promise<Overflow> {
 
 test('panel tables fit the panel at phone width', async ({ browser }, testInfo) => {
   test.setTimeout(240_000);
-  for (const viewport of VIEWPORTS) {
-    const context = await browser.newContext({ viewport, colorScheme: 'dark', isMobile: true, hasTouch: true });
-    const page = await context.newPage();
-    // Priority 0 keeps these panels inside the free tier's 40-panel cap, which
-    // keeps the lowest priorities and breaks ties by key.
-    const settings = Object.fromEntries(PANELS.map((id) => [id, { name: id, enabled: true, priority: 0 }]));
-    await seedAnonymousDashboard(page, 'full', { localStorage: { 'worldmonitor-panels': JSON.stringify(settings) } });
-    await routeFixtures(page);
+  const context = await browser.newContext({ viewport: VIEWPORTS[0], colorScheme: 'dark', isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  // Priority 0 keeps these panels inside the free tier's 40-panel cap, which
+  // keeps the lowest priorities and breaks ties by key.
+  const settings = Object.fromEntries(PANELS.map((id) => [id, { name: id, enabled: true, priority: 0 }]));
+  await seedAnonymousDashboard(page, 'full', { localStorage: { 'worldmonitor-panels': JSON.stringify(settings) } });
+  await routeFixtures(page);
 
-    await page.goto('/dashboard');
+  await page.goto('/dashboard');
+  for (const viewport of VIEWPORTS) {
+    await page.setViewportSize(viewport);
     for (const id of PANELS) {
       const panel = page.locator(`#panelsGrid .panel[data-panel="${id}"]`);
       await expect
@@ -138,8 +139,8 @@ test('panel tables fit the panel at phone width', async ({ browser }, testInfo) 
       expect.soft(m.cellsPastPanel, `${label}: cells past the panel edge`).toEqual([]);
       expect.soft(m.content[0] - m.content[1], `${label}: sideways scroll`).toBeLessThanOrEqual(0);
     }
-    await context.close();
   }
+  await context.close();
 });
 
 interface CueState { start: string; end: string; mask: string }
@@ -307,53 +308,60 @@ async function expectCue(page: Page, s: Scroll, id: string, label: string): Prom
 // about 271px at 1400, the narrowest viewport that still fits two. `fit` lists the tables
 // that must reflow to the column without scrolling; the rest may keep their
 // columns and scroll with the cue.
-const DESKTOP_VIEWPORTS = [
-  { width: 1920, height: 1080, fit: ['energy-disruptions', 'ucdp-events', 'climate', 'radiation-watch'] },
-  { width: 1440, height: 900, fit: ['climate'] },
-  { width: 1400, height: 800, fit: [] },
+// Keep cold starts at both narrow widths. Chromium can retain the previous
+// scroll-driven mask when resizing directly between overflowing columns.
+const DESKTOP_VIEWPORT_GROUPS = [
+  [
+    { width: 1400, height: 800, fit: [] },
+    { width: 1920, height: 1080, fit: ['energy-disruptions', 'ucdp-events', 'climate', 'radiation-watch'] },
+  ],
+  [{ width: 1440, height: 900, fit: ['climate'] }],
 ];
 const DESKTOP_PANELS = [...PANELS, 'grocery-basket'] as const;
 
-test('panel tables fit a narrow desktop column or scroll with a visible cue', async ({ browser }, testInfo) => {
-  test.setTimeout(300_000);
-  for (const { fit, ...viewport } of DESKTOP_VIEWPORTS) {
-    const styles = new Map<string, { th: CellStyle; td: CellStyle }>();
-    const context = await browser.newContext({ viewport, colorScheme: 'dark' });
+for (const viewports of DESKTOP_VIEWPORT_GROUPS) {
+  test(`panel tables fit a narrow desktop column or scroll with a visible cue (start at ${viewports[0].width}px)`, async ({ browser }, testInfo) => {
+    test.setTimeout(300_000);
+    const context = await browser.newContext({ viewport: viewports[0], colorScheme: 'dark' });
     const page = await context.newPage();
     const settings = Object.fromEntries(DESKTOP_PANELS.map((id) => [id, { name: id, enabled: true, priority: 0 }]));
     await seedAnonymousDashboard(page, 'full', { localStorage: { 'worldmonitor-panels': JSON.stringify(settings) } });
     await routeFixtures(page);
     await page.goto('/dashboard');
-    for (const id of DESKTOP_PANELS) {
-      const panel = page.locator(`#panelsGrid .panel[data-panel="${id}"]`);
-      await expect
-        .poll(async () => {
-          await panel.scrollIntoViewIfNeeded().catch(() => {});
-          return panel.locator('tbody tr').count();
-        }, { message: `${id} rows at ${viewport.width}px`, timeout: 90_000 })
-        .toBeGreaterThanOrEqual(3);
-      await evidenceScreenshot(panel, { path: testInfo.outputPath(`${id}-${viewport.width}.png`) });
-      const s = await readScroll(page, id);
-      const label = `${id} at ${viewport.width}px (panel ${s.panel}px, ${s.scroller || 'no scroller'} hides ${s.overflow}px)`;
-      expect(s.panel, `${label}: the panel sits in a sidebar column`).toBeLessThanOrEqual(400);
-      if (fit.includes(id)) expect.soft(s.overflow, `${label}: sideways scroll`).toBeLessThanOrEqual(0);
-      if (id === 'grocery-basket') expect.soft(s.overflow, `${label}: the country matrix scrolls`).toBeGreaterThan(0);
-      if (s.overflow > 0 || s.cellsPastPanel > 0) await expectCue(page, s, id, label);
-      if (WM_TABLE_PANELS.has(id) && viewport.width === 1920) {
-        const style = await readCellStyle(page, id);
-        expect.soft(style.th, `${id}: header cell uses the shared table style`).toMatchObject(WM_TABLE_STYLE.th);
-        expect.soft(style.td, `${id}: body cell uses the shared table style`).toMatchObject(WM_TABLE_STYLE.td);
-        styles.set(id, style);
-        expect.soft(await readLostColours(page, `#panelsGrid .panel[data-panel="${id}"]`), `${id}: cells keep the colour their class sets`).toEqual([]);
+    for (const { fit, ...viewport } of viewports) {
+      await page.setViewportSize(viewport);
+      const styles = new Map<string, { th: CellStyle; td: CellStyle }>();
+      for (const id of DESKTOP_PANELS) {
+        const panel = page.locator(`#panelsGrid .panel[data-panel="${id}"]`);
+        await expect
+          .poll(async () => {
+            await panel.scrollIntoViewIfNeeded().catch(() => {});
+            return panel.locator('tbody tr').count();
+          }, { message: `${id} rows at ${viewport.width}px`, timeout: 90_000 })
+          .toBeGreaterThanOrEqual(3);
+        await evidenceScreenshot(panel, { path: testInfo.outputPath(`${id}-${viewport.width}.png`) });
+        const s = await readScroll(page, id);
+        const label = `${id} at ${viewport.width}px (panel ${s.panel}px, ${s.scroller || 'no scroller'} hides ${s.overflow}px)`;
+        expect(s.panel, `${label}: the panel sits in a sidebar column`).toBeLessThanOrEqual(400);
+        if (fit.includes(id)) expect.soft(s.overflow, `${label}: sideways scroll`).toBeLessThanOrEqual(0);
+        if (id === 'grocery-basket') expect.soft(s.overflow, `${label}: the country matrix scrolls`).toBeGreaterThan(0);
+        if (s.overflow > 0 || s.cellsPastPanel > 0) await expectCue(page, s, id, label);
+        if (WM_TABLE_PANELS.has(id) && viewport.width === 1920) {
+          const style = await readCellStyle(page, id);
+          expect.soft(style.th, `${id}: header cell uses the shared table style`).toMatchObject(WM_TABLE_STYLE.th);
+          expect.soft(style.td, `${id}: body cell uses the shared table style`).toMatchObject(WM_TABLE_STYLE.td);
+          styles.set(id, style);
+          expect.soft(await readLostColours(page, `#panelsGrid .panel[data-panel="${id}"]`), `${id}: cells keep the colour their class sets`).toEqual([]);
+        }
+      }
+      if (viewport.width === 1920) {
+        const [first, ...rest] = [...styles.values()];
+        for (const style of rest) expect.soft(style, 'shared-style tables render identical header and body cells').toEqual(first);
       }
     }
-    if (viewport.width === 1920) {
-      const [first, ...rest] = [...styles.values()];
-      for (const style of rest) expect.soft(style, 'shared-style tables render identical header and body cells').toEqual(first);
-    }
     await context.close();
-  }
-});
+  });
+}
 
 test('the table scroll cue follows the reading direction in RTL', async ({ browser }, testInfo) => {
   test.setTimeout(180_000);
