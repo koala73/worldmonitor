@@ -1087,6 +1087,11 @@ export default defineConfig(({ mode }) => {
     html: {
       cspNonce: STATIC_SCRIPT_NONCE,
     },
+    optimizeDeps: {
+      // The initial scan misses the ML worker. Discovering its dependency later
+      // replaces shared chunks while an open dashboard can still request them.
+      include: ['@xenova/transformers'],
+    },
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
       // Resolved + build-time validated above (devDependencies fallback +

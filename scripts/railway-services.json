@@ -83,6 +83,7 @@
       "scripts/shared/country-names.json",
       "scripts/shared/news-digest-editions.json",
       "scripts/shared/news-digest-warm-cells.json",
+      "scripts/shared/news-catalog.json",
       "scripts/shared/news-places.json",
       "scripts/shared/iso2-to-region.json",
       "scripts/shared/iso3-to-iso2.json",

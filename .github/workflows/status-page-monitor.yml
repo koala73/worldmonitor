@@ -38,7 +38,16 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: npx playwright install --with-deps chromium
+      # The runner image already has Chromium's libraries; --with-deps only adds fonts via apt, whose mirrors stall (#11041).
+      - name: Install Chromium
+        timeout-minutes: 5
+        run: |
+          for attempt in 1 2 3; do
+            timeout 90 npx playwright install chromium && exit 0
+            echo "::warning::Chromium download attempt $attempt failed"
+            [ "$attempt" -lt 3 ] && sleep 10
+          done
+          exit 1
       - run: npm run inventory:facts
       - run: node --test tests/status-page-smoke.test.mjs tests/status-page-monitor-workflow.test.mjs
       - run: npx playwright test e2e/status-page-monitor.spec.ts --project=chromium
@@ -54,7 +63,16 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: npx playwright install --with-deps chromium
+      # The runner image already has Chromium's libraries; --with-deps only adds fonts via apt, whose mirrors stall (#11041).
+      - name: Install Chromium
+        timeout-minutes: 5
+        run: |
+          for attempt in 1 2 3; do
+            timeout 90 npx playwright install chromium && exit 0
+            echo "::warning::Chromium download attempt $attempt failed"
+            [ "$attempt" -lt 3 ] && sleep 10
+          done
+          exit 1
       - name: Verify rendered status page and all four uptime windows
         run: node scripts/status-page-smoke.mjs
       - name: Preserve every attempt and diagnostic report

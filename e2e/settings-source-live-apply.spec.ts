@@ -109,21 +109,14 @@ async function seedProFullVariant(page: Page, returningProfile = false, locale =
   await acceptTesterKeySession(page);
 }
 
-/**
- * Boot the dashboard and wait until the news gate has settled.
- *
- * Returns once exactly one digest has been requested and the settle window has
- * passed with no second one. That is the positive control for every later
- * assertion: without it, a dashboard still issuing background news loads would
- * make an extra digest after the modal closes look like this fix working.
- */
-async function bootUntilNewsSettles(page: Page): Promise<DigestLog> {
+/** Boot with a healthy digest and the Settings handlers attached. */
+async function bootSourceSettings(page: Page): Promise<DigestLog> {
   const log = await installDigestAccounting(page);
 
   // Capture terminal signals during boot; normal teardown must remain silent.
   const lossWatch = attachBrowserLossDiagnostics(
     pageBrowserLossEvents(page),
-    'settings-source-live-apply bootUntilNewsSettles',
+    'settings-source-live-apply bootSourceSettings',
   );
   try {
     const firstDigest = page.waitForRequest(DIGEST_GLOB);
@@ -132,11 +125,17 @@ async function bootUntilNewsSettles(page: Page): Promise<DigestLog> {
       () => document.documentElement.dataset.wmEventHandlersReady === 'true',
     );
     await firstDigest;
-    await page.waitForTimeout(SETTLE_MS);
   } finally {
     lossWatch.dispose();
   }
 
+  return log;
+}
+
+/** A quiet baseline lets the two request-budget tests attribute later loads to the modal. */
+async function bootUntilNewsSettles(page: Page): Promise<DigestLog> {
+  const log = await bootSourceSettings(page);
+  await page.waitForTimeout(SETTLE_MS);
   expect(
     log.urls.length,
     `the news gate must be quiet before Settings is opened, or an extra digest afterwards ` +
@@ -206,7 +205,7 @@ test.describe('settings source live apply (#6380)', () => {
         original.call(this, key, value);
       };
     });
-    await bootUntilNewsSettles(page);
+    await bootSourceSettings(page);
     await openSourcesTab(page);
     const source = (name: string) => page.locator(`#usSourceToggles .source-toggle-item[data-source="${name}"]`);
     const showSource = async (name: string) => {
@@ -288,7 +287,7 @@ test.describe('settings source live apply (#6380)', () => {
           };
         }
       }, preference);
-      await bootUntilNewsSettles(page);
+      await bootSourceSettings(page);
       if (preference === 'write-failure') {
         expect(await page.evaluate(() => localStorage.getItem('worldmonitor-german-rss-sources-v1'))).toBeNull();
         await page.evaluate(() => sessionStorage.setItem('__german_rss_allow_writes__', '1'));
@@ -312,7 +311,7 @@ test.describe('settings source live apply (#6380)', () => {
   for (const locale of ['en', 'de']) {
     test(`German RSS sources default correctly in ${locale} and retain explicit choices`, async ({ page }, testInfo) => {
       await seedProFullVariant(page, true, locale);
-      await bootUntilNewsSettles(page);
+      await bootSourceSettings(page);
       await openSourcesTab(page);
       await page.locator('.sources-search input').fill('Deutschlandfunk');
       const source = page.locator('#usSourceToggles .source-toggle-item[data-source="Deutschlandfunk"]');
@@ -351,7 +350,7 @@ test.describe('settings source live apply (#6380)', () => {
   }
   test('new curated regional sources stay opt-in for a returning Pro profile and retain a later choice', async ({ page }, testInfo) => {
     await seedProFullVariant(page, true);
-    await bootUntilNewsSettles(page);
+    await bootSourceSettings(page);
     await openSourcesTab(page);
     for (const name of ['Guardian Africa', 'France 24 Africa', 'Guardian Caribbean', 'Guardian Pacific', 'France 24 Asia Pacific']) {
       await expect(page.locator(`#usSourceToggles .source-toggle-item[data-source="${name}"]`)).not.toHaveClass(/\bactive\b/);

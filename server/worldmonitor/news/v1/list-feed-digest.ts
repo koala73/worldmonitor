@@ -52,6 +52,7 @@ import {
   orderServerFeedEntries,
   VARIANT_FEEDS,
   INTEL_SOURCES,
+  feedHeadlineLanguage,
   SERVER_EDITIONS,
   digestGateProfile,
   type ServerFeed,
@@ -2865,18 +2866,36 @@ async function recordPublisherCoverage(
 }
 
 export const ALERT_POOL_MAX_ITEMS = 300;
+
+let headlineLanguages: Map<string, Set<string>> | undefined;
+/** Feed name to the languages its headlines come in (a name can have a feed per edition). */
+function headlineLanguagesBySource(): Map<string, Set<string>> {
+  if (!headlineLanguages) {
+    headlineLanguages = new Map();
+    const feeds = [...Object.values(VARIANT_FEEDS).flatMap(byCategory => Object.values(byCategory).flat()), ...INTEL_SOURCES];
+    for (const feed of feeds) {
+      const languages = headlineLanguages.get(feed.name) ?? new Set<string>();
+      headlineLanguages.set(feed.name, languages.add(feedHeadlineLanguage(feed)));
+    }
+  }
+  return headlineLanguages;
+}
 const ALERT_POOL_WINDOW_MS = 6 * 60 * 60 * 1000;
 
 /**
  * #10978: the relay classifies only the served digest, so the category cap
  * decided what could alert. Write the newest fresh items the cap kept off the
  * dashboard (6 h, the relay's recency gate) for the relay to classify too.
- * The classify cache keeps each title to one model call a day.
+ * The classify cache keeps each title to one model call a day. Only headlines
+ * in the digest language: the build also fetches local-language outlets, and
+ * the pool once filled with those and alerted each story in every language.
  */
-export function alertPoolItems(servable: readonly ParsedItem[], served: readonly ParsedItem[], now: number) {
-  const taken = new Set(served.map(item => item.title));
+export function alertPoolItems(servable: readonly ParsedItem[], served: readonly ParsedItem[], now: number, lang: string) {
+  const inLanguage = (item: ParsedItem) => headlineLanguagesBySource().get(item.source)?.has(lang) ?? item.lang === lang;
+  // A served copy the relay will not alert leaves its title free for a copy it will.
+  const taken = new Set(served.filter(inLanguage).map(item => item.title));
   return [...servable]
-    .filter(item => item.publishedAt >= now - ALERT_POOL_WINDOW_MS)
+    .filter(item => inLanguage(item) && item.publishedAt >= now - ALERT_POOL_WINDOW_MS)
     .sort((a, b) => b.publishedAt - a.publishedAt)
     .filter(item => !taken.has(item.title) && taken.add(item.title))
     .slice(0, ALERT_POOL_MAX_ITEMS)
@@ -2896,13 +2915,17 @@ async function recordAlertPool(
   servable: readonly ParsedItem[],
   served: readonly ParsedItem[],
   variant: string,
+  lang: string,
   now: number,
   deadlineAt: number,
 ): Promise<void> {
   const timeout = redisTimeoutForDeadline(deadlineAt);
   if (!timeout) return;
-  const items = alertPoolItems(servable, served, now);
-  await runRedisTransaction([['SET', `news:alert-pool:v1:${variant}`, JSON.stringify({ generatedAt: now, items }), 'EX', 1800]], false, timeout);
+  const items = alertPoolItems(servable, served, now, lang);
+  // v2: language-filtered. A relay still reading v1 loses the pool within its
+  // 30 minute TTL, and the first v2 read is recorded as backlog, so the
+  // refilled pool cannot alert hours-old headlines whichever side deploys first.
+  await runRedisTransaction([['SET', `news:alert-pool:v2:${variant}`, JSON.stringify({ generatedAt: now, items }), 'EX', 1800]], false, timeout);
 }
 
 function redisPipelineConfirmed(
@@ -4057,7 +4080,7 @@ async function buildDigest(
     // category cap. Runs alongside story tracking within the same deadline.
     const publisherCoverageWrite = recordPublisherCoverage(servableItems, allSliced, buildStart, storyTrackingDeadlineAt)
       .catch((err: unknown) => console.warn('[digest] publisher coverage unavailable:', err));
-    const alertPoolWrite = (lang === 'en' ? recordAlertPool(servableItems, allSliced, variant, now, storyTrackingDeadlineAt) : Promise.resolve())
+    const alertPoolWrite = (lang === 'en' ? recordAlertPool(servableItems, allSliced, variant, lang, now, storyTrackingDeadlineAt) : Promise.resolve())
       .catch((err: unknown) => console.warn('[digest] alert pool unavailable:', err));
 
     // Read existing story tracking BEFORE writing so we know the previous cycle's

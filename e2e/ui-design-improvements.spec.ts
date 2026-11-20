@@ -36,6 +36,8 @@ for (const theme of ['light', 'dark']) {
       await page.setViewportSize({ width, height: 900 });
       await boot(page, theme);
       const mobile = width <= 768;
+      // Exercise each navigation path once. Geometry and contrast use the full matrix.
+      const checkNavigation = theme === 'light' && (width === 320 || !mobile);
       await page.locator(mobile ? '[data-mobile-tab="search"]' : '#searchBtn').click();
       const tips = page.locator('.search-launch-grid');
       await expect(tips).toBeVisible();
@@ -48,8 +50,10 @@ for (const theme of ['light', 'dark']) {
         expect(input!.x + input!.width).toBeLessThanOrEqual(close!.x);
         await expect(page.locator('.search-chip')).toHaveCount(2);
       }
-      await page.locator('button[data-search-scope="actions"]').click();
-      await expect(page.locator('button[data-search-scope="actions"]')).toHaveAttribute('aria-pressed', 'true');
+      if (checkNavigation) {
+        await page.locator('button[data-search-scope="actions"]').click();
+        await expect(page.locator('button[data-search-scope="actions"]')).toHaveAttribute('aria-pressed', 'true');
+      }
       await page.keyboard.press('Escape');
       await openSettings(page, mobile);
       await openSettingsPage(page, 'sources');
@@ -67,10 +71,12 @@ for (const theme of ['light', 'dark']) {
       if (mobile) {
         expect((await row.locator('.panel-toggle-item').boundingBox())!.height).toBeGreaterThanOrEqual(44);
       }
-      await openSettingsPage(page, 'notifications');
-      await expect(page.locator('#usNotifUpgradeBtn')).toHaveText('Sign In');
-      await openSettingsPage(page, 'api-keys');
-      await expect(page.locator('#us-page-api-keys .settings-access-gate h3')).toHaveText('API and desktop keys');
+      if (checkNavigation) {
+        await openSettingsPage(page, 'notifications');
+        await expect(page.locator('#usNotifUpgradeBtn')).toHaveText('Sign In');
+        await openSettingsPage(page, 'api-keys');
+        await expect(page.locator('#us-page-api-keys .settings-access-gate h3')).toHaveText('API and desktop keys');
+      }
       await openSettingsPage(page, 'ai');
       await page.locator('#fwImportBtn').click();
       const field = page.getByLabel('agentskills.io URL or ID', { exact: true });
@@ -80,6 +86,7 @@ for (const theme of ['light', 'dark']) {
         return { border: style.borderTopColor, background: style.backgroundColor };
       });
       expect(colors.border).not.toBe(colors.background);
+      if (!checkNavigation) return;
       await page.locator('#fwTabJson').click();
       await expect(page.locator('#fwJsonInput')).toBeVisible();
       await page.keyboard.press('Escape');

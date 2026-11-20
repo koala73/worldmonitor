@@ -2256,18 +2256,27 @@
       ]
     },
     {
-      "host": "asiaplustj.info",
-      "provider": "asiaplustj.info",
+      "host": "asiaplus.news",
+      "provider": "asiaplus.news",
       "kind": "feed",
       "observed": true,
-      "license": "Publisher terms apply; verify before redistribution.",
-      "attribution": "Asia-Plus — headlines and publisher links.",
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit asiaplus.news and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
           "path": "shared/news-catalog.json"
         }
       ]
+    },
+    {
+      "host": "asiaplustj.info",
+      "provider": "asiaplustj.info",
+      "kind": "feed",
+      "observed": false,
+      "license": "Publisher terms apply; verify before redistribution.",
+      "attribution": "Asia-Plus — headlines and publisher links.",
+      "status": "excluded"
     },
     {
       "host": "astanatimes.com",
@@ -5808,6 +5817,20 @@
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit feed.infoq.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "feed.koreatimes.co.kr",
+      "provider": "feed.koreatimes.co.kr",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit feed.koreatimes.co.kr and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
@@ -10973,6 +10996,20 @@
       "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
       "attribution": "Credit PAP and link to the original publisher item.",
       "status": "reviewed",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "partner-feeds.publishing.tamedia.ch",
+      "provider": "partner-feeds.publishing.tamedia.ch",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit partner-feeds.publishing.tamedia.ch and link to the original feed publisher.",
+      "status": "terms-review",
       "references": [
         {
           "path": "shared/news-catalog.json"
@@ -19305,15 +19342,10 @@
       "host": "www.koreatimes.co.kr",
       "provider": "www.koreatimes.co.kr",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.koreatimes.co.kr and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.krik.rs",
@@ -21704,15 +21736,10 @@
       "host": "www.tagesanzeiger.ch",
       "provider": "www.tagesanzeiger.ch",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.tagesanzeiger.ch and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.tagesschau.de",
@@ -22625,9 +22652,6 @@
         },
         {
           "path": "api/mcp/auth.ts"
-        },
-        {
-          "path": "api/mcp/handler.ts"
         },
         {
           "path": "api/mcp/skill-extension/generated.ts"

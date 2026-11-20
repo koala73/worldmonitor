@@ -194,21 +194,23 @@ test('timed-out Telegram RPCs reset the client and allow a clean reconnect', asy
     RELAY_TEST_TELEGRAM_SKIP_FULL_CHANNEL: 'true',
   });
   const { child, port } = await relay.ready;
+  const closed = once(child, 'close');
 
   try {
     const timedOut = await get(port, '/telegram/resolve?username=stuck_channel');
-    const reconnectStartedAt = Date.now();
     const recovered = await get(port, '/telegram/resolve?username=recovery_channel');
     // 504, not 502: a timeout is a gateway timeout, and the explicit status is
     // what lets the negative cache back a chronically slow channel off.
     assert.equal(timedOut.status, 504);
     assert.equal(recovered.status, 200);
-    assert.ok(Date.now() - reconnectStartedAt >= 50, 'reconnect must wait for the old client to disconnect');
-    assert.equal((relay.getOutput().match(/\[Relay\]\[TestTelegram\] connect/g) || []).length, 2);
-    assert.equal((relay.getOutput().match(/getEntity recovery_channel/g) || []).length, 1);
   } finally {
     await stop(child);
+    await closed;
   }
+  const [beforeShutdown] = relay.getOutput().split('[Relay] SIGTERM received');
+  const events = [...beforeShutdown.matchAll(/\[Relay\]\[TestTelegram\] (connect \d+|disconnect rejected|getEntity recovery_channel)/g)]
+    .map(match => match[1]);
+  assert.deepEqual(events, ['connect 1', 'disconnect rejected', 'connect 2', 'getEntity recovery_channel']);
 });
 
 test('a hung member-count lookup degrades to null instead of failing the channel', async () => {

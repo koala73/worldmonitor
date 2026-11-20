@@ -242,7 +242,9 @@ async function expectMarkets(page: Page) {
   await expect(card.locator('.cdp-market-item').nth(1)).toBeVisible();
 }
 
-async function screenshot(page: Page, testInfo: TestInfo, name: string) {
+async function screenshot(page: Page, testInfo: TestInfo, name: string, mobile = false) {
+  if (process.env.WM_E2E_EVIDENCE !== '1') return;
+  if (mobile) await page.setViewportSize({ width: 390, height: 844 });
   await marketsCard(page).scrollIntoViewIfNeeded();
   await marketsCard(page).evaluate(card => card.scrollIntoView({ block: 'center' }));
   const path = testInfo.outputPath(`${name}.png`);
@@ -299,8 +301,7 @@ test('country brief renders exact RPC records and preserves the country after re
   expect(countryBrief.requests.length).toBeGreaterThan(requestsBeforeReload);
   expect(countryBrief.requests.every(request => request.category === 'country:UA' && request.status === 200)).toBe(true);
   await screenshot(page, testInfo, 'rpc-after-reload');
-  await page.setViewportSize({ width: 390, height: 844 });
-  await screenshot(page, testInfo, 'website-clock-known-mobile');
+  await screenshot(page, testInfo, 'website-clock-known-mobile', true);
 });
 
 test('country brief content is never subject to content-visibility skipping', async ({ page, countryBrief: _countryBrief }) => {
@@ -330,8 +331,7 @@ test('country brief uses bootstrap fallback when the country index is unavailabl
   await expect(card.locator('.cdp-section-source')).toHaveText('Snapshot time unavailable. Quote times are not supplied.');
   expect(countryBrief.requests).toContainEqual({ method: 'GET', category: 'country:UA', pageSize: '5', status: 200 });
   await screenshot(page, testInfo, 'bootstrap-fallback');
-  await page.setViewportSize({ width: 390, height: 844 });
-  await screenshot(page, testInfo, 'website-clock-fallback-mobile');
+  await screenshot(page, testInfo, 'website-clock-fallback-mobile', true);
 });
 
 test('country brief honors an authoritative empty index over bootstrap fallback', async ({ page, countryBrief }, testInfo) => {
@@ -344,8 +344,7 @@ test('country brief honors an authoritative empty index over bootstrap fallback'
   await expect(marketsCard(page).locator('.cdp-section-source')).toHaveText('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.');
   expect(countryBrief.requests).toContainEqual({ method: 'GET', category: 'country:UA', pageSize: '5', status: 200 });
   await screenshot(page, testInfo, 'authoritative-empty');
-  await page.setViewportSize({ width: 390, height: 844 });
-  await screenshot(page, testInfo, 'website-clock-empty-mobile');
+  await screenshot(page, testInfo, 'website-clock-empty-mobile', true);
 });
 
 test('country brief recovers from a failed RPC when the user reloads', async ({ page, countryBrief }, testInfo) => {

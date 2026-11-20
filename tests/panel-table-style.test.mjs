@@ -63,17 +63,20 @@ function tablesIn(source) {
   return tables;
 }
 
-const panelFiles = componentFiles().filter((path) => !OUT_OF_SCOPE.has(path));
+const components = componentFiles();
+const panelFiles = components.filter((path) => !OUT_OF_SCOPE.has(path));
 const tables = panelFiles.flatMap((path) => tablesIn(read(path)).map((cls) => ({ path, classes: cls.split(/\s+/).filter(Boolean) })));
 
 /** Rules whose selector list includes exactly `.<name> th` or `.<name> td`, optionally via thead/tbody. */
-function exactCellRules(css, name) {
+function exactCellRules(css, names) {
+  const cells = new Set([...names].flatMap((name) => [
+    `.${name} th`, `.${name} td`, `.${name} thead th`, `.${name} tbody td`,
+  ]));
   const rules = [];
   const stripped = css.replace(/\/\*[\s\S]*?\*\//g, '');
   for (const m of stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const selectors = m[1].split(',').map((s) => s.trim().replace(/\s+/g, ' '));
-    const cells = [`.${name} th`, `.${name} td`, `.${name} thead th`, `.${name} tbody td`];
-    if (selectors.some((s) => cells.includes(s))) rules.push({ selector: m[1].trim(), body: m[2] });
+    if (selectors.some((s) => cells.has(s))) rules.push({ selector: m[1].trim(), body: m[2] });
   }
   return rules;
 }
@@ -82,7 +85,7 @@ describe('panel table style', () => {
   it('scans the panel tables', () => {
     assert.ok(tables.length >= 35, `only ${tables.length} panel tables found; the scan is broken`);
     for (const path of OUT_OF_SCOPE) {
-      assert.ok(panelFiles.includes(path) || OUT_OF_SCOPE.has(path), `${path} is gone; update the list`);
+      assert.ok(components.includes(path), `${path} is gone; update the list`);
     }
   });
 
@@ -125,11 +128,9 @@ describe('panel table style', () => {
     const css = STYLESHEETS.map(read).join('\n') + panelFiles.map(read).join('\n');
     const names = new Set(tables.filter((t) => t.classes.includes('wm-table')).flatMap((t) => t.classes.filter((c) => c !== 'wm-table')));
     const redeclared = [];
-    for (const name of names) {
-      for (const { selector, body } of exactCellRules(css, name)) {
-        const props = [...body.matchAll(/([\w-]+)\s*:/g)].map((m) => m[1]).filter((p) => SHARED.includes(p) || SHORTHANDS.includes(p) || SHARED.some((s) => p.startsWith(`${s}-`) && s !== 'color'));
-        if (props.length) redeclared.push(`${selector} { ${props.join(', ')} }`);
-      }
+    for (const { selector, body } of exactCellRules(css, names)) {
+      const props = [...body.matchAll(/([\w-]+)\s*:/g)].map((m) => m[1]).filter((p) => SHARED.includes(p) || SHORTHANDS.includes(p) || SHARED.some((s) => p.startsWith(`${s}-`) && s !== 'color'));
+      if (props.length) redeclared.push(`${selector} { ${props.join(', ')} }`);
     }
     assert.deepEqual(redeclared, []);
   });

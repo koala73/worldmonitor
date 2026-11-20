@@ -466,39 +466,23 @@ describe('seeder env hermeticity (#5767)', () => {
       // Negative: nothing here reaches for a home directory.
       assert.deepEqual(findHomeDirReferences(`join(__dirname, '..', '.env.local')`), []);
     });
+  });
 
-    it('no source bakes a home path into the repo', async () => {
-      const offenders = [];
-      let scanned = 0;
-      for await (const [entry, source] of scanSources()) {
-        scanned += 1;
-        const found = findCheckoutEscapingEnvPaths(source);
-        if (found.length > 0) offenders.push(`${entry}: ${found.join(', ')}`);
-      }
-      assert.ok(scanned > 100, `expected to scan the seeder fleet, scanned ${scanned}`);
-      assert.deepEqual(offenders, [], `sources with a hardcoded home path:\n${offenders.join('\n')}`);
-    });
-
-    it('no env-loading source reaches for a home directory', async () => {
-      // Gated on accessesEnvFileItself, NOT on the write-half predicate this
-      // used to use. Under the old gating, escaping the parser check also
-      // switched this one off — so a file doing plain `homedir()` +
-      // `process.loadEnvFile()` passed BOTH sweeps with a working leak. The
-      // read-half gate has no such bypass: naming a `.env` file (or a loader)
-      // is unavoidable, so anything reaching for $HOME to find one lands here.
-      const offenders = [];
-      for await (const [entry, source] of scanSources()) {
-        if (!accessesEnvFileItself(source)) continue;
-        const found = findHomeDirReferences(stripJsComments(source));
-        if (found.length > 0) offenders.push(`${entry}: ${found.join(', ')}`);
-      }
-      assert.deepEqual(
-        offenders,
-        [],
-        `these resolve credentials from the home directory, defeating worktree ` +
-          `isolation:\n${offenders.join('\n')}`,
-      );
-    });
+  it('checks credential paths and env loaders across the seeder fleet', async () => {
+    const violations = { checkoutEscapes: [], homeDirectoryLoaders: [], unapprovedLoaders: [] };
+    let scanned = 0;
+    for await (const [entry, source] of scanSources()) {
+      scanned += 1;
+      const escapes = findCheckoutEscapingEnvPaths(source);
+      if (escapes.length) violations.checkoutEscapes.push(`${entry}: ${escapes.join(', ')}`);
+      if (!accessesEnvFileItself(source)) continue;
+      // Approved loaders must also resolve credentials inside the checkout.
+      const home = findHomeDirReferences(stripJsComments(source));
+      if (home.length) violations.homeDirectoryLoaders.push(`${entry}: ${home.join(', ')}`);
+      if (!ENV_PARSER_ALLOWLIST.has(entry)) violations.unapprovedLoaders.push(entry);
+    }
+    assert.ok(scanned > 100, `expected to scan the seeder fleet, scanned ${scanned}`);
+    assert.deepEqual(violations, { checkoutEscapes: [], homeDirectoryLoaders: [], unapprovedLoaders: [] });
   });
 
   describe('only the shared helper reads .env files', () => {
@@ -536,20 +520,6 @@ describe('seeder env hermeticity (#5767)', () => {
         accessesEnvFileItself(`const body = readFileSync('.env.local', 'utf8');\nreturn findSecrets(body);`),
         false,
         'auditing an env file is not loading it',
-      );
-    });
-
-    it('no source outside the allowlist reads a .env file', async () => {
-      const offenders = [];
-      for await (const [entry, source] of scanSources()) {
-        if (ENV_PARSER_ALLOWLIST.has(entry)) continue;
-        if (accessesEnvFileItself(source)) offenders.push(entry);
-      }
-      assert.deepEqual(
-        offenders,
-        [],
-        `these read .env themselves instead of calling loadEnvFile(), so they bypass the ` +
-          `test-runtime guard entirely:\n${offenders.join('\n')}`,
       );
     });
 

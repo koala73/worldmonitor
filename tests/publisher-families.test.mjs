@@ -240,6 +240,7 @@ describe('publisher-families map data', () => {
       'axios',
       'business-wire',
       'die-zeit',
+      'korea-times',
       'el-mundo',
       'el-pais',
       'fast-company',
