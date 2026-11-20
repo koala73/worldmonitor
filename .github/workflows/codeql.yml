@@ -24,6 +24,14 @@ jobs:
     if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # On the default branch codeql-action otherwise builds an overlay-base
+    # database (~2 GB a day, JS ~1.97 GB) and saves it to the Actions cache.
+    # Only overlay scans of pull requests restore it, and this workflow has not
+    # run on pull requests since #9669, so every base was dead weight that
+    # pushed the shared cache past its 10 GB limit and evicted the caches PRs do
+    # read. "none" skips both the build and the save.
+    env:
+      CODEQL_OVERLAY_DATABASE_MODE: none
     permissions:
       contents: read
       security-events: write
@@ -41,39 +49,20 @@ jobs:
         with:
           go-version-file: sdk/go/go.mod
           cache: false
-      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.language == 'go' && 'autobuild' || 'none' }}
+          # With overlay off, the action turns TRAP caching on by default; default-branch
+          # runs only upload TRAP caches (they never restore them), so they too would sit
+          # unread in the shared cache.
+          trap-caching: false
           # Generated upstream @vercel/og + satori bundle (scripts/vendor-vercel-og.mjs).
           # Its library internals re-raise ~22 alerts on every re-vendor; the generator
           # script and our patched vendor copies (braces, stream-json) stay scanned.
           config: |
             paths-ignore:
               - vendor/vercel-og/dist
-      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           category: /language:${{ matrix.language }}
-
-  # codeql-action saves an overlay-base database (~1.3 GB for JS) under a new key on every
-  # default-branch run and never deletes old ones. PRs restore only the newest per group,
-  # and cache eviction is least-recently-accessed, so stale bases push out hot caches.
-  prune-overlay-bases:
-    needs: analyze
-    if: ${{ (!cancelled() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      actions: write
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
-        with:
-          node-version: '24'
-      - run: node .github/scripts/prune-codeql-overlay-bases.mjs --ref "$GITHUB_REF"
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}

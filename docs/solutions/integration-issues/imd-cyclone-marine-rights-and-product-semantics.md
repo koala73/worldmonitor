@@ -88,6 +88,21 @@ regional PDF and public HTML page on October 21. They reproduce the missing
 coverage and the complete alternative without accepting an incomplete bulletin.
 The HTML fixture trims trailing whitespace. The PDF bytes are unchanged.
 
+## Blank synoptic row, November 6
+
+By November 6 the regional PDF had become a browser print of the same HTML page
+(its header reads `mausam.imd.gov.in/Forecast/coastal_bulletin_new.php?id=2`),
+so both copies carried an empty synoptic row and the fallback failed with the
+same `BULLETIN_SYNOPTIC_MISSING`. The page published nothing for four coastal
+areas whose wind, weather, visibility, sea, port-signal and surge fields were
+complete, and health reported `SEED_ERROR` / `IMD_PRODUCT_PARTIAL`.
+
+A synoptic row that is present but blank now publishes the HTML areas with
+`synopticSituation: null`, after the PDF has had its chance to supply the
+narrative. Page health records `synopticOmitted`, `primaryFailure`, and any
+`fallbackFailure`. A page with no synoptic row at all is still a changed layout
+and fails closed.
+
 ## Related Issues
 
 - Fixes #7005.

@@ -36,7 +36,7 @@ function makeRequest(method, url, headers = {}) {
 const CANONICAL_FALLBACK = 'https://worldmonitor.app';
 const KNOWN_GOOD = 'https://www.worldmonitor.app';
 const ACAH_EXPECTED = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, Idempotency-Key, Mcp-Session-Id, MCP-Protocol-Version, Mcp-Method, Mcp-Name, Last-Event-ID';
-const ACEH_EXPECTED = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, Location, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Mode, X-Wm-Upstream-Timeout, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox, Link, Deprecation, Sunset';
+const ACEH_EXPECTED = 'Allow, Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, Location, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Mode, X-Wm-Upstream-Timeout, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox, Link, Deprecation, Sunset';
 // Must be a superset of every method any api/* route advertises. Notably
 // includes DELETE for api/product-catalog.js — pinning this prevents the
 // regression that PR review caught (Worker omitted DELETE → product-catalog
@@ -68,20 +68,20 @@ test('isAllowedOrigin accepts Google Translate proxy origins of worldmonitor.app
   assert.equal(isAllowedOrigin('https://notworldmonitor-app.translate.goog'), false);
 });
 
-test('isAllowedOrigin accepts Vercel preview deploys under the eliewm team scope (mirrors api/_cors.js)', () => {
-  // The project deploys previews under the "eliewm" Vercel team scope, so URLs
-  // end in `-eliewm.vercel.app` (git-branch alias AND hash deployment forms).
-  // The Worker MUST mirror api/_cors.js exactly — if it stays narrower, eliewm
-  // preview preflights echo the canonical worldmonitor.app fallback and the
-  // browser blocks them before the request ever reaches Vercel.
-  assert.equal(isAllowedOrigin('https://worldmonitor-git-feat-x-eliewm.vercel.app'), true);
-  assert.equal(isAllowedOrigin('https://worldmonitor-r6q9o-eliewm.vercel.app'), true);
-  // Tight allowlist: a foreign team scope, a non-worldmonitor app, and the
-  // retired personal scope (worldmonitor-*-elie-<hash>, migration complete)
-  // must all stay rejected. Never a bare *.vercel.app.
-  assert.equal(isAllowedOrigin('https://worldmonitor-feat-x-attacker.vercel.app'), false);
-  assert.equal(isAllowedOrigin('https://some-other-app-eliewm.vercel.app'), false);
-  assert.equal(isAllowedOrigin('https://worldmonitor-abc-elie-habib.vercel.app'), false);
+test('isAllowedOrigin rejects every *.vercel.app origin, including eliewm-shaped names', () => {
+  // `<project>.vercel.app` goes to whichever Vercel account claims the project
+  // name, so `worldmonitor-*-eliewm.vercel.app` is registrable by anyone. Preview
+  // pages call their own deployment's /api, never api.worldmonitor.app.
+  for (const origin of [
+    'https://worldmonitor-attacker-eliewm.vercel.app',
+    'https://worldmonitor-git-feat-x-eliewm.vercel.app',
+    'https://worldmonitor-r6q9o-eliewm.vercel.app',
+    'https://worldmonitor-feat-x-attacker.vercel.app',
+    'https://some-other-app-eliewm.vercel.app',
+  ]) {
+    assert.equal(isAllowedOrigin(origin), false, origin);
+    assert.equal(buildCorsHeaders(origin)['Access-Control-Allow-Origin'], 'https://worldmonitor.app', origin);
+  }
 });
 
 test('isAllowedOrigin accepts Tauri desktop runtime origins', () => {
@@ -269,22 +269,22 @@ test('GET response preserves origin cache variance when the Worker adds Origin v
     const storyResp = await worker.fetch(storyReq);
     assert.equal(storyResp.status, 200);
     assert.equal(storyResp.headers.get('vary'), 'User-Agent, Origin');
-    assert.deepEqual(calls[0].options, {
-      cf: {
+    assert.ok(calls[0].options.signal instanceof AbortSignal);
+    assert.deepEqual(calls[0].options.cf, {
         vary: {
           default: { action: 'bypass' },
           headers: {
             'user-agent': { action: 'passthrough' },
           },
         },
-      },
     });
 
     const healthReq = makeRequest('GET', 'https://api.worldmonitor.app/api/health', {
       Origin: KNOWN_GOOD,
     });
     await worker.fetch(healthReq);
-    assert.equal(calls[1].options, undefined, 'other API routes must keep the default fetch policy');
+    assert.ok(calls[1].options.signal instanceof AbortSignal);
+    assert.equal(calls[1].options.cf, undefined, 'other API routes must keep the default cache policy');
   } finally {
     globalThis.fetch = original;
   }

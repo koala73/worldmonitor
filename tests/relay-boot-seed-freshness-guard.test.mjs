@@ -213,6 +213,7 @@ const SEEDERS = [
   ['TransitSummary', "'seed-meta:supply_chain:transit-summaries'", 'TRANSIT_SUMMARY_INTERVAL_MS', 'seedTransitSummaries'],
   ['Cyber', "'seed-meta:cyber:threats'", 'CYBER_SEED_INTERVAL_MS', 'seedCyberThreats'],
   ['MiddleEastStrikes', 'middleEastStrikes.SEED_META_KEY', 'MIDDLE_EAST_STRIKES_INTERVAL_MS', 'seedMiddleEastStrikes'],
+  ['MiddleEastStrikesV2', 'middleEastStrikesV2.SEED_META_KEY', 'MIDDLE_EAST_STRIKES_INTERVAL_MS', 'seedMiddleEastStrikesV2'],
   ['DigestWarm', 'DIGEST_WARM_HEARTBEAT_KEY', 'DIGEST_WARM_INTERVAL_MS', 'seedDigestWarm'],
 ];
 
@@ -220,6 +221,24 @@ for (const [label, metaKey, intervalConst, seedFn] of SEEDERS) {
   test(`${label} boot seed is scheduled through startBootSeedLoop(${intervalConst}, ${seedFn})`, () => {
     const call = `startBootSeedLoop('${label}', ${metaKey}, ${intervalConst}, ${seedFn},`;
     assert.ok(relaySource.includes(call), `expected boot-seed wiring: ${call}`);
+  });
+}
+
+// The air traffic loop runs on bin boundaries instead (a restart must still fill
+// the current bin). Its boot guard is the per-bin skip: a tick reads the bin's
+// stored point and returns before any OpenSky fetch when the bin is already ok.
+test('air traffic ticks skip a bin already recorded before fetching', () => {
+  const body = relaySource.slice(relaySource.indexOf('async function seedTrafficSeries('));
+  const skip = body.indexOf('if (isOkAirTrafficPoint(existing?.[0]?.result))');
+  const fetchAttempt = body.indexOf('await attempt(fetchedAt)');
+  assert.ok(skip > 0 && fetchAttempt > skip, 'the skip check runs before the first fetch');
+});
+
+for (const [label, seedFn] of [['AirTraffic', 'seedAirTrafficPoint'], ['AirTrafficWingbits', 'seedWingbitsTrafficPoint']]) {
+  test(`${label} runs through the shared skip-then-fetch tick on the bin scheduler`, () => {
+    const fn = relaySource.slice(relaySource.indexOf(`function ${seedFn}()`)).split('\n}')[0];
+    assert.match(fn, /(?:return|await) seedTrafficSeries\(/, `${seedFn} delegates to seedTrafficSeries`);
+    assert.ok(relaySource.includes(`runAirTrafficLoop(${seedFn}, '${label}').catch(`), 'the loop is started on the bin scheduler');
   });
 }
 

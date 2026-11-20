@@ -6,9 +6,7 @@
  * panels, and drives map overlays via `MapContainer` primitives.
  */
 
-import { DODO_PRODUCTS } from '@/config/products';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
-import { checkoutConsentHtml } from '@/utils/legal-links';
 import { openExternalUrl } from '@/services/external-navigation';
 import { CountryPicker } from './CountryPicker';
 import { Hs2Picker } from './Hs2Picker';
@@ -38,6 +36,7 @@ import { trackGateHit, track, type UmamiEvent } from '@/services/analytics';
 import { TRADE_ROUTES } from '@/config/trade-routes';
 import { buildLane } from '@/config/trade-route-lanes';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { copyText } from '@/utils/copy-text';
 
 
 const TAB_LABELS: Record<ExplorerTab, string> = { 1: 'Current', 2: 'Alternatives', 3: 'Land', 4: 'Impact' };
@@ -384,7 +383,6 @@ export class RouteExplorer {
       setTrustedHtml(this.contentEl, trustedHtml('<div class="re-content__gate">' +
         '<h3>Unlock route intelligence</h3>' +
         '<ul><li>Current route with chokepoint risk</li><li>Ranked bypass alternatives</li><li>Overland corridor options</li></ul>' +
-        checkoutConsentHtml(WEB_APP_ORIGIN) +
         '<button class="re-content__upgrade" type="button">Upgrade to PRO</button>' +
         '</div>', "legacy direct innerHTML migration"));
       const btn = this.contentEl.querySelector<HTMLButtonElement>('.re-content__upgrade');
@@ -394,8 +392,8 @@ export class RouteExplorer {
           to: this.state.toIso2 ?? '',
           hs2: this.state.hs2 ?? '',
         });
-        void import('@/services/checkout')
-          .then((m) => m.startCheckout(DODO_PRODUCTS.PRO_MONTHLY))
+        void import('@/services/upgrade-flow')
+          .then((m) => m.openUpgradePlans())
           .catch(() => openExternalUrl(`${WEB_APP_ORIGIN}/pro`));
       }, { once: true });
     }
@@ -739,10 +737,9 @@ export class RouteExplorer {
     const url = new URL(window.location.href);
     const serialized = serializeExplorerUrl(this.state);
     if (serialized) url.searchParams.set('explorer', serialized);
-    if (navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(url.toString());
-      this.trackEvent('route-explorer:share-copied');
-    }
+    void copyText(url.toString()).then((copied) => {
+      if (copied) this.trackEvent('route-explorer:share-copied');
+    });
   }
 
   // ─── Analytics ─────────────────────────────────────────────────────────

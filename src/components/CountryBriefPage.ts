@@ -17,6 +17,7 @@ import type { CountryBriefExport, CountryEvidenceBundleInput } from '@/utils/exp
 import { ME_STRIKE_BOUNDS } from '@/services/country-geometry';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { copyText } from '@/utils/copy-text';
 import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import {
@@ -112,11 +113,12 @@ export class CountryBriefPage implements CountryBriefPanel {
       if (linkShareBtn) {
         if (!this.currentCode || !this.currentName) return;
         const url = `${window.location.origin}/dashboard?c=${this.currentCode}`;
-        navigator.clipboard.writeText(url).then(() => {
+        void copyText(url).then((copied) => {
+          if (!copied) return;
           const orig = linkShareBtn.innerHTML;
           setTrustedHtml(linkShareBtn, trustedHtml('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>', "legacy direct innerHTML migration"));
           setTimeout(() => { setTrustedHtml(linkShareBtn, trustedHtml(orig, "legacy direct innerHTML migration")); }, 1500);
-        }).catch(() => {});
+        });
         return;
       }
 
@@ -306,10 +308,6 @@ export class CountryBriefPage implements CountryBriefPanel {
 
   public setShareStoryHandler(handler: (code: string, name: string) => void): void {
     this.onShareStory = handler;
-  }
-
-  public setExportImageHandler(handler: (code: string, name: string) => void): void {
-    this.onExportImage = handler;
   }
 
   public showLoading(): void {

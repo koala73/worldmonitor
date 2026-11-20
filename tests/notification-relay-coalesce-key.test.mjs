@@ -41,7 +41,7 @@ describe('notification-relay checkDedup — Slot B coalesce key', () => {
   it('checkDedup signature accepts an optional coalesceKey parameter', () => {
     assert.match(
       relaySrc,
-      /async function checkDedup\(userId,\s*eventType,\s*title,\s*coalesceKey\)/,
+      /async function checkDedup\(userId,\s*eventType,\s*title,\s*coalesceKey[,)]/,
       'checkDedup must take coalesceKey as the 4th parameter',
     );
   });
@@ -58,7 +58,7 @@ describe('notification-relay checkDedup — Slot B coalesce key', () => {
   it('both checkDedup call sites pass event.payload?.coalesceKey through', () => {
     // The held-event path AND the realtime path must thread coalesceKey, otherwise
     // one branch silently misses the coalesce. (Half-defense regression.)
-    const callSites = relaySrc.match(/checkDedup\(rule\.userId,\s*event\.eventType,\s*event\.payload\?\.title\s*\?\?\s*'',\s*coalesceKey\)/g);
+    const callSites = relaySrc.match(/checkDedup\(rule\.userId,\s*event\.eventType,\s*event\.payload\?\.title\s*\?\?\s*'',\s*coalesceKey[,)]/g);
     assert.ok(
       callSites && callSites.length >= 2,
       `expected ≥2 checkDedup call sites threading coalesceKey, found ${callSites?.length ?? 0}`,
@@ -292,12 +292,12 @@ describe('market alert producer — asset-family coalesce key', () => {
   it('defines a stable market alert coalesce helper', () => {
     assert.match(
       aisRelaySrc,
-      /function marketAlertCoalesceKey\(assetClass,\s*identifier,\s*direction,\s*severity\)/,
+      /function marketAlertCoalesceKey\(assetClass,\s*identifier,\s*direction,\s*severity,\s*session\)/,
       'market alerts must build hidden family keys rather than deduping on the rounded subject',
     );
     assert.match(
       aisRelaySrc,
-      /return `market:\$\{assetClass\}:\$\{stableIdentifier\}:\$\{direction\}:\$\{severity\}`/,
+      /return `market:\$\{assetClass\}:\$\{stableIdentifier\}:\$\{direction\}:\$\{severity\}\$\{sessionSuffix\}`/,
       'market coalesce key must separate asset class, instrument, direction, and severity band',
     );
     // Lock the normalization line itself so dropping the fallback or
@@ -310,7 +310,7 @@ describe('market alert producer — asset-family coalesce key', () => {
   });
 
   it('all market_alert publishers pass coalesceKey through the payload', () => {
-    const marketBlocks = [...aisRelaySrc.matchAll(/eventType:\s*'market_alert'[\s\S]*?dedupTtl:\s*3600,/g)].map(m => m[0]);
+    const marketBlocks = [...aisRelaySrc.matchAll(/eventType:\s*'market_alert'[\s\S]*?dedupTtl:\s*notifyPolicy\.marketMoveDedupTtlSeconds\('\w+'\),/g)].map(m => m[0]);
     assert.equal(marketBlocks.length, 3, 'expected equity, commodity, and crypto market_alert producers');
     for (const block of marketBlocks) {
       assert.match(
@@ -469,7 +469,7 @@ describe('ais-relay weather publisher — coalesceKey threading', () => {
     // collided on SET NX (#7243).
     assert.match(
       aisRelaySrc,
-      /coalesceKey\s*=\s*weatherAlertFamilyKey\(a\)/,
+      /coalesceKey\s*=\s*notifyPolicy\.weatherAlertCoalesceKey\(weatherAlertFamilyKey\(a\),\s*a\.severity\)/,
       'weather publisher must key dedup on the same family key the selector partitions by',
     );
     assert.match(

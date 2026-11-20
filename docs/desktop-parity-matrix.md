@@ -33,7 +33,7 @@ Classifications: `parity` · `intentional difference` · `blocked` · `n/a`.
 | Desktop build env omits Clerk/Convex/VAPID/cyber `VITE_*` vars → sign-in, Pro, push, Cyber Threats dead in shipped builds | #5905 | fix landed (env declared + completeness gate + release preflight); remaining ops step: provision the four new repo secrets, after which release builds hard-fail if they go empty again |
 | Linux secret storage fails without an activatable Secret Service; every keyring error in `SecretsCache::load_from_keychain` is silently swallowed (`if let Ok`), so users get an empty vault with zero diagnostics | #802 / #1905 | open — needs secure fallback + migration + diagnostics |
 | Released 2.5.23 lacks Internet Outages / Cyber Threats layers | #5829 | diagnosed — three compounding causes, see row below |
-| Desktop readiness/error diagnosability; `src/services/desktop-readiness.ts:64-65` still cites deleted `/api/risk-scores` routes in the Service Status UI; sidecar readiness is assumed on port-file timeout (`main.rs:1443-1452`) rather than verified | #1942 | open — reassess with this evidence |
+| Desktop readiness/error diagnosability; sidecar readiness is assumed on port-file timeout (`main.rs:1443-1452`) rather than verified. (The stale `/api/risk-scores` citation in `src/services/desktop-readiness.ts` was repointed at the intelligence RPC under #5910, pinned by `tests/desktop-readiness-registry-paths.test.mjs`) | #1942 | open — reassess with this evidence |
 | AppImage update metadata (AppImageUpdate/zsync) | #5757 | open |
 | Uninstall experience | #5435 / #5487 | open |
 
@@ -92,7 +92,7 @@ current code does in a current desktop build — not the stale v2.5.23 binary.
 | Convex entitlements | Same pattern: `VITE_CONVEX_URL` missing from the desktop build (workflow passes non-`VITE_` `CONVEX_URL`, which never reaches the client) | blocked → #5905 | `src/services/entitlements.ts:96-99`; `vite.config.ts` (no define) |
 | Premium access | Signed-in Pro forwards a bearer; a desktop key (Pro 2, Pro Business 3) or API key from the keyring also works, and the sidecar attaches the key natively (renderer skip is by design); signed-out uses an anonymous session. Desktop keys do not reach the API-only set (`/api/v2/`, shipping webhooks, MCP via key, OAuth key grants) | parity | `src/services/panel-gating.ts:53-58`; `src/services/premium-fetch.ts:223-237` |
 | Billing portal / checkout | Every billing, checkout and upgrade exit routes through `openExternalUrl`, which hands the URL to the OS browser via `open_url` on desktop (5s timeout, Sentry-reported failure, scheme-checked) and reports whether the handoff actually happened, so a failed open surfaces as a checkout error instead of a false "check your browser". The return URL is built from the canonical web origin; the app unlocks over the live Convex entitlement watch with no redirect back in. `openBillingPortal` reports `open-failed` rather than `opened` when nothing opened, and the checkout toast names the OS browser only when the native handoff actually succeeded. All seven remaining renderer call sites were migrated (#6120). **Residual**: the returning browser cannot acknowledge the purchase (its `handleCheckoutReturn` needs a session-local attempt record the app holds) → #6121; a plain-`http://` external link still cannot leave the app, because the native allowlist is https-only → tracked separately | intentional difference (desktop pays in the browser) — #5911 | `src/services/external-navigation.ts`; `src/services/checkout-return-url.ts:resolveCheckoutReturnOrigin`; `src/services/checkout.ts` (`navigateToWebSurface` + hosted-checkout branch) |
-| Settings → Plan &amp; billing tab | Uses the same Clerk auth-state gate on desktop and web. Signed-in desktop users can reach plan status, Manage Billing, upgrade fallback, and reactivation actions; web-only plan links use the canonical web origin so the desktop interceptor hands them to the OS browser | parity — #6108 | `src/components/UnifiedSettings.ts`; `tests/dom/unified-settings-upgrade-click-runtime.test.mts` |
+| Settings → Account page (Plan &amp; billing) | Uses the same Clerk auth-state gate on desktop and web. Signed-in desktop users can reach plan status, Manage Billing, upgrade fallback, and reactivation actions; web-only plan links use the canonical web origin so the desktop interceptor hands them to the OS browser | parity — #6108 | `src/components/UnifiedSettings.ts`; `tests/dom/unified-settings-upgrade-click-runtime.test.mts` |
 | #5901 unified user menu | No desktop-specific handling; hosts the billing surface above; menu itself requires Clerk (so absent from shipped builds until the env fix lands) | inherits the two rows above | `src/app/event-handlers.ts:1963` (commit `53181fb71`) |
 | Locked-panel affordances | `isPanelEntitled` returns entitled for `premium:'locked'` on any desktop runtime; real gates use `hasPremiumAccess()` so leak is cosmetic (settings picker / CMD+K / analyst offer panels that render locked) | intentional-ish, cosmetic; noted for the desktop UX pass | `src/config/panels.ts:1243-1245`; `src/app/panel-layout.ts:2150` |
 
@@ -138,8 +138,9 @@ release-candidate checklist:
    `workflow_dispatch` defaults to `draft: false` so a dispatched build is
    actually served, and the unbuildable tech/finance packaging surface is gone.
    `tests/desktop-one-binary-model.test.mjs` fails if any surface drifts back.
-2. **#5909 addressed:** the bundle pins Node 22.23.4. The `sidecar` CI job
-   runs `test:sidecar` on both repository Node 24 and the exact runtime from
+2. **#5909 addressed:** the `sidecar` CI job runs `test:sidecar` on repository Node 24,
+   including the Railway relay tests. It repeats the desktop and API suites
+   (`test:sidecar:desktop`) on the exact runtime from
    `scripts/download-node.sh`. The bundle stays on 22.x because the Node 24
    macOS binaries require macOS 13.5, while 22.x runs on macOS 11.
    The downloader requires GnuPG and verifies `SHASUMS256.txt.sig` before
@@ -150,11 +151,17 @@ release-candidate checklist:
    key changes and update both `NODE_RELEASE_KEYS_COMMIT` and
    `NODE_RELEASE_KEYS_SHA256` in the downloader. Verify the intended Node
    release against the updated keyring before committing the change.
-3. README/docs drift: "Stable" label, missing Linux ARM64 row, `windows-exe`
-   badges vs `windows-msi` in-app, wrong updater host/TTL in
-   `docs/desktop-app.mdx`, phantom 50 MB cap in `docs/usage-rate-limits.mdx`,
-   `api/api-route-exceptions.json` misdescribing `api/fwdstart.js`, no Linux
-   packaging doc. → #5910.
+3. README/docs drift → #5910. Corrected: Linux ARM64 in the README binaries
+   row, updater host/TTL and Linux Secret Service in `docs/desktop-app.mdx`
+   (+ zh), the phantom 50 MB cap in `docs/usage-rate-limits.mdx` (+ zh), a
+   Linux section in `docs/release-packaging.mdx` (via the existing
+   `desktop:package -- --os linux` runner), the two pre-sebuf `local-backend-audit.md` drafts marked superseded,
+   and the stale `/api/risk-scores` citation in `desktop-readiness.ts`.
+   `api/api-route-exceptions.json` already describes `api/fwdstart.js` correctly.
+   Still open: the "Stable" label against release cadence, and `windows-exe`
+   README/download.md badges vs the `windows-msi` in-app banner and updater —
+   a product call on which installer is canonical.
+
 4. macOS updater artifacts (`.app.tar.gz`) ship without `.sig` — no signed
    update chain. Documented as unsigned fallback; revisit with the release
    train. → tracked in #5902 §3.

@@ -10,9 +10,10 @@
  * fires well before a ceiling, once per principal per meter per UTC day, so a
  * leak pages someone while the key still works.
  *
- * The catalog Enterprise ceilings live in `convex/config/productCatalog.ts`
- * (the Convex config graph cannot be imported here); `planLimits` carries them
- * to these call sites like any other plan's.
+ * The catalog Enterprise limits (the contract default, 10,000 a day with MCP
+ * on the REST budget) live in `convex/config/productCatalog.ts` (the Convex
+ * config graph cannot be imported here); `planLimits` carries them to these
+ * call sites like any other plan's.
  */
 
 // @ts-expect-error — JS module, no declaration file

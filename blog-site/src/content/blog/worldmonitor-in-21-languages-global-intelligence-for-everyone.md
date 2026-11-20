@@ -101,7 +101,7 @@ World Monitor's AI capabilities generate output in your selected language:
 - **World Brief:** The AI-synthesized daily intelligence summary is generated in your language
 - **Country Dossiers:** AI analysis adapts to the selected locale
 - **Threat Classification:** Categorization labels appear in your language
-- **AI Deduction:** Geopolitical forecasting is generated in the interface language
+- **AI Deduction:** [Geopolitical forecasting](/blog/posts/prediction-markets-ai-forecasting-geopolitics/) is generated in the interface language
 
 When using local LLMs (Ollama, LM Studio), multilingual output depends on the model's training data. Larger models like Llama 3.1 70B handle most major languages well. The browser-based T5 fallback performs best in English but provides basic multilingual capability. For more on how World Monitor keeps your data private with local AI, see [AI-Powered Intelligence Without the Cloud](/blog/posts/ai-powered-intelligence-without-the-cloud/).
 

@@ -39,6 +39,12 @@ export class MilitaryCorrelationPanel extends CorrelationPanel {
   }
 
   protected override renderSupplement(): HTMLElement | null {
+    // Dashboard focus (#10453): the official activity block is about the
+    // Taiwan Strait, so it stays only while Taiwan or China is in the focus.
+    const resolved = this.scopeFilter.filtering ? this.scopeFilter.scope : null;
+    if (resolved && !['TW', 'CN'].some((code) => resolved.chosen.includes(code) || resolved.neighbours.includes(code))) {
+      return null;
+    }
     if (this.officialActivitySupplement !== undefined) {
       return this.officialActivitySupplement;
     }

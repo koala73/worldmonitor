@@ -18,6 +18,21 @@ describe('map split layout (#6417)', () => {
   let resize: ReturnType<typeof vi.fn>;
   let manager: EventHandlerManager;
 
+  // Split mode is read through matchMedia (isSplitLayoutViewport), and
+  // happy-dom answers media queries from its own fixed window size. The fake
+  // answers from the stubbed innerWidth, the way a browser would.
+  class FakeMediaQueryList extends EventTarget {
+    media: string;
+    constructor(media: string) {
+      super();
+      this.media = media;
+    }
+    get matches(): boolean {
+      const min = /min-width:\s*(\d+)px/.exec(this.media);
+      return min ? window.innerWidth >= Number(min[1]) : false;
+    }
+  }
+
   function stubInnerWidth(value: number): void {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value });
   }
@@ -56,6 +71,7 @@ describe('map split layout (#6417)', () => {
     localStorage.clear();
     document.body.replaceChildren();
     resize = vi.fn();
+    vi.stubGlobal('matchMedia', (media: string) => new FakeMediaQueryList(media));
     manager = new EventHandlerManager({
       container: document.createElement('div'),
       isDesktopApp: false,
@@ -506,6 +522,26 @@ describe('map split layout (#6417)', () => {
   });
 
   describe('mode-scoped map height storage', () => {
+    it('does not migrate a newly saved stacked height when desktop mode becomes split', () => {
+      manager.destroy();
+      manager = new EventHandlerManager({
+        container: document.createElement('div'), isDesktopApp: true,
+        panels: {}, panelSettings: {}, mapLayers: {},
+        map: { resize, setIsResizing: vi.fn() },
+      } as never, {} as never);
+      stubInnerWidth(1200);
+      const { handle } = buildHeightDom();
+      manager.setupMapResize();
+      handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      expect(localStorage.getItem('map-height')).toBe('540px');
+      manager.destroy();
+      document.body.replaceChildren();
+      stubInnerWidth(1440);
+      const { container } = buildHeightDom();
+      manager.setupMapResize();
+      expect(container.style.height).toBe('');
+      expect(localStorage.getItem('map-split-height')).toBeNull();
+    });
     it('split mode writes map-split-height and leaves map-height alone', () => {
       stubInnerWidth(2000);
       localStorage.setItem('map-height', '400px');
@@ -562,7 +598,7 @@ describe('map split layout (#6417)', () => {
     });
 
     it('does not migrate a stacked legacy height for newly split web widths', () => {
-      stubInnerWidth(1200);
+      stubInnerWidth(SPLIT_LAYOUT_MIN_WIDTH);
       localStorage.setItem('map-height', '450px');
       const { container } = buildHeightDom();
       manager.setupMapResize();
@@ -582,7 +618,7 @@ describe('map split layout (#6417)', () => {
         mapLayers: {},
         map: { resize, setIsResizing: vi.fn() },
       } as never, {} as never);
-      stubInnerWidth(1200);
+      stubInnerWidth(SPLIT_LAYOUT_MIN_WIDTH);
       localStorage.setItem('map-height', '450px');
       const { container } = buildHeightDom();
       manager.setupMapResize();
@@ -603,15 +639,6 @@ describe('map split layout (#6417)', () => {
   });
 
   describe('crossing the split threshold at runtime', () => {
-    class FakeMediaQueryList extends EventTarget {
-      media: string;
-      matches = false;
-      constructor(media: string) {
-        super();
-        this.media = media;
-      }
-    }
-
     function stubResponsiveZone(): FakeMediaQueryList[] {
       const lists: FakeMediaQueryList[] = [];
       vi.stubGlobal('matchMedia', (media: string) => {
@@ -647,14 +674,14 @@ describe('map split layout (#6417)', () => {
       // Narrow below the threshold: split inline styles must not leak into
       // the stacked layout, and the stacked height takes over.
       stubInnerWidth(800);
-      lists[0]!.dispatchEvent(new Event('change'));
+      for (const list of lists) list.dispatchEvent(new Event('change'));
       expect(container.style.height).toBe('');
       expect(container.style.flex).toBe('');
       expect(section.style.height).toBe('400px');
 
       // Widen back: the split height returns to the container.
       stubInnerWidth(2000);
-      lists[0]!.dispatchEvent(new Event('change'));
+      for (const list of lists) list.dispatchEvent(new Event('change'));
       expect(section.style.height).toBe('');
       expect(container.style.height).toBe('600px');
     });
@@ -672,7 +699,7 @@ describe('map split layout (#6417)', () => {
       expect(container.style.height).toBe('550px');
 
       stubInnerWidth(800);
-      lists[0]!.dispatchEvent(new Event('change'));
+      for (const list of lists) list.dispatchEvent(new Event('change'));
       document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
 
       expect(localStorage.getItem('map-split-height')).toBe('550px');
@@ -692,7 +719,7 @@ describe('map split layout (#6417)', () => {
 
       handle.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
       stubInnerWidth(800);
-      lists[0]!.dispatchEvent(new Event('change'));
+      for (const list of lists) list.dispatchEvent(new Event('change'));
       vi.advanceTimersByTime(500);
 
       expect(localStorage.getItem('map-split-height')).toBe(expectedResetHeight);

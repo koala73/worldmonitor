@@ -3,7 +3,10 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { createCountryResolvers } from '../scripts/_country-resolver.mjs';
-import { PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES } from '../scripts/_portwatch-content-freshness.mjs';
+import {
+  PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES,
+  PORTWATCH_MAX_CACHE_AGE_MS,
+} from '../scripts/_portwatch-content-freshness.mjs';
 import { __testing__ } from '../api/health.js';
 import { getCountryPortActivity } from '../server/worldmonitor/intelligence/v1/get-country-port-activity';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
@@ -204,11 +207,11 @@ test('natural 168-to-60 expiry cliff preserves publication and reports incomplet
   // (bundle exit 0) with /api/health owning the alarm, not a Railway crash.
   assert.equal(result.error, null);
   assert.equal(result.publishBlocked, true);
-  assert.match(result.logs, /COVERAGE SHORTFALL: usable coverage 60\/174/);
-  assert.match(result.logs, /60\/174 usable countries/);
-  assert.doesNotMatch(result.logs, /Seeded 60 countries/);
+  assert.match(result.logs, /COVERAGE SHORTFALL: usable coverage 90\/174/);
+  assert.match(result.logs, /90\/174 usable countries/);
+  assert.doesNotMatch(result.logs, /Seeded 90 countries/);
   assert.match(result.logs, /60 usable country payloads assembled.*persistence pending/);
-  assert.match(result.logs, /Recovery state saved; canonical list retained at 168 countries; usable coverage 60\/174; full publication blocked; 0 unresolved refresh failures/);
+  assert.match(result.logs, /Recovery state saved; canonical list retained at 168 countries; usable coverage 90\/174; full publication blocked; 0 unresolved refresh failures/);
   assert.match(result.logs, /TEST transaction confirmed/);
   assert.ok(result.logs.indexOf('TEST transaction confirmed') < result.logs.indexOf('Recovery state saved'));
   assert.doesNotMatch(result.logs, /countries published|unpublished countries|asof behind/);
@@ -216,7 +219,7 @@ test('natural 168-to-60 expiry cliff preserves publication and reports incomplet
   assert.equal(result.redis[META].fetchedAt, input[META].fetchedAt);
   assert.equal(result.redis[META].recordCount, 168);
   assert.deepEqual(result.redis[META].contentFreshness, input[META].contentFreshness);
-  assert.equal(result.redis[META].coverage.published, 60);
+  assert.equal(result.redis[META].coverage.published, 90);
   assert.equal(result.redis[META].coverage.refreshFailures.length, 0);
   assert.equal(result.redis[META].sourceState, 'error');
   assert.equal(result.redis[META].lastAttemptAt, NOW);
@@ -391,7 +394,7 @@ test('deferred corrupt countries retain their exact stored value', () => {
   for (const [, code] of countries) input[`${PREFIX}${code}`] = [];
   const result = runProducer(input);
   const deferred = countries.filter(([, code]) => Array.isArray(result.redis[`${PREFIX}${code}`]));
-  assert.equal(deferred.length, 144);
+  assert.equal(deferred.length, 114);
   for (const [, code] of deferred) assert.equal(result.rawRedis[`${PREFIX}${code}`], '[]');
 });
 
@@ -414,6 +417,46 @@ test('one persistently corrupt country cannot stop healthy country recovery', ()
   }
 });
 
+test('a queue below the cold-fetch cap still dispatches the expired country first', () => {
+  // The dispatch deadline can cut any queue short, so ordering cannot depend on
+  // the queue being long enough to truncate.
+  const input = fixtures();
+  const queued = countries.slice(0, 40);
+  for (const [index, [, iso2]] of countries.entries()) {
+    input[`${PREFIX}${iso2}`].cacheWrittenAt = NOW - DAY;
+    input[`${PREFIX}${iso2}`].asof = index < queued.length ? '2026-09-08' : '2026-09-09';
+  }
+  const [expiredIso3, expiredIso2] = queued[queued.length - 1];
+  input[`${PREFIX}${expiredIso2}`].cacheWrittenAt = NOW - 8 * DAY;
+  const result = runProducer(input);
+  const dispatched = [...new Set(result.requests.map((query: string) => new URLSearchParams(query))
+    .filter((query: URLSearchParams) => query.get('where')?.startsWith('ISO3=') && !query.has('outStatistics'))
+    .map((query: URLSearchParams) => query.get('where')!.match(/ISO3='([^']+)'/)![1]))];
+  assert.equal(dispatched.length, queued.length, 'every queued country is fetched');
+  assert.ok(dispatched.slice(0, 6).includes(expiredIso3),
+    `${expiredIso3} is out of coverage and must be in the first batch, got ${dispatched.slice(0, 6).join(',')}`);
+});
+
+test('a corrupt cached country outranks countries that are still published', () => {
+  // ports: [] without zeroActivity is unusable, so the country is out of
+  // coverage even though its cache timestamp is recent.
+  const input = fixtures();
+  const queued = countries.slice(0, 40);
+  for (const [index, [, iso2]] of countries.entries()) {
+    input[`${PREFIX}${iso2}`].cacheWrittenAt = NOW - 6.5 * DAY;
+    input[`${PREFIX}${iso2}`].asof = index < queued.length ? '2026-09-08' : '2026-09-09';
+  }
+  const [corruptIso3, corruptIso2] = queued[queued.length - 1];
+  input[`${PREFIX}${corruptIso2}`].cacheWrittenAt = NOW - DAY;
+  input[`${PREFIX}${corruptIso2}`].ports = [];
+  const result = runProducer(input);
+  const dispatched = [...new Set(result.requests.map((query: string) => new URLSearchParams(query))
+    .filter((query: URLSearchParams) => query.get('where')?.startsWith('ISO3=') && !query.has('outStatistics'))
+    .map((query: URLSearchParams) => query.get('where')!.match(/ISO3='([^']+)'/)![1]))];
+  assert.ok(dispatched.slice(0, 6).includes(corruptIso3),
+    `${corruptIso3} is out of coverage and must be in the first batch, got ${dispatched.slice(0, 6).join(',')}`);
+});
+
 test('12-hour rolling recovery stays complete across daily advances within the original traffic cap', () => {
   let state = fixtures();
   const cadenceMs = PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES * 60_000;
@@ -428,8 +471,11 @@ test('12-hour rolling recovery stays complete across daily advances within the o
     const activityRequests = result.requests.map((query: string) => new URLSearchParams(query))
       .filter((query: URLSearchParams) => query.get('where')?.startsWith('ISO3=') && !query.has('outStatistics'));
     const refreshed = new Set(activityRequests.map((query: URLSearchParams) => query.get('where')!.match(/ISO3='([^']+)'/)![1]));
-    assert.ok(refreshed.size <= 30, 'do not increase countries attempted per run');
-    assert.ok(activityRequests.length <= 60, 'two one-page windows per country, no duplicate activity requests');
+    // Steady state keeps the original 30-country cap. Only a run that starts
+    // with countries out of coverage may queue the 60-country recovery depth.
+    const cap = recovered ? 30 : 60;
+    assert.ok(refreshed.size <= cap, `attempt at most ${cap} countries in this run`);
+    assert.ok(activityRequests.length <= cap * 2, 'two one-page windows per country, no duplicate activity requests');
     assert.equal(result.error, null, 'an upstream shortfall is publish-blocked, never a crash');
     if (result.publishBlocked) {
       assert.equal(recovered, false, 'daily updates must not invalidate recovered coverage');
@@ -468,7 +514,7 @@ test('the 120-of-174 crash backlog recovers through persisted bounded batches', 
     state[`${PREFIX}${code}`].cacheWrittenAt = NOW - (index < 84 ? 8 : 1) * DAY;
     state[`${PREFIX}${code}`].asof = index >= 84 && index < 148 ? '2026-09-09' : '2026-09-08';
   }
-  for (const [run, covered] of [120, 150, 174].entries()) {
+  for (const [run, covered] of [150, 174].entries()) {
     const now = NOW + run * PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES * 60_000;
     const result = runProducer(state, 'complete', now);
     assert.equal(result.redis[META].coverage.published, covered);
@@ -533,12 +579,44 @@ test('a deferred refresh failure cannot be hidden by otherwise complete retained
   assert.equal(failed.redis[META].coverage.published, 174);
   assert.equal(failed.redis[META].sourceState, 'error');
   assert.match(failed.logs, /usable coverage 174\/174; full publication blocked; 1 unresolved refresh failures/);
-  const deferred = runProducer(failed.redis, 'moving', NOW + DAY / 2);
+  // Countries at the cache cliff outrank a failed country, so this cohort
+  // fills every cold-fetch slot and the failure stays deferred.
+  const deferredAt = NOW + DAY / 2;
+  const nearCliff = { ...failed.redis };
+  for (const [, other] of countries.slice(1, 31)) {
+    nearCliff[`${PREFIX}${other}`] = {
+      ...nearCliff[`${PREFIX}${other}`],
+      cacheWrittenAt: deferredAt - (PORTWATCH_MAX_CACHE_AGE_MS - 3_600_000),
+    };
+  }
+  const deferred = runProducer(nearCliff, 'moving', deferredAt);
   assert.equal(deferred.error, null);
   assert.equal(deferred.publishBlocked, true);
   assert.equal(deferred.redis[META].fetchedAt, input[META].fetchedAt);
   assert.ok(deferred.redis[META].coverage.refreshFailures.some((entry: any) => entry.iso2 === code));
   assert.equal(health(deferred.redis, NOW + DAY / 2).status, 'SEED_ERROR');
+});
+
+// 2026-11-10: one ArcGIS `Token Required` window failed a run's countries, and
+// the next run spent its slots elsewhere because those countries had the
+// newest attempt time. The failure must be retried on the next run.
+test('the next run retries a failed country first and publishes once it recovers', () => {
+  const input = fixtures();
+  for (const [, code] of countries) {
+    input[`${PREFIX}${code}`].cacheWrittenAt = NOW - DAY;
+    input[`${PREFIX}${code}`].asof = '2026-09-08';
+  }
+  const code = countries[0][1];
+  input[`${PREFIX}${code}`].refreshAttemptedAt = 1;
+  const failed = runProducer(input, 'activity-page');
+  assert.equal(failed.publishBlocked, true);
+  assert.ok(failed.redis[META].coverage.refreshFailures.some((entry: any) => entry.iso2 === code));
+  const recovered = runProducer(failed.redis, 'moving', NOW + DAY / 2);
+  assert.equal(recovered.error, null);
+  assert.equal(recovered.publishBlocked, false);
+  assert.equal(recovered.redis[`${PREFIX}${code}`].refreshFailure, undefined);
+  assert.deepEqual(recovered.redis[META].coverage.refreshFailures, []);
+  assert.notEqual(recovered.redis[META].fetchedAt, input[META].fetchedAt);
 });
 
 test('unchanged upstream data uses the cache without any activity downloads', () => {
@@ -611,8 +689,8 @@ for (const canonical of [null, []]) {
     assert.equal(result.error, null);
     assert.equal(result.publishBlocked, true);
     assert.match(result.logs, canonical === null
-      ? /Recovery state saved; no prior canonical list; usable coverage 30\/174; full publication blocked/
-      : /Recovery state saved; canonical list retained at 0 countries; usable coverage 30\/174; full publication blocked/);
+      ? /Recovery state saved; no prior canonical list; usable coverage 60\/174; full publication blocked/
+      : /Recovery state saved; canonical list retained at 0 countries; usable coverage 60\/174; full publication blocked/);
   });
 }
 
@@ -639,7 +717,7 @@ for (const mode of ['canonical-expired', 'canonical-unconfirmed']) {
     assert.match(result.error, /Incomplete PortWatch coverage/);
     if (mode === 'canonical-expired') assert.equal(result.redis[CANONICAL], undefined);
     else assert.deepEqual(result.redis[CANONICAL], input[CANONICAL]);
-    assert.match(result.logs, /Recovery state saved; canonical retention unconfirmed \(168 countries at run start\); usable coverage 60\/174; full publication blocked/);
+    assert.match(result.logs, /Recovery state saved; canonical retention unconfirmed \(168 countries at run start\); usable coverage 90\/174; full publication blocked/);
     assert.doesNotMatch(result.logs, /canonical list retained at/);
   });
 }

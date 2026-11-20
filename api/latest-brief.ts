@@ -35,7 +35,8 @@ import { captureSilentError } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
 import { checkProEntitlement } from '../server/_shared/pro-entitlement';
 import { signBriefUrl, BriefUrlError } from '../server/_shared/brief-url';
-import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
+import { assertBriefEnvelope, selectBriefEnvelope } from '../server/_shared/brief-render.js';
+import { briefLocalizedKey, type BriefEnvelope } from '../shared/brief-envelope.js';
 
 // Slot format written by the digest cron. Must match ISSUE_DATE_RE in
 // server/_shared/brief-url.ts — the signer rejects anything else.
@@ -103,6 +104,7 @@ type BriefPreview = {
   dateLong: string;
   greeting: string;
   threadCount: number;
+  lang: string;
 };
 
 async function readBriefPreview(
@@ -114,6 +116,9 @@ async function readBriefPreview(
   // Seeder-owned keys (#7674): the Railway digest composer writes
   // brief:{userId}:{slot} and brief:latest:{userId} bare — read them raw in
   // every environment so preview resolves the real envelopes.
+  // The localized sibling is optional: any failure falls back to canonical.
+  const siblingPromise = readRawJsonFromUpstash(briefLocalizedKey(userId, issueSlot), Math.min(timeoutMs, 3_000), true)
+    .catch(() => null);
   const raw = await readRawJsonFromUpstash(`brief:${userId}:${issueSlot}`, timeoutMs, true);
   if (raw == null) return null;
   // Reuse the renderer's strict validator so a "ready" preview never
@@ -134,12 +139,14 @@ async function readBriefPreview(
     });
     return null;
   }
-  const { data } = raw;
+  const selected = selectBriefEnvelope(raw, await siblingPromise) as BriefEnvelope;
+  const { data } = selected;
   return {
     issueDate: data.date,
     dateLong: data.dateLong,
     greeting: data.digest.greeting,
     threadCount: data.stories.length,
+    lang: selected.lang ?? 'en',
   };
 }
 
@@ -184,7 +191,7 @@ export default async function handler(
     return new Response(null, { status: 204, headers: cors });
   }
   if (req.method !== 'GET') {
-    return jsonResponse({ error: 'Method not allowed' }, 405, cors);
+    return jsonResponse({ error: 'Method not allowed' }, 405, { ...cors, Allow: 'GET, OPTIONS' });
   }
 
   const authHeader = req.headers.get('Authorization') ?? '';
@@ -325,6 +332,7 @@ export default async function handler(
       dateLong: preview.dateLong,
       greeting: preview.greeting,
       threadCount: preview.threadCount,
+      lang: preview.lang,
       magazineUrl,
     },
     200,

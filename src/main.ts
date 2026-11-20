@@ -1,11 +1,15 @@
 import './styles/base-layer.css';
 import './bootstrap/zod-csp';
+import './bootstrap/abort-signal-fallbacks';
+import './bootstrap/dom-fallbacks';
+import { initPwaInstall } from '@/services/pwa-install';
 import { SITE_VARIANT } from '@/config/variant';
 import { installLcpAttributionDebug } from '@/bootstrap/lcp-attribution';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import { registerWebMcpTools, type WebMcpAppBindings } from '@/services/webmcp';
 import { safeStorageRemove } from '@/utils/safe-storage';
 import { enqueueSentryCall, installPreInitErrorQueue, scheduleSentryInit } from '@/bootstrap/sentry-defer';
+import { renderBootFailureScreen } from '@/bootstrap/boot-failure';
 import { registerClsReporting } from '@/bootstrap/cls-report';
 import { registerInpReporting } from '@/bootstrap/inp-report';
 import { registerLcpReporting } from '@/bootstrap/lcp-report';
@@ -15,6 +19,8 @@ import { installUtmInterceptor } from './utils/utm';
 import { captureContentAttributionFromUrl } from '../shared/content-attribution';
 import { captureAgentRefFromSearch } from '../shared/agent-client-source';
 import { agentRefStorage } from '@/services/agent-ref';
+
+initPwaInstall();
 
 if (SITE_VARIANT === 'happy') {
   // Keeps happy-theme.css off other variants' eager CSS graph. On happy, the
@@ -401,6 +407,11 @@ function shouldSuppressCspViolation(
     try {
       const url = new URL(blockedURI);
       if (url.protocol === 'https:' && url.hostname === 'fonts.googleapis.com' && /^\/css2?$/.test(url.pathname)) return true;
+      // Google Fonts' legacy Early Access sheets (`/earlyaccess/<family>.css`),
+      // the same vendor and the same injection class. J0 round 7: Chrome desktop
+      // and Chrome iOS both loading `notosansmalayalam.css`, a family no surface
+      // of ours references.
+      if (url.protocol === 'https:' && url.hostname === 'fonts.googleapis.com' && /^\/earlyaccess\/[a-z0-9]+\.css$/.test(url.pathname)) return true;
       // Chinese-market extension CDN injecting its overlay stylesheet
       // (www.6ppn.com/ext/assets/style.<hash>.css — the /ext/ path is the
       // extension's own asset root). Exact host + .css path (WORLDMONITOR-J0).
@@ -445,6 +456,16 @@ function shouldSuppressCspViolation(
       // Exact host + `.css` path, like the 6ppn rule; unpkg under script-src
       // still surfaces, which matters because it is a general npm CDN.
       if (url.protocol === 'https:' && url.hostname === 'unpkg.com' && cssFile.test(url.pathname)) return true;
+      // A Bloomberg page's own stylesheet set (its font service on bwbx.io, the
+      // corporate theme on bloomberg.com, the bbthat.com frontend), all blocked
+      // within one minute of one Safari 27.2 session: a page's <link> tags
+      // copied into ours by an extension. We load no Bloomberg stylesheet;
+      // bloomberg.com appears in src/ only as an HLS manifest, which these
+      // style-src rules do not touch (WORLDMONITOR-J0 round 8, every blocked
+      // URI since round 7 apart from one first-party maplibre sheet).
+      if (url.protocol === 'https:'
+          && (url.hostname === 'assets.bwbx.io' || url.hostname === 'www.bloomberg.com' || url.hostname === 'www.bbthat.com')
+          && cssFile.test(url.pathname)) return true;
     } catch { /* unparseable values fall through */ }
     // Extension bug: a literal unsubstituted `[email]` template placeholder as
     // the stylesheet URL. Not a parseable host; can never be first-party.
@@ -544,7 +565,6 @@ window.addEventListener('securitypolicyviolation', (e) => {
   });
 });
 
-import { debugGetCells, getCellCount } from '@/services/geo-convergence';
 import { initMetaTags } from '@/services/meta-tags';
 import { installFetchFailureAttribution } from '@/services/fetch-failure-attribution';
 import { installRuntimeFetchPatch, installWebApiRedirect } from '@/services/runtime';
@@ -555,16 +575,17 @@ import { applyStoredTheme } from '@/utils/theme-manager';
 import { applyDeviceTierClass } from '@/utils/device-tier';
 import { applyFont } from '@/services/font-settings';
 import { applyFontScale, FONT_SCALE_STORAGE_KEY } from '@/services/font-scale-settings';
-import { initAnalytics, trackContentHandoff } from '@/services/analytics';
-import { clearChunkReloadGuard, installChunkReloadGuard } from '@/bootstrap/chunk-reload';
+import { initAnalytics, rememberLandingUtm, trackContentHandoff } from '@/services/analytics';
+import { installChunkReloadGuard, readChunkModule } from '@/bootstrap/chunk-reload';
 import { initDebugBearRum } from '@/bootstrap/debugbear-rum';
 import { installStaleBundleCheck } from '@/bootstrap/stale-bundle-check';
 import { installBetaConsoleToggle } from '@/bootstrap/beta-console-toggle';
 import { installSwUpdateHandler, readServiceWorkerContainer } from '@/bootstrap/sw-update';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 
-// Auto-reload on stale chunk 404s after deployment (Vite fires this for modulepreload failures).
-const chunkReloadStorageKey = installChunkReloadGuard(__BUILD_HASH__);
+// Auto-reload once per build on stale chunk 404s after deployment (Vite fires
+// `vite:preloadError` for failed dynamic imports and modulepreloads).
+installChunkReloadGuard(__BUILD_HASH__);
 
 // First-touch agent link (`?ref=agent-claude`). Read before App.ts referral
 // capture strips `ref` from the URL; recorded as the sign-up source on the
@@ -580,6 +601,7 @@ const acquisitionVisit = {
   referrer: document.referrer,
   now: Date.now(),
 };
+rememberLandingUtm(window.location.search);
 void import('../shared/acquisition-source')
   .then((m) => { m.captureFirstTouchAcquisition(m.browserAcquisitionStorage(), acquisitionVisit); })
   .catch(() => { /* no attribution */ });
@@ -637,6 +659,7 @@ if (SITE_VARIANT && SITE_VARIANT !== 'full') {
   // Swap favicons to variant-specific versions before browser finishes fetching defaults
   document.querySelectorAll<HTMLLinkElement>('link[rel="icon"], link[rel="apple-touch-icon"]').forEach(link => {
     link.href = link.href
+      .replace(/\/favico\/android-chrome-96x96\.png$/, `/favico/${SITE_VARIANT}/android-chrome-192x192.png`)
       .replace(/\/favico\/favicon/g, `/favico/${SITE_VARIANT}/favicon`)
       .replace(/\/favico\/apple-touch-icon/g, `/favico/${SITE_VARIANT}/apple-touch-icon`);
   });
@@ -652,16 +675,22 @@ safeStorageRemove('wm-settings-open');
 
 // Standalone windows: ?settings=1 = panel display settings, ?live-channels=1 = channel management
 // Both need i18n initialized so t() does not return undefined.
-const urlParams = new URL(location.href).searchParams;
+const urlParams = new URLSearchParams(location.search);
 if (urlParams.get('settings') === '1') {
-  void Promise.all([import('./services/i18n'), import('./settings-window')]).then(
+  void Promise.all([
+    readChunkModule(import('./services/i18n')),
+    readChunkModule(import('./settings-window')),
+  ]).then(
     async ([i18n, m]) => {
       await i18n.initI18n();
       m.initSettingsWindow();
     }
   );
 } else if (urlParams.get('live-channels') === '1') {
-  void Promise.all([import('./services/i18n'), import('./live-channels-window')]).then(
+  void Promise.all([
+    readChunkModule(import('./services/i18n')),
+    readChunkModule(import('./live-channels-window')),
+  ]).then(
     async ([i18n, m]) => {
       await i18n.initI18n();
       m.initLiveChannelsWindow();
@@ -679,17 +708,19 @@ if (urlParams.get('settings') === '1') {
   });
   const webMcpController = registerWebMcpTools(bindings);
   // Import and constructor failures must reach the global startup error monitors.
-  void import('./App').then(({ App }) => {
+  void readChunkModule(import('./App')).then(({ App }) => {
     markLcpDebug('wm:boot:app-construct');
     const app = new App('app');
     resolveBindings(app.getWebMcpBindings());
     app
       .init(webMcpController)
-      .then(() => {
-        clearChunkReloadGuard(chunkReloadStorageKey);
-      })
       .catch((error: unknown) => {
         console.error(error);
+        // A handled init rejection never reaches the global startup error
+        // monitors, so report it explicitly or boot failures stay invisible.
+        enqueueSentryCall((s) => {
+          s.captureException(error, { tags: { kind: 'boot_failure' } });
+        });
         try {
           // init() owns the WebMCP controller before its first await. A failed
           // boot must run normal teardown so the browser cannot retain tools
@@ -700,6 +731,13 @@ if (urlParams.get('settings') === '1') {
           // the original boot failure with an unhandled teardown rejection.
           console.error('[App] Failed to clean up after initialization failure:', cleanupError);
         }
+        // After teardown, so the dead skeleton / half-rendered dashboard cannot
+        // paint over it. A render failure must not mask the boot error above.
+        try {
+          renderBootFailureScreen(error);
+        } catch (renderError) {
+          console.error('[App] Failed to render the boot-failure screen:', renderError);
+        }
       });
   }).catch((error: unknown) => {
     rejectBindings(error);
@@ -707,12 +745,6 @@ if (urlParams.get('settings') === '1') {
     throw error;
   });
 }
-
-// Debug helpers for geo-convergence testing (remove in production)
-(window as unknown as Record<string, unknown>).geoDebug = {
-  cells: debugGetCells,
-  count: getCellCount,
-};
 
 installBetaConsoleToggle(window);
 

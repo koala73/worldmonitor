@@ -19,7 +19,7 @@ The important caveat: you should treat it like infrastructure, not a toy clone. 
 
 Self-hosting is useful when you want:
 
-- a local geopolitical and OSINT dashboard for research
+- a local geopolitical and [OSINT dashboard](/blog/posts/osint-for-everyone-open-source-intelligence-democratized/) for research
 - control over API keys and source integrations
 - a development environment for extending panels or APIs
 - an auditable AGPL codebase instead of a closed vendor workflow
@@ -86,7 +86,7 @@ Examples of optional or source-specific keys include:
 - ACLED for conflict event access
 - NASA FIRMS for wildfire and thermal anomaly data
 - AISStream for maritime vessel data
-- Cloudflare Radar for internet outage data
+- Cloudflare Radar for [internet outage](https://www.worldmonitor.app/tools/internet-outages/) data
 - an OpenAI-compatible self-hosted LLM endpoint if you run local models
 
 The recommended pattern is `docker-compose.override.yml` for local keys. That file is gitignored, which keeps secrets out of commits.

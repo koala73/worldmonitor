@@ -6,13 +6,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readArchitectureGuide } from './helpers/architecture-docs.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path) => readFileSync(join(ROOT, path), 'utf8');
 
 const ALERT_SOURCE = read('src/services/breaking-news-alerts.ts');
-const ARCHITECTURE_EN = read('docs/architecture.mdx');
-const ARCHITECTURE_ZH = read('docs/zh/architecture.mdx');
+const ARCHITECTURE_EN = readArchitectureGuide();
+const ARCHITECTURE_ZH = readArchitectureGuide('zh');
 const ALGORITHMS_EN = read('docs/algorithms.mdx');
 const ALGORITHMS_ZH = read('docs/zh/algorithms.mdx');
 

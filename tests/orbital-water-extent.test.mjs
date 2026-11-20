@@ -1,0 +1,536 @@
+// Reservoir water-extent series (#10714 item 2): the producer measures each reservoir watched site from
+// Sentinel-1 RTC statistics fixtures, carries the series forward, and is registered dark like the rest
+// of Orbital Watch. No network: every upstream call is a fixture.
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { describe, it } from 'node:test';
+
+import {
+  MAX_OBSERVATIONS,
+  MAX_PARTIAL_SCENES,
+  MIN_VALID_PERCENT,
+  SEARCH_LOOKBACK_DAYS,
+  WATER_THRESHOLD_LINEAR,
+  boxAreaKm2,
+  freshReservoirCount,
+  mergeSeries,
+  orderTargets,
+  pendingScenes,
+  measureReservoir,
+  readingFromStatistics,
+  reservoirTargets,
+  scenesFromSearch,
+  searchSince,
+  statisticsQuery,
+  waterExtentSummary,
+} from '../scripts/_orbital-water-extent.mjs';
+import {
+  ORBITAL_WATER_EXTENT_KEY,
+  RUN_BUDGET_MS,
+  buildSeedOptions,
+  ORBITAL_WATER_EXTENT_LATEST_KEY,
+  loadWatchlist,
+  MAX_SEARCH_PAGES,
+  makeFetchWaterExtent,
+  makeSceneSearch,
+  makeStatisticsFetch,
+  waterExtentEnabled,
+} from '../scripts/seed-orbital-water-extent.mjs';
+import { WATCHED_SITES } from '../scripts/shared/orbital-watched-sites.generated.mjs';
+import { ORBITAL_SITES_BACKOFF_KEY } from '../scripts/_orbital-sites.mjs';
+import { buildEnvelope } from '../scripts/_seed-envelope-source.mjs';
+import { MAX_PAYLOAD_BYTES } from '../scripts/_seed-utils.mjs';
+
+const NOW = Date.parse('2026-11-15T12:00:00Z');
+const DAY = 86_400_000;
+const watchlist = loadWatchlist();
+const stats = (validPercent, validPixels, waterPixels) => ({
+  properties: { statistics: { vv_b1: { valid_percent: validPercent, valid_pixels: validPixels, histogram: [[waterPixels], [0, WATER_THRESHOLD_LINEAR]] } } },
+});
+const scene = (id, daysAgo, orbit = 43) => ({
+  id, properties: { datetime: new Date(NOW - daysAgo * DAY).toISOString(), platform: 'sentinel-1c', 'sat:relative_orbit': orbit, 'sat:orbit_state': 'ascending' },
+});
+
+describe('reservoir water extent: pure helpers', () => {
+  it('targets every reservoir watched site with its watchlist core box', () => {
+    const targets = reservoirTargets(WATCHED_SITES, watchlist);
+    assert.equal(targets.length, 50);
+    const kariba = targets.find((t) => t.reservoirId === 'kariba');
+    assert.equal(kariba.siteId, 'reservoir:kariba');
+    assert.deepEqual(kariba.box, watchlist.find((r) => r.id === 'kariba').core);
+    assert.ok(!targets.some((t) => !t.siteId.startsWith('reservoir:')));
+  });
+
+  it('measures box area on the sphere', () => {
+    const area = boxAreaKm2([27.7, -17.1, 28.1, -16.8]);
+    assert.ok(area > 1400 && area < 1450, String(area));
+  });
+
+  it('asks titiler for one histogram bin below the -18 dB water threshold', () => {
+    const q = new URLSearchParams(statisticsQuery('S1C_X_rtc'));
+    assert.equal(q.get('collection'), 'sentinel-1-rtc');
+    assert.equal(q.get('assets'), 'vv');
+    assert.equal(q.get('histogram_bins'), '1');
+    assert.equal(Number(q.get('histogram_range').split(',')[1]).toFixed(5), (10 ** -1.8).toFixed(5));
+  });
+
+  it('reads the water share of a scene that images the box and drops a slice edge', () => {
+    assert.deepEqual(readingFromStatistics(stats(98.92, 777962, 558831), 1422.5), { waterPercent: 71.8, waterKm2: 1021.8, validPercent: 98.9 });
+    assert.equal(readingFromStatistics(stats(MIN_VALID_PERCENT - 0.1, 1000, 10), 100), null);
+    assert.throws(() => readingFromStatistics({ properties: {} }, 100), /lacks the vv_b1 histogram/);
+    assert.equal(readingFromStatistics(stats(100, 0, 0), 100), null);
+  });
+
+  it('merges a series one reading per scene, newest first, inside retention', () => {
+    const old = { sceneId: 'old', time: new Date(NOW - 800 * DAY).toISOString() };
+    const a = { sceneId: 'a', time: new Date(NOW - 10 * DAY).toISOString(), waterPercent: 1 };
+    const a2 = { ...a, waterPercent: 2 };
+    const b = { sceneId: 'b', time: new Date(NOW - 2 * DAY).toISOString() };
+    assert.deepEqual(mergeSeries([old, a], [a2, b], NOW).map((o) => [o.sceneId, o.waterPercent]), [['b', undefined], ['a', 2]]);
+  });
+
+  it('skips scenes already measured or already found partial, and backfills from the horizon', () => {
+    const scenes = [{ sceneId: 'x', time: '2026-11-10T00:00:00Z' }, { sceneId: 'y', time: '2026-11-11T00:00:00Z' }, { sceneId: 'z', time: '2026-11-12T00:00:00Z' }];
+    assert.deepEqual(pendingScenes(scenes, { observations: [{ sceneId: 'x' }], partialScenes: ['z'] }).map((s) => s.sceneId), ['y']);
+    assert.equal(searchSince(null, NOW), new Date(NOW - SEARCH_LOOKBACK_DAYS * DAY).toISOString());
+    assert.equal(searchSince({ searchedThrough: new Date(NOW - DAY).toISOString() }, NOW), new Date(NOW - 6 * DAY).toISOString());
+  });
+
+  it('serves the least recently completed reservoirs first', () => {
+    const t = [{ siteId: 'a' }, { siteId: 'b' }, { siteId: 'c' }];
+    const prior = { a: { searchedThrough: '2026-11-14T00:00:00Z' }, c: { searchedThrough: '2026-11-10T00:00:00Z' } };
+    assert.deepEqual(orderTargets(t, prior).map((x) => x.siteId), ['b', 'c', 'a']);
+  });
+});
+
+describe('reservoir water extent: producer', () => {
+  const sites = WATCHED_SITES.filter((s) => s.id === 'reservoir:kariba' || s.id === 'reservoir:kakhovka' || s.id === 'port:1');
+  const run = async ({ previous = null, statistics, search, budgetMs, now = () => NOW }) => {
+    const calls = [];
+    const fetchWaterExtent = makeFetchWaterExtent({
+      sites, watchlist, budgetMs,
+      readPrevious: async () => previous,
+      searchScenes: async (body, options) => { calls.push(['search', body, options]); return search(body); },
+      fetchStatistics: async (id, geometry) => { calls.push(['statistics', id, geometry]); return statistics(id); },
+      now,
+    });
+    return { data: await fetchWaterExtent(), calls };
+  };
+
+  it('records readings for covering scenes and remembers partial slices', async () => {
+    const { data, calls } = await run({
+      search: () => ({ features: [scene('full', 4), scene('edge', 4), scene('older', 16)] }),
+      statistics: (id) => (id === 'edge' ? stats(1.1, 9000, 9) : stats(99, 1000, 700)),
+    });
+    assert.equal(data.schema, 1);
+    assert.deepEqual(Object.keys(data.reservoirs).sort(), ['reservoir:kakhovka', 'reservoir:kariba']);
+    const kariba = data.reservoirs['reservoir:kariba'];
+    assert.deepEqual(kariba.observations.map((o) => o.sceneId), ['full', 'older']);
+    assert.equal(kariba.latest.waterPercent, 70);
+    assert.equal(kariba.latest.relativeOrbit, 43);
+    assert.deepEqual(kariba.partialScenes, ['edge']);
+    assert.equal(kariba.searchedThrough, new Date(NOW).toISOString());
+    const [, search, options] = calls.find((c) => c[0] === 'search');
+    assert.deepEqual(search.collections, ['sentinel-1-rtc']);
+    assert.ok(Number.isFinite(options.deadlineMs), 'the search is told the run deadline');
+    assert.equal(freshReservoirCount(data), 2);
+  });
+
+  it('carries the previous series forward and retries after an upstream error', async () => {
+    const first = await run({ search: () => ({ features: [scene('s1', 8)] }), statistics: () => stats(100, 10, 5) });
+    let statisticsCalls = 0;
+    const { data, calls } = await run({
+      previous: first.data,
+      search: () => ({ features: [scene('s2', 1), scene('s1', 8)] }),
+      statistics: () => { statisticsCalls += 1; if (statisticsCalls === 1) throw new Error('HTTP 502'); return stats(100, 10, 5); },
+    });
+    const failed = Object.values(data.reservoirs).find((r) => r.observations.length === 1);
+    const ok = Object.values(data.reservoirs).find((r) => r.observations.length === 2);
+    assert.deepEqual(failed.observations.map((o) => o.sceneId), ['s1'], 'kept the earlier reading');
+    assert.equal(failed.searchedThrough, first.data.reservoirs[failed.siteId].searchedThrough, 'search window not advanced');
+    assert.equal(ok.searchedThrough, new Date(NOW).toISOString());
+    assert.deepEqual(calls.filter((c) => c[0] === 'statistics').map((c) => c[1]), ['s2', 's2'], 's1 is not requested again');
+  });
+
+  it('fails the run when the archive answers no request, so seed-meta is not refreshed', async () => {
+    const first = await run({ search: () => ({ features: [scene('s1', 8)] }), statistics: () => stats(100, 10, 5) });
+    await assert.rejects(
+      run({ previous: first.data, search: () => { throw new Error('HTTP 503'); }, statistics: () => stats(100, 10, 5) }),
+      /every scene search failed/,
+    );
+    await assert.rejects(
+      run({ previous: first.data, search: () => ({ features: [scene('s2', 1)] }), statistics: () => { throw new Error('HTTP 500'); } }),
+      /every statistics request failed/,
+    );
+  });
+
+  it('retries a scene whose statistics response is malformed instead of marking it partial', async () => {
+    const { data } = await run({ search: () => ({ features: [scene('s1', 8), scene('s2', 9)] }), statistics: (id) => (id === 's1' ? { properties: {} } : stats(100, 10, 5)) });
+    const kariba = data.reservoirs['reservoir:kariba'];
+    assert.deepEqual(kariba.observations.map((o) => o.sceneId), ['s2']);
+    assert.deepEqual(kariba.partialScenes, []);
+    assert.equal(kariba.searchedThrough, null, 'search window not advanced');
+  });
+
+  it('makes no request once the budget is spent, even for reservoirs never measured', async () => {
+    let clock = NOW;
+    const { data, calls } = await run({
+      budgetMs: 1_000,
+      now: () => clock,
+      search: () => { clock += 5_000; return { features: [scene('s1', 8)] }; },
+      statistics: () => stats(100, 10, 5),
+    });
+    assert.deepEqual(calls.map((c) => c[0]), ['search'], 'one search, then the deadline stops every request');
+    assert.deepEqual(Object.keys(data.reservoirs).sort(), ['reservoir:kakhovka', 'reservoir:kariba']);
+    const untouched = Object.values(data.reservoirs).find((r) => r.observations.length === 0);
+    assert.equal(untouched.searchedThrough, null);
+  });
+
+  it('keeps the series when one scene search fails', async () => {
+    const first = await run({ search: () => ({ features: [scene('s1', 8)] }), statistics: () => stats(100, 10, 5) });
+    let searches = 0;
+    const { data } = await run({
+      previous: first.data,
+      search: () => { searches += 1; if (searches === 1) throw new Error('HTTP 503'); return { features: [] }; },
+      statistics: () => stats(100, 10, 5),
+    });
+    for (const record of Object.values(data.reservoirs)) assert.deepEqual(record.observations.map((o) => o.sceneId), ['s1']);
+  });
+
+  it('follows search pages on the search host and flags a search with pages left over', async () => {
+    const posts = [];
+    const pageOf = (id, token) => ({
+      features: [scene(id, 1)],
+      links: token ? [{ rel: 'next', method: 'POST', href: 'https://planetarycomputer.microsoft.com/api/stac/v1/search', body: { token }, merge: true }] : [],
+    });
+    const search = makeSceneSearch(async (_url, init) => {
+      const body = JSON.parse(init.body);
+      posts.push(body);
+      const n = posts.length;
+      return { ok: true, json: async () => pageOf(`p${n}`, n < 2 ? `next:${n}` : null) };
+    });
+    const two = await search({ collections: ['sentinel-1-rtc'] });
+    assert.deepEqual(two.features.map((f) => f.id), ['p1', 'p2']);
+    assert.equal(two.truncated, false);
+    assert.deepEqual(posts[1], { collections: ['sentinel-1-rtc'], token: 'next:1' }, 'next page merges the token into the search');
+
+    const endless = makeSceneSearch(async () => ({ ok: true, json: async () => pageOf('x', 'more') }));
+    const capped = await endless({});
+    assert.equal(capped.features.length, MAX_SEARCH_PAGES);
+    assert.equal(capped.truncated, true);
+
+    let clock = 0;
+    const late = makeSceneSearch(async () => { clock += 10; return { ok: true, json: async () => pageOf('first', 'more') }; }, () => clock);
+    const stopped = await late({}, { deadlineMs: 5 });
+    assert.equal(stopped.features.length, 1, 'no further page is requested past the deadline');
+    assert.equal(stopped.truncated, true);
+
+    let pages = 0;
+    const flaky = makeSceneSearch(async () => {
+      pages += 1;
+      if (pages === 2) return { ok: false, status: 502 };
+      return { ok: true, json: async () => pageOf('first', 'more') };
+    });
+    const kept = await flaky({});
+    assert.deepEqual(kept.features.map((f) => f.id), ['first'], 'a failed later page keeps the pages already read');
+    assert.equal(kept.truncated, true);
+
+    const offHost = makeSceneSearch(async () => ({ ok: true, json: async () => ({ features: [], links: [{ rel: 'next', href: 'https://example.com/steal' }] }) }));
+    assert.equal((await offHost({})).truncated, true);
+  });
+
+  it('does not mark a truncated search complete', async () => {
+    const { data } = await run({ search: () => ({ features: [scene('s1', 2)], truncated: true }), statistics: () => stats(100, 10, 5) });
+    const kariba = data.reservoirs['reservoir:kariba'];
+    assert.deepEqual(kariba.observations.map((o) => o.sceneId), ['s1']);
+    assert.equal(kariba.searchedThrough, null);
+  });
+
+  it('posts the box as a GeoJSON feature with a User-Agent', async () => {
+    let seen;
+    const fetchStatistics = makeStatisticsFetch(async (url, init) => { seen = { url, init }; return { ok: true, json: async () => stats(100, 1, 1) }; });
+    await fetchStatistics('S1C_X_rtc', { type: 'Polygon', coordinates: [] });
+    assert.match(seen.url, /^https:\/\/planetarycomputer\.microsoft\.com\/api\/data\/v1\/item\/statistics\?/);
+    assert.match(seen.init.headers['User-Agent'], /WorldMonitor-Seed/);
+    assert.equal(JSON.parse(seen.init.body).type, 'Feature');
+  });
+});
+
+describe('reservoir water extent: seed contract', () => {
+  it('validates a payload covering the whole watchlist and keeps the TTL above three daily runs', () => {
+    const opts = buildSeedOptions(2);
+    assert.ok(opts.ttlSeconds >= 3 * 86_400);
+    assert.equal(opts.maxStaleMin, 4320);
+    assert.equal(opts.validateFn({ schema: 1, reservoirs: { a: {}, b: {} } }), true);
+    assert.equal(opts.validateFn({ schema: 1, reservoirs: { a: {} } }), false);
+    assert.equal(typeof opts.afterFreshness, 'function');
+    assert.deepEqual(opts.extraKeys.map((k) => k.key), [ORBITAL_WATER_EXTENT_LATEST_KEY]);
+    assert.equal(opts.extraKeys[0].transform, waterExtentSummary);
+  });
+
+  it('summarises each reservoir as its newest reading and the newest earlier one from the same orbit', () => {
+    const obs = (sceneId, time, waterPercent, relativeOrbit) => ({ sceneId, time, waterPercent, waterKm2: waterPercent * 2, validPercent: 99, platform: 'Sentinel-1A', relativeOrbit, orbitState: 'ascending' });
+    const latest = obs('s3', '2026-11-09T03:40:00Z', 62.4, 43);
+    const observations = [latest, obs('s2', '2026-11-03T15:10:00Z', 70, 145), obs('s1', '2026-10-28T03:40:00Z', 65.5, 43)];
+    const summary = waterExtentSummary({ schema: 1, runAt: 1, reservoirs: {
+      'reservoir:kariba': { areaKm2: 640, observations, latest, partialScenes: [] },
+      'reservoir:empty': { areaKm2: 10, observations: [], latest: null },
+      'reservoir:lone': { areaKm2: 10, observations: [obs('x', '2026-11-01T00:00:00Z', 5, 9)], latest: obs('x', '2026-11-01T00:00:00Z', 5, 9) },
+    } });
+    assert.deepEqual(Object.keys(summary.reservoirs), ['reservoir:kariba', 'reservoir:lone']);
+    assert.deepEqual(summary.reservoirs['reservoir:kariba'], {
+      areaKm2: 640,
+      latest: { time: latest.time, waterPercent: 62.4, waterKm2: 124.8, platform: 'Sentinel-1A', relativeOrbit: 43 },
+      sameOrbitPrevious: { time: '2026-10-28T03:40:00Z', waterPercent: 65.5, waterKm2: 131, platform: 'Sentinel-1A', relativeOrbit: 43 },
+    });
+    assert.equal(summary.reservoirs['reservoir:lone'].sameOrbitPrevious, null);
+    assert.ok(!JSON.stringify(summary).includes('observations'), 'the series stays on the canonical key');
+  });
+
+  it('ships dark with Orbital Watch', () => {
+    assert.equal(waterExtentEnabled({}), false);
+    assert.equal(waterExtentEnabled({ ORBITAL_WATCH_ENABLED: 'false' }), false);
+    assert.equal(waterExtentEnabled({ ORBITAL_WATCH_ENABLED: ' TRUE ' }), true);
+  });
+
+  it('is registered in health, the climate bundle and the Railway watch paths', () => {
+    const health = readFileSync(new URL('../api/health.js', import.meta.url), 'utf8');
+    assert.match(health, new RegExp(`orbitalWaterExtent: '${ORBITAL_WATER_EXTENT_KEY}'`));
+    assert.match(health, /orbitalWaterExtent: \{ key: 'seed-meta:orbital:water-extent', maxStaleMin: 4320/);
+    assert.match(health, /ORBITAL_WATCH_ENABLED \? \[\] : \['orbitalSites', 'orbitalWaterExtent'\]/);
+    const bundle = readFileSync(new URL('../scripts/seed-bundle-climate.mjs', import.meta.url), 'utf8');
+    assert.match(bundle, /script: 'seed-orbital-water-extent\.mjs', seedMetaKey: 'orbital:water-extent', canonicalKey: 'orbital:water-extent:v1'/);
+    const railway = readFileSync(new URL('../scripts/railway-services.json', import.meta.url), 'utf8');
+    for (const path of ['scripts/seed-orbital-water-extent.mjs', 'scripts/_orbital-water-extent.mjs']) assert.ok(railway.includes(`"${path}"`), path);
+  });
+});
+
+// A Planetary Computer RTC item id at full length, e.g. S1A_IW_GRDH_1SDV_20241105T033305_20241105T033330_056472_06E851_rtc.
+const rtcId = (platform, t, n) => {
+  const stamp = new Date(t).toISOString().replace(/[-:]/g, '').slice(0, 15);
+  return `S1${platform}_IW_GRDH_1SDV_${stamp}_${stamp}_${String(56_000 + n).padStart(6, '0')}_${(0xE0000 + n).toString(16).toUpperCase()}_rtc`;
+};
+
+describe('reservoir water extent: payload size', () => {
+  it('fits the per-key limit with every reservoir at the series and partial-scene caps', () => {
+    const targets = reservoirTargets(WATCHED_SITES, watchlist);
+    const reservoirs = {};
+    let n = 0;
+    for (const target of targets) {
+      // Twice the cap of covering scenes inside retention, at microsecond timestamps like the catalogue's.
+      const features = Array.from({ length: 2 * MAX_OBSERVATIONS }, (_, i) => {
+        const t = NOW - i * 0.9 * DAY - 123_456;
+        n += 1;
+        return { id: rtcId('A', t, n), properties: { datetime: new Date(t).toISOString().replace('Z', '643Z'), platform: 'SENTINEL-1A', 'sat:relative_orbit': 175, 'sat:orbit_state': 'descending' } };
+      });
+      const additions = scenesFromSearch({ features }).map((s) => ({ ...s, ...readingFromStatistics(stats(99.97, 1_048_576, 1_000_001), 99_999.9) }));
+      const observations = mergeSeries([], additions, NOW);
+      assert.equal(observations.length, MAX_OBSERVATIONS);
+      // Worst case: every scene of a 120-day search window is partial (0.34 a day), plus the capped ids kept from outside it.
+      const inWindow = Math.ceil(SEARCH_LOOKBACK_DAYS * 0.34);
+      const partialScenes = Array.from({ length: inWindow + MAX_PARTIAL_SCENES }, (_, i) => rtcId('C', NOW - i * DAY, (n += 1)));
+      reservoirs[target.siteId] = { siteId: target.siteId, reservoirId: target.reservoirId, name: target.name, countryCode: target.countryCode, box: target.box, areaKm2: 99_999.9, searchedThrough: new Date(NOW).toISOString(), observations, partialScenes, latest: observations[0] };
+    }
+    const data = { schema: 1, runAt: NOW, thresholdDb: -18, minValidPercent: 90, source: {}, methodology: 'x'.repeat(400), reservoirs };
+    const published = JSON.stringify(buildEnvelope({ fetchedAt: NOW, recordCount: targets.length, sourceVersion: 'planetary-computer-sentinel-1-rtc-vv-18db', schemaVersion: 1, state: 'OK', data }));
+    const bytes = Buffer.byteLength(published, 'utf8');
+    assert.ok(bytes <= MAX_PAYLOAD_BYTES * 0.9, `${(bytes / 1024 / 1024).toFixed(2)} MB at the caps; the key limit is ${MAX_PAYLOAD_BYTES / 1024 / 1024} MB and a run must keep 10% headroom`);
+  });
+
+  const target = { siteId: 's', reservoirId: 'r', name: 'R', countryCode: 'XX', box: [0, 0, 1, 1] };
+
+  it('caps only the partial scenes a truncated search no longer returns', async () => {
+    const outside = Array.from({ length: 3 * MAX_PARTIAL_SCENES }, (_, i) => `gone${i}`);
+    const { record } = await measureReservoir(target, { reservoirId: 'r', observations: [], partialScenes: outside, searchedThrough: null }, {
+      searchScenes: async () => ({ features: [scene('edge', 1)], truncated: true }),
+      fetchStatistics: async () => stats(1, 10, 1),
+      nowMs: NOW,
+      deadlineMs: Infinity,
+    });
+    assert.equal(record.partialScenes.length, MAX_PARTIAL_SCENES + 1);
+    assert.ok(record.partialScenes.includes('edge'), 'a partial scene the search still returns is never dropped');
+  });
+
+  it('reaches a covering scene behind more partial scenes than the cap', async () => {
+    // 80 partial scenes, newest first, then 20 that image the whole box.
+    const features = Array.from({ length: 100 }, (_, i) => scene(i < 80 ? `edge${i}` : `full${i}`, 1 + i));
+    let record = null;
+    let runs = 0;
+    while (!record?.searchedThrough && runs < 40) {
+      runs += 1;
+      ({ record } = await measureReservoir(target, record, {
+        searchScenes: async () => ({ features }),
+        fetchStatistics: async (id) => (id.startsWith('edge') ? stats(1, 10, 1) : stats(99, 1000, 600)),
+        nowMs: NOW,
+        deadlineMs: Infinity,
+      }));
+    }
+    assert.ok(record.observations.length > 0, `no reading after ${runs} runs`);
+    assert.equal(record.observations.length, 20);
+    assert.equal(record.searchedThrough, new Date(NOW).toISOString(), 'the search window completes');
+    assert.ok(record.partialScenes.length <= features.length, 'partial ids are bounded by the search window');
+  });
+});
+
+describe('reservoir water extent: archive refusal and backoff', () => {
+  const sites = WATCHED_SITES.filter((s) => s.id === 'reservoir:kariba' || s.id === 'reservoir:kakhovka');
+  const page = (features) => ({ ok: true, status: 200, json: async () => ({ features, links: [] }) });
+  const refused = (status) => ({ ok: false, status, body: null, json: async () => ({}) });
+  const build = ({ fetchImpl, previous = null, backoff = null }) => {
+    const writes = [];
+    const requests = [];
+    const counted = async (url, init) => { requests.push(url); return fetchImpl(url, init, requests.length); };
+    const fetchWaterExtent = makeFetchWaterExtent({
+      sites, watchlist,
+      readPrevious: async () => previous,
+      readBackoff: async () => backoff,
+      writeBackoff: async (value) => { writes.push(value); },
+      searchScenes: makeSceneSearch(counted),
+      fetchStatistics: makeStatisticsFetch(counted),
+      now: () => NOW,
+    });
+    return { fetchWaterExtent, writes, requests };
+  };
+
+  it('makes no request and publishes nothing while the shared archive backoff runs', async () => {
+    const { fetchWaterExtent, writes, requests } = build({
+      fetchImpl: async () => page([]),
+      backoff: { refusals: 2, reason: 'Planetary Computer refused the search (HTTP 429)', at: NOW - 60_000, until: NOW + 3_600_000 },
+    });
+    const data = await fetchWaterExtent();
+    assert.deepEqual(requests, []);
+    assert.deepEqual(writes, []);
+    assert.match(data.publishBlocked, /archive backoff after 2 refusal\(s\) until/);
+    assert.equal(buildSeedOptions(2).declareRecords(data), 0, 'runSeed takes the publish-blocked path, not a failure');
+  });
+
+  it('runs normally once the backoff has expired', async () => {
+    const { fetchWaterExtent, requests } = build({
+      fetchImpl: async (url) => (url.includes('/stac/') ? page([scene('s1', 2)]) : { ok: true, status: 200, json: async () => stats(100, 10, 5) }),
+      backoff: { refusals: 1, reason: 'x', at: NOW - 2 * 3_600_000, until: NOW - 3_600_000 },
+    });
+    const data = await fetchWaterExtent();
+    assert.equal(data.publishBlocked, undefined);
+    assert.equal(freshReservoirCount(data), 2);
+    assert.ok(requests.length > 0);
+  });
+
+  for (const status of [403, 429]) {
+    it(`stops at the first HTTP ${status} search refusal, backs off and publishes nothing new`, async () => {
+      const { fetchWaterExtent, writes, requests } = build({ fetchImpl: async () => refused(status) });
+      const data = await fetchWaterExtent();
+      assert.equal(requests.length, 1, 'no further search after the refusal');
+      assert.equal(writes.length, 1);
+      assert.equal(writes[0].refusals, 1);
+      assert.equal(writes[0].until, NOW + 15 * 60_000);
+      assert.match(writes[0].reason, new RegExp(`HTTP ${status}`));
+      assert.match(data.publishBlocked, new RegExp(`HTTP ${status}`));
+      assert.equal(buildSeedOptions(2).declareRecords(data), 0);
+    });
+  }
+
+  it('keeps what it measured before a statistics refusal and doubles an existing backoff', async () => {
+    const { fetchWaterExtent, writes, requests } = build({
+      fetchImpl: async (url, _init, n) => {
+        if (url.includes('/stac/')) return page([scene(`s${n}`, 2)]);
+        return n <= 2 ? { ok: true, status: 200, json: async () => stats(100, 10, 5) } : refused(429);
+      },
+      backoff: { refusals: 1, reason: 'earlier', at: NOW - 2 * 3_600_000, until: NOW - 3_600_000 },
+    });
+    const data = await fetchWaterExtent();
+    assert.equal(requests.length, 4, 'search, statistics, search, refused statistics; nothing after');
+    assert.equal(data.publishBlocked, undefined);
+    assert.equal(freshReservoirCount(data), 1);
+    assert.equal(Object.keys(data.reservoirs).length, 2, 'the refused reservoir is carried');
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].refusals, 2);
+    assert.equal(writes[0].until, NOW + 30 * 60_000);
+  });
+
+  it('publishes nothing new when the archive refuses the first statistics request after a good search', async () => {
+    const carried = { siteId: 'reservoir:kariba', observations: [], partialScenes: [], latest: { sceneId: 'old', time: new Date(NOW - DAY).toISOString() } };
+    const { fetchWaterExtent, writes, requests } = build({
+      fetchImpl: async (url) => (url.includes('/stac/') ? page([scene('s1', 2)]) : refused(429)),
+      previous: { reservoirs: { 'reservoir:kariba': carried } },
+    });
+    const data = await fetchWaterExtent();
+    assert.equal(requests.length, 2, 'search, refused statistics; nothing after');
+    assert.equal(writes.length, 1);
+    assert.match(data.publishBlocked, /HTTP 429/);
+    assert.equal(buildSeedOptions(2).declareRecords(data), 0, 'carried readings must not refresh seed freshness');
+  });
+
+  it('reads and writes the backoff key the watched-sites seeder honours', () => {
+    const source = readFileSync(new URL('../scripts/seed-orbital-water-extent.mjs', import.meta.url), 'utf8');
+    assert.match(source, /ORBITAL_SITES_BACKOFF_KEY/);
+    assert.equal(ORBITAL_SITES_BACKOFF_KEY, 'orbital:sites:backoff:v1');
+  });
+});
+
+describe('reservoir water extent: a run that never reaches the archive', () => {
+  const sites = WATCHED_SITES.filter((s) => s.id === 'reservoir:kariba' || s.id === 'reservoir:kakhovka');
+  const previous = { schema: 1, reservoirs: { 'reservoir:kariba': { reservoirId: 'kariba', observations: [{ sceneId: 'old', time: new Date(NOW - DAY).toISOString() }], partialScenes: [], searchedThrough: null } } };
+
+  it('publishes nothing when the budget runs out before any search', async () => {
+    let clock = NOW;
+    const calls = [];
+    const fetchWaterExtent = makeFetchWaterExtent({
+      sites, watchlist, budgetMs: 1_000, now: () => clock,
+      readPrevious: async () => { clock += 5_000; return previous; },
+      searchScenes: async () => { calls.push('search'); return { features: [] }; },
+      fetchStatistics: async () => { calls.push('statistics'); return stats(100, 10, 5); },
+    });
+    const data = await fetchWaterExtent();
+    assert.deepEqual(calls, []);
+    assert.match(data.publishBlocked, /no archive search/);
+    assert.equal(buildSeedOptions(2).declareRecords(data), 0, 'carried readings must not refresh seed freshness');
+  });
+
+  it('still publishes a run whose searches answered with no new scenes', async () => {
+    const fetchWaterExtent = makeFetchWaterExtent({
+      sites, watchlist, now: () => NOW,
+      readPrevious: async () => previous,
+      searchScenes: async () => ({ features: [] }),
+      fetchStatistics: async () => stats(100, 10, 5),
+    });
+    const data = await fetchWaterExtent();
+    assert.equal(data.publishBlocked, undefined);
+    assert.equal(freshReservoirCount(data), 1);
+  });
+});
+
+describe('reservoir water extent: cold start', () => {
+  it('reaches the health record floor on a first run at the measured request rate', async () => {
+    const health = readFileSync(new URL('../api/health.js', import.meta.url), 'utf8');
+    const floor = Number(health.match(/orbitalWaterExtent: \{[^}]*minRecordCount: (\d+)/)[1]);
+    const targets = reservoirTargets(WATCHED_SITES, watchlist);
+    // Every tenth reservoir is a huge lake no single scene images whole (#10714).
+    const uncovered = new Set(targets.filter((_, i) => i % 10 === 3).map((t) => t.siteId));
+    const boxOwner = new Map(targets.map((t) => [JSON.stringify(t.box), t.siteId]));
+    const ownerOfScene = new Map();
+    let clock = NOW;
+    // A live probe needed about 8 minutes for 427 requests: 1.12 s each.
+    const tick = () => { clock += 1_124; };
+    const fetchWaterExtent = makeFetchWaterExtent({
+      sites: WATCHED_SITES, watchlist,
+      readPrevious: async () => null,
+      readBackoff: async () => null,
+      writeBackoff: async () => {},
+      searchScenes: async (body) => {
+        tick();
+        const [[west, south], , [east, north]] = body.intersects.coordinates[0];
+        const siteId = boxOwner.get(JSON.stringify([west, south, east, north]));
+        const features = Array.from({ length: 41 }, (_, i) => scene(`${siteId}#${i}`, 1 + i * 2.9));
+        for (const f of features) ownerOfScene.set(f.id, siteId);
+        return { features };
+      },
+      fetchStatistics: async (id) => { tick(); return uncovered.has(ownerOfScene.get(id)) ? stats(40, 1000, 10) : stats(99, 1000, 600); },
+      budgetMs: RUN_BUDGET_MS,
+      now: () => clock,
+    });
+    const data = await fetchWaterExtent();
+    const fresh = freshReservoirCount(data, NOW);
+    assert.ok(fresh >= floor, `a cold run left ${fresh} reservoirs fresh; health wants ${floor}`);
+    assert.equal(fresh, targets.length - uncovered.size, 'every reservoir a scene can image gets a reading');
+  });
+});

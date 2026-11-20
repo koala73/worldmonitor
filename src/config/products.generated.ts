@@ -23,7 +23,7 @@ export const PLAN_LIMITS = {
   "api_starter_annual": {"apiRequestsPerDay":1000,"apiBurstRequestsPerMinute":60,"mcpCallsPerDay":"shared-api-budget","dashboardAiCallsPerDay":1000,"mcpBurstRequestsPerMinute":60,"desktopKeyRequestsPerDay":0,"desktopKeyBurstPerMinute":0},
   "api_business": {"apiRequestsPerDay":10000,"apiBurstRequestsPerMinute":300,"mcpCallsPerDay":"shared-api-budget","dashboardAiCallsPerDay":10000,"mcpBurstRequestsPerMinute":300,"desktopKeyRequestsPerDay":0,"desktopKeyBurstPerMinute":0},
   "api_business_annual": {"apiRequestsPerDay":10000,"apiBurstRequestsPerMinute":300,"mcpCallsPerDay":"shared-api-budget","dashboardAiCallsPerDay":10000,"mcpBurstRequestsPerMinute":300,"desktopKeyRequestsPerDay":0,"desktopKeyBurstPerMinute":0},
-  "enterprise": {"apiRequestsPerDay":100000,"apiBurstRequestsPerMinute":1000,"mcpCallsPerDay":25000,"dashboardAiCallsPerDay":25000,"mcpBurstRequestsPerMinute":1000,"desktopKeyRequestsPerDay":0,"desktopKeyBurstPerMinute":0},
+  "enterprise": {"apiRequestsPerDay":10000,"apiBurstRequestsPerMinute":300,"mcpCallsPerDay":"shared-api-budget","dashboardAiCallsPerDay":10000,"mcpBurstRequestsPerMinute":300,"desktopKeyRequestsPerDay":0,"desktopKeyBurstPerMinute":0},
 } as const;
 
 /** Default product for upgrade CTAs (Pro Monthly). */

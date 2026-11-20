@@ -59,6 +59,11 @@ export const PROMPT_REGISTRY: McpPromptDef[] = [
     }],
     intro:
       'Open the WorldMonitor country brief for ${iso2} with the linked interactive view. Use its topic tabs and evidence rather than replacing the interface with paragraphs. If the user explicitly requests text only or the host cannot render apps, use get_country_risk, get_country_brief and get_country_macro for a labeled text assessment.',
+    without_summary_tools: {
+      description: 'Interactive country view with resilience, energy, trade, security and source evidence. Text-only clients can use the existing data tools.',
+      intro:
+        'Open the WorldMonitor country view for ${iso2} with the linked interactive view. Use its topic tabs and evidence rather than replacing the interface with paragraphs. If the user explicitly requests text only or the host cannot render apps, use get_country_risk and get_country_macro for a labeled text assessment.',
+    },
   },
   {
     name: 'country-briefing',
@@ -93,6 +98,11 @@ export const PROMPT_REGISTRY: McpPromptDef[] = [
     ],
     intro:
       'Build a country briefing for ${iso2}. Execute the three steps below in order; combine the results into a single concise brief (CII score and components, travel/sanctions posture, the LLM brief, then the key macro indicators).',
+    without_summary_tools: {
+      description: 'Multi-tool country brief: quantitative risk score + macro indicators for a single ISO 3166-1 alpha-2 country.',
+      intro:
+        'Build a country briefing for ${iso2}. Execute the two steps below in order; combine the results into a single concise brief (CII score and components, travel/sanctions posture, then the key macro indicators).',
+    },
   },
   {
     name: 'energy-shock-watch',
@@ -364,6 +374,7 @@ export interface BuildPromptResponseOk {
 export function buildPromptResponse(
   promptName: string,
   providedArgs: unknown,
+  { hiddenTools }: { hiddenTools?: ReadonlySet<string> } = {},
 ): BuildPromptResponseOk | BuildPromptResponseError {
   if (providedArgs !== undefined && (
     providedArgs === null || typeof providedArgs !== 'object' || Array.isArray(providedArgs)
@@ -397,13 +408,15 @@ export function buildPromptResponse(
     values[arg.name] = value;
   }
 
+  const copy = hiddenTools && prompt.without_summary_tools ? prompt.without_summary_tools : prompt;
+  const steps = hiddenTools ? prompt.steps.filter((step) => !hiddenTools.has(step.tool)) : prompt.steps;
   const renderedIntro = substituteString(
-    applyIntroSubstitutions(prompt.intro, prompt.intro_substitutions, values),
+    applyIntroSubstitutions(copy.intro, prompt.intro_substitutions, values),
     values,
   );
 
   const lines: string[] = [renderedIntro, ''];
-  prompt.steps.forEach((step, i) => {
+  steps.forEach((step, i) => {
     const rawArgs = substituteValue(step.args, values) as Record<string, unknown>;
     // Strip top-level keys that resolved to '' (an omitted optional arg —
     // required-arg absence already returned -32602 above). Passing `""` to a
@@ -424,7 +437,7 @@ export function buildPromptResponse(
 
   return {
     ok: true,
-    description: prompt.description,
+    description: copy.description,
     messages: [
       { role: 'user', content: { type: 'text', text: lines.join('\n').trimEnd() } },
     ],
@@ -469,6 +482,7 @@ function validatePromptRegistry(): void {
     };
 
     validateTokensIn('intro', prompt.intro);
+    if (prompt.without_summary_tools) validateTokensIn('without_summary_tools.intro', prompt.without_summary_tools.intro);
     if (prompt.intro_substitutions) {
       for (const [name, spec] of Object.entries(prompt.intro_substitutions)) {
         // Inside intro_substitutions specs, only real argument names are
@@ -515,5 +529,12 @@ export interface PublicPromptShape {
 export const PROMPT_LIST_RESPONSE: PublicPromptShape[] = PROMPT_REGISTRY.map((p) => ({
   name: p.name,
   description: p.description,
+  arguments: p.arguments.map((a) => ({ ...a })),
+}));
+
+/** prompts/list for a host that hides the headline-summary tools (ChatGPT). */
+export const WITHOUT_SUMMARY_TOOLS_PROMPT_LIST_RESPONSE: PublicPromptShape[] = PROMPT_REGISTRY.map((p) => ({
+  name: p.name,
+  description: p.without_summary_tools?.description ?? p.description,
   arguments: p.arguments.map((a) => ({ ...a })),
 }));

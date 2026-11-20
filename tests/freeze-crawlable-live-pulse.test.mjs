@@ -117,6 +117,23 @@ function jsonResponse(body) {
   return { ok: true, status: 200, text: async () => JSON.stringify(body) };
 }
 
+// Last month's state-based fighting: 40 deaths in Ukraine, 12 in Mali.
+function ucdpPayload(candidateVersion = '26.0.9') {
+  const now = new Date();
+  const lastMonth = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 10);
+  const event = (id, country, deathsBest) => ({
+    id,
+    dateStart: lastMonth,
+    dateEnd: lastMonth,
+    country,
+    sideA: 'Government of Russia (Soviet Union)',
+    sideB: 'Government of Ukraine',
+    deathsBest,
+    violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED',
+  });
+  return { events: [event('1', 'Ukraine', 30), event('2', 'Ukraine', 10), event('3', 'Mali', 12)], candidateVersion };
+}
+
 function countryPayload() {
   return {
     upstreamUnavailable: false,
@@ -352,6 +369,8 @@ function countryPayload() {
     // MCP horizon grades (#9057): 'ok' | 'fail' | 'tool-error'.
     horizonGradesStatus = 'ok',
     horizonGradesGeneratedAt = SCORECARD_GENERATED_AT,
+    // 'ok' | 'empty' (the handler's answer on a Redis miss) | 'partial' | 'fail'.
+    ucdpStatus = 'ok',
     scorecardGeneratedAt = SCORECARD_GENERATED_AT,
     onRequest = null,
     marketSymbols = ['^GSPC', '^IXIC', '^VIX'],
@@ -380,6 +399,11 @@ function countryPayload() {
           ],
           chokepointDescriptions,
         ));
+      }
+      if (href.includes('list-ucdp-events')) {
+        if (ucdpStatus === 'fail') return { ok: false, status: 503, text: async () => '{}' };
+        if (ucdpStatus === 'empty') return jsonResponse({ events: [], candidateVersion: '' });
+        return jsonResponse(ucdpPayload(ucdpStatus === 'partial' ? '26.0.9+partial' : '26.0.9'));
       }
       if (href.includes('get-humanitarian-summary')) {
         return jsonResponse(humanitarianPayload(new URL(href).searchParams.get('country_code')));
@@ -585,6 +609,51 @@ describe('freeze crawlable live pulse coverage gates', () => {
     );
   });
 
+  it('captures the latest-month war list for the crises hub', async () => {
+    stubFetch();
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.activeWars.countryCount, 1, 'Mali (12 deaths) is below the threshold');
+    assert.equal(snapshot.activeWars.belowThresholdCount, 1);
+    assert.deepEqual(
+      { ...snapshot.activeWars.conflicts[0] },
+      { name: 'Ukraine', code: 'UA', deaths: 40, events: 2, sideA: 'Government of Russia', sideB: 'Government of Ukraine' },
+    );
+    assert.equal(snapshot.activeWars.candidateVersion, '26.0.9');
+    assert.equal(snapshot.coverage.activeWarsCaptured, true);
+    assert.deepEqual(snapshot.errors.activeWars, []);
+  });
+
+  for (const [ucdpStatus, reason, message] of [
+    ['empty', 'the handler empty answer', /release absent is not complete/],
+    ['partial', 'a release with failed pages', /release 26\.0\.9\+partial is not complete/],
+  ]) {
+    it(`never publishes a count from ${reason}, and carries the last reading`, async () => {
+      const rootDir = await scratchRoot();
+      stubFetch();
+      const good = await freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0, rootDir });
+      await writeFile(
+        join(rootDir, 'docs', 'snapshots', 'crawlable-live-pulse-2026-01-15.json'),
+        JSON.stringify({ ...good.snapshot, capturedAt: '2026-01-15' }),
+      );
+      await rm(good.outPath);
+
+      stubFetch({ ucdpStatus });
+      const { snapshot } = await freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0, rootDir });
+      assert.deepEqual(snapshot.activeWars, good.snapshot.activeWars);
+      assert.equal(snapshot.coverage.activeWarsCaptured, false);
+      assert.equal(snapshot.coverage.activeWarsRetained, true);
+      assert.match(snapshot.errors.activeWars[0].message, message);
+    });
+  }
+
+  it('publishes no war list, rather than failing the freeze, when nothing can be carried', async () => {
+    stubFetch({ ucdpStatus: 'fail' });
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.activeWars, null);
+    assert.equal(snapshot.coverage.activeWarsRetained, false);
+    assert.equal(snapshot.errors.activeWars.length, 1);
+  });
+
   it('freezes the official IMF PortWatch figures, including a measured zero, and no relay transit count', async () => {
     stubFetch();
     const { snapshot } = await runFreeze();
@@ -704,6 +773,91 @@ describe('freeze crawlable live pulse coverage gates', () => {
     assert.deepEqual(snapshot.headlines, []);
     assert.equal(snapshot.errors.headlines[0].message, 'offline');
     assert.ok(snapshot.coverage.countryCount > 100, 'a news outage must not cost the corpus its refresh');
+  });
+
+  it('publishes the current Pizza Index level in the snapshot', async () => {
+    stubFetch();
+    const outer = globalThis.fetch;
+    const updatedAt = Date.now() - 5 * 60_000;
+    globalThis.fetch = async (url) => {
+      if (!String(url).includes('get-pizzint-status')) return outer(url);
+      return jsonResponse({
+        pizzint: {
+          defconLevel: 4,
+          defconLabel: 'Above Normal',
+          locationsMonitored: 1,
+          locationsOpen: 1,
+          updatedAt,
+          dataFreshness: 'DATA_FRESHNESS_FRESH',
+          locations: [{
+            name: "Domino's Pizza",
+            currentPopularity: 70,
+            percentageOfUsual: 160,
+            forecastPopularity: 40,
+            dataFreshness: 'DATA_FRESHNESS_FRESH',
+            isClosedNow: false,
+          }],
+        },
+        tensionPairs: [],
+      });
+    };
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.pizzaIndex.level, '4');
+    assert.equal(snapshot.pizzaIndex.label, 'Above Normal');
+    assert.equal(snapshot.pizzaIndex.updatedAt, new Date(updatedAt).toISOString());
+    assert.equal(snapshot.pizzaIndex.retained, false);
+    assert.deepEqual(snapshot.errors.pizzaIndex, []);
+  });
+
+  it('judges the Pizza Index against the clock when it is read, not when the freeze began', async () => {
+    stubFetch();
+    const outer = globalThis.fetch;
+    const realNow = Date.now;
+    // The freeze reads hundreds of endpoints in sequence before this one, so a
+    // level updated during the run is newer than the run's start plus the
+    // future-skew allowance.
+    let offset = 0;
+    Date.now = () => realNow() + offset;
+    globalThis.fetch = async (url) => {
+      if (!String(url).includes('get-pizzint-status')) {
+        offset = 0;
+        return outer(url);
+      }
+      offset = 60 * 60_000;
+      return jsonResponse({
+        pizzint: {
+          defconLevel: 4,
+          defconLabel: 'Above Normal',
+          locationsMonitored: 1,
+          locationsOpen: 1,
+          updatedAt: Date.now() - 60_000,
+          dataFreshness: 'DATA_FRESHNESS_FRESH',
+          locations: [{
+            name: "Domino's Pizza",
+            currentPopularity: 70,
+            percentageOfUsual: 160,
+            forecastPopularity: 40,
+            dataFreshness: 'DATA_FRESHNESS_FRESH',
+            isClosedNow: false,
+          }],
+        },
+        tensionPairs: [],
+      });
+    };
+    try {
+      const { snapshot } = await runFreeze();
+      assert.equal(snapshot.pizzaIndex?.level, '4');
+      assert.deepEqual(snapshot.errors.pizzaIndex, []);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it('records a Pizza Index outage without discarding the freeze', async () => {
+    stubFetch();
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.pizzaIndex, undefined, 'no prior edition, so nothing to carry');
+    assert.equal(snapshot.errors.pizzaIndex.length, 1);
   });
 
   it('carries the digest own stale verdict into the snapshot', async () => {
@@ -855,12 +1009,13 @@ describe('freeze crawlable live pulse coverage gates', () => {
     const { snapshot } = await runFreeze({ serviceKey: 'test-key' });
     const mcp = requests.filter(({ href }) => href.endsWith('/mcp'));
     assert.equal(mcp.length, 1);
-    // Every MCP alias, the www API_BASE the weekly workflow sets included,
-    // answers 410 before auth; only the canonical host serves the tool.
+    // The tool call targets the canonical endpoint, never the API_BASE the
+    // weekly workflow sets: retired aliases answer 410 before auth, and the
+    // published endpoint is the one contract this capture should exercise.
     const mcpUrl = new URL(mcp[0].href);
     assert.equal(mcp[0].href, MCP_CANONICAL_ENDPOINT);
     assert.equal(isMcpAliasRequest(mcpUrl.host, mcpUrl.pathname), false);
-    assert.equal(isMcpAliasRequest('www.worldmonitor.app', '/mcp'), true, 'the guard can fail');
+    assert.equal(isMcpAliasRequest('tech.worldmonitor.app', '/mcp'), true, 'the guard can fail');
     assert.notEqual(mcpUrl.origin, new URL(STAGING_BASE).origin, 'never the REST API base');
     assert.equal(mcp[0].options.headers.Origin, 'https://worldmonitor.app');
     assert.equal(mcp[0].options.method, 'POST');

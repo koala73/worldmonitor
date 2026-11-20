@@ -24,6 +24,7 @@ import { dirname, resolve } from 'node:path';
 import {
   PAGE_FAMILIES,
   BING_AI_METRICS,
+  REVIEWED_QUERY_LIMITS,
   pageFamiliesForSchemaVersion,
   REFERRAL_METRICS,
   SEARCH_PERFORMANCE_METRICS,
@@ -72,7 +73,7 @@ const MAX_WINDOWS = 16;
 const MAX_ROWS_PER_WINDOW = 5_000;
 const MAX_TOTAL_ROWS = 25_000;
 const MAX_ARRAY_ITEMS = 500;
-const MAX_QUERY_SET_ENTRIES = 30;
+const MAX_QUERY_SET_ENTRIES = REVIEWED_QUERY_LIMITS.max;
 const MAX_REFERENCE_ENTITIES = 20;
 const MAX_AI_OBSERVATIONS = 500;
 const MAX_OPPORTUNITIES = 5;
@@ -498,10 +499,15 @@ export function normalizeSearchExport(
         row,
         { includeIndexedPages: false },
       );
+      const reason = optionalBoundedString(row.reason, 'query row reason');
+      const measured = SEARCH_PERFORMANCE_METRICS.some((metric) => metrics[metric] !== null);
+      invariant(measured || reason !== null, 'a query row with no metrics must carry a reason');
+      invariant(!measured || reason === null, 'a query row with metrics must not carry a reason');
       return {
         windowLabel: window.label,
         queryId: queryIdForRow(row, queryIndexes),
         metrics,
+        ...(reason === null ? {} : { reason }),
       };
     });
     const normalizedPageRows = rawPageRows.map((row) => ({

@@ -152,7 +152,7 @@ function renderPlatforms(data: GivingSummary, translate: GivingTranslate): strin
   }).join('');
 
   return `
-    <table class="giving-table">
+    <table class="wm-table giving-table">
       <thead>
         <tr>
           <th scope="col">${escapeHtml(translate('components.giving.platform'))}</th>
@@ -186,7 +186,7 @@ function renderCategories(
     </tr>`;
   }).join('');
 
-  return `<table class="giving-table giving-cat-table"><tbody>${rows}</tbody></table>`;
+  return `<table class="wm-table giving-table giving-cat-table"><tbody>${rows}</tbody></table>`;
 }
 
 function renderInstitutionalMetric(

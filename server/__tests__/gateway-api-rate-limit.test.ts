@@ -316,7 +316,8 @@ describe("#3199 U4 — gateway per-account rate-limit wiring", () => {
       userId: hashKeySync('enterprise-browser-key'),
       allowance: OPERATOR_KEY_DAILY_CEILINGS.restRequests,
     }));
-    expect(checkRateLimit).toHaveBeenCalledWith(expect.any(Request), expect.any(Object));
+    // No principal: the IP-scoped bucket, as for an anonymous caller.
+    expect(checkRateLimit).toHaveBeenCalledWith(expect.any(Request), expect.any(Object), {});
   });
 
   test("an existing endpoint policy still owns fallback protection during burst outage", async () => {
@@ -340,4 +341,20 @@ describe("#3199 U4 — gateway per-account rate-limit wiring", () => {
     expect(checkBurst).not.toHaveBeenCalled();
     expect(checkRateLimit).not.toHaveBeenCalled();
   });
+});
+
+test('cyber network responses stay no-store so provider disablement takes effect immediately', async () => {
+  endpointPolicy = true;
+  const gateway = createDomainGateway([{
+    method: 'GET', path: '/api/cyber/v1/get-network-info',
+    handler: async () => Response.json({ status: 'disabled', ip: '1.1.1.1', asns: [] }),
+  }]);
+  const response = await gateway(new Request('https://www.worldmonitor.app/api/cyber/v1/get-network-info?ip=1.1.1.1', {
+    headers: { 'X-Api-Key': 'wm_test_starter_key' },
+  }), ctx);
+  expect(response.status).toBe(200);
+  expect(response.headers.get('Cache-Control')).toBe('no-store');
+  expect(await response.json()).toMatchObject({ status: 'disabled', ip: '1.1.1.1' });
+  const { ENDPOINT_RATE_POLICIES } = await vi.importActual<typeof import('../_shared/rate-limit')>('../_shared/rate-limit');
+  expect(ENDPOINT_RATE_POLICIES['/api/cyber/v1/get-network-info']).toEqual({ limit: 20, window: '60 s' });
 });

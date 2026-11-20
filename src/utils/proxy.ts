@@ -1,5 +1,6 @@
 import { isDesktopRuntime, toApiUrl, toRuntimeUrl } from '../services/runtime';
 import { getPersistentCache, setPersistentCache } from '../services/persistent-cache';
+import { createRequestTimeoutSignal } from '../services/timeout-signal';
 
 const isDev = import.meta.env.DEV;
 const RESPONSE_CACHE_PREFIX = 'api-response:';
@@ -164,6 +165,7 @@ function isAbortError(error: unknown): boolean {
 }
 
 async function fetchAndPersist(url: string, init: RequestInit = {}): Promise<Response> {
+  init = { ...init, signal: createRequestTimeoutSignal(url, init, 30_000) };
   const response = await fetch(proxyUrl(url), proxyFetchInit(url, { ...init, cache: 'no-store' }));
   throwIfAborted(init.signal);
   if (response.ok && shouldPersistResponse(url) && !hasNoStoreCacheDirective(response.headers)) {
@@ -189,6 +191,7 @@ async function fetchAndPersist(url: string, init: RequestInit = {}): Promise<Res
 }
 
 export async function fetchWithProxy(url: string, init: RequestInit = {}): Promise<Response> {
+  init = { ...init, signal: createRequestTimeoutSignal(url, init, 30_000) };
   throwIfAborted(init.signal);
   if (!shouldPersistResponse(url)) {
     return fetch(proxyUrl(url), proxyFetchInit(url, init));

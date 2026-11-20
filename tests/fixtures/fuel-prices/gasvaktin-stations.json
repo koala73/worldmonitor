@@ -1,0 +1,43 @@
+{
+  "stations": [
+    {
+      "bensin95": 256.3,
+      "bensin95_discount": null,
+      "company": "Atlantsolía",
+      "diesel": 316.2,
+      "diesel_discount": null,
+      "geo": {
+        "lat": 65.69913,
+        "lon": -18.135231
+      },
+      "key": "ao_000",
+      "name": "Baldursnes Akureyri"
+    },
+    {
+      "bensin95": 256.3,
+      "bensin95_discount": null,
+      "company": "Atlantsolía",
+      "diesel": 316.2,
+      "diesel_discount": null,
+      "geo": {
+        "lat": 65.687807,
+        "lon": -18.100104
+      },
+      "key": "ao_001",
+      "name": "Glerártorg Akureyri"
+    },
+    {
+      "bensin95": 285.3,
+      "bensin95_discount": 274.3,
+      "company": "Atlantsolía",
+      "diesel": 337.9,
+      "diesel_discount": 326.9,
+      "geo": {
+        "lat": 64.125397,
+        "lon": -21.813054
+      },
+      "key": "ao_002",
+      "name": "Bíldshöfði"
+    }
+  ]
+}

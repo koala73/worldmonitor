@@ -238,7 +238,7 @@ export default async function handler(req) {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
   if (req.method !== 'GET') {
-    return jsonResponse({ error: 'Method not allowed' }, 405, corsHeaders);
+    return jsonResponse({ error: 'Method not allowed' }, 405, { ...corsHeaders, Allow: 'GET, OPTIONS' });
   }
 
   // Same hole #6654 closed on api/x-feed.js: isDisallowedOrigin returns false
@@ -440,7 +440,7 @@ export default async function handler(req) {
       'Vary': VARY_CREDENTIAL,
     });
   } catch (error) {
-    const isTimeout = error?.name === 'AbortError';
+    const isTimeout = error?.name === 'AbortError' || error?.name === 'TimeoutError';
     // No `details`: the underlying message can carry relay transport detail
     // (undici cause chains, MTProto text) and the browser has no use for it.
     // Failures are captured server-side instead.

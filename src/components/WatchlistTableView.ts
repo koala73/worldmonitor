@@ -92,6 +92,8 @@ export interface WatchlistConfig<T> {
   // Shown when no items match the current filter/search.
   emptyMessage?: string;
   searchPlaceholder?: string;
+  // Id of the element that names the table's scroll region (the panel title).
+  labelledBy?: string;
 }
 
 export class WatchlistTableView<T> {
@@ -174,6 +176,7 @@ export class WatchlistTableView<T> {
       : '';
     const controls = this.renderControls();
     const tableBody = this.renderTableBody(list, start);
+    const labelledBy = this.config.labelledBy ? ` aria-labelledby="${escapeHtml(this.config.labelledBy)}"` : '';
     const headers = this.config.columns.map((col) => {
       const sortKey = col.sortable ? (col.sortOptionKey || col.key) : '';
       // Build a SINGLE class string — pre-fix this code emitted two
@@ -196,8 +199,8 @@ export class WatchlistTableView<T> {
       <div class="watchlist-table-view" data-watchlist-totalrows="${list.length}" data-watchlist-renderedrows="${this.getRenderedRowCount(list, start)}">
         ${intro}
         ${controls}
-        <div class="watchlist-table-scroll" data-watchlist-scroll="1">
-          <table class="watchlist-table">
+        <div class="watchlist-table-scroll table-scroll" data-watchlist-scroll="1" role="group" tabindex="0"${labelledBy}>
+          <table class="wm-table watchlist-table">
             <thead><tr>${headers}</tr></thead>
             <tbody>${tableBody}</tbody>
           </table>
@@ -234,7 +237,7 @@ export class WatchlistTableView<T> {
     if (baseHeight + extraHeight <= 0) return '';
     const extra = extraHeight > 0 ? ` + ${extraHeight}px` : '';
     const height = `calc(${baseHeight}px * var(--wm-panel-effective-scale, 1)${extra})`;
-    return `<tr class="watchlist-virtual-spacer watchlist-virtual-spacer-${position}" aria-hidden="true"><td colspan="${this.config.columns.length}" style="height:${height};padding:0;border:0"></td></tr>`;
+    return `<tr class="watchlist-virtual-spacer watchlist-virtual-spacer-${position}" aria-hidden="true"><td colspan="${this.config.columns.length}" style="height:${height}"></td></tr>`;
   }
 
   private shouldVirtualize(list: T[]): boolean {

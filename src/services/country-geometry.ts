@@ -1,5 +1,6 @@
 import type { FeatureCollection, Geometry, GeoJsonProperties, Position } from 'geojson';
 import { markLcpDebug } from '@/utils/lcp-debug';
+import { staticAssetUrl } from '@/config/static-asset-url';
 
 interface IndexedCountryGeometry {
   code: string;
@@ -298,7 +299,7 @@ async function ensureLoaded(): Promise<void> {
       // the map never renders country boundaries and coordinate lookups
       // silently degrade. The override fetch below already carries a signal;
       // this is the same treatment for the primary asset.
-      const response = await fetch(COUNTRY_GEOJSON_URL, {
+      const response = await fetch(staticAssetUrl(COUNTRY_GEOJSON_URL), {
         signal: makeTimeout(COUNTRY_GEOJSON_TIMEOUT_MS),
       });
       if (!response.ok) {
@@ -316,7 +317,7 @@ async function ensureLoaded(): Promise<void> {
 
       // Apply optional higher-resolution boundary overrides (sourced from Natural Earth)
       try {
-        const overrideResp = await fetch(COUNTRY_OVERRIDES_URL, {
+        const overrideResp = await fetch(staticAssetUrl(COUNTRY_OVERRIDES_URL), {
           signal: makeTimeout(COUNTRY_OVERRIDE_TIMEOUT_MS),
         });
         if (overrideResp.ok) {
@@ -381,6 +382,26 @@ export function getCountryAtCoordinates(lat: number, lon: number, candidateCodes
   return null;
 }
 
+const COASTAL_STEPS = [0.01, 0.02, 0.05, 0.1, 0.2] as const;
+const COMPASS: ReadonlyArray<[number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+/**
+ * Like getCountryAtCoordinates, but coastlines are simplified, so a point on reclaimed land or a pier can sit just outside its country.
+ * Small states such as Singapore and Bahrain have no outline, so a wide search answers with their neighbour; keep maxStep small when that matters.
+ */
+export function getCountryNearCoordinates(lat: number, lon: number, maxStep = 0.2): CountryHit | null {
+  const hit = getCountryAtCoordinates(lat, lon);
+  if (hit || !loadedGeoJson) return hit;
+  for (const step of COASTAL_STEPS) {
+    if (step > maxStep) break;
+    for (const [dLat, dLon] of COMPASS) {
+      const near = getCountryAtCoordinates(lat + dLat * step, lon + dLon * step);
+      if (near) return near;
+    }
+  }
+  return null;
+}
+
 export function isCoordinateInCountry(lat: number, lon: number, code: string): boolean | null {
   if (!loadedGeoJson) return null;
   const country = countryIndex.get(code.toUpperCase());
@@ -416,19 +437,21 @@ export function matchCountryNamesInText(text: string): string[] {
   return matched;
 }
 
-export function getAllCountryCodes(): string[] {
-  return [...countryIndex.keys()];
-}
-
 export function getCountryBbox(code: string): [number, number, number, number] | null {
   const entry = countryIndex.get(code.toUpperCase());
   return entry?.bbox ?? null;
 }
 
-/** Polygon rings for focus math. The stored bbox stays a naive AABB for hit-tests. */
-export function getCountryPolygons(code: string): [number, number][][][] | null {
+/** Camera bounds, with optional renderer-specific longitude wrapping. */
+export function getCountryMapBbox(
+  code: string,
+  project?: (polygons: IndexedCountryGeometry['polygons']) => IndexedCountryGeometry['bbox'] | null,
+): IndexedCountryGeometry['bbox'] | null {
   const entry = countryIndex.get(code.toUpperCase());
-  return entry?.polygons ?? null;
+  if (!entry) return null;
+  // Frame metropolitan France and Corsica without spanning the Atlantic.
+  if (entry.code === 'FR') return [-5.2, 41.3, 9.7, 51.2];
+  return project?.(entry.polygons) ?? entry.bbox;
 }
 
 export function getCountryCentroid(

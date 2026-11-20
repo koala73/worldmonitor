@@ -35,7 +35,7 @@ vi.mock('@/services/panel-gating', async (importOriginal) => {
 });
 
 type Handler = (event?: unknown) => void;
-type FlyToCall = { options: { center?: [number, number]; zoom?: number }; eventData?: Record<string, unknown> };
+type FlyToCall = { options: { center?: [number, number]; zoom?: number; duration?: number }; eventData?: Record<string, unknown> };
 
 const { FakeMap, fakeMaps } = vi.hoisted(() => {
   class FakeMap {
@@ -225,6 +225,10 @@ vi.mock('@/config/basemap-styles', () => ({
 
 import { DeckGLMap } from '@/components/DeckGLMap';
 import { DEFAULT_MAP_LAYERS } from '@/config/panels';
+import {
+  setCachedStorageFacilityRegistry,
+  __resetStorageFacilityRegistryStoreForTests,
+} from '@/shared/storage-facility-registry-store';
 
 type DeckMapState = ConstructorParameters<typeof DeckGLMap>[1];
 type MapLayers = DeckMapState['layers'];
@@ -278,6 +282,7 @@ beforeEach(() => {
 afterEach(() => {
   for (const map of maps) map.destroy();
   document.body.innerHTML = '';
+  __resetStorageFacilityRegistryStoreForTests();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -390,6 +395,14 @@ describe('DeckGLMap pendingCenter — eager center cache', () => {
     expect(map.getCenter()).toEqual({ lat: 41, lon: 29 });
     expect(map.getState().zoom).toBe(6);
     expect(fake.flyToCalls[fake.flyToCalls.length - 1]?.options.center).toEqual([29, 41]);
+  });
+
+  it('setCenter animates by default and jumps when given no duration', async () => {
+    const { map, fake } = await mapWith();
+    map.setCenter(41, 29, 6);
+    expect(fake.flyToCalls[fake.flyToCalls.length - 1]?.options.duration).toBe(500);
+    map.setCenter(25, 55, 4, 0);
+    expect(fake.flyToCalls[fake.flyToCalls.length - 1]?.options.duration).toBe(0);
   });
 
   it('a view-only initial URL leaves the preset centre available to the URL builder', async () => {
@@ -769,5 +782,104 @@ describe('DeckGLMap route explorer lane highlight', () => {
     expect(layer(map, 'highlighted-lane-layer')).toBeUndefined();
     const markers = layer(map, 'highlighted-chokepoint-markers')?.props.data as { id: string }[];
     expect(markers.map((m) => m.id)).toContain('malacca_strait');
+  });
+});
+
+describe('DeckGLMap storage facility clicks', () => {
+  type StubLayer = { id: unknown; props: Record<string, unknown> };
+
+  function layersOf(map: DeckGLMap): StubLayer[] {
+    return ([(map as unknown as { buildLayers(): unknown }).buildLayers()].flat(Infinity) as (StubLayer | null | false)[])
+      .filter((layer): layer is StubLayer => Boolean(layer));
+  }
+
+  function seedOkoli(): void {
+    setCachedStorageFacilityRegistry({
+      facilities: {
+        okoli: {
+          id: 'okoli',
+          name: 'Okoli UGS',
+          operator: 'PSP d.o.o.',
+          facilityType: 'ugs',
+          country: 'HR',
+          location: { lat: 45.48, lon: 16.68 },
+          capacityTwh: 5.8,
+          evidence: {
+            physicalState: 'operational',
+            physicalStateSource: 'operator',
+            lastEvidenceUpdate: '2026-04-22T00:00:00Z',
+          },
+        },
+      },
+      classifierVersion: 'v1',
+      updatedAt: '2026-04-22T00:00:00Z',
+    });
+  }
+
+  function clickOkoli(map: DeckGLMap): void {
+    const storage = layersOf(map).find((entry) => entry.id === 'storage-facilities-layer');
+    const dots = storage?.props.data as { id: string }[] | undefined;
+    const dot = dots?.find((entry) => entry.id === 'okoli');
+    const onClick = storage?.props.onClick as ((info: { object: unknown; x: number; y: number }) => boolean) | undefined;
+    if (!dot || !onClick) throw new Error('Okoli storage dot is not clickable');
+    onClick({ object: dot, x: 120, y: 80 });
+  }
+
+  const storageOn = () => initialState({
+    layers: { ...allLayersOff(), storageFacilities: true, waterways: true },
+  });
+
+  it('draws storage facilities above other point markers', async () => {
+    seedOkoli();
+    const { map } = await mapWith(storageOn());
+    const ids = layersOf(map).map((entry) => entry.id);
+    const storageAt = ids.indexOf('storage-facilities-layer');
+    const waterwaysAt = ids.indexOf('waterways-layer');
+    expect(waterwaysAt).toBeGreaterThanOrEqual(0);
+    expect(storageAt).toBeGreaterThan(waterwaysAt);
+  });
+
+  it('opens a facility summary when no atlas panel claims the click', async () => {
+    seedOkoli();
+    const { map } = await mapWith(storageOn());
+    clickOkoli(map);
+
+    const popup = document.querySelector('.map-popup');
+    expect(popup?.textContent).toContain('Okoli UGS');
+    expect(popup?.textContent).toContain('Open in Storage Atlas');
+
+    const opened: string[] = [];
+    const onAtlas = (ev: Event): void => {
+      opened.push((ev as CustomEvent<{ facilityId?: string }>).detail?.facilityId ?? '');
+    };
+    window.addEventListener('wm:open-storage-atlas', onAtlas);
+    popup?.querySelector<HTMLButtonElement>('[data-open-storage-atlas]')?.click();
+    window.removeEventListener('wm:open-storage-atlas', onAtlas);
+    expect(opened).toEqual(['okoli']);
+  });
+
+  it('leaves the map popup closed when a mounted atlas claims the click', async () => {
+    seedOkoli();
+    const { map } = await mapWith(storageOn());
+    let cancelable = false;
+    const onDetail = (ev: Event): void => {
+      cancelable = ev.cancelable;
+      ev.preventDefault();
+    };
+    window.addEventListener('energy:open-storage-facility-detail', onDetail);
+    clickOkoli(map);
+    window.removeEventListener('energy:open-storage-facility-detail', onDetail);
+
+    expect(cancelable).toBe(true);
+    expect(document.querySelector('.map-popup')).toBeNull();
+  });
+});
+
+describe('DeckGLMap teardown', () => {
+  it('closes its popup, which lives on document.body, when the renderer is destroyed', async () => {
+    const { map } = await createMap();
+    const hide = vi.spyOn((map as unknown as { popup: { hide: () => void } }).popup, 'hide');
+    map.destroy();
+    expect(hide).toHaveBeenCalledTimes(1);
   });
 });

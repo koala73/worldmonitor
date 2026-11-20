@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package worldmonitor.intelligence.v1;
 
+import "sebuf/http/annotations.proto";
 
 message SecurityAdvisoryItem {
   string title = 1;
@@ -18,4 +19,12 @@ message ListSecurityAdvisoriesRequest {}
 message ListSecurityAdvisoriesResponse {
   repeated SecurityAdvisoryItem advisories = 1;
   map<string, string> by_country = 2;
+
+  // register_levels: each travel register's level per country, pub_date '' when
+  // undated. It reuses SecurityAdvisoryItem and stays undocumented here because
+  // public/openapi.json has no byte headroom for another schema or description
+  // (docs/perf/openapi-bundle-capacity-2026-08-13.md).
+
+  repeated SecurityAdvisoryItem register_levels = 3;
+  int64 fetched_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 }

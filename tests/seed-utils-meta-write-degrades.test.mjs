@@ -15,6 +15,7 @@
 
 import { test, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
@@ -54,7 +55,7 @@ beforeEach(() => {
     originalSetTimeout(cb, ms >= 500 ? 0 : ms, ...args);
   // Route every Redis surface runSeed touches; the seed-meta SET is the one
   // that stays down for the whole run (timeout-flavored, like the incident).
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const u = String(url);
     const body = opts?.body ? JSON.parse(opts.body) : null;
     calls.push({ u, body });
@@ -64,7 +65,7 @@ beforeEach(() => {
       throw abortError();
     }
     return jsonResponse({ result: 'OK' });
-  };
+  });
   // Convert exits to throws so the test can inspect the exit code.
   process.exit = (code) => {
     const e = new Error(`__test_exit__:${code}`);
@@ -105,14 +106,14 @@ test('persists receipt rewrite stamps when the retained forecast ledger exceeds 
   };
   const stored = new Map();
   const requestBytes = [];
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const command = opts.body ? JSON.parse(opts.body) : null;
     if (opts.body) requestBytes.push(Buffer.byteLength(opts.body));
     if (String(url).includes('/get/')) return jsonResponse({ result: JSON.stringify(stored.get(key)) });
     if (command?.[0] === 'SET' && !command[1].startsWith('seed-lock:')) stored.set(command[1], JSON.parse(command[2]));
     if (String(url).endsWith('/pipeline')) return jsonResponse(command.map(() => ({ result: 1 })));
     return jsonResponse({ result: 'OK' });
-  };
+  });
   const { exitCode, threw } = await runWithExitTrap(() => runSeed('forecast', 'resolutions', key, async () => {
     const queued = collectUnarchivedReceipts(ledger);
     assert.equal(queued.length, 1);
@@ -144,7 +145,7 @@ test('forecast trail metadata failures preserve later dashboard and history publ
   for (const [failure, critical] of cases) {
     const extra = critical ? { ...trail, metaCritical: true } : trail;
     const events = [];
-    globalThis.fetch = async (url, opts = {}) => {
+    globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
       const body = opts.body ? JSON.parse(opts.body) : null;
       if (String(url).includes('/get/')) return jsonResponse({ result: JSON.stringify(CANONICAL_ENVELOPE) });
       if (String(url).endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 1 })));
@@ -157,7 +158,7 @@ test('forecast trail metadata failures preserve later dashboard and history publ
         }
       }
       return jsonResponse({ result: 'OK' });
-    };
+    });
     const { exitCode, threw } = await runWithExitTrap(() => runSeed('test', 'trail-failure', 'test:trail-failure:v1',
       async () => ({ items: [1], probabilityTrail: { generatedAt: Date.now(), forecasts: { id: {} } } }), {
         ttlSeconds: 3600, declareRecords: data => data.items.length, sourceVersion: 'test', schemaVersion: 1,
@@ -181,7 +182,7 @@ test('successful bundled run writes the dedicated completion marker last', async
   const originalFetchForCompletion = globalThis.fetch;
   const events = [];
   process.env.WM_BUNDLE_COMPLETION_META_KEY = 'seed-completion:test:ordered';
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const u = String(url);
     const body = opts?.body ? JSON.parse(opts.body) : null;
     calls.push({ u, body });
@@ -189,7 +190,7 @@ test('successful bundled run writes the dedicated completion marker last', async
     if (u.endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 1 })));
     if (Array.isArray(body) && body[0] === 'SET') events.push(body[1]);
     return jsonResponse({ result: 'OK' });
-  };
+  });
 
   try {
     const { exitCode, threw } = await runWithExitTrap(() =>
@@ -234,14 +235,14 @@ test('successful bundled run writes the dedicated completion marker last', async
 test('validation skip never refreshes the dedicated completion marker', async () => {
   const originalFetchForCompletion = globalThis.fetch;
   process.env.WM_BUNDLE_COMPLETION_META_KEY = 'seed-completion:test:skip';
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const u = String(url);
     const body = opts?.body ? JSON.parse(opts.body) : null;
     calls.push({ u, body });
     if (u.includes('/get/')) return jsonResponse({ result: JSON.stringify(CANONICAL_ENVELOPE) });
     if (u.endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 1 })));
     return jsonResponse({ result: 'OK' });
-  };
+  });
 
   try {
     const { exitCode, threw } = await runWithExitTrap(() =>
@@ -267,7 +268,7 @@ test('validation skip never refreshes the dedicated completion marker', async ()
 test('completion marker write failure rejects the seed after retries', async () => {
   const originalFetchForCompletion = globalThis.fetch;
   process.env.WM_BUNDLE_COMPLETION_META_KEY = 'seed-completion:test:write-failure';
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const u = String(url);
     const body = opts?.body ? JSON.parse(opts.body) : null;
     calls.push({ u, body });
@@ -277,7 +278,7 @@ test('completion marker write failure rejects the seed after retries', async () 
       throw abortError();
     }
     return jsonResponse({ result: 'OK' });
-  };
+  });
 
   try {
     const { exitCode, threw } = await runWithExitTrap(() =>
@@ -383,13 +384,13 @@ test('validate-skip path reports rejection but does not complete when last-good 
   let completed = 0;
   let rejected = 0;
   const fetchWithCanonical = globalThis.fetch;
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const u = String(url);
     const body = opts?.body ? JSON.parse(opts.body) : null;
     if (u.includes('/get/')) return jsonResponse({ result: null });
     if (u.endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 0 })));
     return jsonResponse({ result: 'OK' });
-  };
+  });
 
   try {
     const { exitCode, threw } = await runWithExitTrap(() =>
@@ -423,7 +424,7 @@ test('validate-skip path reports rejection when only part of the preservation co
   let completed = 0;
   let rejected = 0;
   const fetchWithCanonical = globalThis.fetch;
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const u = String(url);
     const body = opts?.body ? JSON.parse(opts.body) : null;
     if (u.includes('/get/')) {
@@ -433,7 +434,7 @@ test('validate-skip path reports rejection when only part of the preservation co
       return jsonResponse(body.map((_command, index) => ({ result: index === 0 ? 1 : 0 })));
     }
     return jsonResponse({ result: 'OK' });
-  };
+  });
 
   try {
     const { exitCode, threw } = await runWithExitTrap(() =>
@@ -466,7 +467,7 @@ test('validate-skip path reports rejection when only part of the preservation co
 test('validate-skip hook diagnostics merge without re-anchoring canonical freshness', async () => {
   const originalFetchForHook = globalThis.fetch;
   const metaSets = [];
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const u = String(url);
     const decodedUrl = decodeURIComponent(u);
     const body = opts?.body ? JSON.parse(opts.body) : null;
@@ -487,7 +488,7 @@ test('validate-skip hook diagnostics merge without re-anchoring canonical freshn
       metaSets.push(JSON.parse(body[2]));
     }
     return jsonResponse({ result: 'OK' });
-  };
+  });
 
   try {
     const { exitCode, threw } = await runWithExitTrap(() =>
@@ -553,14 +554,14 @@ test('publish-success path logs the completion state returned by afterPublish', 
   const seedEvents = [];
   const originalLog = console.log;
   const metaFailureFetch = globalThis.fetch;
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const u = String(url);
     const body = opts?.body ? JSON.parse(opts.body) : null;
     calls.push({ u, body });
     if (u.includes('/get/')) return jsonResponse({ result: JSON.stringify(CANONICAL_ENVELOPE) });
     if (u.endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 1 })));
     return jsonResponse({ result: 'OK' });
-  };
+  });
   console.log = (...args) => {
     try {
       const event = JSON.parse(args[0]);

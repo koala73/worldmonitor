@@ -331,7 +331,8 @@ export async function gtfsrtAdapter(feedUrl, options = {}) {
       return result;
     });
   } catch (error) {
-    if (error?.name === 'AbortError') throw new GtfsRtError('TIMEOUT', error.message);
+    // AbortSignal.timeout rejects as TimeoutError; some runtimes report it as AbortError.
+    if (error?.name === 'TimeoutError' || error?.name === 'AbortError') throw new GtfsRtError('TIMEOUT', error.message);
     throw new GtfsRtError('FETCH_FAILED', error?.message || String(error));
   }
   if (response.redirected) throw new GtfsRtError('REDIRECT_BLOCKED', 'redirects are forbidden');

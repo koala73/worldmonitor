@@ -85,7 +85,7 @@
     "predictionMarkets": "Jósló piacok",
     "loadingMarkets": "Jósló piacok betöltése...",
     "infrastructure": "Infrastruktúra expozíció",
-    "briefUnavailable": "AI összefoglaló nem érhető el — konfiguráljon OPENROUTER_API_KEY értéket a Beállítások között.",
+    "briefUnavailable": "AI összefoglaló jelenleg nem érhető el.",
     "cached": "Gyorsítótárban",
     "fresh": "Friss",
     "noMarkets": "Nincsenek aktív piacok ehhez az országhoz.",
@@ -137,18 +137,18 @@
     },
     "militaryActivity": "Katonai tevékenység",
     "defenseIndustrial": {
-      "title": "Defense Industrial Base",
-      "expenditure": "Military spend",
-      "personnel": "Personnel",
-      "armsImports": "Arms imports",
+      "title": "Védelmi ipari bázis",
+      "expenditure": "Katonai költségvetés",
+      "personnel": "Személyi állomány",
+      "armsImports": "Fegyverimport",
       "concentration": "Szállítói koncentrációs index",
-      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "suppliers": "Fegyverbeszállítók ({{start}}–{{end}})",
       "source": "Források: Világbank és SIPRI Fegyverzet-Transzfer Adatbázis. A transzfer-térfogat mutató a relatív fegyverzet-transzfereket méri, nem a pénzügyi értéket.",
-      "sourceWorldBank": "Source: World Bank.",
+      "sourceWorldBank": "Forrás: Világbank",
       "snapshotAssembled": "{{source}} adatpillanatkép összeállítva: {{time}}",
-      "unavailable": "Not available",
-      "coverage": "Mapped coverage",
-      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+      "unavailable": "Nincs adat",
+      "coverage": "Feltérképezett lefedettség",
+      "supplierRetained": "A beszállítók a legutóbbi sikeres importőr-frissítésből megtartva."
     },
     "economicIndicators": "Gazdasági mutatók",
     "ownFlights": "Saját repülések",
@@ -195,13 +195,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Instabilitási index: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} aktív tüntetés észlelve",
-      "aircraftTracked": "{{count}} katonai repülőgép követve",
-      "vesselsTracked": "{{count}} katonai hajó követve",
-      "internetOutages": "{{count}} internet-szünet",
-      "recentEarthquakes": "{{count}} közelmúltbeli földrengés",
+      "protestsDetected": "Aktív tüntetések: {{count}}",
+      "aircraftTracked": "Nyomon követett katonai repülőgépek: {{count}}",
+      "vesselsTracked": "Nyomon követett katonai hajók: {{count}}",
+      "internetOutages": "Internetkimaradások: {{count}}",
+      "recentEarthquakes": "Közelmúltbeli földrengések: {{count}}",
       "stockIndex": "Tőzsdeindex: {{value}}",
-      "activeStrikes": "{{count}} aktív sztrájk észlelve"
+      "activeStrikes": "Támadások és elfogások: {{count}}"
     },
     "countryFacts": "Ország adatai",
     "loadingFacts": "Ország adatai betöltődnek...",
@@ -263,47 +263,47 @@
       "activityNowcast": "Tevékenység nowcast",
       "decisionSignalsUnavailable": "Kína döntési jeleinek pillanatképe jelenleg nem érhető el."
     },
-    "foodStocks": "Food stocks",
+    "foodStocks": "Élelmiszerkészletek",
     "foodStocksHelp": "USDA Termelés, Ellátás és Elosztás árujavak készletei a felhasználáshoz viszonyítva marketingév alapján, világarány melléklettel. Az FAOSTAT Élelmiszer-mérlegek termelési és belföldi ellátási adatokat tartalmaznak, ha a Termelés, Ellátás és Elosztás nem rendelkezik teljes országmérleggel.",
-    "loadingFoodStocks": "Loading food stocks…",
-    "foodStocksUnavailable": "Food stocks unavailable.",
-    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
-    "foodStocksCommodity": "Commodity",
-    "foodStocksMarketingYear": "Marketing year",
-    "foodStocksRatio": "Stocks-to-use",
-    "foodStocksWorld": "World",
+    "loadingFoodStocks": "Élelmiszerkészletek betöltése…",
+    "foodStocksUnavailable": "Nem érhetők el élelmiszerkészlet-adatok",
+    "foodStocksProLocked": "Váltson PRO-ra a készlet/felhasználás arányokért",
+    "foodStocksCommodity": "Nyersanyag",
+    "foodStocksMarketingYear": "Gazdasági év",
+    "foodStocksRatio": "Készlet/felhasználás",
+    "foodStocksWorld": "Globális",
     "commodities": {
-      "wheat": "Wheat",
-      "corn": "Corn",
-      "rice": "Rice",
-      "soybeans": "Soybeans",
-      "barley": "Barley",
-      "palmOil": "Palm oil"
+      "wheat": "Búza",
+      "corn": "Kukorica",
+      "rice": "Rizs",
+      "soybeans": "Szója",
+      "barley": "Árpa",
+      "palmOil": "Pálmaolaj"
     },
     "demographicsCapability": {
-      "title": "Demographics & Workforce",
+      "title": "Demográfia és munkaerő",
       "help": "Korstruktúra, oktatási csatorna és ipari munkaerő-kapacitás az ENSZ Világpopulációs Kilátások, az UNESCO Statisztikai Intézet és a Világbank Világfejlesztési Mutatóinak, valamint az ILOSTAT adataiból.",
-      "loading": "Loading demographics and workforce data…",
-      "unavailable": "Demographics and workforce data unavailable.",
-      "proLocked": "Upgrade to PRO for demographics and workforce data",
-      "notAvailable": "Not available",
-      "ageStructure": "Age structure",
-      "education": "Education pipeline",
-      "industrialWorkforce": "Industrial workforce",
-      "medianAge": "Median age",
-      "oldAgeDependency": "Old-age dependency",
-      "totalDependency": "Total dependency",
-      "workingAgePopulation": "Working-age population",
-      "workingAgeProjection": "Working-age population (+10 years)",
-      "tertiaryEnrollment": "Tertiary enrollment",
+      "loading": "Demográfia és munkaerő betöltése…",
+      "unavailable": "Nem érhetők el demográfiai adatok",
+      "proLocked": "Váltson PRO-ra a demográfiai és munkaerőadatokért",
+      "notAvailable": "Nincs adat",
+      "ageStructure": "Korszerkezet",
+      "education": "Oktatási út",
+      "industrialWorkforce": "Ipari munkaerő",
+      "medianAge": "Mediánéletkor",
+      "oldAgeDependency": "Időskori függőségi ráta",
+      "totalDependency": "Teljes függőségi ráta",
+      "workingAgePopulation": "Munkaképes korú népesség",
+      "workingAgeProjection": "Munkaképes korú népesség (+10 év)",
+      "tertiaryEnrollment": "Felsőoktatási beiratkozás",
       "stemGraduates": "Természettudományi, technológiai, mérnöki és matematikai végzettségűek",
-      "researchers": "Researchers",
-      "craftTrades": "Craft and trades workers",
-      "plantOperators": "Plant and machine operators",
-      "trainedIndustrialWorkforce": "Combined industrial workforce",
-      "manufacturingShare": "Manufacturing employment",
-      "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh.",
+      "researchers": "Kutatók",
+      "craftTrades": "Kézműipari és szakmunkások",
+      "plantOperators": "Gép- és berendezéskezelők",
+      "trainedIndustrialWorkforce": "Teljes ipari munkaerő",
+      "manufacturingShare": "Feldolgozóipari foglalkoztatás",
+      "source": "Források: {{sources}}",
+      "retained": "{{stage}} megtartva a legutóbbi sikeres frissítésből.",
       "statusNotSupplied": "A becslés és imputáció állapota nincs megadva"
     },
     "fiveFactorScorecard": {
@@ -338,7 +338,7 @@
         "pillar-unavailable": "Tartóoszlop nem érhető el"
       },
       "inputs": {
-        "population": "Population",
+        "population": "Népesség",
         "food_productionBalance": "Előállítási egyensúly",
         "food_stocksToUse": "Felhasználható készletek",
         "food_waterSecurity": "Vízbiztonság",
@@ -374,7 +374,7 @@
   },
   "header": {
     "world": "VILÁG",
-    "tech": "TECH",
+    "tech": "TECHNOLÓGIA",
     "live": "ÉLŐBEN",
     "cached": "GYORSÍTÓTÁRAZOTT",
     "unavailable": "NEM ELÉRHETŐ",
@@ -459,11 +459,11 @@
     "map": "Globális Helyzet",
     "techHubs": "Technológiai Központok",
     "status": "Rendszer Állapota",
-    "insights": "AI Insights",
+    "insights": "AI elemzések",
     "strategicPosture": "AI Stratégiai Helyzet",
     "cii": "Ország Instabilitása",
     "strategicRisk": "Stratégiai Kockázat Áttekintés",
-    "intel": "Intel Feed",
+    "intel": "Hírszerzési hírfolyam",
     "gdeltIntel": "Élő Hírszerzés",
     "cascade": "Infrastruktúra Kaszkád",
     "politics": "Világháber",
@@ -507,11 +507,11 @@
     "securityAdvisories": "Biztonsági tanácsok",
     "orefSirens": "Izraeli szirénák",
     "telegramIntel": "Telegram Intelligence",
-    "xIntel": "X News Accounts",
+    "xIntel": "X hírfiókok",
     "startups": "Startupok és kockázatitőke",
     "vcblogs": "Kockázatitőke-bejegyzések és tanulmányok",
     "regionalStartups": "Globális Startup hírek",
-    "unicorns": "Unicorn Tracker",
+    "unicorns": "Unikornis-követő",
     "accelerators": "Akcelerátorok & Demo Days",
     "security": "Kiberbiztonsság",
     "policy": "AI Politika & Szabályozás",
@@ -532,7 +532,7 @@
       "ddos": "DDoS",
       "anomalies": "Anomáliák"
     },
-    "techReadiness": "Tech Readiness Index",
+    "techReadiness": "Technológiai felkészültségi index",
     "gccInvestments": "Golf Cooperation Council beruházások",
     "geoHubs": "Geopolitikai Központok",
     "liveWebcams": "Élő Webkamerák",
@@ -561,7 +561,9 @@
     "marketBreadth": "Piaci szélesség",
     "climateNews": "Klíma hírek",
     "fx": "Devizaárfolyamok",
-    "ukmtoIncidents": "UKMTO-események"
+    "ukmtoIncidents": "UKMTO-események",
+    "reservoirLevels": "Stratégiai vízszintek",
+    "gridDisruptionClock": "Áramkimaradások időmérője az USA államaiban"
   },
   "commands": {
     "prefixes": {
@@ -604,15 +606,15 @@
       "flightExample": "UAE528"
     },
     "keywords": {
-      "military": "military",
-      "finance": "finance",
-      "infrastructure": "infrastructure",
-      "intelligence": "intelligence",
-      "news": "news",
-      "dark": "dark",
-      "light": "light",
-      "settings": "settings",
-      "fullscreen": "fullscreen",
+      "military": "katonai",
+      "finance": "pénzügy",
+      "infrastructure": "infrastruktúra",
+      "intelligence": "hírszerzés",
+      "news": "hírek",
+      "dark": "sötét",
+      "light": "világos",
+      "settings": "beállítások",
+      "fullscreen": "teljes képernyő",
       "refresh": "frissítés"
     },
     "labels": {
@@ -642,8 +644,8 @@
         "climate": "Klímabeli anomáliák be/ki",
         "outages": "Internetkiesések be/ki",
         "tradeRoutes": "Kereskedelmi útvonalak be/ki",
-        "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaRoads": "Kanadai utak rétegének be-/kikapcsolása",
+        "canadaAlerts": "Kanadai tartományi vészhelyzeti riasztások rétegének be-/kikapcsolása"
       },
       "view": {
         "dark": "Váltás sötét módra",
@@ -699,15 +701,18 @@
         "techevent": "Technológiai Esemény",
         "techhq": "Technológiai Központ",
         "accelerator": "Akcelerátor",
-        "flight": "Járat"
+        "flight": "Járat",
+        "alert": "Értesítés"
       },
       "flightOnGround": "Földön",
-      "flightAirborne": "FL{{fl}} · {{kts}} kts",
+      "flightAirborne": "FL{{fl}} · {{kts}} csomó",
       "flightMilitary": "Katonai · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Katonai · {{type}} · földön",
       "flightSearchHint": "Nyomj Enter-t vagy kattints az élő pozíció megjelenítéséhez",
       "flightNotFound": "Nincs elérhető élő pozíció a {{callsign}} járathoz",
-      "addPanel": "Add"
+      "addPanel": "Hozzáadás",
+      "sentAlerts": "Önnek küldött értesítések",
+      "sentAlertTime": "Elküldve: {{time}}"
     },
     "signal": {
       "title": "INTELLIGENCIA TALÁLAT",
@@ -808,7 +813,7 @@
         "OTX_API_KEY": "Opcionális bővítési forrás a kiberbiztonsági fenyegetési réteghez.",
         "ABUSEIPDB_API_KEY": "Opcionális bővítési forrás a rosszindulatú IP-reputációhoz.",
         "FINNHUB_API_KEY": "Késleltetett vagy előre betöltött részvényárak és piaci adatok. A kulcs nem élő adatfolyam.",
-        "NASA_FIRMS_API_KEY": "Fire Information for Resource Management System.",
+        "NASA_FIRMS_API_KEY": "Tűzinformációs rendszer erőforrás-gazdálkodáshoz",
         "OLLAMA_API_URL": "pl. http://127.0.0.1:11434 (Ollama) vagy http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-kompatibilis végpont.",
         "OLLAMA_MODEL": "pl. llama3.1:8b — összegzéshez használandó modelltag."
       },
@@ -875,7 +880,7 @@
       "fresh": "Friss",
       "noMarkets": "Nem található jóslatpiac",
       "predictionMarkets": "Jóslatpiacok",
-      "unavailable": "AI-összefoglaló nem elérhető — állítsd be a OPENROUTER_API_KEY-t a Beállításoknál."
+      "unavailable": "AI összefoglaló jelenleg nem érhető el."
     },
     "countryBrief": {
       "identifying": "Ország azonosítása...",
@@ -891,7 +896,7 @@
       "predictionMarkets": "Jóslatpiacok",
       "loadingMarkets": "Jóslatpiacok betöltése...",
       "infrastructure": "Infrastruktúra Expo",
-      "briefUnavailable": "AI-összefoglaló nem elérhető — állítsd be a OPENROUTER_API_KEY-t a Beállításoknál.",
+      "briefUnavailable": "AI összefoglaló jelenleg nem érhető el.",
       "cached": "Gyorsítótárazott",
       "fresh": "Friss",
       "noMarkets": "Nem található jóslatpiac",
@@ -941,7 +946,7 @@
         "asia": "ÁZSIA",
         "space": "VILÁGŰR"
       },
-      "play": "Lejátszás",
+      "play": "Nézd élőben",
       "previewStatus": "Készen áll a lejátszásra",
       "connecting": "Csatlakozás…",
       "unverified": "Nem tudjuk megerősíteni, hogy ez az élő közvetítés",
@@ -1064,7 +1069,15 @@
       "noData": "Energiaadatok átmenetileg nem érhetők el – újra próbálkozunk",
       "liveTape": "Élő adatcsatorna",
       "liveTapeSource": "Piaci árajánlatok",
-      "infoTooltip": "<strong>Energiakomplex</strong> Fizikai és kereskedhető energiaszignálok egy helyen:<ul><li><strong>US Energy Information Administration mutatók</strong>: WTI, Brent, amerikai termelés és készletek</li><li><strong>Élő adatok</strong>: Kereskedhető energiaárak, mint krudolaj és földgáz</li><li><strong>Cél</strong>: Fizikai energiastressz elkülönítése a szélesebb makro- és árupanelektől</li></ul>"
+      "infoTooltip": "<strong>Energiakomplex</strong> Fizikai és kereskedhető energiaszignálok egy helyen:<ul><li><strong>US Energy Information Administration mutatók</strong>: WTI, Brent, amerikai termelés és készletek</li><li><strong>Élő adatok</strong>: Kereskedhető energiaárak, mint krudolaj és földgáz</li><li><strong>Cél</strong>: Fizikai energiastressz elkülönítése a szélesebb makro- és árupanelektől</li></ul>",
+      "marketTape": "Piaci jegyzések",
+      "futures": "Határidős ügyletek",
+      "dailySpot": "Napi azonnali ár",
+      "eiaWeeklySpot": "EIA azonnali ár · heti átlag",
+      "weekEnding": "A hét vége {{date}}",
+      "unknownPriceDate": "A megfigyelés ideje nem érhető el",
+      "unknownQuoteSource": "A jegyzés forrása nem érhető el",
+      "stalePrice": "Elavult"
     },
     "supplyChain": {
       "chokepoints": "Szűk keresztmetszetek",
@@ -1096,11 +1109,11 @@
       "topProducers": "Legnagyobb termelők",
       "risk": "Kockázat",
       "infoTooltip": "<strong>Supply Chain Monitor</strong> Globális logisztika és erőforrás-követés:<ul><li><strong>Szűk keresztmetszetek</strong>: Tengeri tranzit állapota, zavarok mértéke és hajók száma</li><li><strong>Hajózás</strong>: Baltic Dry Index és teherszállítási díjak trendje</li><li><strong>Ásványok</strong>: Kritikus ásványok koncentrációs kockázata (termelői koncentrációs index) és vezető termelők</li></ul>Kattints egy szűk keresztmetszet kártyára az áthaladási történet diagramjának kibontásához.",
-      "mineStage": "Mine",
-      "refineryStage": "Refine",
-      "stageUnavailable": "No published figures for this stage",
-      "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "mineStage": "Bányászat",
+      "refineryStage": "Finomítás",
+      "stageUnavailable": "Ehhez a szakaszhoz nincs közzétett adat",
+      "withheldNote": "W nem közölt",
+      "productionCaption": "Az egyes országok részesedése a tényleges termelésből. A térkép lelőhelyrétege a nyersanyag helyét mutatja; ez a táblázat azt, hogy ki bányássza vagy finomítja.",
       "productionProLocked": "Frissítsen PRO-ra az erőmű- és finomítóország-részesedésekhez koncentrációval (szállítói koncentrációs index) szakaszonként.",
       "partialTransitCoverage": "{{names}} tranzitadatai nem érhetők el",
       "oilPipelinesUnavailable": "Olajvezeték-adatok nem érhetők el",
@@ -1138,7 +1151,7 @@
       "noRevenueData": "Nincs vámjövedelem-adat",
       "treasuryUnavailable": "Pénzügyminisztérium adatai ideiglenesen nem érhetők el",
       "fytdLabel": "{{year}} pénzügyi év eddigiig",
-      "vsPriorFy": "vs FY{{year}}",
+      "vsPriorFy": "vs. FY{{year}}",
       "sourceWto": "Világkereskedelmi Szervezet",
       "sourceTreasury": "USA Pénzügyminisztérium",
       "colDate": "Dátum",
@@ -1148,7 +1161,7 @@
       "noComtradeData": "Nincs stratégiai folyamat adat",
       "comtradeUnavailable": "UN Comtrade adatai ideiglenesen nem érhetők el",
       "sourceComtrade": "UN Comtrade",
-      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
+      "comtradeNationalScope": "Az UN Comtrade sorai a jelentő ország hivatalos nemzeti statisztikái, nem város, folyosó, létesítmény, kikötő vagy szállítmány szerinti exportnyilvántartások.",
       "anomalyBadge": "Anomália",
       "colReporter": "Ország",
       "colCommodity": "Áru",
@@ -1162,21 +1175,21 @@
         "movers": "Mozgások",
         "spread": "Kereskedői terjedés",
         "health": "Adatminőség",
-        "world": "World"
+        "world": "Világ"
       },
       "infoTooltip": "<strong>Fogyasztói árak</strong> Élő bevásárlókosarak, heti változások, kategóriás trendek, ár-mozgatók és különbségek a kereskedők között. A világnézet a Nemzetközi Valutaalap Világgazdasági Kilátásaiból származó éves inflációt használja.",
       "world": {
-        "country": "Country",
+        "country": "ország",
         "inflationYoY": "Éves infláció",
-        "endOfPeriod": "End-of-Period",
-        "year": "Year",
-        "filterPlaceholder": "Filter countries…",
-        "loading": "Loading global inflation…",
-        "empty": "Inflation data not yet available",
-        "noMatches": "No matching countries",
+        "endOfPeriod": "Időszak vége",
+        "year": "Év",
+        "filterPlaceholder": "Országok szűrése…",
+        "loading": "Globális infláció betöltése…",
+        "empty": "Még nincsenek inflációs adatok",
+        "noMatches": "Nincs egyező ország",
         "source": "Forrás: Nemzetközi Valutaalap Világgazdasági Kilátások · éves fogyasztói árindex infláció, az összes jelentő gazdaság",
-        "countSingular": "country",
-        "countPlural": "countries"
+        "countSingular": "Ország",
+        "countPlural": "ország"
       }
     },
     "gdelt": {
@@ -1193,7 +1206,7 @@
     "predictions": {
       "yes": "Igen",
       "no": "Nem",
-      "vol": "Vol",
+      "vol": "Forg.",
       "closes": "Zárás",
       "leanYes": "Inkább Igen",
       "leanNo": "Inkább Nem",
@@ -1212,9 +1225,9 @@
       "infoTooltip": "<strong>AI piaci következmények</strong> LLM által generált kereskedési jelek az élő geopolitikai, nyersanyag és makro állapotból az egyes előrejelzési ciklus után.<ul><li><strong>Irány</strong>: LONG / SHORT / HEDGE</li><li><strong>Időkeret</strong>: 1W, 2W, 1M vagy 3M horizont</li><li><strong>Katalizátor</strong>: A jel mögötti kulcs katalizátor</li><li><strong>Kockázat</strong>: Figyelmeztetés vagy érvénytelenítési feltétel</li></ul><em>Csak tájékoztató célokra. Nem befektetési tanács.</em>",
       "title": "AI piaci következmények",
       "directions": {
-        "long": "LONG",
-        "short": "SHORT",
-        "hedge": "HEDGE"
+        "long": "Vétel",
+        "short": "SHORT POZÍCIÓ",
+        "hedge": "Fedezés"
       },
       "rationale": "Indoklás:",
       "driver": "Katalizátor:",
@@ -1236,7 +1249,8 @@
       "skipToStart": "Ugrás az elejére",
       "previous": "Előző",
       "next": "Következő",
-      "skipToEnd": "Ugrás a végére"
+      "skipToEnd": "Ugrás a végére",
+      "storageUnavailable": "A lejátszás nem érhető el, mert a böngésző letiltja a webhelyadatok tárolását. Engedélyezze a webhelyadatokat ennél a webhelynél a pillanatképek mentéséhez."
     },
     "pizzint": {
       "indexSource": "Index: World Monitor",
@@ -1245,7 +1259,7 @@
       "statusNoData": "NINCS ADAT",
       "statusNoBaseline": "NINCS VISZONYÍTÁSI ALAP",
       "vsUsual": "a szokásoshoz képest",
-      "title": "Pentagon Pizza Index",
+      "title": "Pentagon pizzaindex",
       "defcon": "DEFCON {{level}}",
       "updated": "Frissítve: {{timeAgo}}",
       "tensionsTitle": "Geopolitikai feszültségek",
@@ -1347,10 +1361,16 @@
       }
     },
     "countryBrief": {
+      "moreActions": "További műveletek",
       "shareLink": "Hivatkozás megosztása",
       "shareStory": "Történet megosztása",
       "printPdf": "Nyomtatás / PDF",
-      "exportData": "Adatok exportálása"
+      "exportData": "Adatok exportálása",
+      "sources": {
+        "summary": "Források és ablakok · {{count}} csoport",
+        "note": "A források ablakai eltérnek; ez nem 24 órás összeg.",
+        "footer": "Nem bemenete a CII/CRI-nek."
+      }
     },
     "relatedAssets": {
       "pipeline": "Vezeték",
@@ -1364,7 +1384,7 @@
       "high": "MAG",
       "medium": "KÖZ",
       "low": "ALA",
-      "info": "INFO"
+      "info": "INFÓ"
     },
     "deckgl": {
       "zoomIn": "Nagyítás",
@@ -1372,26 +1392,10 @@
       "resetView": "Nézet alaphelyzetbe állítása",
       "legend": {
         "title": "JELMAGYARÁZAT",
-        "startupHub": "Startup Hub",
-        "techHQ": "Tech HQ",
-        "accelerator": "Accelerator",
-        "cloudRegion": "Felhőrégió",
-        "datacenter": "Adatközpont",
-        "stockExchange": "Értéktőzsde",
-        "financialCenter": "Pénzügyi centrum",
-        "centralBank": "Jegybank",
-        "commodityHub": "Árucikk-csomópont",
-        "waterway": "Vízi út",
         "highAlert": "Magas riasztás",
         "elevated": "Emelt",
         "monitoring": "Megfigyelés",
-        "base": "Alap",
-        "nuclear": "Atomerőmű",
-        "aircraft": "Repülőgép",
-        "miningSite": "Bányaterület",
-        "commodityPort": "Árucikk-kikötő",
         "pipeline": "Vezetékrendszer",
-        "processingPlant": "Feldolgozó üzem",
         "conflict": "Konfliktuszóna",
         "diseaseAlert": "Betegség-riasztás",
         "diseaseWarning": "Betegség-figyelmeztetés",
@@ -1463,10 +1467,11 @@
         "happiness": "Világboldogság",
         "speciesRecovery": "Fajmegmentés",
         "renewableInstallations": "Tiszta energia",
-        "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts",
+        "canadaRoads": "Kanadai utak",
+        "canadaAlerts": "Kanadai riasztások",
         "notamAirspace": "NOTAM légtéri korlátozások",
-        "no2Activity": "Ipari aktivitás"
+        "no2Activity": "Ipari aktivitás",
+        "reservoirLevels": "Vízszintek"
       },
       "tooltip": {
         "earthquake": "Földrengés",
@@ -1580,14 +1585,29 @@
           "dayNight": "Valós idejű napenergia terminátor nap és éj zónákat mutatja",
           "geoBoundaries": "Demilitarizált zónák, tűzszünet vonalak és vitatott határok",
           "ciiChoropleth": "Ország Instabilitási Index hőtérkép — országokat pontszám szerint színez (zöld=stabil, piros=kritikus)",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "canadaRoads": "Hivatalos közúti események, figyelmeztetések, útviszonyok, lezárások, építkezések és veszélyek a támogatott kanadai joghatóságokból.",
+          "canadaAlerts": "Tartományi közbiztonsági riasztások az Alberta Emergency Alert, a B.C. Evacuation Orders and Alerts és a SaskAlert forrásaiból.",
           "notamAirspace": "Ideiglenes repüléskorlátozások, valamint korlátozott, veszélyes és tiltott légtér az FAA NOTAM-jaiból, amely jelenleg érvényes vagy 24 órán belül kezdődik",
-          "no2Activity": "Sentinel-5P NO2-aktivitás iránya 167 országra és 32 ipari klaszterre: a legutóbbi 56 napos ablak az előző évek azonos dátumaihoz képest, 10%-os holtsáv után. Módosított Copernicus Sentinel adatokat tartalmaz."
+          "no2Activity": "Sentinel-5P NO2-aktivitás iránya 167 országra és 32 ipari klaszterre: a legutóbbi 56 napos ablak az előző évek azonos dátumaihoz képest, 10%-os holtsáv után. Módosított Copernicus Sentinel adatokat tartalmaz.",
+          "reservoirLevels": "Stratégiai víztározók és tavak vízfelszínének szintje a NASA ICESat-2 műholdas lidarja alapján, a hónapra jellemző szinthez viszonyítva. A NASA minden áthaladást nagyjából két hónappal a mérés után tesz közzé."
         },
         "notes": {
           "timeAffects": "Érintett: Földrengések, Időjárás, Tüntetések, Leállások"
         }
+      },
+      "measure": {
+        "title": "Távolság mérése",
+        "units": "Távolság mértékegysége",
+        "pointA": "Válassza az A pontot. Kattintson a térképre vagy nyomja meg az Enter billentyűt a térkép közepén.",
+        "pointB": "Válassza a B pontot. Húzza a térképet és nyomja meg az Enter billentyűt a közepponthoz.",
+        "geodesic": "Geodéziai távolság",
+        "note": "A rákattintott koordináták között; nem útvonal vagy ellenőrzött eszköztávolság. Az Escape billentyű kilép.",
+        "cancel": "Kijelölés visszavonása",
+        "cancelShort": "Mégse",
+        "resetShort": "Alaphelyzet",
+        "exitShort": "Kilépés",
+        "reset": "Mérés alaphelyzete",
+        "exit": "Kilépés a mérésből"
       }
     },
     "cii": {
@@ -1595,8 +1615,8 @@
       "infoTooltip": "<strong>Módszertan</strong><ul><li><strong>U</strong> (Unrest): polgári rendzavarások és tüntetések</li><li><strong>C</strong> (Conflict): fegyveres konfliktus intenzitása</li><li><strong>S</strong> (Security): katonai járművek/hajók a terület felett</li><li><strong>I</strong> (Information): hírek sebessége és fókuszpont korrelációja</li><li>Fókuszpont közelségi növelés (stratégiai helyek)</li></ul><em>Az U:C:S:I értékek az összetevő pontszámait mutatják.</em> A Fókuszpont-detektálás korrelál a hírjellegzetességeket a térképi jelekkel a pontos pontozáshoz.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "Tartalmazza az országonkénti alapértéket + eseményszorzót — lásd /docs/methodology/cii-risk-scores a közzétett táblázathoz",
-      "sectionFollowing": "Following",
-      "sectionAll": "All",
+      "sectionFollowing": "Követés",
+      "sectionAll": "Összesen",
       "sourceStates": {
         "degraded": "leromlott",
         "stale": "elavult"
@@ -1648,8 +1668,8 @@
       "analysisFrameworksFromAgentskills": "Az agentskills.io-ból",
       "analysisFrameworksPasteJson": "JSON beillesztése",
       "analysisFrameworksSaveToLibrary": "Mentés a könyvtárba",
-      "streamAlwaysOnLabel": "Élő streamek automatikus lejátszása az irányítópulton",
-      "streamAlwaysOnDesc": "Automatikusan elindítja a Live News és Live Webcams elemeket, amikor láthatók. Hagyja kikapcsolva, hogy a videó csak a Lejátszás gombra kattintás után töltődjön be.",
+      "streamAlwaysOnLabel": "Élő webkamerák automatikus lejátszása",
+      "streamAlwaysOnDesc": "Az élő webkamera videók azonnal elindulnak, amikor megjelennek a képernyőn. Hagyja kikapcsolva ahhoz, hogy csak akkor töltődjenek be, amikor Ön elindítja őket.",
       "frameworkNote": "Csak az ügyfél által generált elemzésre vonatkozik",
       "loadingServerInsights": "Szerver insights betöltése...",
       "usingCachedBrief": "Gyorsítótározott összefoglalás használata...",
@@ -1682,7 +1702,9 @@
       "briefStoryDetails": "A hír részletei ({{count}})",
       "streamIdleStopLabel": "Élő videó leállítása üresjárat során",
       "streamIdleStopDesc": "Az Élő Hírek és Élő Webkamerák leállnak ennyi idő után inaktivitás esetén, és egy értesítés jelenik meg a panelen.",
-      "streamIdleStopNever": "Soha"
+      "streamIdleStopNever": "Soha",
+      "liveNewsAutoplayLabel": "Élő hírek automatikus lejátszása",
+      "liveNewsAutoplayDesc": "Az élő hírek videója néma hanggal elindul, amint megjelenik a képernyőn. Ezt kikapcsolva a videó csak akkor töltődik be, amikor Ön elindítja."
     },
     "settings": {
       "exportSettings": "Beállítások exportálása",
@@ -1767,8 +1789,8 @@
         "degraded": "leromlott",
         "stale": "elavult"
       },
-      "dataFreshness": "Data Freshness",
-      "sourcesDetail": "{{active}}/{{total}} sources"
+      "dataFreshness": "Adatok frissessége",
+      "sourcesDetail": "{{active}}/{{total}} forrás"
     },
     "techEvents": {
       "infoTooltip": "<strong>Technológiai események</strong> Közelgő és közelmúltbeli technológiaesemények: konferenciák, termékbemutatók, szabályozási meghallgatások és eredményhirdetések. Az oficális eseménynaptárakból és az iparág forrásaiból összegyűjtve.",
@@ -1782,11 +1804,15 @@
       "all": "Összes",
       "conferencesCount": "{{count}} konferencia",
       "onMap": "{{count}} a térképen",
-      "techmemeEvents": "Techmeme Events ↗",
+      "techmemeEvents": "Techmeme események ↗",
       "today": "MA",
       "soon": "HAMAROSAN"
     },
     "techReadiness": {
+      "ranked": "Rangsorolt",
+      "unranked": "Rangsorolatlan",
+      "coverageRequirement": "A rangsoroláshoz szükséges lefedettség",
+      "coverageLabel": "Elérhető mutatók",
       "internetUsers": "Internethasználók",
       "mobileSubscriptions": "Mobil előfizetések",
       "rdSpending": "Kutatás és fejlesztés kiadások",
@@ -1802,17 +1828,24 @@
       "infoTooltip": "<strong>Technológiai felkészültség</strong> Világbank összetett pontszáma, 0–100. A súlyozások: kutatás és fejlesztés 35%, internet 30%, szélessáv 20% és mobil 15%. Az internetes felhasználók a lakosság százaléka; a mobil előfizetések száma 100 emberenként; a kutatási kiadások a gazdasági kibocsátás aránya. A hiányzó értékeket kötőjel jelzi. Az adatok 2019–2024 közötti időszakot foglalnak magukban."
     },
     "populationExposure": {
-      "totalAffected": "Érintett összesen",
-      "affectedCount": "{{count}} érintett",
-      "radiusKm": "{{km}} km sugár",
-      "infoTooltip": "<strong>Népességi expozícióbecslések</strong> Becsült népesség az esemény hatásvonalán belül. A WorldPop országsűrűség-adatok alapján.<ul><li>Konfliktus: 50 km sugár</li><li>Földrengés: 100 km sugár</li><li>Árvíz: 100 km sugár</li><li>Erdőtűz: 30 km sugár</li></ul>"
+      "estimateWithin": "Körülbelül {{count}} ember {{km}} km-es körzetben",
+      "method": "A becslések az ország átlagos népsűrűségén alapulnak.",
+      "empty": "Nincs megfelelő eseményhelyszín",
+      "infoTooltip": "Az ország népsűrűségi adataival rendelkező események jelennek meg. A pontossági információ nélküli UCDP-események helyei frissítésre váró jelölést kapnak. A becsült területek átfedhetik egymást. A zavargásokhoz pontos hely szükséges; a pontatlannak jelölt UCDP-események kimaradnak. Egy két forrásban (zavargások és UCDP) szereplő hely két sorban jelenik meg.",
+      "eventCount_one": "{{count}} esemény",
+      "eventCount_other": "{{count}} esemény",
+      "locationPending": "A hely pontossága frissítésre vár",
+      "unrestCoverage": "Zavargások lefedettsége",
+      "ucdpPending": "Az UCDP lefedettsége frissítésre vár",
+      "coverageShown": "Megjelenített események: {{shown}} / {{total}}",
+      "coverageLeftOut": "Nem látható: {{imprecise}} pontos hely nélkül, {{noEstimate}} sűrűségadat nélküli országokban, {{otherPlaces}} a forrásonkénti első 10 helyen túl"
     },
     "securityAdvisories": {
       "loading": "Utazási tanácsok letöltése...",
       "noMatching": "Nincsenek szűrőnek megfelelő tanácsok",
       "critical": "Kritikus",
       "health": "Egészség",
-      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
+      "sources": "USA Külügyminisztérium, AU DFAT, UK FCDO, CDC, ECDC, WHO, USA nagykövetségek",
       "refresh": "Frissítés",
       "levels": {
         "doNotTravel": "Ne utazzon",
@@ -1889,7 +1922,7 @@
       "ofTotal": "Az összes %-a",
       "topReceivers": "Legjobb címzettek",
       "oecdOda": "OECD Gazdasági Együttműködési és Fejlesztési Szervezet fejlesztési segélye",
-      "cafIndex": "CAF Index",
+      "cafIndex": "CAF-index",
       "candidGrants": "Candid Grants",
       "dataLag": "Adatforgalom",
       "infoTooltip": "<strong>Global Giving Activity Index</strong> Összetett index, amely a személyes adományozást követi nyomauxiliar platformokon és kriptopénz pénztárcákon.<ul><li><strong>Platformok</strong>: GoFundMe, GlobalGiving, JustGiving kampánymintavételezés</li><li><strong>Kriptó</strong>: On-chain jótékonysági pénztárca beáramlása (Endaoment, Giving Block)</li><li><strong>Intézményi</strong>: OECD ODA, CAF World Giving Index, Candid grants</li></ul>Az index irányjellegű (nem pontos dollárösszegek). Élő mintavételezést egyesít a megjelent éves jelentésekkel.",
@@ -1983,8 +2016,8 @@
       "critical": "KRITIKUS",
       "high": "MAGAS",
       "dismiss": "Elvetés",
-      "alertsRegion": "Breaking news alerts",
-      "viewPanel": "View related panel"
+      "alertsRegion": "Friss hír riasztás",
+      "viewPanel": "Kapcsolódó panel megtekintése"
     },
     "intelligenceFindings": {
       "breakingAlerts": "Friss riasztások",
@@ -2056,26 +2089,26 @@
       "filterCyber": "Kiberbiztonsági"
     },
     "xIntel": {
-      "infoTooltip": "Curated public news-account posts from X. Official API only.",
-      "loading": "Connecting to X news-account relay...",
-      "empty": "No posts available",
-      "disabled": "X news-account relay not active",
-      "filterAll": "All",
-      "filterBreaking": "Breaking",
-      "filterConflict": "Conflict",
+      "infoTooltip": "Válogatott bejegyzések nyilvános X hírfiókokból. Csak hivatalos API.",
+      "loading": "Csatlakozás az X hírfiók-reléhez...",
+      "empty": "Nincsenek bejegyzések",
+      "disabled": "Az X hírfiók-relé nem aktív",
+      "filterAll": "Összes",
+      "filterBreaking": "Friss hír",
+      "filterConflict": "Konfliktus",
       "filterOsint": "nyílt forrásból származó felderítés",
-      "filterMiddleeast": "Middle East",
-      "live": "LIVE",
-      "viewSource": "View Source",
-      "filterGeopolitics": "Geopolitics",
-      "filterCyber": "Cyber"
+      "filterMiddleeast": "Közel-Kelet",
+      "live": "ÉLŐ",
+      "viewSource": "Forrás megtekintése",
+      "filterGeopolitics": "Geopolitika",
+      "filterCyber": "Kiber"
     },
     "investments": {
       "infoTooltip": "Szaúd-Arábia és az Egyesült Arab Emírségek külföldi közvetlen beruházásainak adatbázisa a globális kritikus infrastruktúrában. Kattintson egy sorra a beruházás térképen való megtekintéséhez.",
       "searchPlaceholder": "Eszközök, országok, entitások keresése…",
       "allCountries": "Összes ország",
       "saudiArabia": "Szaúd-Arábia",
-      "uae": "UAE",
+      "uae": "EAE",
       "allSectors": "Összes szektor",
       "allEntities": "Összes entitás",
       "allStatuses": "Összes státusz",
@@ -2110,6 +2143,8 @@
       "infoTooltip": "<strong>Előrejelzési piacok</strong> Valódi pénzű előrejelzési piacok:<ul><li>Az árak a tömeg valószínűségi becsléseit tükrözik</li><li>Magasabb volumen = megbízhatóbb jel</li><li>Geopolitikai és aktuális események fókusza</li></ul>Források: Polymarket, Kalshi"
     },
     "etfFlows": {
+      "previousColumns": "Előző oszlopok",
+      "moreColumns": "További oszlopok",
       "unavailable": "Tőzsdén kereskedett alap adatai ideiglenesen nem érhetőek el",
       "rateLimited": "Tőzsdén kereskedett alap adatai ideiglenesen nem érhetőek el (sebességkorlátozva) — hamarosan újrapróbálkozás",
       "netFlow": "Nettó áramlás",
@@ -2120,7 +2155,7 @@
       "netOutflow": "NETTÓ KIÁRAMLÁS",
       "netNeutral": "NETTÓ SEMLEGES",
       "table": {
-        "ticker": "Ticker",
+        "ticker": "Szimbólum",
         "issuer": "Kibocsátó",
         "estFlow": "Becsült áramlás",
         "volume": "Kötet",
@@ -2134,7 +2169,7 @@
         "buy": "VENNI",
         "cash": "KÉSZPÉNZ"
       },
-      "bullish": "{{count}}/{{total}} bullish",
+      "bullish": "{{count}}/{{total}} bikás",
       "signals": {
         "liquidity": "Likviditás",
         "flow": "Áramlás",
@@ -2237,14 +2272,14 @@
       },
       "unavailable": {
         "symbols": "{{symbols}} — {{reason}}",
-        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
-        "notFound": "no quote available",
-        "providerError": "quote lookup failed, retrying shortly",
-        "rateLimited": "quote provider rate limited, retrying shortly",
-        "notConfigured": "quote provider not configured",
-        "requestLimit": "too many symbols requested",
-        "budget": "not loaded yet, retrying shortly",
-        "seed": "market data temporarily unavailable"
+        "symbolsMore": "{{symbols}} és további {{count}} — {{reason}}",
+        "notFound": "Nincs ár",
+        "providerError": "Az ár lekérése sikertelen, hamarosan újrapróbálkozás",
+        "rateLimited": "Az árszolgáltató korlátozza a kéréseket, hamarosan újrapróbálkozás",
+        "notConfigured": "Nincs beállított árszolgáltató",
+        "requestLimit": "Túl sok szimbólum lett kérve",
+        "budget": "Még nincs betöltve, hamarosan újrapróbálkozás",
+        "seed": "A piaci adatok átmenetileg nem érhetők el"
       }
     },
     "heatmap": {
@@ -2252,15 +2287,15 @@
     },
     "commodities": {
       "infoTooltip": "<strong>Árucikkek</strong> Kereskedhető, nem energetikai árucikkek szalagja, amely fémekre és anyagokra összpontosít. Az energiaárak az Energy Complex-ben vannak; a makroökonómiai stresszindikátorok a Macro Stress-ben.",
-      "commodities": "Commodities",
-      "physicalPremiums": "Physical premium",
-      "physical": "Physical",
-      "paper": "Paper",
-      "premium": "Premium",
-      "asOf": "As of {{date}}",
+      "commodities": "Nyersanyagok",
+      "physicalPremiums": "Fizikai felár",
+      "physical": "Fizikai",
+      "paper": "Papír",
+      "premium": "Felár",
+      "asOf": "{{date}} állapot szerint",
       "metals": {
-        "gold": "Gold",
-        "silver": "Silver"
+        "gold": "Arany",
+        "silver": "Ezüst"
       },
       "divergence": {
         "compositeValue": "Fizikai stresszindex: {{value}} / 100",
@@ -2432,12 +2467,20 @@
       "channelOrVideoUrl": "YouTube-csatorna vagy videó URL",
       "channelUrlHint": "Illesszen be egy csatorna URL-t (youtube.com/channel/UC…) vagy egy élő videó URL-t",
       "youtubeChannel": "YouTube-csatorna",
-      "httpsStreamHint": "A böngészők blokkolják a nem biztonságos (http) streameket. Illesszen be egy biztonságos (https) stream URL-t"
+      "httpsStreamHint": "A böngészők blokkolják a nem biztonságos (http) streameket. Illesszen be egy biztonságos (https) stream URL-t",
+      "tapToPlay": "Koppintson a lejátszáshoz"
     },
     "map": {
       "showMap": "Térkép megjelenítése",
       "hideMap": "Térkép elrejtése",
-      "clearTrails": "Nyomok törlése"
+      "clearTrails": "Nyomok törlése",
+      "locate": "Saját helyzet megjelenítése"
+    },
+    "mapLocate": {
+      "locating": "Helymeghatározás…",
+      "denied": "A helyhozzáférés megtagadva. Hely kereséséhez használja a Keresést.",
+      "unavailable": "A helyzet nem található. Hely kereséséhez használja a Keresést.",
+      "noCountry": "Az Ön helyén nincs ország. Hely kereséséhez használja a Keresést."
     },
     "climateNews": {
       "infoTooltip": "<strong>Climate News</strong> A legfrissebb környezeti és éghajlati intelligencia a Carbon Brief, az UNEP, a NASA, a The Guardian és más megbízható forrásokból. 30 percenként frissítve.",
@@ -2455,7 +2498,7 @@
       "cotSection": "Olaj / Arany / Ezüst + Index pozicionálás (Commitments of Traders)",
       "stocksSection": "Top amerikai részvények: napi eltolódás",
       "longShort": "Long {{long}} / Short {{short}}",
-      "lev": "Lev",
+      "lev": "Tőkeáttétel",
       "noCot": "Nincs elérhető Commitments of Traders sor.",
       "noStocks": "Nincsenek elérhető top részvénykötések.",
       "reportDate": "Commitments of Traders jelentés dátuma: {{date}}",
@@ -2511,7 +2554,7 @@
     },
     "earningsCalendar": {
       "infoTooltip": "<strong>Nyereséges közlemények naptára</strong> Küszöbönálló és közelmúltbeli nyereséges közlemények a nagy nyilvános vállalatok számára. Megjeleníti az egy részvényre jutó nyereség becsléseit az aktualokkal, a bevételeket és az eltalálást/rossz besorolást. Forrás: pénzügyi adatszolgáltatók.",
-      "title": "Earnings Calendar",
+      "title": "Gyorsjelentési naptár",
       "today": "MAI NAP · {{date}}",
       "tomorrow": "HOLNAP · {{date}}",
       "epsActual": "egy részvényre jutó nyereség {{value}}",
@@ -2533,7 +2576,7 @@
     },
     "fsi": {
       "infoTooltip": "<strong>Pénzügyi stressz mutató</strong> WorldMonitor magas hozamú hitel-Treasury hosszú arány, tőzsdei volatilitásra és magas hozamú spread-re korrigálva: (HYG / TLT) / (VIX × magas hozamú spread / 100). Ez nem a Kansas City Fed pénzügyi stressz indexe. Az 1,5 vagy magasabb érték alacsony stresszt jelent; 0,3 alatt magas stresszt.",
-      "title": "Financial Stress Indicator",
+      "title": "Pénzügyi stresszmutató",
       "usFsiValue": "US pénzügyi stressz mutató érték",
       "cissTitle": "EU CISS (Euró Terület Szisztematikus Stressz)",
       "cissStale": "Az Európai Központi Bank nem tett közzé újabb értéket – ez az érték elavult lehet.",
@@ -2594,20 +2637,23 @@
       "proLocked": "Frissítsen PRO verzióra az árucikk-sebezhetőségi pontszám megtekintéséhez"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuzi kereskedelmi követő</strong> Élő hajókövetés a Hormuzi szoroson keresztül, a világ legfontosabb olaj szűk pontján. Tankerszámokat, zavaró eseményeket és heti flow-változásokat figyel. A globális olajkészlet körülbelül 20%-a naponta tranzitál itt.",
-      "title": "Hormuz Trade Tracker",
+      "infoTooltip": "<strong>Hormuzi kereskedelemkövető</strong> WTO DataLab napi szállítmányindexei a Hormuz-szorosra: az Öbölből eltávozó kőolaj, LNG és műtrágya, valamint az érkező mezőgazdasági termékek. Volumen szerint, 2025. január–márciusi átlag = 100, csak AIS-látható hajók. A diagramok napi adatok; az állapot a WTO megjegyzéseiből származik.",
+      "title": "Hormuzi kereskedelemkövető",
       "noData": "Nincs adat",
       "notAvailable": "N/A",
       "chartUnavailable": "Diagramadatok nem érhetőek el",
       "sourcePrefix": "Forrás:",
-      "units": {
-        "ktPerDay": "kt/nap",
-        "generic": "egység"
-      },
       "errors": {
         "unavailable": "Hormuz adatok nem érhetőek el",
         "failedToLoad": "Betöltés sikertelen"
-      }
+      },
+      "analysisDate": "WTO-kommentár {{date}}",
+      "indexNote": "Szállítmányi index térfogat szerint, 2025. január–márciusi átlag = 100",
+      "units": {
+        "index": "index"
+      },
+      "dataThrough": "Napi adatok eddig: {{date}}",
+      "noShipments": "Nincs szállítmány rögzítve {{from}} és {{to}} között"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Live Webcams</strong> Élő kameranyitások geopolitikailag szignifikáns helyekről világszerte: konfliktuszónák, fővárosok, határátkelések és stratégiai szűk keresztmetszetek. Streamek YouTube-ból és közös hálózatokból."
@@ -2638,8 +2684,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro elindult",
-      "tagline": "Több jel, kevesebb zaj. Több AI Brief. Egy Geopolitikai & Részvény Kutató, csak neked.",
+      "headline": "Napi AI-összefoglalók e-mailben vagy Slacken",
+      "tagline": "plusz WM Analyst, riasztási szabályok és MCP a Claudehez",
       "cta": "Frissítés Pro-ra →",
       "dismiss": "Eltüntetés"
     },
@@ -2764,7 +2810,7 @@
     },
     "sanctionsPressure": {
       "title": "Szankciók & Kijelölések",
-      "infoTooltip": "Az Office of Foreign Assets Control Kijelölt Nationals és Consolidated Lists, valamint a Global Affairs Canada SEMA/JVCFOA lezárások. Megmutatja, mely országok szembesülnek a legmagasabb lezárási nyomással, mely programok hajtják azt, és mi volt az utolsó frissítés óta új hozzáadott.",
+      "infoTooltip": "OFAC SDN és összevont listák, valamint Kanada SEMA/JVCFOA szankciói. Az országok sorai közvetlen kapcsolatokat használnak. A hajólobogók és a repülőgép-lajstromok külön szerepelnek a nyilvántartásokban; egy ország nulla eszközszáma nem jelenti a szankcionált eszközök hiányát.",
       "loading": "Szankció adatok betöltése...",
       "unavailable": "Szankció adatok nem érhetőek el.",
       "summary": {
@@ -2776,7 +2822,9 @@
       "sections": {
         "countries": "Szankcionált országok",
         "entries": "Legutóbbi bejelentések",
-        "programs": "Programok"
+        "programs": "Programok",
+        "flagRegistries": "Hajólobogó- és légijármű-nyilvántartások",
+        "regulationTargets": "A SEMA-rendeletek célországai"
       },
       "empty": {
         "countries": "Nincs országattribúció elérhető.",
@@ -2799,7 +2847,8 @@
         "unattributed": "Nem tulajdonított",
         "program": "Program",
         "undated": "Dátum nélkül"
-      }
+      },
+      "targetExplanation": "A rendeletek célországai nem igazolják az állampolgárságot vagy a címet. Nem szerepelnek az országkockázati pontszámokban és az összefoglalókban."
     },
     "radiationWatch": {
       "title": "Sugárzásfigyelés",
@@ -2815,7 +2864,7 @@
       "headers": {
         "station": "Állomás",
         "reading": "Mérés",
-        "delta": "Delta",
+        "delta": "Változás",
         "status": "Állapot",
         "observed": "Megfigyelt"
       },
@@ -2897,10 +2946,10 @@
         "industrial": "ipari",
         "strategic": "stratégiai"
       },
-      "observations_one": "{{count}} obs",
-      "observations_other": "{{count}} obs",
-      "sources_one": "{{count}} src",
-      "sources_other": "{{count}} src",
+      "observations_one": "{{count}} megf.",
+      "observations_other": "{{count}} megfigyelés",
+      "sources_one": "{{count}} forrás",
+      "sources_other": "{{count}} forrás",
       "age": {
         "minutesAgo_one": "{{count}}p ezelőtt",
         "minutesAgo_other": "{{count}}p ezelőtt",
@@ -2915,10 +2964,10 @@
       "infoTooltip": "Élő állapot a hét globális olaj- és gázszállítási szűk ponthoz. A flow becslések a Portwatch hajó szállítóképessége + hajókövetési megfigyelésekből kalibrálva. A módszertanhoz lásd a /docs/methodology/chokepoints oldalt.",
       "unknown": "ismeretlen",
       "shortName": {
-        "hormuzStrait": "Hormuz",
+        "hormuzStrait": "Hormuzi",
         "malaccaStrait": "Malakka",
         "suez": "Szuez",
-        "babElMandeb": "Bab el-Mandeb",
+        "babElMandeb": "Báb el-Mandeb",
         "bosphorus": "Törökországi Szorosok",
         "panama": "Panama",
         "doverStrait": "Doveri-szoros"
@@ -2996,7 +3045,7 @@
       "infoTooltip": "<strong>Árfolyamok</strong> A stressz 45 valutat rangsorol a 24 hónapon belüli legnagyobb csökkenés alapján, a 12 hónapos változással. A spot árfolyamok külön dollár és euró bázist használnak. A rubelárfolyamok rubel egy egységenként. A források között szerepel a Yahoo Finance, az Európai Központi Bank és az Orosz Központi Bank.",
       "tabs": {
         "stress": "Valuta stressz",
-        "spot": "Spot",
+        "spot": "Azonnali ár",
         "rub": "RUB"
       },
       "currency": "Deviza",
@@ -3175,6 +3224,147 @@
           "placeholder": "Opcionális"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "Tetszik a World Monitor?",
+      "body": "A GitHub-on adott csillag segít másoknak megtalálni.",
+      "star": "Csillagozás a GitHubon",
+      "dismiss": "Bezárás és többé ne kérdezz rá"
+    },
+    "reservoirLevels": {
+      "note": "Vízfelszín szintje a NASA ICESat-2 műholdas lidarja alapján. A NASA minden áthaladást nagyjából két hónappal a mérés után tesz közzé, ezért ez hetek és évszakok változását követi, nem napokét. Csak vízszint, nem térfogat.",
+      "source": "Forrás:",
+      "processedWith": "feldolgozás:",
+      "empty": "Még nincs mérés",
+      "filterEmpty": "Egy víztest sem felel meg ennek a szűrőnek",
+      "unavailable": "A vízszintadatok jelenleg nem érhetők el",
+      "filterLabel": "Víztestek szűrése",
+      "filter": {
+        "all": "Mind",
+        "attention": "Figyelmet igényel",
+        "transboundary": "Határokon átnyúló"
+      },
+      "status": {
+        "record_low": "Rekordalacsony",
+        "record_high": "Rekordmagas",
+        "falling_fast": "Gyorsan csökken",
+        "rising_fast": "Gyorsan emelkedik",
+        "low": "Alacsony az évszakhoz",
+        "high": "Magas az évszakhoz",
+        "normal": "Szokásos",
+        "insufficient_history": "Túl rövid előzmény",
+        "no_recent_data": "Nincs friss áthaladás",
+        "lowInRange": "Alacsony a tartományában",
+        "highInRange": "Magas a tartományában"
+      },
+      "vsUsual": "{{value}} a szokásoshoz képest ({{month}})",
+      "in12Months": "{{value}} 12 hónap alatt",
+      "noComparison": "Még nincs összevetés",
+      "measured": "mérve: {{date}} ({{age}})",
+      "noPass": "Még nincs használható áthaladás",
+      "popup": {
+        "level": "Szint",
+        "levelValue": "{{value}} tengerszint felett (EGM2008)",
+        "anomaly": "A szokásoshoz képest ({{month}})",
+        "anomalyPlain": "A hónapra szokásoshoz képest",
+        "changePrev": "Az előző áthaladás óta",
+        "change90": "90 nap alatt",
+        "change365": "12 hónap alatt",
+        "measured": "Mérés ideje",
+        "sparkline": "Vízszint 36 hónap alatt"
+      },
+      "nextPass": {
+        "label": "Következő ICESat-2 áthaladás",
+        "loading": "Betöltés…",
+        "at": "{{date}} (előrejelzés a(z) {{epoch}} pályaadatai alapján; a felhőzet blokkolhatja a lidart)",
+        "none": "Nincs mérés ebben az időszakban ({{date}}-ig); pályaadatok: {{epoch}}",
+        "unavailable": "Pályaadatok nem érhetők el"
+      },
+      "siteContext": {
+        "label": "Stratégiai víztározó ezen a helyen"
+      },
+      "energyContext": {
+        "heading": "Stratégiai víztározók",
+        "hydro": "Vízenergia: a primer energia {{share}}%-a"
+      },
+      "countryEvidence": {
+        "heading": "Vízszintek",
+        "empty": "Az ország egyetlen stratégiai tározója sincs az utolsó áthaladáskor a szezonális alapvonalán kívül.",
+        "measured": "Mérve: {{date}}"
+      },
+      "card": {
+        "measured": "Mérve: {{date}} · {{age}}",
+        "noCrossing": "ebben az ablakban nincs ({{date}}-ig)",
+        "crossing": "Várható ICESat-2 átvonulás",
+        "summary": "{{total}} tározóból {{beyond}} a szezonális alapvonalon kívül",
+        "latestPass": "utolsó ICESat-2 áthaladás: {{date}}",
+        "sparkline": "36 havi szint, a szezonális alapvonal szaggatott vonallal",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidaros vízfelszín-szintek dátumozott áthaladásokból, nem élő értékek vagy tárolt térfogatok."
+      },
+      "water": {
+        "heading": "Víz: {{name}}",
+        "level": "Lidaros vízszint",
+        "extent": "Radaros vízfelület",
+        "extentValue": "{{percent}}% nyílt víz ({{area}} km²), {{date}}",
+        "extentChange": "{{delta}} pont {{date}} óta ugyanazon a pályán",
+        "extentNoComparison": "Nincs korábbi mérés ugyanazon a pályán az összevetéshez",
+        "extentNone": "Még nincs radaros mérés",
+        "unavailable": "Nem sikerült betölteni; nyissa meg újra a próbálkozáshoz",
+        "optical": "Legújabb optikai kép",
+        "opticalNone": "Nincs optikai kép 30 napon belül",
+        "note": "Minden sor egy külön átvonulásból származó, dátummal ellátott mérés, nem élő adat. A radar a víztározó magterületén méri a nyílt vizet; a szél által fodrozott víz szárazföldnek tűnhet."
+      }
+    },
+    "gridDisruptionClock": {
+      "region": "Válasszon tagállamot",
+      "unknown": "Ismeretlen",
+      "customers": "A jelentések szerint áram nélkül maradt fogyasztók",
+      "lastCustomers": "Áram nélkül maradt fogyasztók az utolsó jelentéskor",
+      "denominatorUnknown": "A megfigyelt fogyasztók teljes száma ismeretlen",
+      "tracked": "Megfigyelt fogyasztók száma: {{amount}}",
+      "dataAge": "A jelentés óta",
+      "minutes": "{{amount}} perc",
+      "hours": "{{amount}} óra",
+      "warnings": "Figyelmeztetések",
+      "recovery": "Jelentett változások",
+      "decreased": "A jelentett adatok szerint {{amount}} fogyasztóval kevesebb van áram nélkül",
+      "increased": "A jelentett adatok szerint {{amount}} fogyasztóval több van áram nélkül",
+      "unchanged": "A jelentett létszám változatlan",
+      "since": "ettől az időponttól",
+      "peakLoad": "A szokásos csúcsterhelés {{percent}}%-át ismét ki tudják szolgálni",
+      "noComparison": "Nincsenek összehasonlítható adatok az áram nélkül maradt fogyasztók számáról.",
+      "history": "Az áram nélkül maradt fogyasztók száma a legutóbbi jelentésekben ({{total}})",
+      "priorNotice": "Korábban kiadott figyelmeztetés",
+      "sources": "A figyelmeztetési források lefedettsége",
+      "operatorLink": "A hálózati közlemények itt érhetők el:",
+      "issued": "Kiadva",
+      "until": "érvényes eddig",
+      "noActive": "A figyelt forrásokban nincs érvényes figyelmeztetés.",
+      "unknownWarnings": "A figyelmeztetések lefedettsége jelenleg hiányos.",
+      "noObservation": "Az aktuális szám és a lefedettség nem ismert.",
+      "loadError": "Az áramkimaradásokról jelenleg nincsenek adatok.",
+      "retained": "A frissítés sikertelen. Az utolsó beérkezett jelentés látható.",
+      "phase": {
+        "unknown": "A hatás ismeretlen",
+        "monitoring": "Megfigyelés",
+        "watch": "Készenlét",
+        "disrupted": "Áramkimaradást jelentettek",
+        "recovering": "Folyamatban lévő helyreállítást jelentettek",
+        "restored": "Az ellátás helyreállítását jelentették"
+      },
+      "kind": {
+        "grid": "Hálózati közlemény",
+        "weather": "Időjárási riasztás",
+        "space-weather": "Űridőjárás"
+      },
+      "checks": {
+        "available": "Ellenőrizve",
+        "unavailable": "Nem érhető el",
+        "not_monitored": "Tájékozódjon közvetlenül a hálózatüzemeltetőnél",
+        "stale": "A legutóbbi ellenőrzés elavult"
+      },
+      "warningAge": "Az első, még érvényes figyelmeztetés óta",
+      "days": "{{amount}} nap"
     }
   },
   "popups": {
@@ -3201,17 +3391,17 @@
         "major": "NAGY",
         "moderate": "KÖZEPES",
         "minor": "KISEBB"
-      }
+      },
+      "relativePlace": "{{distance}} km-re {{direction}} ettől: {{place}}"
     },
     "base": {
       "types": {
-        "us-nato": "US/NATO",
+        "us-nato": "USA/NATO",
         "china": "KÍNA",
         "russia": "OROSZORSZÁG"
       }
     },
     "protest": {
-      "acledVerified": "ACLED (ellenőrzött)",
       "gdelt": "GDELT",
       "records": "rekord",
       "mediaSignal": "Nem ellenőrzött médiajelzés",
@@ -3225,7 +3415,7 @@
       "navPerformance": "Érintett légijárművek",
       "samples": "Érintett légijárművek száma",
       "aircraft": "Az észlelt légijárművek teljes száma",
-      "h3Hex": "H3 Hex"
+      "h3Hex": "H3 hatszög"
     },
     "flight": {
       "scheduled": "Ütemezett",
@@ -3265,7 +3455,44 @@
       "airborne": "Levegőben"
     },
     "cyberThreat": {
-      "title": "KIBERFENYEGETÉS"
+      "title": "KIBERFENYEGETÉS",
+      "evidence": "Fenyegetésforrás adatai",
+      "firstSeen": "Első észlelés",
+      "explanations": {
+        "c2_server": "A forrás egy parancsot-és-vezérlést szerver jelentett, amely a kártékony kódra vonatkozó utasítások küldésére használatos.",
+        "malware_host": "A forrás egy kártékony kódot futtató címet jelentett.",
+        "phishing": "A forrás adathalászathoz kapcsolódó indikátort jelentett.",
+        "malicious_url": "A forrás egy rosszindulatú tevékenységgel kapcsolatos URL-t jelentett."
+      },
+      "downloadTag": "malware_download: a forrás egy kártékony kód letöltésének helyét jelenti.",
+      "familyNote": "A kártékony kód családára vonatkozó címke a fenyegetésforrástól származik. Ez nem személyt vagy szervezetet azonosít.",
+      "approximateLocation": "A leképezett hely egy hozzávetőleges IP-alapú kontextus, nem pedig egy ellenőrzött fizikai hoszthelyek.",
+      "network": {
+        "title": "Hálózati adatok",
+        "privacy": "Bontsa ki a passzív hálózati adatok RIPEstat-tól történő kéréséhez. Az indikátor IP-cím megosztásra kerül az adatszolgáltatóval.",
+        "disclaimer": "A hálózati regisztráció és útválasztás nem azonosítja a támadót, és nem teszi az szolgáltatót felelőssé a tevékenységért.",
+        "loading": "Hálózati adatok betöltése…",
+        "unknown": "Nem érhető el",
+        "disabled": "A hálózati keresés nincs engedélyezve.",
+        "invalid": "A hálózati kereséshez nyilvános IP-cím szükséges.",
+        "unavailable": "A hálózati keresés sikertelen volt. Zárja be és nyissa meg újra az előugró ablakot, hogy később próbálkozzon újra.",
+        "rateLimited": "A hálózati keresés ideiglenesen korlátozott. Próbálja újra később.",
+        "noData": "Az adatszolgáltató nem adott vissza hálózati adatokat erre az IP-címre.",
+        "partial": "Néhány hálózati adat nem volt letölthető.",
+        "ip": "IP",
+        "asn": "Forrás ASN",
+        "operator": "Bejelentett ASN-tartó / hálózatkezelő",
+        "prefix": "Bejelentett útválasztási előtag",
+        "hostname": "Fordított DNS-gazdanév (rDNS)",
+        "lookupAt": "Hálózati keresés időpontja",
+        "routingAt": "Útválasztási adatok időpontja",
+        "broaderPrefix": "Az adatszolgáltató egy tágabb útválasztási előtagot talált. Ez nem egy pontos IP-foglalási rekord.",
+        "rdnsNote": "Az rDNS egy DNS-címke, nem pedig a tulajdonjog bizonyítéka. A regisztrált szervezet és a pontos hely nem tartozik ehhez a kereséshez.",
+        "copy": "Másolás",
+        "copied": "Másolva.",
+        "copyFailed": "A másolás sikertelen volt. Jelölje ki a szöveget a másoláshoz."
+      },
+      "firstSeenNote": "Ez a legkorábbi elérhető indikátor dátum a feedek vagy World Monitor megfigyelések között; eltérhet a felsorolt forrás dátumától."
     },
     "nuclear": {
       "types": {
@@ -3302,6 +3529,14 @@
         "construction": "ÉPÍTÉS ALATT"
       },
       "description": "Nagyobb {{type}} vezeték infrastruktúra. {{status}}"
+    },
+    "storageFacility": {
+      "openInAtlas": "Megnyitás a tárolóatlaszban",
+      "types": {
+        "lngExport": "LNG-export",
+        "lngImport": "LNG-import",
+        "crudeTankFarm": "Kőolaj-csomópont"
+      }
     },
     "pipelineStatusDesc": {
       "operating": "Jelenleg működik és erőforrásokat szállít.",
@@ -3427,6 +3662,28 @@
       "readReport": "Teljes jelentés olvasása"
     },
     "datacenter": {
+      "details": {
+        "more": "További részletek",
+        "owner": "A klaszter tulajdonosa / szolgáltatója (adatkészlet)",
+        "power": "Az adatkészlet teljesítményadata",
+        "powerCaveat": "A teljesítménykapacitás lehet közölt vagy becsült érték. Ez nem a jelenlegi áramfogyasztás mérése.",
+        "powerBasis": "A teljesítményadat alapja",
+        "reported": "Közölt",
+        "estimated": "Becsült",
+        "notAvailable": "Nem érhető el",
+        "location": "Helymeghatározás pontossága",
+        "locationUnknown": "Nem ellenőrzött térképpont; ne használja a létesítmény pontos címeként.",
+        "site": "Telephely (forrással ellenőrizve)",
+        "city": "Csak város",
+        "region": "Csak régió",
+        "country": "Csak ország",
+        "dataset": "Az Epoch AI GPU-klaszter-adatkészlete",
+        "evidence": "Alátámasztó forrás",
+        "sourceDate": "A forrás közzétételének dátuma",
+        "metadataReviewedAt": "Metaadatok ellenőrzése",
+        "firstOperationalDate": "Első üzembe helyezés dátuma (adatkészlet)",
+        "freshness": "Az adatkészlet mentett pillanatképe. A jelenlegi állapot és a műszaki adatok megváltozhattak."
+      },
       "status": {
         "existing": "MŰKÖDIK",
         "planned": "TERVEZETT",
@@ -3447,14 +3704,19 @@
         "planned": "TERVEZETT",
         "moreDataCenters": "+ {{count}} további adatközpont",
         "sampledSites": "{{count}} hely mintavételes listáját mutatjuk."
+      },
+      "sectors": {
+        "private": "Magán",
+        "public": "Állami",
+        "publicPrivate": "Állami/magán"
       }
     },
     "startupHub": {
       "tiers": {
-        "mega": "MEGA HUB",
+        "mega": "MEGA KÖZPONT",
         "major": "FŐVÁROSI HUB",
         "emerging": "FEJLŐDŐ",
-        "hub": "HUB"
+        "hub": "KÖZPONT"
       },
       "unicorns": "EGYSZARVÚAK"
     },
@@ -3467,7 +3729,7 @@
         "faang": "BIG TECH",
         "unicorn": "EGYSZARVÚ",
         "public": "NYILVÁNOS",
-        "tech": "TECH"
+        "tech": "TECHNOLÓGIA"
       },
       "marketCap": "PIACI KAPITALIZÁCIÓ",
       "employees": "ALKALMAZOTTAK"
@@ -3572,7 +3834,8 @@
       "vesselsCount": "{{count}} HAJÓ",
       "vessels": "HAJÓK",
       "trackedVessels": "KÖVETETT HAJÓK",
-      "showLess": "Kevesebb megjelenítése"
+      "showLess": "Kevesebb megjelenítése",
+      "backToGroup": "Vissza a csoporthoz"
     },
     "naturalEvent": {
       "closed": "LEZÁRVA",
@@ -3648,15 +3911,15 @@
       "mossad_idf": "Moszad/IDF",
       "nato_hq": "NATO főhadiszállás",
       "pla_mss_activity": "PLA/MSS tevékenység",
-      "pentagon_pizza_index": "Pentagon Pizza Index",
+      "pentagon_pizza_index": "Pentagon pizzaindex",
       "piracy_conflict": "Kalózkodás/Konfliktus",
       "qatar_al_udeid": "Katar/Al Udeid",
       "saudi_gip_mbs": "Szaúd-Arábia GIP/MBS",
       "strait_watch": "Szoros Watch",
       "syria_crisis": "Szíriai válság",
-      "tech_ai_hub": "Tech/AI Hub",
+      "tech_ai_hub": "Tech/AI központ",
       "turkey_mit": "Törökország/MIT",
-      "uae_ecsr": "UAE/ECSR",
+      "uae_ecsr": "EAE/ECSR",
       "venezuela_crisis": "venezuelai válság",
       "yemen_houthis": "Jemen/Houthik"
     },
@@ -3664,7 +3927,435 @@
     "currentForecast": "Jelenlegi előrejelzés",
     "expiredForecast": "Lejárt előrejelzés",
     "validFrom": "Érvényes ettől",
-    "validUntil": "Érvényes eddig"
+    "validUntil": "Érvényes eddig",
+    "levels": {
+      "extreme": "Szélsőséges",
+      "severe": "Súlyos",
+      "moderate": "Mérsékelt",
+      "minor": "Enyhe",
+      "unknown": "Ismeretlen",
+      "critical": "Kritikus",
+      "high": "Magas",
+      "medium": "Közepes",
+      "low": "Alacsony",
+      "elevated": "Emelkedett",
+      "normal": "Normál",
+      "spike": "Kiugrás",
+      "watch": "Figyelés",
+      "stable": "Stabil"
+    },
+    "statusValues": {
+      "active": "Aktív",
+      "inactive": "Inaktív",
+      "contested": "Vitatott",
+      "decommissioned": "Leszerelt",
+      "construction": "Építés alatt",
+      "operating": "Üzemel",
+      "planned": "Tervezett",
+      "producing": "Termelő",
+      "development": "Fejlesztés alatt",
+      "exploration": "Kutatás",
+      "unknown": "Ismeretlen",
+      "deployed": "Bevetésen",
+      "underway": "Úton",
+      "inPort": "Kikötőben",
+      "oil": "Olaj",
+      "gas": "Gáz",
+      "products": "Termékek",
+      "protest": "Tüntetés",
+      "riot": "Zavargás",
+      "strike": "Sztrájk",
+      "demonstration": "Demonstráció",
+      "civilUnrest": "Polgári zavargás",
+      "c2Server": "C2-szerver",
+      "malwareHost": "Kártevőt tároló gép",
+      "phishing": "Adathalászat",
+      "maliciousUrl": "Kártékony URL",
+      "operational": "Üzemel",
+      "reduced": "Csökkentett",
+      "offline": "Üzemen kívül",
+      "disputed": "Vitatott"
+    },
+    "aptTactics": {
+      "reconnaissance": "Felderítés",
+      "resourceDevelopment": "Erőforrás-fejlesztés",
+      "initialAccess": "Kezdeti hozzáférés",
+      "execution": "Végrehajtás",
+      "persistence": "Megtelepedés",
+      "privilegeEscalation": "Jogosultság-kiterjesztés",
+      "defenseEvasion": "Védelem kijátszása",
+      "credentialAccess": "Hitelesítő adatok megszerzése",
+      "discovery": "Feltérképezés",
+      "lateralMovement": "Oldalirányú mozgás",
+      "collection": "Adatgyűjtés",
+      "commandAndControl": "Vezérlés és irányítás",
+      "exfiltration": "Adatkiszivárogtatás",
+      "impact": "Hatás"
+    },
+    "aptSectors": {
+      "government": "Kormányzat",
+      "finance": "Pénzügy",
+      "defense": "Védelem",
+      "healthcare": "Egészségügy",
+      "military": "Hadsereg",
+      "technology": "Technológia",
+      "manufacturing": "Gyártás",
+      "energy": "Energia",
+      "telecommunications": "Távközlés",
+      "media": "Média",
+      "ngo": "Civil szervezetek",
+      "diplomatic": "Diplomácia",
+      "criticalInfrastructure": "Kritikus infrastruktúra",
+      "research": "Kutatás",
+      "banking": "Bankszektor",
+      "aerospace": "Repülő- és űripar",
+      "civilSociety": "Civil társadalom",
+      "aviation": "Légi közlekedés",
+      "hospitality": "Vendéglátás",
+      "cryptocurrency": "Kriptovaluta",
+      "retail": "Kiskereskedelem",
+      "thinkTanks": "Agytrösztök",
+      "education": "Oktatás",
+      "telecoms": "Távközlés",
+      "oilAndGas": "Olaj és gáz",
+      "academia": "Felsőoktatás",
+      "transportation": "Közlekedés",
+      "humanRights": "Emberi jogok",
+      "pharmaceutical": "Gyógyszeripar",
+      "dissidents": "Disszidensek",
+      "journalists": "Újságírók",
+      "business": "Üzleti szféra",
+      "engineering": "Mérnöki szolgáltatások",
+      "utilities": "Közművek",
+      "gaming": "Játékipar",
+      "embassies": "Nagykövetségek",
+      "legal": "Jog",
+      "construction": "Építőipar",
+      "mining": "Bányászat",
+      "petroleum": "Kőolaj",
+      "insurance": "Biztosítás",
+      "travel": "Utazás",
+      "maritime": "Tengerhajózás",
+      "chemical": "Vegyipar",
+      "financial": "Pénzügyi szolgáltatások",
+      "lawEnforcement": "Bűnüldözés",
+      "electricUtilities": "Áramszolgáltatók",
+      "managedServiceProviders": "Menedzselt szolgáltatók",
+      "satellite": "Műholdak",
+      "lawFirms": "Ügyvédi irodák",
+      "navalDefense": "Haditengerészeti védelem",
+      "defenseContractors": "Védelmi beszállítók",
+      "water": "Víz",
+      "religious": "Vallási csoportok",
+      "unBodies": "ENSZ-szervek",
+      "supplyChain": "Ellátási lánc",
+      "itServices": "IT-szolgáltatások",
+      "electronics": "Elektronika",
+      "biotechnology": "Biotechnológia",
+      "industrialChemistry": "Ipari vegyészet",
+      "digitalCertificates": "Digitális tanúsítványok",
+      "semiconductor": "Félvezetők",
+      "airline": "Légitársaság",
+      "gambling": "Szerencsejáték",
+      "tradePolicy": "Kereskedelempolitika",
+      "foreignAffairs": "Külügyek",
+      "automobile": "Autóipar",
+      "politicalOrganizations": "Politikai szervezetek",
+      "cloud": "Felhő",
+      "general": "Általános",
+      "minorityGroups": "Kisebbségi csoportok",
+      "nuclearResearch": "Nukleáris kutatás",
+      "defectors": "Disszidensek",
+      "financialInstitutions": "Pénzügyi intézmények",
+      "swiftNetwork": "SWIFT-hálózat",
+      "petrochemical": "Petrolkémia",
+      "airlines": "Légitársaságok",
+      "politicalOpposition": "Politikai ellenzék",
+      "activists": "Aktivisták",
+      "police": "Rendőrség",
+      "intelligence": "Hírszerzés",
+      "businessExecutives": "Cégvezetők",
+      "automotive": "Gépjárműipar",
+      "restaurant": "Vendéglátás",
+      "paymentSystems": "Fizetési rendszerek",
+      "cardProcessing": "Kártyafeldolgozás",
+      "remoteBanking": "Távoli bankolás",
+      "naturalResources": "Természeti erőforrások",
+      "industrial": "Ipar",
+      "cybersecurity": "Kiberbiztonság",
+      "fintech": "Fintech",
+      "investment": "Befektetések",
+      "containerInfrastructure": "Konténer-infrastruktúra"
+    },
+    "compass": {
+      "n": "északra",
+      "ne": "északkeletre",
+      "e": "keletre",
+      "se": "délkeletre",
+      "s": "délre",
+      "sw": "délnyugatra",
+      "w": "nyugatra",
+      "nw": "északnyugatra",
+      "nne": "észak-északkeletre",
+      "ene": "kelet-északkeletre",
+      "ese": "kelet-délkeletre",
+      "sse": "dél-délkeletre",
+      "ssw": "dél-délnyugatra",
+      "wsw": "nyugat-délnyugatra",
+      "wnw": "nyugat-északnyugatra",
+      "nnw": "észak-északnyugatra"
+    },
+    "mapPopup": {
+      "noSectorData": "Nincs ágazati adat",
+      "disruption": "Zavar",
+      "warRisk": "Háborús kockázat",
+      "warZone": "Háborús övezet",
+      "historicalProfile": "Történeti profil",
+      "noData": "Nincs adat",
+      "coverageUnavailable": "Nincs lefedettség",
+      "targets": "Célpontok",
+      "listSeparator": ", ",
+      "radiation": {
+        "confirmed": "Megerősítve",
+        "conflictingSources": "Ellentmondó források",
+        "cpmDerived": "CPM-ből számított összetevő",
+        "reading": "Mért érték",
+        "baseline": "Alapérték",
+        "delta": "Eltérés",
+        "confidence": "Megbízhatóság",
+        "sources": "Források",
+        "sourceCount": "Források száma"
+      },
+      "history": {
+        "conflictSince": "Konfliktus kezdete",
+        "peaceAgreements": "Békemegállapodások",
+        "recordedFatalities": "Rögzített halálos áldozatok",
+        "totalFatalities": "Összes halálos áldozat",
+        "operationalSince": "Üzemel ekkortól",
+        "treaties": "Szerződések",
+        "iaeaStatus": "NAÜ-státusz",
+        "keyEvents": "Főbb események"
+      },
+      "flight": {
+        "departure": "Ind.",
+        "arrival": "Érk.",
+        "bookRoute": "Útvonal foglalása",
+        "registration": "Lajstr.",
+        "model": "Típus",
+        "operator": "Üzemeltető",
+        "climb": "Emelkedés",
+        "liveData": "Élő adatok",
+        "loadingWingbits": "Wingbits élő adatok betöltése…"
+      },
+      "base": {
+        "airForce": "Légierő",
+        "naval": "Haditengerészet",
+        "nuclear": "Nukleáris",
+        "space": "Űr",
+        "training": "Kiképzés",
+        "branch": "Haderőnem",
+        "categories": "Kategóriák"
+      },
+      "waterway": {
+        "tradeSectorMix": "Kereskedelem ágazati összetétele",
+        "sectorExposure": "Ágazati kitettség",
+        "transitHistory": "Áthaladási előzmények",
+        "sectorBreakdown": "Ágazati bontás"
+      },
+      "natural": {
+        "minuteMean": "{{count}} perces átlag",
+        "windNotReported": "Szél nincs jelentve",
+        "windAverage": "Szélátlagolás",
+        "canonicalMatch": "Kanonikus egyezés",
+        "agencyIdentifier": "Ügynökségi azonosító",
+        "agencyObservations": "Ügynökségi megfigyelések"
+      },
+      "placeReports_one": "{{place}} ({{count}} jelentés)",
+      "placeReports_other": "{{place}} ({{count}} jelentés)",
+      "issuedBy": "Kiadta"
+    },
+    "weatherEvents": {
+      "911TelephoneOutage": "A 911-es segélyhívó kiesése",
+      "administrativeMessage": "Adminisztratív üzenet",
+      "airQualityAlert": "Levegőminőségi riasztás",
+      "airStagnationAdvisory": "Tájékoztatás a légköri pangásról",
+      "ashfallAdvisory": "Tájékoztatás hamuhullásról",
+      "ashfallWarning": "Figyelmeztetés hamuhullásra",
+      "avalancheAdvisory": "Lavinatájékoztatás",
+      "avalancheWarning": "Lavinafigyelmeztetés",
+      "avalancheWatch": "Lavinaelőrejelzés",
+      "beachHazardsStatement": "Tájékoztatás a strandveszélyekről",
+      "blizzardWarning": "Hóviharfigyelmeztetés",
+      "blowingDustAdvisory": "Tájékoztatás porfúvásról",
+      "blowingDustWarning": "Figyelmeztetés porfúvásra",
+      "blueAlert": "Blue Alert (rendőrségi körözés)",
+      "briskWindAdvisory": "Tájékoztatás élénk szélről",
+      "childAbductionEmergency": "Vészhelyzet: gyermekrablás",
+      "civilDangerWarning": "Figyelmeztetés polgári veszélyre",
+      "civilEmergencyMessage": "Polgári vészhelyzeti üzenet",
+      "coastalFloodAdvisory": "Tájékoztatás parti árvízről",
+      "coastalFloodStatement": "Közlemény parti árvízről",
+      "coastalFloodWarning": "Figyelmeztetés parti árvízre",
+      "coastalFloodWatch": "Előrejelzés parti árvízre",
+      "coldWeatherAdvisory": "Tájékoztatás hideg időről",
+      "denseFogAdvisory": "Tájékoztatás sűrű ködről",
+      "denseSmokeAdvisory": "Tájékoztatás sűrű füstről",
+      "dustAdvisory": "Portájékoztatás",
+      "dustStormWarning": "Porviharfigyelmeztetés",
+      "earthquakeWarning": "Földrengés-figyelmeztetés",
+      "evacuationImmediate": "Azonnali kiürítés",
+      "extremeHeatWarning": "Figyelmeztetés extrém hőségre",
+      "extremeHeatWatch": "Előrejelzés extrém hőségre",
+      "extremeColdWarning": "Figyelmeztetés extrém hidegre",
+      "extremeColdWatch": "Előrejelzés extrém hidegre",
+      "extremeFireDanger": "Rendkívüli tűzveszély",
+      "extremeWindWarning": "Figyelmeztetés extrém szélre",
+      "fireWarning": "Tűzfigyelmeztetés",
+      "fireWeatherWatch": "Előrejelzés tűzveszélyes időjárásra",
+      "flashFloodStatement": "Közlemény villámárvízről",
+      "flashFloodWarning": "Figyelmeztetés villámárvízre",
+      "flashFloodWatch": "Előrejelzés villámárvízre",
+      "floodAdvisory": "Árvízi tájékoztatás",
+      "floodStatement": "Árvízi közlemény",
+      "floodWarning": "Árvízi figyelmeztetés",
+      "floodWatch": "Árvízi előrejelzés",
+      "freezeWarning": "Fagyfigyelmeztetés",
+      "freezeWatch": "Fagyelőrejelzés",
+      "freezingFogAdvisory": "Tájékoztatás zúzmarás ködről",
+      "freezingSprayAdvisory": "Tájékoztatás fagyó vízpermetről",
+      "frostAdvisory": "Talajmenti fagy tájékoztatás",
+      "galeWarning": "Viharos szél figyelmeztetés",
+      "galeWatch": "Viharos szél előrejelzés",
+      "hazardousMaterialsWarning": "Figyelmeztetés veszélyes anyagokra",
+      "hazardousSeasWarning": "Figyelmeztetés veszélyes tengerre",
+      "hazardousSeasWatch": "Előrejelzés veszélyes tengerre",
+      "hazardousWeatherOutlook": "Veszélyes időjárás kilátásai",
+      "heatAdvisory": "Hőségtájékoztatás",
+      "heavyFreezingSprayWarning": "Figyelmeztetés erős fagyó vízpermetre",
+      "heavyFreezingSprayWatch": "Előrejelzés erős fagyó vízpermetre",
+      "highSurfAdvisory": "Tájékoztatás magas hullámverésről",
+      "highSurfWarning": "Figyelmeztetés magas hullámverésre",
+      "highWindWarning": "Figyelmeztetés erős szélre",
+      "highWindWatch": "Előrejelzés erős szélre",
+      "hurricaneForceWindWarning": "Figyelmeztetés orkán erejű szélre",
+      "hurricaneForceWindWatch": "Előrejelzés orkán erejű szélre",
+      "hurricaneWarning": "Hurrikánfigyelmeztetés",
+      "hurricaneWatch": "Hurrikánelőrejelzés",
+      "hydrologicOutlook": "Hidrológiai kilátások",
+      "iceStormWarning": "Ónos esős vihar figyelmeztetés",
+      "lakeEffectSnowWarning": "Figyelmeztetés tóhatású havazásra",
+      "lakeWindAdvisory": "Tájékoztatás tavi szélről",
+      "lakeshoreFloodAdvisory": "Tájékoztatás tóparti árvízről",
+      "lakeshoreFloodStatement": "Közlemény tóparti árvízről",
+      "lakeshoreFloodWarning": "Figyelmeztetés tóparti árvízre",
+      "lakeshoreFloodWatch": "Előrejelzés tóparti árvízre",
+      "lawEnforcementWarning": "Rendőrségi figyelmeztetés",
+      "localAreaEmergency": "Helyi vészhelyzet",
+      "lowWaterAdvisory": "Alacsony vízállás tájékoztatás",
+      "marineWeatherStatement": "Tengeri időjárási közlemény",
+      "nuclearPowerPlantWarning": "Atomerőmű-figyelmeztetés",
+      "radiologicalHazardWarning": "Figyelmeztetés radiológiai veszélyre",
+      "redFlagWarning": "Figyelmeztetés magas tűzveszélyre",
+      "ripCurrentStatement": "Közlemény visszaáramlásokról",
+      "severeThunderstormWarning": "Figyelmeztetés heves zivatarra",
+      "severeThunderstormWatch": "Előrejelzés heves zivatarra",
+      "severeWeatherStatement": "Közlemény ítéletidőről",
+      "shelterInPlaceWarning": "Figyelmeztetés: maradjon fedett helyen",
+      "shortTermForecast": "Rövid távú előrejelzés",
+      "smallCraftAdvisory": "Tájékoztatás kishajóknak",
+      "snowSquallWarning": "Figyelmeztetés hózáporra",
+      "specialMarineWarning": "Különleges tengeri figyelmeztetés",
+      "specialWeatherStatement": "Különleges időjárási közlemény",
+      "stormSurgeWarning": "Viharos dagály figyelmeztetés",
+      "stormSurgeWatch": "Viharos dagály előrejelzés",
+      "stormWarning": "Viharfigyelmeztetés",
+      "stormWatch": "Viharelőrejelzés",
+      "test": "Teszt",
+      "tornadoWarning": "Tornádófigyelmeztetés",
+      "tornadoWatch": "Tornádóelőrejelzés",
+      "tropicalCycloneLocalStatement": "Helyi közlemény trópusi ciklonról",
+      "tropicalStormWarning": "Trópusi vihar figyelmeztetés",
+      "tropicalStormWatch": "Trópusi vihar előrejelzés",
+      "tsunamiAdvisory": "Cunamitájékoztatás",
+      "tsunamiWarning": "Cunamifigyelmeztetés",
+      "tsunamiWatch": "Cunamielőrejelzés",
+      "typhoonWarning": "Tájfunfigyelmeztetés",
+      "typhoonWatch": "Tájfunelőrejelzés",
+      "volcanoWarning": "Vulkánfigyelmeztetés",
+      "windAdvisory": "Széltájékoztatás",
+      "winterStormWarning": "Téli vihar figyelmeztetés",
+      "winterStormWatch": "Téli vihar előrejelzés",
+      "winterWeatherAdvisory": "Téli időjárás tájékoztatás",
+      "arcticOutflowWarning": "Figyelmeztetés sarkvidéki hidegbetörésre",
+      "blowingSnowAdvisory": "Tájékoztatás hófúvásról",
+      "flashFreezeWarning": "Figyelmeztetés hirtelen ónosodásra",
+      "fogAdvisory": "Ködtájékoztatás",
+      "freezingDrizzleAdvisory": "Tájékoztatás ónos szitálásról",
+      "freezingRainWarning": "Figyelmeztetés ónos esőre",
+      "heatWarning": "Hőségfigyelmeztetés",
+      "airQualityWarning": "Levegőminőségi figyelmeztetés",
+      "airQualityAdvisory": "Levegőminőségi tájékoztatás",
+      "specialAirQualityStatement": "Különleges közlemény a levegőminőségről",
+      "rainfallWarning": "Figyelmeztetés felhőszakadásra",
+      "snowfallWarning": "Havazásfigyelmeztetés",
+      "snowSquallWatch": "Előrejelzés hózáporra",
+      "squallWarning": "Széllökés-figyelmeztetés",
+      "weatherAdvisory": "Időjárási tájékoztatás",
+      "weatherWarning": "Időjárási figyelmeztetés",
+      "windWarning": "Szélfigyelmeztetés",
+      "imdCoastalBulletin": "IMD parti jelentés",
+      "imdSeaAreaBulletin": "IMD tengeri körzeti jelentés",
+      "forestFire": "Erdőtűz",
+      "forestFireWarning": "Erdőtűz-figyelmeztetés",
+      "gale": "Viharos szél",
+      "wind": "Szél",
+      "fog": "Köd",
+      "denseFog": "Sűrű köd",
+      "roadIceAndSnow": "Jég és hó az utakon",
+      "riverineFlood": "Folyami árvíz",
+      "thunderstorm": "Zivatar",
+      "severeThunderstorms": "Heves zivatarok",
+      "otherDangers": "Egyéb veszélyek",
+      "freezingRainIcing": "Ónos eső, jegesedés",
+      "freezingRain": "Ónos eső",
+      "landslideWarning": "Földcsuszamlás-figyelmeztetés",
+      "rain": "Eső",
+      "lightRain": "Gyenge eső",
+      "heavyRain": "Heves eső",
+      "moderateRainWarning": "Figyelmeztetés mérsékelt esőre",
+      "severeRainWarning": "Figyelmeztetés erős esőre",
+      "moderateThunderstormWarning": "Figyelmeztetés mérsékelt zivatarra",
+      "yellowWindWarning": "Sárga figyelmeztetés szélre",
+      "orangeWindWarning": "Narancs figyelmeztetés szélre",
+      "yellowThunderstormWarning": "Sárga figyelmeztetés zivatarra",
+      "yellowRainWarning": "Sárga figyelmeztetés esőre",
+      "orangeRainWarning": "Narancs figyelmeztetés esőre",
+      "extremeHeat": "Extrém hőség",
+      "icyRoad": "Jeges út",
+      "drought": "Aszály",
+      "snow": "Hó",
+      "haze": "Párásság",
+      "rainstorm": "Esővihar",
+      "severeWeatherWarning": "Ítéletidő-figyelmeztetés",
+      "yellowWarning": "Sárga figyelmeztetés",
+      "orangeWarning": "Narancs figyelmeztetés",
+      "redWarning": "Piros figyelmeztetés"
+    },
+    "displacement": {
+      "event": "Esemény",
+      "cause": "Ok",
+      "date": "Dátum",
+      "operation": "Művelet",
+      "reportDate": "Jelentés dátuma",
+      "measure": "Mérőszám",
+      "kinds": {
+        "outflow": "Kiáramlás",
+        "return": "Visszatérők",
+        "arrival": "Érkezők",
+        "death": "Halálesetek",
+        "encounter": "Határon rögzített esetek"
+      }
+    }
   },
   "signals": {
     "context": {
@@ -3844,7 +4535,7 @@
     "retry": "Újra próbálás",
     "refresh": "Frissítés",
     "all": "Összes",
-    "dismiss": "Dismiss"
+    "dismiss": "Bezárás"
   },
   "connectivity": {
     "offlineCached": "Offline — {{freshness}} időpontjából származó gyorsítótárazott adatok megjelenítése.",
@@ -3859,7 +4550,6 @@
     "dataAndCommunity": "Adatok és közösség",
     "theme": "Téma",
     "themeDesc": "Automatikusan követi a rendszer beállítását.",
-    "themeAuto": "Automatikus (rendszerbeállítás követése)",
     "themeDark": "Sötét",
     "themeLight": "Világos",
     "mapProvider": "Térképcsempe-szolgáltató",
@@ -3873,7 +4563,48 @@
     "fontMono": "Monospace",
     "fontSystem": "Rendszer alapértelmezés",
     "panelFontScale": "Szövegméret",
-    "followGlobalFontScale": "Globális beállítás használata"
+    "followGlobalFontScale": "Globális beállítás használata",
+    "selfHostKey": {
+      "heading": "Asztal kulcs",
+      "description": "Oldja fel a Pro verzióját ezen az irányítópulton az Ön saját asztal kulcsával. Hozzon létre egyet a worldmonitor.app oldalon a Beállítások → API kulcsok → Asztal kulcs létrehozása menüpontban.",
+      "relay": "A kulcs erre a telepítésre szállító szerverhez kerül, amely továbbítja a Pro kéréseket a World Monitornak. A használat az Ön fiókjának asztal kulcs kvótájára számít, ugyanúgy, mint az asztali alkalmazás esetén.",
+      "trust": "Ha valaki más üzemelteti ezt a telepítést, hozzon létre ehhez egy külön asztal kulcsot. Azt bármikor visszavonhatja a worldmonitor.app oldalon.",
+      "inputLabel": "Asztal kulcs",
+      "placeholder": "wm_…",
+      "save": "Kulcs mentése",
+      "saving": "Ellenőrzés…",
+      "remove": "Kulcs eltávolítása",
+      "removing": "Eltávolítás…",
+      "empty": "Adjon meg egy asztal kulcsot.",
+      "saveFailed": "A kulcs nem menthető. Próbálja újra.",
+      "removeFailed": "A kulcs nem távolítható el. Próbálja újra.",
+      "rateLimited": "Túl sok kísérlet. Próbálja újra {{seconds}} másodperc múlva.",
+      "rateLimitedSoon": "Túl sok kísérlet. Próbálja újra egy perc múlva.",
+      "insecure": "Ez az oldal nem használ HTTPS-t, ezért a kulcs titkosítatlanul halad át a hálózaton.",
+      "insecureConfirm": "Ez az oldal nem használ HTTPS-t, ezért a kulcs titkosítatlanul halad át a hálózaton. Csak megbízható hálózaton küldje el.",
+      "insecureConfirmButton": "Kulcs küldése",
+      "staleNote": "Az utolsó ellenőrzés nem tudta elérni a World Monitort.",
+      "disabled": "A telepítés üzemeltetője letiltotta az asztal kulcsokat.",
+      "state": {
+        "none": "Nincs kulcs",
+        "active": "Aktív",
+        "invalid": "Nem érvényes",
+        "not_desktop_key": "Nem asztal kulcs",
+        "over_cap": "Meghaladta a kulcs korlátot",
+        "lapsed": "Csomag nem aktív",
+        "unavailable": "Nem lehetett ellenőrizni",
+        "disabled": "Letiltva"
+      },
+      "detail": {
+        "none": "Nincs kulcs mentve ebben a böngészőben.",
+        "active": "A Pro verzió feloldva van ebben a böngészőben.",
+        "invalid": "Ez a kulcs nem érvényes vagy visszavonásra került.",
+        "not_desktop_key": "Ez egy API kulcs. Helyette asztal kulcsot használjon.",
+        "over_cap": "A fiók több asztal kulccsal rendelkezik, mint amit a csomagja megenged. Vonjon vissza egyet a worldmonitor.app oldalon.",
+        "lapsed": "A fiók Pro csomagja nem aktív.",
+        "unavailable": "Nem lehetett elérni a World Monitort a kulcs ellenőrzéséhez. Próbálja újra később."
+      }
+    }
   },
   "premium": {
     "pro": "PRO",
@@ -3893,12 +4624,16 @@
   },
   "contextMenu": {
     "openCountryBrief": "Országbeszámoló megnyitása",
-    "copyCoordinates": "Koordináták másolása"
+    "copyCoordinates": "Koordináták másolása",
+    "satellitePasses": "Műholdas áthaladások itt",
+    "imageryEvidenceHere": "Képi bizonyíték itt"
   },
   "auth": {
     "signIn": "Bejelentkezés",
     "createAccount": "Fiók létrehozása",
+    "freeReason": "Ingyenes: elrendezés mentése, országok követése, riasztások",
     "settings": "Beállítások",
+    "planBilling": "Csomag és számlázás",
     "passkeyOffer": {}
   },
   "mcp": {
@@ -3942,7 +4677,17 @@
     "renameHint": "{{name}} — dupla kattintás az átnevezéshez",
     "deleteTab": "Fül törlése",
     "deleteTabAria": "{{name}} fül törlése",
-    "tabNameAria": "Fül neve"
+    "tabNameAria": "Fül neve",
+    "addTabTitleSaved": "Új fül (az elmentett panelek alapján indít)",
+    "newTabOptions": "Új fül beállításai",
+    "newTabStartsDefault": "Az új fülek az alapértelmezett panelek alapján indulnak.",
+    "newTabStartsSaved": "Az új fülek az elmentett panelek alapján indulnak.",
+    "newTabOptionsHint": "A meglévő fülek nem változnak.",
+    "useThisTabPanels": "E fül paneljeit használja",
+    "useDefaultPanels": "Az alapértelmezett panelek használata",
+    "newTabPanelsNotSaved": "Nem sikerült menteni. A böngésző letiltotta a webhelytárolást.",
+    "team": "Csapat",
+    "teamDashboards": "Csapat-irányítópultok"
   },
   "theaterPresets": {
     "label": "Lefedettségi csomagok",
@@ -4035,6 +4780,21 @@
         "related": {
           "0": "Kína aktivitási nowcast",
           "1": "Országösszefoglaló"
+        }
+      },
+      "reservoirLevels": {
+        "category": "Éghajlat",
+        "purpose": "Megjelöli a stratégiai víztározókat és tavakat aszerint, hogyan viszonyul vízszintjük az évszakra jellemző szinthez, és milyen gyorsan változik.",
+        "source": "Szárazföldi vizek felszínmagassága a NASA ICESat-2 ATL13 adataiból az NSIDC-n keresztül, a SlideRule Earth feldolgozásával, műholdas áthaladásonként összesítve a seed-reservoir-levels szolgáltatással.",
+        "freshness": "Naponta frissül. A NASA minden áthaladást 50–70 nappal a mérés után tesz közzé, és egy tározót néhány naponta vagy nagyjából havonta mérnek újra.",
+        "confidence": "Egy áthaladás csak akkor számít, ha legalább 5 vízszakasz 0,25 m-en belül egyezik. Az évszakos összevetéshez legalább 3 korábbi év azonos időszakából kellenek áthaladások.",
+        "limitations": {
+          "0": "Csak vízszint, nem térfogat: ugyanaz a csökkenés minden tározóban más készletveszteséget jelent.",
+          "1": "Ha egy víztestnél 150 napja nem volt áthaladás, „nincs friss áthaladás” jelölést kap; az utolsó értéke, a változások és a dátum továbbra is látszanak."
+        },
+        "related": {
+          "0": "Stratégiai vízszintek panel",
+          "1": "Éghajlati anomáliák"
         }
       },
       "conflicts": {
@@ -4211,7 +4971,7 @@
         "category": "Természeti katasztrófák",
         "purpose": "Földrengéseket, súlyos katasztrófariasztásokat és aktív földmegfigyelési eseményeket mutat a helyzet áttekintéséhez.",
         "source": "USGS-földrengések, GDACS-riasztások és NASA EONET események, a természeti események szolgáltatásában összevonva.",
-        "freshness": "A természeti események 3 óránként töltődnek fel. Az USGS-földrengéseknél a leírt várakozás nagyjából 5 perces forrásütem.",
+        "freshness": "A természeti események 30 percenként töltődnek fel. Az USGS-földrengéseknél a leírt várakozás nagyjából 5 perces forrásütem.",
         "confidence": "Erős a kimutatott nyilvános katasztrófajeleknél. A megbízhatóság a veszély típusától és a forrás jelentési késésétől függ.",
         "limitations": {
           "0": "Az alacsony súlyosságú GDACS-riasztások kiszűrődnek, hogy a térkép olvasható maradjon.",
@@ -4304,6 +5064,811 @@
     },
     "happy": {
       "map": "Jó Hírek Térképe"
+    }
+  },
+  "pwaInstall": {
+    "title": "Alkalmazás telepítése",
+    "share": "A Safariban koppintson a Megosztás ikonra (négyzet felfelé mutató nyíllal). Előfordulhat, hogy előbb a Továbbiak menüt kell megnyitnia.",
+    "add": "Válassza a Főképernyőhöz adás lehetőséget.",
+    "confirm": "Koppintson a Hozzáadás gombra, majd nyissa meg a World Monitort a főképernyőről.",
+    "close": "Bezárás",
+    "alertsHint": "Telepítse a World Monitort a főképernyőre, hogy értesítéseket kapjon ezen az iPhone-on vagy iPaden.",
+    "how": "Telepítési útmutató"
+  },
+  "teamDashboards": {
+    "desc": "A csapatod által megosztott irányítópultok. Nyiss meg egyet, és új fülként kerül a többi mellé.",
+    "empty": "A csapatod még nem osztott meg irányítópultot. Oszd meg ezt a fület, és a csapat minden tagja megkapja a paneljeit, méreteit és térképét.",
+    "open": "{{name}} megnyitása új fülön",
+    "stopSharing": "{{name}} megosztásának leállítása",
+    "confirmStop": "Leállítod a(z) {{name}} megosztását a csapattal? A belőle már megnyitott fülek változatlanok maradnak.",
+    "shareTab": "Oszd meg ezt a fület a csapattal",
+    "shareChanges": "Oszd meg a fül módosításait a csapattal",
+    "behind": "A csapat megváltoztatta ezt az irányítópultot, miután megnyitottad.",
+    "getLatest": "Legújabb verzió letöltése",
+    "opened": "{{name}} megnyitva a csapattól.",
+    "shared": "{{name}} megosztva a csapattal.",
+    "updated": "Ez a fül most a csapat legújabb verzióját tartalmazza.",
+    "stopped": "{{name}} megosztása leállítva.",
+    "failed": "Nem sikerült elérni a csapat irányítópultjait. Próbáld újra.",
+    "limit": "A csapat már {{limit}} irányítópultot oszt meg itt. Előbb állítsd le az egyik megosztását.",
+    "focusNotEntitled": "Az Ön csomagja nem tartalmazza a fókuszált irányítópult megosztásának lehetőségét. Törölje ennek a lapnak a fókuszát a panelek megosztásához.",
+    "focusUnreadable": "{{name}} olyan fókusszal rendelkezik, amelyet ez a verzió nem tud megjeleníteni. Frissítse az oldalt a frissítéshez, majd nyissa meg újra."
+  },
+  "focus": {
+    "barLabel": "Fókusz",
+    "summary": "Fókuszálva erre: {{countries}}",
+    "neighboursOff": "Szomszédok nem szerepelnek",
+    "chosenLabel": "Kiválasztott",
+    "neighboursLabel": "Szomszédok",
+    "neighbourItem": "Szomszéd: {{name}}",
+    "range": "{{start}} – {{end}}",
+    "windowEnded": "Időablak vége: {{date}}",
+    "windowStarts": "Kezdete: {{date}}",
+    "windowUntil": "Időablak vége: {{date}}",
+    "windowFrom": "Kezdete: {{date}}",
+    "edit": "Szerkesztés",
+    "clear": "Törlés",
+    "clearAria": "Törölje a fókuszt és jelenítse meg az egész világot",
+    "clearFocus": "Fókusz törlése",
+    "notFiltered": "Nincs szűrve",
+    "notFilteredGlobal": "Globális adatok: nem szűrve ország szerint",
+    "notFilteredYet": "Még nem szűrve ország szerint",
+    "gateSignedOutDesc": "Jelentkezzen be egy irányítópult-lap fókuszálásához az Ön által lefedett országokra.",
+    "gateUpgradeDesc": "A lap fókuszálása kiválasztott országokra Pro Business, API Business és Enterprise csomagban érhető el.",
+    "gateUpgradeCta": "Frissítés",
+    "tabButton": "Fókusz",
+    "tabButtonTitle": "Ennek a lapnak a fókuszálása a kiválasztott országokra",
+    "tabButtonTitleActive": "Ennek a lapnak a fókuszának szerkesztése",
+    "newTitle": "Lap fókuszálása",
+    "editTitle": "Fókusz szerkesztése",
+    "intro": "Az ország szerint szűrhető panelek csak ezeket az országokat mutatják. A többiek azt jelzik: „Nincs szűrve\".",
+    "countriesLabel": "Országok",
+    "count": "{{n}} / {{max}}",
+    "searchPlaceholder": "Országok keresése",
+    "resultsLabel": "Megegyező országok",
+    "limitReached": "{{max}} országot választott ki, amely a maximális a fókuszban.",
+    "removeCountry": "{{name}} eltávolítása",
+    "includeNeighbours": "Szomszéd országok bevonása",
+    "neighboursHint": "A kockázat átlépi a határokat. A szomszédok így jelölve vannak, és nem számítanak bele a {{max}} országba.",
+    "startLabel": "Ettől (nem kötelező)",
+    "endLabel": "Eddig (nem kötelező)",
+    "datesHint": "Utazáshoz vagy feladathoz. Amikor az időablak vége érkezik, a fókusz megmarad, és a sáv ezt jelzi.",
+    "errorNoCountries": "Válasszon legalább egy országot.",
+    "errorTooMany": "A fókusz legfeljebb {{max}} országot tartalmazhat.",
+    "errorDates": "A befejezési dátum a kezdési dátum előtt van.",
+    "save": "Mentés",
+    "cancel": "Mégse",
+    "saved": "Ez a lap fókusza: {{countries}}.",
+    "cleared": "Fókusz törölve. Ez a lap a világot mutatja.",
+    "notSaved": "Nem sikerült menteni. A böngésző blokkolja az oldal tárolását.",
+    "plusNeighbours_one": "+ {{count}} szomszéd",
+    "plusNeighbours_other": "+ {{count}} szomszéd",
+    "filter": {
+      "showing": "{{countries}} megjelenítése",
+      "showingNeighbours": "{{countries}} + szomszédos országok megjelenítése",
+      "showAll": "Összes megjelenítése",
+      "focusOff": "Fókusz ki ebben a panelben: minden megjelenik",
+      "applyFocus": "Fókusz alkalmazása",
+      "applyFocusAria": "Panel szűrése a fókuszra újra",
+      "show": "Megjelenítés",
+      "hide": "Elrejtés",
+      "noCountryTag": "Nincs ország",
+      "emptyHint": "Minden más fent számításba van véve.",
+      "emptyNews": "Nincs híradás ezekből az országokból az aktuális manchetekben",
+      "emptyAdvisories": "Nincsenek utazási tanácsok ezekre az országokra",
+      "emptyConflict": "Nincsenek UCDP konfliktus események ezekre az országokra",
+      "emptyConflictPartial": "Nincsenek konfliktus események ezekre az országokra az utolsó események között. A teljes lista nem töltődött be.",
+      "loadingConflict": "Összes konfliktus esemény betöltése ezekre az országokra…",
+      "emptyAirports": "A megfigyelt repülőterek közül egyik sem található ezekben az országokban",
+      "emptyFlights": "Nincsenek járatok ezekből vagy ezekbe az országokba ezen a táblán",
+      "emptyAviationNews": "Nincsenek repülési hírek ezekre az országokra az utolsó 24 órában",
+      "tabNotFiltered": "Ez a fül nincs szűrve ország szerint",
+      "hidden_one": "{{count}} elrejtve a fókusz által",
+      "hidden_other": "{{count}} elrejtve a fókusz által",
+      "showAllAria_one": "Minden megjelenítése ebben a panelben, beleértve {{count}} elemet a fókuszon kívülről",
+      "showAllAria_other": "Minden megjelenítése ebben a panelben, beleértve {{count}} elemet a fókuszon kívülről",
+      "unattributed_one": "{{count}} elem ország nélkül",
+      "unattributed_other": "{{count}} elem ország nélkül",
+      "showUnattributedAria_one": "{{count}} elem megjelenítése ország nélkül",
+      "showUnattributedAria_other": "{{count}} elem megjelenítése ország nélkül",
+      "hideUnattributedAria_one": "{{count}} elem elrejtése ország nélkül",
+      "hideUnattributedAria_other": "{{count}} elem elrejtése ország nélkül",
+      "partialConflict": "Konfliktusesemények jelenítve meg a legutóbbi 150-ből. A teljes lista nem töltődött be.",
+      "partialConflictLoading": "Konfliktusesemények megjelenítése az utolsó 150-ből, miközben a teljes lista betöltődik.",
+      "emptyInstability": "Nincs stabilitási pontszám ezekhez az országokhoz",
+      "emptyOutbreaks": "Nincs megbetegedési kitörés ezekhez az országokhoz",
+      "emptyOutages": "Nincs internetszünet ezekhez az országokhoz",
+      "emptyRadiation": "Nincs sugárzási érték ezekhez az országokhoz",
+      "emptyFuelShortages": "Nincs üzemanyaghiány ezekhez az országokhoz",
+      "emptyEnergyDisruptions": "Nincs energiaszünet ezekhez az országokhoz",
+      "emptyDisplacement": "Nincs menekültadatok ezekhez az országokhoz",
+      "emptyCorrelation": "Nincs szignál ezekhez az országokhoz",
+      "emptyExposure": "Nincsenek lakossági kitettségi helyszínek ezekben az országokban",
+      "emptyExposurePartial": "A rendelkezésre álló adatokban nincsenek kitettségi helyszínek ezekhez az országokhoz. A teljes UCDP-lefedettség még függőben van.",
+      "partialExposureLoading": "Az összes UCDP-helyszín betöltése a kitettség szűrése előtt. A lefedettségi számok csak a zavargásokat tartalmazzák.",
+      "partialExposure": "Nem sikerült betölteni az összes UCDP-helyszínt. A kitettségi adatok hiányosak; a lefedettségi számok csak a zavargásokat tartalmazzák."
+    },
+    "draftAssessment": "Utazási értékelés",
+    "draftAssessmentAria": "Az utazási értékelés megnyitása, amely ezzel a fókusszal van kitöltve",
+    "draftCopied": "Kérés másolva. Illessze be az AI asszisztensébe.",
+    "draftCopiedPartial": "A kérés az első {{count}} országra lett másolva. Egy értékelés legfeljebb {{max}} országot fed le. Kihagyva: {{omitted}}.",
+    "draftCopyFailed": "A kérés másolása nem sikerült."
+  },
+  "tripAssessment": {
+    "heading": "Utazási értékelés",
+    "intro": "Egy forrásolt első változat az utazási kockázat értékeléséről, amelyet az elemzőnek kell befejezni. Azt jelenti, hogy az adatok milyen információt tartalmaznak, tanácsot nem ad.",
+    "privacy": "Csak országok, városok és dátumok. Ne adjon meg utazó neveket, szállodákat vagy utcacímeket. A megadott információ semmilyen módon nem kerül tárolásra.",
+    "taskLabel": "Feladat címkéje (opcionális)",
+    "taskLabelPlaceholder": "Regionális helyszíni látogatások",
+    "windowStart": "Utazás kezdete",
+    "windowEnd": "Utazás vége",
+    "countriesLabel": "Országok, utazási sorrendben",
+    "count": "{{n}} a {{max}} közül",
+    "searchPlaceholder": "Ország hozzáadása",
+    "addCountry": "Ország hozzáadása az utazáshoz",
+    "limit": "Egy utazás legfeljebb {{max}} országot tartalmazhat.",
+    "omitted": "Kihagyva, mert egy utazás legfeljebb {{max}} országot tartalmazhat: {{names}}.",
+    "cities": "Városok, vesszővel elválasztva (max. {{max}})",
+    "arrive": "Érkezés",
+    "depart": "Indulás",
+    "moveEarlier": "{{name}} korábbra mozgatása az utazásban",
+    "moveLater": "{{name}} később mozgatása az utazásban",
+    "remove": "{{name}} eltávolítása az utazásból",
+    "downloadMarkdown": "Letöltés Markdown formátumban",
+    "downloadWord": "Letöltés Word-hez",
+    "print": "Nyomtatás vagy mentés PDF-ként",
+    "copyRequest": "Kérés másolása AI asszisztensnek",
+    "close": "Bezárás",
+    "building": "Az első változat összeállítása a legfrissebb adatokból…",
+    "downloaded": "Letöltve: {{file}}. Minden letöltés frissen összeállított és a saját rögzítési időbélyegzővel ellátott.",
+    "printOpened": "Nyomtatási párbeszédablak megnyitva. A PDF-ként mentéshez válassza a Mentés PDF-ként lehetőséget.",
+    "errNoCountries": "Adjon hozzá legalább egy országot.",
+    "errTooMany": "Egy utazás legfeljebb {{max}} országot tartalmazhat.",
+    "errWindow": "Az utazásnak a kezdés napján vagy azt követően kell véget érnie.",
+    "errCities": "{{name}}: legfeljebb {{max}} város.",
+    "errCountryDates": "{{name}}: az indulás az érkezés napján vagy azt követően kell, hogy legyen.",
+    "errOutsideWindow": "{{name}}: a dátumok az utazási ablak időtartamán belül kell, hogy legyenek.",
+    "errInvalid": "Az első változat nem állítható össze ebből az utazásból:",
+    "errAuth": "Jelentkezzen be újra az első változat összeállításához.",
+    "errUpgrade": "Az utazási értékelés a Pro Business, API Business és Enterprise csomagokban érhető el.",
+    "errBusy": "Túl sok kérés. Próbálja újra egy perc múlva.",
+    "errUnavailable": "Az első változat mögötti adatok jelenleg nem érhetők el. Próbálja újra egy perc múlva.",
+    "errGeneric": "Az első változat nem állítható össze. Próbálja újra.",
+    "errDownload": "A fájl innen nem tölthető le. Használja a Nyomtatást vagy a PDF-ként mentést helyette.",
+    "errLoad": "Az utazási értékelés nem nyitható meg. Töltse be újra az oldalt, és próbálja újra."
+  },
+  "orbitalWatch": {
+    "track": {},
+    "replay": {},
+    "counts": {},
+    "tier": {
+      "checking": "archívum ellenőrzése",
+      "notInArchive": "nincs az archívumban",
+      "confirmed": "megerősített",
+      "likely": "valószínű",
+      "unmatchedImage": "kép számított áthaladás nélkül",
+      "weatherFrame": "időjárási felvétel",
+      "unavailable": "nem érhető el",
+      "inReach": "célozható",
+      "capability": "felvételt készíthet",
+      "inRange": "hatótávolságon belül",
+      "mosaic": "mozaik",
+      "upcoming": "közelgő"
+    },
+    "row": {
+      "offNadir": "{{deg}}° a nadírtól",
+      "distance": "{{km}} km a pályáig",
+      "orbitAge": "Pályaadatok",
+      "imageLoading": "Jelenet betöltése…",
+      "satellite": "Műhold",
+      "sensor": "Szenzor",
+      "time": "Idő",
+      "in": "Mikor",
+      "tier": "Állapot",
+      "elevation": "Eleváció",
+      "point": "Pont",
+      "pixel": "Képpont",
+      "credit": "Archívum",
+      "orbitAgeValue": "kora {{age}}"
+    },
+    "ui": {
+      "tab": {},
+      "caption": {},
+      "tile": {},
+      "grid": {},
+      "group": {},
+      "order": {},
+      "row": {},
+      "section": {},
+      "status": {},
+      "step": {}
+    },
+    "viewer": {
+      "open": "Jelenet megnyitása: {{image}}",
+      "imageAlt": "{{name}} jelenet, {{time}}",
+      "close": "Jelenetmegjelenítő bezárása",
+      "northUp": "Észak felfelé",
+      "unreferenced": "Archív tájolás; észak nincs jelölve",
+      "compareDates": "Dátumok ebben a gyűjteményben",
+      "compareNone": "Nincs második jelenet ebben a gyűjteményben.",
+      "divider": "Referencia-elválasztó",
+      "searching": "{{days}} nap archív jeleneteinek keresése",
+      "historyFailed": "A(z) {{archive}} hibát adott vissza; a régebbi jelenetek hiányoznak.",
+      "historyTimeout": "A(z) {{archive}} nem válaszolt időben; a régebbi jelenetek hiányoznak.",
+      "loading": "Betöltött képkockák: {{loaded}} / {{total}}",
+      "closeLabel": "Bezárás",
+      "agoNow": "Most",
+      "agoHours": "{{count}} órája",
+      "agoDays": "{{count}} napja",
+      "clear": "Derült",
+      "clouded": "Felhőzet {{pct}}%",
+      "tabImage": "Jelenet",
+      "tabChange": "Összehasonlítás",
+      "metaAcquired": "Felvétel",
+      "metaDate": "Dátum",
+      "metaPixel": "Pixel",
+      "metaSpot": "Felhőzet a pontban",
+      "metaScene": "Jelenet felhőzete",
+      "metaSun": "Nap magassági szöge",
+      "showCloudy": "Felhős dátumok megjelenítése ({{count}})",
+      "eventMark": "Esemény {{date}}"
+    },
+    "timelapse": {},
+    "passDetail": {
+      "dir": {},
+      "heading": {}
+    },
+    "search": {
+      "label": "Hely vagy koordináták",
+      "placeholder": "Hely vagy 25.11, 55.14",
+      "submit": "Keresés",
+      "locate": "Saját hely",
+      "hint": "A beírt koordináták és az Ön tartózkodási helye soha nem kerülnek a WorldMonitorhoz. A beírt helynevek a WorldMonitorhoz és az OpenStreetMap Nominatimhez kerülnek.",
+      "results": "Helyek",
+      "searching": "Keresés…",
+      "tooShort": "Adjon meg legalább két karaktert, vagy koordinátákat, például 25.11, 55.14.",
+      "invalidCoordinates": "A szélesség -90 és 90 között, a hosszúság -180 és 180 között kell legyen.",
+      "failed": "A helykeresés sikertelen volt. A koordináták és a térképkattintások továbbra is működnek.",
+      "noResults": "Nincs megfelelő hely.",
+      "locating": "Helymeghatározás…",
+      "locationDenied": "A helyhozzáférés megtagadva. Írjon be bármilyen helynevet, vagy kattintson jobb gombbal a térképre.",
+      "locationUnavailable": "A hely nem található. Írjon be bármilyen helynevet, vagy kattintson jobb gombbal a térképre.",
+      "idle": "Írjon be egy helynevet, használja az eszköz helyét, vagy kattintson jobb gombbal a térképre a hely képi bizonyítékainak megnyitásához."
+    },
+    "share": {
+      "copied": "Link másolva",
+      "copyManually": "Hivatkozás másolása",
+      "link": "Megosztási link",
+      "dismiss": "Bezárás",
+      "passOutsideWindow": "A linkben szereplő áthaladás kívül esik ezen az ablakon; nincs kiválasztás.",
+      "passNotFound": "A linkben szereplő áthaladás hiányzik az újraszámított listából; nincs kiválasztás."
+    },
+    "timeline": {
+      "now": "most",
+      "nowAt": "Most: {{time}}",
+      "density": "{{label}}, {{start}} – {{end}}: {{count}}",
+      "daylight": "Nappali fény itt: {{start}}–{{end}}",
+      "unavailable": "nem elérhető",
+      "notRetained": "a hírcsatorna nem őrzi meg az előzményeket",
+      "notRetainedSpan": "{{label}}: a hírcsatornának nincs előzménye {{start}} – {{end}} között",
+      "countryWide": "egész ország",
+      "source": {
+        "conflict": "Konfliktusok",
+        "fires": "Tűz",
+        "unrest": "Zavargások",
+        "outages": "Kimaradás"
+      },
+      "live": {
+        "vessels": "Hajózás",
+        "militaryFlights": "Katonai repülés",
+        "gpsJamming": "GPS-zavarás"
+      },
+      "name": "Idővonal",
+      "span": "{{days}} n vissza · {{hours}} ó előre",
+      "daylightHere": "Nappali fény a pontban",
+      "row": {
+        "images": "Képek",
+        "events": "Események",
+        "passes": "Áthaladások"
+      },
+      "retained": "előzmények {{start}} – {{end}}",
+      "retainedDay": "előzmények csak {{day}}",
+      "geoLine": "Geostacionárius nézet: {{names}}",
+      "away": "{{km}} km",
+      "densityTip_one": "{{count}} áthaladás {{start}} óta · {{names}}",
+      "densityTip_other": "{{count}} áthaladás {{start}} óta · {{names}}"
+    },
+    "satelliteSites": {
+      "heading": "Megfigyelt helyek · következő {{hours}} h",
+      "projecting": "Áthaladások kiszámítása…",
+      "notLoaded": "Kattintson ismét a műholdra; a pályaelemei nincsenek betöltve.",
+      "failed": "Kattintson ismét a műholdra az újrapróbálkozáshoz; az áthaladások kiszámítása sikertelen.",
+      "viewFailed": "Kattintson ismét a műholdra az újrapróbálkozáshoz; a helylista nem töltődött be.",
+      "unavailable": "Kattintson ismét a műholdra az újrapróbálkozáshoz; az áthaladási geometria elutasította ezeket a pályaelemeket.",
+      "signals": "Jelfelderítő műhold. Nincs képalkotó érzékelője, így a földi lefedettsége nincs modellezve.",
+      "noProfile": "Ehhez a műholdhoz nincs érzékelőprofil, így a földi lefedettsége nincs modellezve.",
+      "geostationary": "Geostacionárius: egyetlen földrajzi hosszúság felett áll, így nincsenek listázható áthaladások.",
+      "badElements": "A pályaelemek nem olvashatók.",
+      "none": "{{hours}} órán belül egyetlen megfigyelt hely sem esik a lábnyomába.",
+      "utc": "{{time}} UTC",
+      "inMinutes": "{{minutes}} perc múlva",
+      "inHours": "{{hours}} óra {{minutes}} perc múlva",
+      "offTrack": "{{km}} km-re a talajnyomtól",
+      "swathEdge": "a sáv szélén",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "Típus",
+        "operator": "Üzemeltető",
+        "over": "Felett",
+        "ocean": "Óceán",
+        "altBand": "Magassági sáv",
+        "inclination": "Hajl.",
+        "velocity": "Sebesség",
+        "types": {
+          "sar": "SAR képalkotás",
+          "optical": "Optikai képalkotás",
+          "military": "Katonai",
+          "sigint": "SIGINT",
+          "signals": "Jelfelderítés"
+        }
+      },
+      "tooOld_one": "A pályaelemek {{count}} naposak, túl régiek az áthaladások kiszámításához.",
+      "tooOld_other": "A pályaelemek {{count}} naposak, túl régiek az áthaladások kiszámításához.",
+      "count_one": "{{family}}: {{count}} megfigyelt hely a lábnyomon belül",
+      "count_other": "{{family}}: {{count}} megfigyelt hely a lábnyomon belül",
+      "passes_one": "{{count}} áthaladás",
+      "passes_other": "{{count}} áthaladás"
+    },
+    "siteSatellites": {
+      "heading": "Követett műholdak a hely felett · következő {{hours}} h",
+      "none": "Egyetlen követett képalkotó műhold sem fedi le ezt a helyet {{hours}} órán belül.",
+      "notLoaded": "Az újrapróbáláshoz nyissa meg újra a helyet; a pályaelemek nem töltődtek be.",
+      "failed": "Az újrapróbáláshoz nyissa meg újra a helyet; az áthaladások számítása sikertelen."
+    },
+    "sheet": {
+      "heading": "Képi bizonyíték",
+      "window": "Utolsó {{days}} nap, következő {{hours}} ó",
+      "apart": "Nem számolva:",
+      "newest": "legújabb {{when}}",
+      "newestNoPreview": "A legújabb felvétel {{when}} nem rendelkezik előnézettel; régebbi jelenet látható.",
+      "noneConfirmed": "Nulla megerősített kép ebben az időszakban",
+      "noneYet": "Az archívumok még feldolgozást végeznek",
+      "latest": "Legutolsó kép",
+      "latestNone": "Az archívumok nem találtak semmit erre a pontra és időszakra.",
+      "latestChecking": "Archívumkeresés folyamatban. A kiszámított áthaladások alább láthatók.",
+      "compareWith": "Összehasonlítás ezzel:",
+      "compareDate": "Referencia dátum",
+      "moreImages": "Egyéb megerősített képek",
+      "imageAlt": "{{sensor}} jelenet, {{time}}",
+      "dailyMosaic": "napi mozaik",
+      "weatherFrame": "időjárási műholdkép",
+      "change": "Hely módosítása",
+      "showUtc": "UTC",
+      "showLocal": "Helyi idő",
+      "alert": "Értesítés minden nyitott áthaladás előtt a pont fölött, és minden új felhőmentes képnél.",
+      "alertCta": "Értesítés beállítása · Pro",
+      "height": {
+        "collapsed": "Panel összecsukva. Kibontás fél magasságra",
+        "half": "Panel fél magasságon. Kibontás teljes magasságra",
+        "full": "Panel kibontva. Összecsukás"
+      },
+      "apartMosaics_one": "{{count}} napi mozaik",
+      "apartMosaics_other": "{{count}} napi mozaik",
+      "apartFrames_one": "{{count}} időjárási műholdkép",
+      "apartFrames_other": "{{count}} időjárási műholdkép",
+      "apartInRange_one": "{{count}} áthaladás hatótávolságon belül",
+      "apartInRange_other": "{{count}} áthaladás hatótávolságon belül",
+      "confirmedCount_one": "{{count}} megerősített kép",
+      "confirmedCount_other": "{{count}} megerősített kép"
+    },
+    "tierDef": {
+      "confirmed": "Az archívumban található jelenet lefedi a pontot.",
+      "likely": "A rögzített felvételi sáv lefedte a pontot; még nincs archivált jelenet.",
+      "inReach": "Egy irányítható szenzor ide célozhatott volna. A felvételi tervek nem nyilvánosak.",
+      "capability": "Nyilvános archívum nélküli szenzorosztály haladt el a pont fölött."
+    },
+    "events": {
+      "heading": "Események ezen a ponton",
+      "kindLabel": "Típus",
+      "detail": "Részlet",
+      "now": "most",
+      "loading": "Eseményhírcsatornák betöltése…",
+      "none": "Nincs esemény {{km}} km-en belül az elmúlt {{days}} napban.",
+      "unavailable": "Nem elérhető: {{sources}}",
+      "kind": {
+        "conflict": "Konfliktus",
+        "fires": "Tűz",
+        "unrest": "Zavargás",
+        "outages": "Kimaradás",
+        "vessels": "Hajózás",
+        "military-flights": "Katonai repülés",
+        "gps-jamming": "GPS-zavarás"
+      }
+    },
+    "capability": {
+      "heading": "Ki tud felvételt készíteni erről a pontról",
+      "none": "Nincs szenzor áthaladás ebben az időszakban.",
+      "tooOld": "Pályaadatok túl régiek a számításhoz: {{names}}",
+      "showAll": "Az összes megjelenítése ({{count}})",
+      "showFewer": "Kevesebb megjelenítése",
+      "group": {
+        "open": "Nyílt adat",
+        "commercial": "Kereskedelmi",
+        "government": "Kormányzati",
+        "military": "Katonai",
+        "other": "Egyéb"
+      }
+    },
+    "windows": {
+      "heading": "Következő felvételi ablakok",
+      "optical": "Nyílt optikai",
+      "radar": "Nyílt radar",
+      "none": "Nincs nyílt optikai vagy radar áthaladás {{hours}} órán belül."
+    },
+    "status": {
+      "catalog": "Műholdkatalógus betöltése…",
+      "computing": "Áthaladások számítása · {{done}} műhold {{total}} közül",
+      "checking": "Archívumok válasza: {{done}} {{total}} közül",
+      "partial": "Nincs válasz innen: {{sources}}. A számok alacsonyabbak lehetnek.",
+      "staleCatalog": "A katalógus {{age}} régi; az előre jelzett időpontok eltolódhatnak.",
+      "empty": "Egyetlen műhold sem érkezett ezen pont elérési távolságán belülre ebben az időszakban.",
+      "unavailable": "Áthaladási adatok nem érhetők el. Próbálja később."
+    },
+    "privacy": {
+      "line": "A pont csak a képarchívumokba kerül.",
+      "more": "Részletek",
+      "body": "Az áthaladásokat ez az eszköz számítja ki. A képek megkereséséhez a böngésző közvetlenül az Earth Search, a Planetary Computer, a NASA GIBS és az EUMETSAT felé küldi a pontot; a WorldMonitor nem kapja meg. Megfigyelt helyszínen a WorldMonitor a helyszín napi rekordját a helyszín azonosítója alapján kapja kérésként, nem az Ön pontja alapján. A beírt helynév a WorldMonitorhoz és az OpenStreetMap Nominatimhez kerül a megtalálásához. A megosztott hivatkozások két tizedesjegyet őriznek meg (0,01°)."
+    },
+    "sources": {
+      "heading": "Források ({{count}})",
+      "docs": "Módszer és lefedettség",
+      "conflict": "konfliktus- és zavargásesemények",
+      "fires": "tűzérzékelések",
+      "outages": "internetes kimaradás adatcsatorna",
+      "vessels": "hajópozíciók"
+    },
+    "caption": {
+      "clear": "Nincs felhőzet a pontban",
+      "clearSceneCloud": "Nincs felhőzet a pontban · a jelenet felhőzete {{pct}}%",
+      "clouded": "Felhőzet a pontban · {{pct}}%",
+      "cloudShadow": "Árnyék a pontban",
+      "spotNotChecked": "Felhőzet a pontban ismeretlen",
+      "sceneCloud": "A jelenet felhőzete {{pct}}% · a pontban ismeretlen",
+      "radar": "Radar · a felhőzet nem befolyásolja"
+    },
+    "tile": {
+      "failed": "Jelenet nem töltődött be · {{archive}}",
+      "noPreview": "Ehhez a jelenethez még nincs előnézet közzétéve",
+      "processing": "A felvétel feldolgozása még folyamatban van. Próbálja újra később.",
+      "radar": "radar"
+    },
+    "target": {
+      "acquired": "RÖGZÍTVE {{time}} · {{resolution}}"
+    },
+    "popup": {
+      "title": "Műholdképek",
+      "loading": "Műholdas archívumok ellenőrzése…",
+      "latest": "Legutóbbi felvétel",
+      "nextPass": "Következő áthaladás",
+      "noImage": "Nincs friss felvétel",
+      "noPass": "72 órán belül nincs áthaladás",
+      "openEvidence": "Bizonyítékok megnyitása",
+      "compareEvent": "Előtte / utána",
+      "compareEventLocked": "Előtte / utána · Pro",
+      "compareSearching": "Felvételek keresése {{date}} előtt és után…",
+      "compareNoAfter": "{{date}} óta még nincs tiszta felvétel.",
+      "compareNoAfterWindow": "{{date}} után {{days}} napon belül nincs tiszta felvétel.",
+      "compareNoBefore": "{{date}} előtt nincs tiszta felvétel az archív időszakban.",
+      "compareFailed": "Az archívumkeresés sikertelen. Próbálja újra.",
+      "imageAlt": "Műholdas nézet innen: {{source}}",
+      "unavailable": "A műholdképek nem töltődtek be.",
+      "fire": {
+        "title": "Műhold tűzdetektálás",
+        "detected": "Észlelve",
+        "satellite": "Műhold",
+        "confidence": "Megbízhatóság",
+        "confidenceHigh": "Magas",
+        "confidenceNominal": "Normális",
+        "confidenceLow": "Alacsony",
+        "power": "Tűz teljesítménye",
+        "powerValue": "{{value}} MW",
+        "region": "Régió",
+        "source": "Forrás",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Napi mozaik",
+        "mosaicLoading": "NASA GIBS ellenőrzése…",
+        "mosaicCaption": "A nap {{source}} áthaladásainak összeállítása {{date}} napra; a tűz felhő vagy füst alatt rejtve lehet.",
+        "mosaicNone": "A NASA GIBS nem rendelkezik {{source}} mozaikkal {{date}} napra.",
+        "mosaicNoLayer": "Ehhez a műholdhoz nincs elérhető napi mozaik.",
+        "mosaicUnavailable": "A napi mozaik nem töltődött be.",
+        "mosaicAlt": "NASA GIBS {{source}} napi mozaik {{date}} napra"
+      }
+    },
+    "site": {
+      "heading": "Megfigyelt helyszín",
+      "loading": "A helyszín napi rekordjának betöltése…",
+      "failed": "A helyszín napi rekordja nem töltődött be; nyissa meg újra a pontot az újrapróbálkozáshoz.",
+      "stale": "Ehhez a helyszínhez nincs aktuális napi ellenőrzés.",
+      "checked": "Ellenőrizve",
+      "noPass": "Nincs rögzített közelgő áthaladás",
+      "list": {
+        "hotspot": "válsággóc",
+        "conflictZone": "konfliktuszóna",
+        "militaryBase": "katonai bázis",
+        "nuclearFacility": "nukleáris létesítmény",
+        "port": "kikötő",
+        "chokepoint": "szoros",
+        "reservoir": "víztározó"
+      }
+    }
+  },
+  "settings": {
+    "back": "Vissza a beállításokhoz",
+    "signIn": {
+      "label": "Bejelentkezés",
+      "desc": "Beállítások szinkronizálása és csomag kezelése"
+    },
+    "summary": {
+      "themeAuto": "Automatikus",
+      "count": "{{on}} / {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Preferenciák",
+      "developer": "Fejlesztő",
+      "app": "Alkalmazás"
+    },
+    "sections": {
+      "account": "Fiók",
+      "map": "Térkép",
+      "ai": "Mesterséges intelligencia és elemzés",
+      "video": "Videó és streamek",
+      "apiKeys": "API-kulcsok",
+      "embeds": "Beágyazások",
+      "aiAgents": "Mesterséges intelligencia ügynökök (MCP)",
+      "sync": "Szinkronizálás, import és export",
+      "about": "Rólunk"
+    },
+    "descriptions": {
+      "panels": "Megjelenítés, elrejtés és átrendezés",
+      "sources": "Régiók és feedek",
+      "notifications": "Csatornák és riasztási szabályok",
+      "display": "Téma, betűkészlet és nyelv",
+      "map": "Szolgáltató, téma és földgömb",
+      "ai": "Modellek, memória és keretrendszerek",
+      "video": "Minőség és automatikus lejátszás",
+      "apiKeys": "World Monitor API-kulcsok",
+      "embeds": "Widgetek saját webhelyhez",
+      "aiAgents": "Csatlakoztatott MCP-kliensek",
+      "about": "Webhely-hivatkozások, feltételek és adatvédelem"
+    },
+    "signOut": "Kijelentkezés",
+    "signOutFailed": "Nem sikerült kijelentkezni. Próbálja újra.",
+    "search": {
+      "empty": "Nincs egyező beállítás"
+    },
+    "account": {
+      "intro": "Tekintse meg aktuális csomagját, és kezelje fizetési módját, számláit vagy a lemondást.",
+      "planFree": "Ingyenes",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Premium hozzáférés",
+        "desc": "Ez a hozzáférés nem a WorldMonitor-fiókjának számlázásán keresztül működik. Itt nem érhetők el fizetési módok vagy számlák."
+      },
+      "checking": {
+        "heading": "Csomag ellenőrzése…",
+        "desc": "Ez általában csak egy pillanat."
+      },
+      "status": {
+        "cancelScheduled": "Lemondás ütemezve – hozzáférés eddig: {{date}}",
+        "renews": "Megújítás: {{date}}",
+        "onHold": "Szüneteltetett – frissítse fizetési módját",
+        "cancelled": "Lemondva – hozzáférés eddig: {{date}}",
+        "expired": "Lejárt",
+        "unknown": "Aktuális csomagja részleteit a Számlázás kezelése menüpontban találja.",
+        "ownerManaged": "A számlázást a csomag tulajdonosa kezeli."
+      },
+      "upgradeToBusiness": "Váltás Business csomagra",
+      "unavailable": {
+        "heading": "Csomag státusza nem érhető el",
+        "desc": "Nem sikerült ellenőrizni aktuális csomagját. Próbálja újra, vagy tekintse meg a csomagokat új lapon."
+      },
+      "free": {
+        "heading": "WorldMonitor Ingyenes",
+        "desc": "Jelenlegi csomagja: Ingyenes. Váltson nagyobb csomagra az összes panelért, az AI-elemzésért és az elsőbbségi adatfrissítésért."
+      },
+      "portal": {
+        "openFailed": "Nem sikerült megnyitni a számlázási portált. Engedélyezze az előugró ablakokat és próbálja újra.",
+        "unavailable": "A számlázási portál nem érhető el. Támogatásért írjon a support@worldmonitor.app címre."
+      },
+      "deletion": {
+        "heading": "Fiók törlése",
+        "desc": "A World Monitor-fiók végleges törlése. Az előfizetések azonnal megszűnnek, a hátralévő előre kifizetett időszakért nincs visszatérítés. Az API-kulcsok, a beágyazási kulcsok és az MCP-tokenek nem működnek tovább. A számvitelhez, vitarendezéshez és jogszerű megkeresésekhez szükséges számlázási nyilvántartásokat megőrizzük a bennük szereplő ügyfél-kapcsolattartási adatokkal együtt; ezek a továbbiakban nem nevezik meg a bejelentkezési fiókját, a fizetési szolgáltató törlés előtt rögzített webhook-naplói azonban megtartják azokat az azonosítókat, amelyekkel kézbesítették őket. Az irányítópult-beállításokat és az asztali alkalmazás rendszerkulcstartójában (Keychain) tárolt titkokat ezen az eszközön nem töröljük távolról.",
+        "dialogTitle": "Törli ezt a fiókot?",
+        "dialogCopy": "Ez a művelet nem vonható vissza. Az előfizetések megszűnnek, a kulcsok azonnal leállnak, a számlázási nyilvántartásokat pedig megőrizzük számviteli, vitarendezési és jogszerű megkeresési célokra – a bennük szereplő kapcsolattartási adatokkal együtt. Ezután jelentkezzen ki a többi eszközön, és törölje a webhelyadatokat ezen az eszközön – ezeket a szerver nem éri el.",
+        "phraseLabel": "A megerősítéshez írja be: {{phrase}}",
+        "deleted": "Fiók törölve. Jelentkezzen ki más eszközökön, és törölje ennek az eszköznek a webhelyhez kapcsolódó adatait.",
+        "failed": "A fiók törlése sikertelen. Próbálja újra."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} használt",
+        "invite": "Meghívás",
+        "inviting": "Meghívás küldése...",
+        "remove": "Eltávolítás",
+        "removing": "Eltávolítás...",
+        "inviteSent": "Meghívás elküldve",
+        "alreadyInvited": "Már meghívva"
+      },
+      "businessSeats": {
+        "heading": "Business-helyek",
+        "statusAccepted": "Elfogadva",
+        "statusExpired": "Lejárt",
+        "statusPending": "Függőben",
+        "expires": "Lejár: {{date}}",
+        "hintCorporate": "Hívjon meg munkatársakat bármilyen vállalati e-mail tartományból.",
+        "hintPersonal": "Adjon hozzá egy vállalati e-mail címet munkatársak meghívásához.",
+        "personalDomain": "Ingyenes vagy eldobható e-mail-tartományból nem lehet munkatársakat meghívni. A funkció használatához adjon hozzá egy vállalati e-mail-címet.",
+        "empty": "Még nem hívott meg senkit.",
+        "confirmRemove": "Eltávolítja ezt a helyet? A meghívott azonnal elveszíti a Pro hozzáférést.",
+        "removed": "Hely eltávolítva",
+        "alreadyInactive": "A hely már inaktív volt",
+        "loadFailed": "Nem sikerült betölteni a helyeket",
+        "inviteFailed": "Nem sikerült elküldeni a meghívást",
+        "removeFailed": "Nem sikerült eltávolítani a helyet",
+        "errors": {
+          "seatCap": "Mind a 4 hely használatban van. Előbb távolítson el egy helyet.",
+          "ownerDomain": "Munkatársak meghívásához a fiókja e-mail-címének vállalati tartományból kell származnia.",
+          "self": "Nem hívhatja meg saját magát.",
+          "inviteeDomain": "A meghívott személy e-mail-címének vállalati tartományból kell származnia."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "{{account}} Enterprise helyek",
+        "memberHint": "A fiók rendszergazdája adja hozzá és távolítja el az embereket ebből a fiókból.",
+        "hintFull": "Minden hely foglalt. Egy hely felszabadításához távolítson el valakit, vagy vonjon vissza egy meghívást.",
+        "hintOpen": "Hívjon meg embereket vállalati e-mail-címmel. 14 napig érvényes linket kapnak, és közösen használják ennek a fióknak a keretét.",
+        "emailLabel": "Meghívandó e-mail cím",
+        "statusActive": "Aktív",
+        "statusExpired": "Meghívás lejárt",
+        "statusInvited": "Meghívva",
+        "emailFailed": "A meghívó e-mail nem küldhető el. Ellenőrizze a címet, majd vonja vissza és hívja meg újra.",
+        "inviteExpires": "Meghívás lejár: {{date}}",
+        "roleAdmin": "Rendszergazda",
+        "you": "Ön",
+        "withdraw": "Visszavonás",
+        "unknownEmail": "Ismeretlen e-mail",
+        "alreadyMember": "Már tag",
+        "confirmRemove": "Eltávolítja: {{email}}? Azonnal elveszíti az Enterprise-hozzáférést.",
+        "confirmRemoveUnknown": "Eltávolítja ezt a személyt? Azonnal elveszíti az Enterprise hozzáférést.",
+        "confirmWithdraw": "Visszavonja a meghívást {{email}} számára?",
+        "confirmWithdrawUnknown": "Visszavonja a meghívást erre a címre?",
+        "removed": "Tag eltávolítva",
+        "withdrawn": "Meghívás visszavonva",
+        "loadFailed": "Nem sikerült betölteni a helyeket. Próbálja újra.",
+        "inviteFailed": "Nem sikerült elküldeni a meghívást. Próbálja újra.",
+        "removeFailed": "Nem sikerült eltávolítani. Próbálja újra.",
+        "errors": {
+          "seatCap": "Minden hely foglalt. Előbb távolítson el valakit vagy vonjon vissza egy meghívást.",
+          "inviteeDomain": "Vállalati e-mail-címet adjon meg. Ingyenes és eldobható e-mail-tartományok nem fogadhatók el.",
+          "self": "Már van egy helye.",
+          "contractEnded": "Az Enterprise szerződés lejárt. Forduljon az ügyfélszolgálathoz a megújításhoz.",
+          "notAdmin": "Csak a fiók rendszergazdája kezelheti a helyeket.",
+          "removeSelf": "Nem távolíthatja el a saját helyét. Forduljon az ügyfélszolgálathoz a rendszergazda megváltoztatásához.",
+          "tooMany": "Egyszerre legfeljebb 10 személyt hívhat meg.",
+          "rateLimited": "Elérte a napi meghívások maximális számát. Próbálja újra holnap."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "elrendezés",
+        "1": "widgetek",
+        "2": "szövegméret",
+        "3": "elrendezés visszaállítása"
+      },
+      "sources": {
+        "0": "hírek",
+        "1": "feedek",
+        "2": "források",
+        "3": "régiók",
+        "4": "lefedettség"
+      },
+      "notifications": {
+        "0": "riasztások",
+        "1": "értesítések",
+        "2": "slack",
+        "3": "e-mail",
+        "4": "discord",
+        "5": "webhook",
+        "6": "push"
+      },
+      "display": {
+        "0": "téma",
+        "1": "sötét",
+        "2": "világos",
+        "3": "betűtípus",
+        "4": "nyelv",
+        "5": "szövegméret"
+      },
+      "map": {
+        "0": "földgömb",
+        "1": "szolgáltató",
+        "2": "csempék",
+        "3": "alaptérkép"
+      },
+      "ai": {
+        "0": "MI",
+        "1": "ollama",
+        "2": "keretrendszerek",
+        "3": "címsor-memória",
+        "4": "böngésző modell"
+      },
+      "video": {
+        "0": "videó",
+        "1": "automatikus lejátszás",
+        "2": "minőség",
+        "3": "élő"
+      },
+      "apiKeys": {
+        "0": "kulcs",
+        "1": "token",
+        "2": "asztali kulcs"
+      },
+      "embeds": {
+        "0": "widget",
+        "1": "iframe",
+        "2": "beágyazási kulcs"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "claude",
+        "2": "ügynökök",
+        "3": "chatgpt",
+        "4": "kliensek"
+      },
+      "sync": {
+        "0": "importálás",
+        "1": "exportálás",
+        "2": "biztonsági mentés",
+        "3": "felhő"
+      },
+      "about": {
+        "0": "feltételek",
+        "1": "adatvédelem",
+        "2": "licenc",
+        "3": "jogi"
+      },
+      "account": {
+        "0": "csomag",
+        "1": "számlázás",
+        "2": "előfizetés",
+        "3": "számla",
+        "4": "helyek",
+        "5": "kijelentkezés",
+        "6": "fiók törlése"
+      }
+    },
+    "reservoirAlert": {
+      "title": "Vízszint-riasztások",
+      "description": "Riasztás, ha egy stratégiai tározó lidar által mért vízszintje alacsony. A NASA minden műholdas áthaladást körülbelül két hónappal a mérés után tesz közzé, így minden riasztás a mérés dátumát tartalmazza.",
+      "scopeHint": "Válasszon legfeljebb {{max}} tározót. A riasztások csak az itt felsorolt tározókat fedik le.",
+      "searchPlaceholder": "Tározó hozzáadása név alapján",
+      "searchLabel": "Tározó hozzáadása",
+      "removeLabel": "{{name}} eltávolítása",
+      "thresholdLabel": "Szinthatár",
+      "thresholdHint": "Riasztás, ha a legutóbb mért szint a tározó saját mért tartományának ezen százaléka alatt van, ahol 0 a legalacsonyabb mért szint és 100 a legmagasabb. Hagyja üresen, ha nincs szinthatár.",
+      "thresholdInputLabel": "Szinthatár, a mért tartomány százalékában",
+      "seasonalLabel": "Csökkenés a szezonális alaphoz képest",
+      "seasonalHint": "Riasztás, ha a legutóbb mért szint jelentősen alacsonyabb az adott tározó szokásos értékénél az év ezen időszakában.",
+      "quietNote": "Ezek a riasztások akkor is megérkeznek, ha a valós idejű riasztások csak kritikusra vannak állítva. A csendes órák elnémítják őket.",
+      "quietNoteBatch": "Ezek a riasztások akkor is megérkeznek, ha a valós idejű riasztások csak kritikusra vannak állítva. A csendes órák elnémítják őket, vagy ha a Batch módot választja, a csendes órák végéig visszatartják őket."
+    },
+    "briefLanguage": {
+      "label": "Az összefoglaló nyelve",
+      "hint": "A napi összefoglaló nyelve: {{language}}.",
+      "sameAsApp": "Megegyezik az alkalmazás nyelvével",
+      "loadFailed": "Betöltés sikertelen",
+      "saveFailed": "Nem sikerült elmenteni. Próbáld újra."
     }
   }
 }

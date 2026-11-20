@@ -1,6 +1,5 @@
 import type { ClusteredEvent, RelatedAsset, AssetType, RelatedAssetContext, NuclearFacility } from '@/types';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
-import { t } from '@/services/i18n';
 import {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
@@ -291,10 +290,6 @@ export function getClusterAssetContext(cluster: ClusteredEvent): RelatedAssetCon
 
   const assets = findNearbyAssets(origin, types);
   return { origin, assets, types };
-}
-
-export function getAssetLabel(type: AssetType): string {
-  return t(`components.relatedAssets.${type}`);
 }
 
 export function getNearbyInfrastructure(

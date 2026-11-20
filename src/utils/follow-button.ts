@@ -88,20 +88,18 @@ export interface FollowButtonHandle {
 // Test-injection seam: upgrade-modal trigger
 // ---------------------------------------------------------------------------
 //
-// In production, the `FREE_CAP` branch dynamically imports clerk +
-// checkout (the same lazy path `notifications-settings.ts` uses for the
-// "Upgrade to Pro" button). Tests inject a synchronous fake here so
+// In production, the `FREE_CAP` branch dynamically imports clerk and
+// opens sign-in or the /pro plan picker (`openUpgradePlans`). Tests inject a synchronous fake here so
 // they can assert the trigger was called without spinning up the real
 // import graph.
 
 type UpgradeTrigger = (source: string) => void;
 
 /**
- * Last-resort upgrade destination when the lazy checkout path is
- * unavailable. Absolute, and routed through `openExternalUrl`: the bare
- * relative `/pro#pricing` this replaced resolved against `tauri://localhost`
- * in the desktop WebView, where no such route exists (#5911). Never throws —
- * every call site here is already a fallback.
+ * Fallback upgrade destination: the /pro plan picker. Absolute, and routed
+ * through `openExternalUrl`: the bare relative `/pro#pricing` this replaced
+ * resolved against `tauri://localhost` in the desktop WebView, where no such
+ * route exists (#5911). Never throws.
  */
 function openProPricingPage(): void {
   void openExternalUrl(`${WEB_APP_ORIGIN}/pro#pricing`).catch(() => {
@@ -110,9 +108,8 @@ function openProPricingPage(): void {
 }
 
 let _upgradeTrigger: UpgradeTrigger = (source) => {
-  // Match the notifications-settings.ts pattern: try sign-in first if no
-  // user, otherwise drop into checkout. If anything fails we fall back
-  // to the `/pro` page (consistent w/ ProBanner CTA).
+  // Match the notifications-settings.ts pattern: sign-in first if there is
+  // no user, otherwise the `/pro` plan picker (consistent w/ ProBanner CTA).
   try {
     void import('@/services/clerk').then((clerk) => {
       const user = clerk.getCurrentClerkUser?.();
@@ -123,24 +120,13 @@ let _upgradeTrigger: UpgradeTrigger = (source) => {
           return;
         }
       }
-      // Signed-in OR no openSignIn helper — go straight to checkout.
-      void import('@/services/checkout')
-        .then((checkout) =>
-          import('@/config/products').then((products) => {
-            const product = (products as { DEFAULT_UPGRADE_PRODUCT?: unknown })
-              .DEFAULT_UPGRADE_PRODUCT;
-            if (product && typeof checkout.startCheckout === 'function') {
-              checkout.startCheckout(
-                product as Parameters<typeof checkout.startCheckout>[0],
-              );
-            } else {
-              openProPricingPage();
-            }
-          }),
-        )
-        .catch(() => {
-          openProPricingPage();
-        });
+      // Signed-in OR no openSignIn helper: the plan picker on /pro, through
+      // the shared helper so a desktop purchase keeps its handoff marker.
+      void import('@/services/upgrade-flow')
+        .then((flow) => flow.openUpgradePlans())
+        .catch(() => openProPricingPage());
+    }).catch(() => {
+      openProPricingPage();
     });
   } catch {
     try {

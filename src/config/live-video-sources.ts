@@ -90,7 +90,7 @@ export const WEBCAM_GRID_PRIORITY = [
  */
 export const LIVE_NEWS_SOURCES = {
   bloomberg: [
-    'https://bloomberg.com/media-manifest/streams/us.m3u8',
+    'https://www.bloomberg.com/media-manifest/streams/us.m3u8',
     'https://www.youtube.com/watch?v=QB5BNdBFujE',
     'https://www.youtube.com/channel/UCIALMKvObZNtJ6AmdCLP7Lg',
   ],

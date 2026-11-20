@@ -84,7 +84,7 @@ export function headlinesRecord(payload, now = Date.now()) {
     .flatMap((bucket) => (Array.isArray(bucket?.items) ? bucket.items : []))
     .map(headlineRow)
     .filter((entry) => entry !== null)
-    .sort((a, b) => b.importance - a.importance || b.publishedAtMs - a.publishedAtMs || a.row.title.localeCompare(b.row.title));
+    .sort((a, b) => b.importance - a.importance || b.publishedAtMs - a.publishedAtMs || a.row.title.localeCompare(b.row.title, 'en-US'));
   const rows = dedupeByArticleUrl(ranked, (entry) => entry.row.url).slice(0, LISTED_HEADLINES).map((entry) => entry.row);
   if (rows.length === 0) throw new UnpublishableReading('headlines: no publishable items');
   return { asOf, rows };
@@ -150,7 +150,7 @@ function chokepointRow(target, { score, status, congestion, asOf }) {
 
 function chokepointsReading(rows) {
   const asOf = rows.map((row) => row.asOf).sort().at(-1);
-  const sorted = [...rows].sort((a, b) => b.score - a.score || a.displayName.localeCompare(b.displayName));
+  const sorted = [...rows].sort((a, b) => b.score - a.score || a.displayName.localeCompare(b.displayName, 'en-US'));
   return { asOf, rows: sorted, red: sorted.filter((row) => row.status === 'Red').length };
 }
 

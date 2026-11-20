@@ -17,8 +17,6 @@ import {
   trackProPreviewViewed,
 } from '@/services/analytics';
 import { h, replaceChildren } from '@/utils/dom-utils';
-import { createCheckoutConsentElement } from '@/utils/legal-links';
-import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { onSubscriptionChange } from '@/services/billing';
 
 /**
@@ -216,14 +214,12 @@ export class ProPreviewSection {
       className: 'panel-locked-cta pro-preview__cta',
       onclick: () => void this.onCtaClick(anonymous),
     }, anonymous ? 'Sign In' : 'Upgrade to Pro') as HTMLButtonElement;
+    cta.dataset.dashboardInteraction = anonymous ? 'signin' : 'upgrade';
 
     return [
       badge,
       sampleEl,
       copy,
-      // Assent above the CTA (#6976) — upgrade branch only; the sign-in modal
-      // carries its own Terms and Privacy links.
-      ...(anonymous ? [] : [createCheckoutConsentElement(WEB_APP_ORIGIN)]),
       cta,
     ];
   }
@@ -271,8 +267,8 @@ export class ProPreviewSection {
 
     trackProPreviewCta(this.props.missionId, this.props.panelKey);
     try {
-      const { openUpgradeCheckout } = await import('@/services/upgrade-flow');
-      await openUpgradeCheckout({
+      const { openUpgradePlans } = await import('@/services/upgrade-flow');
+      await openUpgradePlans({
         missionId: this.props.missionId,
         panelKey: this.props.panelKey,
       });

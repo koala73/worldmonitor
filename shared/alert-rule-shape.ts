@@ -27,10 +27,47 @@ export const ALERT_RULE_EVENT_TYPE_MAX_LENGTH = 64;
 // Same control / bidi character set /api/notify rejects on ingest.
 const EVENT_TYPE_FORBIDDEN_CHARS = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/;
 
+/** Opt-in watched-site alerts; mirrored by scripts/lib/orbital-site-alerts.cjs for the relay. */
+export const ORBITAL_SITE_ALERT_EVENT_TYPES = ['orbital_imaging_window', 'orbital_site_change'] as const;
+/** A rule watches at most this many sites; each one can page on every seed run. */
+export const ORBITAL_ALERT_SITES_MAX = 25;
+/**
+ * Watched-site ids are `<list>:<slug>` (shared/watched-sites.ts). Slugs come from
+ * upstream names and can hold any printable character, a non-breaking space included.
+ */
+const ORBITAL_SITE_ID_PATTERN = /^[a-z][a-z0-9-]{0,31}:[^\u0000-\u0020\u007f-\u009f]{1,96}$/;
+
+/** Opt-in reservoir level alert; mirrored by scripts/lib/reservoir-level-alerts.cjs for the relay. */
+export const RESERVOIR_ALERT_EVENT_TYPE = 'reservoir_level_alert';
+/** The watchlist holds 50 reservoirs (scripts/data/strategic-reservoirs.json). */
+export const RESERVOIR_ALERT_RESERVOIRS_MAX = 50;
+/** Registry ids are lowercase slugs such as "nasser" or "gerd". */
+const RESERVOIR_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,47}$/;
+/**
+ * The level threshold is a share of the reservoir's own measured range, so one number means
+ * the same thing for a 3 m lake and a 90 m dam: 0 is the lowest level measured, 100 the highest.
+ */
+export const RESERVOIR_ALERT_BELOW_PERCENT_MIN = 1;
+export const RESERVOIR_ALERT_BELOW_PERCENT_MAX = 50;
+
+/**
+ * What a rule asks of the reservoir alert. `reservoirs` is the user's own list (empty means none, like
+ * watched sites). The alert fires for a listed reservoir when its latest measurement is below
+ * `belowPercent` of its measured range, or, with `seasonalDrop`, when it sits beyond its seasonal baseline
+ * on the low side. Each is optional; a rule with neither never fires.
+ */
+export interface ReservoirAlertSettings {
+  reservoirs: string[];
+  belowPercent?: number;
+  seasonalDrop?: boolean;
+}
+
 export type AlertRuleShapeCode =
   | 'VARIANT_INVALID'
   | 'EVENT_TYPES_INVALID'
-  | 'CHANNELS_INVALID';
+  | 'CHANNELS_INVALID'
+  | 'ORBITAL_SITES_INVALID'
+  | 'RESERVOIR_ALERT_INVALID';
 
 export interface AlertRuleShapeViolation {
   code: AlertRuleShapeCode;
@@ -57,6 +94,8 @@ export function listAlertRuleShapeViolations(input: {
   variant: unknown;
   eventTypes?: unknown;
   channels?: unknown;
+  orbitalSites?: unknown;
+  reservoirAlert?: unknown;
 }): AlertRuleShapeViolation[] {
   const violations: AlertRuleShapeViolation[] = [];
   if (!isAlertRuleVariant(input.variant)) {
@@ -91,7 +130,41 @@ export function listAlertRuleShapeViolations(input: {
       });
     }
   }
+  if (input.orbitalSites !== undefined) {
+    if (!Array.isArray(input.orbitalSites) || input.orbitalSites.length > ORBITAL_ALERT_SITES_MAX) {
+      violations.push({
+        code: 'ORBITAL_SITES_INVALID',
+        message: `orbitalSites must be an array of at most ${ORBITAL_ALERT_SITES_MAX} watched-site ids`,
+      });
+    } else if (!input.orbitalSites.every((id) => typeof id === 'string' && ORBITAL_SITE_ID_PATTERN.test(id))) {
+      violations.push({
+        code: 'ORBITAL_SITES_INVALID',
+        message: 'each orbitalSites entry must be a watched-site id such as "chokepoint:hormuz_strait"',
+      });
+    }
+  }
+  if (input.reservoirAlert !== undefined) {
+    const message = reservoirAlertViolation(input.reservoirAlert);
+    if (message) violations.push({ code: 'RESERVOIR_ALERT_INVALID', message });
+  }
   return violations;
+}
+
+function reservoirAlertViolation(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return 'reservoirAlert must be an object';
+  const { reservoirs, belowPercent, seasonalDrop, ...extra } = value as Record<string, unknown>;
+  if (Object.keys(extra).length > 0) return 'reservoirAlert allows only reservoirs, belowPercent and seasonalDrop';
+  if (!Array.isArray(reservoirs) || reservoirs.length > RESERVOIR_ALERT_RESERVOIRS_MAX
+    || !reservoirs.every((id) => typeof id === 'string' && RESERVOIR_ID_PATTERN.test(id))) {
+    return `reservoirAlert.reservoirs must be an array of at most ${RESERVOIR_ALERT_RESERVOIRS_MAX} reservoir ids such as "nasser"`;
+  }
+  if (belowPercent !== undefined && !(Number.isInteger(belowPercent)
+    && (belowPercent as number) >= RESERVOIR_ALERT_BELOW_PERCENT_MIN
+    && (belowPercent as number) <= RESERVOIR_ALERT_BELOW_PERCENT_MAX)) {
+    return `reservoirAlert.belowPercent must be a whole number from ${RESERVOIR_ALERT_BELOW_PERCENT_MIN} to ${RESERVOIR_ALERT_BELOW_PERCENT_MAX}`;
+  }
+  if (seasonalDrop !== undefined && typeof seasonalDrop !== 'boolean') return 'reservoirAlert.seasonalDrop must be true or false';
+  return null;
 }
 
 /** The first bound the input breaks, or null when it is in shape. */
@@ -99,6 +172,8 @@ export function getAlertRuleShapeViolation(input: {
   variant: unknown;
   eventTypes?: unknown;
   channels?: unknown;
+  orbitalSites?: unknown;
+  reservoirAlert?: unknown;
 }): AlertRuleShapeViolation | null {
   return listAlertRuleShapeViolations(input)[0] ?? null;
 }

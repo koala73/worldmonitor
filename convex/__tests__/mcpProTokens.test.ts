@@ -302,6 +302,47 @@ describe("issueProMcpToken", () => {
     expect(active).toHaveLength(5);
   });
 
+  // Production 2026-11-07: two Claude reconnects revoked the Glama health-check
+  // grant, the oldest-created row, one minute after it was last used, while
+  // grants idle since October survived. The cap must evict the grant that has
+  // gone unused longest, not the one created first.
+  test("at the cap, the least recently used grant is revoked, not the oldest-created", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    const day = 86_400_000;
+    const ids = await t.run(async (ctx) => {
+      const seeded = [];
+      // Created first, used a minute ago (an hourly health check).
+      seeded.push(await ctx.db.insert("mcpProTokens", {
+        userId: "user-pro", name: "Connected via Glama", createdAt: NOW - 20 * day, lastUsedAt: NOW - 60_000,
+      }));
+      // Used most recently a week ago.
+      seeded.push(await ctx.db.insert("mcpProTokens", {
+        userId: "user-pro", name: "Connected via ChatGPT", createdAt: NOW - 19 * day, lastUsedAt: NOW - 7 * day,
+      }));
+      // Never used since it was created 17 days ago: the least recently used.
+      seeded.push(await ctx.db.insert("mcpProTokens", {
+        userId: "user-pro", name: "Connected via MCP Inspector", createdAt: NOW - 17 * day,
+      }));
+      seeded.push(await ctx.db.insert("mcpProTokens", {
+        userId: "user-pro", name: "Connected via Claude", createdAt: NOW - 6 * day, lastUsedAt: NOW - 3_600_000,
+      }));
+      seeded.push(await ctx.db.insert("mcpProTokens", {
+        userId: "user-pro", name: "Connected via Claude", createdAt: NOW - 1_000,
+      }));
+      return seeded;
+    });
+
+    await t.mutation(internal.mcpProTokens.issueProMcpToken, { userId: "user-pro", name: "Connected via Claude" });
+
+    const glama = await t.query(internal.mcpProTokens.validateProMcpToken, { tokenId: ids[0] as any });
+    expect(glama?.userId).toBe("user-pro");
+    const inspector = await t.run(async (ctx) => ctx.db.get(ids[2] as any));
+    expect(inspector?.revokedAt).toBeGreaterThan(0);
+    const rows = await t.withIdentity(PRO_USER).query(api.mcpProTokens.listProMcpTokens, {});
+    expect(rows.filter((r: any) => !r.revokedAt)).toHaveLength(5);
+  });
+
   // #9244: a CIMD client_id (a URL) is shared by every user of that client,
   // unlike a per-connection DCR id. Re-authorizing, including enough times to
   // rotate the cap, must only ever revoke the re-authorizing user's own rows.

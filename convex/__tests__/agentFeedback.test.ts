@@ -3,6 +3,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
 import { internal } from "../_generated/api";
 import {
+  FEEDBACK_DIGEST_MAX_ROWS,
+  FEEDBACK_DIGEST_PAGE,
+  FEEDBACK_DIGEST_TEXT_BYTES,
+  FEEDBACK_DIGEST_TEXT_ROWS,
+  FEEDBACK_MAX_DETAIL,
+  FEEDBACK_MAX_SUMMARY,
+  FEEDBACK_MAX_SURFACE_NAME,
   FEEDBACK_REPORTER_HOURLY_CAP,
   FEEDBACK_RETRY_WINDOW_MS,
   FEEDBACK_SECURITY_EMAILS_PER_DAY,
@@ -47,6 +54,15 @@ afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
+
+// Owner emails use the WorldMonitor frame (shared/email-frame.ts), not a bare page.
+function expectFrame(html: string): void {
+  expect(html).toMatch(/^<!DOCTYPE html>/);
+  expect(html).toContain("WORLD MONITOR");
+  expect(html).toContain("android-chrome-192x192.png");
+  expect(html).toContain(">Ops alert</span>");
+  expect(html).not.toContain("font-family: monospace; padding: 20px;");
+}
 
 describe("submit", () => {
   test("inserts a received row and returns its id", async () => {
@@ -211,6 +227,7 @@ describe("security reports", () => {
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(bodies).toHaveLength(1);
     expect(bodies[0]).toContain(reportId);
+    expectFrame(JSON.parse(bodies[0]).html);
     for (const text of ["SECRET-SUMMARY-TEXT", "SURFACE-LABEL", "SECRET-EXPECTED"]) {
       expect(bodies[0]).not.toContain(text);
     }
@@ -261,6 +278,7 @@ describe("security reports", () => {
     expect(bodies[0]).not.toContain(ids.bug);
     expect(bodies[0]).not.toContain(ids.closed);
     expect(bodies[0]).not.toContain("DIGEST-SECRET");
+    expectFrame(JSON.parse(bodies[0]).html);
 
     // Marked rows are not listed again, and an empty digest sends nothing.
     expect(await t.action(internal.agentFeedback.sendSecurityDigest, {})).toEqual({ listed: 0 });
@@ -298,6 +316,212 @@ describe("security reports", () => {
     const [row] = await rows(t);
     expect(row.notifiedAt).toBe(NOW);
     expect(await t.action(internal.agentFeedback.sendSecurityDigest, { now: NOW + DAY })).toEqual({ listed: 0 });
+  });
+});
+
+describe("feedback digest", () => {
+  const captureResend = () => {
+    vi.stubEnv("RESEND_API_KEY", "synthetic-resend");
+    const bodies: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      bodies.push(String(init.body));
+      return Response.json({ id: "synthetic-email" });
+    }));
+    return bodies;
+  };
+  const html = (body: string) => JSON.parse(body).html as string;
+  const subject = (body: string) => JSON.parse(body).subject as string;
+
+  test("summarizes new non-security reports by kind and surface, then marks them", async () => {
+    const bodies = captureResend();
+    const t = convexTest(schema, modules);
+    const ids = await t.run(async (ctx) => {
+      const base = { ...report(), status: "received" as const, updatedAt: NOW, receivedAt: NOW - 1000 };
+      const a = await ctx.db.insert("agentFeedback", { ...base, summary: "DIGEST-SECRET-SUMMARY" });
+      const b = await ctx.db.insert("agentFeedback", { ...base, expected: "DIGEST-SECRET-EXPECTED" });
+      const c = await ctx.db.insert("agentFeedback", {
+        ...base, kind: "data_quality", surfaceType: "rpc", surfaceName: "/api/market/v1/list-market-quotes",
+      });
+      const d = await ctx.db.insert("agentFeedback", {
+        ...base, kind: "missing_capability", surfaceType: "other", surfaceName: "OTHER-LABEL-<b>",
+      });
+      const security = await ctx.db.insert("agentFeedback", { ...base, kind: "security", status: "private" });
+      const announced = await ctx.db.insert("agentFeedback", { ...base, notifiedAt: NOW - 500 });
+      return { a, b, c, d, security, announced };
+    });
+
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: 4 });
+    expect(bodies).toHaveLength(1);
+    expect(subject(bodies[0])).toBe("[WM] Agent feedback: 4 new report(s)");
+    const body = html(bodies[0]);
+    expectFrame(body);
+    expect(body).toContain("<td>bug</td><td>2</td>");
+    expect(body).toContain("<td>data_quality</td><td>1</td>");
+    expect(body).toContain("<td>missing_capability</td><td>1</td>");
+    expect(body).toContain("<td>mcp_tool</td><td>2</td>");
+    expect(body).toContain("<td>rpc</td><td>1</td>");
+    expect(body).toContain("<td>other</td><td>1</td>");
+    // The owner reads each report's text in the email. It is reporter-written,
+    // so every field is HTML-escaped.
+    for (const text of [
+      "DIGEST-SECRET-SUMMARY", "DIGEST-SECRET-EXPECTED", "get_market_data", "list-market-quotes",
+      ids.a, ids.b, ids.c, ids.d,
+    ]) {
+      expect(body).toContain(text);
+    }
+    expect(body).toContain("OTHER-LABEL-&lt;b&gt;");
+    expect(body).not.toContain("OTHER-LABEL-<b>");
+    expect(body).not.toContain(ids.security);
+    expect(body).not.toContain(ids.announced);
+
+    const stored = await rows(t);
+    for (const id of [ids.a, ids.b, ids.c, ids.d]) {
+      expect(stored.find((r) => r._id === id)?.notifiedAt).toBe(NOW);
+    }
+    expect(stored.find((r) => r._id === ids.security)?.notifiedAt).toBeUndefined();
+
+    // Marked rows are not listed again, and an empty digest sends nothing.
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: 0 });
+    expect(bodies).toHaveLength(1);
+  });
+
+  test("report text is escaped so markup in it stays inert", async () => {
+    const bodies = captureResend();
+    const t = convexTest(schema, modules);
+    await t.run((ctx) => ctx.db.insert("agentFeedback", {
+      ...report({
+        summary: `<a href="https://evil.example">click</a> & "quote"`,
+        actual: "<script>alert(1)</script>",
+      }),
+      status: "received", updatedAt: NOW, receivedAt: NOW - 1000,
+    }));
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: 1 });
+    const body = html(bodies[0]);
+    expect(body).toContain("&lt;a href=&quot;https://evil.example&quot;&gt;click&lt;/a&gt; &amp; &quot;quote&quot;");
+    expect(body).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(body).not.toContain("<script>");
+    expect(body).not.toContain('<a href="https://evil.example"');
+  });
+
+  test("a byte budget bounds the email when escaping expands maximum-length text", async () => {
+    const bodies = captureResend();
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      const base = { ...report(), status: "received" as const, updatedAt: NOW };
+      for (let i = 0; i < FEEDBACK_DIGEST_TEXT_ROWS; i++) {
+        await ctx.db.insert("agentFeedback", {
+          ...base,
+          surfaceName: "é".repeat(FEEDBACK_MAX_SURFACE_NAME),
+          summary: '"'.repeat(FEEDBACK_MAX_SUMMARY),
+          expected: "<".repeat(FEEDBACK_MAX_DETAIL),
+          actual: "&".repeat(FEEDBACK_MAX_DETAIL),
+          receivedAt: NOW - DAY + i,
+        });
+      }
+    });
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: FEEDBACK_DIGEST_TEXT_ROWS });
+    const body = html(bodies[0]);
+    // Report blocks fit the budget; the fixed email frame, tables and notes add about 5 KB.
+    expect(new TextEncoder().encode(body).length).toBeLessThan(FEEDBACK_DIGEST_TEXT_BYTES + 6_000);
+    const shown = (body.match(/<b>Summary:<\/b>/g) ?? []).length;
+    expect(shown).toBeGreaterThan(0);
+    expect(shown).toBeLessThan(FEEDBACK_DIGEST_TEXT_ROWS);
+    expect(body).toContain(`${FEEDBACK_DIGEST_TEXT_ROWS - shown} more report(s) not shown`);
+  });
+
+  test("shows text for the oldest reports only, and counts the rest", async () => {
+    const bodies = captureResend();
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      const base = { ...report(), status: "received" as const, updatedAt: NOW };
+      for (let i = 0; i < FEEDBACK_DIGEST_TEXT_ROWS + 5; i++) {
+        await ctx.db.insert("agentFeedback", { ...base, summary: `ROW-${i}-END`, receivedAt: NOW - DAY + i });
+      }
+    });
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: FEEDBACK_DIGEST_TEXT_ROWS + 5 });
+    const body = html(bodies[0]);
+    expect(body).toContain("ROW-0-END");
+    expect(body).toContain(`ROW-${FEEDBACK_DIGEST_TEXT_ROWS - 1}-END`);
+    expect(body).not.toContain(`ROW-${FEEDBACK_DIGEST_TEXT_ROWS}-END`);
+    expect(body).toContain("5 more report(s) not shown");
+  });
+
+  test("reports the operator already moved out of received are not announced", async () => {
+    const bodies = captureResend();
+    const t = convexTest(schema, modules);
+    const { reportId } = await t.mutation(internal.agentFeedback.submit, report());
+    await t.mutation(internal.agentFeedback.transition, { reportId, to: "triaged" });
+    const [row] = await rows(t);
+    // Triage means the owner has seen it: it leaves the digest index.
+    expect(row.notifiedAt).toBe(NOW);
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: 0 });
+    expect(bodies).toHaveLength(0);
+  });
+
+  test("a failed send leaves every row unannounced for the next run", async () => {
+    vi.stubEnv("RESEND_API_KEY", "synthetic-resend");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 500 })));
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.agentFeedback.submit, report());
+    await expect(t.action(internal.agentFeedback.sendFeedbackDigest, {})).rejects.toThrow("Resend failed");
+    const [row] = await rows(t);
+    expect(row.notifiedAt).toBeUndefined();
+  });
+
+  test("a flood of one kind cannot starve an older report of another kind", async () => {
+    const bodies = captureResend();
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      const base = { ...report(), status: "received" as const, updatedAt: NOW };
+      await ctx.db.insert("agentFeedback", {
+        ...base, kind: "missing_capability", surfaceType: "other", surfaceName: "x", receivedAt: NOW - 2 * DAY,
+      });
+      for (let i = 0; i < FEEDBACK_DIGEST_PAGE + 10; i++) {
+        await ctx.db.insert("agentFeedback", { ...base, receivedAt: NOW - DAY + i });
+      }
+    });
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: FEEDBACK_DIGEST_PAGE + 11 });
+    expect(html(bodies[0])).toContain("<td>missing_capability</td><td>1</td>");
+    expect(html(bodies[0])).toContain(`<td>bug</td><td>${FEEDBACK_DIGEST_PAGE + 10}</td>`);
+  });
+
+  test("terminal rows never enter the scan", async () => {
+    const bodies = captureResend();
+    const t = convexTest(schema, modules);
+    const late = await t.run(async (ctx) => {
+      const base = { ...report(), updatedAt: NOW };
+      // Rows dismissed before triage stamped notifiedAt: more than one full
+      // run can read, so filtering by status after the read would hide the
+      // received row.
+      for (let i = 0; i < FEEDBACK_DIGEST_MAX_ROWS + 1; i++) {
+        await ctx.db.insert("agentFeedback", { ...base, status: "dismissed", receivedAt: NOW - 5 * DAY + i });
+      }
+      return ctx.db.insert("agentFeedback", { ...base, status: "received", receivedAt: NOW - 1000 });
+    });
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: 1 });
+    expect(html(bodies[0])).toContain("<td>bug</td><td>1</td>");
+    expect(late).toBeTruthy();
+  });
+
+  test("a backlog above the edge's daily ceiling drains in one run, then warns past the cap", async () => {
+    const bodies = captureResend();
+    const t = convexTest(schema, modules);
+    const insert = (n: number, offset: number) => t.run(async (ctx) => {
+      const base = { ...report(), status: "received" as const, updatedAt: NOW };
+      for (let i = 0; i < n; i++) {
+        await ctx.db.insert("agentFeedback", { ...base, receivedAt: NOW - DAY + offset + i });
+      }
+    });
+    // 2,900 is the edge's admitted daily ceiling for non-security reports.
+    await insert(2900, 0);
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: 2900 });
+    expect(html(bodies[0])).not.toContain("are waiting");
+    expect((await rows(t)).every((r) => r.notifiedAt === NOW)).toBe(true);
+
+    await insert(FEEDBACK_DIGEST_MAX_ROWS + 3, 10_000);
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: FEEDBACK_DIGEST_MAX_ROWS });
+    expect(html(bodies[1])).toContain(`More than ${FEEDBACK_DIGEST_MAX_ROWS} reports are waiting`);
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: 3 });
   });
 });
 

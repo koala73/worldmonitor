@@ -33,7 +33,14 @@ export type PremiumDenialVerdict =
   /** 403 entitlement denial the client's own state contradicts. Transient; retry. */
   | 'entitlement_desync'
   /** 403 that never reached the entitlement check (origin/WAF). Transient; retry. */
-  | 'access_denied';
+  | 'access_denied'
+  /**
+   * `sign_in_required` while the client still holds a signed-in session — a
+   * token-refresh race (right after sign-in, on wake from sleep), not a
+   * signed-out user. Transient; retry. Produced only by
+   * `reconcileSessionDenial`, never by the response classifier itself.
+   */
+  | 'session_desync';
 
 /**
  * Snapshot of what the CLIENT believes about the user's plan, independent of
@@ -165,9 +172,31 @@ export function shouldSkipDoomedFetch(
   return hasEntitlementSnapshot && !clientBelievesPro(belief);
 }
 
+/**
+ * Re-read a `sign_in_required` verdict against the client's own session.
+ *
+ * The server's 401 means "this request carried no session I accept". When the
+ * client is signed out that is the whole story and the sign-in CTA is right.
+ * When the client IS signed in, the likelier cause is a bearer that was minted
+ * or cached across a session refresh — Clerk refreshes the token right after
+ * sign-in and on wake from sleep — so a terminal "Sign in" card tells a
+ * signed-in user to do something they already did (SM-138). Treat it like the
+ * entitlement desync: transient, retried on the same bounded budget.
+ *
+ * Every other verdict passes through unchanged.
+ */
+export function reconcileSessionDenial(
+  verdict: PremiumDenialVerdict,
+  clientHasSession: boolean,
+): PremiumDenialVerdict {
+  return verdict === 'sign_in_required' && clientHasSession ? 'session_desync' : verdict;
+}
+
 /** Whether the verdict is worth retrying. Terminal verdicts need user action. */
 export function isTransientDenial(verdict: PremiumDenialVerdict | null): boolean {
-  return verdict === 'entitlement_desync' || verdict === 'access_denied';
+  return verdict === 'entitlement_desync'
+    || verdict === 'access_denied'
+    || verdict === 'session_desync';
 }
 
 /** What a panel should actually render for a denial. */

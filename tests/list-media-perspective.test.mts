@@ -2,14 +2,20 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { newsHandler } from '../server/worldmonitor/news/v1/handler';
 import { INTEL_SOURCES, isServerFeedReachableForLanguage, VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds';
-import { rssFeedCacheKey } from '../server/worldmonitor/news/v1/_rss-cache';
-import { REVOKED_URLS_KEY } from '../server/_shared/digest-revocations';
+import { rssFeedCacheKey, rssFeedCountryCacheKey } from '../server/worldmonitor/news/v1/_rss-cache';
+import { REVOKED_URLS_KEY, __resetRevocationMemoForTest } from '../server/_shared/digest-revocations';
 import { drainResponseHeaders } from '../server/_shared/response-headers';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
 import { MEDIA_PERSPECTIVE_CACHE_PREFIX } from '../server/worldmonitor/news/v1/list-media-perspective';
 import { unM49RegionCountries } from '../server/_shared/un-m49-regions';
 import { createNewsServiceRoutes, type ListMediaPerspectiveResponse } from '../src/generated/server/worldmonitor/news/v1/service_server';
 import { validateGeneratedRequest } from '../server/request-validator';
+
+// Each test sets its own revocations; drop the previous test's memoized read.
+beforeEach(__resetRevocationMemoForTest);
+
+/** Stand-in for REVOCATION_MEMO_TTL_MS passing: the next read goes to Redis. */
+const afterRevocationMemoWindow = __resetRevocationMemoForTest;
 
 const route = createNewsServiceRoutes(newsHandler, { validateRequest: validateGeneratedRequest })
   .find(entry => entry.path.endsWith('/list-media-perspective'))!;
@@ -135,6 +141,20 @@ describe('ListMediaPerspective', () => {
     assert.equal(drainResponseHeaders(req)?.['X-No-Cache'], undefined, 'a complete response stays cacheable');
   });
 
+  it('reads the retained country pool from its own key', async () => {
+    const source = feed('New York Times World');
+    assert.equal(feedVariants.get(source.url), 'full', 'fixture premise');
+    const parsedAt = Date.now() - 600_000;
+    cache.set(feedKey(source), { items: [article(source.name, 'Parliament debates the budget')], parsedAt });
+    cache.set(rssFeedCountryCacheKey('full', source.url), {
+      parsedAt,
+      items: [article(source.name, 'Riyadh airport reopens as Saudi Arabia weighs response')],
+    });
+
+    const { payload } = await request({ subject_country: 'SA' });
+    assert.equal(group(payload, 'US', 'domestic')!.headlines[0]!.title, 'Riyadh airport reopens as Saudi Arabia weighs response');
+  });
+
   it('reads feeds the English digest cannot reach', async () => {
     assert.equal(isServerFeedReachableForLanguage(feed('BBC Persian'), 'en'), false, 'fixture premise');
     put('BBC Persian', [article('BBC Persian', 'Saudi Arabia and Iran resume talks', { lang: 'fa' })]);
@@ -236,10 +256,12 @@ describe('ListMediaPerspective', () => {
       ['Saudi Arabia intercepts missiles', 'Saudi Arabia opens airport'], 'served from the response cache');
 
     revoked = ['https://news.example.org/withdrawn'];
+    afterRevocationMemoWindow();
     const rebuilt = await request({ subject_country: 'SA' });
     assert.deepEqual(group(rebuilt.payload, 'SA', 'international')!.headlines.map(item => item.title), ['Saudi Arabia signs accord']);
 
     failRevocations = true;
+    afterRevocationMemoWindow();
     const blind = await request({ subject_country: 'SA' });
     assert.equal(blind.payload.state, 'unavailable', 'a hit is not served while revocations are unreadable');
     assert.deepEqual(blind.payload.groups, []);
@@ -306,6 +328,7 @@ describe('ListMediaPerspective', () => {
     assert.deepEqual([...ttls.values()], [60], 'a partial build is cached for one minute');
 
     failRevocations = true;
+    afterRevocationMemoWindow();
     const blind = await request({ subject_country: 'SA', window_hours: '48' });
     assert.equal(blind.payload.state, 'unavailable');
     assert.deepEqual(blind.payload.groups, []);

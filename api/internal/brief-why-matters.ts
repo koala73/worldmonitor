@@ -61,7 +61,7 @@ import {
 // ── Env knobs (read at request entry so Railway/Vercel flips take effect
 // on the next invocation without a redeploy) ───────────────────────────
 
-function readConfig(env: Record<string, string | undefined> = process.env as Record<string, string | undefined>): {
+export function readConfig(env: Record<string, string | undefined> = process.env as Record<string, string | undefined>): {
   primary: 'analyst' | 'gemini';
   invalidPrimaryRaw: string | null;
   shadowEnabled: boolean;
@@ -363,7 +363,10 @@ interface EdgeContext {
 
 export default async function handler(req: Request, ctx?: EdgeContext): Promise<Response> {
   if (req.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, 405);
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json', Allow: 'POST' },
+    });
   }
 
   // Auth.

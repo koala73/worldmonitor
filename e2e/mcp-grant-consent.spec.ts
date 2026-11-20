@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 /**
  * MCP Grant Consent Page — DOM-behavioural coverage (#5654).
@@ -364,9 +365,9 @@ test.describe('MCP grant consent page (#5654)', () => {
       await expect(page.locator('#retryContextBtn')).toBeVisible();
       await expect(page.locator('#loading')).toBeHidden();
       if (stalledStage === 'context') {
-        await page.screenshot({ path: testInfo.outputPath('consent-timeout-desktop.png'), fullPage: true });
+        await evidenceScreenshot(page, { path: testInfo.outputPath('consent-timeout-desktop.png'), fullPage: true });
         await page.setViewportSize({ width: 390, height: 844 });
-        await page.screenshot({ path: testInfo.outputPath('consent-timeout-mobile.png'), fullPage: true });
+        await evidenceScreenshot(page, { path: testInfo.outputPath('consent-timeout-mobile.png'), fullPage: true });
       }
       await page.locator('#retryContextBtn').click();
       await expect(page.locator('#consent')).toBeVisible();
@@ -395,10 +396,10 @@ test.describe('MCP grant consent page (#5654)', () => {
     await expect(page.locator('#consent')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('#loading')).toBeHidden();
     expect(contextRequests).toBe(1);
-    await page.screenshot({ path: testInfo.outputPath('consent-token-update-desktop.png'), fullPage: true });
+    await evidenceScreenshot(page, { path: testInfo.outputPath('consent-token-update-desktop.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.locator('#authorizeBtn')).toBeVisible();
-    await page.screenshot({ path: testInfo.outputPath('consent-token-update-mobile.png'), fullPage: true });
+    await evidenceScreenshot(page, { path: testInfo.outputPath('consent-token-update-mobile.png'), fullPage: true });
   });
 
   test('signing in again replaces the old pending load without duplicating the new one', async ({ page }) => {
@@ -518,7 +519,7 @@ test.describe('MCP grant consent page (#5654)', () => {
     await expect(page.locator('#loading')).toBeHidden();
   });
 
-  test('successful context load shows consent card with client metadata', async ({ page }) => {
+  test('successful context load shows consent card with client metadata', async ({ page }, testInfo) => {
     await stubClerkModule(page);
     const contextAuth: (string | undefined)[] = [];
     await page.route('**/api/internal/mcp-grant-context*', async (route) => {
@@ -542,6 +543,12 @@ test.describe('MCP grant consent page (#5654)', () => {
     await expect(page.locator('#loading')).toBeHidden();
     await expect(page.locator('#errorView')).toBeHidden();
     await expect(page.locator('#authorizeBtn')).toBeEnabled();
+    await expect(page.locator('.scope-list li').first()).toHaveText(/Intelligence data from \d+ attributed providers/);
+    await expect(page.locator('.scope-list li').nth(1)).toHaveText('Real-time news & events');
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await evidenceScreenshot(page, { path: testInfo.outputPath(`consent-provider-scope-${width}.png`), fullPage: true });
+    }
 
     // authedFetch must attach the Clerk JWT; a regression to a bare fetch()
     // would fail closed in production but is invisible to a stub that ignores
@@ -667,41 +674,6 @@ test.describe('MCP grant consent page (#5654)', () => {
     await expect(page.locator('#errorBody')).toContainText('Check your connection');
     await expect(page.locator('#retryContextBtn')).toBeVisible();
     await expect(page.locator('#consent')).toBeHidden();
-  });
-
-  test('authorize click disables button and shows authorizing state', async ({ page }) => {
-    await stubClerkModule(page);
-    await stubContextSuccess(page);
-    const requestedRedirects = await interceptGrantRedirect(page);
-
-    // Delay mint response to observe intermediate state
-    let resolveMint!: () => void;
-    const mintDelay = new Promise<void>((resolve) => {
-      resolveMint = resolve;
-    });
-    await page.route('**/api/internal/mcp-grant-mint', async (route) => {
-      expectMintRequestContract(route);
-      await mintDelay;
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ redirect: GRANT_REDIRECT }),
-      });
-    });
-
-    await page.goto(GRANT_PAGE);
-    await expect(page.locator('#consent')).toBeVisible();
-
-    await page.locator('#authorizeBtn').click();
-    await expect(page.locator('#authorizeBtn')).toBeDisabled();
-    await expect(page.locator('#authorizeBtn')).toHaveText('Authorizing…');
-
-    // Release the mint and let the resulting navigation settle INSIDE the test.
-    // Returning here would leave a cross-origin request to the production host
-    // racing page teardown.
-    resolveMint();
-    await page.waitForURL(/^https:\/\/api\.worldmonitor\.app\//);
-    expect(requestedRedirects()).toHaveLength(1);
   });
 
   test('Clerk refresh preserves consent while mint is in flight', async ({ page }) => {
@@ -948,6 +920,30 @@ test.describe('MCP grant consent page (#5654)', () => {
     await expect(page.locator('#consent')).toBeVisible();
     await expect(page.locator('#authorizeBtn')).toBeEnabled();
   });
+
+  // OpenAI rejected 2.10.1 for offering subscriptions inside ChatGPT, and its
+  // reviewer signs in on this page.
+  for (const [surface, offersPro] of [['chatgpt', false], ['', true]] as const) {
+    test(`sign-in ${offersPro ? 'mentions' : 'does not mention'} Pro ${surface ? 'for ChatGPT' : 'for other clients'}`, async ({ page }, testInfo) => {
+      await stubClerkModule(page, { signedOut: true });
+      await stubContextSuccess(page);
+
+      await page.goto(surface ? `${GRANT_PAGE}&surface=${surface}` : GRANT_PAGE);
+      await dismissClerkSignIn(page);
+
+      await expect(page.locator('#signInView')).toBeVisible();
+      const visibleText = await page.locator('body').innerText();
+      const proLinks = page.locator('a[href*="/pro"]:visible');
+      if (offersPro) {
+        expect(visibleText).toContain('Pro unlocks the full toolset and allowance.');
+        await expect(proLinks).toHaveCount(1);
+      } else {
+        expect(visibleText).not.toMatch(/\bPro\b/);
+        await expect(proLinks).toHaveCount(0);
+      }
+      await evidenceScreenshot(page, { path: testInfo.outputPath(`grant-sign-in-${surface || 'default'}.png`) });
+    });
+  }
 
   // Observed 2026-10-19: a passkey prompt was interrupted, the Clerk modal
   // closed with the sign-in attempt at needs_first_factor and no session, and

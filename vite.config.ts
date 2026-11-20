@@ -3,12 +3,14 @@ import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { VitePWA } from 'vite-plugin-pwa';
 import { appChunkRuntimeCache, createDashboardPrecache } from './shared/pwa-precache';
 import type { OutputBundle } from 'rollup';
-import { resolve, dirname, extname, basename, posix } from 'path';
+import { resolve, dirname, extname, basename, posix, relative, isAbsolute } from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
+import { statSync } from 'fs';
 import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
 import pkg from './package.json';
 import { getSentryBuildMetadata } from './shared/sentry-build-metadata';
+import { removeSourceMaps, shouldEmitPublicSourceMaps, viteSourcemapSetting } from './shared/source-map-policy';
 import { appendChunkOwnership, chunkHasFirstPartyModule } from './shared/chunk-ownership';
 import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 import {
@@ -121,7 +123,7 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   ChokepointStrip: 'panels-energy', EnergyComplex: 'panels-energy',
   EnergyCrisis: 'panels-energy', EnergyDisruptions: 'panels-energy',
   EnergyRiskOverview: 'panels-energy', FuelPrices: 'panels-energy',
-  FuelShortage: 'panels-energy', Hormuz: 'panels-energy',
+  FuelShortage: 'panels-energy', GridDisruptionClock: 'panels-energy', Hormuz: 'panels-energy',
   OilInventories: 'panels-energy', PipelineStatus: 'panels-energy',
   StorageFacilityMap: 'panels-energy', RenewableEnergy: 'panels-energy',
   // Defense / military / aviation
@@ -166,7 +168,7 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   RegionalIntelligenceBoard: 'panels-intel',
   Regulation: 'panels-intel',
   // Disasters / climate / connectivity / society
-  ClimateAnomaly: 'panels-risk', Counters: 'panels-risk',
+  ClimateAnomaly: 'panels-risk', ReservoirLevels: 'panels-risk', Counters: 'panels-risk',
   DiseaseOutbreaks: 'panels-risk',
   Displacement: 'panels-risk', GeoHubs: 'panels-risk',
   Giving: 'panels-risk', InternetDisruptions: 'panels-risk',
@@ -224,6 +226,30 @@ function brotliPrecompressPlugin(): Plugin {
         await mkdir(dirname(compressedPath), { recursive: true });
         await writeFile(compressedPath, compressedBuffer);
       }));
+    },
+  };
+}
+
+// Fail-safe for builds whose maps must not be served: after every other plugin
+// (including the Sentry upload and its own deletion) has finished, delete any
+// source map left anywhere in the output, including copied public/ trees.
+function stripPrivateSourceMapsPlugin(): Plugin {
+  let outDir = 'dist';
+  return {
+    name: 'wm-strip-private-source-maps',
+    apply: 'build',
+    configResolved(config) {
+      outDir = resolve(config.root, config.build.outDir);
+    },
+    closeBundle: {
+      order: 'post',
+      sequential: true,
+      async handler() {
+        const removed = await removeSourceMaps(outDir);
+        if (removed.length > 0) {
+          console.warn(`[wm-strip-private-source-maps] removed ${removed.length} source map(s) from ${outDir}`);
+        }
+      },
     },
   };
 }
@@ -294,6 +320,10 @@ function htmlVariantPlugin(activeMeta: VariantMeta, activeVariant: string, isDes
       // Web builds use 'full' favicons in HTML; runtime JS swaps them per hostname.
       if (activeVariant !== 'full') {
         result = result
+          .replace(
+            /<link rel="icon" type="image\/png" sizes="96x96" href="\/favico\/android-chrome-96x96\.png" \/>/g,
+            `<link rel="icon" type="image/png" sizes="192x192" href="/favico/${activeVariant}/android-chrome-192x192.png" />`
+          )
           .replace(/\/favico\/favicon/g, `/favico/${activeVariant}/favicon`)
           .replace(/\/favico\/apple-touch-icon/g, `/favico/${activeVariant}/apple-touch-icon`)
           .replace(/\/favico\/android-chrome/g, `/favico/${activeVariant}/android-chrome`)
@@ -493,6 +523,41 @@ function polymarketPlugin(): Plugin {
 }
 
 /**
+ * Dev server only: answer an /api/* request that no dev handler or proxy rule
+ * took with a JSON 404, instead of letting Vite serve the matching api/ source
+ * file as a JavaScript module. Serving it handed the app source text where it
+ * expected JSON, and transforming it made Vite's dependency optimizer discover
+ * server-only packages (@upstash/redis, aws4fetch, ...) mid-session, rebuild
+ * its pre-bundle and reload, which left other open pages requesting chunks
+ * that no longer existed (blank map harness in e2e runs).
+ */
+function devApiSourceGuardPlugin(): Plugin {
+  let proxyKeys: string[] = [];
+  return {
+    name: 'wm-dev-api-source-guard',
+    apply: 'serve',
+    configResolved(config) {
+      proxyKeys = Object.keys(config.server.proxy ?? {});
+    },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const path = (req.url ?? '').split('?')[0]!;
+        if (!path.startsWith('/api/')) return next();
+        if (proxyKeys.some((key) => (key.startsWith('^') ? new RegExp(key).test(path) : path.startsWith(key)))) return next();
+        const file = resolve(__dirname, `.${decodeURIComponent(path)}`);
+        const inApi = relative(resolve(__dirname, 'api'), file);
+        if (!inApi || inApi.startsWith('..') || isAbsolute(inApi)) return next();
+        const isSource = ['', '.js', '.ts', '.mjs'].some((ext) => statSync(file + ext, { throwIfNoEntry: false })?.isFile());
+        if (!isSource) return next();
+        res.statusCode = 404;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'Not served by the Vite dev server', path }));
+      });
+    },
+  };
+}
+
+/**
  * Vite dev server plugin for sebuf API routes.
  *
  * Intercepts requests matching /api/{domain}/v1/* and routes them through
@@ -533,6 +598,19 @@ function sebufApiPlugin(): Plugin {
       leadsServerMod, leadsHandlerMod,
       scenarioServerMod, scenarioHandlerMod,
       shippingV2ServerMod, shippingV2HandlerMod,
+      batchServerMod, batchHandlerMod,
+      consumerPricesServerMod, consumerPricesHandlerMod,
+      feedbackServerMod, feedbackHandlerMod,
+      forecastServerMod, forecastHandlerMod,
+      healthServerMod, healthHandlerMod,
+      imageryServerMod, imageryHandlerMod,
+      radiationServerMod, radiationHandlerMod,
+      safetyServerMod, safetyHandlerMod,
+      sanctionsServerMod, sanctionsHandlerMod,
+      scorecardServerMod, scorecardHandlerMod,
+      thermalServerMod, thermalHandlerMod,
+      webcamServerMod, webcamHandlerMod,
+      orbitalServerMod, orbitalHandlerMod,
     ] = await Promise.all([
         import('./server/router'),
         import('./server/cors'),
@@ -589,6 +667,32 @@ function sebufApiPlugin(): Plugin {
         import('./server/worldmonitor/scenario/v1/handler'),
         import('./src/generated/server/worldmonitor/shipping/v2/service_server'),
         import('./server/worldmonitor/shipping/v2/handler'),
+        import('./src/generated/server/worldmonitor/batch/v1/service_server'),
+        import('./server/worldmonitor/batch/v1/handler'),
+        import('./src/generated/server/worldmonitor/consumer_prices/v1/service_server'),
+        import('./server/worldmonitor/consumer-prices/v1/handler'),
+        import('./src/generated/server/worldmonitor/feedback/v1/service_server'),
+        import('./server/worldmonitor/feedback/v1/handler'),
+        import('./src/generated/server/worldmonitor/forecast/v1/service_server'),
+        import('./server/worldmonitor/forecast/v1/handler'),
+        import('./src/generated/server/worldmonitor/health/v1/service_server'),
+        import('./server/worldmonitor/health/v1/handler'),
+        import('./src/generated/server/worldmonitor/imagery/v1/service_server'),
+        import('./server/worldmonitor/imagery/v1/handler'),
+        import('./src/generated/server/worldmonitor/radiation/v1/service_server'),
+        import('./server/worldmonitor/radiation/v1/handler'),
+        import('./src/generated/server/worldmonitor/safety/v1/service_server'),
+        import('./server/worldmonitor/safety/v1/handler'),
+        import('./src/generated/server/worldmonitor/sanctions/v1/service_server'),
+        import('./server/worldmonitor/sanctions/v1/handler'),
+        import('./src/generated/server/worldmonitor/scorecard/v1/service_server'),
+        import('./server/worldmonitor/scorecard/v1/handler'),
+        import('./src/generated/server/worldmonitor/thermal/v1/service_server'),
+        import('./server/worldmonitor/thermal/v1/handler'),
+        import('./src/generated/server/worldmonitor/webcam/v1/service_server'),
+        import('./server/worldmonitor/webcam/v1/handler'),
+        import('./src/generated/server/worldmonitor/orbital/v1/service_server'),
+        import('./server/worldmonitor/orbital/v1/handler'),
       ]);
 
     const serverOptions = {
@@ -622,6 +726,19 @@ function sebufApiPlugin(): Plugin {
       ...leadsServerMod.createLeadsServiceRoutes(leadsHandlerMod.leadsHandler, serverOptions),
       ...scenarioServerMod.createScenarioServiceRoutes(scenarioHandlerMod.scenarioHandler, serverOptions),
       ...shippingV2ServerMod.createShippingV2ServiceRoutes(shippingV2HandlerMod.shippingV2Handler, serverOptions),
+      ...batchServerMod.createBatchServiceRoutes(batchHandlerMod.batchHandler, serverOptions),
+      ...consumerPricesServerMod.createConsumerPricesServiceRoutes(consumerPricesHandlerMod.consumerPricesHandler, serverOptions),
+      ...feedbackServerMod.createFeedbackServiceRoutes(feedbackHandlerMod.feedbackHandler, serverOptions),
+      ...forecastServerMod.createForecastServiceRoutes(forecastHandlerMod.forecastHandler, serverOptions),
+      ...healthServerMod.createHealthServiceRoutes(healthHandlerMod.healthHandler, serverOptions),
+      ...imageryServerMod.createImageryServiceRoutes(imageryHandlerMod.imageryHandler, serverOptions),
+      ...radiationServerMod.createRadiationServiceRoutes(radiationHandlerMod.radiationHandler, serverOptions),
+      ...safetyServerMod.createSafetyServiceRoutes(safetyHandlerMod.safetyHandler, serverOptions),
+      ...sanctionsServerMod.createSanctionsServiceRoutes(sanctionsHandlerMod.sanctionsHandler, serverOptions),
+      ...scorecardServerMod.createScorecardServiceRoutes(scorecardHandlerMod.scorecardHandler, serverOptions),
+      ...thermalServerMod.createThermalServiceRoutes(thermalHandlerMod.thermalHandler, serverOptions),
+      ...webcamServerMod.createWebcamServiceRoutes(webcamHandlerMod.webcamHandler, serverOptions),
+      ...orbitalServerMod.createOrbitalServiceRoutes(orbitalHandlerMod.orbitalHandler, serverOptions),
     ];
     cachedCorsMod = corsMod;
     return routerMod.createRouter(allRoutes);
@@ -957,8 +1074,8 @@ export default defineConfig(({ mode }) => {
   const isDesktopBuild = process.env.VITE_DESKTOP_RUNTIME === '1';
   const activeVariant = process.env.VITE_VARIANT || 'full';
   const activeMeta = VARIANT_META[activeVariant] || VARIANT_META.full;
-  const emitPublicSourceMaps = process.env.WM_EMIT_SOURCEMAPS === '1'
-    || process.env.VERCEL_ENV === 'preview';
+  // Production deploys never publish maps; see shared/source-map-policy.ts.
+  const emitPublicSourceMaps = shouldEmitPublicSourceMaps(process.env);
   // Sentry source-map upload. Gated on the token so a build without it (local,
   // fork, CI) behaves exactly as before rather than failing. Matching is by
   // debug ID — the plugin stamps the same id into the bundle and its map.
@@ -969,6 +1086,11 @@ export default defineConfig(({ mode }) => {
   return {
     html: {
       cspNonce: STATIC_SCRIPT_NONCE,
+    },
+    optimizeDeps: {
+      // The initial scan misses the ML worker. Discovering its dependency later
+      // replaces shared chunks while an open dashboard can still request them.
+      include: ['@xenova/transformers'],
     },
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
@@ -1041,7 +1163,10 @@ export default defineConfig(({ mode }) => {
       miitNewsPlugin(),
       gpsjamDevPlugin(),
       sebufApiPlugin(),
+      // Must stay after every plugin that serves /api/* in dev.
+      devApiSourceGuardPlugin(),
       brotliPrecompressPlugin(),
+      ...(emitPublicSourceMaps ? [] : [stripPrivateSourceMapsPlugin()]),
       VitePWA({
         registerType: 'autoUpdate',
         injectRegister: false,
@@ -1068,14 +1193,53 @@ export default defineConfig(({ mode }) => {
           theme_color: '#0a0f0a',
           background_color: '#0a0f0a',
           categories: activeMeta.categories,
+          screenshots: [
+            {
+              src: '/pwa/dashboard-wide.jpg',
+              sizes: '1440x900',
+              type: 'image/jpeg',
+              form_factor: 'wide',
+              label: 'World Monitor desktop dashboard with conflict zones, intelligence hotspots, and live news',
+            },
+            {
+              src: '/pwa/dashboard-narrow.jpg',
+              sizes: '390x844',
+              type: 'image/jpeg',
+              form_factor: 'narrow',
+              label: 'World Monitor mobile map with conflict zones and intelligence hotspots',
+            },
+          ],
+          shortcuts: [
+            {
+              name: 'Dashboard',
+              description: 'Open the live global intelligence dashboard',
+              url: '/dashboard',
+              icons: [{ src: '/favico/android-chrome-96x96.png', sizes: '96x96', type: 'image/png' }],
+            },
+            {
+              name: 'Stocks',
+              description: 'Open stock research and market data',
+              url: '/stocks',
+              icons: [{ src: '/favico/android-chrome-96x96.png', sizes: '96x96', type: 'image/png' }],
+            },
+          ],
           icons: [
             { src: '/favico/android-chrome-192x192.png', sizes: '192x192', type: 'image/png' },
+            { src: '/favico/android-chrome-384x384.png', sizes: '384x384', type: 'image/png' },
             { src: '/favico/android-chrome-512x512.png', sizes: '512x512', type: 'image/png' },
-            { src: '/favico/android-chrome-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+            { src: '/favico/worldmonitor-icon-1024.png', sizes: '1024x1024', type: 'image/png' },
+            { src: '/favico/worldmonitor-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+            { src: '/favico/worldmonitor-maskable-384.png', sizes: '384x384', type: 'image/png', purpose: 'maskable' },
+            { src: '/favico/worldmonitor-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+            { src: '/favico/worldmonitor-maskable-1024.png', sizes: '1024x1024', type: 'image/png', purpose: 'maskable' },
           ],
         },
 
         workbox: {
+          // The service worker is generated after the Sentry upload has run,
+          // so its map is never uploaded; outside previews it is just a
+          // public file. Production served /sw.js.map until this was set.
+          sourcemap: emitPublicSourceMaps,
           globPatterns: ['assets/**/*.{js,css}'],
           manifestTransforms: [dashboardPrecache.manifestTransform],
           navigateFallback: null,
@@ -1176,13 +1340,19 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       // Uploading requires the maps to exist. When they are not also being
-      // published deliberately, the Sentry plugin deletes them after upload so
-      // production keeps shipping no public maps.
-      sourcemap: emitPublicSourceMaps || uploadSourceMapsToSentry,
+      // published deliberately they are 'hidden' (no sourceMappingURL), the
+      // Sentry plugin deletes them after upload, and
+      // stripPrivateSourceMapsPlugin removes anything left.
+      sourcemap: viteSourcemapSetting(process.env),
       // Vite's global threshold accommodates the known lazy GlobeMap bundle.
       // wm-chunk-size-warning-policy keeps the 1200 kB default for every other
       // chunk so unrelated regressions between 1200 and 2000 kB remain visible.
       chunkSizeWarningLimit: 2000,
+      // The gzip column in Vite's build report cost 15s per build on CI (about
+      // 400 files) and nothing reads it: the bundle budgets gate raw bytes and
+      // compute their own sizes, and the brotli plugin writes the shipped .br
+      // files separately.
+      reportCompressedSize: false,
       // Vite 6 hoists every dynamic chunk's STATIC deps into the entry HTML's
       // modulepreload list to avoid latency on the first dynamic import. For the
       // map stack that defeats the whole point of dynamic-importing MapContainer:
@@ -1327,7 +1497,7 @@ export default defineConfig(({ mode }) => {
             // Map/globe/search consumers import directly (lazy); the eager
             // related-assets/infrastructure-cascade/cable-activity chains
             // lazy-cache it. Kept off the eager @/config barrel above. (#4404)
-            if (id.endsWith('/src/config/geo-map.ts')) {
+            if (id.endsWith('/src/config/geo-map.ts') || id.endsWith('/shared/nuclear-facilities-data.ts')) {
               return 'geo-map-data';
             }
             // Military-bases bulk (~48KB MILITARY_BASES_EXPANDED + merged
@@ -1430,6 +1600,8 @@ export default defineConfig(({ mode }) => {
           '**/test-results/**',
           '**/playwright-report/**',
           '**/.playwright-mcp/**',
+          // Cargo output; watching it on Windows fails with EBUSY during `tauri dev` builds.
+          '**/src-tauri/target/**',
         ],
       },
       proxy: {

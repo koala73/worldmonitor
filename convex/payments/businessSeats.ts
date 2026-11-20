@@ -12,6 +12,7 @@ import { assertAccountWritable } from "../accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
 import {
   internalAction,
+  internalMutation,
   mutation,
   query,
   type ActionCtx,
@@ -22,6 +23,7 @@ import { internal } from "../_generated/api";
 import { USER_AGENT } from "../broadcast/_resendContacts";
 import { ResendSendError, sendResendEmail } from "../lib/resendEmail";
 import { requireUserId, resolveUserIdentity } from "../lib/auth";
+import { EMAIL_RED, emailButton, emailCard, emailFrame, emailHeading, emailNote, emailParagraph, escapeEmailHtml } from "../../shared/email-frame";
 import {
   extractDomain,
   isCorporateDomain,
@@ -33,17 +35,23 @@ import {
 } from "../lib/identitySigning";
 import { isBusinessPlan, isCoveringAt } from "./subscriptionHelpers";
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 const MAX_SEATS = 4;
 const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+/** Each extension adds at most 14 days to the later of the current expiry and now. */
+const MAX_EXTENSION_HOURS = INVITE_TTL_MS / HOUR_MS;
+
+/** "7 November 2026 at 08:22 UTC" — unambiguous across the invitee's locale. */
+export function formatInviteExpiry(expiresAt: number): string {
+  const d = new Date(expiresAt);
+  const months = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mm = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${d.getUTCDate()} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()} at ${hh}:${mm} UTC`;
+}
 const RESEND_FETCH_TIMEOUT_MS = 10_000;
 
 /**
@@ -282,6 +290,35 @@ async function sendSeatEmail(ctx: Pick<ActionCtx, "runQuery">, opts: {
   console.log(opts.successLog);
 }
 
+const SEAT_SUPPORT_NOTE = 'Questions? Reply to this email or contact <a href="mailto:support@worldmonitor.app" style="color: #4ade80;">support@worldmonitor.app</a>.';
+
+/** The team-access-ended email body. Exported for tests. */
+export function teamAccessEndedEmailHtml(): string {
+  return emailFrame({
+    preheader: "Your WorldMonitor Pro seat has ended and your account is back on the free tier.",
+    kicker: "Team access",
+    accent: EMAIL_RED,
+    bodyHtml: `${emailHeading("Team access ended")}
+      ${emailCard(emailParagraph("Your WorldMonitor Pro seat on a team Business plan has ended because the plan is no longer active. Your account has returned to the free tier."), { color: EMAIL_RED })}
+      ${emailButton("https://worldmonitor.app/pro", "View plans", EMAIL_RED)}
+      ${emailNote(SEAT_SUPPORT_NOTE)}`,
+    footerNote: "You're receiving this because you held a seat on a WorldMonitor team plan.",
+  });
+}
+
+/** The Business seat invite email body. Exported for tests. */
+export function businessInviteEmailHtml(args: { ownerEmail: string; acceptUrl: string; expiryNote: string }): string {
+  return emailFrame({
+    preheader: `${args.ownerEmail} invited you to a WorldMonitor Pro seat.`,
+    kicker: "Team invite",
+    bodyHtml: `${emailHeading("You're invited to WorldMonitor Pro")}
+      ${emailCard(emailParagraph(`${escapeEmailHtml(args.ownerEmail)} has invited you to a Pro seat on their WorldMonitor API Business plan. Accept the invite to unlock all Pro features, with no billing setup required.`))}
+      ${emailButton(args.acceptUrl, "Accept invite")}
+      ${emailNote(`${escapeEmailHtml(args.expiryNote)} If you didn't expect this email, you can ignore it.`)}`,
+    footerNote: "You're receiving this because a WorldMonitor Business plan owner invited this address.",
+  });
+}
+
 /**
  * Notifies a revoked invitee that their team access ended. Scheduled from the
  * revoke-on-lapse path in subscriptionHelpers.
@@ -289,23 +326,7 @@ async function sendSeatEmail(ctx: Pick<ActionCtx, "runQuery">, opts: {
 export const sendTeamAccessEndedEmail = internalAction({
   args: { inviteeEmail: v.string() },
   handler: async (ctx, args) => {
-    const html = `
-<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
-  <div style="background: #ef4444; height: 4px;"></div>
-  <div style="padding: 40px 32px;">
-    <p style="font-size: 22px; font-weight: 700; color: #fff; margin: 0 0 12px;">Team access ended</p>
-    <p style="font-size: 14px; color: #999; line-height: 1.5; margin: 0 0 24px;">
-      Your WorldMonitor Pro seat on a team Business plan has ended because the plan is no longer active.
-      Your account has returned to the free tier.
-    </p>
-    <div style="text-align: center;">
-      <a href="https://worldmonitor.app/pro" style="display: inline-block; background: #ef4444; color: #fff; padding: 14px 36px; text-decoration: none; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 2px;">View Plans</a>
-    </div>
-    <p style="font-size: 11px; color: #666; text-align: center; margin: 24px 0 0;">
-      Questions? Reply to this email or contact support@worldmonitor.app.
-    </p>
-  </div>
-</div>`;
+    const html = teamAccessEndedEmailHtml();
 
     await sendSeatEmail(ctx, {
       to: args.inviteeEmail,
@@ -328,26 +349,15 @@ export const sendBusinessInviteEmail = internalAction({
     ownerEmail: v.string(),
     grantId: v.string(),
     token: v.string(),
+    // Set when an extended invite is re-sent; the default copy assumes 14 days.
+    expiresAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const expiryNote = args.expiresAt === undefined
+      ? "This invite expires in 14 days."
+      : `This invite expires on ${formatInviteExpiry(args.expiresAt)}.`;
     const acceptUrl = `https://www.worldmonitor.app/dashboard?accept-business-invite=${encodeURIComponent(args.grantId)}&token=${encodeURIComponent(args.token)}`;
-    const html = `
-<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
-  <div style="background: #4ade80; height: 4px;"></div>
-  <div style="padding: 40px 32px;">
-    <p style="font-size: 22px; font-weight: 700; color: #fff; margin: 0 0 12px;">You're invited to WorldMonitor Pro</p>
-    <p style="font-size: 14px; color: #999; line-height: 1.5; margin: 0 0 24px;">
-      ${escapeHtml(args.ownerEmail)} has invited you to a Pro seat on their WorldMonitor API Business plan.
-      Accept the invite to unlock all Pro features — no billing setup required.
-    </p>
-    <div style="text-align: center;">
-      <a href="${acceptUrl}" style="display: inline-block; background: #4ade80; color: #0a0a0a; padding: 14px 36px; text-decoration: none; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 2px;">Accept Invite</a>
-    </div>
-    <p style="font-size: 11px; color: #666; text-align: center; margin: 24px 0 0;">
-      This invite expires in 14 days. If you didn't expect this email, you can ignore it.
-    </p>
-  </div>
-</div>`;
+    const html = businessInviteEmailHtml({ ownerEmail: args.ownerEmail, acceptUrl, expiryNote });
 
     await sendSeatEmail(ctx, {
       to: args.inviteeEmail,
@@ -449,7 +459,7 @@ export const removeSeat = mutation({
 
 /**
  * Invitee redeems an HMAC token to accept a Business Pro seat invite. Verifies
- * the token, matches the signed-in Clerk email against the invited address,
+ * the token, matches the signed-in verified Clerk email against the invited address,
  * checks the underlying Business subscription is still covering, flips the
  * grant to `accepted`, stamps `inviteeUserId`, and recomputes the invitee's
  * entitlement. Single-use: accepted/revoked/expired tokens are rejected.
@@ -463,6 +473,9 @@ export const acceptBusinessInvite = mutation({
     const inviteeEmail = identity?.email?.trim().toLowerCase();
     if (!inviteeEmail) {
       throw new ConvexError({ kind: "INVITEE_EMAIL_UNAVAILABLE" });
+    }
+    if (identity?.emailVerified !== true) {
+      throw new ConvexError({ kind: "INVITEE_EMAIL_UNVERIFIED" });
     }
 
     const grant = await ctx.db.get(args.grantId);
@@ -512,5 +525,101 @@ export const acceptBusinessInvite = mutation({
     );
 
     return { ok: true as const };
+  },
+});
+
+/**
+ * Support tool: extend a pending invite by `hours` and re-send it.
+ *
+ * The emailed token embeds its own expiry, so moving `expiresAt` alone would
+ * leave the invitee's link dead at the old time. This signs a new token for the
+ * new expiry and emails it; the old link keeps its original expiry. The
+ * extension counts from the later of the current expiry and now, so a lapsed
+ * invite can be revived. Run from the CLI:
+ *
+ *   npx convex run payments/businessSeats:extendBusinessInvite '{"grantId":"…","hours":24}'
+ *
+ * Every run with `hours` > 0 extends again. To retry a failed email without
+ * extending, pass `"hours":0`: it re-sends a link for the current expiry and
+ * refuses an invite that has already lapsed.
+ */
+export const extendBusinessInvite = internalMutation({
+  args: { grantId: v.id("businessProGrants"), hours: v.number() },
+  handler: async (ctx, args) => {
+    if (!Number.isInteger(args.hours) || args.hours < 0 || args.hours > MAX_EXTENSION_HOURS) {
+      throw new ConvexError({ kind: "INVALID_EXTENSION_HOURS" });
+    }
+    const grant = await ctx.db.get(args.grantId);
+    if (!grant) {
+      throw new ConvexError({ kind: "GRANT_NOT_FOUND" });
+    }
+    // An owner whose account is being deleted cannot have invites accepted,
+    // so do not change or re-send them.
+    await assertAccountWritable(ctx, grant.ownerUserId);
+    if (grant.status !== "pending") {
+      throw new ConvexError({ kind: "INVITE_NOT_PENDING" });
+    }
+    const now = Date.now();
+    if (args.hours === 0 && grant.expiresAt <= now) {
+      throw new ConvexError({ kind: "INVITE_EXPIRED" });
+    }
+    const businessSub = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_dodoSubscriptionId", (q) =>
+        q.eq("dodoSubscriptionId", grant.businessSubscriptionId),
+      )
+      .unique();
+    if (!businessSub || !isBusinessPlan(businessSub.planKey) || !isCoveringAt(businessSub, now)) {
+      throw new ConvexError({ kind: "BUSINESS_NOT_ACTIVE" });
+    }
+    // The owner may have re-invited the same address after this invite lapsed.
+    // Two usable grants for one person would hold two seats.
+    const siblings = await ctx.db
+      .query("businessProGrants")
+      .withIndex("by_businessSubscriptionId", (q) =>
+        q.eq("businessSubscriptionId", grant.businessSubscriptionId),
+      )
+      .collect();
+    const inviteeEmail = grant.inviteeEmail.trim().toLowerCase();
+    const duplicate = siblings.some((g) =>
+      g._id !== grant._id
+      && g.inviteeEmail.trim().toLowerCase() === inviteeEmail
+      && (g.status === "accepted" || (g.status === "pending" && g.expiresAt > now)),
+    );
+    if (duplicate) {
+      throw new ConvexError({ kind: "DUPLICATE_INVITE" });
+    }
+    // A lapsed invite has freed its seat; reviving it must not exceed the cap.
+    if (grant.expiresAt <= now) {
+      const activeOrPending = await countActiveOrPendingGrants(ctx, grant.businessSubscriptionId, now);
+      if (activeOrPending >= MAX_SEATS) {
+        throw new ConvexError({ kind: "SEAT_CAP_REACHED" });
+      }
+    }
+    const owner = await ctx.db
+      .query("customers")
+      .withIndex("by_userId", (q) => q.eq("userId", grant.ownerUserId))
+      .first();
+    const ownerEmail = owner?.email?.trim();
+    if (!ownerEmail) {
+      throw new ConvexError({ kind: "OWNER_EMAIL_UNAVAILABLE" });
+    }
+
+    const expiresAt = args.hours === 0
+      ? grant.expiresAt
+      : Math.max(grant.expiresAt, now) + args.hours * HOUR_MS;
+    if (expiresAt !== grant.expiresAt) {
+      await ctx.db.patch(args.grantId, { expiresAt });
+    }
+    const token = await signBusinessInviteToken(args.grantId, expiresAt);
+    await ctx.scheduler.runAfter(
+      0,
+      internal.payments.businessSeats.sendBusinessInviteEmail,
+      { inviteeEmail: grant.inviteeEmail, ownerEmail, grantId: args.grantId, token, expiresAt },
+    );
+    console.log(
+      `[businessSeats] Extended invite ${args.grantId.slice(0, 8)}... by ${args.hours}h to ${new Date(expiresAt).toISOString()}`,
+    );
+    return { grantId: args.grantId, expiresAt };
   },
 });

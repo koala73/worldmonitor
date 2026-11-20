@@ -17,7 +17,8 @@ const produced = await seedIntlDelays({
   logger: { log() {}, warn() {} },
   fetchFn: async url => {
     const iata = new URL(url).searchParams.get('dep_iata');
-    return Response.json({ data: iata === 'CDG' ? [] : [{ flight_status: 'scheduled', departure: { delay: iata === 'FRA' ? 90 : 0 } }] });
+    // 12 rows: a delay band above moderate needs a sample of 10+ flights (#10873).
+    return Response.json({ data: iata === 'CDG' ? [] : Array.from({ length: 12 }, () => ({ flight_status: 'scheduled', departure: { delay: iata === 'FRA' ? 90 : 0 } })) });
   },
 });
 assert.deepEqual(produced.coverage.map(hub => hub.status), ['normal', 'disruption', 'omitted']);

@@ -26,6 +26,7 @@ import { getEuGasStorageData } from '@/services/economic';
 import { fetchCommodityQuotes } from '@/services/market';
 
 import { buildOverviewState, type OverviewState } from './_energy-risk-overview-state';
+import { oilTapeObservationLabel } from './_oil-tape-observation';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import { HORMUZ_CRISIS_START_DATE } from '../../shared/hormuz-crisis.js';
 
@@ -186,7 +187,7 @@ export class EnergyRiskOverviewPanel extends Panel {
     // Oil price up = bad for energy importers (the dominant Atlas reader).
     // Up = red. Down = green. Inverted from a usual market panel.
     const color = change >= 0 ? '#e74c3c' : '#27ae60';
-    return tileHtml('Brent', price, color, '', deltaText);
+    return tileHtml('Brent', price, color, '', deltaText, oilTapeObservationLabel(t.value));
   }
 
   private renderActiveDisruptionsTile(): string {
@@ -229,13 +230,14 @@ export class EnergyRiskOverviewPanel extends Panel {
   }
 }
 
-function tileHtml(label: string, value: string, color: string, attrs = '', sub = ''): string {
+function tileHtml(label: string, value: string, color: string, attrs = '', sub = '', observation = ''): string {
   const subHtml = sub ? `<div class="ero-tile__sub" style="color:${color}">${escapeHtml(sub)}</div>` : '';
   return `
     <div class="ero-tile" ${attrs}>
       <div class="ero-tile__label">${escapeHtml(label)}</div>
       <div class="ero-tile__value" style="color:${color}">${escapeHtml(value)}</div>
       ${subHtml}
+      ${observation ? `<div class="indicator-date">${escapeHtml(observation)}</div>` : ''}
     </div>
   `;
 }

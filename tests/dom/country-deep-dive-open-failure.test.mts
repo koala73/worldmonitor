@@ -106,15 +106,14 @@ describe('Country brief open failure recovery (#9710)', () => {
     return { manager, renderPaused, toasts, hideCalls: () => hideCalls, isVisible: () => visible, getCode: () => activeCode };
   }
 
-  it('closes a panel that show() left blank under the real country code and resumes the map', async () => {
+  it('closes a panel that show() left blank under the real country code and never pauses the map', async () => {
     const harness = openThatClearsThenThrows();
     await harness.manager.openCountryBriefByCode('IT', 'Italy', { trackAnalytics: false });
 
     expect(harness.hideCalls()).toBe(1);
     expect(harness.isVisible()).toBe(false);
     expect(harness.getCode()).not.toBe('IT');
-    expect(harness.renderPaused[0]).toBe(true);
-    expect(harness.renderPaused[harness.renderPaused.length - 1]).toBe(false);
+    expect(harness.renderPaused).toEqual([]);
     expect(harness.toasts).toEqual(['Country brief failed to open. Please try again.']);
   });
 
@@ -124,7 +123,7 @@ describe('Country brief open failure recovery (#9710)', () => {
 
     expect(harness.hideCalls()).toBe(1);
     expect(harness.isVisible()).toBe(false);
-    expect(harness.renderPaused[harness.renderPaused.length - 1]).toBe(false);
+    expect(harness.renderPaused).toEqual([]);
     expect(harness.toasts).toEqual(['Country brief failed to open. Please try again.']);
   });
 
@@ -168,8 +167,7 @@ describe('Country brief open failure recovery (#9710)', () => {
     expect(panel.isVisible()).toBe(false);
     expect(panel.getCode()).toBeNull();
     expect(document.getElementById('country-deep-dive-panel')?.classList.contains('active')).toBe(false);
-    expect(renderPaused[0]).toBe(true);
-    expect(renderPaused[renderPaused.length - 1]).toBe(false);
+    expect(renderPaused).toEqual([]);
     expect(toasts).toEqual(['Country brief failed to open. Please try again.']);
   });
 
@@ -211,7 +209,7 @@ describe('Country brief open failure recovery (#9710)', () => {
     expect(visible).toBe(true);
     expect(activeCode).toBe('FR');
     expect(page.show).not.toHaveBeenCalled();
-    expect(renderPaused[renderPaused.length - 1]).toBe(true);
+    expect(renderPaused).toEqual([]);
     expect(toasts).toEqual(['Country brief failed to open. Please try again.']);
   });
 });

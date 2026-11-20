@@ -31,6 +31,7 @@ import {
   recordChinaMacroTransportFreshness,
   validateChinaMacroSnapshot,
 } from '../scripts/seed-china-macro.mjs';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 const fixture = (name) => readFileSync(resolve(import.meta.dirname, 'fixtures/china-macro', name), 'utf8');
 const retrievalTime = '2026-07-25T14:30:00.000Z';
@@ -46,7 +47,7 @@ const officialRoutes = new Map([
 ]);
 
 function officialFetch({ calls = [], overrides = new Map() } = {}) {
-  return async (url) => {
+  return withSeedLockFence(async (url) => {
     const target = String(url);
     calls.push(target);
     if (overrides.has(target)) {
@@ -72,7 +73,7 @@ function officialFetch({ calls = [], overrides = new Map() } = {}) {
     const body = officialRoutes.get(target);
     if (!body) throw new Error(`unexpected request ${target}`);
     return new Response(body);
-  };
+  });
 }
 
 const CHINA_MACRO_BUNDLE_SECTION = {
@@ -1163,7 +1164,7 @@ describe('China official macro source adapters', () => {
         if (op === 'SET') { redis.set(key, value); return 'OK'; }
         return 1;
       };
-      globalThis.fetch = async (url, opts = {}) => {
+      globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
         const target = String(url);
         const body = opts.body ? JSON.parse(opts.body) : null;
         if (target.includes('/get/')) {
@@ -1174,7 +1175,7 @@ describe('China official macro source adapters', () => {
           return Response.json({ error: 'canonical write rejected' }, { status: 400 });
         }
         return Response.json({ result: Array.isArray(body) ? run(body) : 'OK' });
-      };
+      });
       process.exit = (code) => { exitCodes.push(code); throw new Error('__exit__'); };
       try {
         const { runSeed } = await import('../scripts/_seed-utils.mjs');
@@ -1236,7 +1237,7 @@ describe('China official macro source adapters', () => {
       }
       return 1;
     };
-    globalThis.fetch = async (url, opts = {}) => {
+    globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
       const target = String(url);
       const body = opts.body ? JSON.parse(opts.body) : null;
       if (target.includes('/get/')) {
@@ -1248,7 +1249,7 @@ describe('China official macro source adapters', () => {
       }
       if (Array.isArray(body)) return new Response(JSON.stringify({ result: run(body) }));
       return new Response(JSON.stringify({ result: 'OK' }));
-    };
+    });
     process.exit = (code) => {
       exitCodes.push(code);
       throw new Error('__exit__');

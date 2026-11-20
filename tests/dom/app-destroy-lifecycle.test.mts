@@ -35,7 +35,7 @@ const spies = vi.hoisted(() => ({
 
 vi.mock('@/services', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services')>()),
-  initDB: vi.fn(async () => undefined),
+  openStorageForBoot: vi.fn(async () => true),
   disconnectAisStream: spies.disconnectAisStream,
   startFlightHistoryCleanup: spies.startFlightHistoryCleanup,
   stopFlightHistoryCleanup: spies.stopFlightHistoryCleanup,
@@ -73,6 +73,10 @@ vi.mock('@/components/IntelligenceGapBadge', () => ({
 }));
 
 import { App } from '@/App';
+import {
+  beginEntitlementVerification, getEntitlementVerificationStatus,
+  onEntitlementVerificationChange, resetEntitlementState, resetEntitlementVerification,
+} from '@/services/entitlements';
 import { dataFreshness } from '@/services/data-freshness';
 import {
   VesselRuntimeStoppedError,
@@ -145,6 +149,25 @@ afterEach(() => {
 });
 
 describe('App.destroy', () => {
+  it('settles pending entitlement verification during final panel teardown for current and late subscribers', () => {
+    const { app } = makeApp();
+    resetEntitlementState();
+    beginEntitlementVerification();
+    const observer = vi.fn();
+    const off = onEntitlementVerificationChange(observer);
+    try {
+      app.destroy();
+      expect(getEntitlementVerificationStatus()).toBe('unavailable');
+      expect(observer).toHaveBeenLastCalledWith('unavailable');
+      const lateObserver = vi.fn();
+      onEntitlementVerificationChange(lateObserver)();
+      expect(lateObserver).toHaveBeenLastCalledWith('unavailable');
+    } finally {
+      off();
+      resetEntitlementVerification();
+    }
+  });
+
   it('tears down the map, AIS, flight cleanup, workers and WebMCP even when a module destructor throws', async () => {
     const { app, internals } = makeApp();
     enableVesselRuntime();
@@ -449,5 +472,13 @@ describe('boot failure teardown (text, see header)', () => {
     const main = readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf8');
     const boot = main.slice(main.indexOf("const app = new App('app');"), main.indexOf('// Debug helpers for geo-convergence testing'));
     expect(boot).toMatch(/\.catch\(\(error: unknown\) => \{[\s\S]*?app\.destroy\(\);[\s\S]*?\} catch \(cleanupError\)/);
+  });
+
+  it('main.ts renders the boot-failure screen after teardown, inside its own try', () => {
+    const main = readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf8');
+    const boot = main.slice(main.indexOf("const app = new App('app');"), main.indexOf('// Debug helpers for geo-convergence testing'));
+    // After destroy (teardown cannot paint over it) and wrapped in try/catch
+    // (a render failure must not mask the boot error).
+    expect(boot).toMatch(/\} catch \(cleanupError\)[\s\S]*?try \{[\s\S]*?renderBootFailureScreen\(error\);[\s\S]*?\} catch \(renderError\)/);
   });
 });

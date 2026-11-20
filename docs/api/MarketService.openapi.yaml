@@ -294,7 +294,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "GC=F"
+                      - "BZ=F"
                   schema:
                     type: array
                     items:
@@ -314,13 +314,20 @@ paths:
                         application/json:
                             example:
                                 "quotes":
-                                    - "change": 1.5
-                                      "display": "example"
-                                      "name": "WorldMonitor Analyst"
-                                      "price": 75.25
+                                    - "change": -1.05
+                                      "display": "Brent"
+                                      "name": "Brent Crude Oil"
+                                      "price": 91.6
+                                      "priceAt": 1794291360000
+                                      "priceBasis": "futures"
+                                      "priceSource": "Yahoo Finance"
                                       "sparkline":
-                                          - 1.5
-                                      "symbol": "GC=F"
+                                          - 93
+                                          - 92
+                                          - 91.6
+                                      "sparklineIntervalSeconds": 300
+                                      "sparklineStartAt": 1794290700000
+                                      "symbol": "BZ=F"
                             schema:
                                 $ref: '#/components/schemas/ListCommodityQuotesResponse'
                 "400":
@@ -3751,10 +3758,30 @@ components:
                     items:
                         type: number
                         format: double
-                        description: Sparkline data points.
+                        description: Sparkline closes, oldest first. Bars with no trades are left out.
+                priceSource:
+                    type: string
+                    description: Observed price provider, when known for Brent and WTI.
+                priceBasis:
+                    type: string
+                    description: '"futures" for a futures quote, "spot" for a daily spot observation.'
+                priceAt:
+                    type: integer
+                    format: int64
+                    description: 'Provider observation time in Unix epoch milliseconds, with daily spot dates represented at midnight UTC. Warning: Values > 2^53 may lose precision in JavaScript'
+                sparklineIntervalSeconds:
+                    type: integer
+                    format: int32
+                    description: 'Width of each sparkline bar in seconds: 300 for the 24-hour intraday series, 86400 for daily closes.'
+                sparklineStartAt:
+                    type: integer
+                    format: int64
+                    description: |-
+                        Start of the first sparkline bar in Unix epoch milliseconds. Later bars follow in trading order with
+                         closed periods left out, so only the first point's time is defined.. Warning: Values > 2^53 may lose precision in JavaScript
             required:
                 - symbol
-            description: CommodityQuote represents a commodity price quote from Yahoo Finance.
+            description: CommodityQuote represents a commodity price observation.
         GetPhysicalPremiumsRequest:
             type: object
             properties:
@@ -5474,6 +5501,16 @@ components:
                     $ref: '#/components/schemas/GoldEtfFlows'
                 cbReserves:
                     $ref: '#/components/schemas/GoldCbReserves'
+                goldSparklineIntervalSeconds:
+                    type: integer
+                    format: int32
+                    description: 'Width of each gold_sparkline bar in seconds: 300 for the intraday series, 86400 for daily closes.'
+                goldSparklineStartAt:
+                    type: integer
+                    format: int64
+                    description: |-
+                        Start of the first gold_sparkline bar in Unix epoch milliseconds. Later bars follow in trading order with
+                         closed periods left out, so only the first point's time is defined.. Warning: Values > 2^53 may lose precision in JavaScript
         GoldCrossCurrencyPrice:
             type: object
             properties:

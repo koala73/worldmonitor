@@ -251,11 +251,22 @@ async function seedProcess(initial, now, mode, activeFixture, bcFixture, kmlFixt
         return new Response('{"result":"{\\"version', { status: 200 });
       }
       if (url.pathname.startsWith('/get/')) return Response.json({ result: store.get(decodeURIComponent(url.pathname.slice(5))) ?? null });
-      const body = JSON.parse(init.body);
+      // runSeed's lock fence (SM-122): renewal and fenced writes find the lock
+      // held; a fenced write (two keys: lock, target) is the SET it performs,
+      // so the write-failure modes below still see it as a SET.
+      const raw = JSON.parse(init.body);
+      const isFence = raw[0] === 'EVAL' && String(raw[1]).includes('PEXPIRE');
+      const body = isFence && raw[2] === 2
+        ? (raw[8] === '' ? ['SET', raw[4], raw[7]] : ['SET', raw[4], raw[7], 'EX', raw[8]])
+        : raw;
       if (mode.endsWith('state-write-fail') && body[0] === 'SET' && body[1] === 'wildfire:cwfis-source:v1') return new Response('', { status: 403 });
       if (mode.endsWith('meta-write-fail') && body[0] === 'SET' && body[1] === 'seed-meta:wildfire:cwfis-source') return new Response('', { status: 403 });
       if ((mode === 'bc-write-fail' && body[1] === 'wildfire:bc-source:v1'
         || mode === 'bc-meta-fail' && body[1] === 'seed-meta:wildfire:bc-source') && body[0] === 'SET') return new Response('', { status: 403 });
+      if (isFence) {
+        if (body[0] === 'SET') redis(body);
+        return Response.json({ result: [1, ''] });
+      }
       return Response.json(Array.isArray(body[0]) ? body.map(command => ({ result: redis(command) })) : { result: redis(body) });
     }
     if (url.hostname === 'firms.modaps.eosdis.nasa.gov') {

@@ -27,3 +27,14 @@ export function admitsDesktopKeyPrincipal(
 export const DESKTOP_KEY_LIMIT_ERROR: 'Desktop key limit reached for this account';
 /** 403 body for a desktop principal on an API-only path (KTD7). */
 export const DESKTOP_KEY_API_ONLY_ERROR: 'This endpoint requires an API plan';
+/** 403 body for a desktop key sent by something other than the desktop app or a self-hosted relay. */
+export const DESKTOP_KEY_CLIENT_ERROR: string;
+
+/**
+ * True when a desktop-key request may proceed given the caller's User-Agent.
+ * Always true unless `mode` is `'enforce'` (env `DESKTOP_KEY_CLIENT_CHECK`).
+ */
+export function admitsDesktopKeyClient(
+  userAgent: string | null | undefined,
+  mode: string | null | undefined,
+): boolean;

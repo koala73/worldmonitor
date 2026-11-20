@@ -135,11 +135,15 @@ export async function deductSituation(
         ? buildPredictionContext(query, predictionBootstrap as PredictionBootstrap)
         : '';
 
-    const predictionHash = predictionContext ? (await sha256Hex(predictionContext)).slice(0, 8) : '';
-    // The query and framework are the caller's own input: a restricted
-    // caller's answer comes only from their allowed providers and is cached
-    // apart from the shared entry.
-    const aiRouting = await resolveAiRouting(ctx.request);
+    // The routing policy does not read the prediction context, and both feed
+    // the cache key, so resolve them together instead of back to back.
+    const [predictionHash, aiRouting] = await Promise.all([
+        predictionContext ? sha256Hex(predictionContext).then((hash) => hash.slice(0, 8)) : Promise.resolve(''),
+        // The query and framework are the caller's own input: a restricted
+        // caller's answer comes only from their allowed providers and is cached
+        // apart from the shared entry.
+        resolveAiRouting(ctx.request),
+    ]);
     const cacheKey = `deduct:situation:v3:${queryHash.slice(0, 16)}${frameworkHash ? ':fw' + frameworkHash : ''}${predictionHash ? ':pm' + predictionHash : ''}${aiRoutingCacheSuffix(aiRouting)}`;
 
     const { mode, systemPrompt, userPrompt } = buildDeductionPrompt({ query, geoContext, predictionContext });

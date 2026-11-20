@@ -2,20 +2,13 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { listWebhooks } from '../worldmonitor/shipping/v2/list-webhooks';
-import { registerWebhook } from '../worldmonitor/shipping/v2/register-webhook';
+import { registerWebhook, REGISTER_WEBHOOK_SCRIPT } from '../worldmonitor/shipping/v2/register-webhook';
 
 const records = new Map<string, unknown>();
 const owners = new Map<string, Set<string>>();
 let failCommand = -1;
 let replyOverride: unknown;
-const isRegistration = (commands: string[][]) => (
-  commands.length === 4
-  && commands[0][0] === 'SET'
-  && commands[1][0] === 'SADD'
-  && commands[2][0] === 'EXPIRE'
-  && commands[3][0] === 'SADD'
-  && commands[3][1] === 'webhook:all:v1'
-);
+const isRegistration = (commands: string[][]) => commands.length === 1 && commands[0][1] === REGISTER_WEBHOOK_SCRIPT;
 const fetchMock = vi.fn(async (_url: unknown, init?: RequestInit) => {
   const commands = JSON.parse(String(init?.body)) as string[][];
   const results = commands.map((command, index) => {
@@ -35,6 +28,16 @@ const fetchMock = vi.fn(async (_url: unknown, init?: RequestInit) => {
       const members = owners.get(command[1]) ?? new Set<string>();
       const added = members.has(command[2]) ? 0 : 1;
       members.add(command[2]); owners.set(command[1], members); return { result: added };
+    }
+    if (isRegistration(commands)) {
+      const [, , , recordKey, ownerKey, allKey, quotaKey, raw, id, , cap] = command;
+      if ([ownerKey, quotaKey].some(key => (owners.get(key)?.size ?? 0) >= Number(cap))) return { result: 0 };
+      records.set(recordKey, JSON.parse(raw));
+      for (const key of [ownerKey, allKey, quotaKey]) {
+        const members = owners.get(key) ?? new Set<string>();
+        members.add(id); owners.set(key, members);
+      }
+      return { result: 1 };
     }
     if (command[0] === 'EVAL') {
       const ownerKey = command[3];
@@ -82,41 +85,39 @@ for (const response of [
     await expect(registerWebhook(context, payload)).rejects.toMatchObject({ statusCode: 503 });
   });
 }
-for (const failed of [0, 1, 2, 3]) {
-  test(`partial command ${failed} failure returns 503; retry retains credential ownership`, async () => {
-    const owner = createHash('sha256').update('tenant-a').digest('hex');
-    failCommand = failed;
-    await expect(registerWebhook(context, payload)).rejects.toMatchObject({ statusCode: 503 });
-    // Pipeline commands are independent: failed calls can leave records or index entries.
-    expect(records.size).toBe(failed === 0 ? 0 : 1);
-    expect(owners.get(`webhook:owner:${owner}:v1`)?.size ?? 0).toBe(failed === 1 ? 0 : 1);
-    expect(owners.get('webhook:all:v1')?.size ?? 0).toBe(failed === 3 ? 0 : 1);
-    failCommand = -1;
-    const result = await registerWebhook(context, payload);
-    expect(owners.get(`webhook:owner:${owner}:v1`)?.has(result.subscriberId)).toBe(true);
-    expect(records.get(`webhook:sub:${result.subscriberId}:v1`)).toMatchObject({ ownerTag: owner, secret: result.secret });
-    expect(registrationFetches()).toHaveLength(2);
-    const listed = await listWebhooks(context, {});
-    expect(listed.webhooks.some(hook => hook.subscriberId === result.subscriberId)).toBe(true);
-    // A SET failure leaves a dangling index member; the reader omits it.
-    // An EXPIRE or global-index failure can leave the first record visible too; no rollback is claimed.
-    expect(listed.webhooks).toHaveLength(failed >= 2 ? 2 : 1);
-    expect(owners.get('webhook:all:v1')?.has(result.subscriberId)).toBe(true);
-    expect(JSON.stringify(listed)).not.toContain(result.secret);
-  });
-}
+test('failed admission returns 503; retry retains credential ownership', async () => {
+  const owner = createHash('sha256').update('tenant-a').digest('hex');
+  failCommand = 0;
+  await expect(registerWebhook(context, payload)).rejects.toMatchObject({ statusCode: 503 });
+  expect(records.size).toBe(0);
+  expect(owners.size).toBe(0);
+  failCommand = -1;
+  const result = await registerWebhook(context, payload);
+  expect(owners.get(`webhook:owner:${owner}:v1`)?.has(result.subscriberId)).toBe(true);
+  expect(records.get(`webhook:sub:${result.subscriberId}:v1`)).toMatchObject({ ownerTag: owner, secret: result.secret });
+  expect(registrationFetches()).toHaveLength(2);
+  const listed = await listWebhooks(context, {});
+  expect(listed.webhooks).toHaveLength(1);
+  expect(owners.get('webhook:all:v1')?.has(result.subscriberId)).toBe(true);
+  expect(JSON.stringify(listed)).not.toContain(result.secret);
+});
 test('confirmed pipeline returns the persisted subscriber and secret', async () => {
   const result = await registerWebhook(context, payload);
   expect(records.get(`webhook:sub:${result.subscriberId}:v1`)).toMatchObject(result);
 });
 
-test.each([0, 1, '0', '1'])('accepts confirmed SADD result %s with string EXPIRE confirmation', async (added) => {
-  replyOverride = [{ result: 'OK' }, { result: added }, { result: '1' }, { result: added }];
+test.each([1, '1'])('accepts confirmed atomic admission %s', async (admitted) => {
+  replyOverride = [{ result: admitted }];
   const result = await registerWebhook(context, payload);
   expect(records.get(`webhook:sub:${result.subscriberId}:v1`)).toMatchObject(result);
 });
 
-test.each(['0', false, null, 'OK'])('rejects unconfirmed EXPIRE result %s', async (expiry) => {
-  replyOverride = [{ result: 'OK' }, { result: '1' }, { result: expiry }, { result: 1 }];
+test.each([0, '0'])('returns 429 for confirmed quota rejection %s', async (admitted) => {
+  replyOverride = [{ result: admitted }];
+  await expect(registerWebhook(context, payload)).rejects.toMatchObject({ statusCode: 429 });
+});
+
+test.each([false, null, 'OK', 2])('rejects unconfirmed admission result %s', async (admitted) => {
+  replyOverride = [{ result: admitted }];
   await expect(registerWebhook(context, payload)).rejects.toMatchObject({ statusCode: 503 });
 });

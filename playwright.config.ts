@@ -66,32 +66,24 @@ export default defineConfig({
   // two-spec subset, 1.64x rather than 2x because the settle windows above
   // are wall-clock, not CPU.
   //
-  // REVERT THIS if the crash rate does not fall. The annotations from #8449
-  // measure it on every merge; the baseline is 50 crashes across 76
-  // shard-runs, 47% of runs affected.
+  // The crash rate fell, so 2 stays. The baseline was 50 crashes across 76
+  // shard-runs (47% of runs affected). The #8449 annotations then counted 0
+  // crashes across 91 main shard-runs on 3-4 November 2026. Going back to 4
+  // also bought only ~15% (see the variant-smoke-shards comment in test.yml).
   workers: process.env.CI ? 2 : 1,
   fullyParallel: true,
   timeout: 90000,
   expect: {
     timeout: 30000,
   },
-  // One retry in CI, none locally (#5685). The retry was added for `Object
-  // with guid response@<id> was not bound in the connection`, described then as
-  // Playwright throwing from its own event dispatch. That diagnosis was wrong
-  // (#8447). The message is what the client prints when the connection dies
-  // with responses in flight, and the cause is the browser process exiting with
-  // SIGTRAP mid-navigation. Six main runs separate cleanly: 0 crashes green,
-  // 1 crash reported `flaky` because the retry absorbed it, 2 crashes red
-  // because the crash recurred on the retry.
-  //
-  // So this retry is load-bearing in the worst way: it converts most browser
-  // crashes into a passing run, which is how they went unnoticed from #5685 to
-  // #8447. It stays at 1 while the cause of the SIGTRAP is still unknown, but
-  // the crash is no longer laundered into `flaky` --
-  // BrowserCrashReporter below counts the exits per process, at run scope, and
-  // prints the total whatever the outcome. Local runs stay at 0 so a flake is
-  // felt immediately while iterating.
-  retries: process.env.CI ? 1 : 0,
+  // No retries, in CI or locally. A test that passes only on a second attempt
+  // has a bug, and a retry hides it: CI reported it `flaky` and the job went
+  // green. CI ran with one retry from #5685 to absorb chrome-headless-shell
+  // SIGTRAP exits (#8447), which turned most browser crashes into passing runs.
+  // That crash is gone: BrowserCrashReporter counted 0 across 1229 smoke jobs
+  // in 150 Test runs on 15-16 November 2026, after 0 across 91 main shard-runs
+  // on 3-4 November. A crash now fails the job, as it should.
+  retries: 0,
   // `list` for humans, crash accounting for the record. The crash reporter is
   // separate from `attachBrowserLossDiagnostics` (#6501), which is per spec and
   // sees only the files that opt in; this one counts browser process exits
@@ -112,24 +104,13 @@ export default defineConfig({
     timezoneId: 'UTC',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    // `retain-on-failure` records EVERY test and deletes the video when it
-    // passes, so a green shard pays for video it then throws away: 34 ffmpeg
-    // processes for 28 passing tests on shard 2, 54 for 76 on shard 1
-    // (runs 35579482854 and 35563542710). One ffmpeg per context, spawned and
-    // killed alongside the browser.
-    //
-    // `on-first-retry` records only the retry attempt. CI runs with
-    // retries: 1, so a deterministic failure still gets video, because its
-    // retry fails too and is recorded.
-    //
-    // The real cost is flaky tests. `preserveVideo` in playwright/lib/index.js
-    // keys on the PER-ATTEMPT status (`testInfo.status !== expectedStatus`), so
-    // `retain-on-failure` keeps the failed first attempt even when the retry
-    // passes; `on-first-retry` records the retry regardless of its outcome. So
-    // for a flake we trade a video of the failure for a video of the pass.
-    // Accepted because the browser crashes in #8447 kill the recording anyway
-    // and are diagnosed from the pw:browser log, which this does not touch.
-    video: 'on-first-retry',
+    // No video. `retain-on-failure` records EVERY test and deletes the video
+    // when it passes, so a green shard pays for video it then throws away: 34
+    // ffmpeg processes for 28 passing tests on shard 2, 54 for 76 on shard 1
+    // (runs 35579482854 and 35563542710). The previous `on-first-retry`
+    // recorded only retries, and there are none now. The retained trace above
+    // already carries a screencast of the failed attempt.
+    video: 'off',
   },
   projects: [
     {
@@ -158,7 +139,12 @@ export default defineConfig({
           args: [
             '--use-angle=swiftshader',
             '--use-gl=swiftshader',
-            ...(requireWebMcp && !webMcpProduction ? ['--enable-features=WebMCPTesting'] : []),
+            // Chrome 156 exposes document.modelContext under WebMCPTesting;
+            // Chrome 157 ignores that name and needs WebMCP (verified on
+            // 156.0.8078.80 and 157.0.8103.78). Chrome drops unknown feature
+            // names, so passing both covers a runner image on either major.
+            // Run 43225352341 failed 9 tests on a 157 image with this flag alone.
+            ...(requireWebMcp && !webMcpProduction ? ['--enable-features=WebMCPTesting,WebMCP'] : []),
           ],
         },
       },

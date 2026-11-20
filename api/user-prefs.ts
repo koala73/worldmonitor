@@ -123,7 +123,7 @@ export default async function handler(
   }
 
   if (req.method !== 'GET' && req.method !== 'POST') {
-    return jsonResponse({ error: 'Method not allowed' }, 405, cors);
+    return jsonResponse({ error: 'Method not allowed' }, 405, { ...cors, Allow: 'GET, POST, OPTIONS' });
   }
 
   const authHeader = req.headers.get('Authorization') ?? '';

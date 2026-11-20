@@ -20,6 +20,7 @@ import {
 } from '../scripts/_fred-seeder.mjs';
 import { upstashCommand } from '../scripts/_upstash-rest.mjs';
 import { GRACEFUL_FETCH_FAILURE_EXIT_CODE, markPreservableFetchFailure, runSeed, writeSeedMeta } from '../scripts/_seed-utils.mjs';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalRetryDelay = process.env.WM_SEED_RETRY_DELAY_MS;
@@ -120,7 +121,7 @@ async function trapSeedExit(fn) {
 }
 
 function installExpiryAwareRedis(clock, entries, pipelines, commands = []) {
-  globalThis.fetch = async (url, init = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, init = {}) => {
     const body = init.body ? JSON.parse(init.body) : null;
     commands.push(body);
     if (String(url).endsWith('/pipeline')) {
@@ -138,7 +139,7 @@ function installExpiryAwareRedis(clock, entries, pipelines, commands = []) {
       return Response.json(result);
     }
     return Response.json({ result: 'OK' });
-  };
+  });
 }
 
 function primeFredConsumerCohort(clock) {
@@ -227,7 +228,7 @@ describe('FRED publication gates', () => {
           ok: !route.includes('-503-'), status: route.includes('-503-') ? 503 : 200,
           buffer: Buffer.from('<h1>We\u2019ll be back soon!</h1>'), contentType: 'text/html',
         }));
-        globalThis.fetch = async (url, init) => {
+        globalThis.fetch = withSeedLockFence(async (url, init) => {
           if (!String(url).startsWith('https://api.stlouisfed.org/')) return redisFetch(url, init);
           directCalls += 1;
           if (route.endsWith('-403')) return new Response('', { status: 403 });
@@ -236,7 +237,7 @@ describe('FRED publication gates', () => {
           });
           if (route.endsWith('-timeout')) throw new DOMException('direct timed out', 'TimeoutError');
           return new Response("<!doctype html><h1>We'll be back soon!</h1>", { headers: { 'Content-Type': 'text/html' } });
-        };
+        });
         const lines = [];
         const originalConsole = { log: console.log, warn: console.warn, error: console.error };
         for (const method of Object.keys(originalConsole)) {
@@ -279,7 +280,7 @@ describe('FRED publication gates', () => {
     it(`does not classify settled ${failure} failures as a confirmed upstream outage`, async () => {
       installExpiryAwareRedis({ now: Date.now() }, new Map(), []);
       const redisFetch = globalThis.fetch;
-      globalThis.fetch = async (url, init) => {
+      globalThis.fetch = withSeedLockFence(async (url, init) => {
         if (!String(url).startsWith('https://api.stlouisfed.org/')) return redisFetch(url, init);
         if (failure === 'invalid-key') return Response.json({ error_code: 400 }, { status: 400 });
         if (failure === 'mixed-failures') return new URL(url).searchParams.get('series_id') === FRED_SEED_SERIES[0]
@@ -289,7 +290,7 @@ describe('FRED publication gates', () => {
           headers: { 'Content-Type': 'text/html' },
         });
         return Response.json({ observations: failure === 'empty-observations' ? [] : {} });
-      };
+      });
       const exitCode = await trapSeedExit(() => runFredRatesSeed({
         fetchFredSeriesImpl: () => fetchFredSeries({
           proxyAuth: null, readMetaCache: async () => ({}), throwOnEmpty: true,
@@ -426,7 +427,7 @@ describe('FRED publication gates', () => {
     };
     const transactions = [];
 
-    globalThis.fetch = async (url, init = {}) => {
+    globalThis.fetch = withSeedLockFence(async (url, init = {}) => {
       const body = init.body ? JSON.parse(init.body) : null;
       if (String(url).endsWith('/multi-exec')) {
         transactions.push(body);
@@ -435,7 +436,7 @@ describe('FRED publication gates', () => {
           : { result: 1 }));
       }
       return Response.json({ result: 'OK' });
-    };
+    });
 
     await assert.rejects(
       publishFredCohortAtomically(batch, {

@@ -1,0 +1,876 @@
+{
+ "source": "Redis supply_chain:portwatch-ports:v1:<iso2> per-country payloads, read 2026-11-03 ~05:30Z while the seeder was publish-blocked at 132/174",
+ "capturedAt": 1793684058878,
+ "countries": [
+  {
+   "iso2": "CI",
+   "cacheWrittenAt": 1793275466187,
+   "refreshAttemptedAt": 1793275435620
+  },
+  {
+   "iso2": "PT",
+   "cacheWrittenAt": 1793232340646,
+   "refreshAttemptedAt": 1793232322921
+  },
+  {
+   "iso2": "VN",
+   "cacheWrittenAt": 1793232340645,
+   "refreshAttemptedAt": 1793232322921
+  },
+  {
+   "iso2": "JP",
+   "cacheWrittenAt": 1793232340649,
+   "refreshAttemptedAt": 1793232322921
+  },
+  {
+   "iso2": "MM",
+   "cacheWrittenAt": 1793232340649,
+   "refreshAttemptedAt": 1793232322921
+  },
+  {
+   "iso2": "PG",
+   "cacheWrittenAt": 1793275466187,
+   "refreshAttemptedAt": 1793275435620
+  },
+  {
+   "iso2": "PR",
+   "cacheWrittenAt": 1792886708427,
+   "refreshAttemptedAt": 1793620964945
+  },
+  {
+   "iso2": "SE",
+   "cacheWrittenAt": 1793361910241,
+   "refreshAttemptedAt": 1793361891205
+  },
+  {
+   "iso2": "VG",
+   "cacheWrittenAt": 1792886708427,
+   "refreshAttemptedAt": 1793620964945
+  },
+  {
+   "iso2": "AE",
+   "cacheWrittenAt": 1793275486384,
+   "refreshAttemptedAt": 1793275471190
+  },
+  {
+   "iso2": "AW",
+   "cacheWrittenAt": 1792886713774,
+   "refreshAttemptedAt": 1793620964945
+  },
+  {
+   "iso2": "BH",
+   "cacheWrittenAt": 1792886713774,
+   "refreshAttemptedAt": 1793620964945
+  },
+  {
+   "iso2": "BZ",
+   "cacheWrittenAt": 1792886713774,
+   "refreshAttemptedAt": 1793620999410
+  },
+  {
+   "iso2": "CU",
+   "cacheWrittenAt": 1792886713774,
+   "refreshAttemptedAt": 1793620999410
+  },
+  {
+   "iso2": "SD",
+   "cacheWrittenAt": 1792886713774,
+   "refreshAttemptedAt": 1793620999410
+  },
+  {
+   "iso2": "BE",
+   "cacheWrittenAt": 1792886719752,
+   "refreshAttemptedAt": 1793620964945
+  },
+  {
+   "iso2": "BS",
+   "cacheWrittenAt": 1792886719752,
+   "refreshAttemptedAt": 1793620999410
+  },
+  {
+   "iso2": "EG",
+   "cacheWrittenAt": 1793232428691,
+   "refreshAttemptedAt": 1793232395454
+  },
+  {
+   "iso2": "KW",
+   "cacheWrittenAt": 1793275521631,
+   "refreshAttemptedAt": 1793275491385
+  },
+  {
+   "iso2": "TG",
+   "cacheWrittenAt": 1792886719752,
+   "refreshAttemptedAt": 1793620999410
+  },
+  {
+   "iso2": "AR",
+   "cacheWrittenAt": 1793232428691,
+   "refreshAttemptedAt": 1793232395454
+  },
+  {
+   "iso2": "CO",
+   "cacheWrittenAt": 1793232428691,
+   "refreshAttemptedAt": 1793232395454
+  },
+  {
+   "iso2": "FR",
+   "cacheWrittenAt": 1793232428691,
+   "refreshAttemptedAt": 1793232395454
+  },
+  {
+   "iso2": "GE",
+   "cacheWrittenAt": 1793275521631,
+   "refreshAttemptedAt": 1793275491385
+  },
+  {
+   "iso2": "GH",
+   "cacheWrittenAt": 1793275521631,
+   "refreshAttemptedAt": 1793275491385
+  },
+  {
+   "iso2": "IR",
+   "cacheWrittenAt": 1793448134109,
+   "refreshAttemptedAt": 1793448113253
+  },
+  {
+   "iso2": "AL",
+   "cacheWrittenAt": 1792929866968,
+   "refreshAttemptedAt": 1793620999410
+  },
+  {
+   "iso2": "GR",
+   "cacheWrittenAt": 1793275540425,
+   "refreshAttemptedAt": 1793275526635
+  },
+  {
+   "iso2": "MS",
+   "cacheWrittenAt": 1792929866968,
+   "refreshAttemptedAt": 1793621038287
+  },
+  {
+   "iso2": "PF",
+   "cacheWrittenAt": 1792929866968,
+   "refreshAttemptedAt": 1793621038287
+  },
+  {
+   "iso2": "PW",
+   "cacheWrittenAt": 1792929866968,
+   "refreshAttemptedAt": 1793621038287
+  },
+  {
+   "iso2": "VU",
+   "cacheWrittenAt": 1792929866968,
+   "refreshAttemptedAt": 1793621038287
+  },
+  {
+   "iso2": "AI",
+   "cacheWrittenAt": 1792973061777,
+   "refreshAttemptedAt": 1793621038287
+  },
+  {
+   "iso2": "CY",
+   "cacheWrittenAt": 1793448187808,
+   "refreshAttemptedAt": 1793448139110
+  },
+  {
+   "iso2": "JO",
+   "cacheWrittenAt": 1793275567919,
+   "refreshAttemptedAt": 1793275545426
+  },
+  {
+   "iso2": "LB",
+   "cacheWrittenAt": 1792973061778,
+   "refreshAttemptedAt": 1793621038287
+  },
+  {
+   "iso2": "MA",
+   "cacheWrittenAt": 1793275567919,
+   "refreshAttemptedAt": 1793275545426
+  },
+  {
+   "iso2": "PA",
+   "cacheWrittenAt": 1792973061778,
+   "refreshAttemptedAt": 1793621072384
+  },
+  {
+   "iso2": "KH",
+   "cacheWrittenAt": 1792973071875,
+   "refreshAttemptedAt": 1793621072384
+  },
+  {
+   "iso2": "LK",
+   "cacheWrittenAt": 1792973071876,
+   "refreshAttemptedAt": 1793621072384
+  },
+  {
+   "iso2": "MF",
+   "cacheWrittenAt": 1792973071876,
+   "refreshAttemptedAt": 1793621072384
+  },
+  {
+   "iso2": "MH",
+   "cacheWrittenAt": 1792973071876,
+   "refreshAttemptedAt": 1793621072384
+  },
+  {
+   "iso2": "NL",
+   "cacheWrittenAt": 1793509588270,
+   "refreshAttemptedAt": 1793509545199
+  },
+  {
+   "iso2": "RO",
+   "cacheWrittenAt": 1792973071876,
+   "refreshAttemptedAt": 1793621072384
+  },
+  {
+   "iso2": "BR",
+   "cacheWrittenAt": 1793509588270,
+   "refreshAttemptedAt": 1793509545199
+  },
+  {
+   "iso2": "ID",
+   "cacheWrittenAt": 1793509588270,
+   "refreshAttemptedAt": 1793509545199
+  },
+  {
+   "iso2": "IL",
+   "cacheWrittenAt": 1793509621312,
+   "refreshAttemptedAt": 1793509593271
+  },
+  {
+   "iso2": "IT",
+   "cacheWrittenAt": 1793509621312,
+   "refreshAttemptedAt": 1793509593271
+  },
+  {
+   "iso2": "SO",
+   "cacheWrittenAt": 1792973081798,
+   "refreshAttemptedAt": 1793621157402
+  },
+  {
+   "iso2": "YE",
+   "cacheWrittenAt": 1793509621312,
+   "refreshAttemptedAt": 1793509593271
+  },
+  {
+   "iso2": "JM",
+   "cacheWrittenAt": 1793509621312,
+   "refreshAttemptedAt": 1793509593271
+  },
+  {
+   "iso2": "MX",
+   "cacheWrittenAt": 1793509621313,
+   "refreshAttemptedAt": 1793509593271
+  },
+  {
+   "iso2": "MY",
+   "cacheWrittenAt": 1793509645521,
+   "refreshAttemptedAt": 1793509626313
+  },
+  {
+   "iso2": "NO",
+   "cacheWrittenAt": 1793509645521,
+   "refreshAttemptedAt": 1793509626313
+  },
+  {
+   "iso2": "NZ",
+   "cacheWrittenAt": 1793509645521,
+   "refreshAttemptedAt": 1793509626313
+  },
+  {
+   "iso2": "OM",
+   "cacheWrittenAt": 1793509645521,
+   "refreshAttemptedAt": 1793509626313
+  },
+  {
+   "iso2": "AU",
+   "cacheWrittenAt": 1793509645521,
+   "refreshAttemptedAt": 1793509626313
+  },
+  {
+   "iso2": "CM",
+   "cacheWrittenAt": 1793509645521,
+   "refreshAttemptedAt": 1793509626313
+  },
+  {
+   "iso2": "CR",
+   "cacheWrittenAt": 1792973099777,
+   "refreshAttemptedAt": 1793621157402
+  },
+  {
+   "iso2": "GA",
+   "cacheWrittenAt": 1793510996199,
+   "refreshAttemptedAt": 1793510963989
+  },
+  {
+   "iso2": "TL",
+   "cacheWrittenAt": 1792973099777,
+   "refreshAttemptedAt": 1793621157402
+  },
+  {
+   "iso2": "US",
+   "cacheWrittenAt": 1793510996200,
+   "refreshAttemptedAt": 1793510963989
+  },
+  {
+   "iso2": "ES",
+   "cacheWrittenAt": 1793510996200,
+   "refreshAttemptedAt": 1793510963989
+  },
+  {
+   "iso2": "GQ",
+   "cacheWrittenAt": 1793577937454,
+   "refreshAttemptedAt": 1793577906711
+  },
+  {
+   "iso2": "IS",
+   "cacheWrittenAt": 1793534770979,
+   "refreshAttemptedAt": 1793534738574
+  },
+  {
+   "iso2": "MG",
+   "cacheWrittenAt": 1793534770979,
+   "refreshAttemptedAt": 1793534738574
+  },
+  {
+   "iso2": "NI",
+   "cacheWrittenAt": 1793016163550,
+   "refreshAttemptedAt": 1793621157402
+  },
+  {
+   "iso2": "QA",
+   "cacheWrittenAt": 1793016163550,
+   "refreshAttemptedAt": 1793621157402
+  },
+  {
+   "iso2": "BB",
+   "cacheWrittenAt": 1793016173573,
+   "refreshAttemptedAt": 1793621157402
+  },
+  {
+   "iso2": "IQ",
+   "cacheWrittenAt": 1793664293515,
+   "refreshAttemptedAt": 1793664276506
+  },
+  {
+   "iso2": "NC",
+   "cacheWrittenAt": 1793664293515,
+   "refreshAttemptedAt": 1793664276506
+  },
+  {
+   "iso2": "NR",
+   "cacheWrittenAt": 1793664293515,
+   "refreshAttemptedAt": 1793664276506
+  },
+  {
+   "iso2": "TM",
+   "cacheWrittenAt": 1793664293515,
+   "refreshAttemptedAt": 1793664276506
+  },
+  {
+   "iso2": "TR",
+   "cacheWrittenAt": 1793664293515,
+   "refreshAttemptedAt": 1793664276506
+  },
+  {
+   "iso2": "AO",
+   "cacheWrittenAt": 1793664334937,
+   "refreshAttemptedAt": 1793664298516
+  },
+  {
+   "iso2": "CA",
+   "cacheWrittenAt": 1793664334937,
+   "refreshAttemptedAt": 1793664298516
+  },
+  {
+   "iso2": "RU",
+   "cacheWrittenAt": 1793664334937,
+   "refreshAttemptedAt": 1793664298516
+  },
+  {
+   "iso2": "SR",
+   "cacheWrittenAt": 1793664334937,
+   "refreshAttemptedAt": 1793664298516
+  },
+  {
+   "iso2": "SY",
+   "cacheWrittenAt": 1793664334937,
+   "refreshAttemptedAt": 1793664298516
+  },
+  {
+   "iso2": "UY",
+   "cacheWrittenAt": 1793664334937,
+   "refreshAttemptedAt": 1793664298516
+  },
+  {
+   "iso2": "CD",
+   "cacheWrittenAt": 1793664380001,
+   "refreshAttemptedAt": 1793664339938
+  },
+  {
+   "iso2": "CV",
+   "cacheWrittenAt": 1793664380001,
+   "refreshAttemptedAt": 1793664339938
+  },
+  {
+   "iso2": "DO",
+   "cacheWrittenAt": 1793664380001,
+   "refreshAttemptedAt": 1793664339938
+  },
+  {
+   "iso2": "SA",
+   "cacheWrittenAt": 1793664380001,
+   "refreshAttemptedAt": 1793664339938
+  },
+  {
+   "iso2": "SV",
+   "cacheWrittenAt": 1793664380001,
+   "refreshAttemptedAt": 1793664339938
+  },
+  {
+   "iso2": "TO",
+   "cacheWrittenAt": 1793664380001,
+   "refreshAttemptedAt": 1793664339938
+  },
+  {
+   "iso2": "DE",
+   "cacheWrittenAt": 1793664410315,
+   "refreshAttemptedAt": 1793664385001
+  },
+  {
+   "iso2": "EE",
+   "cacheWrittenAt": 1793664410315,
+   "refreshAttemptedAt": 1793664385001
+  },
+  {
+   "iso2": "IN",
+   "cacheWrittenAt": 1793664410315,
+   "refreshAttemptedAt": 1793664385001
+  },
+  {
+   "iso2": "KR",
+   "cacheWrittenAt": 1793664410315,
+   "refreshAttemptedAt": 1793664385001
+  },
+  {
+   "iso2": "SG",
+   "cacheWrittenAt": 1793664410315,
+   "refreshAttemptedAt": 1793664385001
+  },
+  {
+   "iso2": "TH",
+   "cacheWrittenAt": 1793664410315,
+   "refreshAttemptedAt": 1793664385001
+  },
+  {
+   "iso2": "CL",
+   "cacheWrittenAt": 1793664450345,
+   "refreshAttemptedAt": 1793664415316
+  },
+  {
+   "iso2": "EC",
+   "cacheWrittenAt": 1793059301138,
+   "refreshAttemptedAt": 1793664415316
+  },
+  {
+   "iso2": "FI",
+   "cacheWrittenAt": 1793664450345,
+   "refreshAttemptedAt": 1793664415316
+  },
+  {
+   "iso2": "GB",
+   "cacheWrittenAt": 1793664450346,
+   "refreshAttemptedAt": 1793664415316
+  },
+  {
+   "iso2": "GY",
+   "cacheWrittenAt": 1793664450346,
+   "refreshAttemptedAt": 1793664415316
+  },
+  {
+   "iso2": "PE",
+   "cacheWrittenAt": 1793664450346,
+   "refreshAttemptedAt": 1793664415316
+  },
+  {
+   "iso2": "GT",
+   "cacheWrittenAt": 1793059313710,
+   "refreshAttemptedAt": 1793059306139
+  },
+  {
+   "iso2": "HN",
+   "cacheWrittenAt": 1793059313710,
+   "refreshAttemptedAt": 1793059306139
+  },
+  {
+   "iso2": "KZ",
+   "cacheWrittenAt": 1793059313710,
+   "refreshAttemptedAt": 1793059306139
+  },
+  {
+   "iso2": "ME",
+   "cacheWrittenAt": 1793059313710,
+   "refreshAttemptedAt": 1793059306139
+  },
+  {
+   "iso2": "MT",
+   "cacheWrittenAt": 1793059313710,
+   "refreshAttemptedAt": 1793059306139
+  },
+  {
+   "iso2": "ZA",
+   "cacheWrittenAt": 1793059313710,
+   "refreshAttemptedAt": 1793059306139
+  },
+  {
+   "iso2": "CK",
+   "cacheWrittenAt": 1793059326202,
+   "refreshAttemptedAt": 1793059318711
+  },
+  {
+   "iso2": "DJ",
+   "cacheWrittenAt": 1793059326202,
+   "refreshAttemptedAt": 1793059318711
+  },
+  {
+   "iso2": "GN",
+   "cacheWrittenAt": 1793059326202,
+   "refreshAttemptedAt": 1793059318711
+  },
+  {
+   "iso2": "IE",
+   "cacheWrittenAt": 1793059326202,
+   "refreshAttemptedAt": 1793059318711
+  },
+  {
+   "iso2": "KM",
+   "cacheWrittenAt": 1793059326202,
+   "refreshAttemptedAt": 1793059318711
+  },
+  {
+   "iso2": "UA",
+   "cacheWrittenAt": 1793059326202,
+   "refreshAttemptedAt": 1793059318711
+  },
+  {
+   "iso2": "DM",
+   "cacheWrittenAt": 1793102617751,
+   "refreshAttemptedAt": 1793102594424
+  },
+  {
+   "iso2": "GM",
+   "cacheWrittenAt": 1793102617751,
+   "refreshAttemptedAt": 1793102594424
+  },
+  {
+   "iso2": "GD",
+   "cacheWrittenAt": 1793102685231,
+   "refreshAttemptedAt": 1793102622751
+  },
+  {
+   "iso2": "TC",
+   "cacheWrittenAt": 1793102694940,
+   "refreshAttemptedAt": 1793102690233
+  },
+  {
+   "iso2": "KN",
+   "cacheWrittenAt": 1793102705249,
+   "refreshAttemptedAt": 1793102699941
+  },
+  {
+   "iso2": "LT",
+   "cacheWrittenAt": 1793102717497,
+   "refreshAttemptedAt": 1793102710250
+  },
+  {
+   "iso2": "TW",
+   "cacheWrittenAt": 1793102717497,
+   "refreshAttemptedAt": 1793102710250
+  },
+  {
+   "iso2": "CW",
+   "cacheWrittenAt": 1793145685196,
+   "refreshAttemptedAt": 1793145656569
+  },
+  {
+   "iso2": "HR",
+   "cacheWrittenAt": 1793145685196,
+   "refreshAttemptedAt": 1793145656569
+  },
+  {
+   "iso2": "HT",
+   "cacheWrittenAt": 1793145685196,
+   "refreshAttemptedAt": 1793145656569
+  },
+  {
+   "iso2": "TN",
+   "cacheWrittenAt": 1793145685196,
+   "refreshAttemptedAt": 1793145656569
+  },
+  {
+   "iso2": "VE",
+   "cacheWrittenAt": 1793145685196,
+   "refreshAttemptedAt": 1793145656569
+  },
+  {
+   "iso2": "BL",
+   "cacheWrittenAt": 1793145732775,
+   "refreshAttemptedAt": 1793145690199
+  },
+  {
+   "iso2": "DZ",
+   "cacheWrittenAt": 1793145732775,
+   "refreshAttemptedAt": 1793145690199
+  },
+  {
+   "iso2": "FJ",
+   "cacheWrittenAt": 1793145732775,
+   "refreshAttemptedAt": 1793145690199
+  },
+  {
+   "iso2": "FM",
+   "cacheWrittenAt": 1793145732775,
+   "refreshAttemptedAt": 1793145690199
+  },
+  {
+   "iso2": "LV",
+   "cacheWrittenAt": 1793145732775,
+   "refreshAttemptedAt": 1793145690199
+  },
+  {
+   "iso2": "AG",
+   "cacheWrittenAt": 1793145779656,
+   "refreshAttemptedAt": 1793145737777
+  },
+  {
+   "iso2": "BG",
+   "cacheWrittenAt": 1793145779656,
+   "refreshAttemptedAt": 1793145737777
+  },
+  {
+   "iso2": "KI",
+   "cacheWrittenAt": 1793145779656,
+   "refreshAttemptedAt": 1793145737777
+  },
+  {
+   "iso2": "KY",
+   "cacheWrittenAt": 1793145779655,
+   "refreshAttemptedAt": 1793145737777
+  },
+  {
+   "iso2": "MP",
+   "cacheWrittenAt": 1793145779655,
+   "refreshAttemptedAt": 1793145737777
+  },
+  {
+   "iso2": "SB",
+   "cacheWrittenAt": 1793145779655,
+   "refreshAttemptedAt": 1793145737777
+  },
+  {
+   "iso2": "LC",
+   "cacheWrittenAt": 1793145827087,
+   "refreshAttemptedAt": 1793145784657
+  },
+  {
+   "iso2": "LR",
+   "cacheWrittenAt": 1793145827087,
+   "refreshAttemptedAt": 1793145784657
+  },
+  {
+   "iso2": "NA",
+   "cacheWrittenAt": 1793145827087,
+   "refreshAttemptedAt": 1793145784657
+  },
+  {
+   "iso2": "PL",
+   "cacheWrittenAt": 1793145827087,
+   "refreshAttemptedAt": 1793145784657
+  },
+  {
+   "iso2": "TZ",
+   "cacheWrittenAt": 1793145827087,
+   "refreshAttemptedAt": 1793145784657
+  },
+  {
+   "iso2": "DK",
+   "cacheWrittenAt": 1793145873586,
+   "refreshAttemptedAt": 1793145832092
+  },
+  {
+   "iso2": "MD",
+   "cacheWrittenAt": 1793145873586,
+   "refreshAttemptedAt": 1793145832092
+  },
+  {
+   "iso2": "MR",
+   "cacheWrittenAt": 1793145873586,
+   "refreshAttemptedAt": 1793145832092
+  },
+  {
+   "iso2": "SC",
+   "cacheWrittenAt": 1793145873586,
+   "refreshAttemptedAt": 1793145832092
+  },
+  {
+   "iso2": "ST",
+   "cacheWrittenAt": 1793145873586,
+   "refreshAttemptedAt": 1793145832092
+  },
+  {
+   "iso2": "TT",
+   "cacheWrittenAt": 1793145873586,
+   "refreshAttemptedAt": 1793145832092
+  },
+  {
+   "iso2": "CN",
+   "cacheWrittenAt": 1793509496638,
+   "refreshAttemptedAt": 1793509463052
+  },
+  {
+   "iso2": "HK",
+   "cacheWrittenAt": 1793664293515,
+   "refreshAttemptedAt": 1793664276506
+  },
+  {
+   "iso2": "FO",
+   "cacheWrittenAt": 1793188844054,
+   "refreshAttemptedAt": 1793188839628
+  },
+  {
+   "iso2": "GW",
+   "cacheWrittenAt": 1793188844054,
+   "refreshAttemptedAt": 1793188839628
+  },
+  {
+   "iso2": "BJ",
+   "cacheWrittenAt": 1793188844054,
+   "refreshAttemptedAt": 1793188839628
+  },
+  {
+   "iso2": "GI",
+   "cacheWrittenAt": 1793188844054,
+   "refreshAttemptedAt": 1793188839628
+  },
+  {
+   "iso2": "SL",
+   "cacheWrittenAt": 1793188853741,
+   "refreshAttemptedAt": 1793188849057
+  },
+  {
+   "iso2": "SX",
+   "cacheWrittenAt": 1793188853741,
+   "refreshAttemptedAt": 1793188849057
+  },
+  {
+   "iso2": "TV",
+   "cacheWrittenAt": 1793188853741,
+   "refreshAttemptedAt": 1793188849057
+  },
+  {
+   "iso2": "VI",
+   "cacheWrittenAt": 1793188853741,
+   "refreshAttemptedAt": 1793188849057
+  },
+  {
+   "iso2": "GU",
+   "cacheWrittenAt": 1793188853741,
+   "refreshAttemptedAt": 1793188849057
+  },
+  {
+   "iso2": "KE",
+   "cacheWrittenAt": 1793188853741,
+   "refreshAttemptedAt": 1793188849057
+  },
+  {
+   "iso2": "PK",
+   "cacheWrittenAt": 1793188862839,
+   "refreshAttemptedAt": 1793188858741
+  },
+  {
+   "iso2": "SI",
+   "cacheWrittenAt": 1793188862839,
+   "refreshAttemptedAt": 1793188858741
+  },
+  {
+   "iso2": "VC",
+   "cacheWrittenAt": 1793188862839,
+   "refreshAttemptedAt": 1793188858741
+  },
+  {
+   "iso2": "WS",
+   "cacheWrittenAt": 1793188862839,
+   "refreshAttemptedAt": 1793188858741
+  },
+  {
+   "iso2": "AS",
+   "cacheWrittenAt": 1793188862839,
+   "refreshAttemptedAt": 1793188858741
+  },
+  {
+   "iso2": "BN",
+   "cacheWrittenAt": 1793188862839,
+   "refreshAttemptedAt": 1793188858741
+  },
+  {
+   "iso2": "ER",
+   "cacheWrittenAt": 1793188873270,
+   "refreshAttemptedAt": 1793188867841
+  },
+  {
+   "iso2": "MO",
+   "cacheWrittenAt": 1793188873271,
+   "refreshAttemptedAt": 1793188867841
+  },
+  {
+   "iso2": "MU",
+   "cacheWrittenAt": 1793188873271,
+   "refreshAttemptedAt": 1793188867841
+  },
+  {
+   "iso2": "MV",
+   "cacheWrittenAt": 1793188873271,
+   "refreshAttemptedAt": 1793188867841
+  },
+  {
+   "iso2": "CG",
+   "cacheWrittenAt": 1793188873271,
+   "refreshAttemptedAt": 1793188867841
+  },
+  {
+   "iso2": "LY",
+   "cacheWrittenAt": 1793188873271,
+   "refreshAttemptedAt": 1793188867841
+  },
+  {
+   "iso2": "MZ",
+   "cacheWrittenAt": 1793188883174,
+   "refreshAttemptedAt": 1793188878272
+  },
+  {
+   "iso2": "NG",
+   "cacheWrittenAt": 1793188883174,
+   "refreshAttemptedAt": 1793188878272
+  },
+  {
+   "iso2": "PH",
+   "cacheWrittenAt": 1793188883174,
+   "refreshAttemptedAt": 1793188878272
+  },
+  {
+   "iso2": "SN",
+   "cacheWrittenAt": 1793188883174,
+   "refreshAttemptedAt": 1793188878272
+  },
+  {
+   "iso2": "AZ",
+   "cacheWrittenAt": 1793188883174,
+   "refreshAttemptedAt": 1793188878272
+  },
+  {
+   "iso2": "BD",
+   "cacheWrittenAt": 1793188883174,
+   "refreshAttemptedAt": 1793188878272
+  }
+ ]
+}

@@ -83,6 +83,9 @@ function pnpmLockVersions(path, name) {
 }
 
 const patchedLocks = [
+  ['fast-xml-parser', '5.12.0', npmLockVersions, '../package-lock.json'],
+  ['fast-xml-parser', '5.12.0', npmLockVersions, '../scripts/package-lock.json'],
+  ['fast-xml-parser', '5.12.0', npmLockVersions, '../blog-site/package-lock.json'],
   ['sharp', '0.35.5', npmLockVersions, '../package-lock.json'],
   ['sharp', '0.35.5', npmLockVersions, '../blog-site/package-lock.json'],
   ['sharp', '0.35.5', npmLockVersions, '../workers/railway-reconcile-control/package-lock.json'],
@@ -90,6 +93,7 @@ const patchedLocks = [
   ['shell-quote', '1.11.0', npmLockVersions, '../pro-test/package-lock.json'],
   ['shell-quote', '1.11.0', pnpmLockVersions, '../docker/umami/runtime/pnpm-lock.yaml'],
   ['hono', '4.13.11', pnpmLockVersions, '../docker/umami/runtime/pnpm-lock.yaml'],
+  ['effect', '3.22.1', pnpmLockVersions, '../docker/umami/runtime/pnpm-lock.yaml'],
   ['markdown-it', '14.3.3', npmLockVersions, '../package-lock.json'],
   ['@vitest/mocker', '4.1.12', npmLockVersions, '../package-lock.json'],
   ['@vitest/mocker', '4.1.12', npmLockVersions, '../consumer-prices-core/package-lock.json'],

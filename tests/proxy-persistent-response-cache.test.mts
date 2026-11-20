@@ -133,7 +133,9 @@ beforeEach(() => {
 
   mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const state = globalThis.__wmProxyPersistentResponseCacheTestState!;
-    state.fetchCalls.push({ input: String(input), init });
+    assert.ok(init?.signal instanceof AbortSignal, "network calls must carry a deadline");
+    const { signal: _signal, ...options } = init!;
+    state.fetchCalls.push({ input: String(input), init: options });
     const outcome = state.networkOutcomes.shift();
     if (!outcome) throw new Error('No network outcome configured');
     if (outcome instanceof Error) throw outcome;

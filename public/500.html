@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>Server error — World Monitor</title>
+  <style>
+    :root { color-scheme: dark; --bg: #050807; --panel: #0c1210; --text: #eef8f0; --muted: #a8b8ad; --line: #1b2b22; --accent: #4ade80; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.55; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+    header, main, footer { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+    header { padding-top: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+    nav { display: flex; gap: 4px 18px; flex-wrap: wrap; font-size: 14px; }
+    nav a { display: inline-flex; align-items: center; min-height: 44px; }
+    nav .home { color: var(--text); font-weight: 700; margin-right: auto; }
+    main { padding-top: 48px; padding-bottom: 56px; }
+    .eyebrow { margin: 0 0 12px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; font-weight: 700; }
+    h1 { font-size: clamp(30px, 5vw, 48px); line-height: 1.05; margin: 0 0 16px; letter-spacing: -0.01em; }
+    .lede { margin: 0; max-width: 640px; color: var(--muted); font-size: 18px; }
+    .actions { display: flex; align-items: center; gap: 8px 20px; flex-wrap: wrap; margin-top: 28px; }
+    .cta { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 12px 18px; border-radius: 8px; background: var(--accent); color: #04170c; font-weight: 700; font-size: 15px; }
+    .cta:hover { text-decoration: none; filter: brightness(1.08); }
+    .secondary { display: inline-flex; align-items: center; min-height: 44px; font-size: 15px; }
+    h2 { margin: 48px 0 0; font-size: 14px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 16px; }
+    .card { display: grid; gap: 4px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+    .card strong { color: var(--text); font-size: 16px; }
+    .card span { color: var(--muted); font-size: 14px; }
+    footer { border-top: 1px solid var(--line); padding-top: 20px; padding-bottom: 28px; color: var(--muted); font-size: 14px; }
+    footer p { margin: 0; }
+    @media (max-width: 420px) { nav { gap: 0 11px; font-size: 13px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <nav aria-label="Primary">
+      <a class="home" href="/">World Monitor</a>
+      <a href="/dashboard">Dashboard</a>
+      <a href="/countries/">Countries</a>
+      <a href="/crises/">Crises</a>
+      <a href="https://www.worldmonitor.app/docs/documentation">Docs</a>
+    </nav>
+  </header>
+  <main>
+    <p class="eyebrow">500 · Server error</p>
+    <h1>Something went wrong on our side</h1>
+    <p class="lede">The server hit an unexpected error while handling this request. It’s usually temporary — trying again in a moment often works.</p>
+    <div class="actions">
+      <a class="cta" href="/dashboard">Open the live dashboard <span aria-hidden="true">→</span></a>
+      <a class="secondary" href="https://www.worldmonitor.app/">World Monitor homepage</a>
+    </div>
+    <h2>What you can do</h2>
+    <div class="grid">
+    <div class="card">
+      <strong>Wait a moment, then retry</strong>
+      <span>Most server errors clear on their own within a minute.</span>
+    </div>
+    <div class="card">
+      <strong>Self-hosting World Monitor?</strong>
+      <span>Check the container logs — the API sidecar may be down or restarting.</span>
+    </div>
+    <div class="card">
+      <strong>Still failing?</strong>
+      <span><a href="https://status.worldmonitor.app">Check system status</a> for known incidents.</span>
+    </div>
+    </div>
+  </main>
+  <footer>
+    <p>Keeps happening? <a href="https://www.worldmonitor.app/docs/support">Tell us what broke</a> so we can fix it.</p>
+  </footer>
+</body>
+</html>

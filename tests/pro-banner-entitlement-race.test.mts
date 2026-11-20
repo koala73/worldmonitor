@@ -36,6 +36,7 @@ const base = (overrides: Partial<ProBannerDecisionInput> = {}): ProBannerDecisio
   clerkConfigured: true,
   signedIn: false,
   entitlementLoaded: false,
+  entitlementUnavailable: false,
   ...overrides,
 });
 
@@ -119,6 +120,21 @@ describe('decideProBannerMount (#5728)', () => {
         authPending: false,
       })),
       'defer',
+    );
+  });
+
+  it('suppresses instead of reserving an empty strip when a signed-in plan cannot load', () => {
+    assert.equal(
+      decideProBannerMount(base({
+        signedIn: true,
+        entitlementLoaded: false,
+        entitlementUnavailable: true,
+      })),
+      'suppress',
+    );
+    assert.equal(
+      decideProBannerMount(base({ signedIn: false, entitlementUnavailable: true })),
+      'mount',
     );
   });
 

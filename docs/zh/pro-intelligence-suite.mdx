@@ -122,17 +122,17 @@ USDA PSD 谷物期末库存、产量、消费量以及库存消费比，按国�
 
 ## 五因子国家记分卡
 
-按国家读取、按集团读取以及一个队列列表。前两者共用同一个 MCP 工具。
+按国家读取、按集团读取以及一个队列列表。三者共用同一个 MCP 工具；不传选择器时返回列表。
 
 | 路由 | MCP 工具 | 返回内容 |
 | --- | --- | --- |
 | `GET /api/scorecard/v1/get-five-factor-scorecard?countryCode=DE` | `get_five_factor_scorecard` | 单一国家，完整证据账 |
 | `GET /api/scorecard/v1/get-bloc-scorecard?preset=NATO` | `get_five_factor_scorecard` | 单一集团——预设或自定义 `members` |
-| `GET /api/scorecard/v1/list-five-factor-scorecards` | `list_five_factor_scorecards` | 整个队列的紧凑记分卡 |
+| `GET /api/scorecard/v1/list-five-factor-scorecards` | `get_five_factor_scorecard`（不传选择器） | 整个队列的紧凑记分卡 |
 
 五项支柱评分——粮食、能源、人口、技术、国防——投射于韧性引擎之上，并附各支柱子分数、区间、输入覆盖率与机器可读的数据不足原因。
 
-解析这些响应时唯一要紧的规则：**在读取任何数值字段之前，先读 `hasScore`、`available` 与 `hasValue`。** 这些是 proto3 消息，缺失的数字会序列化为 `0`。`hasScore: false` 且 `subScore: 0` 的支柱表示数据不足——并不是某国国防得零分。`get_five_factor_scorecard` 携带来源出处与原始观测值；`list_five_factor_scorecards` 舍弃证据账以换取紧凑的队列读取。
+解析这些响应时唯一要紧的规则：**在读取任何数值字段之前，先读 `hasScore`、`available` 与 `hasValue`。** 这些是 proto3 消息，缺失的数字会序列化为 `0`。`hasScore: false` 且 `subScore: 0` 的支柱表示数据不足——并不是某国国防得零分。按国家或集团读取会携带来源出处与原始观测值；列表舍弃证据账以换取紧凑的队列读取。
 
 降级的快照返回 `unavailable: true` 及 `unavailableReason: "scorecard-snapshot-unavailable"`，而非陈旧或不完整的记分卡。
 

@@ -1,0 +1,6 @@
+/* Per-tool anchors on the MCP tools index (docs/mcp-tools-reference.mdx) keep
+   old /mcp-tools-reference#<tool> links working. Offset them like headings so
+   the target line is not hidden under the sticky header. */
+.tool-anchor {
+  scroll-margin-top: 8rem;
+}

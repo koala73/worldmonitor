@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import http, { createServer } from 'node:http';
 import https from 'node:https';
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import dns from 'node:dns/promises';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { isIP } from 'node:net';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
 import { brotliCompress, gzipSync } from 'node:zlib';
 import path from 'node:path';
@@ -15,6 +17,14 @@ const sharedResourceRoot = process.env.LOCAL_API_RESOURCE_DIR
   || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const { getConfiguredLlmHealthProviders } = await import(
   pathToFileURL(path.join(sharedResourceRoot, 'shared/llm-health-providers.js')).href
+);
+const { isSelfHostRelayPath } = await import(
+  pathToFileURL(path.join(sharedResourceRoot, 'shared/selfhost-relay-paths.js')).href
+);
+// The hosted /api/rss-proxy feed allowlist, so Docker mode enforces the same
+// host set. api/ ships next to shared/ in both the Docker image and the bundle.
+const { isAllowedDomain: isAllowedRssDomain } = await import(
+  pathToFileURL(path.join(sharedResourceRoot, 'api/_rss-allowed-domain-match.js')).href
 );
 
 const brotliCompressAsync = promisify(brotliCompress);
@@ -29,6 +39,13 @@ const MAX_REGISTRATION_EMAIL_LENGTH = 254;
 // fetch() calls in dynamically-loaded handler modules (api/*.js) use IPv4.
 const _originalFetch = globalThis.fetch;
 const ALLOW_PRIVATE_NETWORK_FETCH = Symbol('worldmonitor.allowPrivateNetworkFetch');
+// Resolve at response headers with a streaming body instead of buffering the
+// whole response. Only the self-host relay asks for it: /api/chat-analyst
+// answers text/event-stream, which a buffered fetch would hold until the end.
+const STREAM_RESPONSE_FETCH = Symbol('worldmonitor.streamResponseFetch');
+// Socket inactivity bound for a streamed body. An SSE answer can pause while
+// the model thinks; this matches nginx's 120s proxy_read_timeout on /api/.
+const STREAM_BODY_IDLE_TIMEOUT_MS = 120_000;
 const sidecarAllowedPrivateFetchOrigins = new Set();
 // The sidecar's own listen origins. A fetch to one of these is a nested call
 // into this same process (MCP registry tools call sibling /api routes this
@@ -296,6 +313,27 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
         return;
       }
       const req = mod.request(requestOptions, (res) => {
+        if (init?.[STREAM_RESPONSE_FETCH] === true) {
+          const responseHeaders = new Headers();
+          for (const [k, v] of Object.entries(res.headers)) {
+            if (v) responseHeaders.set(k, Array.isArray(v) ? v.join(', ') : v);
+          }
+          const status = Number.isInteger(res.statusCode) ? res.statusCode : 502;
+          const bodyless = method === 'HEAD' || status === 204 || status === 205 || status === 304;
+          // The caller's deadline covered time to headers; the body is bounded by
+          // inactivity and by the client, which destroys it when it goes away.
+          req.setTimeout(STREAM_BODY_IDLE_TIMEOUT_MS, () => req.destroy(new Error('upstream stream idle-timed out')));
+          if (bodyless) res.resume();
+          try {
+            settle(resolve, new Response(bodyless ? null : Readable.toWeb(res), {
+              status, statusText: res.statusMessage, headers: responseHeaders,
+            }));
+          } catch (error) {
+            res.destroy();
+            settle(reject, error);
+          }
+          return;
+        }
         const chunks = [];
         res.on('data', (c) => chunks.push(c));
         res.on('error', (e) => settle(reject, e));
@@ -318,7 +356,11 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
       // Catches a peer that accepts the connection and then goes silent
       // forever (no error, no close, no data) -- the only stall shape none
       // of the listeners above ever observe.
-      const idleTimeoutMs = isConfiguredOllamaOrigin(url) ? _ollamaIdleTimeoutMs : _upstreamIdleTimeoutMs;
+      // A streamed (relay) request carries its own time-to-headers deadline in
+      // init.signal, so the generic 12s idle limit must not cut it short.
+      const idleTimeoutMs = init?.[STREAM_RESPONSE_FETCH] === true
+        ? STREAM_BODY_IDLE_TIMEOUT_MS
+        : isConfiguredOllamaOrigin(url) ? _ollamaIdleTimeoutMs : _upstreamIdleTimeoutMs;
       req.setTimeout(idleTimeoutMs, () => {
         req.destroy();
         settle(reject, new Error('upstream request idle-timed out'));
@@ -345,6 +387,82 @@ const ALLOWED_ENV_KEYS = new Set([
 ]);
 
 const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+// Matches api/rss-proxy.js MAX_FEED_BYTES.
+const RSS_PROXY_MAX_BODY_BYTES = 5 * 1024 * 1024;
+// Bounds buffered feed memory to RSS_PROXY_MAX_CONCURRENT * RSS_PROXY_MAX_BODY_BYTES.
+const RSS_PROXY_MAX_CONCURRENT = 12;
+// Docker mode only: nginx authenticates every caller, so limit each client IP.
+// A dashboard boot loads every enabled feed at once; this leaves room for
+// several viewers behind one NAT.
+const RSS_PROXY_CLIENT_LIMIT = 300;
+const RSS_PROXY_CLIENT_WINDOW_MS = 60_000;
+// Waiting requests are bounded in number and time so one client cannot build
+// a backlog that delays every other viewer's feeds.
+const RSS_PROXY_MAX_QUEUED = 48;
+const RSS_PROXY_QUEUE_WAIT_MS = 10_000;
+// Docker mode only: one client key may hold at most half the slots, so a
+// single caller cannot keep every viewer's feeds waiting.
+const RSS_PROXY_CLIENT_MAX_ACTIVE = 6;
+let _rssProxyQueueWaitMs = RSS_PROXY_QUEUE_WAIT_MS;
+let _activeRssProxyFetches = 0;
+const _rssProxyQueue = [];
+const _rssProxyClientActive = new Map();
+function rssProxyQueueError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+function rssProxyClientAtShare(client) {
+  return client != null && (_rssProxyClientActive.get(client) || 0) >= RSS_PROXY_CLIENT_MAX_ACTIVE;
+}
+function takeRssProxyClientShare(client) {
+  if (client != null) _rssProxyClientActive.set(client, (_rssProxyClientActive.get(client) || 0) + 1);
+}
+// `client` is the caller's rate-limit key in Docker mode and null otherwise.
+function acquireRssProxySlot(req, client = null) {
+  if (_activeRssProxyFetches < RSS_PROXY_MAX_CONCURRENT && !rssProxyClientAtShare(client)) {
+    _activeRssProxyFetches++;
+    takeRssProxyClientShare(client);
+    return Promise.resolve();
+  }
+  if (_rssProxyQueue.length >= RSS_PROXY_MAX_QUEUED) {
+    return Promise.reject(rssProxyQueueError('ERSSQUEUEFULL', 'RSS proxy queue full'));
+  }
+  return new Promise((resolve, reject) => {
+    const waiter = { req, client, resolve, reject };
+    waiter.timer = setTimeout(() => {
+      _rssProxyQueue.splice(_rssProxyQueue.indexOf(waiter), 1);
+      reject(rssProxyQueueError('ERSSQUEUETIMEOUT', 'RSS proxy queue wait timed out'));
+    }, _rssProxyQueueWaitMs);
+    _rssProxyQueue.push(waiter);
+  });
+}
+function releaseRssProxySlot(client = null) {
+  if (client != null) {
+    const held = (_rssProxyClientActive.get(client) || 1) - 1;
+    if (held > 0) _rssProxyClientActive.set(client, held);
+    else _rssProxyClientActive.delete(client);
+  }
+  for (let i = 0; i < _rssProxyQueue.length;) {
+    const waiter = _rssProxyQueue[i];
+    if (waiter.req.destroyed || waiter.req.socket?.destroyed) {
+      _rssProxyQueue.splice(i, 1);
+      clearTimeout(waiter.timer);
+      waiter.reject(rssProxyQueueError('ERSSCLIENTGONE', 'Client disconnected while queued'));
+      continue;
+    }
+    if (rssProxyClientAtShare(waiter.client)) {
+      i++;
+      continue;
+    }
+    _rssProxyQueue.splice(i, 1);
+    clearTimeout(waiter.timer);
+    takeRssProxyClientShare(waiter.client);
+    waiter.resolve();
+    return;
+  }
+  _activeRssProxyFetches--;
+}
 const RSS_PROXY_SECURITY_HEADERS = Object.freeze({
   // RSS publishers are untrusted. The response must not become a same-origin
   // document if a caller navigates to or frames the proxy URL.
@@ -776,10 +894,24 @@ async function getCloudSessionToken(context) {
   return context.cloudSessionMint;
 }
 
-async function proxyToCloud(requestUrl, req, context) {
+// Cookies api/wm-session.js issues and reads.
+const CLOUD_SESSION_COOKIES = new Set(['wm-session', '__Host-wm-widget-key', '__Host-wm-pro-key']);
+
+function pickCloudSessionCookies(raw) {
+  if (!raw) return '';
+  return raw.split(';').map((part) => part.trim()).filter((part) => {
+    const eq = part.indexOf('=');
+    return eq > 0 && CLOUD_SESSION_COOKIES.has(part.slice(0, eq).trim());
+  }).join('; ');
+}
+
+// `relayKey` (self-host relay, KTD7): send exactly this key and no other
+// credential. `signal` replaces the default 3s deadline; `streamResponse`
+// resolves at headers with a streaming body.
+async function proxyToCloud(requestUrl, req, context, { relayKey = null, signal = null, streamResponse = false } = {}) {
   // One budget covers session minting and the fetch, so a cold session cannot
   // stretch a request past the renderer's fallback timeout.
-  const deadline = AbortSignal.timeout(CLOUD_PROXY_TIMEOUT_MS);
+  const deadline = signal ?? AbortSignal.timeout(CLOUD_PROXY_TIMEOUT_MS);
   const target = cloudUrl(context.remoteBase, requestUrl.pathname);
   target.search = requestUrl.search;
   const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
@@ -787,10 +919,21 @@ async function proxyToCloud(requestUrl, req, context) {
   headers.delete(LOCAL_API_TRANSPORT_HEADER);
   // Strip sidecar auth token — meaningless to cloud API.
   headers.delete('Authorization');
+  // A relay sends the key and nothing else. Ordinary cloud fallback forwards
+  // only the cloud's own session cookies, never an operator's proxy cookies
+  // (dispatch() already removed the desktop-key cookie).
+  const cloudCookies = relayKey ? '' : pickCloudSessionCookies(headers.get('Cookie'));
+  if (cloudCookies) headers.set('Cookie', cloudCookies);
+  else headers.delete('Cookie');
   const userAuthorization = headers.get(CLOUD_USER_AUTHORIZATION_HEADER) ?? '';
   headers.delete(CLOUD_USER_AUTHORIZATION_HEADER);
-  const userBearer = CLOUD_BEARER_SHAPE.test(userAuthorization) ? userAuthorization : '';
-  headers.set('User-Agent', cloudUserAgent());
+  const userBearer = !relayKey && CLOUD_BEARER_SHAPE.test(userAuthorization) ? userAuthorization : '';
+  headers.set('User-Agent', relayKey ? selfHostRelayUserAgent() : cloudUserAgent());
+  if (relayKey) {
+    // A browser-set header must not outrank the key the user stored.
+    headers.delete('X-Api-Key');
+    headers.set('X-WorldMonitor-Key', relayKey);
+  }
   // Strip conditional headers so cloud always returns fresh 200, not 304.
   // The browser may have stale ETags from previous sessions with empty data.
   headers.delete('If-None-Match');
@@ -832,6 +975,7 @@ async function proxyToCloud(requestUrl, req, context) {
       headers,
       body,
       signal: AbortSignal.any([clientAbort.signal, deadline]),
+      ...(streamResponse ? { [STREAM_RESPONSE_FETCH]: true } : {}),
     });
   } finally {
     req.socket.off('close', onClientClose);
@@ -877,6 +1021,339 @@ async function proxyRegisterInterestToCloud(requestUrl, req, context) {
   }, 15000);
 }
 
+// ── Self-host desktop-key relay (plan 2026-11-04-001, U3/U4) ─────────────
+// In docker mode a browser user can store their own desktop key in an
+// HttpOnly cookie through /api/selfhost-key. Premium paths then go to the
+// cloud with that key, metered on the owner's desktop allocation. The cookie
+// is removed from the request at dispatch entry, so only the relay decision
+// and /api/selfhost-key ever read it. The raw key is never logged.
+const SELFHOST_KEY_COOKIE = 'wm-desktop-key';
+const SELFHOST_KEY_SHAPE = /^wm_[a-f0-9]{40}$/;
+const SELFHOST_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+const SELFHOST_VERDICTS = new Set(['active', 'invalid', 'not_desktop_key', 'over_cap', 'lapsed']);
+// Verdicts whose key the browser keeps: the account exists and can recover.
+const SELFHOST_COOKIE_VERDICTS = new Set(['active', 'over_cap', 'lapsed']);
+// Verdicts that can never turn active again: the stored key is forgotten.
+const SELFHOST_FORGET_VERDICTS = new Set(['invalid', 'not_desktop_key']);
+const SELFHOST_VERDICT_CACHE_MAX = 1000;
+const SELFHOST_VERDICT_TIMEOUT_MS = 5000;
+const SELFHOST_POST_LIMIT = 10;
+const SELFHOST_POST_WINDOW_MS = 60_000;
+const SELFHOST_MAX_BODY_BYTES = 4096;
+const DEFAULT_SELFHOST_VERDICT_TTL_MS = 5 * 60 * 1000;
+// Time to response headers only; a streamed body is not bounded by it. Vercel
+// edge functions must start answering within 25s, so 30s covers every premium
+// route's first byte without letting a dead cloud hold the panel forever.
+const DEFAULT_SELFHOST_RELAY_TIMEOUT_MS = 30_000;
+let selfHostVerdictTtlMs = DEFAULT_SELFHOST_VERDICT_TTL_MS;
+let selfHostRelayTimeoutMs = DEFAULT_SELFHOST_RELAY_TIMEOUT_MS;
+// Relayed responses bypass the buffering response writer (SSE must stream).
+const streamedResponses = new WeakSet();
+// The cloud's cookies and host-wide policies (HSTS, Alt-Svc) are for its own
+// origin, not the self-hosted one.
+const RELAY_DROPPED_RESPONSE_HEADERS = [
+  'connection', 'keep-alive', 'transfer-encoding', 'set-cookie', 'strict-transport-security', 'alt-svc',
+];
+
+function selfHostRelayUserAgent() {
+  return `WorldMonitor-SelfHost/${process.env.LOCAL_API_APP_VERSION || 'unknown'} (relay)`;
+}
+
+function hashSelfHostKey(key) {
+  return createHash('sha256').update(key).digest('hex');
+}
+
+// Removes every wm-desktop-key cookie from the incoming request, so no handler
+// or proxied call downstream can read it, and returns the value. Two different
+// values (a cookie tossed in from a sibling host beside ours) return '', which
+// is never relayed: the browser's own key cannot be told apart from the other.
+function takeSelfHostKeyCookie(req) {
+  const raw = req.headers.cookie;
+  if (typeof raw !== 'string' || !raw.includes(SELFHOST_KEY_COOKIE)) return null;
+  let key = null;
+  const kept = [];
+  for (const part of raw.split(';')) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const eq = trimmed.indexOf('=');
+    const name = eq === -1 ? trimmed : trimmed.slice(0, eq).trim();
+    if (name === SELFHOST_KEY_COOKIE) {
+      const value = eq === -1 ? '' : trimmed.slice(eq + 1).trim();
+      key = key === null || key === value ? value : '';
+    } else {
+      kept.push(trimmed);
+    }
+  }
+  if (kept.length) req.headers.cookie = kept.join('; ');
+  else delete req.headers.cookie;
+  return key;
+}
+
+// The cloud verdict contract (api/desktop-key/status.ts): only a 200 whose
+// JSON `verdict` is a known value is a verdict. A 403 edge refusal, 404 (a
+// cloud without the route), 429, 5xx or a non-JSON answer is "unavailable".
+function parseDesktopKeyVerdict(status, bodyText) {
+  if (status !== 200) return 'unavailable';
+  try {
+    const verdict = JSON.parse(bodyText)?.verdict;
+    return SELFHOST_VERDICTS.has(verdict) ? verdict : 'unavailable';
+  } catch {
+    return 'unavailable';
+  }
+}
+
+async function fetchDesktopKeyVerdict(key, context) {
+  try {
+    const response = await fetch(cloudUrl(context.remoteBase, '/api/desktop-key/status'), {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Origin: 'https://worldmonitor.app',
+        'User-Agent': selfHostRelayUserAgent(),
+        'X-WorldMonitor-Key': key,
+      },
+      signal: AbortSignal.timeout(SELFHOST_VERDICT_TIMEOUT_MS),
+    });
+    return parseDesktopKeyVerdict(response.status, await response.text());
+  } catch {
+    return 'unavailable';
+  }
+}
+
+function freshSelfHostVerdict(context, hash) {
+  const entry = context.selfHostVerdicts.get(hash);
+  return entry && !entry.recheck && Date.now() - entry.verifiedAt < selfHostVerdictTtlMs ? entry : null;
+}
+
+// Cached for the TTL, including invalid verdicts. A failed check keeps the
+// last entry so it can be served stale with its original verification time.
+async function resolveSelfHostVerdict(key, context) {
+  const hash = hashSelfHostKey(key);
+  const fresh = freshSelfHostVerdict(context, hash);
+  if (fresh) return { status: fresh.status, stale: false, verifiedAt: fresh.verifiedAt };
+  let pending = context.selfHostVerdictChecks.get(hash);
+  if (!pending) {
+    pending = fetchDesktopKeyVerdict(key, context).then((status) => {
+      if (status !== 'unavailable') {
+        const verdicts = context.selfHostVerdicts;
+        verdicts.delete(hash);
+        verdicts.set(hash, { status, verifiedAt: Date.now() });
+        if (verdicts.size > SELFHOST_VERDICT_CACHE_MAX) verdicts.delete(verdicts.keys().next().value);
+      }
+      context.logger.log(`[local-api] desktop key ${hash.slice(0, 8)} verdict: ${status}`);
+      return status;
+    }).finally(() => context.selfHostVerdictChecks.delete(hash));
+    context.selfHostVerdictChecks.set(hash, pending);
+  }
+  const status = await pending;
+  if (status !== 'unavailable') {
+    const entry = context.selfHostVerdicts.get(hash);
+    return { status, stale: false, verifiedAt: entry?.verifiedAt ?? Date.now() };
+  }
+  const last = context.selfHostVerdicts.get(hash);
+  if (last) return { status: last.status, stale: true, verifiedAt: last.verifiedAt };
+  return { status: 'unavailable', stale: false, verifiedAt: null };
+}
+
+// Relay only while the key is not known to be inactive, so a locked browser
+// does not spray denials at the cloud (KTD6). The last verdict counts even when
+// stale: a lapsed key keeps getting free local data until a status check (the
+// browser polls) finds it active again.
+function shouldRelayForSelfHostKey(key, context) {
+  if (!SELFHOST_KEY_SHAPE.test(key)) return false;
+  const last = context.selfHostVerdicts.get(hashSelfHostKey(key));
+  return !last || last.status === 'active';
+}
+
+// SameSite=Strict still sends the cookie from a sibling host or another port on
+// the same site, so a page there could spend the owner's allowance. Only this
+// origin's own pages (or a typed-in navigation) may relay.
+//
+// Browsers send Fetch Metadata only to HTTPS and localhost. Over plain HTTP
+// the request must instead carry a Referer from this install's own origin: a
+// sibling page can suppress its Referer but cannot forge ours. nginx passes
+// the browser's Host as X-Forwarded-Host; reached directly, Host is the origin.
+function selfHostRelayFetchSiteAllowed(req) {
+  const fetchSite = req.headers['sec-fetch-site'];
+  if (fetchSite !== undefined) return fetchSite === 'same-origin' || fetchSite === 'none';
+  // Behind a proxy only X-Forwarded-Host is trustworthy: a proxy's `Host $host`
+  // drops the port, so a page on the host's default port would match.
+  const proxied = req.headers['x-forwarded-for'] !== undefined || req.headers['x-real-ip'] !== undefined;
+  const authority = req.headers['x-forwarded-host'] || (proxied ? '' : req.headers.host);
+  const publicHost = String(authority || '').split(',')[0].trim().toLowerCase();
+  if (!publicHost) return false;
+  try {
+    return new URL(String(req.headers.referer || '')).host.toLowerCase() === publicHost;
+  } catch {
+    return false;
+  }
+}
+
+function selfHostKeyCookieHeader(req, context, value, maxAgeSeconds) {
+  // The bundled nginx stamps its own (http) scheme even behind an outer TLS
+  // proxy, so the browser's page origin also counts. Trusting it only ever
+  // adds Secure.
+  const forwardedHttps = String(req.headers['x-forwarded-proto'] || '')
+    .split(',').some((hop) => hop.trim().toLowerCase() === 'https');
+  const pageHttps = [req.headers.origin, req.headers.referer]
+    .some((value) => String(value || '').trim().toLowerCase().startsWith('https://'));
+  const secure = context.publicHttps || forwardedHttps || pageHttps;
+  return `${SELFHOST_KEY_COOKIE}=${value}; Path=/api/; Max-Age=${maxAgeSeconds}; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`;
+}
+
+function selfHostKeyJson(body, status = 200, extraHeaders = {}) {
+  return json(body, status, { 'Cache-Control': 'no-store', ...extraHeaders });
+}
+
+const CLIENT_LIMIT_MAX_KEYS = 10_000;
+
+// nginx sets X-Real-IP from the connection (or a trusted proxy's header), so
+// the browser cannot choose its own key. One IPv6 /64 is one client: a single
+// host commonly owns the whole prefix.
+function clientLimitKey(req) {
+  const client = String(req.headers['x-real-ip'] || req.socket?.remoteAddress || 'unknown');
+  const groups = ipv6Hextets(client);
+  if (!groups) return client;
+  if (groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff) {
+    return [groups[6] >> 8, groups[6] & 0xff, groups[7] >> 8, groups[7] & 0xff].join('.');
+  }
+  return `${groups.slice(0, 4).map((group) => group.toString(16)).join(':')}::/64`;
+}
+
+// Fixed-window count per client. Every window in one map has the same length
+// and is re-inserted when it starts, so the map stays ordered by expiry:
+// expired entries are dropped from the front and, past CLIENT_LIMIT_MAX_KEYS,
+// the oldest window is evicted. Each call does constant amortized work.
+function clientWithinLimit(req, limits, limit, windowMs) {
+  const client = clientLimitKey(req);
+  const now = Date.now();
+  for (const [key, window] of limits) {
+    if (window.resetAt > now) break;
+    limits.delete(key);
+  }
+  let window = limits.get(client);
+  if (!window) {
+    window = { count: 0, resetAt: now + windowMs };
+    limits.set(client, window);
+    if (limits.size > CLIENT_LIMIT_MAX_KEYS) limits.delete(limits.keys().next().value);
+  }
+  window.count += 1;
+  if (window.count <= limit) return { ok: true };
+  return { ok: false, retryAfterSeconds: Math.max(1, Math.ceil((window.resetAt - now) / 1000)) };
+}
+
+function selfHostClientAllowed(req, context) {
+  return clientWithinLimit(req, context.selfHostPostLimits, SELFHOST_POST_LIMIT, SELFHOST_POST_WINDOW_MS);
+}
+
+// GET reports the browser's key status; POST stores a key the cloud vouches
+// for; DELETE forgets it. Every answer is { enabled, status, stale, verifiedAt }.
+async function handleSelfHostKey(req, context, cookieKey) {
+  const answer = (status, extra = {}) => ({
+    enabled: true, status, stale: false, verifiedAt: null, ...extra,
+  });
+  if (!['GET', 'POST', 'DELETE'].includes(req.method)) {
+    return selfHostKeyJson({ error: 'Method not allowed' }, 405, { Allow: 'GET, POST, DELETE' });
+  }
+  if (req.method !== 'GET') {
+    const contentType = String(req.headers['content-type'] || '');
+    if (!/^application\/json\s*(;|$)/i.test(contentType)) {
+      return selfHostKeyJson({ error: 'Content-Type must be application/json' }, 415);
+    }
+    // nginx rewrites Origin, so fetch metadata is the cross-site signal.
+    const fetchSite = req.headers['sec-fetch-site'];
+    if (fetchSite !== undefined && fetchSite !== 'same-origin') {
+      return selfHostKeyJson({ error: 'Cross-site request refused' }, 403);
+    }
+  }
+  if (req.method === 'DELETE') {
+    const clear = selfHostKeyCookieHeader(req, context, '', 0);
+    const body = context.selfHostRelay
+      ? answer('none')
+      : { enabled: false, status: 'disabled', stale: false, verifiedAt: null };
+    return selfHostKeyJson(body, 200, { 'Set-Cookie': clear });
+  }
+  if (!context.selfHostRelay) {
+    return selfHostKeyJson({ enabled: false, status: 'disabled', stale: false, verifiedAt: null });
+  }
+  if (req.method === 'GET') {
+    if (cookieKey === null) return selfHostKeyJson(answer('none'));
+    if (!SELFHOST_KEY_SHAPE.test(cookieKey)) return selfHostKeyJson(answer('invalid'));
+    if (!freshSelfHostVerdict(context, hashSelfHostKey(cookieKey))) {
+      const allowed = selfHostClientAllowed(req, context);
+      if (!allowed.ok) {
+        return selfHostKeyJson({ error: 'Too many key checks' }, 429, { 'Retry-After': String(allowed.retryAfterSeconds) });
+      }
+    }
+    // GET only reports, and never sets or clears the cookie: a slow check for an
+    // old key can finish after a POST stored a new one, and a clearing
+    // Set-Cookie on it would delete the new key. A dead key is not relayed
+    // anyway (shouldRelayForSelfHostKey uses the last verdict).
+    return selfHostKeyJson({ enabled: true, ...(await resolveSelfHostVerdict(cookieKey, context)) });
+  }
+  const allowed = selfHostClientAllowed(req, context);
+  if (!allowed.ok) {
+    return selfHostKeyJson({ error: 'Too many key checks' }, 429, { 'Retry-After': String(allowed.retryAfterSeconds) });
+  }
+  const raw = await readBody(req);
+  let key = null;
+  if (raw && raw.length <= SELFHOST_MAX_BODY_BYTES) {
+    try {
+      const parsed = JSON.parse(raw.toString('utf8'));
+      if (typeof parsed?.key === 'string') key = parsed.key.trim();
+    } catch { /* malformed JSON is a malformed key */ }
+  }
+  // A rejected key also clears any key stored earlier. The browser locks on the
+  // rejection, so leaving the old cookie would let the next GET unlock again.
+  const clearStored = { 'Set-Cookie': selfHostKeyCookieHeader(req, context, '', 0) };
+  if (!key || !SELFHOST_KEY_SHAPE.test(key)) {
+    return selfHostKeyJson(answer('invalid', { error: 'malformed_key' }), 400, clearStored);
+  }
+  const verdict = await resolveSelfHostVerdict(key, context);
+  // A stale verdict is an outage answer: storing or clearing on it would let
+  // the cookie and the browser's state disagree, so report it as unavailable.
+  if (verdict.stale) return selfHostKeyJson(answer('unavailable'));
+  const body = { enabled: true, ...verdict };
+  if (SELFHOST_COOKIE_VERDICTS.has(verdict.status)) {
+    return selfHostKeyJson(body, 200, {
+      'Set-Cookie': selfHostKeyCookieHeader(req, context, key, SELFHOST_COOKIE_MAX_AGE_SECONDS),
+    });
+  }
+  if (SELFHOST_FORGET_VERDICTS.has(verdict.status)) {
+    return selfHostKeyJson(body, 200, clearStored);
+  }
+  return selfHostKeyJson(body);
+}
+
+async function relayToCloudWithSelfHostKey(requestUrl, req, context, key) {
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(), selfHostRelayTimeoutMs);
+  let response;
+  try {
+    response = await proxyToCloud(requestUrl, req, context, {
+      relayKey: key, signal: deadline.signal, streamResponse: true,
+    });
+  } catch (error) {
+    // A relay failure is not a denial: the client keeps its unlock state (KTD5).
+    const timedOut = deadline.signal.aborted;
+    logOnce(context.logger, requestUrl.pathname, `self-host relay ${timedOut ? 'timed out' : `failed: ${error?.message || 'error'}`}`);
+    return json(
+      { error: timedOut ? 'relay_timeout' : 'relay_unreachable' },
+      timedOut ? 504 : 502,
+      { 'Cache-Control': 'no-store', 'X-Wm-Relay-Error': timedOut ? 'timeout' : 'unreachable' },
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+  if (response.status === 401 || response.status === 403) {
+    // The browser re-checks on a denial; make that check ask the cloud.
+    const entry = context.selfHostVerdicts.get(hashSelfHostKey(key));
+    if (entry) entry.recheck = true;
+  }
+  streamedResponses.add(response);
+  return response;
+}
+
 function pickModule(pathname, routes) {
   const apiPath = pathname.startsWith('/api') ? pathname.slice(4) || '/' : pathname;
 
@@ -920,6 +1397,11 @@ const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
 // generated route tables and fails when an entry is not a real RPC path, when
 // its handler reaches an upstream itself, or when a seed-only route is missing.
 const cloudPreferredExact = new Set([
+  // Orbital reads that only read seed-owned Redis; get-point-passes searches the archives live.
+  '/api/orbital/v1/list-imaging-satellites',
+  '/api/orbital/v1/get-country-imagery-evidence',
+  '/api/orbital/v1/get-watched-site-imagery',
+  '/api/cyber/v1/list-cyber-threats',
   '/api/maritime/v1/list-ukmto-incidents',
   '/api/bootstrap',
   '/api/aviation/v1/get-airport-ops-summary',
@@ -1010,6 +1492,8 @@ const cloudPreferredExact = new Set([
   '/api/military/v1/get-usni-fleet-report',
   '/api/military/v1/list-defense-patents',
   '/api/news/v1/list-news-pool',
+  // Alert history is written by the cloud relay; the desktop holds none.
+  '/api/news/v1/list-sent-alerts',
   '/api/news/v1/list-source-items',
   '/api/news/v1/summarize-article-cache',
   '/api/research/v1/list-arxiv-papers',
@@ -1036,6 +1520,7 @@ const cloudPreferredExact = new Set([
   '/api/supply-chain/v1/list-storage-facilities',
   '/api/supply-chain/v1/list-vulnerability-rankings',
   '/api/trade/v1/get-customs-revenue',
+  '/api/trade/v1/get-monthly-sitc-trade',
   '/api/trade/v1/get-tariff-trends',
   '/api/trade/v1/get-trade-barriers',
   '/api/trade/v1/get-trade-flows',
@@ -1055,7 +1540,6 @@ const cloudPreferredSeedOnlyPrefixes = [
   '/api/climate/v1/',
   '/api/conflict/v1/',
   '/api/consumer-prices/v1/',
-  '/api/cyber/v1/',
   '/api/health/v1/',
   '/api/natural/v1/',
   '/api/positive-events/v1/',
@@ -1069,14 +1553,16 @@ const cloudPreferredSeedOnlyPrefixes = [
   '/api/wildfire/v1/',
 ];
 const cloudPreferredAlwaysPrefixes = ['/api/scorecard/v1/'];
-// Plain api/*.js routes whose answer lives in cloud-only state: session signing
+// Routes whose answer lives in cloud-only state: session signing
 // secrets, OAuth client records, operator Redis sets, cross-user aggregates and
 // the security-report sink. The sidecar holds none of it, so served locally
 // they answer 5xx or empty. Until #9906 they reached the cloud only by accident:
 // a static Upstash import kept them from loading on desktop at all.
 // reverse-geocode belongs here too: its shared Nominatim limiter fails closed
 // without Upstash (503 locally), and its geocode cache is the cloud's Redis.
+// Cyber network enrichment also needs cloud authorization and shared budgets.
 const cloudPreferredServerStateRoutes = new Set([
+  '/api/cyber/v1/get-network-info',
   '/api/analytics-health',
   '/api/notification-suppressions',
   '/api/oauth/authorize',
@@ -1199,6 +1685,11 @@ function resolveConfig(options = {}) {
   const mode = String(options.mode ?? process.env.LOCAL_API_MODE ?? 'desktop-sidecar');
   const requestedFallback = String(options.cloudFallback ?? process.env.LOCAL_API_CLOUD_FALLBACK ?? '') === 'true';
   const cloudFallback = mode === 'docker' ? false : requestedFallback;
+  // The relay is on by default in docker mode; an operator who forbids
+  // egress sets WORLDMONITOR_SELFHOST_RELAY=off (KTD8).
+  const relaySetting = String(options.selfHostRelay ?? process.env.WORLDMONITOR_SELFHOST_RELAY ?? '').trim().toLowerCase();
+  const selfHostRelay = mode === 'docker' && !['off', 'false', '0'].includes(relaySetting);
+  const publicHttps = String(options.publicHttps ?? process.env.WORLDMONITOR_PUBLIC_HTTPS ?? '').trim() === '1';
   // Programmatic dev/test escape hatch only; CLI/env startup keeps private remoteBase blocked.
   const allowPrivateRemoteBase = options.allowPrivateRemoteBase === true;
   // Programmatic-only test escape hatch for adding extra origins to the
@@ -1210,7 +1701,7 @@ function resolveConfig(options = {}) {
     : [];
   const logger = options.logger ?? console;
   if (mode === 'docker' && requestedFallback) {
-    logger.warn('[local-api] Cloud fallback disabled in Docker mode (self-hosted instances must not proxy to api.worldmonitor.app)');
+    logger.warn("[local-api] Cloud fallback disabled in Docker mode (only requests carrying the browser user's own desktop key are relayed to api.worldmonitor.app)");
   }
   if (cloudFallback && !allowPrivateRemoteBase && remoteBaseLooksPrivate(remoteBase)) {
     logger.warn(
@@ -1227,6 +1718,12 @@ function resolveConfig(options = {}) {
     apiDir,
     mode,
     cloudFallback,
+    selfHostRelay,
+    publicHttps,
+    selfHostVerdicts: new Map(),
+    selfHostVerdictChecks: new Map(),
+    selfHostPostLimits: new Map(),
+    rssProxyLimits: new Map(),
     allowPrivateRemoteBase,
     allowPrivateFetchOrigins,
     logger,
@@ -1251,7 +1748,17 @@ async function handleLocalServiceStatus(context) {
   });
 }
 
+function startCloudRequestLog() {
+  const startedAt = Date.now();
+  const load = `upstream ${_activeUpstream}/${MAX_CONCURRENT_UPSTREAM} active, ${_upstreamQueue.length} queued`;
+  return {
+    prefix: `[local-api] ${new Date(startedAt).toISOString()}`,
+    timing: () => `in ${Date.now() - startedAt}ms (${load})`,
+  };
+}
+
 async function tryCloudFallback(requestUrl, req, context, reason) {
+  const { prefix, timing } = startCloudRequestLog();
   if (reason) {
     const route = requestUrl.pathname;
     const count = (fallbackCounts.get(route) || 0) + 1;
@@ -1260,15 +1767,15 @@ async function tryCloudFallback(requestUrl, req, context, reason) {
       const brief = reason instanceof Error
         ? (reason.code === 'ERR_MODULE_NOT_FOUND' ? 'missing npm dependency' : reason.message)
         : reason;
-      context.logger.warn(`[local-api] ${route} → cloud (${brief})`);
+      context.logger.warn(`${prefix} ${route} → cloud (${brief})`);
     } else if (count === 5 || count % 100 === 0) {
-      context.logger.warn(`[local-api] ${route} → cloud x${count}`);
+      context.logger.warn(`${prefix} ${route} → cloud x${count}`);
     }
   }
   try {
     const resp = await proxyToCloud(requestUrl, req, context);
     if (!resp.ok) {
-      context.logger.warn(`[local-api] cloud returned ${resp.status} for ${requestUrl.pathname}`);
+      context.logger.warn(`${prefix} cloud returned ${resp.status} for ${requestUrl.pathname} ${timing()}`);
     }
     return resp;
   } catch (error) {
@@ -1281,7 +1788,7 @@ async function tryCloudFallback(requestUrl, req, context, reason) {
         'If remoteBase intentionally points at a private/loopback host, pass allowPrivateRemoteBase=true programmatically.'
       );
     } else {
-      context.logger.error('[local-api] cloud fallback failed', requestUrl.pathname, error);
+      context.logger.error(`${prefix} cloud fallback failed for ${requestUrl.pathname} ${timing()}`, error);
     }
     return null;
   }
@@ -1315,6 +1822,8 @@ function makeCorsHeaders(req) {
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline;
   // Use node:https with IPv4 by default — Node.js built-in fetch (undici) tries
   // IPv6 first and some servers (EIA, NASA FIRMS) have broken IPv6. Callers
   // with a validated address can instead pin its detected family below.
@@ -1324,8 +1833,10 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   delete fetchOptions.allowPrivateNetwork;
   const resolvedAddress = fetchOptions.resolvedAddress;
   const requestedFamily = fetchOptions.resolvedFamily;
+  const maxBodyBytes = fetchOptions.maxBodyBytes;
   delete fetchOptions.resolvedAddress;
   delete fetchOptions.resolvedFamily;
+  delete fetchOptions.maxBodyBytes;
   const resolvedFamily = resolvedAddress ? isIP(resolvedAddress) : 0;
   if (resolvedAddress && resolvedFamily === 0) {
     throw new TypeError('resolvedAddress must be an IPv4 or IPv6 address');
@@ -1333,11 +1844,15 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   if (requestedFamily != null && requestedFamily !== resolvedFamily) {
     throw new TypeError('resolvedFamily must match resolvedAddress');
   }
-  if (u.protocol === 'https:') {
+  // A body cap needs the streaming request below, so capped plain-HTTP
+  // fetches take it too instead of the buffering fetch() fallback.
+  if (u.protocol === 'https:' || (maxBodyBytes != null && u.protocol === 'http:')) {
+    const mod = u.protocol === 'https:' ? https : http;
     return new Promise((resolve, reject) => {
       const reqOpts = {
+        signal,
         hostname: u.hostname,
-        port: u.port || 443,
+        port: u.port || (u.protocol === 'https:' ? 443 : 80),
         path: u.pathname + u.search,
         method: fetchOptions.method || 'GET',
         headers: fetchOptions.headers || {},
@@ -1348,9 +1863,28 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
       if (resolvedAddress) {
         reqOpts.lookup = makePinnedLookup(resolvedAddress, resolvedFamily);
       }
-      const req = https.request(reqOpts, (res) => {
+      const req = mod.request(reqOpts, (res) => {
         const chunks = [];
-        res.on('data', (c) => chunks.push(c));
+        let receivedBytes = 0;
+        const rejectOversized = () => {
+          const error = new Error(`Response body exceeds ${maxBodyBytes} bytes`);
+          error.code = 'EBODYTOOLARGE';
+          reject(error);
+          req.destroy(error);
+        };
+        if (maxBodyBytes != null && Number(res.headers['content-length']) > maxBodyBytes) {
+          rejectOversized();
+          return;
+        }
+        res.on('error', reject);
+        res.on('data', (c) => {
+          receivedBytes += c.length;
+          if (maxBodyBytes != null && receivedBytes > maxBodyBytes) {
+            rejectOversized();
+            return;
+          }
+          chunks.push(c);
+        });
         res.on('end', () => {
           const body = Buffer.concat(chunks);
           const headers = new Headers();
@@ -1384,15 +1918,9 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
     pinned.hostname = resolvedFamily === 6 ? `[${resolvedAddress}]` : resolvedAddress;
     fetchUrl = pinned.toString();
   }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const requestOptions = { ...fetchOptions, headers: fetchHeaders, signal: controller.signal };
-    if (allowPrivateNetwork) requestOptions[ALLOW_PRIVATE_NETWORK_FETCH] = true;
-    return await fetch(fetchUrl, requestOptions);
-  } finally {
-    clearTimeout(timer);
-  }
+  const requestOptions = { ...fetchOptions, headers: fetchHeaders, signal };
+  if (allowPrivateNetwork) requestOptions[ALLOW_PRIVATE_NETWORK_FETCH] = true;
+  return fetch(fetchUrl, requestOptions);
 }
 
 function relayToHttpUrl(rawUrl) {
@@ -1733,6 +2261,10 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
 }
 
 async function dispatch(requestUrl, req, routes, context) {
+  // Only the relay decision and /api/selfhost-key may read the desktop-key
+  // cookie; local handlers and every other cloud call must never see it.
+  const selfHostKey = takeSelfHostKeyCookie(req);
+
   // Docker's public proxy supplies transport auth, not native administration authority.
   if (context.mode === 'docker' && requestUrl.pathname.startsWith('/api/local-')) {
     return json({ error: 'Native administration is unavailable in Docker mode' }, 403);
@@ -1826,6 +2358,24 @@ async function dispatch(requestUrl, req, routes, context) {
     return json({ error: 'Unauthorized' }, 401);
   }
 
+  if (requestUrl.pathname === '/api/selfhost-key') {
+    if (context.mode !== 'docker') return json({ error: 'Not found' }, 404);
+    return handleSelfHostKey(req, context, selfHostKey);
+  }
+
+  // Self-host relay (KTD6): ahead of local handlers, which cannot validate a
+  // desktop key without Convex. A separate decision from cloudFallback, which
+  // stays off in docker mode.
+  if (
+    context.selfHostRelay
+    && selfHostKey !== null
+    && isSelfHostRelayPath(requestUrl.pathname)
+    && selfHostRelayFetchSiteAllowed(req)
+    && shouldRelayForSelfHostKey(selfHostKey, context)
+  ) {
+    return relayToCloudWithSelfHostKey(requestUrl, req, context, selfHostKey);
+  }
+
   if (requestUrl.pathname === '/api/local-status') {
     return json({
       success: true,
@@ -1892,14 +2442,15 @@ async function dispatch(requestUrl, req, routes, context) {
     if (!convexUrl) {
       const cloudUrl = new URL(requestUrl);
       cloudUrl.pathname = '/api/leads/v1/register-interest';
+      const { prefix, timing } = startCloudRequestLog();
       try {
         const cloudResponse = await proxyRegisterInterestToCloud(cloudUrl, req, context);
         if (!cloudResponse.ok) {
-          context.logger.warn(`[local-api] cloud returned ${cloudResponse.status} for ${cloudUrl.pathname}`);
+          context.logger.warn(`${prefix} cloud returned ${cloudResponse.status} for ${cloudUrl.pathname} ${timing()}`);
         }
         return cloudResponse;
       } catch (error) {
-        context.logger.error('[local-api] register-interest cloud fallback failed', error);
+        context.logger.error(`${prefix} register-interest cloud fallback failed ${timing()}`, error);
       }
       return json({ error: 'Registration service unavailable' }, 503);
     }
@@ -1994,6 +2545,28 @@ async function dispatch(requestUrl, req, routes, context) {
     const feedUrl = requestUrl.searchParams.get('url');
     if (!feedUrl) return rssProxyJson({ error: 'Missing url parameter' }, 400);
 
+    // In Docker mode nginx adds the local token to every caller's request, so
+    // the token does not identify the user: hold the route to the hosted
+    // proxy's feed allowlist, default ports and a per-client rate limit.
+    if (context.mode === 'docker') {
+      const allowed = clientWithinLimit(req, context.rssProxyLimits, RSS_PROXY_CLIENT_LIMIT, RSS_PROXY_CLIENT_WINDOW_MS);
+      if (!allowed.ok) {
+        return json({ error: 'Too many requests' }, 429, {
+          ...RSS_PROXY_SECURITY_HEADERS,
+          'Retry-After': String(allowed.retryAfterSeconds),
+        });
+      }
+      let target;
+      try {
+        target = new URL(feedUrl);
+      } catch {
+        return rssProxyJson({ error: 'Invalid URL' }, 400);
+      }
+      if (!isAllowedRssDomain(target.hostname) || target.port !== '') {
+        return rssProxyJson({ error: 'Domain not allowed' }, 403);
+      }
+    }
+
     // SSRF protection: block private IPs, reserved ranges, and DNS rebinding
     const safety = await isSafeUrl(feedUrl);
     if (!safety.safe) {
@@ -2011,18 +2584,47 @@ async function dispatch(requestUrl, req, routes, context) {
         context.logger.warn(`[local-api] rss-proxy SSRF blocked: no validated address (url=${JSON.stringify(feedUrl)})`);
         return rssProxyJson({ error: 'Could not resolve hostname' }, 403);
       }
-      const response = await fetchWithTimeout(feedUrl, {
-        headers: {
-          'User-Agent': CHROME_UA,
-          'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-        resolvedAddress: pinned.address,
-        resolvedFamily: pinned.family,
-      }, parsed.hostname === 'news.google.com' ? 20000 : 12000);
-      const rssBody = await response.text();
-      return rssProxyResponse(rssBody || '', response.status);
+      const client = context.mode === 'docker' ? clientLimitKey(req) : null;
+      await acquireRssProxySlot(req, client);
+      // nginx closes its upstream connection when the viewer goes away; stop the
+      // feed fetch then instead of holding the slot until it times out.
+      const clientGone = new AbortController();
+      const onClientGone = () => clientGone.abort();
+      req.socket?.once('close', onClientGone);
+      let rssBody;
+      let status;
+      try {
+        const response = await fetchWithTimeout(feedUrl, {
+          headers: {
+            'User-Agent': CHROME_UA,
+            'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+            'Accept-Language': 'en-US,en;q=0.9',
+          },
+          resolvedAddress: pinned.address,
+          resolvedFamily: pinned.family,
+          maxBodyBytes: RSS_PROXY_MAX_BODY_BYTES,
+          signal: clientGone.signal,
+        }, parsed.hostname === 'news.google.com' ? 20000 : 12000);
+        status = response.status;
+        rssBody = await response.text();
+      } finally {
+        req.socket?.off('close', onClientGone);
+        releaseRssProxySlot(client);
+      }
+      return rssProxyResponse(rssBody || '', status);
     } catch (e) {
+      if (e.code === 'EBODYTOOLARGE') {
+        return rssProxyJson({ error: 'Feed too large', url: feedUrl }, 502);
+      }
+      if (e.code === 'ERSSQUEUEFULL') {
+        return json({ error: 'Too many feed requests in progress' }, 503, {
+          ...RSS_PROXY_SECURITY_HEADERS,
+          'Retry-After': String(Math.ceil(RSS_PROXY_QUEUE_WAIT_MS / 1000)),
+        });
+      }
+      if (e.code === 'ERSSQUEUETIMEOUT' || e.code === 'ERSSCLIENTGONE') {
+        return rssProxyJson({ error: 'Feed timeout', url: feedUrl }, 504);
+      }
       const isTimeout = e.name === 'AbortError' || e.message?.includes('timeout');
       return rssProxyJson({ error: isTimeout ? 'Feed timeout' : 'Failed to fetch feed', url: feedUrl }, isTimeout ? 504 : 502);
     }
@@ -2196,13 +2798,55 @@ export const __testing__ = {
   canCompress,
   jsonForScript,
   isYahooFinanceHost,
+  fetchWithTimeout,
   setUpstreamIdleTimeoutMs(ms) {
     _upstreamIdleTimeoutMs = ms;
   },
   setOllamaIdleTimeoutMs(ms) {
     _ollamaIdleTimeoutMs = ms;
   },
+  parseDesktopKeyVerdict,
+  setSelfHostVerdictTtlMs(ms) {
+    selfHostVerdictTtlMs = ms;
+  },
+  clientWithinLimit,
+  setRssProxyQueueWaitMs(ms) {
+    _rssProxyQueueWaitMs = ms;
+  },
+  setSelfHostRelayTimeoutMs(ms) {
+    selfHostRelayTimeoutMs = ms;
+  },
+  resetSelfHostTimings() {
+    selfHostVerdictTtlMs = DEFAULT_SELFHOST_VERDICT_TTL_MS;
+    selfHostRelayTimeoutMs = DEFAULT_SELFHOST_RELAY_TIMEOUT_MS;
+  },
 };
+
+// Relayed responses pass through as they arrive: status, headers (minus
+// hop-by-hop and the cloud's cookies) and body bytes, unbuffered and
+// uncompressed by the sidecar.
+async function writeStreamedResponse(req, res, response, onHeaders) {
+  const headers = {};
+  for (const [name, value] of response.headers.entries()) {
+    if (!RELAY_DROPPED_RESPONSE_HEADERS.includes(name)) headers[name] = value;
+  }
+  headers['access-control-allow-origin'] = getSidecarCorsOrigin(req);
+  headers.vary = appendVary(headers.vary, 'Origin');
+  res.writeHead(response.status, headers);
+  onHeaders();
+  if (!response.body) {
+    res.end();
+    return;
+  }
+  res.flushHeaders();
+  try {
+    await pipeline(Readable.fromWeb(response.body), res);
+  } catch {
+    // The client left or the upstream broke mid-stream; headers are sent, so
+    // all that is left is to drop the connection.
+    res.destroy();
+  }
+}
 
 export async function createLocalApiServer(options = {}) {
   const context = resolveConfig(options);
@@ -2238,6 +2882,19 @@ export async function createLocalApiServer(options = {}) {
 
     try {
       const response = await dispatch(requestUrl, req, routes, context);
+      if (streamedResponses.has(response)) {
+        await writeStreamedResponse(req, res, response, () => {
+          if (skipRecord) return;
+          recordTraffic({
+            timestamp: new Date().toISOString(),
+            method: req.method,
+            path: requestUrl.pathname + (requestUrl.search || ''),
+            status: response.status,
+            durationMs: Date.now() - start,
+          });
+        });
+        return;
+      }
       const durationMs = Date.now() - start;
       let body = Buffer.from(await response.arrayBuffer());
       const headers = Object.fromEntries(response.headers.entries());
@@ -2327,11 +2984,11 @@ export async function createLocalApiServer(options = {}) {
       context.port = boundPort;
       const extraAllowedPrivateOrigins = [];
       if (context.mode === 'docker') {
-        const addConfiguredPrivateOrigin = (envKey, blockedService) => {
+        const addConfiguredPrivateOrigin = (envKey, blockedService, toFetchUrl = (url) => url) => {
           const rawUrl = process.env[envKey];
           if (!rawUrl) return;
           try {
-            extraAllowedPrivateOrigins.push(new URL(rawUrl).origin);
+            extraAllowedPrivateOrigins.push(new URL(toFetchUrl(rawUrl)).origin);
           } catch (err) {
             context.logger.warn(
               `[local-api] ${envKey} is not a valid URL; not added to the private-fetch allowlist (${blockedService}): ${err.message}`,
@@ -2346,6 +3003,15 @@ export async function createLocalApiServer(options = {}) {
         // UPSTASH_REDIS_REST_URL is a public Upstash https origin that already
         // passes the SSRF check, so this path is docker-only.
         addConfiguredPrivateOrigin('UPSTASH_REDIS_REST_URL', 'Redis calls will be SSRF-blocked');
+
+        // docker-compose.yml points WS_RELAY_URL at the compose-internal relay
+        // (http://ais-relay:3004). Without trusting it, every relay-backed route
+        // (x-feed, telegram-feed, rss-proxy) is SSRF-blocked and answers 502
+        // "Hostname resolves to a private/reserved IP address".
+        // Relay handlers fetch ws(s):// values over http(s):// (getRelayBaseUrl
+        // in api/_relay.js), so trust the origin they actually fetch.
+        addConfiguredPrivateOrigin('WS_RELAY_URL', 'relay calls will be SSRF-blocked',
+          (url) => url.replace(/^ws(s?):\/\//i, 'http$1://'));
 
         // SELF_HOSTING.md documents LLM_API_URL for compose-network or LAN
         // endpoints; OLLAMA_API_URL is the supported desktop runtime setting.

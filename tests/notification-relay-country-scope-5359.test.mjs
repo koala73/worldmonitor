@@ -212,6 +212,29 @@ describe('#5359 — real eventMatchesCountryScope drops out-of-scope domain even
   });
 });
 
+describe('aviation_traffic_collapse is attributed to its market', () => {
+  it('reaches a US-scoped rule and no other scope', () => {
+    const { buildCollapseNotification } = require(resolve(__dirname, '..', 'scripts', 'shared', 'air-traffic-detector.cjs'));
+    const onset = Date.parse('2026-11-13T20:50:00Z');
+    for (const kind of ['collapse', 'recovery']) {
+      const event = buildCollapseNotification({ market: 'US', kind, t: onset + 300_000, onset, ratio: kind === 'collapse' ? 0.42 : 0.91 });
+      assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), true, kind);
+      assert.equal(eventMatchesCountryScope(event, EASTERN_EUROPE_RULE), false, kind);
+    }
+  });
+
+  it('a European market reaches a rule scoped to that country and not a US-only one', () => {
+    const { buildCollapseNotification } = require(resolve(__dirname, '..', 'scripts', 'shared', 'air-traffic-detector.cjs'));
+    const onset = Date.parse('2026-09-08T11:55:00Z');
+    const event = buildCollapseNotification({ market: 'GB', kind: 'collapse', t: onset + 900_000, onset, ratio: 0.24 });
+    assert.equal(event.payload.countryCode, 'GB');
+    assert.equal(event.payload.title, 'UK airline departures fell to 24% of normal since 11:55 UTC');
+    assert.equal(eventMatchesCountryScope(event, { countries: ['GB', 'FR'] }), true);
+    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), false);
+    assert.throws(() => buildCollapseNotification({ market: 'NL', kind: 'collapse', t: onset, onset, ratio: 0.2 }));
+  });
+});
+
 describe('#5359 — aviation publisher attaches countryCode (source-grep contract)', () => {
   const aviationSrc = readFileSync(
     resolve(__dirname, '..', 'scripts', 'seed-aviation.mjs'),

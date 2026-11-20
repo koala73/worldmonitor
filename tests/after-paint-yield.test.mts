@@ -34,14 +34,12 @@ test('yieldToMain falls back to setTimeout(0) when scheduler.yield is absent (R7
     // Must resolve without a Scheduler API present.
     await yieldToMain();
   });
-  assert.ok(true, 'fallback path resolved');
 });
 
 test('yieldToMain falls back when scheduler exists but lacks yield (R7)', async () => {
   await withScheduler({}, async () => {
     await yieldToMain();
   });
-  assert.ok(true, 'partial-scheduler fallback resolved');
 });
 
 test('yieldToMain returns a Promise in both paths (signature preserved)', async () => {

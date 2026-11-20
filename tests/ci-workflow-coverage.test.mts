@@ -166,14 +166,15 @@ describe('root dependency cache (#8710)', () => {
   // and use the action's miss-only fallback. Jobs with another npm install
   // (blog-site, pro-test, including through build:pro) keep setup-node's
   // cache for it and turn the action's off, so a miss restores it once.
-  // unit-shards restores its nested installed trees instead (see the
-  // 'unit-shard nested dependency cache' block), so it is in the first group.
+  // unit-shards and unit-built-output restore their nested installed trees
+  // instead (see the 'unit-shard nested dependency cache' and
+  // 'unit-built-output nested dependency cache' blocks), so they are in the
+  // first group.
   for (const [workflowText, jobIds, setupCache] of [
-    [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'resilience-validation-smoke', 'unit-shards'], undefined],
-    [testWorkflow, ['unit-built-output', 'variant-smoke-pro-webmcp'], 'npm'],
+    [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'resilience-validation-smoke', 'unit-shards', 'unit-built-output', 'variant-smoke-pro-webmcp'], undefined],
     [read(resolve(workflowsDir, 'perf-style-layout-budget.yml')), ['measure'], undefined],
     [lintCodeWorkflow, ['biome', 'markdown'], undefined],
-    [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck'], 'npm'],
+    [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck'], undefined],
   ] as const) {
     for (const jobId of jobIds) {
       it(`${jobId} uses the shared action after Node 24 setup with npm fallback`, () => {
@@ -186,7 +187,10 @@ describe('root dependency cache (#8710)', () => {
         assert.ok(install, `${jobId} must use the shared root dependency action`);
         assert.equal(setup.with['node-version'], '24');
         assert.equal(setup.with.cache, setupCache);
-        assert.equal(install.with?.['npm-cache'], setupCache === 'npm' ? 'false' : undefined);
+        const expectedNpmCache = setupCache === undefined ? undefined
+          // Exactly one of setup-node and the action restores ~/.npm in each part.
+          : setupCache === 'npm' ? 'false' : "${{ startsWith(matrix.part, 'plugin-') && 'true' || 'false' }}";
+        assert.equal(install.with?.['npm-cache'], expectedNpmCache);
         assert.ok(steps.indexOf(setup) < steps.indexOf(install));
         assert.equal(steps.some((step) => step.run === 'npm ci'), false);
       });
@@ -260,6 +264,76 @@ describe('unit-shard nested dependency cache', () => {
   });
 });
 
+describe('unit-built-output nested dependency cache', () => {
+  // setup-node restored the npm download cache for three lockfiles (6-9s,
+  // mostly the root's), then blog-site and pro-test installed from it (3s and
+  // 12s). The installed trees are restored instead and installed only on a
+  // miss, like the unit shards' nested-deps cache.
+  const steps = YAML.parse(testWorkflow).jobs['unit-built-output'].steps
+    .flatMap((step: { parallel?: unknown[] }) => step.parallel ?? [step]);
+  const restore = steps.find((step) => step.id === 'built-output-deps');
+  const blogInstall = steps.find((step) => step.run === 'npm run ci:blog-site');
+  const proInstall = steps.find((step) => step.run === 'npm --prefix pro-test ci --prefer-offline');
+  const save = steps.find((step) => step.uses?.startsWith('actions/cache/save@') && step.with?.key === '${{ steps.built-output-deps.outputs.cache-primary-key }}');
+  const blogBuild = steps.find((step) => step.run?.includes('npm --prefix blog-site run build'));
+  const proBuild = steps.find((step) => step.run === 'npm --prefix pro-test run build');
+  const miss = "steps.built-output-deps.outputs.cache-hit != 'true'";
+
+  it('restores both installed trees before the builds that read them', () => {
+    assert.ok(restore?.uses?.startsWith('actions/cache/restore@'));
+    assert.deepEqual(restore.with.path.trim().split('\n'), ['blog-site/node_modules', 'pro-test/node_modules']);
+    assert.ok(blogBuild && proBuild, 'the blog-site and /pro builds must exist');
+    assert.ok(steps.indexOf(save) < steps.indexOf(blogBuild));
+    assert.ok(steps.indexOf(save) < steps.indexOf(proBuild));
+  });
+
+  it('keys the trees on every install input', () => {
+    const key = restore.with.key;
+    assert.match(key, /^built-output-deps-v1-\$\{\{ runner\.os \}\}-\$\{\{ runner\.arch \}\}-node24-/);
+    for (const input of [
+      'blog-site/package.json',
+      'blog-site/package-lock.json',
+      'blog-site/.npmrc',
+      'pro-test/package.json',
+      'pro-test/package-lock.json',
+      'pro-test/.npmrc',
+      '.npmrc',
+      'vendor/**',
+    ]) {
+      assert.ok(key.includes(`'${input}'`), `built-output-deps key must hash ${input}`);
+    }
+  });
+
+  it('installs and saves only on a miss, after the restore and before the save', () => {
+    for (const step of [blogInstall, proInstall, save]) {
+      assert.ok(step, 'nested install and save steps must exist');
+      assert.equal(step.if, miss);
+      assert.ok(steps.indexOf(restore) < steps.indexOf(step));
+    }
+    assert.ok(steps.indexOf(blogInstall) < steps.indexOf(save));
+    assert.ok(steps.indexOf(proInstall) < steps.indexOf(save));
+    assert.equal(save.with.path, restore.with.path);
+    // A hit must skip every nested install, or the restore buys nothing.
+    assert.equal(steps.some((step) => /ci:blog-site|pro-test ci/.test(step.run ?? '') && step.if !== miss), false,
+      'no unconditional nested install may remain');
+  });
+
+  it('runs the same install and build build:pro runs, with install scripts off', () => {
+    const scripts = JSON.parse(read(resolve(root, 'package.json'))).scripts;
+    assert.equal(
+      scripts['build:pro'],
+      'cross-env npm_config_allow_scripts= npm --prefix pro-test ci --prefer-offline && npm --prefix pro-test run build',
+      'build:pro changed: mirror it in unit-built-output\'s /pro install and build steps, bump built-output-deps-vN, then update this string',
+    );
+    assert.equal(proInstall.env?.npm_config_allow_scripts, '');
+    assert.equal(
+      scripts['ci:blog-site'],
+      'cross-env npm_config_allow_scripts= npm --prefix blog-site ci --prefer-offline',
+      'ci:blog-site changed: bump built-output-deps-vN in the unit-built-output cache key, then update this string',
+    );
+  });
+});
+
 describe('shipped desktop Node coverage (#5909, #9906)', () => {
   const steps = YAML.parse(testWorkflow).jobs.sidecar.steps;
   const cache = steps.find((step) => step.name === 'Restore the shipped Node.js runtime');
@@ -321,7 +395,7 @@ describe('shipped desktop Node coverage (#5909, #9906)', () => {
         mkdirSync(bundledDir, { recursive: true });
         mkdirSync(toolsDir);
         writeFileSync(resolve(bundledDir, 'node'), '#!/bin/sh\necho shipped-node "$@"\n', { mode: 0o755 });
-        writeFileSync(resolve(toolsDir, 'npm'), `#!/bin/sh\n[ "$*" = 'run test:sidecar' ] || exit 99\nnode\nexit ${exitCode}\n`, { mode: 0o755 });
+        writeFileSync(resolve(toolsDir, 'npm'), `#!/bin/sh\n[ "$*" = 'run test:sidecar:desktop' ] || exit 99\nnode\nexit ${exitCode}\n`, { mode: 0o755 });
         const result = spawnSync('bash', ['-e', '-c', shippedTest.run], {
           cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: `${toolsDir}:${process.env.PATH}` },
         });
@@ -413,13 +487,87 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/dompurify-regression.spec.ts',
   'e2e/a11y-axe-scan.spec.ts',
   'e2e/map-overlay-marker-budget.spec.ts',
-  'e2e/mcp-market-built.spec.ts',
+  'e2e/mobile-displacement.spec.ts',
+  'e2e/map-distance.spec.ts',
   'e2e/live-panel-layout-8276.spec.ts',
   'e2e/panel-grid-no-overlap.spec.ts',
-  'e2e/mobile-panel-table-overflow.spec.ts',
+  'e2e/panel-table-overflow.spec.ts',
+  'e2e/etf-panel-overflow.spec.ts',
   'e2e/panel-header-fits.spec.ts',
   'e2e/procurement-filters-fit.spec.ts',
   'e2e/news-source-row-fits.spec.ts',
+  'e2e/progress-chart-fits.spec.ts',
+  'e2e/energy-table-values-whole.spec.ts',
+  'e2e/panel-text-unclipped.spec.ts',
+  'e2e/orbital-watch-track.spec.ts',
+  'e2e/regional-intelligence-region-select.spec.ts',
+  'e2e/settings-home-list.spec.ts',
+  'e2e/panel-grid-column-clamp.spec.ts',
+  'e2e/narrow-panel-overflow.spec.ts',
+  'e2e/hormuz-chart-width.spec.ts',
+  'e2e/population-exposure-legacy.spec.ts',
+  'e2e/a11y-landmarks-tablist.spec.ts',
+  'e2e/blocked-storage-services.spec.ts',
+  'e2e/brief-magazine.spec.ts',
+  'e2e/china-activity-nowcast-panel.spec.ts',
+  'e2e/circuit-breaker-persistence.spec.ts',
+  'e2e/collapsed-map-first-paint.spec.ts',
+  'e2e/correlation-panel-recovery.spec.ts',
+  'e2e/country-deep-dive-visibility.spec.ts',
+  'e2e/cross-source-signals-panel.spec.ts',
+  'e2e/cyber-network-popup.spec.ts',
+  'e2e/dashboard-cls.spec.ts',
+  'e2e/dashboard-switcher.spec.ts',
+  'e2e/dashboard-wide-layout.spec.ts',
+  'e2e/desktop-bottom-zone.spec.ts',
+  'e2e/displacement-panel-layout.spec.ts',
+  'e2e/energy-crisis-filters.spec.ts',
+  'e2e/feed-label-safety.spec.ts',
+  'e2e/gas-shock-sensitivity.spec.ts',
+  'e2e/geo-convergence-replay.spec.ts',
+  'e2e/giving-provenance.spec.ts',
+  'e2e/gold-refresh-timeout.spec.ts',
+  'e2e/grid-disruption-clock.spec.ts',
+  'e2e/header-cls.spec.ts',
+  'e2e/imd-hydration.spec.ts',
+  'e2e/imf-cache-recovery.spec.ts',
+  'e2e/insights-brief-readability.spec.ts',
+  'e2e/investments-panel.spec.ts',
+  'e2e/map-legend-disclosure.spec.ts',
+  'e2e/map-tooltip-external-values.spec.ts',
+  'e2e/mcp-webcam.spec.ts',
+  'e2e/mission-preview.spec.ts',
+  'e2e/natural-event-labels.spec.ts',
+  'e2e/news-context.spec.ts',
+  'e2e/news-panel-resize-hit-target.spec.ts',
+  'e2e/oil-price-freshness.spec.ts',
+  'e2e/panel-font-scaling.spec.ts',
+  'e2e/pinned-webcams.spec.ts',
+  'e2e/pro-activation.spec.ts',
+  'e2e/pro-banner-mobile.spec.ts',
+  'e2e/runtime-fetch.spec.ts',
+  'e2e/secondary-startup.spec.ts',
+  'e2e/service-status-cache-recovery.spec.ts',
+  'e2e/settings-phone-nav.spec.ts',
+  'e2e/settings-theme-contrast.spec.ts',
+  'e2e/stock-stored-coverage.spec.ts',
+  'e2e/ui-design-improvements.spec.ts',
+  'e2e/webcam-play-prompt.spec.ts',
+  'e2e/widget-sandbox.spec.ts',
+  'e2e/naval-group-navigation.spec.ts',
+  'e2e/ukmto-incidents.spec.ts',
+  'e2e/live-media-intent.spec.ts',
+  'e2e/widget-builder.spec.ts',
+  'e2e/panel-drag-reorder.spec.ts',
+  'e2e/mobile-map-native.spec.ts',
+  'e2e/mission-presets.spec.ts',
+  'e2e/mobile-bottom-navigation.spec.ts',
+  'e2e/china-corridor-panel.spec.ts',
+  'e2e/mobile-map-popup.spec.ts',
+  'e2e/oref-subscription-lifecycle.spec.ts',
+  'e2e/rag-vector-store.spec.ts',
+  'e2e/reservoir-levels.spec.ts',
+  'e2e/zoom-hidden-marker-hits.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [
@@ -496,6 +644,8 @@ const REQUIRED_DESKTOP_CONFIG_INPUTS = [
   'src-tauri/',
   'package.json',
   'scripts/repack-linux-appimage.sh',
+  'scripts/prefetch-appimage-tools.sh',
+  'scripts/fetch-with-retry.sh',
   'scripts/sync-desktop-version.mjs',
   'scripts/check-desktop-build-env.mjs',
   'scripts/check-rust-security-floors.mjs',
@@ -764,6 +914,110 @@ function collectDockerfiles(): string[] {
     .sort();
 }
 
+function collectActionFiles(repoRoot: string): string[] {
+  const workflows = readdirSync(resolve(repoRoot, '.github/workflows'))
+    .filter((name) => /\.ya?ml$/.test(name))
+    .map((name) => `.github/workflows/${name}`);
+  const collectDefinitions = (dir: string): string[] => {
+    if (!existsSync(resolve(repoRoot, dir))) return [];
+    return readdirSync(resolve(repoRoot, dir), { withFileTypes: true }).flatMap((entry) => {
+      const path = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) return collectDefinitions(path);
+      return /^action\.ya?ml$/.test(entry.name) ? [path] : [];
+    });
+  };
+  return [...workflows, ...collectDefinitions('.github/actions')].sort();
+}
+
+function unpinnedActionUses(source: string): string[] {
+  type Step = { uses?: unknown; steps?: Step[]; parallel?: Step[] };
+  const document = YAML.parse(source) as {
+    jobs?: Record<string, Step>;
+    runs?: { steps?: Step[] };
+  } | null;
+  const steps = [
+    ...Object.values(document?.jobs ?? {}).flatMap((job) => [job, ...(job.steps ?? [])]),
+    ...(document?.runs?.steps ?? []),
+  ];
+  const expandGroups = (entries: Step[]): Step[] => entries.flatMap((step) => [step, ...expandGroups(step.parallel ?? [])]);
+  return expandGroups(steps).flatMap(({ uses }) => {
+    if (uses === undefined) return [];
+    if (typeof uses !== 'string') return [String(uses)];
+    if (uses.startsWith('./')) return [];
+    const pinned = uses.startsWith('docker://')
+      ? /^docker:\/\/[^@\s]+@sha256:[0-9a-f]{64}$/i.test(uses)
+      : /^[^@\s]+@[0-9a-f]{40}$/i.test(uses);
+    return pinned ? [] : [uses];
+  });
+}
+
+describe('GitHub Actions pinning guard', () => {
+  const sha = 'a'.repeat(40);
+  const workflow = (uses: string) => `jobs:\n  check:\n    steps:\n      - uses: ${uses}\n`;
+
+  it('rejects mutable actions in list entries, quoted values and flow mappings', () => {
+    for (const source of [
+      workflow('example/action@v1'),
+      workflow('"example/action@main"'),
+      'jobs: { check: { steps: [{ uses: example/action@v1 }] } }',
+      workflow('example/action@abcdef0'),
+      workflow('example/action'),
+    ]) {
+      assert.equal(unpinnedActionUses(source).length, 1, source);
+    }
+  });
+
+  it('checks reusable workflow jobs and composite action steps', () => {
+    assert.equal(unpinnedActionUses('jobs:\n  call:\n    uses: example/repo/.github/workflows/check.yml@main\n').length, 1);
+    assert.equal(unpinnedActionUses('runs:\n  using: composite\n  steps:\n    - uses: example/action@v1\n').length, 1);
+  });
+
+  it('checks actions inside parallel groups in workflows and composites', () => {
+    const steps = [{ parallel: [
+      { name: 'Mutable action', uses: 'example/action@v1' },
+      { parallel: [{ uses: 'example/action@main' }, { uses: `example/action@${sha}` }] },
+    ] }];
+    for (const document of [{ jobs: { check: { steps } } }, { runs: { using: 'composite', steps } }]) {
+      assert.deepEqual(unpinnedActionUses(YAML.stringify(document)), ['example/action@v1', 'example/action@main']);
+    }
+  });
+
+  it('allows full commit SHAs, local actions and immutable Docker actions', () => {
+    for (const uses of [`example/action@${sha}`, `"example/action@${sha}"`, './.github/actions/local', `docker://alpine@sha256:${'b'.repeat(64)}`]) {
+      assert.deepEqual(unpinnedActionUses(workflow(uses)), [], uses);
+    }
+    assert.deepEqual(unpinnedActionUses(`jobs:\n  call:\n    uses: example/repo/.github/workflows/check.yml@${sha}\n`), []);
+  });
+
+  it('rejects mutable Docker actions and malformed YAML', () => {
+    assert.equal(unpinnedActionUses(workflow('docker://alpine:latest')).length, 1);
+    assert.throws(() => unpinnedActionUses('jobs: [invalid'));
+  });
+
+  it('flags non-string uses values instead of skipping them', () => {
+    assert.deepEqual(unpinnedActionUses('jobs:\n  check:\n    steps:\n      - uses:\n'), ['null']);
+    assert.deepEqual(unpinnedActionUses(workflow('123')), ['123']);
+  });
+
+  it('ignores uses text inside shell scripts and action inputs', () => {
+    assert.deepEqual(unpinnedActionUses('jobs:\n  check:\n    steps:\n      - run: |\n          uses: example/action@v1\n      - uses: ./.github/actions/local\n        with:\n          uses: example/input@v1\n'), []);
+  });
+
+  it('discovers workflows and nested composite definitions with either YAML extension', () => {
+    const dir = mkdtempSync(resolve(tmpdir(), 'wm-action-pins-'));
+    try {
+      const files = ['.github/workflows/check.yml', '.github/workflows/release.yaml', '.github/actions/local/action.yml', '.github/actions/nested/local/action.yaml'];
+      for (const file of [...files, '.github/actions/local/README.md']) {
+        mkdirSync(dirname(resolve(dir, file)), { recursive: true });
+        writeFileSync(resolve(dir, file), '');
+      }
+      assert.deepEqual(collectActionFiles(dir), files.sort());
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 function securityAuditSteps() {
   const job = YAML.parse(securityAuditWorkflow).jobs['audit-lockfile'];
   assert.equal(job.strategy, undefined, 'lockfile audits must share one job without matrix fan-out');
@@ -835,13 +1089,132 @@ describe('MCP live smoke — the production detection net', () => {
     assert.match(pushBlock, /^\s+- 'scripts\/mcp-smoke-http\.mjs'\s*$/m);
   });
 
+  // A push that also changes web paths starts a Vercel build, and the push run
+  // probed production minutes before that build was live. Every PR that changed
+  // MCP behaviour and its smoke expectation together went red on main (#7572,
+  // #10293, #11012) and green on its own deployment_status run. Smoke-only
+  // merges never deploy, so the push trigger must still probe those.
+  describe('push runs defer only to a production deploy that exists', () => {
+    const smokeJob = YAML.parse(smokeWorkflow).jobs.smoke;
+    const gateIndex = smokeJob.steps.findIndex((step: { id?: string }) => step.id === 'deploy');
+    const gate = smokeJob.steps[gateIndex];
+
+    // Runs the step's real shell with stub `git`, `gh` and vercel-ignore.sh.
+    // `deployment` is what GitHub lists for this SHA: a vercel[bot]
+    // Production deployment with that latest status, or none at all.
+    function runGate({ vercelBuilds, deployment }: { vercelBuilds: boolean; deployment: 'success' | 'failure' | 'none' | 'hang' }) {
+      const dir = mkdtempSync(resolve(tmpdir(), 'mcp-smoke-gate-'));
+      try {
+        const bin = resolve(dir, 'bin');
+        mkdirSync(bin);
+        mkdirSync(resolve(dir, 'scripts'));
+        writeFileSync(resolve(dir, 'scripts/vercel-ignore.sh'), `exit ${vercelBuilds ? 1 : 0}\n`);
+        writeFileSync(resolve(bin, 'git'), '#!/bin/bash\nexit 0\n', { mode: 0o755 });
+        const ghLog = resolve(dir, 'gh.log');
+        // The list call yields a statuses URL; only the status call yields a state.
+        const listReply = deployment === 'none' ? '' : 'echo https://api.github.test/statuses/1';
+        const statusReply = deployment === 'none' ? '' : `echo ${deployment}`;
+        writeFileSync(
+          resolve(bin, 'gh'),
+          `#!/bin/bash\necho "$*" >> ${JSON.stringify(ghLog)}\n`
+            + (deployment === 'hang' ? 'exec sleep 600\n' : '')
+            + `case "$2" in\n  repos/*/deployments\\?*) ${listReply || ':'} ;;\n  */statuses/*) ${statusReply || ':'} ;;\n esac\n`,
+          { mode: 0o755 },
+        );
+        const output = resolve(dir, 'output');
+        writeFileSync(output, '');
+        const result = spawnSync('bash', ['-e', '-c', gate.run], {
+          cwd: dir,
+          encoding: 'utf8',
+          timeout: 60_000,
+          env: {
+            ...process.env,
+            PATH: `${bin}:${process.env.PATH}`,
+            GITHUB_OUTPUT: output,
+            BEFORE: 'b'.repeat(40),
+            SHA: 'c'.repeat(40),
+            REPO: 'koala73/worldmonitor',
+            DEPLOY_WAIT_SECONDS: '2',
+            DEPLOY_POLL_SECONDS: '1',
+            GH_CALL_TIMEOUT_SECONDS: '1',
+          },
+        });
+        assert.equal(result.status, 0, result.stderr);
+        return {
+          pending: readFileSync(output, 'utf8').match(/^pending=(.*)$/m)?.[1],
+          ghCalls: existsSync(ghLog) ? readFileSync(ghLog, 'utf8').trim().split('\n') : [],
+        };
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+
+    it('gates the probe and report on a push-only deploy step', () => {
+      assert.ok(gate, 'a step with id "deploy" decides whether this push deploys');
+      assert.equal(gate.if, "github.event_name == 'push'");
+      assert.equal(gate.env?.BEFORE, '${{ github.event.before }}');
+      assert.equal(gate.env?.SHA, '${{ github.sha }}');
+      const probeIndex = smokeJob.steps.findIndex((step: { run?: string }) => step.run?.includes('mcp-live-smoke.mjs'));
+      assert.ok(gateIndex < probeIndex, 'the deploy check runs before the probe');
+      assert.equal(smokeJob.steps[probeIndex].if, "steps.deploy.outputs.pending != 'true'");
+      assert.equal(YAML.parse(smokeWorkflow).permissions?.deployments, 'read');
+      assert.ok(
+        smokeJob['timeout-minutes'] >= 20 + 12,
+        'the job must outlast the deploy wait plus the probe budget',
+      );
+    });
+
+    it('probes a smoke-only push at once without asking for deployments', () => {
+      assert.deepEqual(runGate({ vercelBuilds: false, deployment: 'none' }), { pending: 'false', ghCalls: [] });
+    });
+
+    // Skipping is safe only for a vercel[bot] Production deployment of THIS
+    // SHA, so the query must keep all three identity checks.
+    it('skips the probe once Vercel deploys this SHA to production', () => {
+      const { pending, ghCalls } = runGate({ vercelBuilds: true, deployment: 'success' });
+      assert.equal(pending, 'true');
+      assert.equal(ghCalls.length, 2, 'one deployment lookup, then one status lookup');
+      assert.ok(
+        ghCalls[0].includes(`api repos/koala73/worldmonitor/deployments?sha=${'c'.repeat(40)}&environment=Production`),
+        `deployment lookup must filter by this SHA and Production; got: ${ghCalls[0]}`,
+      );
+      assert.ok(
+        ghCalls[0].includes('select(.creator.login == "vercel[bot]")'),
+        `deployment lookup must keep only vercel[bot] deployments; got: ${ghCalls[0]}`,
+      );
+      assert.match(ghCalls[1], /^api https:\/\/api\.github\.test\/statuses\/1 /);
+    });
+
+    it('probes when the production deploy of this SHA fails', () => {
+      assert.equal(runGate({ vercelBuilds: true, deployment: 'failure' }).pending, 'false');
+    });
+
+    // B changes a web file and its deploy fails; C reverts that file and edits
+    // the smoke. The B→C diff predicts a build, but Vercel compares against A,
+    // the last successful deploy, and skips. No deployment_status run follows,
+    // so the push run must still probe.
+    // A gh api call with no limit can stall past the deadline; the step then
+    // hits timeout-minutes without setting `pending`, and the probe is lost.
+    it('probes when the deployments API hangs', () => {
+      const started = Date.now();
+      assert.equal(runGate({ vercelBuilds: true, deployment: 'hang' }).pending, 'false');
+      assert.ok(Date.now() - started < 30_000, 'each gh call is bounded, so the deadline still applies');
+    });
+
+    it('probes when the predicted deploy never appears', () => {
+      const { pending, ghCalls } = runGate({ vercelBuilds: true, deployment: 'none' });
+      assert.equal(pending, 'false');
+      assert.ok(ghCalls.length >= 2, 'it polled for the deployment before giving up');
+    });
+  });
+
   it('writes and uploads a diagnostic report for both passing and failing runs', () => {
     const smokeJob = YAML.parse(smokeWorkflow).jobs.smoke;
     const probe = smokeJob.steps.find((step: { run?: string }) => step.run?.includes('mcp-live-smoke.mjs'));
     assert.match(probe?.run ?? '', /--report\s+"\$RUNNER_TEMP\/mcp-live-smoke-report\.json"/);
 
     const upload = smokeJob.steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/upload-artifact@'));
-    assert.equal(upload?.if, '${{ always() }}');
+    assert.equal(upload?.if, "${{ always() && steps.deploy.outputs.pending != 'true' }}");
     assert.equal(upload?.uses, 'actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f');
     assert.equal(upload?.with?.path, '${{ runner.temp }}/mcp-live-smoke-report.json');
     assert.equal(upload?.with?.['if-no-files-found'], 'error');
@@ -1160,10 +1533,15 @@ describe('CI workflow coverage', () => {
     for (const stepName of ['Reconcile the weekly review branch', 'Open the weekly pulse PR']) {
       assert.match(
         workflowStepBlock(pulseWorkflow, stepName),
-        /GH_TOKEN: \$\{\{ secrets\.REVIEW_PR_TOKEN \|\| github\.token \}\}/,
-        `${stepName} must open the PR with a user or app token when one is configured, so the PR gets CI`,
+        /GH_TOKEN: \$\{\{ secrets\.REVIEW_PR_TOKEN \}\}/,
+        `${stepName} must open the PR with REVIEW_PR_TOKEN, so the PR gets CI`,
       );
     }
+    assert.match(
+      openPrStep,
+      /if \[ "\$VERIFY_OUTCOME" = "success" \]; then\n\s+gh pr merge --auto --squash "\$pr_url"/,
+      'auto-merge only a verified capture, never the draft',
+    );
   });
 
   it('runs the proto breaking check against the full main history (#6114)', () => {
@@ -1380,6 +1758,13 @@ describe('CI workflow coverage', () => {
     assert.equal(steps[installIndex].if, undefined, 'Redis must be installed on every consumer-prices run');
     assert.equal(steps[installIndex]['continue-on-error'], undefined, 'Redis installation failure must fail CI');
     assert.equal(steps[testIndex]['continue-on-error'], undefined, 'publisher regression failure must fail CI');
+  });
+
+  it('gives the consumer-prices tests a real Postgres for the chained-index proof', () => {
+    const job = YAML.parse(testWorkflow).jobs['consumer-prices'];
+    assert.match(job.services?.postgres?.image ?? '', /^postgres:17-alpine@sha256:[0-9a-f]{64}$/);
+    const test = job.steps.find((step: { run?: string }) => step.run === 'npm test --prefix consumer-prices-core');
+    assert.match(test.env?.CONSUMER_PRICES_TEST_DATABASE_URL ?? '', /^postgres:\/\/.+@localhost:5432\/consumer_prices_test$/);
   });
 
   it('installs the locale font subset from a package cache in every browser job', () => {
@@ -1743,9 +2128,21 @@ describe('CI workflow coverage', () => {
     const evaluate = direct.steps.find((step: { run?: string }) => step.run === 'bash -e .github/scripts/deploy-gate.sh evaluate');
     assert.equal(evaluate.env.SHA, '${{ matrix.sha }}');
     assert.equal(evaluate.env.CHECK_ATTEMPTS, 2, 'retain the stale-read retry');
-    const checkout = direct.steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/checkout@'));
-    assert.equal(checkout.with['fetch-depth'], 0, 'base drift requires the full commit graph');
-    assert.equal(checkout.with.filter, 'blob:none');
+    assert.equal(
+      evaluate.env.TRIGGER_RUN_ID,
+      '${{ github.event.workflow_run.id }}',
+      'a stale listing of the run that fired this event must not skip the last re-poll',
+    );
+    // base_drift unshallows on demand, so both evaluators check out one commit
+    // and only the script; a full-history checkout on every event cost a
+    // median 11s (p90 62s) of runner time for a graph few evaluations read.
+    for (const job of [direct, jobs.evaluate]) {
+      const checkout = job.steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/checkout@'));
+      assert.equal(checkout.with['fetch-depth'], undefined);
+      assert.equal(checkout.with.filter, 'blob:none');
+      assert.equal(checkout.with['sparse-checkout'], '.github/scripts');
+    }
+    assert.match(deployGateScript, /--is-shallow-repository\)" = "true" \]; then\n\s+deepen=\(--unshallow\)/);
 
     for (const event of ['workflow_run', 'schedule', 'workflow_dispatch']) {
       const completion = event === 'workflow_run';
@@ -1806,6 +2203,15 @@ describe('CI workflow coverage', () => {
     const download = jobs.recover?.steps?.find((step) => step.uses?.startsWith('actions/download-artifact@'));
     assert.equal(download?.with?.pattern, 'deploy-gate-invalidate-${{ github.run_attempt }}-*');
     assert.notEqual(download?.with?.['merge-multiple'], true, 'per-SHA result files must not overwrite one another');
+  });
+
+  it('names exactly the triggering workflows as the ones whose runs skip the stale-read wait', () => {
+    // An evaluation skips its 60s re-poll while a gated run for the head is
+    // unfinished, because that run's completion event evaluates again. A name
+    // missing here only keeps a wait; an extra name could skip the wait on the
+    // head's last event, which is #5479.
+    const workflow = YAML.parse(deployGateWorkflow);
+    assert.deepEqual(workflow.env.GATED_WORKFLOWS.split(','), workflow.on.workflow_run.workflows);
   });
 
   it('treats sidecar changes as code for PR smoke gating', () => {
@@ -1924,7 +2330,9 @@ describe('CI workflow coverage', () => {
 
   it('keeps resilience validation bundle inputs in the CI change filter', () => {
     assert.ok(
-      testWorkflow.includes('validation: ${{ steps.diff.outputs.validation }}'),
+      // The reuse step may only switch it off on a push whose tree unit already
+      // passed (tests/ci-reuse-pr-test-verdict.test.mjs).
+      testWorkflow.includes('validation: ${{ steps.reuse.outputs.validation || steps.diff.outputs.validation }}'),
       'test.yml must expose a validation change output',
     );
     for (const input of REQUIRED_RESILIENCE_VALIDATION_INPUTS) {
@@ -2256,6 +2664,40 @@ describe('CI workflow coverage', () => {
     );
   });
 
+  it('prefetches the AppImage tools before every Linux Tauri build', () => {
+    // One GitHub 504 on a bundler tool download failed the canary
+    // (run 42567226797): the bundler fetches them without retry.
+    for (const [label, workflow, buildStep, arch] of [
+      ['desktop canary', desktopCanaryWorkflow, 'Build Tauri app', 'x86_64'],
+      [
+        'release workflow',
+        desktopBuildWorkflow,
+        'Build Tauri app (signed)',
+        "${{ matrix.label == 'Linux-ARM64' && 'aarch64' || 'x86_64' }}",
+      ],
+    ] as const) {
+      const restore = workflowStepBlock(workflow, 'Restore Tauri AppImage tools');
+      assert.match(restore, /^\s+path: ~\/\.cache\/tauri\s*$/m, `${label} must cache the bundler tool dir`);
+      assert.match(
+        restore,
+        /hashFiles\('scripts\/prefetch-appimage-tools\.sh'\)/,
+        `${label} must key the tool cache on the prefetch script`,
+      );
+      const prefetch = workflowStepBlock(workflow, 'Prefetch Tauri AppImage tools');
+      assert.ok(
+        prefetch.includes(`run: bash scripts/prefetch-appimage-tools.sh ${arch}\n`),
+        `${label} must prefetch the AppImage tools for its architecture`,
+      );
+      assert.doesNotMatch(prefetch, /^\s+continue-on-error:/m);
+      const prefetchAt = workflow.indexOf('\n      - name: Prefetch Tauri AppImage tools\n');
+      assert.ok(
+        workflow.indexOf('\n      - name: Restore Tauri AppImage tools\n') < prefetchAt &&
+          prefetchAt < workflow.indexOf(`\n      - name: ${buildStep}\n`),
+        `${label} must restore, then prefetch, then build`,
+      );
+    }
+  });
+
   it('runs workflow coverage when the release workflow changes', () => {
     const codeFilter = shellAwkAssignmentBlock('CODE');
     assert.doesNotMatch(
@@ -2509,32 +2951,14 @@ describe('CI workflow coverage', () => {
   });
 
   it('keeps GitHub Actions external uses pinned to commit SHAs', () => {
-    const failures: string[] = [];
-    const workflowFiles = readdirSync(workflowsDir)
-      .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
-      .sort();
-
-    for (const workflowFile of workflowFiles) {
-      const source = readFileSync(resolve(workflowsDir, workflowFile), 'utf8');
-      const lines = source.split('\n');
-
-      lines.forEach((line, index) => {
-        const match = line.match(/^\s*uses:\s*([^@\s#]+)@([^\s#]+)/);
-        if (!match) return;
-
-        const [, action, ref] = match;
-        if (action.startsWith('./') || action.startsWith('docker://')) return;
-
-        if (!/^[0-9a-f]{40}$/i.test(ref)) {
-          failures.push(`${workflowFile}:${index + 1} ${line.trim()}`);
-        }
-      });
-    }
+    const failures = collectActionFiles(root).flatMap((file) =>
+      unpinnedActionUses(read(resolve(root, file))).map((uses) => `${file}: ${uses}`),
+    );
 
     assert.deepEqual(
       failures,
       [],
-      `GitHub Actions uses refs must be 40-character commit SHAs:\n${failures.join('\n')}`,
+      `GitHub Actions uses refs must be full commit SHAs or Docker digests:\n${failures.join('\n')}`,
     );
   });
 });
@@ -2778,6 +3202,32 @@ describe('docker-publish conditions', () => {
     );
 
   const dockerPublish = YAML.parse(read(resolve(workflowsDir, 'docker-publish.yml')));
+  it('checks snapshot freshness before any Docker build can use its cache', () => {
+    const steps = dockerPublish.jobs.docker.steps;
+    const firstBuild = steps.findIndex((step: { uses?: string }) => step.uses?.startsWith('docker/build-push-action@'));
+    for (const command of ['node scripts/check-crawlable-live-pulse.mjs', 'node scripts/github-stars-snapshot.mjs']) {
+      const gate = steps.findIndex((step: { run?: string }) => step.run === command);
+      assert.ok(gate >= 0 && gate < firstBuild, `${command} must run before the first Docker build`);
+      assert.equal(steps[gate].if, undefined);
+      assert.equal(steps[gate]['continue-on-error'], undefined);
+    }
+  });
+
+  it('checks snapshot freshness before the self-hosted app image builds', () => {
+    const selfHosted = YAML.parse(read(resolve(workflowsDir, 'docker-publish-self-hosted.yml')));
+    const job = Object.values(selfHosted.jobs).find((candidate: any) =>
+      candidate.strategy?.matrix?.include?.some((leg: { dockerfile?: string }) => leg.dockerfile === 'Dockerfile'),
+    ) as { steps: Array<{ run?: string; uses?: string; if?: string; 'continue-on-error'?: unknown }> };
+    assert.ok(job, 'docker-publish-self-hosted.yml must build the root Dockerfile');
+    const firstBuild = job.steps.findIndex((step) => step.uses?.startsWith('docker/build-push-action@'));
+    for (const command of ['node scripts/check-crawlable-live-pulse.mjs', 'node scripts/github-stars-snapshot.mjs']) {
+      const gate = job.steps.findIndex((step) => step.run === command);
+      assert.ok(gate >= 0 && gate < firstBuild, `${command} must run before the first Docker build`);
+      assert.equal(job.steps[gate].if, "matrix.image == 'worldmonitor-selfhosted'");
+      assert.equal(job.steps[gate]['continue-on-error'], undefined);
+    }
+  });
+
   const tagEnableExpressions = () => {
     const metaStep = dockerPublish.jobs.docker.steps.find(
       (step: { id?: string }) => step.id === 'meta',
@@ -3187,16 +3637,21 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
   const steps: Array<{ name?: string; id?: string; run?: string; if?: string; parallel?: unknown[] }> = job.steps;
   const flat = steps.flatMap((step) => (step.parallel as typeof steps | undefined) ?? [step]);
 
-  it('splits the job into a webmcp part and a pro-gates part', () => {
+  it('splits the job into webmcp, pro-gates and the two MCP Apps view parts', () => {
     // webmcp first: it is the longer part, so it should take a runner first.
-    assert.deepEqual(job.strategy.matrix.part, ['webmcp', 'pro-gates']);
+    assert.deepEqual(job.strategy.matrix.part, ['webmcp', 'pro-gates', 'plugin-news', 'plugin-views']);
     assert.equal(job.strategy['fail-fast'], false, 'a red half must not cancel the other half\'s evidence');
   });
 
-  it('builds /pro in both parts and runs each suite in exactly one', () => {
-    const build = flat.find((step) => step.run === 'npm run build:pro');
+  it('builds /pro in the webmcp and pro-gates parts and runs each suite in exactly one', () => {
+    const installPro = flat.find((step) => (step as { uses?: string }).uses === './.github/actions/install-pro-deps');
+    assert.ok(installPro, 'the job must restore/install /pro dependencies via the shared action');
+    assert.equal(installPro.if, "${{ !startsWith(matrix.part, 'plugin-') }}");
+    const build = flat.find((step) => step.run === 'npm --prefix pro-test run build');
     assert.ok(build, 'the job must build /pro');
-    assert.equal(build.if, undefined, 'both parts need /pro: the legacy WebMCP tests load /pro/welcome.html');
+    assert.ok(flat.indexOf(installPro) < flat.indexOf(build), 'install-pro-deps must run before the /pro build');
+    // The legacy WebMCP tests load /pro/welcome.html; the MCP Apps view parts never read /pro.
+    assert.equal(build.if, "${{ !startsWith(matrix.part, 'plugin-') }}");
     const partOf = (script: string) => {
       const step = flat.find((s) => s.run === `npm run ${script}`);
       assert.ok(step, `the job must run npm run ${script}`);
@@ -3205,34 +3660,68 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
     assert.equal(partOf('test:e2e:webmcp'), "matrix.part == 'webmcp'");
     assert.equal(partOf('test:e2e:prehydration'), "matrix.part == 'pro-gates'");
     assert.equal(partOf('test:e2e:pro-gates'), "matrix.part == 'pro-gates'");
+    const plugin = flat.find((step) => step.id === 'plugin');
+    assert.equal(plugin?.run, 'npm run test:e2e:${{ matrix.part }}');
+    assert.equal(plugin?.if, "startsWith(matrix.part, 'plugin-')");
   });
 
-  it('keys setup-node\'s npm cache to the only install that reads it', () => {
-    // node_modules comes from install-root-deps, so ~/.npm serves only
-    // `npm --prefix pro-test ci` inside build:pro. Keyed on the root lockfile
-    // it restored the 583 MB root download cache, and the two parts pulling
-    // that blob at the same moment took 12-62s instead of ~6s (PR #9626).
+  it('runs every MCP Apps view spec in exactly one plugin part, on freshly built views', () => {
+    // No job ran these specs before, so #10494 broke 31 of them and still merged green.
+    const specs = readdirSync(resolve(root, 'e2e')).filter((name) => /^plugin-.*\.spec\.ts$/.test(name)).map((name) => `e2e/${name}`);
+    assert.ok(specs.length > 0);
+    const parts = (job.strategy.matrix.part as string[]).filter((part) => part.startsWith('plugin-'));
+    const pluginViews = shellArgvTokens(packageScripts['test:e2e:plugin-views']);
+    assert.ok(pluginViews.includes('e2e/mcp-market-built.spec.ts'));
+    assert.ok(pluginViews.includes('WM_E2E_PLUGIN_BUILT=1'));
+    const covered = parts.flatMap((part) => {
+      const script = packageScripts[`test:e2e:${part}`];
+      assert.ok(script, `package.json must define test:e2e:${part}`);
+      assert.match(script, /^npm run build:plugin && /, `test:e2e:${part} must build dist/plugin before the specs read it`);
+      return script.match(/e2e\/plugin-[\w-]+\.spec\.ts/g) ?? [];
+    });
+    assert.deepEqual([...covered].sort(), [...specs].sort(), 'each e2e/plugin-*.spec.ts must run in exactly one plugin part');
+  });
+
+  it('restores pro-test/node_modules via install-pro-deps instead of setup-node npm download cache', () => {
     const setup = flat.find((step) => (step as { uses?: string }).uses?.startsWith('actions/setup-node@')) as
       { with: Record<string, string> } | undefined;
-    assert.equal(setup?.with.cache, 'npm');
-    assert.equal(setup?.with['cache-dependency-path'], 'pro-test/package-lock.json');
+    assert.equal(setup?.with.cache, undefined);
+    const proAction = YAML.parse(read(resolve(root, '.github/actions/install-pro-deps/action.yml')));
+    const proSteps = proAction.runs.steps;
+    const restore = proSteps.find((s: { id?: string }) => s.id === 'pro-deps');
+    const install = proSteps.find((s: { run?: string }) => s.run === 'npm --prefix pro-test ci --prefer-offline');
+    const save = proSteps.find((s: { uses?: string }) => s.uses?.startsWith('actions/cache/save@'));
+    assert.ok(restore && install && save, 'install-pro-deps must restore, install on miss, and save pro-test/node_modules');
+    assert.equal(restore.with.path, 'pro-test/node_modules');
+    assert.equal(install.env?.npm_config_allow_scripts, '');
+    assert.equal(install.if, "steps.pro-deps.outputs.cache-hit != 'true'");
+    assert.equal(save.if, "steps.pro-deps.outputs.cache-hit != 'true'");
+    assert.equal(save.with.path, 'pro-test/node_modules');
+    assert.equal(save.with.key, '${{ steps.pro-deps.outputs.cache-primary-key }}');
+    for (const input of ['pro-test/package.json', 'pro-test/package-lock.json', 'pro-test/.npmrc', '.npmrc', 'vendor/**']) {
+      assert.ok(restore.with.key.includes(`'${input}'`), `install-pro-deps key must hash ${input}`);
+    }
   });
 
-  it('runs the four /pro browser gates in one Playwright run', () => {
+  it('runs the /pro browser gates in one Playwright run', () => {
     // Each Playwright run starts the Vite dev server and Chrome (~3.5s), and
-    // the four gates ran one after another.
+    // the gates used to run one after another.
     const specs = [
       'e2e/pro-critical-css-cls.spec.ts',
       'e2e/pro-mobile-overflow.spec.ts',
       'e2e/pro-hero-animation.spec.ts',
       'e2e/pro-hero-lcp.spec.ts',
+      'e2e/pro-pricing-anchor.spec.ts',
+      'e2e/pro-pricing-cta-reach.spec.ts',
+      'e2e/panel-gate-analytics.spec.ts',
+      'e2e/welcome-nav-fit.spec.ts',
     ];
     const script = packageScripts['test:e2e:pro-gates'] ?? '';
     assert.match(script, /^cross-env VITE_VARIANT=full playwright test /);
     assert.match(script, / --project=chromium$/);
     assert.deepEqual(script.match(/e2e\/[\w-]+\.spec\.ts/g), specs);
     for (const spec of specs) assert.ok(existsSync(resolve(root, spec)), `${spec} must exist`);
-    for (const single of ['pro-cls', 'pro-overflow', 'pro-hero', 'pro-lcp']) {
+    for (const single of ['pro-cls', 'pro-overflow', 'pro-hero', 'pro-lcp', 'pro-anchor']) {
       assert.ok(!flat.some((step) => step.run?.includes(`test:e2e:${single}`)), `test:e2e:${single} must run via test:e2e:pro-gates`);
     }
   });
@@ -3257,5 +3746,47 @@ describe('Rust toolchain pin', () => {
       assert.match(String(toolchain), /^\d+\.\d+\.\d+$/, `${file} must pin an exact Rust release, not a channel like stable`);
     }
     assert.equal(new Set(pins.map((pin) => String(pin.toolchain))).size, 1, 'release and test builds must compile with one Rust release');
+  });
+});
+
+describe('evidence uploads never decide a test verdict', () => {
+  // Run 43094414605: every Playwright test in three smoke shards passed, then
+  // each job went red because the artifact service answered CreateArtifact
+  // with an HTML page. An upload carries evidence for a human, so its outage
+  // must not turn a passing job red. When the tests fail, their own step
+  // already fails the job. The screenshot gallery is the chrome-gallery job's
+  // product rather than evidence for another step, so losing it stays red.
+  const deliverables = new Set(['chrome-gallery: Upload screenshot gallery']);
+  type UploadStep = { name?: string; uses?: string; 'continue-on-error'?: unknown; parallel?: UploadStep[] };
+  const uploadsIn = (file: string) => {
+    const workflow = YAML.parse(read(resolve(workflowsDir, file))) as {
+      jobs: Record<string, { steps?: UploadStep[] }>;
+    };
+    // `parallel:` groups nest steps; an upload inside one must not escape.
+    const expand = (steps: UploadStep[]): UploadStep[] => steps.flatMap((step) => [step, ...expand(step.parallel ?? [])]);
+    return Object.entries(workflow.jobs).flatMap(([job, { steps = [] }]) =>
+      expand(steps)
+        .filter((step) => step.uses?.startsWith('actions/upload-artifact@'))
+        .map((step) => ({ id: `${job}: ${step.name ?? step.uses}`, step })),
+    );
+  };
+
+  for (const file of ['test.yml', 'e2e-visual.yml']) {
+    it(`${file}: every evidence upload continues on error`, () => {
+      const uploads = uploadsIn(file);
+      assert.ok(uploads.length > 0, `${file} must still upload test evidence`);
+      const strict = uploads
+        .filter(({ id, step }) => !deliverables.has(id) && step['continue-on-error'] !== true)
+        .map(({ id }) => id);
+      assert.deepEqual(strict, [], 'an upload outage would fail a job whose tests passed');
+    });
+  }
+
+  it('the screenshot gallery upload stays strict', () => {
+    const gallery = uploadsIn('e2e-visual.yml').filter(({ id }) => deliverables.has(id));
+    assert.equal(gallery.length, deliverables.size, 'the chrome-gallery job must still upload its gallery');
+    for (const { id, step } of gallery) {
+      assert.equal(step['continue-on-error'], undefined, `${id} is the job's product; losing it must fail the job`);
+    }
   });
 });

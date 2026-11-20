@@ -14,9 +14,18 @@ const SOURCE = {
   attribution: 'Webcams provided by Windy.com — add a webcam',
   linking: 'Link every displayed image to its windyUrl or provider playerUrl; keep this courtesy alongside the media.',
 };
+const SOURCE_DOCS: Record<keyof typeof SOURCE, string> = {
+  name: 'Data provider.',
+  url: 'Provider page to credit; for one camera, its Windy page.',
+  addWebcamUrl: 'Link inviting viewers to add a webcam, part of the required courtesy.',
+  termsUrl: 'Provider terms of use.',
+  attribution: 'Credit line to show with any webcam data.',
+  linking: 'How displayed images must link back to the provider.',
+};
 const SOURCE_SCHEMA = {
   type: 'object',
-  properties: Object.fromEntries(Object.keys(SOURCE).map(key => [key, { type: 'string' }])),
+  description: 'Required provider attribution.',
+  properties: Object.fromEntries(Object.keys(SOURCE).map(key => [key, { type: 'string', description: SOURCE_DOCS[key as keyof typeof SOURCE] }])),
   required: Object.keys(SOURCE),
 };
 const CATALOG_CHECKS = [{ key: 'seed-meta:webcam:cameras:geo', maxStaleMin: 1440, minRecordCount: 1 }];
@@ -38,12 +47,12 @@ export const WEBCAM_TOOLS: ToolDef[] = [
       type: 'object',
       required: ['bound_w', 'bound_s', 'bound_e', 'bound_n', 'zoom'],
       properties: {
-        bound_w: { type: 'number', minimum: -180, maximum: 180, description: 'Western longitude. W > E crosses the antimeridian.' },
-        bound_s: { type: 'number', minimum: -90, maximum: 90, description: 'Southern latitude, strictly below bound_n.' },
-        bound_e: { type: 'number', minimum: -180, maximum: 180, description: 'Eastern longitude.' },
-        bound_n: { type: 'number', minimum: -90, maximum: 90, description: 'Northern latitude.' },
-        zoom: { type: 'integer', minimum: 0, maximum: 22, description: 'Explicit map zoom; 0–8 may return clusters, 9–22 individual cameras.' },
-        limit: { type: 'integer', minimum: 1, maximum: 200, default: 50, description: 'Maximum combined camera and cluster rows. Defaults to 50; no media fan-out.' },
+        bound_w: { type: 'number', minimum: -180, maximum: 180, description: 'West edge of the viewport, longitude in degrees. A value greater than bound_e describes a box that crosses the antimeridian.' },
+        bound_s: { type: 'number', minimum: -90, maximum: 90, description: 'South edge of the viewport, latitude in degrees; must be below bound_n.' },
+        bound_e: { type: 'number', minimum: -180, maximum: 180, description: 'East edge of the viewport, longitude in degrees; must differ from bound_w.' },
+        bound_n: { type: 'number', minimum: -90, maximum: 90, description: 'North edge of the viewport, latitude in degrees.' },
+        zoom: { type: 'integer', minimum: 0, maximum: 22, description: 'Web-map zoom level of the viewport, 0 being the whole world. Up to 8, nearby cameras can be grouped into clusters; above 8, every camera is returned individually.' },
+        limit: { type: 'integer', minimum: 1, maximum: 200, default: 50, description: 'Number of rows returned, cameras first and then clusters; truncated reports whether rows were cut. No media is resolved.' },
       },
     },
     _validateArgs: params => {
@@ -55,19 +64,22 @@ export const WEBCAM_TOOLS: ToolDef[] = [
       type: 'object',
       required: ['state', 'reason', 'webcams', 'clusters', 'totalInView', 'truncated', 'catalog', 'source'],
       properties: {
-        state: { type: 'string', enum: ['available', 'unavailable'] },
-        reason: { type: 'string' },
-        webcams: { type: 'array', maxItems: 200, items: { type: 'object', properties: {
-          webcamId: { type: 'string' }, title: { type: 'string' }, lat: { type: 'number' }, lng: { type: 'number' }, country: { type: 'string' }, category: { type: 'string' },
+        state: { type: 'string', enum: ['available', 'unavailable'], description: 'unavailable when the catalog could not be read; the lists are then empty.' },
+        reason: { type: 'string', description: 'Why state is unavailable (catalog_unavailable); empty when available.' },
+        webcams: { type: 'array', maxItems: 200, description: 'Individual cameras in the viewport.', items: { type: 'object', properties: {
+          webcamId: { type: 'string', description: 'Windy webcam ID, used to resolve its media.' }, title: { type: 'string', description: 'Camera title from Windy; external text.' },
+          lat: { type: 'number', description: 'Latitude, degrees.' }, lng: { type: 'number', description: 'Longitude, degrees.' },
+          country: { type: 'string', description: 'Country as given by Windy; empty when unknown.' }, category: { type: 'string', description: 'Windy camera category, such as beach or city; other when unknown.' },
         }, required: ['webcamId', 'title', 'lat', 'lng', 'country', 'category'] } },
-        clusters: { type: 'array', maxItems: 200, items: { type: 'object', properties: {
-          lat: { type: 'number' }, lng: { type: 'number' }, count: { type: 'integer' }, categories: { type: 'array', items: { type: 'string' } },
+        clusters: { type: 'array', maxItems: 200, description: 'Groups of nearby cameras at low zoom.', items: { type: 'object', properties: {
+          lat: { type: 'number', description: 'Cluster center latitude, degrees.' }, lng: { type: 'number', description: 'Cluster center longitude, degrees.' },
+          count: { type: 'integer', description: 'Cameras in the cluster.' }, categories: { type: 'array', items: { type: 'string' }, description: 'Distinct camera categories in the cluster.' },
         }, required: ['lat', 'lng', 'count', 'categories'] } },
         totalInView: { type: 'integer', description: 'Count returned by the shared quantized viewport query (itself capped); not an exact global count.' },
         truncated: { type: 'boolean', description: 'Whether the MCP row limit omitted camera or cluster rows.' },
         catalog: { type: 'object', properties: {
-          cached_at: { type: ['string', 'null'], description: 'Catalog seed time, not image capture time.' }, stale: { type: 'boolean' },
-        }, required: ['cached_at', 'stale'] },
+          cached_at: { type: ['string', 'null'], description: 'Catalog seed time, not image capture time.' }, stale: { type: 'boolean', description: 'True when the catalog is more than a day old, empty, failed its last refresh, or could not be checked.' },
+        }, required: ['cached_at', 'stale'], description: 'Freshness of the webcam catalog.' },
         source: SOURCE_SCHEMA,
       },
     },
@@ -113,20 +125,24 @@ export const WEBCAM_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     inputSchema: {
       type: 'object', required: ['webcam_id'],
-      properties: { webcam_id: { type: 'string', minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9_-]+$', description: 'One webcamId returned by find_webcams.' } },
+      properties: { webcam_id: { type: 'string', minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9_-]+$', description: 'Windy catalog ID of the camera whose media to resolve: one webcamId returned by find_webcams.' } },
     },
     outputSchema: {
       type: 'object',
       required: ['state', 'reason', 'webcamId', 'title', 'thumbnailUrl', 'playerUrl', 'windyUrl', 'lastUpdated', 'resolvedAt', 'refreshAfter', 'mediaType', 'urlExpiryGuidance', 'context', 'source'],
       properties: {
-        state: { type: 'string', enum: ['available', 'unavailable'] }, reason: { type: 'string' },
-        webcamId: { type: 'string' }, title: { type: 'string' },
-        thumbnailUrl: { type: 'string' }, playerUrl: { type: 'string' }, windyUrl: { type: 'string' },
+        state: { type: 'string', enum: ['available', 'unavailable'], description: 'unavailable when no usable media URL could be returned; URL fields are then empty.' },
+        reason: { type: 'string', description: 'Why state is unavailable: provider_unavailable, media_unavailable, resolution_time_unknown or media_expired; empty when available.' },
+        webcamId: { type: 'string', description: 'Webcam ID requested.' }, title: { type: 'string', description: 'Camera title from Windy; external text.' },
+        thumbnailUrl: { type: 'string', description: 'Short-lived provider image URL; empty when none.' },
+        playerUrl: { type: 'string', description: 'Short-lived provider player URL for a timelapse or live view; empty when none.' },
+        windyUrl: { type: 'string', description: 'Camera page on Windy, the link-back target for displayed images.' },
         lastUpdated: { type: 'string', description: 'Image capture timestamp supplied by Windy; empty when unknown. Never the resolution time.' },
         resolvedAt: { type: 'string', description: 'Time WorldMonitor resolved the URLs, retained on cache hits; empty when unknown.' },
         refreshAfter: { type: 'string', description: 'Conservative re-resolution deadline, five minutes after resolvedAt; not a guaranteed provider expiry.' },
         mediaType: { type: 'string', enum: ['', 'snapshot', 'timelapse', 'live'], description: 'Selected provider media type. live only means Windy supplied a live player URL, without a connectivity check.' },
-        urlExpiryGuidance: { type: 'string' }, context: { type: 'string' }, source: SOURCE_SCHEMA,
+        urlExpiryGuidance: { type: 'string', description: 'How long the URLs can be used and how to refresh them.' },
+        context: { type: 'string', description: 'Caveat on interpreting the imagery.' }, source: SOURCE_SCHEMA,
       },
     },
     _execute: async (params, base, context, execution) => {

@@ -40,6 +40,8 @@ paths:
                         - 'COUNTRY_SIGNAL_FAMILY_CONFLICT'
                         - 'COUNTRY_SIGNAL_FAMILY_POSTURE'
                         - 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE'
+                        - 'COUNTRY_SIGNAL_FAMILY_IMAGERY'
+                        - 'COUNTRY_SIGNAL_FAMILY_WATER'
                 - name: window_index
                   in: query
                   description: Country-derived flight viewport index, 0 or 1. Other families require 0.
@@ -2908,13 +2910,24 @@ paths:
                         application/json:
                             example:
                                 "advisories":
-                                    - "country": "US"
-                                      "level": "example"
-                                      "link": "https://example.com/worldmonitor"
+                                    - "country": "MX"
+                                      "level": "caution"
+                                      "link": "https://travel.state.gov/"
                                       "pubDate": "2026-01-15"
-                                      "source": "example"
+                                      "source": "US State Dept"
+                                      "sourceCountry": "US"
+                                      "title": "Mexico - Level 2"
                                 "byCountry":
-                                    "exampleKey": "example"
+                                    "MX": "caution"
+                                "fetchedAt": 1768478400000
+                                "registerLevels":
+                                    - "country": "MX"
+                                      "level": "caution"
+                                      "link": "https://travel.state.gov/"
+                                      "pubDate": "2026-01-15"
+                                      "source": "US State Dept"
+                                      "sourceCountry": "US"
+                                      "title": "Mexico - Level 2"
                             schema:
                                 $ref: '#/components/schemas/ListSecurityAdvisoriesResponse'
                 "400":
@@ -7199,6 +7212,8 @@ components:
                         - COUNTRY_SIGNAL_FAMILY_CONFLICT
                         - COUNTRY_SIGNAL_FAMILY_POSTURE
                         - COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE
+                        - COUNTRY_SIGNAL_FAMILY_IMAGERY
+                        - COUNTRY_SIGNAL_FAMILY_WATER
                     description: Fixed country observation profiles; callers cannot select sources or viewports.
                 windowIndex:
                     type: integer
@@ -7230,6 +7245,8 @@ components:
                         - COUNTRY_SIGNAL_FAMILY_CONFLICT
                         - COUNTRY_SIGNAL_FAMILY_POSTURE
                         - COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE
+                        - COUNTRY_SIGNAL_FAMILY_IMAGERY
+                        - COUNTRY_SIGNAL_FAMILY_WATER
                     description: Fixed country observation profiles; callers cannot select sources or viewports.
                 outcomeJson:
                     type: string
@@ -8035,7 +8052,32 @@ components:
                 upstreamUnavailable:
                     type: boolean
                     description: True when all upstream Redis keys were unavailable. Signals CDN cache bypass.
+                imageryChange:
+                    $ref: '#/components/schemas/ImageryChangeContext'
             description: GetCountryRiskResponse contains composite risk intelligence for a specific country.
+        ImageryChangeContext:
+            type: object
+            properties:
+                watchedSiteCount:
+                    type: integer
+                    format: int32
+                confirmedSites:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ImageryChangeSite'
+            description: Watched sites with a confirmed imagery change.
+        ImageryChangeSite:
+            type: object
+            properties:
+                siteId:
+                    type: string
+                name:
+                    type: string
+                confirmedAt:
+                    type: integer
+                    format: int64
+                    description: 'Time of the confirming scene, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: A watched site with a confirmed change.
         GetCountryIntelBriefRequest:
             type: object
             properties:
@@ -9271,6 +9313,14 @@ components:
                     type: object
                     additionalProperties:
                         type: string
+                registerLevels:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SecurityAdvisoryItem'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
         ByCountryEntry:
             type: object
             properties:

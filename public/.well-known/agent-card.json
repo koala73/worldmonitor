@@ -12,7 +12,7 @@
     }
   ],
   "version": "1.0.0",
-  "iconUrl": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
+  "iconUrl": "https://worldmonitor.app/.well-known/mcp/hotlink-ok/icon-512.png",
   "documentationUrl": "https://www.worldmonitor.app/docs/documentation",
   "provider": {
     "organization": "World Monitor",

@@ -81,6 +81,7 @@ export function gpsjamRegionToSnapshotRegion(gpsjamRegion) {
     case 'israel-sinai':
     case 'yemen-horn':
     case 'turkey-caucasus':
+    case 'north-africa':
       return 'mena';
     case 'ukraine-russia':
     case 'russia-north':
@@ -102,6 +103,69 @@ export function gpsjamRegionToSnapshotRegion(gpsjamRegion) {
   }
 }
 
+// Southern Europe and the North African shore share 35-38°N west of 25°E:
+// Morocco stays below 36.0°N, Algeria below 37.1°N and Tunisia (from 8°E)
+// below 37.6°N; Spain, Sardinia, Sicily, Pantelleria, Lampedusa and Malta are
+// north or east of those lines. Mirrors isNorthAfricanCoast in
+// src/utils/user-location.ts.
+function isNorthAfricanCoast(lat, lon) {
+  if (lon < -1.8) return lat < 36.0;
+  if (lon < 8.0) return lat < 37.1;
+  if (lon < 11.5) return lat < 37.6;
+  return false;
+}
+
+// Iceland, the Azores, Madeira and the Canaries.
+function isAtlanticEurope(lat, lon) {
+  if (lat > 63.2 && lat < 66.7 && lon > -24.6 && lon < -13.4) return true;
+  if (lat > 36.8 && lat < 39.8 && lon > -31.4 && lon < -24.9) return true;
+  if (lat > 32.3 && lat < 33.2 && lon > -17.4 && lon < -16.2) return true;
+  return lat > 27.5 && lat < 29.5 && lon > -18.3 && lon < -13.3;
+}
+
+// Belize, Guatemala's Petén, the Bay Islands, the Caribbean and the Bahamas,
+// which sit north of the 16°N break. Northern Belize follows the Río Hondo up
+// to Corozal (Chetumal is Mexican); Cancún (86.85°W) and Key West (24.55°N)
+// stay outside.
+function isLatinAmericaNorthOf16(lat, lon) {
+  if (lon <= -91 || lon >= -59) return false;
+  if (lat >= 16 && lat < 17.82 && lon > -90.98) return true;
+  if (lon > -89.15 && lon < -88.3 && lat < 17.82 + (lon + 89.15) * 0.79) return true;
+  if (lon >= -88.3 && lon < -87.4 && lat < 18.15) return true;
+  if (lat >= 10 && lat < 23.6 && lon > -85.2 && lon < -59) return true;
+  return lat > 20.9 && lat < 27.3 && lon > -79.35 && lon < -72.7;
+}
+
+// Greece, North Macedonia and southern Bulgaria inside the MENA box, which
+// starts at 20°E: everything west of Turkey's Thracian border, the Bulgarian
+// border with Turkey (Kırklareli Turkish, Malko Tarnovo Bulgarian), Crete,
+// and the Greek islands off Turkey's Aegean coast.
+function isEuropeInSnapshotMenaBox(lat, lon) {
+  if (lat < 34.8) return false;
+  if (lon < 26.0) return true;
+  if (lon < 26.3 && lat > 40.6) return true;
+  if (lon >= 26.3 && lon < 28.3 && lat > 41.7 + (lon - 26.3) * 0.176) return true;
+  if (lat < 35.7 && lon < 26.4) return true; // eastern Crete
+  if (lat > 38.95 && lat < 39.45 && lon < 26.65) return true; // Lesbos
+  if (lat > 38.15 && lat < 38.62 && lon < 26.2) return true; // Chios
+  if (lat > 37.55 && lat < 37.82 && lon < 27.08) return true; // Samos, Ikaria
+  if (lat > 36.7 && lat < 37.5 && lon < 27.05) return true; // Kalymnos to Agathonisi
+  if (lat > 36.7 && lat < 36.95 && lon < 27.33) return true; // Kos
+  return lat < 36.62 && lon < 28.3; // Rhodes, Karpathos, Symi
+}
+
+// Morocco, Western Sahara, Algeria, Tunisia and western Libya. The Sahara's
+// southern edge is approximated at 21.5°N (Tamanrasset is north of it; Mali's
+// Tessalit and Niger's Agadez south), and at 26°N between 13°W and 4.8°W,
+// where northern Mauritania (Zouérat, Bir Moghrein) reaches up.
+function isMaghreb(lat, lon) {
+  if (lon < -17.2 || lon >= 25 || lat >= 37.6) return false;
+  if (isAtlanticEurope(lat, lon)) return false;
+  if (lat < (lon >= -13 && lon < -4.8 ? 26.0 : 21.5)) return false;
+  if (lat < 35) return lon < 11.5 || lat < 34.5;
+  return isNorthAfricanCoast(lat, lon);
+}
+
 /**
  * Lat/lon → snapshot region bbox classifier for military flights. Coarse
  * coverage matching the fetch-gpsjam.mjs region bboxes. Returns null for
@@ -117,14 +181,29 @@ export function gpsjamRegionToSnapshotRegion(gpsjamRegion) {
  * airportToSnapshotRegion()'s country-based MX→NA routing and
  * understating NA's reroute_intensity from military tracks.
  *
+ * The boxes are carved so each country lands where the airport registry
+ * (src/config/airports.ts) and shared/iso2-to-region.json put it: Greece,
+ * North Macedonia and southern Bulgaria are 'europe' although the MENA box
+ * reaches them; the Maghreb is 'mena' although the Europe box reaches the
+ * Algerian and Tunisian coast; Sudan and Eritrea are 'sub-saharan-africa';
+ * the Caribbean and Belize are 'latam'; Iceland and the Atlantic islands of
+ * Portugal and Spain are 'europe'.
+ *
  * @param {number} lat
  * @param {number} lon
  * @returns {string | null}
  */
 export function latLonToSnapshotRegion(lat, lon) {
   if (typeof lat !== 'number' || typeof lon !== 'number') return null;
+  if (isAtlanticEurope(lat, lon)) return 'europe';
+  if (isLatinAmericaNorthOf16(lat, lon)) return 'latam';
   // MENA (check before Europe so Turkey/Caucasus land MENA per our override)
-  if (lat >= 12 && lat <= 42 && lon >= 20 && lon <= 63) return 'mena';
+  if (lat >= 12 && lat <= 42 && lon >= 20 && lon <= 63) {
+    if (isEuropeInSnapshotMenaBox(lat, lon)) return 'europe';
+    if (lat < 22 && lon < 38 + 0.55 * (22 - lat)) return 'sub-saharan-africa';
+    return 'mena';
+  }
+  if (isMaghreb(lat, lon)) return 'mena';
   // Europe + Russia
   if (lat >= 35 && lat <= 72 && lon >= -10 && lon <= 60) return 'europe';
   // Sub-Saharan Africa

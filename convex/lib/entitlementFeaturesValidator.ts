@@ -65,4 +65,24 @@ export const entitlementFeaturesValidator = v.object({
   // (fail-OPEN, permanently — see the PlanFeatures JSDoc). Catalog-sourced
   // writes always set it, so this validator MUST accept it.
   dataExport: v.optional(v.boolean()),
+  // Optional — alert-ladder capabilities (#4273). Legacy rows predate them;
+  // the read-time merge takes the catalog values regardless (plan structure),
+  // and `resolveAlertCapabilities` falls back by tier for rows read without
+  // the merge. Catalog-sourced writes carry them, so this validator MUST
+  // accept them (v.object is strict on extra keys — see the module JSDoc).
+  alertMaxCountries: v.optional(v.number()),
+  alertChannels: v.optional(v.array(v.string())),
+  alertSensitivities: v.optional(v.array(v.string())),
+  alertDigestModes: v.optional(v.array(v.string())),
+  aiDigestAccess: v.optional(v.boolean()),
+  // Optional — dashboard focus (#10453). Same contract as embedAccess: legacy
+  // rows omit it, the read-time merge supplies it, consumers treat undefined
+  // as false (fail-closed), and catalog-sourced writes carry it, so this
+  // validator MUST accept it (v.object is strict on extra keys).
+  tabFocus: v.optional(v.boolean()),
+  // Optional — travel risk assessment drafts (#10451). Legacy rows predate
+  // it; the read-time merge supplies the catalog value and consumers treat
+  // undefined as false (fail-closed). Catalog-sourced writes always set it,
+  // so this validator MUST accept it.
+  travelRiskAssessment: v.optional(v.boolean()),
 });

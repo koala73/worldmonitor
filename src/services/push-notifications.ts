@@ -1,3 +1,4 @@
+import { createRequestTimeoutSignal } from '@/services/timeout-signal';
 // Web Push subscription lifecycle (Phase 6).
 //
 // Tiny wrapper around navigator.serviceWorker.pushManager that:
@@ -65,17 +66,6 @@ async function getRegistration(): Promise<ServiceWorkerRegistration | null> {
   }
 }
 
-/** Read-only: is there an existing push subscription for this device? */
-export async function getExistingSubscription(): Promise<PushSubscription | null> {
-  const reg = await getRegistration();
-  if (!reg) return null;
-  try {
-    return await reg.pushManager.getSubscription();
-  } catch {
-    return null;
-  }
-}
-
 interface SubscriptionPayload {
   endpoint: string;
   p256dh: string;
@@ -128,6 +118,7 @@ async function authFetch(
   assertExpectedAccount(expectedUserId);
   return fetch(path, {
     ...init,
+    signal: createRequestTimeoutSignal(path, init, 15_000),
     headers: {
       'Content-Type': 'application/json',
       ...(init.headers ?? {}),

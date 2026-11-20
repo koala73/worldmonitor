@@ -11,6 +11,18 @@ const good = {
   }],
 };
 let harnessId = 0;
+test('legacy URLhaus classifications stay separate from genuine feed family labels', async t => {
+  const h = await createHarness(t);
+  for (const classification of ['malware_download', 'phishing']) {
+    h.state.hydrated = { threats: [{ ...good.threats[0], source: 'CYBER_THREAT_SOURCE_URLHAUS',
+      malwareFamily: classification, tags: ['elf'] }] };
+    const [threat] = await h.fetch() as { malwareFamily?: string; tags: string[] }[];
+    assert.equal(threat!.malwareFamily, undefined);
+    assert.deepEqual(threat!.tags, ['elf', classification]);
+  }
+  h.state.hydrated = { threats: [{ ...good.threats[0], malwareFamily: 'MOZI' }] };
+  assert.equal((await h.fetch() as { malwareFamily?: string }[])[0]!.malwareFamily, 'MOZI');
+});
 
 async function createHarness(t: TestContext) {
   const built = await build({

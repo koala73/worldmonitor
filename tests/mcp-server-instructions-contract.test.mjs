@@ -22,7 +22,16 @@
  */
 import { describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { SERVER_INSTRUCTIONS } from '../api/mcp/constants.ts';
+import {
+  AGENT_GUIDE,
+  AGENT_GUIDE_RESOURCE_URI,
+  CHATGPT_MODERN_SERVER_INSTRUCTIONS,
+  CHATGPT_SERVER_INSTRUCTIONS,
+  MODERN_SERVER_INSTRUCTIONS,
+  SERVER_INSTRUCTIONS,
+  SERVER_INSTRUCTIONS_MAX_BYTES,
+} from '../api/mcp/constants.ts';
+import handler from '../api/mcp.ts';
 import { MCP_UPGRADE_URL } from '../api/mcp/upgrade.ts';
 import {
   FREE_ACCOUNT_CALLS_PER_DAY,
@@ -83,5 +92,37 @@ describe('SERVER_INSTRUCTIONS — internal consistency (#6716)', () => {
 
   it('carries the attributed upgrade URL agents are told to send users to', () => {
     assert.ok(TEXT.includes(MCP_UPGRADE_URL), 'the upgrade URL must be the shared constant');
+  });
+
+  it('every rendered variant fits the 2 KB Claude Code truncation point, safety first', () => {
+    const variants = {
+      SERVER_INSTRUCTIONS,
+      MODERN_SERVER_INSTRUCTIONS,
+      CHATGPT_SERVER_INSTRUCTIONS,
+      CHATGPT_MODERN_SERVER_INSTRUCTIONS,
+    };
+    for (const [name, text] of Object.entries(variants)) {
+      const bytes = Buffer.byteLength(text, 'utf8');
+      assert.ok(bytes <= SERVER_INSTRUCTIONS_MAX_BYTES, `${name} is ${bytes} bytes (limit ${SERVER_INSTRUCTIONS_MAX_BYTES})`);
+      assert.ok(text.startsWith('Content safety:'), `${name} must lead with the content-safety rule`);
+      assert.ok(text.includes(AGENT_GUIDE_RESOURCE_URI), `${name} must point at the full guide`);
+    }
+  });
+
+  it('serves the full guide anonymously at the URI the instructions name', async () => {
+    const res = await handler(new Request('https://worldmonitor.app/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'resources/read', params: { uri: AGENT_GUIDE_RESOURCE_URI } }),
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.result.contents[0].uri, AGENT_GUIDE_RESOURCE_URI);
+    assert.equal(body.result.contents[0].mimeType, 'text/markdown');
+    assert.equal(body.result.contents[0].text, AGENT_GUIDE);
+  });
+
+  it('keeps the guide host-neutral: no checkout flow or era-specific denial codes', () => {
+    assert.doesNotMatch(AGENT_GUIDE, /start_upgrade|recommendedPlan|checkoutTool|-3[12]0(?:29|02)/);
   });
 });

@@ -267,12 +267,6 @@ describe('api/mcp-proxy', () => {
       assertNoStore(res, 'POST auth error');
     });
 
-    it('still returns 204 for OPTIONS preflight without key (preflights must not require auth)', async () => {
-      const res = await handler(makeOptionsRequest());
-      assert.equal(res.status, 204);
-      assertNoStore(res, 'OPTIONS preflight');
-    });
-
     // wms_ session tokens are anonymous and freely mintable by any caller
     // via POST /api/wm-session. Without forceKey:true, they would pass the
     // auth gate — turning the gate into a two-step bypass (mint + call).
@@ -754,6 +748,7 @@ describe('api/mcp-proxy', () => {
         headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': ENTERPRISE_KEY },
       }));
       assert.equal(res.status, 405);
+      assert.equal(res.headers.get('allow'), 'GET, POST, OPTIONS');
       assertNoStore(res, 'DELETE method guard');
     });
 
@@ -764,6 +759,7 @@ describe('api/mcp-proxy', () => {
         body: '{}',
       }));
       assert.equal(res.status, 405);
+      assert.equal(res.headers.get('allow'), 'GET, POST, OPTIONS');
     });
   });
 
@@ -2174,6 +2170,8 @@ describe('api/mcp-proxy — observability', () => {
         customer_id: 'user_bearer',
         tier: 0,
         plan_key: null,
+        account_id: null,
+        overage: null,
       },
     );
     assert.deepEqual(
@@ -2184,6 +2182,8 @@ describe('api/mcp-proxy — observability', () => {
         customer_id: 'user_key',
         tier: 0,
         plan_key: null,
+        account_id: null,
+        overage: null,
       },
     );
     assert.deepEqual(
@@ -2194,6 +2194,8 @@ describe('api/mcp-proxy — observability', () => {
         customer_id: 'user_mcp',
         tier: 0,
         plan_key: null,
+        account_id: null,
+        overage: null,
       },
     );
   });

@@ -166,6 +166,20 @@ describe('getGoldIntelligence', () => {
     assert.deepEqual(noGold.crossCurrencyPrices, []);
   });
 
+  it('passes the GC=F sparkline span through, and omits it for an unlabeled series (#10424)', async () => {
+    const startAt = Date.UTC(2026, 10, 9, 18, 5);
+    seedQuotes([{ ...quote('GC=F', 4036), sparkline: [4040, 4036], sparklineIntervalSeconds: 300, sparklineStartAt: startAt }]);
+    const labeled = await call();
+    assert.deepEqual(labeled.goldSparkline, [4040, 4036]);
+    assert.equal(labeled.goldSparklineIntervalSeconds, 300);
+    assert.equal(labeled.goldSparklineStartAt, startAt);
+
+    seedQuotes([quote('GC=F', 4036)]);
+    const bare = await call();
+    assert.equal(bare.goldSparklineIntervalSeconds, undefined);
+    assert.equal(bare.goldSparklineStartAt, undefined);
+  });
+
   it('gold/silver ratio is absent when silver is missing, zero or negative, and 80 for 3200 over 40', async () => {
     for (const silver of [undefined, 0, -5]) {
       seedQuotes([quote('GC=F', 3200), ...(silver === undefined ? [] : [quote('SI=F', silver)])]);

@@ -1,5 +1,11 @@
-import { trackGateHit } from '@/services/analytics';
-import { onEntitlementChange, getEntitlementState, isEntitlementActive } from '@/services/entitlements';
+import { trackGateHit, trackProBannerClick } from '@/services/analytics';
+import {
+  onEntitlementChange,
+  onEntitlementVerificationChange,
+  getEntitlementState,
+  getEntitlementVerificationStatus,
+  isEntitlementActive,
+} from '@/services/entitlements';
 import { getSubscription, onSubscriptionChange } from '@/services/billing';
 import { deriveBillingUxState, getReactivationHref } from '@/services/billing-state';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
@@ -244,6 +250,7 @@ export function showProBanner(container: HTMLElement): void {
     clerkConfigured: isClerkAuthEnabled(),
     signedIn: getCurrentClerkUser() !== null || auth.user !== null,
     entitlementLoaded: acceptedEntitlementLoaded,
+    entitlementUnavailable: getEntitlementVerificationStatus() === 'unavailable',
   });
 
   if (decision === 'suppress') {
@@ -275,11 +282,18 @@ export function showProBanner(container: HTMLElement): void {
   setTrustedHtml(banner, trustedHtml(`
     <span class="pro-banner-badge">${returning ? t('components.billingState.resubscribe') : t('components.proBanner.badge')}</span>
     <span class="pro-banner-text">
-      <strong>${returning ? t('components.billingState.lapsedDesc') : t('components.proBanner.headline')}</strong>${returning ? '' : ` — ${t('components.proBanner.tagline')}`}
+      <strong>${returning ? t('components.billingState.lapsedDesc') : t('components.proBanner.headline')}</strong>${returning ? '' : `<span class="pro-banner-tagline"> — ${t('components.proBanner.tagline')}</span>`}
     </span>
     <a class="pro-banner-cta" href="${ctaHref}">${returning ? t('components.billingState.resubscribe') : t('components.proBanner.cta')}</a>
     <button class="pro-banner-close" aria-label="${t('components.proBanner.dismiss')}">×</button>
   `, "legacy direct innerHTML migration"));
+
+  // Tracked in-app rather than via data-umami-event: the Umami tracker holds a
+  // tagged link's navigation until its send settles, and misses clicks made
+  // before it loads.
+  banner.querySelector('.pro-banner-cta')!.addEventListener('click', () => {
+    trackProBannerClick(returning ? 'lapsed' : 'upgrade');
+  });
 
   banner.querySelector('.pro-banner-close')!.addEventListener('click', (e) => {
     e.preventDefault();
@@ -298,19 +312,6 @@ export function showProBanner(container: HTMLElement): void {
 
   bannerEl = banner;
   requestAnimationFrame(() => banner.classList.add('pro-banner-in'));
-}
-
-export function hideProBanner(): void {
-  if (!bannerEl) {
-    setReservation(false);
-    return;
-  }
-  bannerEl.classList.add('pro-banner-out');
-  scheduleBannerRemoval();
-}
-
-export function isProBannerVisible(): boolean {
-  return bannerEl !== null;
 }
 
 // Reactive sync with entitlement / subscription / auth state. App.ts calls
@@ -365,6 +366,8 @@ function syncProBanner(): void {
       bannerEl = null;
       setReservation(false);
     }
+    // No snapshot will settle this account, so the reserved strip would stay empty.
+    if (getEntitlementVerificationStatus() === 'unavailable') setReservation(false);
     return;
   }
   // A premium snapshot may have started the fade-out immediately before a
@@ -391,6 +394,7 @@ function syncProBanner(): void {
 }
 
 onEntitlementChange(syncProBanner);
+onEntitlementVerificationChange(syncProBanner);
 onSubscriptionChange(syncProBanner);
 // Clerk hydrates after first paint via requestIdleCallback. The init-time
 // showProBanner() call often runs while auth is still pending; without this

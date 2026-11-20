@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import { BRIEF_TOPICS } from './country-brief-sections';
 import { panelReceiptSchema } from './panel-admission';
 import { resolveCountryCode } from './country-code-resolve';
@@ -79,6 +79,7 @@ export const COUNTRY_READERS = {
   factors: { path: '/api/scorecard/v1/get-five-factor-scorecard', args: z.object({ countryCode: z.string().regex(/^[A-Z]{2}$/) }).strict() },
   debt: { path: '/api/economic/v1/get-national-debt', args: z.object({  }).strict() },
   flows: { path: '/api/trade/v1/list-comtrade-flows', args: z.object({ reporter_code: z.string().regex(/^\d{1,3}$/), cmd_code: z.string().regex(/^\d{0,6}$/).default(''), anomalies_only: z.enum(['true', 'false']).default('false') }).strict() },
+  monthlyTrade: { path: '/api/trade/v1/get-monthly-sitc-trade', args: z.object({ country: z.literal('MY').default('MY'), months: z.coerce.number().int().min(1).max(240).default(60) }).strict() },
   tariffs: { path: '/api/trade/v1/get-tariff-trends', args: z.object({ reporting_country: z.string().regex(/^\d{1,3}$/), product_sector: z.string().max(20).default(''), years: z.coerce.number().int().min(1).max(10).default(10), partner_country: z.string().regex(/^\d{0,3}$/).default('') }).strict() },
   products: { path: '/api/supply-chain/v1/get-country-products', args: z.object({ iso2: z.string().regex(/^[A-Z]{2}$/), hs4: z.string().regex(/^\d{4}$/).optional() }).strict() },
   commodities: { path: '/api/supply-chain/v1/get-country-vulnerabilities', args: z.object({ iso2: z.string().regex(/^[A-Z]{2}$/) }).strict() },
@@ -96,6 +97,7 @@ export const COUNTRY_READERS = {
   disruptions: { path: '/api/supply-chain/v1/list-energy-disruptions', args: z.object({ assetId: z.literal('').default(''), assetType: z.literal('').default(''), ongoingOnly: z.enum(['true', 'false']).default('false') }).strict() },
   scenario: { path: '/api/intelligence/v1/compute-energy-shock', args: z.object({ country_code: z.string().regex(/^[A-Z]{2}$/), chokepoint_id: z.string().regex(/^[a-z0-9_-]{1,80}$/), disruption_pct: z.coerce.number().min(0).max(100).default(0), fuel_mode: z.enum(['both', 'oil', 'gas']).default('oil') }).strict() },
   defense: { path: '/api/military/v1/get-defense-industrial-base', args: z.object({ country_code: z.string().regex(/^[A-Z]{2}$/) }).strict() },
+  reservoirs: { path: '/api/climate/v1/list-reservoir-levels', args: z.object({ country_code: z.string().regex(/^[A-Z]{2}$/) }).strict() },
   no2: { path: '/api/economic/v1/get-no2-activity', args: z.object({ country_code: z.string().regex(/^[A-Z]{2}$/), kind: z.literal('NO2_REGION_KIND_COUNTRY').default('NO2_REGION_KIND_COUNTRY') }).strict() },
   markets: { path: '/api/prediction/v1/list-prediction-markets', args: z.object({ page_size: z.coerce.number().int().min(1).max(100).default(50), query: z.string().max(100).default(''), category: z.string().max(40).default(''), cursor: z.literal('').default('') }).strict() },
   china: { path: '/api/intelligence/v1/get-china-decision-signals', args: z.object({  }).strict() },

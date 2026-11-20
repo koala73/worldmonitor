@@ -24,7 +24,7 @@ apart:
 
 | Reading | The question it answers |
 |---|---|
-| **Flow** | Is traffic actually down? Measured against this strait's own 90-day norm, not a global average. |
+| **Flow** | Is traffic actually down? Measured against this strait's own traffic a year earlier, not a global average. |
 | **Threat** | What kind of problem is it — weather, war risk, mechanical, congestion? |
 | **Disruption score** | How bad, on one scale, so waterways can be ranked. |
 | **Country exposure** | Which countries' trade routes through here, so a closure has named victims. |
@@ -39,9 +39,11 @@ scoring, and war-risk tiers, but `flowEstimate` is simply absent — not zero, n
 
 ### How "flow is down" is decided
 
-Traffic is compared against itself. The last 7 days of shipping activity are
-measured against the previous 90 — so a quiet week in a normally quiet strait
-does not register, while the same drop in a busy one does. That ratio is then
+Traffic is compared against itself. The last 7 days of tanker activity are
+measured against the same strait a year earlier, so a quiet week in a normally
+quiet strait does not register, while the same drop in a busy one does. A
+year-earlier reference keeps a long closure visible: compared with its own
+recent months, a strait shut for a quarter would look normal. That ratio is then
 applied to the strait's known baseline oil volume to express the shortfall in
 barrels per day.
 
@@ -114,18 +116,38 @@ Live flow is computed by `scripts/seed-chokepoint-flows.mjs` on the seven-item
 subset above:
 
 1. Read PortWatch history from `supply_chain:portwatch:v1`.
-2. Choose the signal: use `capTanker` deadweight tonnage when at least half of
-   the prior-window days have DWT coverage; otherwise use tanker counts.
-3. Compute `current7d` as the average of the latest seven days.
-4. Compute `baseline90d` as the average of the previous window, up to 90 days
-   (`history.slice(-97, -7)`), requiring at least 20 baseline days.
-5. Compute `flowRatio = clamp(current7d / baseline90d, 0, 1.5)`.
+2. Read the year-earlier baseline the PortWatch seeder stores with each
+   chokepoint: daily mean tanker deadweight tonnage (`capTankerAvgDaily`) and
+   tanker count (`tankerAvgDaily`) over the 12 months ending one year before
+   the run. Each mean is stored only with its own coverage: the count mean
+   needs at least 300 days with a tanker count, and the DWT mean needs at
+   least 300 days with a capacity value, with positive DWT on at least half of
+   them, because zero-filled gaps would lower it.
+3. Choose the signal: tanker DWT when the year-earlier DWT mean is at least 1
+   and each of the last seven days that had tankers reports their tonnage (a
+   day with no tankers needs none), otherwise the tanker count when its mean
+   is at least 0.5. PortWatch stores a blank
+   capacity as 0, so a day with tankers and zero tonnage is unreported DWT,
+   not zero flow.
+4. Compute `current7d` as the average of the latest seven days of that signal.
+5. Compute `flowRatio = clamp(current7d / yearEarlierMean, 0, 1.5)`.
 6. Compute `currentMbd = baselineMbd * flowRatio`, rounded to one decimal.
 
-The published ratio is therefore a recent 7-day average against a prior
-up-to-90-day rolling baseline. The `baselineMbd` field is the annual EIA 2023
-reference level; it is used to convert the observed ratio into mb/d. Flow ratios
-can publish from 0% to 150% of baseline after the clamp.
+The published ratio is therefore a recent 7-day average against the same
+strait a year earlier. A trailing window would fail during a long closure: once
+a strait has been shut for more than 90 days, its previous 90 days are the
+closure itself, so a closed Hormuz read as 82% of normal. The `baselineMbd`
+field is the annual EIA 2023 reference level; it is used to convert the
+observed ratio into mb/d. Flow ratios can publish from 0% to 150% of baseline
+after the clamp.
+
+When neither year-earlier mean can be used, the seeder falls back to the
+previous up-to-90 days. That happens when the baseline is missing (fewer than
+300 published days in that year, or the baseline query failed), or when the DWT
+mean fails step 3 (below 1, or recent tonnage unreported) and the tanker count
+mean is missing or below 0.5. The fallback window (`history.slice(-97, -7)`)
+uses DWT when at least half of its days have DWT coverage and the recent week
+reports tonnage under the same rule as step 3, otherwise tanker counts.
 
 Live flow is eligible only when the PortWatch series has at least 40 total days
 of history. After that gate, the seeder still requires at least three recent
@@ -135,7 +157,14 @@ when using vessel counts. Rows below those floors are omitted rather than
 reported as zero flow.
 
 The `disrupted` boolean is separate from the color badge: it is true when each
-of the latest three individual days is below 85% of the same `baseline90d`.
+of the latest three individual days is below 85% of the same baseline (the
+year-earlier mean, or the trailing-window mean when it is the fallback).
+
+`latestDate` is the last PortWatch day the 7-day window covers. PortWatch
+publishes with a lag of several days (8-9 days in November 2026) and not every
+day, so `flowRatio` can stay the same across several days of requests. Read
+`latestDate` to see how current the ratio is. It is an empty string on an
+estimate cached before the field existed.
 
 Each published flow estimate may also include live hazard context from
 `portwatch:disruptions:active:v1`. The seeder looks for the nearest active
@@ -280,6 +309,24 @@ Refresh cadence:
 - `supply_chain:chokepoints:v4`: status warm-ping every 6 minutes.
 - `supply_chain:transit-summaries:v1`: AIS relay compact transit summary.
 
+## Open data
+
+The daily status of every tracked chokepoint is published as an open dataset under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). It needs no key or
+signup.
+
+- [Latest snapshot, JSON](https://www.worldmonitor.app/data/v1/chokepoints/latest.json)
+- [Latest snapshot, CSV](https://www.worldmonitor.app/data/v1/chokepoints/latest.csv)
+- [Available dates](https://www.worldmonitor.app/data/v1/chokepoints/index.json)
+- [Datasheet](https://www.worldmonitor.app/data/v1/chokepoints/README.md): columns, withheld fields, licence and limits
+- [JSON Schema](https://www.worldmonitor.app/data/v1/chokepoints/schema.json)
+
+One snapshot is published a day, at about 06:23 UTC, from the public
+`GetChokepointStatus` response this page describes. Each day also keeps a dated
+file (`YYYY-MM-DD.json` and `.csv`), and an earlier day is never rewritten.
+Third-party figures such as the EIA baselines and raw PortWatch counts are not
+in the dataset. The datasheet lists every withheld field and the reason.
+
 ## Known Limits
 
 - The seven live-flow rows are energy-baseline-backed; the other six monitored
@@ -291,8 +338,9 @@ Refresh cadence:
   regions. Missing upstream coverage is surfaced as unavailable data, not
   synthesized as zero traffic.
 - Baselines are annual EIA reference levels used for mb/d conversion. The live
-  ratio itself uses recent PortWatch observations against the prior rolling
-  baseline window described above.
+  ratio itself uses recent PortWatch observations against the year-earlier
+  baseline described above, or the trailing window when that baseline is
+  missing.
 
 ## Corrections
 

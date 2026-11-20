@@ -102,6 +102,16 @@ describe('QatarEnergy monthly fuel prices', () => {
     assert.throws(() => parseQatarFuel(items.filter(i => !(i.text === '95' && i.y > 479))), /Invalid energy measurement|Missing QatarEnergy/);
   });
 
+  it('tolerates the history table running one month behind the current price', () => {
+    // The current month's prices are only an image on page 1. The PDF archived
+    // 2026-10-02 showed October there and ended its table at September; the
+    // one modified 2026-10-31 showed November and ended at October. So the
+    // newest parsed month stays newest for two months before the next PDF.
+    const twoMonthsDohaMin = (Date.parse('2026-09-01T00:00:00+03:00') - Date.parse('2026-07-01T00:00:00+03:00')) / 60_000;
+    assert.ok(feed('qatarenergy').maxContentAgeMin > twoMonthsDohaMin + 3 * 24 * 60,
+      `maxContentAgeMin ${feed('qatarenergy').maxContentAgeMin} must cover the ${twoMonthsDohaMin}-minute table lag plus a late PDF`);
+  });
+
   it('serves a month from its first day, Doha time, and keeps eight months per product', async () => {
     const pdf = { [QATARENERGY_PDF_URL]: items };
     const { data, calls } = await fetchWithPdf('qatarenergy', { [QATARENERGY_PDF_URL]: 'pdf' }, pdf, Date.parse('2026-10-31T12:00:00Z'));
@@ -155,6 +165,16 @@ describe('Zambia ERB pump price build-up', () => {
 });
 
 describe('Ghana NPA ex-pump prices and price indicators', () => {
+  it('tolerates the publication gaps NPA has actually shown', () => {
+    // From npa.gov.gh/wp-json/wp/v2/media, read 2026-11-03: the workbook
+    // as of 2026-08-12 was the newest until 2026-09-24, and the one as of
+    // 2026-10-16 was still the newest on 2026-11-03. A threshold that alarms
+    // inside those gaps reports NPA's cadence, not a broken seeder.
+    const longestObservedGapMin = (Date.parse('2026-09-24') - Date.parse('2026-08-12')) / 60_000;
+    assert.ok(feed('npa').maxContentAgeMin > longestObservedGapMin,
+      `maxContentAgeMin ${feed('npa').maxContentAgeMin} must exceed the observed ${longestObservedGapMin}-minute gap`);
+  });
+
   it('picks the newest "as of" workbook of each kind', () => {
     const listing = discoverNpaWorkbook(json('npa-media-expump.json'), 'expump');
     assert.equal(listing.day, '2026-10-16');

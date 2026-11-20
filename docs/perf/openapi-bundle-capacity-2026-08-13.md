@@ -133,6 +133,16 @@ The production parser (`shared/china-corridor-control-towers.ts`) accepts a payl
 
 Step 2 has since landed: `Idempotency-Key` and `Idempotent-Replayed` are shared `components.headers` refs in the served JSON. With 320 bytes left, the owner decided (#9093) that endpoints built for WorldMonitor's own pages and for operators stay out of `public/openapi.json`. `SCANNER_BUNDLE_EXCLUDED_OPERATIONS` in `scripts/build-openapi-json.mjs` lists each one with its reason. An excluded operation is still served, still documented in its per-service spec and the YAML bundle, and still callable. Only this artifact omits it, so it costs no budget.
 
+### Shorter emitted component keys
+
+Measured 2026-11-17, when #10920 (`list-sent-alerts`) and #10921 (Cmd+K headline search) met on main with 93 bytes left. The 5,539 bytes the report counted as "repeated structures still inline" were again 5,372 bytes of the inline `jmespath` copies that `ensureInlineTypedInput` restores on purpose, so there was nothing to collapse. The bytes were in the pointers instead. Every `$ref` spells its target key in full, and the error responses alone take 1,499 of them.
+
+`compactComponentKeys` in `scripts/build-openapi-json.mjs` runs after every pass that names a component. It shortens only keys those passes create: `E429` becomes `429`, `EDEF` becomes `DEF`, `Jmespath` becomes `J`, `WorldMonitorInt64` becomes `Int64`, and `IdempotentReplayedHeader` becomes `IdempotentReplayed`. It then rewrites all 1,813 refs to match. The source YAML has none of these components, and each component keeps its wire name inside it, so nothing a reader of the YAML or the per-service specs uses changes. Inverting the renames restores the input exactly, and `tests/openapi-json-dedup.test.mjs` proves this on the real bundle.
+
+The same sweep found one ref that resolved only by following another `$ref` partway along its path. A China provenance value ref pointed into `classification_confidence`, which `dedupeSharedSchemaSubtrees` had already replaced with a ref to its byte-identical twin `extraction_confidence`. That pass now points such refs at the same position inside the twin, so every pointer resolves under strict JSON Pointer evaluation. Keeping the replaced node in place instead would have cost 1,031 bytes.
+
+The served artifact went from 949,907 to 945,352 bytes, leaving 4,648 bytes free. The next lever needs a scanner re-check first: if orank credits `$ref`'d parameters, hoisting the inline `jmespath` copies returns about 5.4 KB.
+
 ### Not on the table
 
 - Raising the 950,000-byte budget.

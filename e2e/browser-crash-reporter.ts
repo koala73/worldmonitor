@@ -9,10 +9,10 @@ import type { FullResult, Reporter, TestCase, TestResult } from '@playwright/tes
  * `chrome-headless-shell` SIGTRAP that reddens these jobs is a *process*
  * event, so it is counted here at run scope instead.
  *
- * The count is deliberately independent of the job outcome. With `retries: 1`
- * a single crash is absorbed and the run still reports green or `flaky`; that
- * laundering is why 38 of 50 recorded crashes sat inside passing jobs and went
- * unread from #5685 until #8447. This reporter states the count on every run,
+ * The count is deliberately independent of the job outcome. While CI ran with
+ * `retries: 1`, a single crash was absorbed and the run still reported green
+ * or `flaky`; that laundering is why 38 of 50 recorded crashes sat inside
+ * passing jobs and went unread from #5685 until #8447. This reporter states the count on every run,
  * so a swallowed crash cannot pass as a clean one.
  *
  * Relation to the `variant-smoke-shards` shell step (`test.yml`): the two are

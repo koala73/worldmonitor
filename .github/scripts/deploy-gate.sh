@@ -155,7 +155,7 @@ required='["changes","typecheck-changes","lint-changes","docs-stats","unit","con
 # every success earned under the old rules, because the sweep only re-evaluates
 # a SUCCESS whose stamp differs (#5851). Bump this whenever the meaning of a
 # passing gate changes.
-gate_rules='base-drift-v3'
+gate_rules='pr-target-drift-v4'
 gate_contract=$(REQUIRED_JOBS="$required" GATE_RULES="$gate_rules" python3 -c 'import hashlib, os; print(hashlib.sha256((os.environ["REQUIRED_JOBS"] + "\n" + os.environ["GATE_RULES"]).encode()).hexdigest()[:12])')
 gate_stamp="[gate-contract:$gate_contract]"
 BASE_DRIFT_REMOTE=${BASE_DRIFT_REMOTE:-origin}
@@ -169,9 +169,9 @@ repo_name=${REPO#*/}
 # goes red with both PRs green — #8269 deleted a declaration that #8376 had
 # added a use of, reddening biome, typecheck and two unit shards at once.
 #
-# The predicate: has `main` changed a file this head also changes, since this
-# head's merge base? Updating the branch always clears it, because the merge
-# base then IS `main` and the comparison below reports `ahead`.
+# Compare each open PR target with the head since their merge base. A head
+# shared by several PRs must satisfy every target. Heads without an open PR
+# retain the main comparison. Bringing the target into the head clears drift.
 #
 # GitHub caps a comparison's `files` at 300. A truncated list cannot prove the
 # absence of an overlap, so it blocks too — the same branch update clears it.
@@ -190,14 +190,22 @@ drift_files=""
 # about truncation rather than about drift. git has no such cap.
 base_drift() {
   local head="$1"
+  local base="${2:-main}"
   local merge_base main_tip head_tip head_list main_list
+  local deepen=()
   drift_files=""
+  # The workflow checks out one commit, because only this phase needs history
+  # and most evaluations never reach it. A shallow repo keeps its boundary
+  # through a plain fetch, so merge-base would stop there; unshallow instead.
+  if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+    deepen=(--unshallow)
+  fi
   # Trees are needed, file contents never are, so filter the blobs out. The
   # fetch is unauthenticated (the checkout runs with persist-credentials:false)
   # which this public repo allows; a private fork would need a token here.
-  if ! git fetch --no-tags --quiet --filter=blob:none "$BASE_DRIFT_REMOTE" \
-    "+refs/heads/main:$BASE_DRIFT_MAIN_REF" "+$head:$BASE_DRIFT_HEAD_REF"; then
-    echo "::error::Could not fetch main and $head for the base-drift comparison" >&2
+  if ! git fetch --no-tags --quiet --filter=blob:none "${deepen[@]}" "$BASE_DRIFT_REMOTE" \
+    "+refs/heads/$base:$BASE_DRIFT_MAIN_REF" "+$head:$BASE_DRIFT_HEAD_REF"; then
+    echo "::error::Could not fetch $base and $head for the base-drift comparison" >&2
     return 1
   fi
   main_tip=$(git rev-parse --verify --quiet "$BASE_DRIFT_MAIN_REF") || return 1
@@ -497,6 +505,40 @@ print(json.dumps({
   emit_output protocol_failed "$(printf '%s\n' "$plan" | jq -r .protocol_failed)"
 }
 
+# The 60s re-poll below exists for the LAST workflow_run event of a head
+# (#5479). While a gated workflow is still queued or running, its own
+# completion event is still to come and will read the checks afresh, so an
+# all-pending result can be published at once. 454 evaluations on 3-4 November
+# 2026 spent a median 62s in this step, nearly all of it that wait, while
+# holding a runner that PR jobs were queueing for. One run confirmed unfinished
+# is enough, since its completion evaluates again; a failed read never counts
+# as unfinished, so with no confirmed run the wait stays.
+#
+# The runs listing can serve a stale snapshot with HTTP 200 (see
+# docs/solutions/integration-issues/convex-deploy-monitor-outvotes-stale-github-run-listing-snapshot.md),
+# and a stale "in progress" on the head's last event would skip the only
+# re-poll. So the run whose completion fired this event never counts, and every
+# other candidate must still read as unfinished on its own run record.
+gated_run_in_flight() {
+  local eval_sha="$1" pages candidates run_id run_status
+  [ -n "${GATED_WORKFLOWS:-}" ] || return 1
+  pages=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/actions/runs?head_sha=$eval_sha&per_page=100" --paginate --slurp) || return 1
+  candidates=$(printf '%s\n' "$pages" | jq -r --arg gated "$GATED_WORKFLOWS" --arg trigger "${TRIGGER_RUN_ID:-}" '
+    ($gated | split(",")) as $names
+    | .[].workflow_runs[]?
+    | select(.status != "completed" and (.id | tostring) != $trigger and (.name as $name | $names | index($name)))
+    | .id') || return 1
+  for run_id in $candidates; do
+    run_status=$(gh_api_with_rate_limit_retry core "repos/$REPO/actions/runs/$run_id" --jq .status) || continue
+    if [ -n "$run_status" ] && [ "$run_status" != "completed" ]; then
+      echo "Gated run $run_id is $run_status"
+      return 0
+    fi
+  done
+  return 1
+}
+
 evaluate_sha() {
 echo "── evaluating $SHA"
 active_sha="$SHA"
@@ -554,6 +596,10 @@ print('failed=' + ','.join(name for name in required if latest[name] not in ('su
     break
   fi
   if [ "$attempt" -lt 2 ]; then
+    if [ "$failed" = "$pending" ] && gated_run_in_flight "$SHA"; then
+      echo "A gated workflow is still running for $SHA; its completion event re-evaluates, so skipping the stale-read wait"
+      break
+    fi
     sleep 60
   fi
 done
@@ -570,14 +616,31 @@ if [ -n "$failed" ]; then
   return 0
 fi
 
-if ! base_drift "$SHA"; then
-  post_gate_status "pending" "Deploy Gate could not compare this head against main; retry scheduled"
+local pr_targets base merged_head=false
+# Commit associations can omit open PRs once a commit is on the default branch.
+if ! pr_targets=$(gh_api_with_rate_limit_retry core \
+  "repos/$REPO/pulls?state=open&per_page=100" --paginate --slurp |
+  jq -ce --arg sha "$SHA" --arg repo "$REPO" '
+    if type == "array" and length > 0 and all(.[];
+      type == "array" and all(.[]; .state == "open" and (.head.sha | type) == "string"))
+    then [.[][] | select(.head.sha == $sha)] as $matching |
+      (if all($matching[]; (.head | has("repo")) and
+        (.head.repo == null or (.head.repo.full_name | type) == "string"))
+      then [$matching[] | select(.head.repo.full_name? == $repo)]
+      else error("Incomplete PR head ownership metadata") end) as $open |
+      if all($open[];
+        (.base.ref | type) == "string" and (.base.ref | length) > 0 and
+        .base.repo.full_name == $repo)
+      then [$open[].base.ref] | unique
+      else error("Incomplete PR target metadata") end
+    else error("Incomplete open pull-request response") end'); then
+  post_gate_status "pending" "Deploy Gate could not read open PR targets; retry scheduled"
   active_sha=""
   return 0
 fi
 
-if [ -n "$drift_files" ]; then
-  # Squash and rebase merges do not retain the PR head's ancestry.
+if [ "$pr_targets" = "[]" ]; then
+  pr_targets='["main"]'
   if ! merged_head=$(gh_api_with_rate_limit_retry core \
     "repos/$REPO/commits/$SHA/pulls?per_page=100" --paginate --slurp |
     jq -r --arg sha "$SHA" '
@@ -594,12 +657,23 @@ if [ -n "$drift_files" ]; then
     active_sha=""
     return 0
   fi
-  if [ "$merged_head" != "true" ]; then
-    post_gate_status "failure" "Stale base: main changed $(name_count "$drift_files") file(s) here: $drift_files"
-    active_sha=""
-    return 0
-  fi
+fi
+
+if [ "$merged_head" = "true" ]; then
   echo "Skipping base drift for merged PR head $SHA"
+else
+  while IFS= read -r base; do
+    if ! git check-ref-format "refs/heads/$base" >/dev/null 2>&1 || ! base_drift "$SHA" "$base"; then
+      post_gate_status "pending" "Deploy Gate could not compare this head against $base; retry scheduled"
+      active_sha=""
+      return 0
+    fi
+    if [ -n "$drift_files" ]; then
+      post_gate_status "failure" "Stale base: $base changed $(name_count "$drift_files") file(s) here: $drift_files"
+      active_sha=""
+      return 0
+    fi
+  done < <(printf '%s\n' "$pr_targets" | jq -r '.[]')
 fi
 
 post_gate_status "success" "All required PR gates passed"
@@ -620,7 +694,7 @@ case "${1:-}" in
   # `base_drift` be tested against a real repository with real SHAs.
   drift)
     validate_sha
-    base_drift "$SHA" || exit 1
+    base_drift "$SHA" "${2:-main}" || exit 1
     printf '%s\n' "$drift_files"
     ;;
   *) echo "::error::Unknown Deploy Gate phase" >&2; exit 2 ;;

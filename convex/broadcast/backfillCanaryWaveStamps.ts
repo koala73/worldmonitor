@@ -159,6 +159,8 @@ export const backfillCanary250 = internalAction({
       if (after) url.searchParams.set("after", after);
 
       const res = await fetch(url.toString(), {
+
+        signal: AbortSignal.timeout(10_000),
         method: "GET",
         headers: {
           Authorization: `Bearer ${apiKey}`,

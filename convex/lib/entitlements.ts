@@ -27,6 +27,15 @@ export function getFeaturesForPlan(planKey: string): PlanFeatures {
   return getEntitlementFeatures(planKey);
 }
 
+/** Limit fields the Enterprise catalog owns outright (see mergeEntitlementFeatures). */
+const ENTERPRISE_CATALOG_LIMIT_FIELDS = [
+  "apiRequestsPerDay",
+  "apiBurstRequestsPerMinute",
+  "mcpCallsPerDay",
+  "dashboardAiCallsPerDay",
+  "mcpBurstRequestsPerMinute",
+] as const;
+
 /** Merge stored per-user overrides with newly added catalog defaults. */
 export function mergeEntitlementFeatures(
   planKey: string,
@@ -71,16 +80,41 @@ export function mergeEntitlementFeatures(
     planLimits.desktopKeyRequestsPerDay = catalogDefaults.planLimits.desktopKeyRequestsPerDay;
     planLimits.desktopKeyBurstPerMinute = catalogDefaults.planLimits.desktopKeyBurstPerMinute;
   }
+  // Catalog Enterprise limits are the contract default, not a grant-time copy:
+  // rows written under the old 100,000/day, 1,000/min catalog must read back at
+  // the current one. Per-contract allowances come from the enterprise account,
+  // never from a stored row, so the catalog wins every limit here.
+  const enterpriseCatalogLimits = planKey === "enterprise";
+  if (enterpriseCatalogLimits && planLimits && catalogDefaults.planLimits) {
+    for (const field of ENTERPRISE_CATALOG_LIMIT_FIELDS) {
+      (planLimits as Record<typeof field, unknown>)[field] = catalogDefaults.planLimits[field];
+    }
+  }
   const apiDailyAllowance =
-    storedFeatures.apiDailyAllowance === -1 && (catalogDefaults.apiDailyAllowance ?? -1) >= 0
+    enterpriseCatalogLimits ||
+    (storedFeatures.apiDailyAllowance === -1 && (catalogDefaults.apiDailyAllowance ?? -1) >= 0)
       ? catalogDefaults.apiDailyAllowance
       : storedFeatures.apiDailyAllowance;
   return {
     ...catalogDefaults,
     ...storedFeatures,
     ...(apiDailyAllowance !== undefined ? { apiDailyAllowance } : {}),
+    ...(enterpriseCatalogLimits ? { apiRateLimit: catalogDefaults.apiRateLimit } : {}),
     ...(catalogDefaults.maxDesktopKeys !== undefined
       ? { maxDesktopKeys: catalogDefaults.maxDesktopKeys }
+      : {}),
+    // Alert-ladder capabilities (#4273) are plan structure, like the
+    // desktop-key limits: nothing writes per-user overrides, and a ladder
+    // change in the catalog must apply to existing subscribers at read time,
+    // never wait for a billing event to rewrite the row.
+    ...(catalogDefaults.alertMaxCountries !== undefined
+      ? {
+        alertMaxCountries: catalogDefaults.alertMaxCountries,
+        alertChannels: catalogDefaults.alertChannels,
+        alertSensitivities: catalogDefaults.alertSensitivities,
+        alertDigestModes: catalogDefaults.alertDigestModes,
+        aiDigestAccess: catalogDefaults.aiDigestAccess,
+      }
       : {}),
     planLimits,
   };

@@ -6,7 +6,12 @@ import {
 } from './_client-ip.js';
 // Plain JS with a .d.ts beside it, written for exactly this import (the same
 // pairing as shared/bootstrap-tier-keys.js); lint-boundaries allows shared/.
-import { DESKTOP_KEY_LIMIT_ERROR, admitsDesktopKeyPrincipal } from '../shared/desktop-key-access.js';
+import {
+  DESKTOP_KEY_CLIENT_ERROR,
+  DESKTOP_KEY_LIMIT_ERROR,
+  admitsDesktopKeyClient,
+  admitsDesktopKeyPrincipal,
+} from '../shared/desktop-key-access.js';
 import { chargeDesktopKeyBudget } from './_desktop-key-meter.js';
 
 const USER_API_KEY_RE = /^wm_[a-f0-9]{40}$/;
@@ -561,6 +566,13 @@ function applyDesktopKeyCap(principal, entitlement, rankUnknownFailure) {
     return { ok: true, scope: 'desktop', entitlement };
   }
   return { ok: false, status: 403, error: DESKTOP_KEY_LIMIT_ERROR, reason: 'desktop-key-limit' };
+}
+
+// Desktop keys belong to the desktop app and self-hosted relays; a script
+// reusing one gets the same 403 copy as the gateway (DESKTOP_KEY_CLIENT_CHECK).
+export function checkBootstrapDesktopKeyClient(req) {
+  if (admitsDesktopKeyClient(req.headers.get('user-agent'), process.env.DESKTOP_KEY_CLIENT_CHECK)) return { ok: true };
+  return { ok: false, status: 403, error: DESKTOP_KEY_CLIENT_ERROR };
 }
 
 // Per-account desktop-key meter on bootstrap (KTD6): the same owner-keyed

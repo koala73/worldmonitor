@@ -34,12 +34,14 @@ export interface CatalogFeed {
   name: string;
   url: CatalogUrl;
   lang?: string;
+  fetchInAllLanguages?: boolean;
   strategicDefault?: boolean;
   type?: string;
   deadlinePriority?: number;
   depthUrl?: string;
   channelDated?: boolean;
   linkHosts?: string[];
+  excludePathSegments?: string[];
   browser?: {
     url?: CatalogUrl;
     lang?: string | null;
@@ -78,11 +80,13 @@ export interface ServerCatalogFeed {
   name: string;
   url: string;
   lang?: string;
+  fetchInAllLanguages?: boolean;
   strategicDefault?: boolean;
   deadlinePriority?: number;
   depthUrl?: string;
   channelDated?: boolean;
   linkHosts?: string[];
+  excludePathSegments?: string[];
 }
 
 function indexServerPlacements(catalog: NewsCatalog): Map<string, CatalogFeed[]> {
@@ -111,17 +115,20 @@ function serverPlacedFeeds(edition: string, category: string): CatalogFeed[] {
   return placementIndex.get(`${edition}|${category}`) ?? [];
 }
 
+/** Project server fetch metadata, preserving language and cross-language eligibility separately. */
 function toServerFeed(feed: CatalogFeed): ServerCatalogFeed {
   if (typeof feed.url !== 'string') {
     throw new Error(`news catalog: server-placed feed "${feed.name}" needs a single URL`);
   }
   const entry: ServerCatalogFeed = { name: feed.name, url: feed.url };
   if (feed.lang !== undefined) entry.lang = feed.lang;
+  if (feed.fetchInAllLanguages !== undefined) entry.fetchInAllLanguages = feed.fetchInAllLanguages;
   if (feed.strategicDefault !== undefined) entry.strategicDefault = feed.strategicDefault;
   if (feed.deadlinePriority !== undefined) entry.deadlinePriority = feed.deadlinePriority;
   if (feed.depthUrl !== undefined) entry.depthUrl = feed.depthUrl;
   if (feed.channelDated !== undefined) entry.channelDated = feed.channelDated;
   if (feed.linkHosts !== undefined) entry.linkHosts = feed.linkHosts;
+  if (feed.excludePathSegments !== undefined) entry.excludePathSegments = feed.excludePathSegments;
   return entry;
 }
 
@@ -147,9 +154,10 @@ export function projectBrowserCatalog(catalog: NewsCatalog = NEWS_CATALOG): Brow
         if (feed.type !== undefined) browserFeed.type = feed.type;
         const lang = browserField(feed, 'lang');
         if (lang !== undefined) browserFeed.lang = lang;
+        if (feed.fetchInAllLanguages !== undefined) browserFeed.fetchInAllLanguages = feed.fetchInAllLanguages;
         const strategicDefault = browserField(feed, 'strategicDefault');
         if (strategicDefault !== undefined) browserFeed.strategicDefault = strategicDefault;
-        if (feed.lang !== undefined && !feed.strategicDefault) browserFeed.digestLang = feed.lang;
+        if (feed.lang !== undefined && !feed.strategicDefault && !feed.fetchInAllLanguages) browserFeed.digestLang = feed.lang;
       }
       const placedFeed = placement.type === undefined ? browserFeed : { ...browserFeed, type: placement.type };
       const key = `${placement.edition}|${placement.category}`;
@@ -187,6 +195,28 @@ export function buildServerVariantFeeds(): Record<string, Record<string, ServerC
 
 export function buildServerIntelSources(): ServerCatalogFeed[] {
   return serverPlacedFeeds(INTEL_EDITION, INTEL_EDITION).map(toServerFeed);
+}
+
+/** Everything the server feed registry reads, in catalog order. */
+export interface ServerNewsCatalog {
+  variantFeeds: Record<string, Record<string, ServerCatalogFeed[]>>;
+  intelSources: ServerCatalogFeed[];
+  editions: string[];
+  gateExempt: Record<string, string[]>;
+}
+
+/**
+ * The server's slice. Generated into shared/news-catalog.server.generated.ts
+ * so the digest and MCP bundles ship only server fetch metadata, not the
+ * catalog's browser URLs, placements and notes.
+ */
+export function buildServerCatalog(): ServerNewsCatalog {
+  return {
+    variantFeeds: buildServerVariantFeeds(),
+    intelSources: buildServerIntelSources(),
+    editions: Object.keys(NEWS_CATALOG.layout.server),
+    gateExempt: NEWS_CATALOG.gateExempt,
+  };
 }
 
 export interface DigestWarmCell {

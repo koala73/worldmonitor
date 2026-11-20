@@ -88,9 +88,22 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
   },
   { target: "entitlements", action: "delete", notes: "Access, not invoices" },
   { target: "aiRoutingPolicies", action: "delete", notes: "Per-account AI provider restriction; the edge cache entry expires in 60 s" },
+  {
+    target: "enterpriseMembers",
+    action: "delete",
+    notes: "This user's seats in Enterprise accounts by userId, and invites to their verified email; the account and other members stay",
+  },
+  {
+    target: "enterpriseAccounts",
+    action: "retain",
+    notes: "Contract account (customer company terms); holds no userId, so a member's deletion leaves it",
+  },
+  { target: "enterpriseAccountLocks", action: "skip", notes: "Per-account OCC locks; no userId" },
   { target: "apiUsageRollups", action: "delete", notes: "Usage windows" },
   { target: "apiPlanLimitNotices", action: "delete", notes: "Plan-limit notices" },
+  { target: "alertScopeNotices", action: "delete", notes: "Alert scope migration markers and notice outbox (#10873)" },
   { target: "checkoutAdmissions", action: "delete", notes: "Checkout admission counters" },
+  { target: "proBusinessUpgradeAdmissions", action: "delete", notes: "Pro Business upgrade admission counters" },
   { target: "checkoutSessionEvents", action: "delete", notes: "Checkout funnel session log" },
   {
     target: "proActivationPresentations",
@@ -203,7 +216,24 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
   {
     target: "redis:briefs",
     action: "delete",
-    notes: "brief:latest:{userId} and brief:{userId}:{slot} from that pointer",
+    notes: "sets brief:erased:{userId} (1-day TTL; a racing digest compose removes its own brief when it sees it), then deletes brief:{userId}:{slot} and brief:l10n:{userId}:{slot} for every indexed slot and the pointer slot; then, only once those succeed, the brief:slots:{userId} index and brief:latest:{userId} pointer; completion atomically schedules a second sweep 15 minutes later: one escaped SCAN MATCH pass that deletes every account brief key a racing compose can write (envelopes, localized siblings, the slot index and the latest pointer, but not the erase tombstone), one cursor page per action with bounded delete batches and five attempts per page retaining failed-delete keys, even when billing cleanup reopens deletion; 1,000 pages total (COUNT 1,000), above one full keyspace scan; budget exhaustion emits account_deletion_brief_sweep_truncated with the next cursor for operator continuation, and exhausted failures emit account_deletion_brief_sweep_failed",
+  },
+  {
+    target: "redis:brief-translation-user-cache",
+    action: "skip",
+    notes: "brief:llm:translate:user:v1:{model}:{userId}:{lang}:{sha256}; keyed by content hash with no index, 8 h TTL",
+  },
+  {
+    target: "redis:sent-alerts",
+    action: "delete",
+    notes: "wm:notif:sent:v1:{userId}, the alerts delivered to the account; also expires 7 days after the last one. "
+      + "Sets wm:notif:sent-erased:v1:{userId} for 7 days first, which makes the relay refuse a late write for the account",
+  },
+  {
+    target: "redis:news-alert-anchor-recipients",
+    action: "skip",
+    notes: "news:alert-anchor-recipients:v1:{edition}:{sha256}, the user ids a deliverable news alert reached, scored by receipt time, read to skip a reworded repeat (#10916); "
+      + "keyed by headline with no per-user index, 24 h TTL",
   },
   {
     target: "clerk.users",
@@ -259,12 +289,14 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
   { target: "productPlans", action: "skip", notes: "Global product catalog" },
   { target: "counters", action: "skip", notes: "Global counters" },
   { target: "businessSeatLocks", action: "skip", notes: "Global OCC locks" },
+  { target: "teamDashboards", action: "delete", notes: "API Business team layouts go with the owner (grants phase); Enterprise ones stay with the contract account. Rows hold no user identifier" },
   { target: "broadcastRampConfig", action: "skip", notes: "Global broadcast ramp settings" },
   { target: "broadcastEvents", action: "skip", notes: "Broadcast send log; not the account record" },
   { target: "waveRuns", action: "skip", notes: "Broadcast wave runs; not the account record" },
   { target: "intelHistory", action: "skip", notes: "Global intel corpus, not user-scoped" },
   { target: "intelHistoryRetractions", action: "skip", notes: "Global intel corpus" },
   { target: "intelHistoryAppendLocks", action: "skip", notes: "Global OCC locks" },
+  { target: "proBusinessUpgradeClaims", action: "skip", notes: "Ephemeral change-plan claims keyed by provider subscription id; no userId" },
   // Company Monitoring children follow their account row, which is `delegate`
   // above. markOwnerDeleted / advanceAccountPurge owns their lifecycle; this
   // PR only refactored the entry point into applyOwnerDeletedFence and did not

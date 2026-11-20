@@ -22,13 +22,22 @@ describe('official food prices card', () => {
     expect(host.textContent).toContain('55 PHP');
     expect(host.textContent).toContain('2026-10-29');
   });
-  it('shows the publisher credit as text next to the source, and nothing when none is stated', () => {
+  it('dates only the rows observed on a different day from the source report date', () => {
+    new FoodPricesCard(host).update([source({ prices: [
+      { ...row, item: 'Tomatoes' },
+      { ...row, item: 'Cooking oil', unit: '5 kg', date: '2026-10-26', wowAvailable: true, wowPct: 3.3, previousDate: '2026-10-15', previousPrice: 30 },
+    ] })]);
+    const rows = [...host.querySelectorAll('tbody tr')];
+    expect(rows[0]!.textContent).not.toContain('Report date');
+    expect(rows[1]!.textContent).toContain('Report date: 2026-10-26');
+    expect(rows[1]!.textContent).toContain('vs 2026-10-15');
+  });
+  it('keeps the publisher attribution off the card and still links the source name', () => {
     const credit = 'Source: <b>Stat</b> (CC BY 4.0)';
     new FoodPricesCard(host).update([source({ attribution: credit })]);
-    expect(host.querySelector('.food-prices-attribution')?.textContent).toBe(credit);
+    expect(host.textContent).not.toContain('CC BY 4.0');
     expect(host.querySelector('b')).toBeNull();
-    new FoodPricesCard(host).update([source()]);
-    expect(host.querySelector('.food-prices-attribution')).toBeNull();
+    expect(host.querySelector('.food-prices-source a')?.textContent).toBe('DA');
   });
   it('switches countries and markets without mixing retail and wholesale prices', () => {
     new FoodPricesCard(host).update([source(), source({ id: 'cbsl', country: 'Sri Lanka', prices: [
@@ -116,4 +125,25 @@ it('restores focus to the Uzbekistan table, not the first monthly table, after r
   host.querySelectorAll<HTMLElement>('details [role="region"]')[1]!.focus();
   card.update(sources);
   expect(document.activeElement).toBe(host.querySelectorAll('details [role="region"]')[1]);
+});
+
+it('selects monthly markets independently and displays CPI summaries without currency prices', () => {
+  const card = new FoodPricesCard(host);
+  const sources = [source(), source({ id: 'fewssd', name: 'FEWS NET', country: 'Sudan', contextOnly: true,
+    prices: [{ ...row, item: 'Sorghum', market: 'Khartoum', currency: 'SDG', price: 1000 },
+      { ...row, item: 'Wheat', market: 'Port Sudan', currency: 'SDG', price: 2000 }] }),
+    source({ id: 'makstat', name: 'MakStat', country: 'North Macedonia', contextOnly: true, prices: [],
+      contexts: [{ country: 'North Macedonia', countryCode: 'MK', referenceDate: '2026-09-01', fetchedAt: '', status: 'current', title: 'Food CPI: 3.1% year-on-year (index, not price)', url: 'https://makstat.stat.gov.mk/' }] })];
+  card.update(sources);
+  host.querySelector('details')!.open = true;
+  const select = host.querySelector<HTMLSelectElement>('details select')!;
+  expect(select.getAttribute('aria-label')).toBe('Sudan · FEWS NET · Market');
+  expect(host.querySelector('[data-price-table="context:fewssd"]')!.textContent).toContain('Sorghum');
+  expect(host.querySelector('[data-price-table="context:fewssd"]')!.textContent).not.toContain('Wheat');
+  select.value = JSON.stringify(['Port Sudan', 'retail']); select.dispatchEvent(new Event('change'));
+  card.update(sources);
+  expect(host.querySelector('[data-price-table="context:fewssd"]')!.textContent).toContain('Wheat');
+  expect(host.querySelector('[data-price-table="context:fewssd"]')!.textContent).not.toContain('Sorghum');
+  expect(host.querySelector('details')!.textContent).toContain('Food CPI: 3.1% year-on-year (index, not price)');
+  expect(host.querySelector('details')!.textContent).not.toContain('Week over week');
 });

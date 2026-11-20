@@ -2,13 +2,14 @@
 // instructions about model behavior, other tools, or external instruction
 // sources". A description says what its own tool returns. Which tool fits
 // which question, and how to treat availability flags, lives in
-// SERVER_INSTRUCTIONS (api/mcp/constants.ts), which the policy does not cover.
+// AGENT_GUIDE (api/mcp/constants.ts), served as worldmonitor://guide/agents,
+// which the policy does not cover.
 
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 const { __testing__ } = await import('../api/mcp.ts');
-const { SERVER_INSTRUCTIONS } = await import('../api/mcp/constants.ts');
+const { AGENT_GUIDE } = await import('../api/mcp/constants.ts');
 const REGISTRY = __testing__.TOOL_REGISTRY;
 const NAMES = REGISTRY.map((tool) => tool.name);
 
@@ -61,10 +62,12 @@ describe('MCP tool descriptions describe only their own tool', () => {
     }
   });
 
-  it('the guidance removed from descriptions is still in the server instructions', () => {
+  // The routing guidance lives in the agent guide resource that the 2 KB
+  // server instructions point to (worldmonitor://guide/agents).
+  it('the guidance removed from descriptions is still in the agent guide', () => {
     for (const name of ['open_country_brief', 'get_country_brief', 'get_us_import_duty', 'get_tariff_averages', 'get_forecast_case', 'get_five_factor_scorecard', 'get_commodity_geo', 'get_similar_events']) {
-      assert.match(SERVER_INSTRUCTIONS, new RegExp(`\\b${name}\\b`), `${name} routing must stay in SERVER_INSTRUCTIONS`);
+      assert.match(AGENT_GUIDE, new RegExp(`\\b${name}\\b`), `${name} routing must stay in AGENT_GUIDE`);
     }
-    assert.match(SERVER_INSTRUCTIONS, /upstreamUnavailable/);
+    assert.match(AGENT_GUIDE, /upstreamUnavailable/);
   });
 });

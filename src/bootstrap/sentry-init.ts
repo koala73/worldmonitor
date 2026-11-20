@@ -8,6 +8,7 @@
 
 import { isDesktopRuntime } from '@/services/desktop-runtime';
 import { isIosLikeUserAgent } from './platform-ua';
+import { installPageUnloadSignal, isPageUnloading } from './page-unload-signal';
 import { SENTRY_ALLOW_URLS } from './sentry-allow-urls';
 import { getSentryBuildMetadata, isolateNonProductionSentryEvent } from '../../shared/sentry-build-metadata';
 import { scrubSentryCredentials } from '../../shared/sensitive-url-params';
@@ -207,6 +208,14 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // WKScriptMessageHandler ourselves; this is browser-native and unactionable
       // (WORLDMONITOR-KJ — 15 events / 14 users in DuckDuckGo 26.3 on macOS).
       /WKWebView API client did not respond to this postMessage/,
+      // The same host bridge failing before any reply: DuckDuckGo rejects with
+      // this exact sentence when the page-side messaging shim finds no native
+      // WKScriptMessageHandler registered. The phrase appears nowhere in src/,
+      // api/ or our dependencies, and we never register or call a script
+      // message handler; anchored so a longer first-party message still
+      // surfaces (WORLDMONITOR-1EH — DuckDuckGo 26.3 on macOS, unhandled
+      // rejection with no stack).
+      /^Script message handler is unavailable$/,
       // Apple's native WKWebView find-on-page bridge: the host app evaluates
       // `WKWebView_RemoveAllHighlights()` in the page when the user dismisses
       // the in-app find bar, and it is undefined in web content the host never
@@ -466,6 +475,15 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       }
       const msg = event.exception?.values?.[0]?.value ?? '';
       if (msg.length <= 3 && /^[a-zA-Z_$]+$/.test(msg)) return null;
+      // A reload or navigation aborts every in-flight fetch, and the rejections
+      // land while the page is going away. A `kind` claim does not rescue them:
+      // the owner is reporting the teardown, not an outage (WORLDMONITOR-1AY).
+      // Only the three engines' fetch-failure wordings, only as a TypeError.
+      if (
+        isPageUnloading()
+        && (event.exception?.values?.[0]?.type === 'TypeError' || msg.startsWith('TypeError: '))
+        && /^(?:TypeError: )?(?:Load failed|Failed to fetch|NetworkError when attempting to fetch resource\.?)(?: \(.*\))?$/.test(msg)
+      ) return null;
       // WebKit's wording for a failed fetch, relocated verbatim from
       // `ignoreErrors`. Reach is unchanged — still only a `TypeError` whose
       // message is exactly `Load failed`, optionally with a parenthesised
@@ -791,10 +809,18 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // `Error` and synthesizes exactly ONE document-URL frame for it, and that
       // error can be ours — Firefox's `uncaught exception: [object Object]`
       // (WORLDMONITOR-106) is a bundle throwing a non-Error.
+      //
+      // An `EvalError` joins on the same multi-frame terms. Our CSP has no
+      // 'unsafe-eval', our bundle's evals would ride an `/assets/*.js` frame,
+      // and no inline script in our HTML entries evaluates a string (pinned by
+      // tests/sentry-beforesend.test.mjs). WORLDMONITOR-161 / -1CQ: Firefox's
+      // `call to eval() blocked by CSP` from a ~300 KB injected script at
+      // `/dashboard` 47:309244, where the served line 47 is a short meta tag.
+      // Chrome's wording of the same refusal is already in ignoreErrors.
       const isNonScriptUrlFrame = (filename: string) =>
         !/\.(?:m|c)?[jt]sx?(?:[?#]|$)/.test(filename)
         && (/^\/(?!\/)/.test(filename) || /^https?:\/\//.test(filename));
-      if ((excType === 'TypeError' || /^TypeError:/.test(msg) || (excType === 'Error' && nonInfraFrames.length > 1))
+      if ((excType === 'TypeError' || /^TypeError:/.test(msg) || ((excType === 'Error' || excType === 'EvalError') && nonInfraFrames.length > 1))
           && !hasFirstParty
           && nonInfraFrames.length > 0
           && nonInfraFrames.every(f => isNonScriptUrlFrame(f.filename ?? ''))) return null;
@@ -1205,6 +1231,17 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           // frames). Left deliberately phrasing-agnostic after `Unexpected ` so
           // every engine's token/identifier/keyword/EOF wording is covered.
           || /appendChild.*Unexpected /.test(msg)
+          // Same insertion path, other parse-time failure: an injected script
+          // inserted twice redeclares its own top-level binding (WORLDMONITOR-1F5:
+          // `Identifier 'API_URL' has already been declared`, two `<anonymous>`
+          // frames, Chrome 157). Our bundle is ES modules, so no first-party
+          // top-level binding enters the global lexical scope. Identifier-agnostic
+          // because the same `!hasFirstParty` gate keeps a first-party loader's
+          // failure visible; the bare form without the prefix stays on the named
+          // ignoreErrors list. `\s` after `has`: the test harness strips
+          // `as <word>` from this body as a TS assertion, which would gut a
+          // literal space here.
+          || /appendChild.*Identifier '[^']+' has\salready been declared/.test(msg)
           // Platform-authenticator failure raised by the browser's WebAuthn /
           // Credential Management layer — `NotReadableError: An unknown error
           // occurred while talking to the credential manager.` The phrasing is
@@ -1337,6 +1374,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
 }
 
 export async function loadAndInitSentry(): Promise<SentryNs> {
+  installPageUnloadSignal();
   const ns = await import('@sentry/browser');
   ns.init(buildSentryInitOptions());
   return ns;

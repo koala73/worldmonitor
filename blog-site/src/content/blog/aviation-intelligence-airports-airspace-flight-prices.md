@@ -32,17 +32,17 @@ Around the panel, the map adds the **flights layer** for delay conditions, the *
 
 The `get_airspace` MCP tool answers "what is flying over this country right now" — civilian traffic from OpenSky plus identified military aircraft. Its sibling `get_aviation_status` returns airport delays, NOTAM-based closure context, and tracked military aircraft in one call.
 
-That combination matters because absence is a signal too. Civilian traffic thinning out over a region while military tracks persist is one of the classic OSINT tells — the pattern that made "flight-tracker Twitter" famous, available as a structured query instead of a screenshot. The [breaking-news verification workflow](/blog/posts/verify-breaking-news-osint-workflow-journalists/) uses exactly this check.
+That combination matters because absence is a signal too. Civilian traffic thinning out over a region while military tracks persist is one of the classic [OSINT](/blog/posts/osint-for-everyone-open-source-intelligence-democratized/) tells — the pattern that made "flight-tracker Twitter" famous, available as a structured query instead of a screenshot. The [breaking-news verification workflow](/blog/posts/verify-breaking-news-osint-workflow-journalists/) uses exactly this check.
 
 ## Flight prices are a sensor
 
-WorldMonitor can search real-time flight options and prices between any two airports (`search_flights`), and scan a whole date range for the cheapest fare per day (`search_flight_prices_by_date`) — live Google Flights data, exposed to both the Prices tab and MCP agents.
+WorldMonitor can search real-time flight options and prices between any two airports (`search_flights`), and scan a whole date range for the cheapest fare per day (the same tool with `start_date` and `end_date`) — live Google Flights data, exposed to both the Prices tab and MCP agents.
 
 The obvious use is practical: an AI travel assistant with real fares. The less obvious use is analytical. Prices out of a stressed city spiking while inbound fares collapse is demand-side evidence of departure pressure. Routes quietly disappearing from results tell you about airspace and slot decisions before they're announced. When you need to know whether "people are leaving" is a rumor or a fact, the booking engine is a witness.
 
 ## For developers and agents
 
-All of it is queryable: `get_aviation_status` and `get_airspace` for the intelligence layer, `search_flights` and `search_flight_prices_by_date` for fares, alongside the versioned aviation REST endpoints in the [API reference](https://www.worldmonitor.app/docs/api-reference). An agent can chain them: check a country's airspace activity, confirm airport status, then price the exit routes — the full [risk-agent pattern](/blog/posts/build-geopolitical-risk-agent-worldmonitor-mcp/).
+All of it is queryable: `get_aviation_status` and `get_airspace` for the intelligence layer, `search_flights` for fares, alongside the versioned aviation REST endpoints in the [API reference](https://www.worldmonitor.app/docs/api-reference). An agent can chain them: check a country's airspace activity, confirm airport status, then price the exit routes — the full [risk-agent pattern](/blog/posts/build-geopolitical-risk-agent-worldmonitor-mcp/).
 
 ## Limits
 

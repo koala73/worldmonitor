@@ -174,7 +174,7 @@ async function fetchAcledProtestPage(token, params) {
   return Array.isArray(data.data) ? data.data : [];
 }
 
-function normalizeAcledProtestEvents(rawEvents) {
+export function normalizeAcledProtestEvents(rawEvents) {
   return rawEvents
     .filter((e) => {
       const lat = parseFloat(e.latitude || '');
@@ -189,6 +189,7 @@ function normalizeAcledProtestEvents(rawEvents) {
         summary: typeof e.notes === 'string' ? e.notes.substring(0, 500) : '',
         eventType: mapAcledEventType(e.event_type || '', e.sub_event_type || ''),
         city: e.location || '',
+        hasPreciseLocation: Number(e.geo_precision) === 1,
         country: e.country || '',
         region: e.admin1 || '',
         location: {

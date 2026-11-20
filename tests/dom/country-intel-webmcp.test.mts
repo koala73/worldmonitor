@@ -169,7 +169,7 @@ describe('CountryIntelManager WebMCP presentation cancellation', () => {
     expect(hideCalls).toBe(1);
     expect(showCalls).toBe(0);
     expect(presentedCalls).toBe(0);
-    expect(renderPaused).toEqual([true, false]);
+    expect(renderPaused).toEqual([]);
     expect(toasts).toEqual([]);
   });
 
@@ -244,7 +244,7 @@ describe('CountryIntelManager WebMCP presentation cancellation', () => {
     expect(presentedCalls).toBe(0);
     expect(visible).toBe(true);
     expect(activeCode).toBe('FR');
-    expect(renderPaused).toEqual([true]);
+    expect(renderPaused).toEqual([]);
     expect(toasts).toEqual([]);
   });
 
@@ -331,7 +331,7 @@ describe('CountryIntelManager WebMCP presentation cancellation', () => {
     expect(agentPresentedCalls).toBe(0);
     expect(visible).toBe(true);
     expect(activeCode).toBe('FR');
-    expect(renderPaused).toEqual([true]);
+    expect(renderPaused).toEqual([]);
     expect(toasts).toEqual([]);
     expect(Reflect.get(manager, 'briefRequestToken')).toBe(1);
     expect(Reflect.get(manager, 'pendingBriefRequest')).toBeNull();
@@ -425,7 +425,7 @@ describe('CountryIntelManager WebMCP presentation cancellation', () => {
     expect(agentPresentedCalls).toBe(0);
     expect(visible).toBe(true);
     expect(activeCode).toBe('FR');
-    expect(renderPaused).toEqual([true]);
+    expect(renderPaused).toEqual([]);
     expect(toasts).toEqual([]);
     expect(Reflect.get(manager, 'briefRequestToken')).toBe(1);
     expect(Reflect.get(manager, 'pendingBriefRequest')).toBeNull();
@@ -504,7 +504,7 @@ describe('CountryIntelManager WebMCP presentation cancellation', () => {
     expect(shownCodes).toEqual(['FR']);
     expect(visible).toBe(true);
     expect(activeCode).toBe('FR');
-    expect(renderPaused).toEqual([true, true]);
+    expect(renderPaused).toEqual([]);
     expect(toasts).toEqual([]);
     expect(Reflect.get(manager, 'briefRequestToken')).toBe(2);
     expect(Reflect.get(manager, 'pendingBriefRequest')).toBeNull();
@@ -620,7 +620,7 @@ describe('CountryIntelManager WebMCP presentation cancellation', () => {
     const pendingOpen = manager.openCountryBrief(-0.321, -141.654);
     await lookupRequested;
     expect(loadingCalls).toBe(1);
-    expect(renderPaused).toEqual([true]);
+    expect(renderPaused).toEqual([]);
 
     destroyed = true;
     manager.destroy();
@@ -637,7 +637,7 @@ describe('CountryIntelManager WebMCP presentation cancellation', () => {
     expect(showCalls).toBe(0);
     expect(hideCalls).toBe(0);
     expect(loadingCalls).toBe(1);
-    expect(renderPaused).toEqual([true]);
+    expect(renderPaused).toEqual([]);
     expect(ctx.countryBriefPage).toBeNull();
     expect(Reflect.get(manager, 'briefRequestToken')).toBe(2);
     expect(Reflect.get(manager, 'pendingBriefRequest')).toBeNull();

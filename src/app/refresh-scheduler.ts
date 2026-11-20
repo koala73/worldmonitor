@@ -119,10 +119,6 @@ export class RefreshScheduler implements AppModule {
     this.hiddenSince = ts;
   }
 
-  getHiddenSince(): number {
-    return this.hiddenSince;
-  }
-
   scheduleRefresh(
     name: string,
     fn: (signal?: AbortSignal) => Promise<boolean | void>,

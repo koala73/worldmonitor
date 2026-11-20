@@ -57,20 +57,66 @@ export interface DigestCoverageSummary {
   categoriesCompleted: number;
   categoriesTotal: number;
   missingCategories: string[];
+  /** Items that reached ranking before the 20-per-category cap; 0 when unreported. */
+  itemsConsidered: number;
+  /** Distinct publishers among those items; 0 when unreported. */
+  publishersConsidered: number;
+  /**
+   * Who is serving old content: the server replaying, this browser after its
+   * request failed, or this browser while a language switch loads.
+   */
+  staleCause: 'server' | 'device' | 'switching' | null;
+  /** Server stale reason: build-error | empty-rebuild | gate-held ('' otherwise). */
+  staleReason: string;
+  /** Age of the shown content in seconds, when known. */
+  contentAgeSeconds: number | null;
 }
 
-const DIGEST_COVERAGE_EXPLANATIONS: Record<DigestCoverageSummary['state'], string> = {
+const DIGEST_COVERAGE_EXPLANATIONS: Record<Exclude<DigestCoverageSummary['state'], 'stale'>, string> = {
   complete: 'every configured category was covered in this cycle',
   partial: 'some categories had no completed feed in this cycle',
-  stale: 'older accepted content is being served after a failed rebuild',
-  unavailable: 'no digest content could be served',
-  unknown: 'the digest did not report coverage',
+  unavailable: 'no news content could be loaded',
+  unknown: 'the news service did not report coverage',
 };
+
+/**
+ * Least share of feeds that must finish for a deadline-cut build with every
+ * category covered to read as complete. Below it most of the pool is missing.
+ */
+const DEADLINE_COMPLETE_FEED_SHARE = 0.9;
+
+const formatCount = (n: number): string => n.toLocaleString('en-US');
+
+function formatAge(seconds: number): string {
+  if (seconds < 60) return 'under a minute';
+  if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
+  return `${Math.round(seconds / 3600)} h`;
+}
+
+function staleExplanation(coverage: DigestCoverageSummary): string {
+  const age = coverage.contentAgeSeconds !== null && coverage.contentAgeSeconds >= 0
+    ? ` from ${formatAge(coverage.contentAgeSeconds)} ago`
+    : '';
+  if (coverage.staleCause === 'device') {
+    return `the news service did not respond, so this is the copy saved on this device${age}`;
+  }
+  if (coverage.staleCause === 'switching') {
+    return `showing the copy saved on this device${age} while this language loads`;
+  }
+  // gate-held: the rebuild succeeded but the acceptance gate kept the
+  // incumbent content live. It is not a failure.
+  if (coverage.staleReason === 'gate-held') {
+    return `showing content${age}; the latest rebuild was held back by a quality check`;
+  }
+  if (coverage.staleReason === 'empty-rebuild') {
+    return `showing content${age}; the latest rebuild came back empty`;
+  }
+  return `showing content${age}; the latest rebuild failed`;
+}
 
 export class StatusPanel extends Panel {
   private feeds: Map<string, FeedStatus> = new Map();
   private apis: Map<string, ApiStatus> = new Map();
-  private digestCoverage: DigestCoverageSummary | null = null;
   private digestCoverageRow: HTMLElement | null = null;
   private allowedFeeds!: Set<string>;
   private allowedApis!: Set<string>;
@@ -107,42 +153,74 @@ export class StatusPanel extends Panel {
    * an accessible name and a short explanation, announced politely.
    */
   public updateDigestCoverage(coverage: DigestCoverageSummary): void {
-    this.digestCoverage = coverage;
-    const explanation = DIGEST_COVERAGE_EXPLANATIONS[coverage.state];
+    // The server also reports partial when the build hit its fetch deadline
+    // with every category covered. When nearly every feed still finished, a
+    // reader sees the same thing as a complete build that lost a few feeds to
+    // errors, so call it complete. A deadline that left most feeds unfinished
+    // stays partial (prod 2026-11-18: 137/955 feeds at 18/18 categories).
+    const allCategoriesCovered = coverage.categoriesTotal > 0
+      && coverage.categoriesCompleted === coverage.categoriesTotal
+      && coverage.missingCategories.length === 0;
+    const deadlineOnly = coverage.state === 'partial'
+      && allCategoriesCovered
+      && coverage.feedsCompleted >= coverage.feedsTotal * DEADLINE_COMPLETE_FEED_SHARE;
+    const state = deadlineOnly ? 'complete' : coverage.state;
+    const incompleteFeeds = Math.max(0, coverage.feedsTotal - coverage.feedsCompleted);
+    // The explanation goes in the tooltip only; the footer shows the counts.
+    // The incomplete count mixes deadline aborts with feed errors, so it
+    // names neither cause.
+    const explanation = state === 'stale'
+      ? staleExplanation(coverage)
+      : coverage.state === 'partial' && allCategoriesCovered && incompleteFeeds > 0
+        ? `every configured category was covered; ${formatCount(incompleteFeeds)} ${incompleteFeeds === 1 ? 'feed' : 'feeds'} did not complete`
+        : DIGEST_COVERAGE_EXPLANATIONS[state];
+    // The digest shows at most 20 stories per category, so the served slice
+    // understates how many publishers fed this cycle. Report the ranked pool
+    // when the server sent it.
+    const breadth = coverage.publishersConsidered > 0 && coverage.itemsConsidered > coverage.itemsServed
+      ? `${formatCount(coverage.publishersConsidered)} publishers, ${formatCount(coverage.itemsConsidered)} stories reviewed, top ${formatCount(coverage.itemsServed)} shown`
+      : `${formatCount(coverage.publisherCount)} publishers, ${formatCount(coverage.itemsServed)} stories`;
     const missing = coverage.missingCategories.length > 0
       ? ` (no completed feed: ${coverage.missingCategories.slice(0, 4).join(', ')}${coverage.missingCategories.length > 4 ? ', …' : ''})`
       : '';
     const text = coverage.state === 'unavailable' || coverage.state === 'unknown'
-      ? `Digest coverage: ${coverage.state} — ${explanation}`
-      : `Digest coverage: ${coverage.state} — ${coverage.publisherCount} publishers, ${coverage.itemsServed} items, feeds ${coverage.feedsCompleted}/${coverage.feedsTotal}, categories ${coverage.categoriesCompleted}/${coverage.categoriesTotal}${missing} (${explanation})`;
+      ? `News coverage: ${coverage.state}`
+      : `News coverage: ${state} — ${breadth}, feeds ${coverage.feedsCompleted}/${coverage.feedsTotal}, categories ${coverage.categoriesCompleted}/${coverage.categoriesTotal}${missing}`;
     if (!this.digestCoverageRow) {
       this.digestCoverageRow = h('div', {
         className: 'digest-coverage-row',
         role: 'status',
         'aria-live': 'polite',
-        'aria-label': 'Digest coverage status',
+        'aria-label': 'News coverage status',
       });
       this.element.appendChild(this.digestCoverageRow);
     }
     this.ensureCoverageRowMounted();
-    this.digestCoverageRow.textContent = text;
+    const reason = `${explanation.charAt(0).toUpperCase()}${explanation.slice(1)}.`;
+    // The footer shows only the state and counts. The reason stays in the
+    // live region as visually hidden text, because assistive tech does not
+    // reliably expose title (PR #10988 review).
+    this.digestCoverageRow.replaceChildren(
+      h('span', { className: 'digest-coverage-text' }, text),
+      h('span', { className: 'wm-visually-hidden' }, `. ${reason}`),
+    );
+    // The compact footer (#10461) ellipsizes this row on one line; the
+    // tooltip keeps the full text plus the reason for pointer users.
+    this.digestCoverageRow.title = `${text}. ${reason}`;
   }
 
   /**
    * Nothing else mounts this panel — it is otherwise a write-only data sink
    * (no getElement() callers), so the row must reach the document from here
    * or it renders into a detached node no user or screen reader can see.
-   * The site footer always exists by the first digest load (layout Phase 1
-   * precedes data loading), so a missing footer only means a non-dashboard
-   * document; the row then stays detached rather than throwing.
+   * The compact site footer (#10461) always exists by the first digest load
+   * (layout Phase 1 precedes data loading), so a missing footer only means a
+   * non-dashboard document; the row then stays detached rather than throwing.
+   * CSS keeps the row on the same 28px footer line via ellipsis.
    */
   private ensureCoverageRowMounted(): void {
     if (this.element.isConnected) return;
     document.querySelector('.site-footer')?.appendChild(this.element);
-  }
-
-  public getDigestCoverage(): DigestCoverageSummary | null {
-    return this.digestCoverage;
   }
 
   public updateFeed(name: string, status: Partial<FeedStatus>): void {
@@ -157,22 +235,6 @@ export class StatusPanel extends Panel {
     const existing = this.apis.get(name) || { name, status: 'ok' as const };
     this.apis.set(name, { ...existing, ...status });
     this.onUpdate?.();
-  }
-
-  public setFeedDisabled(name: string): void {
-    const existing = this.feeds.get(name);
-    if (existing) {
-      this.feeds.set(name, { ...existing, status: 'disabled', itemCount: 0, lastUpdate: null });
-      this.onUpdate?.();
-    }
-  }
-
-  public setApiDisabled(name: string): void {
-    const existing = this.apis.get(name);
-    if (existing) {
-      this.apis.set(name, { ...existing, status: 'disabled' });
-      this.onUpdate?.();
-    }
   }
 
   public formatTime(date: Date): string {

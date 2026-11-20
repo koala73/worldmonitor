@@ -106,7 +106,7 @@ vi.mock('@/services/entitlements', () => ({
 vi.mock('@/services/panel-gating', () => ({ hasPremiumAccess: () => true }));
 vi.mock('@/services/widget-store', () => ({ isProUser: () => true }));
 vi.mock('@/services/preferences-content', () => ({
-  renderPreferences: () => ({ html: '', attach: () => () => {} }),
+  renderPreferenceSection: () => ({ html: '', attach: () => () => {} }),
 }));
 vi.mock('@/services/notifications-settings', () => ({
   renderNotificationsSettings: () => ({ html: '', attach: () => () => {} }),
@@ -178,12 +178,13 @@ vi.mock('@/services/mcp-clients', () => ({
   fetchMcpQuota: vi.fn(),
   revokeMcpClient: vi.fn(),
 }));
+const startCheckout = vi.hoisted(() => vi.fn(async () => true));
+vi.mock('@/services/checkout', () => ({ startCheckout }));
 
 const { UnifiedSettings } = await import('@/components/UnifiedSettings');
 
 type SettingsInternals = {
   overlay: HTMLElement;
-  render(loadAccountData?: boolean): void;
 };
 
 let settings: InstanceType<typeof UnifiedSettings>;
@@ -202,18 +203,18 @@ function mount(): void {
     isDesktopApp: false,
   } satisfies UnifiedSettingsConfig);
   internal = settings as unknown as SettingsInternals;
-  internal.overlay.classList.add('active');
 }
 
-const panel = () => internal.overlay.querySelector<HTMLElement>('[data-panel-id="api-keys"]')!;
+const panel = () => internal.overlay.querySelector<HTMLElement>('[data-settings-page="api-keys"]')!;
 const createButton = () => panel().querySelector<HTMLButtonElement>('.api-keys-create-btn');
 const nameInput = () => panel().querySelector<HTMLInputElement>('.api-keys-name-input');
 const list = () => internal.overlay.querySelector<HTMLElement>('#usApiKeysList')!;
 const count = () => panel().querySelector<HTMLElement>('[data-desktop-keys-count]');
 
-function openApiKeysTab(): void {
-  internal.render(false);
-  internal.overlay.querySelector<HTMLButtonElement>('.unified-settings-tab[data-tab="api-keys"]')!.click();
+/** Open Settings and reach API keys the way a user does: its home row. */
+function openApiKeysPage(): void {
+  settings.open();
+  internal.overlay.querySelector<HTMLButtonElement>('[data-settings-nav="api-keys"]')!.click();
 }
 
 async function keysLoaded(): Promise<void> {
@@ -239,6 +240,7 @@ beforeEach(() => {
   createApiKey.mockClear();
   listApiKeys.mockClear();
   revokeApiKey.mockClear();
+  startCheckout.mockClear();
   mount();
 });
 
@@ -250,22 +252,43 @@ afterEach(() => {
 
 describe('Settings -> API Keys: which section each plan sees', () => {
   it('shows a Pro owner the Desktop keys section, not the API key form', async () => {
-    openApiKeysTab();
+    openApiKeysPage();
     await keysLoaded();
 
     const text = panel().textContent ?? '';
     expect(text).toContain('Desktop keys');
-    expect(text).toContain('for your own desktop app');
-    expect(text).toContain('Shared or public deployments need an API plan');
+    expect(text).toContain('in your desktop app and on self-hosted dashboards');
+    expect(text).toContain('On a shared install, each person enters their own key');
+    expect(text).toContain('An API plan is for calling the API directly');
+    expect(text).not.toContain('Shared or public deployments need an API plan');
     expect(text).not.toContain('Create API keys to access WorldMonitor data programmatically');
-    expect(text).not.toContain('Upgrade to API Starter');
     expect(createButton()?.textContent).toContain('Create desktop key');
     expect(count()?.textContent).toContain('0 of 2');
   });
 
+  // Pro holders were a third of API Starter buyers (two thirds in October 2026),
+  // and this tab was their way in. #9687 replaced it with the desktop section
+  // and no Starter offer; Starter sales fell from 3-8 a week to about zero.
+  it('offers a Pro owner API Starter below their desktop keys, Terms first', async () => {
+    openApiKeysPage();
+    await keysLoaded();
+
+    const offer = panel().querySelector<HTMLElement>('[data-api-starter-offer]');
+    expect(offer?.textContent).toContain('REST API, SDKs or webhooks');
+    const cta = offer?.querySelector<HTMLButtonElement>('.api-keys-gate-btn');
+    expect(cta?.textContent).toBe('Upgrade to API Starter');
+    const consent = offer?.querySelector('.checkout-consent');
+    expect(consent).not.toBeNull();
+    expect(consent!.compareDocumentPosition(cta!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    cta!.click();
+    const { DODO_PRODUCTS } = await import('@/config/products');
+    await vi.waitFor(() => expect(startCheckout).toHaveBeenCalledWith(DODO_PRODUCTS.API_STARTER_MONTHLY));
+  });
+
   it('shows an API-plan owner the existing API key section unchanged', async () => {
     entitlementState = apiStarterState();
-    openApiKeysTab();
+    openApiKeysPage();
     await keysLoaded();
 
     const text = panel().textContent ?? '';
@@ -278,11 +301,20 @@ describe('Settings -> API Keys: which section each plan sees', () => {
   it('shows a free owner an upgrade prompt naming desktop keys as a Pro feature', () => {
     session.user = { id: 'A', name: 'User A', email: 'a@example.com', role: 'free' };
     entitlementState = freeState();
-    openApiKeysTab();
+    openApiKeysPage();
 
     const text = panel().textContent ?? '';
     expect(text).toContain('Desktop keys come with Pro');
-    expect(panel().querySelector('.upgrade-pro-cta')?.textContent).toContain('Upgrade to Pro');
+    const pro = panel().querySelector('.upgrade-pro-cta');
+    expect(pro?.textContent).toContain('Upgrade to Pro');
+    // "Upgrade to Pro" opens the /pro plan picker; only API Starter checks out
+    // here, so the one Terms line sits between the two, above API Starter.
+    const starter = panel().querySelector('.api-keys-gate-btn');
+    expect(starter?.textContent).toBe('Upgrade to API Starter');
+    const consents = panel().querySelectorAll('.checkout-consent');
+    expect(consents).toHaveLength(1);
+    expect(pro!.compareDocumentPosition(consents[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(consents[0]!.compareDocumentPosition(starter!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(createButton()).toBeNull();
     expect(listApiKeys).not.toHaveBeenCalled();
   });
@@ -290,7 +322,7 @@ describe('Settings -> API Keys: which section each plan sees', () => {
 
 describe('Settings -> API Keys: desktop key lifecycle', () => {
   it('creates a desktop key, shows the full key once, then lists only the prefix', async () => {
-    openApiKeysTab();
+    openApiKeysPage();
     await keysLoaded();
 
     nameInput()!.value = 'my-laptop';
@@ -306,14 +338,16 @@ describe('Settings -> API Keys: desktop key lifecycle', () => {
     expect(list().textContent).not.toContain(PLAINTEXT);
     expect(count()?.textContent).toContain('1 of 2');
 
-    // The next render (tab switch, entitlement refresh) drops the plaintext.
-    internal.render(false);
+    // Closing Settings disposes the page, so reopening never shows the plaintext.
+    settings.close();
+    expect(internal.overlay.textContent).not.toContain(PLAINTEXT);
+    openApiKeysPage();
     expect(internal.overlay.textContent).not.toContain(PLAINTEXT);
   });
 
   it('disables create at the limit and names the cap', async () => {
     keyRows = [desktopKey('1', 'laptop'), desktopKey('2', 'desktop')];
-    openApiKeysTab();
+    openApiKeysPage();
     await keysLoaded();
 
     expect(count()?.textContent).toContain('2 of 2');
@@ -324,7 +358,7 @@ describe('Settings -> API Keys: desktop key lifecycle', () => {
 
   it('keeps create disabled at the limit after a create completes', async () => {
     keyRows = [desktopKey('1', 'laptop')];
-    openApiKeysTab();
+    openApiKeysPage();
     await keysLoaded();
     expect(createButton()!.disabled).toBe(false);
 
@@ -337,7 +371,7 @@ describe('Settings -> API Keys: desktop key lifecycle', () => {
 
   it('revoked keys do not count toward the limit', async () => {
     keyRows = [desktopKey('1', 'laptop'), desktopKey('2', 'old', { revokedAt: 1_700_100_000_000 })];
-    openApiKeysTab();
+    openApiKeysPage();
     await keysLoaded();
 
     expect(count()?.textContent).toContain('1 of 2');
@@ -346,7 +380,7 @@ describe('Settings -> API Keys: desktop key lifecycle', () => {
 
   it('revokes a desktop key through the list', async () => {
     keyRows = [desktopKey('1', 'laptop'), desktopKey('2', 'desktop')];
-    openApiKeysTab();
+    openApiKeysPage();
     await keysLoaded();
     vi.stubGlobal('confirm', () => true);
 
@@ -363,7 +397,7 @@ describe('Settings -> API Keys: desktop key lifecycle', () => {
       { id: 'a2', name: 'old-2', keyPrefix: 'wm_bbbbb', createdAt: 2, keyKind: 'api' },
       { id: 'a3', name: 'old-3', keyPrefix: 'wm_ccccc', createdAt: 3, keyKind: 'api' },
     ];
-    openApiKeysTab();
+    openApiKeysPage();
     await keysLoaded();
 
     const rows = [...list().querySelectorAll<HTMLElement>('.api-keys-item')];
@@ -386,7 +420,7 @@ describe('Settings -> API Keys: desktop key lifecycle', () => {
     createApiKey.mockImplementationOnce(async () => {
       throw new Error(code);
     });
-    openApiKeysTab();
+    openApiKeysPage();
     await keysLoaded();
 
     nameInput()!.value = 'laptop';

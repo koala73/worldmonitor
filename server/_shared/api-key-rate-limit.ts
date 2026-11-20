@@ -30,7 +30,8 @@ export const API_DAILY_TTL_SECONDS: 172800 = core.API_DAILY_TTL_SECONDS;
 export const getBurstLimiter = core.getBurstLimiter as (perMinute: number) => Promise<Ratelimit | null>;
 export const checkBurst = core.checkBurst as (perMinute: number, identity: string) => Promise<BurstDecision>;
 export const apiKeyDailyKey = core.apiKeyDailyKey as (userId: string, date?: Date) => string;
-export const reserveDailyMeter = core.reserveDailyMeter as (opts: { userId: string; allowance: number; pipeline: RateLimitPipeline; date?: Date }) => Promise<MeterResult>;
+export const apiKeyMemberDailyKey = core.apiKeyMemberDailyKey as (identity: string, memberUserId: string, date?: Date) => string;
+export const reserveDailyMeter = core.reserveDailyMeter as (opts: { userId: string; allowance: number; pipeline: RateLimitPipeline; date?: Date; memberUserId?: string }) => Promise<MeterResult>;
 export const rateLimitHeaders = core.rateLimitHeaders as (opts: { limit: number; remaining: number; resetMs: number; retryAfterSec: number; windowSec?: number }) => Record<string, string>;
 
 export const secondsUntilUtcMidnight = core.secondsUntilUtcMidnight as (now?: Date) => number;

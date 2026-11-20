@@ -52,7 +52,7 @@ on:
     # Application changes do not trigger it. The builder stage runs `COPY . .`
     # and nearly every path reaches the image, so a wide filter rebuilt the
     # multi-arch image on almost every merge (#7808 chose that). Test's
-    # unit-built-output job already runs build:pro and the vite build before
+    # unit-built-output job already builds /pro and runs the vite build before
     # merge, so what an application merge can still break here is the
     # image-only part (build:crawlable-corpus, build:sitemap, the smoke test),
     # and the next daily run finds that. No consumer needs a
@@ -124,11 +124,22 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      # Run outside Docker so the wall-clock check cannot reuse a cached layer.
+      - name: Check the crawlable live pulse before publishing
+        run: node scripts/check-crawlable-live-pulse.mjs
+
+      - name: Check the GitHub star snapshot before publishing
+        run: node scripts/github-stars-snapshot.mjs
+
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
-      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

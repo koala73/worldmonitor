@@ -27,7 +27,6 @@ const SETTLED_SELECTORS = [
   '.cable-advisory-marker.fault',
   '.protest-marker.high',
   '.outage-marker.total',
-  '.conflict-zone',
   '.iran-event-marker',
   '.earthquake-marker',
   '.nuclear-marker.active',
@@ -103,6 +102,36 @@ describe('marker pulse settle (#4669)', () => {
         );
       }
     }
+  });
+
+  it('every map-scoped infinite pulse animates only compositor properties', () => {
+    // A pulse that animates a paint property (an SVG fill, a box-shadow) cannot
+    // run on the compositor, so it restyles and repaints on the main thread every
+    // frame of the settle window. Overlay renders re-arm that window all through
+    // boot hydration. The conflict-zone fill pulse alone cost ~700 ms of style
+    // recalc at 4x CPU on a first phone visit once the map opened expanded (#10220).
+    const allowed = new Set(['opacity', 'transform', 'animation-timing-function']);
+    const pulses = [];
+    let current = '';
+    for (const line of css.split('\n')) {
+      if (/^[^\s@}].*\{/.test(line)) current = line.replace(/\s*\{.*$/, '').trim();
+      const animation = line.match(/animation:\s*([\w-]+)[^;]*\binfinite\b/);
+      // SETTLE_EXEMPT pulses run on one hovered or highlighted element, not per marker.
+      const exempt = SETTLE_EXEMPT.some((ex) => current === ex || current.endsWith(ex));
+      if (animation && !exempt && /marker|hotspot|conflict-zone|breaking-tag|dark-vessel|cable-path/i.test(current)) {
+        pulses.push({ sel: current, name: animation[1] });
+      }
+    }
+    assert.ok(pulses.length >= SETTLED_SELECTORS.length - 2, 'scan should find the marker pulses');
+    const offenders = [];
+    for (const { sel, name } of pulses) {
+      const frames = css.match(new RegExp(`@keyframes\\s+${escapeRegExp(name)}\\s*\\{([\\s\\S]*?)\\n\\}`));
+      assert.ok(frames, `expected @keyframes ${name}`);
+      for (const [, prop] of frames[1].matchAll(/([a-z-]+)\s*:/g)) {
+        if (!allowed.has(prop)) offenders.push(`${sel} → @keyframes ${name} animates ${prop}`);
+      }
+    }
+    assert.deepEqual([...new Set(offenders)], [], 'map pulses must animate opacity/transform only');
   });
 
   it('MapComponent arms the settle window on overlay renders', () => {

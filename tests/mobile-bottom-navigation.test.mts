@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
+  overlayTab,
   reconcileOverlayForTab,
   type OverlayReconcileHandlers,
 } from '../src/app/mobile-overlay-reconcile.ts';
@@ -110,6 +111,37 @@ describe('mobile primary-tab overlay reconciliation', () => {
     }
   });
 
+  it('pops an open Settings page before it dismisses or replaces Settings', () => {
+    const r = recorder('settings-section');
+    assert.equal(reconcileOverlayForTab('more', r.handlers), null);
+    assert.deepEqual(r.effects, ['dismiss:settings-section', 'dismiss:settings', 'setActive:today']);
+
+    const r2 = recorder('settings-section');
+    assert.equal(reconcileOverlayForTab('map', r2.handlers), undefined);
+    assert.deepEqual(r2.effects, ['dismiss:settings-section', 'dismiss:settings']);
+
+    const r3 = recorder('settings-section');
+    assert.equal(reconcileOverlayForTab('search', r3.handlers), 'settings');
+    assert.deepEqual(r3.effects, ['dismiss:settings-section']);
+  });
+
+  it('closes dirty Settings through its own handler while a page is open', () => {
+    const r = recorder('settings-section');
+    r.handlers.settingsHasPendingChanges = () => true;
+    assert.equal(reconcileOverlayForTab('today', r.handlers), null);
+    assert.deepEqual(r.effects, ['closeSettings', 'setActive:more']);
+  });
+
+  it('highlights the More tab for every Settings overlay and Search for search', () => {
+    for (const id of ['menu', 'region', 'settings', 'settings-section', 'settings-pending'] as const) {
+      assert.equal(overlayTab(id), 'more', id);
+    }
+    assert.equal(overlayTab('search'), 'search');
+    assert.equal(overlayTab('search-pending'), 'search');
+    assert.equal(overlayTab('map-popup'), null);
+    assert.equal(overlayTab(null), null);
+  });
+
   it('only consults the pending-changes flag for Settings itself', () => {
     // A stale flag from a previously-open Settings must not divert the menu or
     // region overlays into the draft-protection branch.
@@ -149,10 +181,37 @@ describe('mobile P0 navigation shell (#5201)', () => {
     assert.match(css, /\.mobile-tab-bar\s*\{[^}]*position:\s*fixed[^}]*z-index:\s*10003/);
   });
 
-  it('defaults first-time mobile visitors to the collapsed-map Today state before hydration', () => {
-    // The inline shell script and the hydrated reader must agree, or the map
-    // expands then snaps shut on boot.
-    assert.match(layout, /loadFromStorage<boolean>\('mobile-map-collapsed', true\)/);
-    assert.match(shell, /localStorage\.getItem\('mobile-map-collapsed'\)!=='false'/);
+  it('stacks the focus editor dialog above the fixed tab bar (#10453)', () => {
+    // It inherits .modal-overlay's 9999; on a short phone screen the tab bar
+    // (10003) then covered the editor's Save and Cancel and took their taps.
+    const rule = css.match(/\n\.focus-editor-overlay \{([^}]*)\}/);
+    assert.ok(rule, '.focus-editor-overlay rule');
+    const zIndex = Number(rule[1].match(/z-index:\s*(\d+)/)?.[1]);
+    assert.ok(zIndex > 10003, `z-index ${zIndex} is above the tab bar`);
+  });
+
+  it('shows first-time mobile visitors the map, and keeps it collapsed only for viewers who collapsed it', () => {
+    // The map is the product's first impression; a first visit landed on a
+    // paused player and a black webcam box instead. Tapping Today or the
+    // collapse control still saves 'true', so a viewer's own choice persists.
+    // The inline shell scripts and the hydrated reader must agree, or the map
+    // collapses then snaps open on boot.
+    assert.match(layout, /loadFromStorage<boolean>\('mobile-map-collapsed', false\)/);
+    const shellReads = shell.match(/localStorage\.getItem\('mobile-map-collapsed'\)[!=]==?'(?:true|false)'/g) ?? [];
+    assert.equal(shellReads.length, 2, 'both pre-paint scripts read the preference');
+    for (const read of shellReads) assert.equal(read, "localStorage.getItem('mobile-map-collapsed')==='true'");
+    assert.doesNotMatch(shell, /var mapCollapsed=true;/);
+  });
+
+  it('caps the expanded mobile map to a short strip so a content panel shows on the first screen (#10457)', () => {
+    // The Map tab opens the section fullscreen, which restates its own height,
+    // so the in-flow map never needs to fill the viewport.
+    const rule = css.match(/\n  \.map-section \{([^}]*)\}/);
+    assert.ok(rule, 'mobile .map-section rule');
+    assert.match(rule[1], /height:\s*calc\(100dvh \* 0\.32\) !important/);
+    assert.doesNotMatch(rule[1], /min-height:\s*60vh/);
+    assert.match(css, /\.map-section\.live-news-fullscreen \{\s*height: auto !important;/);
+    // The ruler's panel does not fit the strip, so it is hidden there only.
+    assert.match(css, /\.map-section:not\(\.live-news-fullscreen\) \.map-distance-control \{\s*display: none;/);
   });
 });

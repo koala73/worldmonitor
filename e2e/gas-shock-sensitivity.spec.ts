@@ -1,6 +1,7 @@
 import { test, expect } from './country-brief-fixtures';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 const profileCapture = JSON.parse(readFileSync('tests/fixtures/energy-shock/de-profile-2026-09-10.json', 'utf8'));
 const oldCapture = JSON.parse(readFileSync('tests/fixtures/energy-shock/de-shock-100-2026-09-10.json', 'utf8'));
@@ -121,10 +122,10 @@ test('gas scenario renders handler sensitivity, dates, unknowns and rejects old 
   await expect(widget).not.toContainText('9677');
   await expect(widget).toContainText('partial');
   await card.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: testInfo.outputPath('gas-desktop.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('gas-desktop.png') });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(compute).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('gas-mobile.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('gas-mobile.png') });
   lngImportsTj = 0.001;
   await compute.click();
   await expect(widget).toContainText('Monthly loss at the pre-crisis share: <0.1 terajoules');
@@ -187,15 +188,15 @@ test('Hormuz LNG renders both measured baselines for Japan and an unavailable sh
   await expect(jp.widget).not.toContainText('Assumed monthly loss');
   await expect(jp.widget).not.toContainText('assumes 30%');
   await jp.card.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: testInfo.outputPath('lng-jp-desktop.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('lng-jp-desktop.png') });
   await page.setViewportSize({ width: 390, height: 844 });
   await jp.card.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: testInfo.outputPath('lng-jp-mobile.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('lng-jp-mobile.png') });
 
   await page.setViewportSize({ width: 1280, height: 800 });
   const de = await open('DE');
   await expect(de.widget).toContainText('LNG origin share unavailable for DE; Strait of Hormuz LNG exposure is not modeled.');
   await expect(de.widget).not.toContainText('terajoules');
   await de.card.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: testInfo.outputPath('lng-de-desktop.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('lng-de-desktop.png') });
 });

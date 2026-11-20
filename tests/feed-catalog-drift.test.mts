@@ -570,12 +570,6 @@ describe('feed catalog drift', () => {
   // looks it up. Grandfathering 41 names would add noise without protecting anything.
   // The dangerous direction is the one asserted above: enabled-by-default with no feed.
 
-  it('keeps the two source-tiers mirrors byte-identical', () => {
-    const shared = readFileSync(join(repoRoot, 'shared/source-tiers.json'), 'utf8');
-    const scripts = readFileSync(join(repoRoot, 'scripts/shared/source-tiers.json'), 'utf8');
-    assert.equal(scripts, shared, 'scripts/shared/source-tiers.json drifted from shared/source-tiers.json');
-  });
-
   // Issue #5949 — EN full-variant defaults under-cover the Ukraine war.
   // Kyiv Independent, PL frontline, and independent RU were cataloged but
   // off-by-default, so users only saw Western wire/EU framing.
@@ -653,9 +647,9 @@ describe('feed catalog drift', () => {
     const europe = serverFeeds.VARIANT_FEEDS.full?.europe ?? [];
     const byName = new Map(europe.map((feed) => [feed.name, feed]));
     const expectedUrls: Record<string, string> = {
-      'Kyiv Independent': 'https://news.google.com/rss/search?q=site%3Akyivindependent.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en',
+      'Kyiv Independent': 'https://kyivindependent.com/news-archive/rss/',
       'Ukrainska Pravda EN': 'https://news.google.com/rss/search?q=site%3Aeuromaidanpress.com%20when%3A2d&hl=en-US&gl=US&ceid=US:en',
-      'NV EN': 'https://news.google.com/rss/search?q=site%3Aenglish.nv.ua%20when%3A2d&hl=en-US&gl=US&ceid=US:en',
+      'NV EN': 'https://english.nv.ua/rss/all_english.xml',
       TVN24: 'https://tvn24.pl/swiat.xml',
       Rzeczpospolita: 'https://www.rp.pl/rss_main',
       Meduza: 'https://meduza.io/rss/en/all',

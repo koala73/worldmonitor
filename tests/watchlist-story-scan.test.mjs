@@ -133,7 +133,8 @@ describe('scanAndEnqueueWatchlistStoryEvents', () => {
       pipelineCalls.push(commands);
       return commands.map((cmd) => ({ result: [cmd[1].endsWith(':h1') ? 'Reuters' : 'Other Wire'] }));
     };
-    const readStoryTracksChunked = async (hashes, pipeline) => {
+    const readStoryTracksChunked = async (hashes, pipeline, options) => {
+      assert.deepEqual(options.fields, ['title', 'currentScore', 'description', 'link']);
       order.push('track-read');
       trackReads.push({ hashes, samePipeline: pipeline === upstashPipeline });
       return hashes.map((hash) => {

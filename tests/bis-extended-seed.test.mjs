@@ -27,6 +27,7 @@ import {
   META_KEYS,
 } from '../scripts/seed-bis-extended.mjs';
 import { __testing__ as healthTesting } from '../api/health.js';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 // Minimal BIS-style SDMX CSV fixture covering:
 //   - Two DSR series per country (one private/adjusted → preferred, one
@@ -80,11 +81,11 @@ async function withRedisCapture(fetchImpl, fn) {
   process.env.UPSTASH_REDIS_REST_URL = 'https://mock.upstash.invalid';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'mock-token';
   process.env.WM_SEED_RETRY_DELAY_MS = '0';
-  globalThis.fetch = async (url, options = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, options = {}) => {
     const body = options.body ? JSON.parse(options.body) : null;
     calls.push({ url: String(url), body });
     return fetchImpl({ url: String(url), body, options });
-  };
+  });
   try {
     return await fn(calls);
   } finally {
@@ -156,10 +157,10 @@ describe('seed-bis-extended parser', () => {
     const originalFetch = globalThis.fetch;
     const originalWarn = console.warn;
     const requests = [];
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = withSeedLockFence(async (url) => {
       requests.push(String(url));
       return new Response('unavailable', { status: 503 });
-    };
+    });
     console.warn = () => {};
     try {
       await assert.rejects(fetchAll(), /All BIS extended fetches returned empty/);
@@ -292,7 +293,7 @@ describe('seed-bis-extended parser', () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://mock.upstash.invalid';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'mock-token';
     const calls = [];
-    globalThis.fetch = async (_url, opts) => {
+    globalThis.fetch = withSeedLockFence(async (_url, opts) => {
       const body = JSON.parse(opts.body);
       calls.push(body);
       return {
@@ -302,7 +303,7 @@ describe('seed-bis-extended parser', () => {
           ? body.map(([command]) => ({ result: command === 'MSET' ? 'OK' : 1 }))
           : ({ result: 'OK' }),
       };
-    };
+    });
     try {
       // 1. Fresh payload → canonical key written + per-dataset seed-meta written.
       calls.length = 0;

@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
+import { acceptTesterKeySession } from './helpers/accept-tester-key-session';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // The Global Procurement filter bar has eight controls. It must keep every
 // control inside the panel at the default 375px dashboard column, at the
@@ -60,6 +62,7 @@ test('procurement filters fit the panel at every column width', async ({ browser
     });
     await page.route(/^https?:\/\/(?!(127\.0\.0\.1:4173|localhost:4173)(?:\/|$)).*/i, (route) => route.abort());
     await page.route('**/api/**', (route) => route.fulfill({ json: {} }));
+    await acceptTesterKeySession(page);
     await page.route('**/api/bootstrap*', (route) => route.fulfill({ json: { missing: [], data: {} } }));
     await page.route('**/api/economic/v1/list-global-tenders*', (route) => route.fulfill({ json: TENDERS }));
 
@@ -71,7 +74,7 @@ test('procurement filters fit the panel at every column width', async ({ browser
         return panel.locator('.global-procurement-controls > *').count();
       }, { message: `procurement controls at ${viewport.width}px`, timeout: 90_000 })
       .toBe(8);
-    await panel.screenshot({ path: testInfo.outputPath(`procurement-${viewport.width}.png`) });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath(`procurement-${viewport.width}.png`) });
     const m = await measure(page);
     const label = `procurement at ${viewport.width}px (panel ${m.panel}px)`;
     expect.soft(m.pastEdge, `${label}: controls past the panel edge`).toEqual([]);

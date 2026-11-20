@@ -1,3 +1,4 @@
+import { bindMapControlDisclosure } from './map-control-disclosure';
 /**
  * GlobeMap - 3D interactive globe using globe.gl
  *
@@ -23,8 +24,12 @@ import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/ge
 import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import { NUCLEAR_FACILITIES, SPACEPORTS, ECONOMIC_CENTERS, CRITICAL_MINERALS, UNDERSEA_CABLES } from '@/config/geo-map';
 import { PIPELINES } from '@/config/pipelines';
-import { initI18n, t } from '@/services/i18n';
+import { getLocale, I18N_RESOURCES_LOADED_EVENT, initI18n, t } from '@/services/i18n';
+import type { ReservoirLevel } from '@/services/climate';
+import { sweptSwath, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
+import { reservoirHeadline, reservoirTone, statusLabel as reservoirStatusLabel } from './reservoir-levels-view';
 import { SITE_VARIANT } from '@/config/variant';
+import { staticAssetUrl } from '@/config/static-asset-url';
 import { getGlobeRenderScale, resolveGlobePixelRatio, resolvePerformanceProfile, subscribeGlobeRenderScaleChange, getGlobeTexture, GLOBE_TEXTURE_URLS, subscribeGlobeTextureChange, getGlobeVisualPreset, subscribeGlobeVisualPresetChange, type GlobeRenderScale, type GlobePerformanceProfile, type GlobeVisualPreset } from '@/services/globe-render-settings';
 import {
   getLayerExplanation,
@@ -40,11 +45,15 @@ import { getAuthState } from '@/services/auth-state';
 import { resolveTradeRouteSegments, type TradeRouteSegment } from '@/config/trade-routes';
 import { GAMMA_IRRADIATORS } from '@/config/irradiators';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
-import { getCountryBbox, getCountriesGeoJson, getCountryAtCoordinates, getCountryNameByCode } from '@/services/country-geometry';
+import { getCountryMapBbox, getCountriesGeoJson, getCountryAtCoordinates, getCountryNameByCode } from '@/services/country-geometry';
 import { escapeHtml } from '@/utils/sanitize';
+import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
+import { trackedSatelliteType } from '@/services/orbital/yaogan-class';
+import { installLongPressContextMenu } from '@/utils/long-press';
+import type { FocusFitBounds } from '@/utils/focus-map';
 import { corroborationLabelHtml } from '@/utils/corroboration-flag';
 import { showLayerWarning } from '@/utils/layer-warning';
-import { isMobileDevice } from '@/utils';
+import { getCSSColor, isMobileDevice } from '@/utils';
 import { setGlobeMarkerLoad } from '@/bootstrap/globe-marker-probe';
 import {
   GLOBE_MARKER_BUDGET_DESKTOP,
@@ -60,6 +69,7 @@ import type { MapLayers, Hotspot, MilitaryFlight, MilitaryVessel, MilitaryVessel
 import type { Earthquake } from '@/services/earthquakes';
 import type { AirportDelayAlert } from '@/services/aviation';
 import { MapPopup } from './MapPopup';
+import { fireDetectionPopupData } from './map-popup-fire';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { MapContainerState, MapView, TimeRange } from './MapContainer';
 import type { CountryClickPayload } from './DeckGLMap';
@@ -86,8 +96,10 @@ import {
   PremiumLayerGate,
 } from './premium-layer-gate';
 import { globeAltitudeToMapZoom, mapZoomToGlobeAltitude } from '@/utils/globe-zoom';
+import { globeCenterForOffset, isOnVisibleHemisphere, type ScreenOffset } from '@/utils/map-point-offset';
 import { headingToCompass } from '@/utils/heading-to-compass';
 import { vesselTypeLabel } from '@/utils/vessel-type-label';
+import { holdsViewportRequests, onViewportRequestsResumed } from '@/services/orbital/lookup-host';
 
 export interface GlobeMapOptions {
   onInitError?: (error: unknown) => void;
@@ -95,8 +107,18 @@ export interface GlobeMapOptions {
 }
 
 const SAT_COUNTRY_COLORS: Record<string, string> = { CN: '#ff2020', RU: '#ff8800', US: '#4488ff', EU: '#44cc44', KR: '#aa66ff', IN: '#ff66aa', TR: '#ff4466', OTHER: '#ccccff' };
-const SAT_TYPE_EMOJI: Record<string, string> = { sar: '\u{1F4E1}', optical: '\u{1F4F7}', military: '\u{1F396}', sigint: '\u{1F4FB}' };
-const SAT_TYPE_LABEL: Record<string, string> = { sar: 'SAR Imaging', optical: 'Optical Imaging', military: 'Military', sigint: 'SIGINT' };
+const SAT_TYPE_EMOJI: Record<string, string> = { sar: '\u{1F4E1}', optical: '\u{1F4F7}', military: '\u{1F396}', sigint: '\u{1F4FB}', signals: '\u{1F4FB}' };
+const SAT_TYPE_LABEL: Record<string, string> = { sar: 'SAR Imaging', optical: 'Optical Imaging', military: 'Military', sigint: 'SIGINT', signals: 'Signals' };
+/** Yaogan signals objects relabelled, unidentified Yaogan objects dropped. */
+function orbitalLayerSatellites(positions: SatellitePosition[]): SatellitePosition[] {
+  const out: SatellitePosition[] = [];
+  for (const s of positions) {
+    const type = trackedSatelliteType(s.name, s.type);
+    if (type === null) continue;
+    out.push(type === s.type ? s : { ...s, type });
+  }
+  return out;
+}
 const SAT_OPERATOR_NAME: Record<string, string> = { CN: 'China', RU: 'Russia', US: 'United States', EU: 'ESA / EU', KR: 'South Korea', IN: 'India', TR: 'Turkey', OTHER: 'Other' };
 
 function saveWebcamMarkerMode(mode: string): void {
@@ -209,6 +231,8 @@ interface FireMarker extends BaseMarker {
   id: string;
   region: string;
   brightness: number;
+  /** The map fire this marker was made from, for the satellite detection popup. */
+  detection: unknown;
 }
 interface ProtestMarker extends BaseMarker {
   _kind: 'protest';
@@ -385,6 +409,10 @@ interface NewsLocationMarker extends BaseMarker {
   threatLevel: string;
   corroboration?: NewsLocationInput['corroboration'];
 }
+interface OrbitalTargetMarker extends BaseMarker {
+  _kind: 'orbitalTarget';
+  lines: string[];
+}
 interface FlashMarker extends BaseMarker {
   _kind: 'flash';
   id: string;
@@ -413,6 +441,11 @@ interface AisDisruptionMarker extends BaseMarker {
   type: AisDisruptionType;
   severity: AisDisruptionEvent['severity'];
   description: string;
+}
+interface ReservoirMarker extends BaseMarker {
+  _kind: 'reservoirLevel';
+  id: string;
+  reservoir: ReservoirLevel;
 }
 interface UkmtoMarker extends BaseMarker {
   _kind: 'ukmtoIncident';
@@ -458,7 +491,7 @@ interface GlobePath {
   id: string;
   name: string;
   points: number[][];
-  pathType: 'cable' | 'oil' | 'gas' | 'products' | 'orbit' | 'stormTrack' | 'stormHistory';
+  pathType: 'cable' | 'oil' | 'gas' | 'products' | 'orbit' | 'stormTrack' | 'stormHistory' | 'orbitalTrack' | 'orbitalEdge' | 'orbitalOutline';
   status: string;
   country?: string;
   windKt?: number;
@@ -466,7 +499,7 @@ interface GlobePath {
 interface GlobePolygon {
   coords: number[][][];
   name: string;
-  _kind: 'cii' | 'conflict' | 'imageryFootprint' | 'forecastCone' | 'scenario';
+  _kind: 'cii' | 'conflict' | 'imageryFootprint' | 'forecastCone' | 'scenario' | 'focusChosen' | 'focusNeighbour' | 'orbitalFootprint' | 'orbitalSwept';
   level?: string;
   score?: number;
 
@@ -481,7 +514,9 @@ interface GlobePolygon {
   previewUrl?: string;
 }
 type GlobeMarker =
+  | OrbitalTargetMarker
   | UkmtoMarker
+  | ReservoirMarker
   | ConflictMarker | HotspotMarker | FlightMarker | VesselMarker | ClusterMarker
   | WeatherMarker | NaturalMarker | IranMarker | OutageMarker | TrafficAnomalyMarker | DdosHitMarker
   | CyberMarker | FireMarker | ProtestMarker
@@ -511,18 +546,31 @@ interface GlobeControlsLike {
 // lockstep with the animation.
 const SET_CENTER_ROTATION_MS = 1200;
 
+/** An Orbital Watch colour token at an alpha, read per call so a theme switch repaints the orbital overlay. */
+function orbitalColor(token: '--green' | '--text' | '--text-dim', alpha: number): string {
+  const m = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(getCSSColor(token));
+  return m ? `rgba(${parseInt(m[1]!, 16)},${parseInt(m[2]!, 16)},${parseInt(m[3]!, 16)},${alpha})` : getCSSColor(token);
+}
+
 export class GlobeMap {
   private container: HTMLElement;
+  private controlDisclosureCleanups: (() => void)[] = [];
   private globe: GlobeInstance | null = null;
   private initPromise: Promise<void> = Promise.resolve();
   private unsubscribeGlobeQuality: (() => void) | null = null;
   private unsubscribeGlobeTexture: (() => void) | null = null;
   private unsubscribeVisualPreset: (() => void) | null = null;
+  private stopViewportResume: (() => void) | null = null;
   private premiumLayerGate: PremiumLayerGate | null = null;
   private pendingPremiumLayerChanges = new Set<keyof MapLayers>();
   private savedDefaultMaterial: any = null;
   private controls: GlobeControlsLike | null = null;
+  private zoomControlsEl: HTMLElement | null = null;
+  private mountedMapControl: HTMLElement | null = null;
+  private pendingMarkerGestureCleanup: (() => void) | null = null;
   private renderPaused = false;
+  private autoRotateHeld = false;
+
   private outerGlow: any = null;
   private innerGlow: any = null;
   private starField: any = null;
@@ -554,6 +602,9 @@ export class GlobeMap {
   private clusterMarkers: ClusterMarker[] = [];
   private clusterData: Map<string, MilitaryVesselCluster> = new Map();
   private popup: MapPopup | null = null;
+  // Bumped by every reservoir reveal, marker click and drag start, so a delayed reveal from a
+  // panel row cannot replace a popup the user opened after it.
+  private reservoirRevealSeq = 0;
   private weatherMarkers: WeatherMarker[] = [];
   private naturalMarkers: NaturalMarker[] = [];
   private iranMarkers: IranMarker[] = [];
@@ -589,17 +640,25 @@ export class GlobeMap {
   private repairShipMarkers: RepairShipMarker[] = [];
   private aisMarkers: AisDisruptionMarker[] = [];
   private ukmtoMarkers: UkmtoMarker[] = [];
+  private reservoirMarkers: ReservoirMarker[] = [];
   private satelliteMarkers: SatelliteMarker[] = [];
   private satelliteTrailPaths: GlobePath[] = [];
   private stormTrackPaths: GlobePath[] = [];
   private stormConePolygons: GlobePolygon[] = [];
+  private orbitalTrackPaths: GlobePath[] = [];
+  private orbitalOutlinePaths: GlobePath[] = [];
+  private orbitalFootprintPolygons: GlobePolygon[] = [];
+  private orbitalTrack: PassTrack | null = null;
+  private orbitalTrackMarker: TrackPoint | null = null;
+  private orbitalTarget: OrbitalTargetMarker | null = null;
+  private orbitalReplayPaths: GlobePath[] = [];
+  private orbitalSweptPolygons: GlobePolygon[] = [];
+  private orbitalSweepFlushAt = 0;
   private satelliteFootprintMarkers: SatFootprintMarker[] = [];
   private imagerySceneMarkers: ImagerySceneMarker[] = [];
   private webcamMarkers: (WebcamMarkerData | WebcamClusterData)[] = [];
   /** Layers the marker budget is currently withholding markers from (#5368). */
   private markerTruncation: Record<string, GlobeLayerTruncation> = {};
-  /** HTML markers handed to globe.gl on the last flush — the per-frame cost driver. */
-  private renderedMarkerCount = 0;
   private markerBudgetProfile: 'mobile' | 'desktop' = 'desktop';
   private webcamMarkerMode: string = (() => {
     try {
@@ -622,6 +681,8 @@ export class GlobeMap {
   private ciiScoresMap: Map<string, { score: number; level: string }> = new Map();
   private countriesGeoData: FeatureCollection<Geometry> | null = null;
   private scenarioPolygons: GlobePolygon[] = [];
+  /** Dashboard focus outline (#10453); polygons are built in flushPolygons once countries load. */
+  private focusOutline: { chosen: Set<string>; neighbours: Set<string> } | null = null;
 
   // Current layers state
   private layers: MapLayers;
@@ -638,6 +699,16 @@ export class GlobeMap {
   // Overlay UI elements
   private layerTogglesEl: HTMLElement | null = null;
   private tooltipEl: HTMLElement | null = null;
+  private satelliteSitesAbort: AbortController | null = null;
+  private satelliteSitesView: {
+    relabelSatelliteSites(host: HTMLElement): void;
+    satelliteSitesOutdated(host: HTMLElement, noradId: string): boolean;
+    advanceSatelliteSites(host: HTMLElement, nowMs: number): 'current' | 'rescan';
+  } | null = null;
+  private openSatelliteCard: { id: string; name: string; el: HTMLElement } | null = null;
+  private satelliteSitesClock: ReturnType<typeof setInterval> | null = null;
+  private satelliteSitesScanning = false;
+  private satelliteCardI18nListener: (() => void) | null = null;
   private tooltipHideTimer: ReturnType<typeof setTimeout> | null = null;
   private satHoverStyle: HTMLStyleElement | null = null;
   private readonly chrome: boolean;
@@ -654,6 +725,7 @@ export class GlobeMap {
   private viewportAutoRotateBeforeMove: boolean | null = null;
   private viewportMovementGeneration = 0;
   private onMapContextMenuCb?: (payload: { lat: number; lon: number; screenX: number; screenY: number }) => void;
+  private removeLongPress: (() => void) | null = null;
   private readonly handleContextMenu = (e: MouseEvent): void => {
     e.preventDefault();
     if (!this.onMapContextMenuCb || !this.globe) return;
@@ -675,6 +747,11 @@ export class GlobeMap {
 
     this.container.classList.add('globe-mode');
     this.container.style.cssText = 'width:100%;height:100%;background:#000;position:relative;';
+
+    // An imagery search held while the satellite pass lookup was open runs for where the globe is now.
+    this.stopViewportResume = onViewportRequestsResumed(() => {
+      if (!this.destroyed && this.layers.satellites) void this.fetchImageryForViewport();
+    });
 
     this.initPromise = this.initGlobe();
     this.initPromise.catch(err => {
@@ -733,7 +810,7 @@ export class GlobeMap {
 
     const initialTexture = getGlobeTexture();
     globe
-      .globeImageUrl(GLOBE_TEXTURE_URLS[initialTexture])
+      .globeImageUrl(staticAssetUrl(GLOBE_TEXTURE_URLS[initialTexture]))
       .backgroundImageUrl('')
       .atmosphereColor('#4466cc')
       .atmosphereAltitude(0.18)
@@ -748,7 +825,7 @@ export class GlobeMap {
     // surviving/second pointer's position in mixed mouse|pen + touch gestures —
     // crashes reading undefined.x on touchscreen laptops (WORLDMONITOR-QD).
     guardOrbitControlsPointerTracking(controls);
-    controls.autoRotate = !desktop;
+    controls.autoRotate = !desktop && !this.autoRotateHeld;
     controls.autoRotateSpeed = 0.3;
     controls.enablePan = false;
     controls.enableZoom = true;
@@ -758,6 +835,7 @@ export class GlobeMap {
     controls.enableDamping = !desktop;
 
     this.controlsStartHandler = () => {
+      this.reservoirRevealSeq++;
       if (this.viewportTarget) this.settleViewportMovement(false);
     };
     controls.addEventListener('start', this.controlsStartHandler);
@@ -815,7 +893,7 @@ export class GlobeMap {
 
     // Subscribe to texture changes (kept as-is)
     this.unsubscribeGlobeTexture = subscribeGlobeTextureChange((texture) => {
-      if (this.globe) this.globe.globeImageUrl(GLOBE_TEXTURE_URLS[texture]);
+      if (this.globe) this.globe.globeImageUrl(staticAssetUrl(GLOBE_TEXTURE_URLS[texture]));
     });
 
     // Pause auto-rotate on user interaction; resume after 60 s idle (like Sentinel)
@@ -833,7 +911,7 @@ export class GlobeMap {
       if (this.renderPaused) return;
       if (this.autoRotateTimer) clearTimeout(this.autoRotateTimer);
       this.autoRotateTimer = setTimeout(() => {
-        if (this.renderPaused) return;
+        if (this.renderPaused || this.orbitalTarget || this.autoRotateHeld) return;
         if (this.viewportAutoRotateBeforeMove !== null) {
           this.viewportAutoRotateBeforeMove = !desktop;
         } else {
@@ -846,16 +924,14 @@ export class GlobeMap {
     if (canvas) {
       // Wake globe on any user interaction (idle rendering optimization)
       const wakeOnInteraction = () => this.wakeGlobe();
-      canvas.addEventListener('mousedown', () => { pauseAutoRotate(); wakeOnInteraction(); });
-      canvas.addEventListener('touchstart', () => { pauseAutoRotate(); wakeOnInteraction(); }, { passive: true });
+      canvas.addEventListener('pointerdown', () => { pauseAutoRotate(); wakeOnInteraction(); });
       canvas.addEventListener('wheel', wakeOnInteraction, { passive: true });
       let lastMoveWake = 0;
       canvas.addEventListener('mousemove', () => {
         const now = performance.now();
         if (now - lastMoveWake > 500) { lastMoveWake = now; wakeOnInteraction(); }
       }, { passive: true });
-      canvas.addEventListener('mouseup', scheduleResumeAutoRotate);
-      canvas.addEventListener('touchend', scheduleResumeAutoRotate);
+      canvas.addEventListener('pointerup', scheduleResumeAutoRotate);
       canvas.addEventListener('webglcontextlost', (e) => {
         e.preventDefault();
         this.webglLost = true;
@@ -869,6 +945,7 @@ export class GlobeMap {
     }
 
     this.container.addEventListener('contextmenu', this.handleContextMenu);
+    this.removeLongPress = installLongPressContextMenu(this.container);
 
     // Wire HTML marker layer
     globe
@@ -911,9 +988,13 @@ export class GlobeMap {
       .pathPoints((d: GlobePath) => d?.points ?? [])
       .pathPointLat((p: number[]) => p[1])
       .pathPointLng((p: number[]) => p[0])
-      .pathPointAlt((p: number[], _idx: number, path: object) =>
-        (path as GlobePath)?.pathType === 'orbit' && p.length > 2 ? (p[2] ?? 0) / 6371 : 0
-      )
+      .pathPointAlt((p: number[], _idx: number, path: object) => {
+        const pathType = (path as GlobePath)?.pathType;
+        if (pathType === 'orbitalTrack') return 0.007;
+        if (pathType === 'orbitalEdge') return 0.008;
+        if (pathType === 'orbitalOutline') return 0.006;
+        return pathType === 'orbit' && p.length > 2 ? (p[2] ?? 0) / 6371 : 0;
+      })
       .pathColor((d: GlobePath) => {
         if (!d) return 'rgba(180,160,255,0.6)';
         if (d.pathType === 'orbit') {
@@ -928,6 +1009,9 @@ export class GlobeMap {
         if (d.pathType === 'oil')   return 'rgba(255,140,0,0.6)';
         if (d.pathType === 'gas')   return 'rgba(80,220,120,0.6)';
         if (d.pathType === 'stormTrack') return 'rgba(255,100,100,0.8)';
+        if (d.pathType === 'orbitalTrack') return orbitalColor('--text-dim', 0.9);
+        if (d.pathType === 'orbitalEdge') return orbitalColor('--green', 1);
+        if (d.pathType === 'orbitalOutline') return orbitalColor('--green', 0.55);
         if (d.pathType === 'stormHistory') {
           const w = d.windKt || 0;
           if (w >= 137) return 'rgba(255,96,96,0.8)';
@@ -942,7 +1026,9 @@ export class GlobeMap {
         if (!d) return 0.6;
         if (d.pathType === 'orbit') return 0.3;
         if (d.pathType === 'cable') return 0.3;
-        if (d.pathType === 'stormTrack' || d.pathType === 'stormHistory') return 1.2;
+        if (d.pathType === 'orbitalEdge') return 2.6;
+        if (d.pathType === 'stormTrack' || d.pathType === 'stormHistory' || d.pathType === 'orbitalTrack') return 1.2;
+        if (d.pathType === 'orbitalOutline') return 0.8;
         return 0.6;
       })
       .pathDashLength((d: GlobePath) => {
@@ -950,7 +1036,7 @@ export class GlobeMap {
         if (d.pathType === 'orbit') return 0.4;
         if (d.pathType === 'cable') return 1;
         if (d.pathType === 'stormTrack') return 0.8;
-        if (d.pathType === 'stormHistory') return 1;
+        if (d.pathType === 'stormHistory' || d.pathType === 'orbitalTrack' || d.pathType === 'orbitalEdge' || d.pathType === 'orbitalOutline') return 1;
         return 0.6;
       })
       .pathDashGap((d: GlobePath) => {
@@ -958,7 +1044,7 @@ export class GlobeMap {
         if (d.pathType === 'orbit') return 0.15;
         if (d.pathType === 'cable') return 0;
         if (d.pathType === 'stormTrack') return 0.4;
-        if (d.pathType === 'stormHistory') return 0;
+        if (d.pathType === 'stormHistory' || d.pathType === 'orbitalTrack' || d.pathType === 'orbitalEdge' || d.pathType === 'orbitalOutline') return 0;
         return 0.25;
       })
       .pathDashAnimateTime((d: GlobePath) => {
@@ -966,10 +1052,18 @@ export class GlobeMap {
         if (d.pathType === 'orbit') return 0;
         if (d.pathType === 'cable') return 0;
         if (d.pathType === 'stormTrack') return 3000;
-        if (d.pathType === 'stormHistory') return 0;
+        if (d.pathType === 'stormHistory' || d.pathType === 'orbitalTrack' || d.pathType === 'orbitalEdge' || d.pathType === 'orbitalOutline') return 0;
         return 5000;
       })
       .pathLabel((d: GlobePath) => escapeHtml(d?.name ?? ''));
+
+    (globe as any)
+      .pointsData([])
+      .pointLat((d: TrackPoint) => d.lat)
+      .pointLng((d: TrackPoint) => d.lon)
+      .pointColor(() => orbitalColor('--text', 1))
+      .pointAltitude(() => 0.01)
+      .pointRadius(() => 0.5);
 
     // Polygon accessors — set once
     (globe as any)
@@ -979,7 +1073,10 @@ export class GlobeMap {
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_CAP[d.intensity!] ?? GlobeMap.CONFLICT_CAP.low;
         if (d._kind === 'imageryFootprint') return 'rgba(0,0,0,0)';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.2)';
+        if (d._kind === 'orbitalFootprint') return orbitalColor('--green', 0.07);
+        if (d._kind === 'orbitalSwept') return orbitalColor('--green', 0.24);
         if (d._kind === 'scenario') return 'rgba(220,60,40,0.3)';
+        if (d._kind === 'focusChosen' || d._kind === 'focusNeighbour') return '';
         return 'rgba(255,60,60,0.15)';
       })
       .polygonSideColor((d: GlobePolygon) => {
@@ -987,7 +1084,9 @@ export class GlobeMap {
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_SIDE[d.intensity!] ?? GlobeMap.CONFLICT_SIDE.low;
         if (d._kind === 'imageryFootprint') return 'rgba(0,0,0,0)';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.1)';
+        if (d._kind === 'orbitalFootprint' || d._kind === 'orbitalSwept') return 'rgba(0,0,0,0)';
         if (d._kind === 'scenario') return 'rgba(0,0,0,0)';
+        if (d._kind === 'focusChosen' || d._kind === 'focusNeighbour') return '';
         return 'rgba(255,60,60,0.08)';
       })
       .polygonStrokeColor((d: GlobePolygon) => {
@@ -995,12 +1094,18 @@ export class GlobeMap {
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_STROKE[d.intensity!] ?? GlobeMap.CONFLICT_STROKE.low;
         if (d._kind === 'imageryFootprint') return '#00b4ff';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.5)';
+        if (d._kind === 'orbitalFootprint' || d._kind === 'orbitalSwept') return 'rgba(0,0,0,0)';
         if (d._kind === 'scenario') return 'transparent';
+        if (d._kind === 'focusChosen') return GlobeMap.FOCUS_CHOSEN_STROKE;
+        if (d._kind === 'focusNeighbour') return GlobeMap.FOCUS_NEIGHBOUR_STROKE;
         return '#ff4444';
       })
       .polygonAltitude((d: GlobePolygon) => {
         if (d._kind === 'cii') return 0.002;
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_ALT[d.intensity!] ?? GlobeMap.CONFLICT_ALT.low;
+        // Above the highest conflict cap (0.006), chosen above neighbours.
+        if (d._kind === 'focusChosen') return 0.008;
+        if (d._kind === 'focusNeighbour') return 0.007;
         return 0.005;
       })
       .polygonLabel((d: GlobePolygon) => {
@@ -1091,7 +1196,7 @@ export class GlobeMap {
 
   private buildMarkerElement(d: GlobeMarker): HTMLElement {
     const el = document.createElement('div');
-    el.style.cssText = 'pointer-events:auto;cursor:pointer;user-select:none;';
+    el.style.cssText = 'pointer-events:auto;cursor:pointer;user-select:none;touch-action:none;';
 
     if (d._kind === 'conflict') {
       const size = Math.min(12, 6 + (d.fatalities ?? 0) * 0.4);
@@ -1213,6 +1318,18 @@ export class GlobeMap {
       const intensity = d.brightness > 400 ? '#ff2020' : d.brightness > 330 ? '#ff6600' : '#ffaa00';
       setTrustedHtml(el, trustedHtml(GlobeMap.wrapHit(`<div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:${intensity};text-shadow:0 0 4px ${intensity}88;">🔥</div>`), "legacy direct innerHTML migration"));
       el.title = `Fire — ${d.region}`;
+      // A satellite detection opens the fire popup, so it is a button the keyboard can reach too.
+      if (fireDetectionPopupData(d.detection)) {
+        el.setAttribute('role', 'button');
+        el.tabIndex = 0;
+        el.setAttribute('aria-label', el.title);
+        el.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          event.stopPropagation();
+          this.handleMarkerClick(d, el);
+        });
+      }
     } else if (d._kind === 'protest') {
       const typeColors: Record<string, string> = {
         riot: '#ff3030', protest: '#ffaa00', strike: '#44aaff',
@@ -1337,6 +1454,15 @@ export class GlobeMap {
           <div style="position:absolute;inset:-5px;border-radius:50%;background:${tc}22;${this.pulseStyle('1.8s')}"></div>
         </div>`, "legacy direct innerHTML migration"));
       el.title = d.title;
+    } else if (d._kind === 'reservoirLevel') {
+      const hit = document.createElement('div');
+      hit.style.cssText = 'width:20px;height:20px;display:flex;align-items:center;justify-content:center';
+      const dot = document.createElement('div');
+      dot.className = `wl-globe-dot wl-tone-${reservoirTone(d.reservoir.status)}`;
+      hit.appendChild(dot);
+      el.appendChild(hit);
+      el.title = `${d.reservoir.name} · ${reservoirStatusLabel(d.reservoir, t)}`;
+      el.setAttribute('aria-label', el.title);
     } else if (d._kind === 'ukmtoIncident') {
       el.textContent = '⚓';
       el.title = ukmtoIncidentLabel(d.incident);
@@ -1365,6 +1491,9 @@ export class GlobeMap {
     } else if (d._kind === 'webcam-cluster') {
       setTrustedHtml(el, trustedHtml(GlobeMap.wrapHit(`<span style="background:#00d4ff33;border:1px solid #00d4ff88;border-radius:12px;padding:2px 7px;font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:bold;color:#00d4ff;">${d.count}</span>`), "legacy direct innerHTML migration"));
       el.title = `${d.count} webcams`;
+    } else if (d._kind === 'orbitalTarget') {
+      el.style.pointerEvents = 'none';
+      el.replaceChildren(GlobeMap.orbitalReticle(d.lines));
     } else if (d._kind === 'flash') {
       el.style.pointerEvents = 'none';
       setTrustedHtml(el, trustedHtml(`
@@ -1376,8 +1505,52 @@ export class GlobeMap {
         </div>`, "legacy direct innerHTML migration"));
     }
 
+    // HTML markers sit above the canvas that owns OrbitControls. Preserve a
+    // press as a click; only capture its pointer on the canvas once it is a drag.
+    let dragged = false;
+    el.addEventListener('wheel', (event) => {
+      const canvas = this.container.querySelector('canvas');
+      if (!canvas || this.destroyed) return;
+      event.preventDefault();
+      event.stopPropagation();
+      canvas.dispatchEvent(new WheelEvent('wheel', event));
+    }, { passive: false });
+    el.addEventListener('pointerdown', (down) => {
+      if (!down.isPrimary || down.button !== 0 || this.destroyed) return;
+      this.pendingMarkerGestureCleanup?.();
+      dragged = false;
+      const canvas = this.container.querySelector('canvas');
+      if (!canvas) return;
+      const doc = el.ownerDocument;
+      const cleanup = () => {
+        doc.removeEventListener('pointermove', move);
+        doc.removeEventListener('pointerup', end);
+        doc.removeEventListener('pointercancel', end);
+        this.pendingMarkerGestureCleanup = null;
+      };
+      const end = (event: PointerEvent) => {
+        if (event.pointerId === down.pointerId) cleanup();
+      };
+      const move = (event: PointerEvent) => {
+        if (event.pointerId !== down.pointerId) return;
+        // A mouse release outside the document may not deliver pointerup here.
+        if (event.buttons === 0) { cleanup(); return; }
+        if (Math.hypot(event.clientX - down.clientX, event.clientY - down.clientY) < 4) return;
+        dragged = true;
+        cleanup();
+        // OrbitControls captures the real pointer, then receives subsequent
+        // native moves/up, including when the pointer leaves the marker.
+        canvas.dispatchEvent(new PointerEvent('pointerdown', down));
+        canvas.dispatchEvent(new PointerEvent('pointermove', event));
+      };
+      doc.addEventListener('pointermove', move);
+      doc.addEventListener('pointerup', end);
+      doc.addEventListener('pointercancel', end);
+      this.pendingMarkerGestureCleanup = cleanup;
+    });
     el.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (dragged) return;
       this.handleMarkerClick(d, el);
     });
 
@@ -1385,6 +1558,37 @@ export class GlobeMap {
   }
 
   private handleMarkerClick(d: GlobeMarker, anchor: HTMLElement): void {
+    this.reservoirRevealSeq++;
+    if (d._kind === 'datacenter' && this.popup) {
+      const dc = AI_DATA_CENTERS.find(center => center.id === d.id);
+      if (dc) {
+        const rect = anchor.getBoundingClientRect();
+        const containerRect = this.container.getBoundingClientRect();
+        this.hideTooltip();
+        this.popup.show({ type: 'datacenter', data: dc,
+          x: rect.left - containerRect.left + rect.width / 2, y: rect.top - containerRect.top });
+        return;
+      }
+    }
+    if (d._kind === 'reservoirLevel' && this.popup) {
+      const rect = anchor.getBoundingClientRect();
+      const containerRect = this.container.getBoundingClientRect();
+      this.hideTooltip();
+      this.popup.show({ type: 'reservoirLevel', data: d.reservoir,
+        x: rect.left - containerRect.left + rect.width / 2, y: rect.top - containerRect.top });
+      return;
+    }
+    if (d._kind === 'fire' && this.popup) {
+      const detection = fireDetectionPopupData(d.detection);
+      if (detection) {
+        const rect = anchor.getBoundingClientRect();
+        const containerRect = this.container.getBoundingClientRect();
+        this.hideTooltip();
+        this.popup.show({ type: 'fireDetection', data: detection,
+          x: rect.left - containerRect.left + rect.width / 2, y: rect.top - containerRect.top });
+        return;
+      }
+    }
     if (d._kind === 'crossBorder' && this.popup) {
       const rect = anchor.getBoundingClientRect();
       const containerRect = this.container.getBoundingClientRect();
@@ -1720,6 +1924,9 @@ export class GlobeMap {
       html = `<span style="color:${sc};font-weight:bold;">⛴ ${esc(typeLabel)}</span>` +
              `<br><span style="opacity:.7;">${esc(d.name)}</span>` +
              `<br><span style="opacity:.5;">${esc(d.severity)} · ${esc(d.description.slice(0, 60))}</span>`;
+    } else if (d._kind === 'reservoirLevel') {
+      const headline = reservoirHeadline(d.reservoir, { t, locale: getLocale(), nowMs: Date.now() });
+      html = `<strong>${esc(d.reservoir.name)}</strong><br>${esc(reservoirStatusLabel(d.reservoir, t))} · ${esc(headline)}`;
     } else if (d._kind === 'ukmtoIncident') {
       html = `<strong>${esc(ukmtoIncidentLabel(d.incident))}</strong><br>${esc(d.incident.description)}`;
     } else if (d._kind === 'newsLocation') {
@@ -1734,7 +1941,10 @@ export class GlobeMap {
       const operatorName = SAT_OPERATOR_NAME[d.country] || getCountryNameByCode(d.country) || d.country;
       const overHit = getCountryAtCoordinates(d._lat, d._lng);
       const overLabel = overHit ? overHit.name : 'Ocean';
-      html = `<div style="min-width:220px;">` +
+      if (ORBITAL_WATCH_ENABLED) {
+        el.classList.add('osat-card');
+        html = `<div style="min-width:220px;"><div data-osat-card-body>${this.satelliteCardBodyHtml(d)}</div><div data-osat-sites></div></div>`;
+      } else html = `<div style="min-width:220px;">` +
         `<span style="color:${sc};font-weight:bold;font-size:calc(12px * var(--wm-panel-effective-scale, 1));">${SAT_TYPE_EMOJI[d.type] || '\u{1F6F0}'} ${esc(d.name)}</span>` +
         `<div style="opacity:.5;font-size:calc(10px * var(--wm-panel-effective-scale, 1));margin:2px 0 6px;">NORAD ${esc(d.id)}</div>` +
         `<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:calc(11px * var(--wm-panel-effective-scale, 1));">` +
@@ -1877,7 +2087,9 @@ export class GlobeMap {
     el.addEventListener('mouseenter', () => {
       if (this.tooltipHideTimer) { clearTimeout(this.tooltipHideTimer); this.tooltipHideTimer = null; }
     });
+    const pinnedCard = ORBITAL_WATCH_ENABLED && d._kind === 'satellite';
     el.addEventListener('mouseleave', () => {
+      if (pinnedCard) return;
       this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), 2000);
     });
 
@@ -1901,7 +2113,15 @@ export class GlobeMap {
     if (this.tooltipHideTimer) clearTimeout(this.tooltipHideTimer);
     const richKinds = new Set(['satellite', 'flightDelay', 'cableAdvisory', 'conflictZone', 'nuclearSite', 'spaceport', 'economic', 'datacenter', 'imageryScene', 'repairShip', 'aisDisruption']);
     const hideDelay = d._kind === 'webcam' ? 8000 : d._kind === 'webcam-cluster' ? 12000 : richKinds.has(d._kind) ? 6000 : 3500;
-    this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), hideDelay);
+    if (!pinnedCard) this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), hideDelay);
+    if (pinnedCard && d._kind === 'satellite') {
+      this.openSatelliteCard = { id: d.id, name: d.name, el };
+      // Countdowns move and passed sites drop off while the card stays open.
+      this.satelliteSitesClock = setInterval(() => this.advanceSatelliteSites(), 30_000);
+      this.satelliteCardI18nListener = () => this.relabelSatelliteCard();
+      window.addEventListener(I18N_RESOURCES_LOADED_EVENT, this.satelliteCardI18nListener);
+      this.fillSatelliteSites(el, d.id, d.name);
+    }
 
     if (d._kind === 'webcam-cluster') {
       const tooltipEl = el;
@@ -1975,7 +2195,107 @@ export class GlobeMap {
     }
   }
 
+  /** The Orbital Watch satellite card's header and detail grid, in the current language. */
+  private satelliteCardBodyHtml(d: SatelliteMarker): string {
+    const k = 'orbitalWatch.satelliteSites.card';
+    const altBand = d.alt < 2000 ? 'LEO' : d.alt < 35786 ? 'MEO' : 'GEO';
+    const operatorName = SAT_OPERATOR_NAME[d.country] || getCountryNameByCode(d.country) || d.country;
+    const overHit = getCountryAtCoordinates(d._lat, d._lng);
+    const typeKey = `${k}.types.${d.type}`;
+    const typeLabel = t(typeKey);
+    const row = (label: string, value: string) => `<span class="osat-meta">${escapeHtml(label)}</span><span>${escapeHtml(value)}</span>`;
+    return `<span class="osat-name" style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));">${escapeHtml(d.name)}</span>` +
+      `<div class="osat-meta" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));margin:2px 0 6px;">${escapeHtml(t(`${k}.norad`, { id: d.id }))}</div>` +
+      `<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:calc(11px * var(--wm-panel-effective-scale, 1));">` +
+      row(t(`${k}.type`), typeLabel === typeKey ? (SAT_TYPE_LABEL[d.type] || d.type) : typeLabel) +
+      row(t(`${k}.operator`), operatorName) +
+      row(t(`${k}.over`), overHit ? overHit.name : t(`${k}.ocean`)) +
+      row(t(`${k}.altBand`), `${altBand} \u00B7 ${Math.round(d.alt)} km`) +
+      row(t(`${k}.inclination`), `${d.inclination.toFixed(1)}\u00B0`) +
+      row(t(`${k}.velocity`), `${d.velocity.toFixed(1)} km/s`) +
+      `</div>`;
+  }
+
+  /**
+   * Redraws the open Orbital Watch satellite card from the layer's current marker,
+   * so its position, labels and language follow data refreshes. Closes the card
+   * when the satellite has left the layer.
+   */
+  private refreshSatelliteCard(): void {
+    const open = this.openSatelliteCard;
+    if (!open || this.tooltipEl !== open.el) return;
+    const marker = this.satelliteMarkers.find((m) => m.id === open.id);
+    if (!marker) {
+      this.hideTooltip();
+      return;
+    }
+    const body = open.el.querySelector<HTMLElement>('[data-osat-card-body]');
+    if (body) setTrustedHtml(body, trustedHtml(this.satelliteCardBodyHtml(marker), 'satellite card fields escaped with escapeHtml'));
+    // The layer swapped in a new element set for this satellite: drop the old scan and rescan.
+    const host = open.el.querySelector<HTMLElement>('[data-osat-sites]');
+    if (host && this.satelliteSitesView?.satelliteSitesOutdated(host, open.id)) this.fillSatelliteSites(open.el, open.id, open.name);
+  }
+
+  private advanceSatelliteSites(): void {
+    const open = this.openSatelliteCard;
+    const host = open?.el.querySelector<HTMLElement>('[data-osat-sites]');
+    if (!open || !host || this.tooltipEl !== open.el || !this.satelliteSitesView || this.satelliteSitesScanning) return;
+    if (this.satelliteSitesView.advanceSatelliteSites(host, Date.now()) === 'rescan') this.fillSatelliteSites(open.el, open.id, open.name);
+  }
+
+  /** The full locale arrived after the card opened: redraw the header and the sites section in it. */
+  private relabelSatelliteCard(): void {
+    this.refreshSatelliteCard();
+    const host = this.openSatelliteCard?.el.querySelector<HTMLElement>('[data-osat-sites]');
+    if (!host) return;
+    if (host.dataset.osatNote === 'viewFailed') host.firstElementChild!.textContent = t('orbitalWatch.satelliteSites.viewFailed');
+    else this.satelliteSitesView?.relabelSatelliteSites(host);
+  }
+
+  private fillSatelliteSites(card: HTMLElement, noradId: string, name: string): void {
+    const host = card.querySelector<HTMLElement>('[data-osat-sites]');
+    if (!host) return;
+    this.satelliteSitesAbort?.abort();
+    const abort = new AbortController();
+    this.satelliteSitesAbort = abort;
+    this.satelliteSitesScanning = true;
+    void import('./orbital-satellite-sites-view')
+      .then((view) => {
+        this.satelliteSitesView = view;
+        return view.renderSatelliteSites(host, noradId, name, abort.signal);
+      })
+      .then(() => {
+        if (abort.signal.aborted || !card.isConnected) return;
+        const cr = this.container.getBoundingClientRect();
+        card.style.top = Math.max(4, Math.min(card.offsetTop, cr.height - card.offsetHeight - 4)) + 'px';
+      })
+      .catch((err) => {
+        console.warn('[orbital] satellite sites view failed', err);
+        if (abort.signal.aborted || !card.isConnected) return;
+        const note = document.createElement('div');
+        note.className = 'osat-sites-note';
+        note.textContent = t('orbitalWatch.satelliteSites.viewFailed');
+        host.dataset.osatNote = 'viewFailed';
+        host.replaceChildren(note);
+      })
+      .finally(() => {
+        if (this.satelliteSitesAbort === abort) this.satelliteSitesScanning = false;
+      });
+  }
+
   private hideTooltip(): void {
+    this.satelliteSitesAbort?.abort();
+    this.satelliteSitesAbort = null;
+    this.openSatelliteCard = null;
+    this.satelliteSitesScanning = false;
+    if (this.satelliteSitesClock) {
+      clearInterval(this.satelliteSitesClock);
+      this.satelliteSitesClock = null;
+    }
+    if (this.satelliteCardI18nListener) {
+      window.removeEventListener(I18N_RESOURCES_LOADED_EVENT, this.satelliteCardI18nListener);
+      this.satelliteCardI18nListener = null;
+    }
     if (this.tooltipHideTimer) { clearTimeout(this.tooltipHideTimer); this.tooltipHideTimer = null; }
     this.tooltipEl?.remove();
     this.tooltipEl = null;
@@ -1983,6 +2303,12 @@ export class GlobeMap {
   }
 
   // ─── Overlay UI: zoom controls & layer panel ─────────────────────────────
+
+  /** Adds a control below the zoom buttons, kept across a late controls build. */
+  public mountMapControl(el: HTMLElement): void {
+    this.mountedMapControl = el;
+    this.zoomControlsEl?.append(el);
+  }
 
   private createControls(): void {
     const el = document.createElement('div');
@@ -2001,6 +2327,8 @@ export class GlobeMap {
       else if (target.classList.contains('zoom-out'))   this.zoomOutGlobe();
       else if (target.classList.contains('zoom-reset')) this.setView(this.currentView);
     });
+    this.zoomControlsEl = el.querySelector('.zoom-controls');
+    if (this.mountedMapControl) this.zoomControlsEl?.append(this.mountedMapControl);
   }
 
   private zoomInGlobe(): void {
@@ -2055,10 +2383,6 @@ export class GlobeMap {
           </div>`;
         }).join('')}
       </div>`, "legacy direct innerHTML migration"));
-    const authorBadge = document.createElement('div');
-    authorBadge.className = 'map-author-badge';
-    authorBadge.textContent = '© Elie Habib · Someone™';
-    el.appendChild(authorBadge);
     this.container.appendChild(el);
     this.layerTogglesEl = el;
 
@@ -2138,17 +2462,8 @@ export class GlobeMap {
     this.enforceLayerLimit();
 
     bindLayerSearch(el);
-    const searchEl = el.querySelector('.layer-search') as HTMLElement | null;
-
-    const collapseBtn = el.querySelector('.toggle-collapse');
     const list = el.querySelector('.toggle-list') as HTMLElement | null;
-    let collapsed = false;
-    collapseBtn?.addEventListener('click', () => {
-      collapsed = !collapsed;
-      if (list) list.style.display = collapsed ? 'none' : '';
-      if (searchEl) searchEl.style.display = collapsed ? 'none' : '';
-      if (collapseBtn) setTrustedHtml((collapseBtn as HTMLElement), trustedHtml(collapsed ? '&#9654;' : '&#9660;', "legacy direct innerHTML migration"));
-    });
+    this.controlDisclosureCleanups.push(bindMapControlDisclosure(this.container, el, 'layers', t('components.deckgl.layersTitle')));
 
     // Intercept wheel on layer panel — scroll list, don't zoom globe
     el.addEventListener('wheel', (e) => {
@@ -2284,6 +2599,7 @@ export class GlobeMap {
       const cutoff = Date.now() - hours * 3600000;
       add('ais', this.ukmtoMarkers.filter(marker => marker.incident.occurredAt >= cutoff));
     }
+    if (this.layers.reservoirLevels) add('reservoirLevels', this.reservoirMarkers);
     if (this.layers.iranAttacks) add('iranAttacks', this.iranMarkers);
     if (this.layers.outages) {
       add('outages', this.outageMarkers);
@@ -2317,6 +2633,7 @@ export class GlobeMap {
     // Flash markers are the "jump to this location" affordance — dropping one
     // would break navigation, and there are only ever a handful.
     add('flash', this.flashMarkers, { exempt: true });
+    if (this.orbitalTarget) add('orbitalTarget', [this.orbitalTarget], { exempt: true });
 
     // Layers with no severity signal fall back to "nearest what the camera is
     // looking at" rather than raw feed order — see proximityRank. Without this a
@@ -2347,7 +2664,6 @@ export class GlobeMap {
     }
 
     this.markerTruncation = truncated;
-    this.renderedMarkerCount = markers.length;
     this.markerBudgetProfile = budget === GLOBE_MARKER_BUDGET_MOBILE ? 'mobile' : 'desktop';
     this.updateLayerTruncationLabels();
     setGlobeMarkerLoad({
@@ -2375,7 +2691,7 @@ export class GlobeMap {
       : this.globePaths.filter(p => p.pathType === 'cable' ? showCables : showPipelines);
     const orbitPaths = this.layers.satellites ? this.satelliteTrailPaths : [];
     const stormPaths = this.layers.natural ? this.stormTrackPaths : [];
-    (this.globe as any).pathsData([...paths, ...orbitPaths, ...stormPaths]);
+    (this.globe as any).pathsData([...paths, ...orbitPaths, ...stormPaths, ...this.orbitalOutlinePaths, ...this.orbitalTrackPaths, ...this.orbitalReplayPaths]);
   }
 
   private static readonly CII_GLOBE_COLORS: Record<string, string> = {
@@ -2389,6 +2705,11 @@ export class GlobeMap {
   private static readonly CONFLICT_SIDE: Record<string, string> = { high: 'rgba(255,40,40,0.12)', medium: 'rgba(255,120,0,0.08)', low: 'rgba(255,200,0,0.06)' };
   private static readonly CONFLICT_STROKE: Record<string, string> = { high: '#ff3030', medium: '#ff8800', low: '#ffcc00' };
   private static readonly CONFLICT_ALT: Record<string, number> = { high: 0.006, medium: 0.004, low: 0.003 };
+  // Focus outline (#10453): the focus bar's accent. globe.gl draws polygon
+  // strokes one pixel wide, so the two styles differ by opacity. Falsy cap
+  // and side colours omit their meshes so focus cannot intercept CII hover.
+  private static readonly FOCUS_CHOSEN_STROKE = 'rgba(68,255,136,0.95)';
+  private static readonly FOCUS_NEIGHBOUR_STROKE = 'rgba(68,255,136,0.4)';
 
   private getReversedRing(zoneId: string, countryIso: string, ringIdx: number, ring: number[][][]): number[][][] {
     const key = `${zoneId}:${countryIso}:${ringIdx}`;
@@ -2442,8 +2763,8 @@ export class GlobeMap {
         if (!geom) continue;
         const rings = geom.type === 'Polygon' ? [geom.coordinates] : geom.type === 'MultiPolygon' ? geom.coordinates : [];
         const name = (feat.properties?.name as string) ?? code;
-        for (const ring of rings) {
-          polys.push({ coords: ring, name, _kind: 'cii', level: entry.level, score: entry.score });
+        for (let ri = 0; ri < rings.length; ri++) {
+          polys.push({ coords: this.getReversedRing('cii', code, ri, rings[ri] as number[][][]), name, _kind: 'cii', level: entry.level, score: entry.score });
         }
       }
     }
@@ -2460,10 +2781,157 @@ export class GlobeMap {
       polys.push(...this.scenarioPolygons);
     }
 
+    polys.push(...this.buildFocusPolygons());
+    polys.push(...this.orbitalFootprintPolygons, ...this.orbitalSweptPolygons);
+
     (this.globe as any).polygonsData(polys);
   }
 
   // ─── Public data setters ──────────────────────────────────────────────────
+
+  public setOrbitalTrack(track: PassTrack | null, marker: TrackPoint | null): void {
+    this.orbitalTrack = track;
+    this.orbitalTrackPaths = track
+      ? track.segments.map((segment, i) => ({
+        id: `orbital-track-${track.key}-${i}`,
+        name: track.name,
+        points: segment.map((point) => [point.lon, point.lat, 0]),
+        pathType: 'orbitalTrack' as const,
+        status: 'active',
+      }))
+      : [];
+    // The fill is split at the antimeridian; the outline follows each band unbroken, so no seam is drawn at 180°.
+    this.orbitalFootprintPolygons = track ? track.footprint.map((ring) => GlobeMap.orbitalPolygon(ring, track.name, 'orbitalFootprint')) : [];
+    this.orbitalOutlinePaths = track
+      ? track.swath.map((side, i) => ({
+        id: `orbital-outline-${track.key}-${i}`,
+        name: track.name,
+        points: [...side.inner, ...[...side.outer].reverse(), side.inner[0]!].map(([lon, lat]) => [lon, lat, 0]),
+        pathType: 'orbitalOutline' as const,
+        status: 'active',
+      }))
+      : [];
+    this.orbitalTrackMarker = track ? marker : null;
+    this.updateOrbitalSweep();
+    this.flushPaths();
+    this.flushPolygons();
+    this.flushOrbitalTrackMarker();
+  }
+
+  /** Moves the replay; the swept swath is redrawn at most five times a second, since a globe flush rebuilds every path. */
+  public setOrbitalTrackMarker(point: TrackPoint | null): void {
+    if (!this.orbitalTrack) return;
+    this.orbitalTrackMarker = point;
+    this.flushOrbitalTrackMarker();
+    const now = performance.now();
+    if (now - this.orbitalSweepFlushAt < 200 && point?.timeMs !== this.orbitalTrack.closest.timeMs) return;
+    this.orbitalSweepFlushAt = now;
+    this.updateOrbitalSweep();
+    this.flushPaths();
+    this.flushPolygons();
+  }
+
+  public setOrbitalTarget(target: OrbitalTarget | null): void {
+    this.orbitalTarget = target ? { _kind: 'orbitalTarget', _lat: target.lat, _lng: target.lon, lines: target.lines } : null;
+    if (target) this.holdRotation();
+    this.flushMarkers();
+  }
+
+  /** Stops the idle spin so a looked-up point stays where the camera framed it. */
+  private holdRotation(): void {
+    if (this.autoRotateTimer) { clearTimeout(this.autoRotateTimer); this.autoRotateTimer = null; }
+    if (this.viewportAutoRotateBeforeMove !== null) this.viewportAutoRotateBeforeMove = false;
+    if (this.controlsAutoRotateBeforePause !== null) this.controlsAutoRotateBeforePause = false;
+    if (this.controls) this.controls.autoRotate = false;
+  }
+
+  // The globe fills clockwise rings, like the reversed country rings.
+  private static orbitalPolygon(ring: Array<[number, number]>, name: string, kind: 'orbitalFootprint' | 'orbitalSwept'): GlobePolygon {
+    return { coords: [[...ring].reverse()], name, _kind: kind };
+  }
+
+  private updateOrbitalSweep(): void {
+    const track = this.orbitalTrack;
+    const marker = this.orbitalTrackMarker;
+    const swept = track && marker ? sweptSwath(track, marker.timeMs) : { rings: [], leadingEdge: [] };
+    this.orbitalSweptPolygons = swept.rings.map((ring) => GlobeMap.orbitalPolygon(ring, track?.name ?? '', 'orbitalSwept'));
+    this.orbitalReplayPaths = swept.leadingEdge.map((line, i) => ({
+      id: `orbital-edge-${i}`,
+      name: track?.name ?? '',
+      points: line.map(([lon, lat]) => [lon, lat, 0]),
+      pathType: 'orbitalEdge' as const,
+      status: 'active',
+    }));
+  }
+
+  /** An accent ring with a dot on the point and a mono label beside it. */
+  private static orbitalReticle(lines: readonly string[]): HTMLElement {
+    const root = document.createElement('div');
+    root.className = 'orbital-reticle';
+    root.style.cssText = 'position:relative;width:0;height:0;';
+    const ring = document.createElement('div');
+    ring.style.cssText = 'position:absolute;left:-14px;top:-14px;width:24px;height:24px;border:2px solid var(--green);border-radius:50%;';
+    const dot = document.createElement('div');
+    dot.style.cssText = 'position:absolute;left:-3px;top:-3px;width:6px;height:6px;background:var(--green);border-radius:50%;';
+    const label = document.createElement('div');
+    label.style.cssText = 'position:absolute;left:22px;top:0;transform:translateY(-50%);padding:4px 7px;background:color-mix(in srgb,var(--panel-bg) 88%,transparent);color:var(--text);font:500 11px/16px var(--font-mono);letter-spacing:.06em;white-space:nowrap;font-variant-numeric:tabular-nums;';
+    for (const line of lines) {
+      const row = document.createElement('div');
+      row.textContent = line;
+      label.append(row);
+    }
+    root.append(ring, dot, label);
+    return root;
+  }
+
+  private flushOrbitalTrackMarker(): void {
+    if (!this.globe || !this.initialized || this.destroyed || this.webglLost) return;
+    this.wakeGlobe();
+    (this.globe as any).pointsData(this.orbitalTrackMarker ? [this.orbitalTrackMarker] : []);
+  }
+
+  /**
+   * Outline the dashboard focus (#10453): chosen countries solid, neighbours
+   * lighter. Null removes it. Markers are untouched.
+   */
+  public setFocusOutline(outline: { chosen: readonly string[]; neighbours: readonly string[] } | null): void {
+    this.focusOutline = outline
+      ? { chosen: new Set(outline.chosen), neighbours: new Set(outline.neighbours) }
+      : null;
+    this.flushPolygons();
+  }
+
+  private buildFocusPolygons(): GlobePolygon[] {
+    const focus = this.focusOutline;
+    if (!focus || !this.countriesGeoData) return [];
+    const chosen: GlobePolygon[] = [];
+    const neighbours: GlobePolygon[] = [];
+    for (const feat of this.countriesGeoData.features) {
+      const code = feat.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
+      if (!code) continue;
+      const kind = focus.chosen.has(code) ? 'focusChosen' : focus.neighbours.has(code) ? 'focusNeighbour' : null;
+      if (!kind) continue;
+      const geom = feat.geometry;
+      if (!geom) continue;
+      const rings = geom.type === 'Polygon' ? [geom.coordinates] : geom.type === 'MultiPolygon' ? geom.coordinates : [];
+      const name = (feat.properties?.name as string) ?? code;
+      // Reversed like the conflict-zone rings, the winding globe.gl expects.
+      for (let ri = 0; ri < rings.length; ri++) {
+        (kind === 'focusChosen' ? chosen : neighbours).push({
+          coords: this.getReversedRing('focus', code, ri, rings[ri] as number[][][]),
+          name,
+          _kind: kind,
+        });
+      }
+    }
+    return [...neighbours, ...chosen];
+  }
+
+  /** Frame the focus's chosen countries, from the globe's point of view. */
+  public fitFocusBounds(fit: FocusFitBounds, altitude: number): void {
+    if (!this.globe) return;
+    this.moveViewport({ lat: fit.center.lat, lng: fit.center.lon, altitude }, 1200);
+  }
 
   public setScenarioState(state: ScenarioVisualState | null): void {
     this.scenarioPolygons = [];
@@ -2974,11 +3442,6 @@ export class GlobeMap {
     this.flushMarkers();
   }
 
-  /** Markers currently handed to globe.gl, and what the budget withheld (#5368). */
-  public getMarkerBudgetState(): { rendered: number; truncated: Record<string, GlobeLayerTruncation> } {
-    return { rendered: this.renderedMarkerCount, truncated: this.markerTruncation };
-  }
-
   private enforceLayerLimit(): void {
     if (!this.layerTogglesEl) return;
     const WARN_THRESHOLD = 13;
@@ -3105,7 +3568,7 @@ export class GlobeMap {
         // the state that existed before the programmatic movement.
         this.controlsAutoRotateBeforePause = this.viewportAutoRotateBeforeMove;
       } else if (this.controls) {
-        this.controls.autoRotate = this.viewportAutoRotateBeforeMove;
+        this.controls.autoRotate = this.viewportAutoRotateBeforeMove && !this.autoRotateHeld;
       }
     }
     this.viewportAutoRotateBeforeMove = null;
@@ -3175,11 +3638,37 @@ export class GlobeMap {
     this.moveViewport({ lat: preset.lat, lng: preset.lng, altitude });
   }
 
-  public setCenter(lat: number, lon: number, zoom?: number): void {
+  public setCenter(lat: number, lon: number, zoom?: number, durationMs = SET_CENTER_ROTATION_MS): void {
     if (!this.globe) return;
     this.wakeGlobe();
     const altitude = zoom === undefined ? 1.2 : mapZoomToGlobeAltitude(zoom);
-    this.moveViewport({ lat, lng: lon, altitude });
+    this.moveViewport({ lat, lng: lon, altitude }, durationMs);
+  }
+
+  /** The point of view that draws (lat, lon) `offset` pixels from the canvas centre at `zoom`. */
+  public centerForOffset(lat: number, lon: number, zoom: number, offset: ScreenOffset): { lat: number; lon: number } {
+    const camera = this.globe?.camera() as { fov?: number } | undefined;
+    return globeCenterForOffset(lat, lon, mapZoomToGlobeAltitude(zoom), camera?.fov ?? 50, this.getDrawingRect()?.height ?? this.container.clientHeight, offset);
+  }
+
+  /** The canvas at the size the globe last drew; its CSS stretches it to a resized container before the renderer catches up. */
+  public getDrawingRect(): DOMRect | null {
+    if (!this.globe) return null;
+    const renderer = this.globe.renderer();
+    const canvas = renderer.domElement;
+    const ratio = renderer.getPixelRatio() || 1;
+    const { left, top } = canvas.getBoundingClientRect();
+    return new DOMRect(left, top, canvas.width / ratio, canvas.height / ratio);
+  }
+
+  /** Where (lat, lon) is drawn in client coordinates, or null when it faces away from the camera. */
+  public projectToClient(lat: number, lon: number): { x: number; y: number } | null {
+    if (!this.globe) return null;
+    const pov = this.globe.pointOfView();
+    if (!isOnVisibleHemisphere(lat, lon, pov.lat, pov.lng, pov.altitude ?? 0)) return null;
+    const point = this.globe.getScreenCoords(lat, lon, 0);
+    const rect = this.globe.renderer().domElement.getBoundingClientRect();
+    return { x: rect.left + point.x, y: rect.top + point.y };
   }
 
   public getCenter(): { lat: number; lon: number } | null {
@@ -3265,6 +3754,14 @@ export class GlobeMap {
       altitude: mapZoomToGlobeAltitude(zoom),
     });
   }
+  /** Stops the idle spin while a caller keeps a point in view; releasing it resumes the spin. */
+  public holdAutoRotate(held: boolean): void {
+    if (this.autoRotateHeld === held) return;
+    this.autoRotateHeld = held;
+    if (!this.controls || this.renderPaused || this.viewportAutoRotateBeforeMove !== null) return;
+    this.controls.autoRotate = !held && !isDesktopRuntime();
+  }
+
   public setRenderPaused(paused: boolean): void {
     if (this.renderPaused === paused) return;
     this.renderPaused = paused;
@@ -3291,7 +3788,7 @@ export class GlobeMap {
         this.controls.enableDamping = false;
       } else {
         if (this.controlsAutoRotateBeforePause !== null) {
-          this.controls.autoRotate = this.controlsAutoRotateBeforePause;
+          this.controls.autoRotate = this.controlsAutoRotateBeforePause && !this.autoRotateHeld;
         }
         if (this.controlsDampingBeforePause !== null) {
           this.controls.enableDamping = this.controlsDampingBeforePause;
@@ -3377,7 +3874,7 @@ export class GlobeMap {
   }
   public fitCountry(code: string): void {
     if (!this.globe) return;
-    const bbox = getCountryBbox(code);
+    const bbox = getCountryMapBbox(code);
     if (!bbox) return;
     const [minLon, minLat, maxLon, maxLat] = bbox;
     const lat = (minLat + maxLat) / 2;
@@ -3476,7 +3973,8 @@ export class GlobeMap {
   }
 
   private async fetchImageryForViewport(): Promise<void> {
-    if (this.destroyed) return;
+    // The satellite pass lookup has the globe on its point; the scenes already drawn stay.
+    if (this.destroyed || holdsViewportRequests()) return;
     const center = this.getCenter();
     if (!center) return;
     if (this.lastImageryCenter) {
@@ -3557,6 +4055,35 @@ export class GlobeMap {
       }));
     this.flushMarkers();
   }
+  public setReservoirLevels(reservoirs: ReservoirLevel[]): void {
+    this.reservoirMarkers = reservoirs.map((reservoir) => ({
+      _kind: 'reservoirLevel' as const, _lat: reservoir.lat, _lng: reservoir.lon, id: reservoir.id, reservoir,
+    }));
+    this.flushMarkers();
+  }
+
+  /** Rotate to a reservoir, then open its popup once it has settled at the container centre. */
+  public openReservoir(reservoir: ReservoirLevel): void {
+    const seq = ++this.reservoirRevealSeq;
+    const current = () => seq === this.reservoirRevealSeq;
+    const reveal = () => {
+      if (this.destroyed || !this.globe || !current()) return;
+      // An open marker tooltip's dismissal timer would also hide the popup we open.
+      this.hideTooltip();
+      this.setCenter(reservoir.lat, reservoir.lon, 5);
+      const rect = this.container.getBoundingClientRect();
+      const x = rect.width / 2;
+      const y = rect.height / 2;
+      // Settles false when a drag or a later camera command interrupts the turn.
+      void this.whenViewportSettled().then((completed) => {
+        if (!completed || this.destroyed || !this.popup || !current()) return;
+        this.popup.show({ type: 'reservoirLevel', data: reservoir, x, y });
+      });
+    };
+    if (this.globe) reveal();
+    else void this.whenReady().then(reveal).catch(() => {});
+  }
+
   public setUkmtoIncidents(incidents: UkmtoMapIncident[]): void {
     this.ukmtoMarkers = incidents.filter(item => item.location).map(item => ({
       _kind: 'ukmtoIncident', _lat: item.location!.latitude, _lng: item.location!.longitude,
@@ -3694,6 +4221,7 @@ export class GlobeMap {
       id: (f.id as string | undefined) ?? `${f.lat},${f.lon}`,
       region: f.region ?? '',
       brightness: f.brightness ?? 330,
+      detection: f,
     }));
     this.flushMarkers();
   }
@@ -3878,7 +4406,8 @@ export class GlobeMap {
     scene.add(this.satBeamGroup);
   }
 
-  public setSatellites(positions: SatellitePosition[]): void {
+  public setSatellites(input: SatellitePosition[]): void {
+    const positions = ORBITAL_WATCH_ENABLED ? orbitalLayerSatellites(input) : input;
     this.satelliteMarkers = positions.map(s => ({
       _kind: 'satellite' as const,
       _lat: s.lat,
@@ -3914,6 +4443,7 @@ export class GlobeMap {
     this.rebuildSatBeams(positions);
     this.flushMarkers();
     this.flushPaths();
+    this.refreshSatelliteCard();
   }
   public setTechEvents(events: Array<{ id: string; title: string; lat: number; lng: number; country: string; daysUntil: number; [key: string]: any }>): void {
     this.techMarkers = (events ?? []).filter(e => e.lat != null && e.lng != null).map(e => ({
@@ -3930,8 +4460,6 @@ export class GlobeMap {
   public onHotspotClicked(cb: (h: Hotspot) => void): void { this.onHotspotClickCb = cb; }
   public onTimeRangeChanged(_cb: (r: TimeRange) => void): void {}
   public onStateChanged(cb: (s: MapContainerState) => void): void { this.onStateChangeCb = cb; }
-  public setOnCountry(_cb: any): void {}
-  public getHotspotLevel(_id: string) { return 'low'; }
 
   private async applyEnhancedVisuals(): Promise<void> {
     if (!this.globe || this.destroyed) return;
@@ -4142,18 +4670,25 @@ export class GlobeMap {
   // ─── Destroy ──────────────────────────────────────────────────────────────
 
   public destroy(): void {
+    this.pendingMarkerGestureCleanup?.();
+    this.controlDisclosureCleanups.forEach(cleanup => cleanup());
+    this.controlDisclosureCleanups = [];
     this.popup?.hide();
     this.popup = null;
     this.flightData.clear();
     this.vesselData.clear();
     this.clusterData.clear();
     this.container.removeEventListener('contextmenu', this.handleContextMenu);
+    this.removeLongPress?.();
+    this.removeLongPress = null;
     this.unsubscribeGlobeQuality?.();
     this.unsubscribeGlobeQuality = null;
     this.unsubscribeGlobeTexture?.();
     this.unsubscribeGlobeTexture = null;
     this.unsubscribeVisualPreset?.();
     this.unsubscribeVisualPreset = null;
+    this.stopViewportResume?.();
+    this.stopViewportResume = null;
     this.premiumLayerGate?.destroy();
     this.premiumLayerGate = null;
     this.pendingPremiumLayerChanges.clear();

@@ -17,6 +17,7 @@ import {
   invalidateConvexAuthForSignOut,
   rebindConvexAuthForWatchHandoff,
   waitForConvexAuth,
+  waitForConvexAuthForUser,
 } from '../src/services/convex-client.ts';
 import { createEmbedKey } from '../src/services/embed-keys.ts';
 import { createApiKey, listApiKeys } from '../src/services/api-keys.ts';
@@ -41,6 +42,7 @@ import {
   initSubscriptionWatch,
   listBusinessSeats,
   openBillingPortal,
+  openProActivationDay0Presentation,
 } from '../src/services/billing.ts';
 
 type TokenFetcher = (args?: { forceRefreshToken?: boolean }) => Promise<string | null>;
@@ -98,9 +100,9 @@ async function waitForCondition(
   message: string,
   timeoutMs = 1_000,
 ): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = performance.now() + timeoutMs;
   while (!condition()) {
-    if (Date.now() >= deadline) {
+    if (performance.now() >= deadline) {
       assert.fail(message);
     }
     await new Promise<void>((resolve) => {
@@ -245,6 +247,25 @@ describe('generation-scoped Convex auth handoff', () => {
     fake.authConfigs[2].onChange(true);
     assert.equal(await handoffC, true);
     assert.deepEqual(attached, ['C']);
+  });
+
+  it('does not attach watches when app teardown precedes delayed auth confirmation', async () => {
+    const fake = installFakeClient();
+    const appState = { isDestroyed: false };
+    const attached: string[] = [];
+    const handoff = rebindConvexAuthForWatchHandoff(
+      () => !appState.isDestroyed,
+      () => attached.push('watch'),
+      1_000,
+      [],
+    );
+    await flushMicrotasks();
+    assert.equal(fake.authConfigs.length, 2);
+    appState.isDestroyed = true;
+    fake.authConfigs[1].onChange(true);
+    assert.equal(await handoff, false);
+    assert.deepEqual(attached, []);
+    assert.deepEqual(fake.watchAttachments, []);
   });
 
   it('treats a same-config true then false callback as unauthenticated', async () => {
@@ -574,8 +595,14 @@ describe('generation-scoped Convex auth handoff', () => {
       session: { getToken: async () => 'token-a' },
       user: { id: 'A' },
     } as never);
+    installManualAuthTimers();
     const fake = installFakeClient();
+    // The token stays unavailable: the failure's one reinstall fails too, and
+    // its cooldown keeps every load below from reinstalling again.
     fake.authConfigs[0].onChange(false);
+    await waitForCondition(() => fake.authConfigs.length === 2, 'the failure reinstalls auth once');
+    fake.authConfigs[1].onChange(false);
+    await flushMicrotasks();
 
     const cases: Array<[string, () => Promise<unknown>]> = [
       ['API keys', listApiKeys],
@@ -640,14 +667,21 @@ describe('generation-scoped Convex auth handoff', () => {
       session: { getToken: async () => 'token-a' },
       user: { id: 'A' },
     } as never);
+    installManualAuthTimers();
     const fake = installFakeClient();
     fake.authConfigs[0].onChange(false);
+    await waitForCondition(() => fake.authConfigs.length === 2, 'the failure reinstalls auth once');
+    fake.authConfigs[1].onChange(false);
+    await flushMicrotasks();
 
+    // The same user is still signed in, so this is an auth outage, not an
+    // account change (Sentry WORLDMONITOR-1CP).
     await assert.rejects(
       acknowledgePlanLimitNotice('notice-a'),
-      /Account changed while acknowledging the API plan-limit notice/,
+      /Authentication unavailable while acknowledging the API plan-limit notice/,
     );
     assert.equal(fake.mutations.length, 0);
+    assert.equal(fake.authConfigs.length, 2, 'the cooldown blocks another reinstall');
   });
 
   it('discards account-scoped list results that settle after A changes to B', async () => {
@@ -941,6 +975,7 @@ describe('App account-switch controller', () => {
     )?.[0];
     assert.ok(branch, 'expected the signed-in identity-change branch');
     assert.match(branch, /startAccountAuthHandoff\(\{/);
+    assert.match(branch, /!this\.state\.isDestroyed[\s\S]*?handoffGeneration === _convexWatchHandoffGeneration/);
     assert.match(branch, /getAuthState\(\)\.user\?\.id === userId/);
     assert.match(branch, /resetEntitlementState,/);
     assert.match(branch, /rebindConvexAuthForWatchHandoff,/);
@@ -949,5 +984,204 @@ describe('App account-switch controller', () => {
       app,
       /else if \(userId === null && _prevUserId !== null\) \{[\s\S]*?invalidateConvexAuthForSignOut\(\);/,
     );
+  });
+});
+
+
+// Sentry WORLDMONITOR-1CP: a signed-in Pro user's activation open failed three
+// times inside a second with "Account changed while opening Pro activation",
+// though the account never changed. The Convex SDK had reported auth false (a
+// null scheduled token, or a failed reauth), the failure barrier was terminal,
+// and only a Clerk user change ever rebound auth.
+describe('same-user Convex auth recovery after a terminal failure', () => {
+  const signIn = (id: string) => __setClerkInstanceForTests({
+    session: { getToken: async () => `token-${id}` },
+    user: { id },
+  } as never);
+  const openActivation = () => openProActivationDay0Presentation('key-1', 'nonce-1', 1);
+
+  it('reinstalls auth for the same user and lets a billing call through', async () => {
+    signIn('A');
+    const timers = installManualAuthTimers();
+    const fake = installFakeClient();
+    fake.authConfigs[0].onChange(true);
+    fake.mutationResult = Promise.resolve({ status: 'opened' });
+
+    fake.authConfigs[0].onChange(false);
+    await waitForCondition(() => fake.authConfigs.length === 2, 'failure should reinstall auth for A');
+
+    const opening = openActivation();
+    await flushMicrotasks();
+    assert.equal(fake.mutations.length, 0, 'the mutation waits for the reinstalled config');
+    fake.authConfigs[1].onChange(true);
+
+    assert.equal(await opening, 'opened');
+    assert.equal(fake.mutations.length, 1);
+    assert.equal(fake.authConfigs.length, 2, 'the waiter shares the in-flight reinstall');
+    assert.deepEqual(timers.pending().map((t) => t.ms), [1_000], 'only the cooldown remains');
+  });
+
+  it('recovers on demand when the failure arrives during an identity handoff', async () => {
+    signIn('A');
+    installManualAuthTimers();
+    const fake = installFakeClient();
+    fake.mutationResult = Promise.resolve({ status: 'opened' });
+    const handoff = rebindConvexAuthForWatchHandoff(() => true, () => {}, 1_000, []);
+    await flushMicrotasks();
+    assert.equal(fake.authConfigs.length, 2);
+
+    fake.authConfigs[1].onChange(false);
+    assert.equal(await handoff, false);
+
+    // The exhausted handoff hands its failed config to same-user recovery,
+    // and the waiter shares that reinstall instead of starting another.
+    await waitForCondition(() => fake.authConfigs.length === 3, 'handoff exit should reinstall auth');
+    const opening = openActivation();
+    await flushMicrotasks();
+    assert.equal(fake.authConfigs.length, 3);
+    fake.authConfigs[2].onChange(true);
+    assert.equal(await opening, 'opened');
+  });
+
+  it("does not let an older account's sleeping handoff block the current user's recovery", async () => {
+    let current = 'A';
+    signIn('A');
+    installManualAuthTimers();
+    const fake = installFakeClient();
+    const handoffA = rebindConvexAuthForWatchHandoff(() => current === 'A', () => {}, 1_000, [60_000]);
+    await flushMicrotasks();
+    fake.authConfigs[1].onChange(false);
+    await flushMicrotasks();
+    assert.equal(fake.authConfigs.length, 2, "A's handoff sleeps before its retry");
+
+    current = 'B';
+    signIn('B');
+    const handoffB = rebindConvexAuthForWatchHandoff(() => current === 'B', () => {}, 1_000, []);
+    await flushMicrotasks();
+    fake.authConfigs[2].onChange(true);
+    assert.equal(await handoffB, true);
+
+    fake.authConfigs[2].onChange(false);
+    await waitForCondition(() => fake.authConfigs.length === 4, "B's failure should reinstall auth for B");
+    void handoffA;
+  });
+
+  it('a waiter that sees the failed placeholder during a handoff still runs its own recovery', async () => {
+    signIn('A');
+    installManualAuthTimers();
+    const fake = installFakeClient();
+    fake.mutationResult = Promise.resolve({ status: 'opened' });
+    void rebindConvexAuthForWatchHandoff(() => true, () => {}, 1_000, [60_000]);
+    await flushMicrotasks();
+    assert.equal(fake.authConfigs.length, 2);
+
+    const opening = openActivation();
+    await flushMicrotasks();
+    fake.authConfigs[1].onChange(false);
+    await waitForCondition(() => fake.authConfigs.length === 3, 'the waiter should start one same-user recovery');
+    fake.authConfigs[2].onChange(true);
+    assert.equal(await opening, 'opened');
+    assert.equal(fake.authConfigs.length, 3);
+  });
+
+  it('keeps one deadline across the original wait and the recovered config', async (t) => {
+    signIn('A');
+    const timers = installManualAuthTimers();
+    const fake = installFakeClient();
+    let now = 1_000_000;
+    t.mock.method(Date, 'now', () => now);
+
+    const waiting = waitForConvexAuthForUser('A', 1_000);
+    await flushMicrotasks();
+    assert.deepEqual(timers.pending().map((timer) => timer.ms), [1_000]);
+
+    now += 800;
+    fake.authConfigs[0].onChange(false);
+    await waitForCondition(() => fake.authConfigs.length === 2, 'failure should reinstall auth');
+    await flushMicrotasks();
+    assert.ok(
+      timers.pending().some((timer) => timer.ms === 200),
+      `the recovered wait gets the remaining 200 ms, saw ${JSON.stringify(timers.pending().map((x) => x.ms))}`,
+    );
+    fake.authConfigs[1].onChange(true);
+    assert.equal(await waiting, true);
+  });
+
+  it('bounds reinstalls when the token stays unavailable', async () => {
+    signIn('A');
+    const timers = installManualAuthTimers();
+    const fake = installFakeClient();
+    fake.authConfigs[0].onChange(false);
+
+    // Proactive attempts: immediately, then after each cooldown, four in all.
+    let expected = 2;
+    for (const cooldownMs of [1_000, 5_000, 15_000, 30_000]) {
+      await waitForCondition(() => fake.authConfigs.length === expected, 'one reinstall per cooldown');
+      fake.authConfigs[expected - 1].onChange(false);
+      await flushMicrotasks();
+      assert.equal(fake.authConfigs.length, expected, 'no reinstall during the cooldown');
+      assert.deepEqual(timers.pending().map((t) => t.ms), [cooldownMs]);
+      timers.fireNext();
+      await flushMicrotasks();
+      expected += 1;
+    }
+    assert.equal(fake.authConfigs.length, 5, 'proactive recovery stops after four attempts');
+    assert.deepEqual(timers.pending(), []);
+
+    // A user action may still try once, and then the last cooldown applies.
+    const first = openActivation();
+    await waitForCondition(() => fake.authConfigs.length === 6, 'a user action reinstalls once');
+    fake.authConfigs[5].onChange(false);
+    await assert.rejects(first, /^Error: Authentication unavailable while opening Pro activation\. Try again\.$/);
+
+    await assert.rejects(openActivation(), /Authentication unavailable while opening Pro activation/);
+    assert.equal(fake.authConfigs.length, 6, 'a second action inside the cooldown does not reinstall');
+    assert.equal(fake.mutations.length, 0);
+  });
+
+  it('does not resurrect auth when sign-out lands during recovery', async () => {
+    signIn('A');
+    const timers = installManualAuthTimers();
+    const fake = installFakeClient();
+    fake.authConfigs[0].onChange(true);
+    fake.authConfigs[0].onChange(false);
+
+    invalidateConvexAuthForSignOut();
+    __setClerkInstanceForTests(null);
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    assert.equal(fake.authConfigs.length, 2, 'only the signed-out config is installed');
+    assert.equal(await fake.authConfigs[1].fetchToken(), null);
+    while (timers.pending().length > 0) timers.fireNext();
+    await flushMicrotasks();
+    assert.equal(fake.authConfigs.length, 2, 'an expiring cooldown cannot restart recovery');
+    fake.authConfigs[1].onChange(false);
+    await flushMicrotasks();
+    assert.equal(fake.authConfigs.length, 2, 'the signed-out config failing does not start recovery');
+    assert.equal(await waitForConvexAuth(10), false);
+  });
+
+  it('cannot satisfy the old user when the account switches during recovery', async () => {
+    signIn('A');
+    installManualAuthTimers();
+    const fake = installFakeClient();
+    fake.authConfigs[0].onChange(true);
+    fake.authConfigs[0].onChange(false);
+    await waitForCondition(() => fake.authConfigs.length === 2, 'A recovery reinstall');
+
+    const opening = assert.rejects(openActivation(), /Account changed while opening Pro activation/);
+    await flushMicrotasks();
+
+    signIn('B');
+    const handoff = rebindConvexAuthForWatchHandoff(() => true, () => {}, 1_000, []);
+    await flushMicrotasks();
+    assert.equal(fake.authConfigs.length, 3);
+    fake.authConfigs[1].onChange(true);
+    fake.authConfigs[2].onChange(true);
+
+    assert.equal(await handoff, true);
+    await opening;
+    assert.equal(fake.mutations.length, 0, 'no mutation is dispatched for A under B');
   });
 });

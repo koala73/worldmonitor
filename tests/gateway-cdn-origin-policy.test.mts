@@ -114,7 +114,19 @@ describe('gateway CDN origin policy', () => {
 
   it('avoids shared CDN caching for session-bearing preview origin GETs', async () => {
     const origin = 'https://worldmonitor-git-feature-eliewm.vercel.app';
-    const res = await requestPublicRoute(origin);
+    // Previews are trusted only as their own deployment (server/cors.ts).
+    const saved = [process.env.VERCEL_ENV, process.env.VERCEL_BRANCH_URL];
+    process.env.VERCEL_ENV = 'preview';
+    process.env.VERCEL_BRANCH_URL = new URL(origin).host;
+    let res: Response;
+    try {
+      res = await requestPublicRoute(origin);
+    } finally {
+      ['VERCEL_ENV', 'VERCEL_BRANCH_URL'].forEach((k, i) => {
+        if (saved[i] === undefined) delete process.env[k];
+        else process.env[k] = saved[i];
+      });
+    }
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('Access-Control-Allow-Origin'), origin);
     assert.equal(res.headers.get('Vary'), 'Origin');

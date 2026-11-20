@@ -13,9 +13,10 @@ import { getCachedJson, setCachedJson } from './redis.js';
 // framework text, chat messages, submitted text. Shared content generated in
 // the background for everyone stays on the default chain.
 //
-// Source of truth: Convex `aiRoutingPolicies`, keyed by the Clerk user id the
-// gateway authenticated (`x-user-id`, which the gateway strips from inbound
-// requests and sets only after auth). Operator keys carry no user id and are
+// Source of truth: Convex `aiRoutingPolicies`, or for an Enterprise account
+// member without a row the account's providers (convex/lib/enterpriseAccounts.ts),
+// keyed by the Clerk user id the gateway authenticated (`x-user-id`, which the
+// gateway strips from inbound requests and sets only after auth). Operator keys carry no user id and are
 // never restricted.
 //
 // Fail closed: when the lookup cannot answer for a signed-in caller, the

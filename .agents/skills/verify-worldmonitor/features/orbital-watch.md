@@ -1,0 +1,35 @@
+# Satellite passes here
+
+Right-click or long-press any point on the map, land or ocean, and choose **Satellite passes here**. The imagery evidence sheet docks beside the map (a bottom sheet on phones) and answers which imaging satellites passed over that point, which of those passes have a public image, and what is coming next. The picked point stays in the browser. Only the public archives see it.
+
+## Sub-features
+
+- `entry` adds the context-menu item on the flat deck.gl map and the globe. It needs only the point, not a country.
+- `progress` shows pass computation, then archive answers counted out of five (Earth Search, Planetary Computer, GIBS daily mosaics, GIBS geostationary, EUMETSAT).
+- `tiers` gives every row its tier as text: checking archive, confirmed image, likely imaged, upcoming pass, in daily mosaic, weather frame, within reach, passed overhead, capability overhead, unavailable.
+- `credits` puts each scene's credit in its image caption, and the Sources list at the foot of the sheet names only the sources the result holds: CelesTrak orbit elements, Copernicus Sentinel, USGS Landsat, the NASA GIBS acknowledgement and EUMETSAT.
+- `partial` names the archive that failed and offers Retry. `stale` shows the orbit-data age. `empty` explains the searched window.
+- `privacy` keeps a one-line "Your point goes only to the image archives." disclosure with Details in every state.
+- `viewer` opens the latest image full size from the sheet, and its Change mode searches the mission's history and slides between two dates of the point. Every image is painted from a `blob:` URL.
+- `track` draws a chosen pass's ground track, sensor footprint and the satellite at closest approach on the deck.gl map, the phone SVG map and the globe. Choosing another pass replaces the drawing, and closing the sheet removes it.
+
+## How to get to it (user POV)
+
+- Right-click the map, or long-press it on a touch screen, and choose **Satellite passes here**.
+- Close with the X or Escape. Focus returns to `#mapContainer`.
+
+## Driving it with wm-verify
+
+Orbital Watch ships dark, so export `VITE_ENABLE_ORBITAL_WATCH=true` before `wm-verify.sh` starts the dev server; without it the context-menu entry and the `#orbital=` route stay off.
+
+Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/orbital-watch.mjs --name orbital-watch`. Set `WM_VERIFY_ORBITAL_VIEWPORT=mobile` for the 390px bottom sheet. The step stores the flat map mode and hides the software renderer name, because headless Chromium has only software GL and `MapContainer` keeps deck.gl off it. On desktop it calibrates the context-menu entry on deck.gl; the phone SVG map has no context menu, so every state there opens through the two-decimal route `#orbital=25.11,55.14` (Palm Jumeirah), as a shared link does. `WM_VERIFY_ORBITAL_MAP=globe` drives the globe.
+
+The step serves `/api/orbital/v1/list-imaging-satellites` from `tests/fixtures/orbital/celestrak-gp-2026-11-13.json` and lets archive requests reach the real archives. It holds them to capture the checking state, fails Earth Search for the partial state, marks the catalog stale, and for the empty state serves an empty catalog and empty archive answers (no scenes, empty GIBS time domains). Set `WM_VERIFY_ORBITAL_CATALOG=live` to read the local API instead. Fixture orbits drift with time, so far from 2026-11-13 the pass list shrinks.
+
+It fails if any request to a non-archive host or telemetry vendor carries the picked point, if any archive URL still carries it once telemetry's coordinate scrub has removed its coordinate params and path segments, if the page URL holds an orbital route finer than a share link's two decimals, and if an archive image becomes the largest contentful paint. A request carries the point when it holds a lat/lon pair, or a box whose midpoint is the point, within 0.1 degrees, so a one-decimal point counts (`steps/_point-leak.mjs`, tested by `tests/verify-orbital-point-leak.test.mjs`).
+
+Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/orbital-image-viewer.mjs --name orbital-viewer` for the `viewer` sub-feature, on both viewports. It opens Palm Jumeirah through its share route (`WM_VERIFY_ORBITAL_POINT="lat,lon"` picks another point), checks that the sheet fits the viewport and the latest image is a square inside it, opens that image, and checks the viewer image is painted from a `blob:`, unstretched, inside the viewport, with credit and north arrow. It then opens Change and fails unless Compare searched the archive history and paints two `blob:` images on the same box with two dates and a working divider. Escape must return focus to the image, and the sheet's Compare with button must open the pair. It applies the same point checks as the lookup step.
+
+Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/orbital-watch-track.mjs --name orbital-track` for the `track` sub-feature. `WM_VERIFY_ORBITAL_MAP=flat` drives the flat map: on desktop it hides the software renderer name so `MapContainer` picks deck.gl, and with `WM_VERIFY_ORBITAL_VIEWPORT=mobile` it opens the lookup from the globe and switches to the 2D SVG map, which has no context menu. `WM_VERIFY_ORBITAL_THEME=light` drives the light theme. It selects an optical pass row in the evidence sheet, then a Sentinel-1 row, and fails if the selection does not move, if the map does not redraw (on the SVG map, unless exactly one `.orbital-track` is drawn), if the SVG track survives closing the sheet, or if a non-archive request carries the point. `npx playwright test e2e/orbital-watch-track.spec.ts` checks the deck.gl layers through the map harness.
+
+Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/orbital-map-popups.mjs --name orbital-popups` for the imagery row in map-object popups. It clicks Al Udeid air base, serves `/api/orbital/v1/get-watched-site-imagery` from the base's real newest Planetary Computer scene, reads the row and presses Open evidence. It fails if the site read carries anything but `site_id`, if the popup image is not a `blob:` URL, if a change-flag row renders, or if a non-archive request carries the base's coordinates. `WM_VERIFY_ORBITAL_VIEWPORT=mobile` and `WM_VERIFY_ORBITAL_THEME=light` work as above. Handles: `.imagery-evidence-sheet[data-state]`, `.ies-place`, `.ies-coords`, `.ies-evidence-line`, `.ies-count[data-tier] dd`, `.ies-row[data-tier]`, `.ies-row[data-key^="pass:"]`, `.ies-row[aria-current="true"]`, `.ies-tier`, `[data-section="latest"] .ow-tile-hero[data-state="loaded"]`, `.ies-caption .ies-cell[data-label]`, `[data-action="view-image"]`, `[data-action="compare"]`, `.ies-sources li`, `.ies-warn [data-action="retry"]`, `.ies-stale`, `.ies-empty`, `.ies-privacy-line`, `.ies-privacy-more`, `.ies-mapmark`, `.oiv-dialog`, `.oiv-image`, `[data-action="mode"][data-mode="change"]`, `.oiv-slider`, `input.oiv-divider`, `.oiv-chip`.

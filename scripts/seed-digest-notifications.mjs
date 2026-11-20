@@ -5,12 +5,13 @@
  * For each enabled alert rule with digestMode != "realtime":
  *   1. Checks isDue() against digest:last-sent:v1:${userId}:${variant}
  *   2. ZRANGEBYSCORE digest:accumulator:v1:${variant} to get stories in window
- *   3. Batch HGETALL story:track:v1:${hash} for metadata
+ *   3. Batch HMGET story:track:v1:${hash} for digest metadata
  *   4. Derives phase, filters fading/non-matching severity, sorts by currentScore
  *   5. SMEMBERS story:sources:v1:${hash} for source attribution
  *   6. Formats and dispatches to each configured channel
  *   7. Updates digest:last-sent:v1:${userId}:${variant}
  */
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import {
   markdownToTelegramHtml,
@@ -31,6 +32,7 @@ const DIGEST_DIPLOMACY_DATA = require('../shared/diplomacy-keywords.json');
 // uses for diplomacy-keywords.json (avoids the two-sided `with {type:
 // 'json'}` bundler/node trap — see vercel-edge-gotchas).
 const WATCHLIST_STOCKS_DATA = require('../shared/stocks.json');
+const { createDeliveryReporter, deliveryErrorClass } = require('./lib/notification-delivery.cjs');
 const { decrypt } = require('./lib/crypto.cjs');
 const {
   assertNotificationWebhookDeliveryUrlSafe,
@@ -132,11 +134,18 @@ import { readCooldownConfig } from './lib/digest-cooldown-config.mjs';
 import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
 import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
 import { buildDigestDeliveryPlan } from './lib/digest-delivery-plan.mjs';
+import { selectDigestChannelContent } from './lib/digest-channel-content.mjs';
+import { briefL10nEnvOverrideWarning, briefL10nTarget, briefPipelineErrors, briefSlotIndexCommands, fetchBriefL10nConfig, localizeBrief, readBriefL10nConfig, undoBriefWriteIfErased, writeBriefSlotIndex } from './lib/brief-l10n.mjs';
+import { isRtlLanguage } from '../shared/ui-languages.js';
+import { briefLocalizedKey, briefSlotsKey } from '../shared/brief-envelope.js';
+import { briefIntlLocale, briefPlural, briefT, formatBriefDate } from '../shared/brief-strings.js';
+import { truncateForDisplay } from '../shared/brief-text.js';
 import {
   attachDigestCorroboration,
   digestCoverageText,
-  digestWebhookStory,
+  buildDigestWebhookPayload,
   readStoryCorroboration,
+  storyCorroborationField,
 } from './lib/digest-corroboration.mjs';
 import { buildTickerDictionary } from '../shared/ticker-extract.js';
 import { scanAndEnqueueWatchlistStoryEvents as scanWatchlistStoryEvents } from './lib/watchlist-story-scan.mjs';
@@ -160,6 +169,7 @@ const CONVEX_SITE_URL =
   process.env.CONVEX_SITE_URL ??
   (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
 const RELAY_SECRET = process.env.CONVEX_NOTIFICATION_RELAY_SECRET ?? '';
+const { recordDelivery, withDeliveryReports } = createDeliveryReporter({ siteUrl: CONVEX_SITE_URL, secret: RELAY_SECRET, source: 'digest' });
 const ANALYST_RELAY_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const RESEND_API_KEY = process.env.RESEND_API_KEY ?? '';
@@ -229,6 +239,33 @@ const BRIEF_SIGNING_SECRET_MISSING =
 // toggled independently (e.g. kill the brief LLM without silencing
 // the email's AI summary during a provider outage).
 const BRIEF_LLM_ENABLED = process.env.BRIEF_LLM_ENABLED !== '0';
+// Localized brief siblings (l10n PR 3). Disabled until main() reads the
+// Convex switch (BRIEF_L10N_ENABLED / BRIEF_L10N_LANGS on the Convex
+// deployment, the same source the Settings page reads). briefL10nSpentMs is
+// the cumulative lookup + translation time this run, capped by passBudgetMs.
+let briefL10nConfig = readBriefL10nConfig({ ...process.env, BRIEF_L10N_ENABLED: '0', BRIEF_L10N_LANGS: '' });
+let briefL10nSpentMs = 0;
+let briefL10nBudgetSkipped = 0;
+function briefL10nPassBudgetLeft() {
+  return briefL10nSpentMs < briefL10nConfig.passBudgetMs;
+}
+// One read of the Convex switch per run (the cron is one process per tick);
+// both compose passes share it.
+let briefL10nConfigLoad = null;
+function loadBriefL10nConfigOnce() {
+  briefL10nConfigLoad ??= fetchBriefL10nConfig({
+    siteUrl: CONVEX_SITE_URL,
+    secret: RELAY_SECRET,
+    env: process.env,
+    fetchImpl: (...args) => globalThis.fetch(...args),
+  }).then((config) => {
+    briefL10nConfig = config;
+    const envWarning = briefL10nEnvOverrideWarning(process.env);
+    if (envWarning) console.warn(`[digest] brief l10n: ${envWarning}`);
+    if (config.enabled) console.log(`[digest] brief l10n on: langs=${[...config.allow].join(',')}`);
+  });
+  return briefL10nConfigLoad;
+}
 // #4917: freshness budget for reusing the prior envelope's prose on
 // non-due compose ticks (minutes; 0 disables reuse and restores the
 // pre-#4917 synthesize-every-tick behavior). Due ticks always
@@ -539,11 +576,11 @@ async function getLastSentAt(rule) {
  * @param {number} nowMs
  * @returns {Promise<{ profile: string | null; greeting: string | null }>}
  */
-async function buildSynthesisCtx(rule, nowMs) {
+async function buildSynthesisCtx(rule, nowMs, prefsResult) {
   if (!rule?.userId) return { profile: null, greeting: null };
   let profile = null;
   try {
-    const { data: prefs } = await fetchUserPreferences(rule.userId, rule.variant ?? 'full');
+    const { data: prefs } = prefsResult ?? await fetchUserPreferences(rule.userId, rule.variant ?? 'full');
     if (prefs) {
       const ctx = extractUserContext(prefs);
       profile = formatUserProfile(ctx, rule.variant ?? 'full');
@@ -724,7 +761,7 @@ async function buildDigest(rule, windowStartMs) {
   );
   if (!Array.isArray(hashes) || hashes.length === 0) return null;
 
-  // null = at least one HGETALL chunk failed. Returning null here
+  // null = at least one story-track chunk failed. Returning null here
   // matches the legacy semantic (single-pipeline failure produced
   // an empty story list → null buildDigest result → cron skipped
   // sending the digest for this user/variant). The alternative —
@@ -732,7 +769,14 @@ async function buildDigest(rule, windowStartMs) {
   // chunks — would silently drop stories AND mark the slot as sent,
   // suppressing retry on the next tick. See:
   //   scripts/lib/story-track-batch-reader.mjs (bail-on-failure rationale).
-  const trackResults = await readStoryTracksChunked(hashes, upstashPipeline);
+  const trackResults = await readStoryTracksChunked(hashes, upstashPipeline, {
+    fields: [
+      'title', 'severity', 'publishedAt', 'isOpinion', 'isFeelGood',
+      'isEphemeralLiveCoverage', 'link', 'description', 'mentionCount',
+      'firstSeen', 'lastSeen', 'currentScore', 'category', 'entityCorroborationCount',
+      storyCorroborationField(variant, lang),
+    ],
+  });
   if (trackResults === null) return null;
 
   // READ-time freshness cutoff is anchored to the rule's own digest
@@ -1068,14 +1112,19 @@ async function buildDigest(rule, windowStartMs) {
 
 // target: 'plain' | 'telegram' | 'slack' | 'discord'. Chat targets return
 // channel-escaped text with each title linked to its original report (#9214).
-function formatDigest(stories, nowMs, target = 'plain') {
+function formatDigest(stories, nowMs, target = 'plain', lang = 'en') {
   if (!stories || stories.length === 0) return null;
   const esc = (text) => escapeDigestText(text, target);
-  const dateStr = new Intl.DateTimeFormat('en-US', {
-    month: 'long', day: 'numeric', year: 'numeric',
-  }).format(new Date(nowMs));
+  const dateStr = lang === 'en'
+    ? new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(new Date(nowMs))
+    : formatBriefDate(lang, nowMs, 'full');
+  const levelName = (level) => (lang === 'en'
+    ? level.toUpperCase()
+    : briefT(lang, `threat.${level}`).toLocaleUpperCase(briefIntlLocale(lang)));
 
-  const lines = [esc(`WorldMonitor Daily Digest — ${dateStr}`), ''];
+  // RTL channels: keep the Latin source list's brackets and commas in order (U+2068 FSI … U+2069 PDI).
+  const isolate = (text) => (isRtlLanguage(lang) ? `\u2068${text}\u2069` : text);
+  const lines = [esc(briefT(lang, 'digest.header', { date: dateStr })), ''];
 
   const buckets = { critical: [], high: [], medium: [] };
   for (const s of stories) {
@@ -1088,28 +1137,26 @@ function formatDigest(stories, nowMs, target = 'plain') {
   for (const [level, items] of Object.entries(buckets)) {
     if (items.length === 0) continue;
     const limit = SEVERITY_LIMITS[level] ?? DIGEST_MEDIUM_LIMIT;
-    lines.push(esc(`${level.toUpperCase()} (${items.length} event${items.length !== 1 ? 's' : ''})`));
+    lines.push(esc(briefPlural(lang, 'digest.levelLine', items.length, { level: levelName(level) })));
     for (const item of items.slice(0, limit)) {
       const src = item.sources.length > 0
-        ? ` [${item.sources.slice(0, 3).join(', ')}${item.sources.length > 3 ? ` +${item.sources.length - 3}` : ''}]`
+        ? ` ${isolate(`[${item.sources.slice(0, 3).join(', ')}${item.sources.length > 3 ? ` +${item.sources.length - 3}` : ''}]`)}`
         : '';
-      const coverage = digestCoverageText(item);
+      const coverage = digestCoverageText(item, lang);
       lines.push(`  \u2022 ${formatDigestItemTitle(stripSourceSuffix(item.title), item.link, target)}${esc(src)}${coverage ? esc(` \u00b7 ${coverage}`) : ''}`);
       // Append the RSS description as a short context line when upstream
       // persisted one. Truncated at a word boundary to ~200 chars to keep
       // the plain-text email terse. Empty \u2192 no context line (R6).
       if (typeof item.description === 'string' && item.description.length > 0) {
-        const trimmed = item.description.length > 200
-          ? item.description.slice(0, 200).replace(/\s+\S*$/, '') + '\u2026'
-          : item.description;
+        const trimmed = truncateForDisplay(item.description, 200, lang);
         lines.push(`    ${esc(trimmed)}`);
       }
     }
-    if (items.length > limit) lines.push(esc(`  ... and ${items.length - limit} more`));
+    if (items.length > limit) lines.push(esc(`  ${briefT(lang, 'digest.andMore', { n: items.length - limit })}`));
     lines.push('');
   }
 
-  lines.push(esc('View full dashboard \u2192 worldmonitor.app'));
+  lines.push(esc(briefT(lang, 'digest.viewDashboard')));
   return lines.join('\n');
 }
 
@@ -1264,19 +1311,18 @@ async function sendTelegram(userId, chatId, text) {
 const SLACK_RE = /^https:\/\/hooks\.slack\.com\/services\/[A-Z0-9]+\/[A-Z0-9]+\/[a-zA-Z0-9]+$/;
 const DISCORD_RE = /^https:\/\/discord\.com\/api(?:\/v\d+)?\/webhooks\/\d+\/[\w-]+\/?$/;
 
-async function sendSlack(userId, webhookEnvelope, text) {
+async function sendSlack(userId, webhookEnvelope, text, channel) {
   let webhookUrl;
   try { webhookUrl = decrypt(webhookEnvelope); } catch (err) {
-    console.warn(`[digest] Slack decrypt failed for ${userId}:`, err.message); return false;
+    return recordDelivery(userId, 'slack', channel, 'Decrypt failed');
   }
-  if (!SLACK_RE.test(webhookUrl)) { console.warn(`[digest] Slack URL invalid for ${userId}`); return false; }
+  if (!SLACK_RE.test(webhookUrl)) return recordDelivery(userId, 'slack', channel, 'URL rejected');
   let safeUrl;
   let resolvedAddresses;
   try {
     ({ url: safeUrl, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(webhookUrl));
   } catch (err) {
-    console.warn(`[digest] Slack URL rejected for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'slack', channel, deliveryErrorClass(err, 'URL rejected'));
   }
   try {
     const res = await postJsonWithPinnedAddress(
@@ -1285,35 +1331,24 @@ async function sendSlack(userId, webhookEnvelope, text) {
       { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
       resolvedAddresses,
     );
-    if (res.status === 404 || res.status === 410) {
-      console.warn(`[digest] Slack webhook gone for ${userId}, deactivating`);
-      await deactivateChannel(userId, 'slack');
-      return false;
-    } else if (!res.ok) {
-      console.warn(`[digest] Slack send failed ${res.status} for ${userId}`);
-      return false;
-    }
-    console.log(`[digest] Slack delivered to ${userId}`);
-    return true;
+    return recordDelivery(userId, 'slack', channel, res.ok ? null : `HTTP ${res.status}`);
   } catch (err) {
-    console.warn(`[digest] Slack send error for ${userId}: ${err.code || err.message}`);
-    return false;
+    return recordDelivery(userId, 'slack', channel, deliveryErrorClass(err));
   }
 }
 
-async function sendDiscord(userId, webhookEnvelope, text) {
+async function sendDiscord(userId, webhookEnvelope, text, channel) {
   let webhookUrl;
   try { webhookUrl = decrypt(webhookEnvelope); } catch (err) {
-    console.warn(`[digest] Discord decrypt failed for ${userId}:`, err.message); return false;
+    return recordDelivery(userId, 'discord', channel, 'Decrypt failed');
   }
-  if (!DISCORD_RE.test(webhookUrl)) { console.warn(`[digest] Discord URL invalid for ${userId}`); return false; }
+  if (!DISCORD_RE.test(webhookUrl)) return recordDelivery(userId, 'discord', channel, 'URL rejected');
   let safeUrl;
   let resolvedAddresses;
   try {
     ({ url: safeUrl, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(webhookUrl));
   } catch (err) {
-    console.warn(`[digest] Discord URL rejected for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'discord', channel, deliveryErrorClass(err, 'URL rejected'));
   }
   const content = truncateDiscordContent(text);
   try {
@@ -1325,80 +1360,60 @@ async function sendDiscord(userId, webhookEnvelope, text) {
       { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
       resolvedAddresses,
     );
-    if (res.status === 404 || res.status === 410) {
-      console.warn(`[digest] Discord webhook gone for ${userId}, deactivating`);
-      await deactivateChannel(userId, 'discord');
-      return false;
-    } else if (!res.ok) {
-      console.warn(`[digest] Discord send failed ${res.status} for ${userId}`);
-      return false;
-    }
-    console.log(`[digest] Discord delivered to ${userId}`);
-    return true;
+    return recordDelivery(userId, 'discord', channel, res.ok ? null : `HTTP ${res.status}`);
   } catch (err) {
-    console.warn(`[digest] Discord send error for ${userId}: ${err.code || err.message}`);
-    return false;
+    return recordDelivery(userId, 'discord', channel, deliveryErrorClass(err));
   }
 }
 
-async function sendTeams(userId, webhookEnvelope, payload) {
+async function sendTeams(userId, webhookEnvelope, payload, channel) {
   let webhookUrl;
   try { webhookUrl = decrypt(webhookEnvelope); } catch (err) {
-    console.warn(`[digest] Teams decrypt failed for ${userId}:`, err.message); return false;
+    return recordDelivery(userId, 'teams', channel, 'Decrypt failed');
   }
   const result = await sendTeamsPayload(webhookUrl, payload, { userAgent: 'worldmonitor-digest/1.0' });
-  if (result.gone) {
-    console.warn(`[digest] Teams workflow gone for ${userId}, deactivating`);
-    await deactivateChannel(userId, 'teams');
-    return false;
-  }
-  if (!result.ok) {
-    console.warn(`[digest] Teams send failed for ${userId}: ${result.error}`);
-    return false;
-  }
-  console.log(`[digest] Teams delivered to ${userId}`);
-  return true;
+  return recordDelivery(userId, 'teams', channel, result.ok ? null
+    : result.status ? `HTTP ${result.status}` : deliveryErrorClass(result.error, 'URL rejected'));
 }
 
-async function sendEmail(email, subject, text, html, channel = null) {
+async function sendEmail(email, subject, text, html, channel = null, occurrence = '', lang = 'en') {
   const unsubscribeUrl = unsubscribeUrlFor(channel, 'brief');
-  const label = 'Unsubscribe from the daily brief';
+  const label = briefT(lang, 'digest.unsubscribe');
   const payload = {
     from: RESEND_FROM, to: email, subject,
     text: appendUnsubscribeText(text, unsubscribeUrl, label),
     html: injectUnsubscribeFooterHtml(html, unsubscribeUrl, label),
     headers: listUnsubscribeHeaders(unsubscribeUrl),
   };
-  const result = await sendResendEmail(resend, payload, { logPrefix: '[digest]' });
+  // sendResendEmail bounds the call at 10s. A send Resend accepted but answered
+  // late reads as a failure, so last-sent stays unwritten and the next tick
+  // re-sends; keying the exact payload lets Resend drop an identical replay
+  // while a re-rendered digest (new content) still goes out under a new key.
+  // The body carries only the date, so `occurrence` (the scheduled local hour)
+  // keeps a twice_daily evening send from colliding with an identical morning one.
+  const idempotencyKey = `digest-${createHash('sha256').update(JSON.stringify([occurrence, payload.to, payload.subject, payload.text, payload.html])).digest('hex')}`;
+  const result = await sendResendEmail(resend, payload, { logPrefix: '[digest]', idempotencyKey });
   if (result.ok) console.log(`[digest] Email delivered to ${email}`);
   return result.ok;
 }
 
-async function sendWebhook(userId, webhookEnvelope, stories, aiSummary, webhookSecretEnvelope) {
+async function sendWebhook(userId, webhookEnvelope, stories, aiSummary, webhookSecretEnvelope, channel) {
   let url;
   let signingSecret;
   try {
     url = decrypt(webhookEnvelope);
     signingSecret = resolveWebhookSigningSecret(decrypt, webhookSecretEnvelope);
   } catch (err) {
-    console.warn(`[digest] Webhook decrypt failed for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'webhook', channel, 'Decrypt failed');
   }
   let safeUrl;
   let resolvedAddresses;
   try {
     ({ url: safeUrl, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(url));
   } catch (err) {
-    console.warn(`[digest] Webhook URL rejected for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'webhook', channel, deliveryErrorClass(err, 'URL rejected'));
   }
-  const payload = JSON.stringify({
-    version: '1',
-    eventType: 'digest',
-    stories: stories.map(digestWebhookStory),
-    summary: aiSummary ?? null,
-    storyCount: stories.length,
-  });
+  const payload = JSON.stringify(buildDigestWebhookPayload(stories, aiSummary));
   try {
     const resp = await postJsonWithPinnedAddress(
       safeUrl,
@@ -1410,17 +1425,9 @@ async function sendWebhook(userId, webhookEnvelope, stories, aiSummary, webhookS
       },
       resolvedAddresses,
     );
-    if (resp.status === 404 || resp.status === 410 || resp.status === 403) {
-      console.warn(`[digest] Webhook ${resp.status} for ${userId} — deactivating`);
-      await deactivateChannel(userId, 'webhook');
-      return false;
-    }
-    if (!resp.ok) { console.warn(`[digest] Webhook ${resp.status} for ${userId}`); return false; }
-    console.log(`[digest] Webhook delivered for ${userId}`);
-    return true;
+    return recordDelivery(userId, 'webhook', channel, resp.ok ? null : `HTTP ${resp.status}`);
   } catch (err) {
-    console.warn(`[digest] Webhook error for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'webhook', channel, deliveryErrorClass(err));
   }
 }
 
@@ -1480,7 +1487,18 @@ const DIVIDER = '─'.repeat(40);
  * Keeps the per-channel formatting logic out of main() so its cognitive
  * complexity stays within the lint budget.
  */
-function buildChannelBodies(storyLists, aiSummary, magazineUrl) {
+/** Localized Teams digest card labels; English stays on the module defaults. */
+function teamsDigestLabels(lang) {
+  return {
+    openBrief: briefT(lang, 'teams.openBrief'),
+    openDashboard: briefT(lang, 'teams.openDashboard'),
+    execSummary: briefT(lang, 'teams.execSummary'),
+    stories: (n) => briefPlural(lang, 'teams.stories', n),
+    more: (n) => briefT(lang, 'teams.more', { n }),
+  };
+}
+
+function buildChannelBodies(storyLists, aiSummary, magazineUrl, lang = 'en') {
   // storyLists: formatDigest output per target. The chat lists are already
   // channel-escaped and carry per-story links, so they are not escaped again.
   const { plain: storyListPlain, telegram, slack, discord } = storyLists;
@@ -1498,17 +1516,19 @@ function buildChannelBodies(storyLists, aiSummary, magazineUrl) {
   const slackSafeUrl = magazineUrl
     ? String(magazineUrl).replace(/[<>|]/g, '')
     : '';
+  const openLabel = briefT(lang, 'digest.openMagazine');
+  const execCaps = briefT(lang, 'digest.execSummaryCaps');
   const briefFooterPlain = magazineUrl
-    ? `\n\n${DIVIDER}\n\n📖 Open your WorldMonitor Brief magazine:\n${magazineUrl}`
+    ? `\n\n${DIVIDER}\n\n📖 ${openLabel}:\n${magazineUrl}`
     : '';
   const briefFooterTelegram = magazineUrl
-    ? `\n\n${DIVIDER}\n\n📖 <a href="${telegramSafeUrl}">Open your WorldMonitor Brief magazine</a>`
+    ? `\n\n${DIVIDER}\n\n📖 <a href="${telegramSafeUrl}">${escapeDigestText(openLabel, 'telegram')}</a>`
     : '';
   const briefFooterSlack = magazineUrl
-    ? `\n\n${DIVIDER}\n\n📖 <${slackSafeUrl}|Open your WorldMonitor Brief magazine>`
+    ? `\n\n${DIVIDER}\n\n📖 <${slackSafeUrl}|${openLabel.replace(/[<>|]/g, '')}>`
     : '';
   const briefFooterDiscord = magazineUrl
-    ? `\n\n${DIVIDER}\n\n📖 [Open your WorldMonitor Brief magazine](${magazineUrl})`
+    ? `\n\n${DIVIDER}\n\n📖 [${openLabel.replace(/[[\]]/g, '')}](${magazineUrl})`
     : '';
   if (!aiSummary) {
     return {
@@ -1519,10 +1539,10 @@ function buildChannelBodies(storyLists, aiSummary, magazineUrl) {
     };
   }
   return {
-    text: `EXECUTIVE SUMMARY\n\n${aiSummary}\n\n${DIVIDER}\n\n${storyListPlain}${briefFooterPlain}`,
-    telegramText: `<b>EXECUTIVE SUMMARY</b>\n\n${markdownToTelegramHtml(aiSummary)}\n\n${DIVIDER}\n\n${telegram}${briefFooterTelegram}`,
-    slackText: `*EXECUTIVE SUMMARY*\n\n${markdownToSlackMrkdwn(aiSummary)}\n\n${DIVIDER}\n\n${slack}${briefFooterSlack}`,
-    discordText: `**EXECUTIVE SUMMARY**\n\n${markdownToDiscord(aiSummary)}\n\n${DIVIDER}\n\n${discord}${briefFooterDiscord}`,
+    text: `${execCaps}\n\n${aiSummary}\n\n${DIVIDER}\n\n${storyListPlain}${briefFooterPlain}`,
+    telegramText: `<b>${escapeDigestText(execCaps, 'telegram')}</b>\n\n${markdownToTelegramHtml(aiSummary)}\n\n${DIVIDER}\n\n${telegram}${briefFooterTelegram}`,
+    slackText: `*${execCaps}*\n\n${markdownToSlackMrkdwn(aiSummary)}\n\n${DIVIDER}\n\n${slack}${briefFooterSlack}`,
+    discordText: `**${execCaps}**\n\n${markdownToDiscord(aiSummary)}\n\n${DIVIDER}\n\n${discord}${briefFooterDiscord}`,
   };
 }
 
@@ -1565,6 +1585,7 @@ async function composeBriefsForRun(rules, nowMs, { deadlineMs } = {}) {
     return { briefByUser, composeSuccess: 0, composeFailed: 1 };
   }
   if (!BRIEF_COMPOSE_ENABLED) return { briefByUser, composeSuccess: 0, composeFailed: 0 };
+  await loadBriefL10nConfigOnce();
 
   // The brief's story list now comes from the same digest accumulator
   // the email reads (buildDigest). news:insights:v1 is still consulted
@@ -1643,6 +1664,9 @@ async function composeBriefsForRun(rules, nowMs, { deadlineMs } = {}) {
     `[digest] brief: compose_success=${composeSuccess} compose_failed=${composeFailed} ` +
       `deferred=${composeDeferred} total_users=${annotatedByUser.size}`,
   );
+  if (briefL10nBudgetSkipped > 0) {
+    console.log(`[digest] brief l10n pass budget exhausted after ${briefL10nSpentMs}ms; skipped=${briefL10nBudgetSkipped} users sent English`);
+  }
   return { briefByUser, composeSuccess, composeFailed };
 }
 
@@ -1698,6 +1722,30 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   );
   if (!winnerResult) return null;
   const { winner, stories: winnerStories } = winnerResult;
+
+  // Brief language lookup (l10n PR 3). Off: no call. On: one relay call per
+  // composed user, reused by buildSynthesisCtx below. A failed lookup or an
+  // exhausted pass budget means English.
+  let prefsResult = null;
+  let targetLang = null;
+  if (briefL10nConfig.enabled) {
+    if (briefL10nPassBudgetLeft()) {
+      const lookupStarted = Date.now();
+      try {
+        prefsResult = await fetchUserPreferences(userId, winner.rule.variant ?? 'full', {
+          includeBriefLanguage: true,
+          timeoutMs: 3_000,
+        });
+      } catch {
+        prefsResult = null;
+      }
+      briefL10nSpentMs += Date.now() - lookupStarted;
+      if (prefsResult?.error) prefsResult = null;
+      targetLang = briefL10nTarget(prefsResult?.briefLanguage, briefL10nConfig);
+    } else {
+      briefL10nBudgetSkipped += 1;
+    }
+  }
 
   // ── Canonical synthesis (3-level fallback chain) ────────────────────
   //
@@ -1766,7 +1814,7 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     }
 
     if (!synthesisReused) {
-      const ctx = await buildSynthesisCtx(winner.rule, nowMs);
+      const ctx = await buildSynthesisCtx(winner.rule, nowMs, prefsResult ?? undefined);
       const result = await runSynthesisWithFallback(
         userId,
         synthesisStories,
@@ -2034,6 +2082,63 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     }
   }
 
+  // Localized sibling (l10n PR 3). Runs after the final stories and threads
+  // are fixed so the sibling mirrors the canonical envelope exactly. Any
+  // failure leaves the user on the English brief.
+  let localizedEnvelope = null;
+  let localizedSynthesis = null;
+  if (targetLang && BRIEF_LLM_ENABLED) {
+    if (briefL10nPassBudgetLeft()) {
+      const l10nStarted = Date.now();
+      // Neither the policy lookup nor the translation may outlive the pass budget.
+      const passLeftMs = () => briefL10nConfig.passBudgetMs - briefL10nSpentMs - (Date.now() - l10nStarted);
+      // The per-user cap starts before the policy lookup, so it covers both.
+      const userDeadline = l10nStarted + briefL10nConfig.userBudgetMs;
+      const leftMs = () => Math.min(userDeadline - Date.now(), passLeftMs());
+      let outcome;
+      let deadlineTimer;
+      try {
+        const deadline = new Promise((resolve) => {
+          deadlineTimer = setTimeout(resolve, Math.max(0, leftMs()), null);
+        });
+        const policy = await Promise.race([
+          resolveAiRoutingPolicy(userId).then((value) => ({ value })),
+          deadline,
+        ]);
+        outcome = policy
+          ? await localizeBrief({
+            envelope: finalEnvelope,
+            synthesis,
+            lang: targetLang,
+            sharedDeps: briefLlmDeps,
+            userDeps: withAiRoutingPolicy(briefLlmDeps, policy.value),
+            userId,
+            budgetMs: Math.max(1, Math.min(userDeadline - Date.now(), passLeftMs())),
+          })
+          : { ok: false, reason: 'pass-budget', stats: null };
+      } catch (err) {
+        outcome = { ok: false, reason: `throw:${err?.message ?? err}`, stats: null };
+      } finally {
+        clearTimeout(deadlineTimer);
+      }
+      briefL10nSpentMs += Date.now() - l10nStarted;
+      if (outcome.ok) {
+        localizedEnvelope = outcome.envelope;
+        localizedSynthesis = outcome.synthesis;
+      }
+      const st = outcome.stats ?? {};
+      console.log(
+        `[digest] brief l10n user=${userId} lang=${targetLang} outcome=${outcome.ok ? 'ok' : 'fallback'}`
+          + ` reason=${outcome.ok ? 'none' : outcome.reason}`
+          + ` shared_ms=${st.sharedMs ?? 0} user_ms=${st.userMs ?? 0}`
+          + ` shared_hit=${st.sharedHits ?? 0}/${(st.sharedHits ?? 0) + (st.sharedMisses ?? 0)}`
+          + ` user_hit=${st.userHits ?? 0}/${(st.userHits ?? 0) + (st.userMisses ?? 0)}`,
+      );
+    } else {
+      briefL10nBudgetSkipped += 1;
+    }
+  }
+
   // Slot (YYYY-MM-DD-HHMM in the user's tz) is what routes the
   // magazine URL + Redis key. Using the same tz the composer used to
   // produce envelope.data.date guarantees the slot's date portion
@@ -2054,17 +2159,59 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   // raw = true pins the bare-key write (#7674): the digest composer publishes
   // the envelopes every api/brief reader resolves raw; see the insights read
   // above for the VERCEL_ENV-leak rationale.
-  const pipelineResult = await redisPipeline([
+  // Slot index for account deletion, written before any envelope: if it
+  // cannot be written the compose fails, so no envelope exists that a
+  // deletion could not find.
+  await writeBriefSlotIndex(
+    briefSlotIndexCommands(briefSlotsKey(userId), issueSlot, Date.now(), BRIEF_TTL_SECONDS),
+    (commands) => redisPipeline(commands, 5_000, true),
+  );
+  const briefCommands = [
     ['SETEX', key, String(BRIEF_TTL_SECONDS), JSON.stringify(finalEnvelope)],
     ['SETEX', latestPointerKey, String(BRIEF_TTL_SECONDS), latestPointerValue],
-  ], 5_000, true);
-  if (!pipelineResult || !Array.isArray(pipelineResult) || pipelineResult.length < 2) {
-    throw new Error('null pipeline response from Upstash');
+  ];
+  // Flag on: write the sibling, or DEL it so a stale one cannot outlive a
+  // switch back to English. Flag off: no brief:l10n: command at all.
+  let siblingIndex = -1;
+  if (localizedEnvelope) {
+    siblingIndex = briefCommands.length;
+    briefCommands.push(['SETEX', briefLocalizedKey(userId, issueSlot), String(BRIEF_TTL_SECONDS), JSON.stringify(localizedEnvelope)]);
+  } else if (briefL10nConfig.enabled) {
+    briefCommands.push(['DEL', briefLocalizedKey(userId, issueSlot)]);
   }
-  for (const cell of pipelineResult) {
-    if (cell && typeof cell === 'object' && 'error' in cell) {
-      throw new Error(`Upstash SETEX error: ${cell.error}`);
+  let pipelineErrors;
+  try {
+    const pipelineResult = await redisPipeline(briefCommands, 5_000, true);
+    if (!pipelineResult || !Array.isArray(pipelineResult) || pipelineResult.length < 2) {
+      throw new Error('null pipeline response from Upstash');
     }
+    pipelineErrors = briefPipelineErrors(pipelineResult, 2, siblingIndex);
+    if (pipelineErrors.fatal) throw new Error(`Upstash SETEX error: ${pipelineErrors.fatal}`);
+  } catch (err) {
+    // A failed or lost write may still have stored an envelope. If the account
+    // was erased meanwhile, remove it before failing; a failed cleanup fails
+    // with both reasons, so the compose is retried and the envelope is not
+    // silently left behind.
+    try {
+      await undoBriefWriteIfErased(userId, issueSlot, (commands) => redisPipeline(commands, 5_000, true));
+    } catch (cleanupErr) {
+      throw new Error(`${err instanceof Error ? err.message : String(err)}; ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`);
+    }
+    throw err;
+  }
+  if (pipelineErrors.other.length > 0) {
+    console.warn(`[digest] brief index/sibling write error user=${userId}: ${pipelineErrors.other.join('; ')}`);
+  }
+  // The magazine and carousel read the stored sibling. Without it they render
+  // English, so the email and channels go out in English too.
+  if (pipelineErrors.siblingFailed) {
+    localizedEnvelope = null;
+    localizedSynthesis = null;
+  }
+  const briefLang = localizedEnvelope ? targetLang : 'en';
+  // The account may have been erased while this compose ran; see briefErasedKey.
+  if (await undoBriefWriteIfErased(userId, issueSlot, (commands) => redisPipeline(commands, 5_000, true))) {
+    throw new Error('account erased during compose; brief removed');
   }
 
   const magazineUrl = await signBriefUrl({
@@ -2088,6 +2235,10 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     // parity contract (the "call site 3" regression). See plan
     // docs/plans/2026-05-14-001-fix-brief-pipeline-parity-grounding-opinion-plan.md.
     synthesis,
+    // l10n PR 3: channel bodies read these; everything else stays canonical.
+    lang: briefLang,
+    localizedEnvelope,
+    localizedSynthesis,
   };
 }
 
@@ -2400,7 +2551,7 @@ async function main() {
             Authorization: `Bearer ${RELAY_SECRET}`,
             'User-Agent': 'worldmonitor-digest/1.0',
           },
-          body: JSON.stringify({ userId: rule.userId }),
+          body: JSON.stringify({ userId: rule.userId, deliveryChannels: rule.channels ?? [] }),
           signal: AbortSignal.timeout(10000),
         });
         if (chRes.ok) channels = await chRes.json();
@@ -2446,8 +2597,6 @@ async function main() {
       // editorial block this tick (the story list still ships); the
       // path is rare and self-healing on the next compose.
       const brief = briefForUser;
-      let briefSynthesis = null;  // full {lead, threads, signals} when synthesis succeeded
-      let briefLead = null;       // string projection for non-email channels + parity log
       // synthesisLevel is sourced from the compose pass — not recomputed.
       const synthesisLevel = brief?.synthesisLevel ?? 3;
       // Gate: AI_DIGEST_ENABLED + per-rule opt-out + synthesisLevel ∈
@@ -2457,34 +2606,48 @@ async function main() {
       // `digest.lead` (even the L3 stub), so reading the synthesis from
       // the briefByUser entry (NOT the envelope) is what keeps L3 /
       // opt-out users from getting a fake "Executive Summary".
-      if (AI_DIGEST_ENABLED && rule.aiDigestEnabled !== false && synthesisLevel !== 3) {
-        briefSynthesis = brief?.synthesis ?? null;
-        briefLead = briefSynthesis?.lead ?? null;
-      }
+      // briefSynthesis/briefLead stay canonical English (subject, parity
+      // log, webhook); channelSynthesis/channelLead are the localized copies
+      // when the brief was localized (l10n PR 3).
+      const {
+        canonicalSynthesis: briefSynthesis,
+        canonicalLead: briefLead,
+        channelSynthesis,
+        channelLead,
+      } = selectDigestChannelContent({
+        brief,
+        aiDigestEnabled: AI_DIGEST_ENABLED,
+        ruleAiDigestEnabled: rule.aiDigestEnabled,
+      });
 
       const deliveryPlan = buildDigestDeliveryPlan({
         briefStories: brief?.envelope?.data?.stories,
         rawStories: stories,
+        localizedBriefStories: brief?.localizedEnvelope?.data?.stories,
       });
       const {
         formatterStories,
+        canonicalFormatterStories,
         cooldownIterableStories,
         sourceCountByClusterId,
       } = deliveryPlan;
 
-      const storyListPlain = formatDigest(formatterStories, nowMs);
+      const localizedLang = brief?.localizedEnvelope?.lang;
+      const channelLang = typeof localizedLang === 'string' ? localizedLang : 'en';
+      const storyListPlain = formatDigest(formatterStories, nowMs, 'plain', channelLang);
       if (!storyListPlain) continue;
 
       const magazineUrl = brief?.magazineUrl ?? null;
       const { text, telegramText, slackText, discordText } = buildChannelBodies(
         {
           plain: storyListPlain,
-          telegram: formatDigest(formatterStories, nowMs, 'telegram'),
-          slack: formatDigest(formatterStories, nowMs, 'slack'),
-          discord: formatDigest(formatterStories, nowMs, 'discord'),
+          telegram: formatDigest(formatterStories, nowMs, 'telegram', channelLang),
+          slack: formatDigest(formatterStories, nowMs, 'slack', channelLang),
+          discord: formatDigest(formatterStories, nowMs, 'discord', channelLang),
         },
-        briefLead,
+        channelLead,
         magazineUrl,
+        channelLang,
       );
       // Email gets the FULL structured synthesis (lead + threads +
       // signals) so the editorial block matches the old Brain B
@@ -2501,14 +2664,15 @@ async function main() {
       const unsubscribeBytes = Math.max(0, ...deliverableChannels
         .filter((ch) => ch.channelType === 'email')
         .map((ch) => Buffer.byteLength(injectUnsubscribeFooterHtml(
-          '', unsubscribeUrlFor(ch, 'brief'), 'Unsubscribe from the daily brief',
+          '', unsubscribeUrlFor(ch, 'brief'), briefT(channelLang, 'digest.unsubscribe'),
         ), 'utf8')));
       const { html, truncated: htmlTruncated, bytes: htmlBytes, shownStories } = renderDigestEmailHtml({
         stories: formatterStories,
         nowMs,
-        synthesis: briefSynthesis,
+        synthesis: channelSynthesis,
         magazineUrl,
         maxBytes: DIGEST_EMAIL_MAX_HTML_BYTES - unsubscribeBytes,
+        lang: channelLang,
       });
       if (htmlTruncated) {
         console.warn(
@@ -2517,8 +2681,10 @@ async function main() {
         );
       }
 
-      const shortDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(nowMs));
-      const subject = subjectForBrief({ briefLead, synthesisLevel, shortDate });
+      const shortDate = channelLang === 'en'
+        ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(nowMs))
+        : formatBriefDate(channelLang, nowMs, 'short');
+      const subject = subjectForBrief({ briefLead, synthesisLevel, shortDate, lang: channelLang });
 
       // Sprint 1 / U5 — cooldown shadow-mode evaluation (per-cluster,
       // per-channel, BEFORE the channel send). The decision is computed
@@ -2668,138 +2834,143 @@ async function main() {
       // both writes happen on success.
       const deliveredLogResults = [];
 
-      for (const ch of deliverableChannels) {
-        let ok = false;
-        if (ch.channelType === 'telegram' && ch.chatId) {
-          // Phase 8: send the 3-image carousel first (best-effort), then
-          // the full text. Caption on the carousel is a short teaser —
-          // the long-form story list goes in the text message below so
-          // it remains forwardable / quotable on its own.
-          if (magazineUrl) {
-            const caption = `<b>WorldMonitor Brief — ${shortDate}</b>\n${formatterStories.length} ${formatterStories.length === 1 ? 'thread' : 'threads'} on the desk today.`;
-            await sendTelegramBriefCarousel(rule.userId, ch.chatId, caption, magazineUrl);
+      await withDeliveryReports(async () => {
+        for (const ch of deliverableChannels) {
+          let ok = false;
+          if (ch.channelType === 'telegram' && ch.chatId) {
+            // Phase 8: send the 3-image carousel first (best-effort), then
+            // the full text. Caption on the carousel is a short teaser —
+            // the long-form story list goes in the text message below so
+            // it remains forwardable / quotable on its own.
+            if (magazineUrl) {
+              const caption = `<b>${escapeDigestText(briefT(channelLang, 'digest.telegramCaption', { date: shortDate }), 'telegram')}</b>\n${escapeDigestText(briefPlural(channelLang, 'digest.threadsOnDesk', formatterStories.length), 'telegram')}`;
+              await sendTelegramBriefCarousel(rule.userId, ch.chatId, caption, magazineUrl);
+            }
+            ok = await sendTelegram(rule.userId, ch.chatId, telegramText);
+          } else if (ch.channelType === 'slack' && ch.webhookEnvelope) {
+            ok = await sendSlack(rule.userId, ch.webhookEnvelope, slackText, ch);
+          } else if (ch.channelType === 'discord' && ch.webhookEnvelope) {
+            ok = await sendDiscord(rule.userId, ch.webhookEnvelope, discordText, ch);
+          } else if (ch.channelType === 'teams' && ch.webhookEnvelope) {
+            // Same stories, lead and brief link as the other channels, as an
+            // Adaptive Card (#9215). The card renders its own story list, so it
+            // takes formatterStories rather than a formatDigest text target;
+            // titles get the same source-suffix strip formatDigest applies.
+            ok = await sendTeams(rule.userId, ch.webhookEnvelope, buildTeamsDigestPayload({
+              title: storyListPlain.split('\n')[0],
+              summary: channelLead,
+              stories: formatterStories.map((story) => ({ ...story, title: stripSourceSuffix(story.title) })),
+              briefUrl: magazineUrl,
+              ...(channelLang === 'en' ? {} : { labels: teamsDigestLabels(channelLang) }),
+            }), ch);
+          } else if (ch.channelType === 'email' && ch.email) {
+            // cooldownSlot is YYYY-MM-DD-HHMM; the hour prefix stays fixed across
+            // retries within one scheduled hour.
+            ok = await sendEmail(ch.email, subject, text, html, ch, cooldownSlot.slice(0, 13), channelLang);
+          } else if (ch.channelType === 'webhook' && ch.webhookEnvelope) {
+            // Webhook payload's `summary` field reads the canonical
+            // briefLead — same string the email exec block + magazine
+            // pull-quote use. Codex Round-1 Medium #6 (channel-scope
+            // parity).
+            //
+            // Codex PR #3617 round-5 P1 — pass formatterStories (NOT raw
+            // stories). Pre-fix the webhook serialised the full raw pool
+            // (up to DIGEST_MAX_ITEMS=30) while every other channel
+            // consumed formatterStories (post-cap, post-filter — what
+            // U4/U5 also iterate via cooldownIterableStories). Webhook
+            // users were therefore receiving cards that were never
+            // shadow-evaluated and never seeded delivered-log rows for
+            // future cooldown enforcement. Aligning to formatterStories
+            // closes the channel-coverage gap so the webhook payload
+            // exactly matches what U4 stamped + U5 evaluated for that
+            // (user, rule, tick).
+            ok = await sendWebhook(rule.userId, ch.webhookEnvelope, canonicalFormatterStories, briefLead, ch.webhookSecret, ch);
           }
-          ok = await sendTelegram(rule.userId, ch.chatId, telegramText);
-        } else if (ch.channelType === 'slack' && ch.webhookEnvelope) {
-          ok = await sendSlack(rule.userId, ch.webhookEnvelope, slackText);
-        } else if (ch.channelType === 'discord' && ch.webhookEnvelope) {
-          ok = await sendDiscord(rule.userId, ch.webhookEnvelope, discordText);
-        } else if (ch.channelType === 'teams' && ch.webhookEnvelope) {
-          // Same stories, lead and brief link as the other channels, as an
-          // Adaptive Card (#9215). The card renders its own story list, so it
-          // takes formatterStories rather than a formatDigest text target;
-          // titles get the same source-suffix strip formatDigest applies.
-          ok = await sendTeams(rule.userId, ch.webhookEnvelope, buildTeamsDigestPayload({
-            title: storyListPlain.split('\n')[0],
-            summary: briefLead,
-            stories: formatterStories.map((story) => ({ ...story, title: stripSourceSuffix(story.title) })),
-            briefUrl: magazineUrl,
-          }));
-        } else if (ch.channelType === 'email' && ch.email) {
-          ok = await sendEmail(ch.email, subject, text, html, ch);
-        } else if (ch.channelType === 'webhook' && ch.webhookEnvelope) {
-          // Webhook payload's `summary` field reads the canonical
-          // briefLead — same string the email exec block + magazine
-          // pull-quote use. Codex Round-1 Medium #6 (channel-scope
-          // parity).
-          //
-          // Codex PR #3617 round-5 P1 — pass formatterStories (NOT raw
-          // stories). Pre-fix the webhook serialised the full raw pool
-          // (up to DIGEST_MAX_ITEMS=30) while every other channel
-          // consumed formatterStories (post-cap, post-filter — what
-          // U4/U5 also iterate via cooldownIterableStories). Webhook
-          // users were therefore receiving cards that were never
-          // shadow-evaluated and never seeded delivered-log rows for
-          // future cooldown enforcement. Aligning to formatterStories
-          // closes the channel-coverage gap so the webhook payload
-          // exactly matches what U4 stamped + U5 evaluated for that
-          // (user, rule, tick).
-          ok = await sendWebhook(rule.userId, ch.webhookEnvelope, formatterStories, briefLead, ch.webhookSecret);
-        }
-        if (ok) {
-          anyDelivered = true;
-          // Sprint 1 / U4 — record one delivered-log entry per cluster
-          // surfaced in this channel's body. The brief envelope's stories
-          // are the canonical source set (post-cap, post-filter, ⊆ U7
-          // invariant); the formatter shim above maps them into the
-          // raw-shape used by formatDigest, which means the SAME stories
-          // were surfaced to the user.
-          //
-          // Order of operations: send first, write second. If the writer
-          // fails AFTER the channel succeeded, the story is eligible to
-          // re-air on the next tick. We accept that trade-off (extra
-          // edition beats silent suppression of a real delivery
-          // problem) — see digest-delivered-log.mjs's "Failure-mode
-          // trade-off" docblock for the canonical rationale.
-          //
-          // Per-cluster writer is awaited sequentially: under option (a)
-          // we ship ≤12 clusters × ≤5 channels per user, so the
-          // sequential cost is ~bounded at 60 SET commands per user.
-          // Parallelising via Promise.all would add bursty load to the
-          // same Upstash account that's serving the rest of the cron;
-          // sequential is simpler and the latency budget already
-          // tolerates it.
-          // Codex PR #3617 round-4 P2 — iterate cooldownIterableStories
-          // (unified across brief-success + compose-miss). See the
-          // cooldownIterableStories construction above for rationale.
-          if (Array.isArray(cooldownIterableStories) && cooldownIterableStories.length > 0) {
-            for (const briefStory of cooldownIterableStories) {
-              const clusterId = typeof briefStory?.clusterId === 'string'
-                ? briefStory.clusterId
-                : '';
-              if (!clusterId) {
-                // Defensive: a v4 envelope MUST carry clusterId per
-                // assertBriefEnvelope. Under compose-miss, clusterId is
-                // derived from raw mergedHashes[0]/hash — always present
-                // for valid raw stories. Skip the write on missing
-                // clusterId either way (malformed key would throw).
-                console.warn(
-                  `[digest] U4 delivered-log: brief story missing clusterId — ` +
-                    `user=${rule.userId} channel=${ch.channelType} headline=${JSON.stringify(briefStory?.headline ?? '<missing>')}. ` +
-                    `Skipping log write for this cluster.`,
-                );
-                continue;
-              }
-              try {
-                const writeResult = await writeDeliveredEntry({
-                  userId: rule.userId,
-                  channel: ch.channelType,
-                  ruleId: `${rule.variant ?? 'full'}:${rule.lang ?? 'en'}:${rule.sensitivity ?? 'high'}`,
-                  clusterId,
-                  sentAt: nowMs,
-                  // Codex PR #3617 P1 — real source count, not the
-                  // 0/1 collapse from BriefStory.source. See the
-                  // sourceCountByClusterId Map construction above the
-                  // U5 cooldown loop for the full rationale.
-                  sourceCount: sourceCountByClusterId.get(clusterId) ?? 0,
-                  severity: typeof briefStory?.threatLevel === 'string' ? briefStory.threatLevel : 'unknown',
-                  // Greptile PR #3617 P2 — persist headline so the next
-                  // tick's cooldown evaluator can drive the
-                  // EVOLUTION_NEW_FACT bypass via string-equality
-                  // compare. cooldownIterableStories carries the
-                  // canonical headline in both branches (BriefStory
-                  // shape under brief-success; synthesized from raw
-                  // story.title under compose-miss).
-                  headline: typeof briefStory?.headline === 'string' ? briefStory.headline : '',
-                });
-                deliveredLogResults.push(writeResult);
-              } catch (err) {
-                // writeDeliveredEntry only throws on programmer error
-                // (empty key components). Network/Upstash failures map
-                // to {errors: 1} in the tri-state result. A throw here
-                // means a v4 envelope leaked through with bad fields;
-                // record as error in the aggregate so it surfaces in
-                // the summary line below.
-                console.warn(
-                  `[digest] U4 delivered-log: writeDeliveredEntry threw for ` +
-                    `user=${rule.userId} channel=${ch.channelType} clusterId=${clusterId}: ${err?.message ?? err}`,
-                );
-                deliveredLogResults.push({ written: 0, conflicts: 0, errors: 1 });
+          if (ok) {
+            anyDelivered = true;
+            // Sprint 1 / U4 — record one delivered-log entry per cluster
+            // surfaced in this channel's body. The brief envelope's stories
+            // are the canonical source set (post-cap, post-filter, ⊆ U7
+            // invariant); the formatter shim above maps them into the
+            // raw-shape used by formatDigest, which means the SAME stories
+            // were surfaced to the user.
+            //
+            // Order of operations: send first, write second. If the writer
+            // fails AFTER the channel succeeded, the story is eligible to
+            // re-air on the next tick. We accept that trade-off (extra
+            // edition beats silent suppression of a real delivery
+            // problem) — see digest-delivered-log.mjs's "Failure-mode
+            // trade-off" docblock for the canonical rationale.
+            //
+            // Per-cluster writer is awaited sequentially: under option (a)
+            // we ship ≤12 clusters × ≤5 channels per user, so the
+            // sequential cost is ~bounded at 60 SET commands per user.
+            // Parallelising via Promise.all would add bursty load to the
+            // same Upstash account that's serving the rest of the cron;
+            // sequential is simpler and the latency budget already
+            // tolerates it.
+            // Codex PR #3617 round-4 P2 — iterate cooldownIterableStories
+            // (unified across brief-success + compose-miss). See the
+            // cooldownIterableStories construction above for rationale.
+            if (Array.isArray(cooldownIterableStories) && cooldownIterableStories.length > 0) {
+              for (const briefStory of cooldownIterableStories) {
+                const clusterId = typeof briefStory?.clusterId === 'string'
+                  ? briefStory.clusterId
+                  : '';
+                if (!clusterId) {
+                  // Defensive: a v4 envelope MUST carry clusterId per
+                  // assertBriefEnvelope. Under compose-miss, clusterId is
+                  // derived from raw mergedHashes[0]/hash — always present
+                  // for valid raw stories. Skip the write on missing
+                  // clusterId either way (malformed key would throw).
+                  console.warn(
+                    `[digest] U4 delivered-log: brief story missing clusterId — ` +
+                      `user=${rule.userId} channel=${ch.channelType} headline=${JSON.stringify(briefStory?.headline ?? '<missing>')}. ` +
+                      `Skipping log write for this cluster.`,
+                  );
+                  continue;
+                }
+                try {
+                  const writeResult = await writeDeliveredEntry({
+                    userId: rule.userId,
+                    channel: ch.channelType,
+                    ruleId: `${rule.variant ?? 'full'}:${rule.lang ?? 'en'}:${rule.sensitivity ?? 'high'}`,
+                    clusterId,
+                    sentAt: nowMs,
+                    // Codex PR #3617 P1 — real source count, not the
+                    // 0/1 collapse from BriefStory.source. See the
+                    // sourceCountByClusterId Map construction above the
+                    // U5 cooldown loop for the full rationale.
+                    sourceCount: sourceCountByClusterId.get(clusterId) ?? 0,
+                    severity: typeof briefStory?.threatLevel === 'string' ? briefStory.threatLevel : 'unknown',
+                    // Greptile PR #3617 P2 — persist headline so the next
+                    // tick's cooldown evaluator can drive the
+                    // EVOLUTION_NEW_FACT bypass via string-equality
+                    // compare. cooldownIterableStories carries the
+                    // canonical headline in both branches (BriefStory
+                    // shape under brief-success; synthesized from raw
+                    // story.title under compose-miss).
+                    headline: typeof briefStory?.headline === 'string' ? briefStory.headline : '',
+                  });
+                  deliveredLogResults.push(writeResult);
+                } catch (err) {
+                  // writeDeliveredEntry only throws on programmer error
+                  // (empty key components). Network/Upstash failures map
+                  // to {errors: 1} in the tri-state result. A throw here
+                  // means a v4 envelope leaked through with bad fields;
+                  // record as error in the aggregate so it surfaces in
+                  // the summary line below.
+                  console.warn(
+                    `[digest] U4 delivered-log: writeDeliveredEntry threw for ` +
+                      `user=${rule.userId} channel=${ch.channelType} clusterId=${clusterId}: ${err?.message ?? err}`,
+                  );
+                  deliveredLogResults.push({ written: 0, conflicts: 0, errors: 1 });
+                }
               }
             }
           }
         }
-      }
+      });
       // Sprint 1 / U4 summary — one line per user-rule send, not per
       // (channel, cluster) write. Operators can tail this as a single
       // line per user. Tri-state counters distinguish:

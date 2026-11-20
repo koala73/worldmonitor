@@ -117,11 +117,17 @@ describe('mobile SVG map feature caps and label reflow skip (#4463 / U7)', () =>
   });
 
   it('keeps mobile label measurement out of the tap-start window and resumes it on real movement', () => {
-    assert.doesNotMatch(
-      mapSrc,
-      /this\.container\.addEventListener\('pointerdown'[\s\S]*?resumeMobileLabelVisibility\(\)/,
-      'pointerdown is part of the tap INP window and must not arm label measurement',
-    );
+    // Each pointerdown handler body, up to the listener's options argument. A
+    // file-wide lazy match reached a resume call in any later handler.
+    const pointerDownHandlers = [...mapSrc.matchAll(/addEventListener\('pointerdown',[\s\S]*?\n {4}\}, \{/g)].map((match) => match[0]);
+    assert.ok(pointerDownHandlers.length > 0, 'expected the map to register a pointerdown handler');
+    for (const handler of pointerDownHandlers) {
+      assert.doesNotMatch(
+        handler,
+        /resumeMobileLabelVisibility\(\)/,
+        'pointerdown is part of the tap INP window and must not arm label measurement',
+      );
+    }
     const touchStartBlock = sliceBetween("this.container.addEventListener('touchstart', (e) => {", "this.container.addEventListener('touchmove'");
     assert.doesNotMatch(
       touchStartBlock,

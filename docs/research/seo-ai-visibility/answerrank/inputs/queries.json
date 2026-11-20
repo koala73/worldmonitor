@@ -1,0 +1,15 @@
+[
+ {"intent": "problem", "persona": "data builder", "query": "Is the Strait of Hormuz open right now? I need live ship traffic, IMF PortWatch has a 4 day lag.", "id": "t01"},
+ {"intent": "problem", "persona": "data builder", "query": "Live ship-tracking APIs are too expensive. How else can I check whether a shipping chokepoint is open?", "id": "t02"},
+ {"intent": "problem", "persona": "data builder", "query": "I'm waiting on ACLED API approval for my dashboard. What can I use for conflict events in the meantime?", "id": "t03"},
+ {"intent": "problem", "persona": "geopolitical analyst", "query": "I want a map that only tracks combat events and shows the actual evidence when possible. What exists?", "id": "t04"},
+ {"intent": "alternatives", "persona": "analyst", "query": "Is there anything like Dataminr but for business and politics?", "id": "t05"},
+ {"intent": "alternatives", "persona": "maritime analyst", "query": "MarineTraffic is practically useless without a paid account. What are the alternatives?", "id": "t06"},
+ {"intent": "how-to", "persona": "data builder", "query": "imf portwatch strait of hormuz daily transit calls 2026", "id": "t07"},
+ {"intent": "how-to", "persona": "data builder", "query": "acled explorer api endpoint json", "id": "t08"},
+ {"intent": "how-to", "persona": "operations analyst", "query": "What's the best way to monitor multiple ports on one dashboard for a daily operations briefing?", "id": "t09"},
+ {"intent": "how-to", "persona": "analyst", "query": "How can I set up alerts so I get notified when there's a major escalation or a key diplomatic announcement?", "id": "t10"},
+ {"intent": "alternatives", "persona": "news reader", "query": "Are there any good alternatives to social media for real-time war updates that still have editorial oversight?", "id": "t11"},
+ {"intent": "alternatives", "persona": "analyst", "query": "open source palantir alternative", "id": "t12"},
+ {"intent": "alternatives", "persona": "geopolitical analyst", "query": "liveuamap alternative", "id": "t13"}
+]

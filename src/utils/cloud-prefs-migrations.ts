@@ -238,8 +238,22 @@ export interface CloudPrefsMigrationOptions {
   curatedRegional?: {
     optInSources?: ReadonlyArray<string>;
   };
+  germanRss?: {
+    sources: ReadonlyArray<string>;
+    locale: () => string;
+  };
+  countryCoverage?: {
+    optInSources: ReadonlyArray<string>;
+  };
+  brazil?: {
+    optInSources: ReadonlyArray<string>;
+  };
+  publisherDirect?: {
+    optInSources: ReadonlyArray<string>;
+  };
 }
 
+/** Build the numbered preference migrations; locale providers are read when a migration runs. */
 export function buildMigrations(
   feedsByCategory: FeedsByCategory,
   options: CloudPrefsMigrationOptions = {},
@@ -274,6 +288,12 @@ export function buildMigrations(
     7: (data) => migrateCanadaDepthOptInsV7(data, canadaDepth.optInSources ?? []),
     8: (data) => migrateCrisisDeskOptInsV8(data, crisisDesk.optInSources ?? []),
     9: (data) => migrateCuratedRegionalOptInsV9(data, curatedRegional.optInSources ?? []),
+    10: (data) => options.germanRss
+      ? migrateGermanRssSourcesV10(data, options.germanRss.sources, options.germanRss.locale())
+      : data,
+    11: (data) => migrateBrazilOptInsV11(data, options.brazil?.optInSources ?? []),
+    12: (data) => migrateCountryCoverageOptInsV12(data, options.countryCoverage?.optInSources ?? []),
+    13: (data) => migratePublisherDirectOptInsV13(data, options.publisherDirect?.optInSources ?? []),
   };
 }
 
@@ -648,5 +668,64 @@ export function migrateCuratedRegionalOptInsV9(
   console.log(
     `[prefs] schema-9 migration: disabled ${updated.length - parsed.length} curated regional opt-in source(s)`,
   );
+  return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(updated) };
+}
+
+/** New German RSS feeds follow the user's locale without resetting existing choices. */
+export function migrateGermanRssSourcesV10(
+  data: Record<string, unknown>,
+  sources: ReadonlyArray<string>,
+  locale: string,
+): Record<string, unknown> {
+  if (locale.split('-')[0]?.toLowerCase() === 'de') return data;
+  const raw = data['worldmonitor-disabled-feeds'];
+  if (typeof raw !== 'string') return data;
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return data; }
+  if (!Array.isArray(parsed) || parsed.length === 0 || parsed.some(name => typeof name !== 'string')) return data;
+  const updated = [...parsed];
+  for (const name of sources) {
+    if (!updated.includes(name)) updated.push(name);
+  }
+  if (updated.length === parsed.length) return data;
+  return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(updated) };
+}
+
+/** Preserve an explicit enable-all choice; other returning profiles receive the new opt-ins. */
+export function migrateBrazilOptInsV11(
+  data: Record<string, unknown>,
+  sources: ReadonlyArray<string>,
+): Record<string, unknown> {
+  return appendOptInSources(data, sources);
+}
+
+export function migrateCountryCoverageOptInsV12(
+  data: Record<string, unknown>,
+  sources: ReadonlyArray<string>,
+): Record<string, unknown> {
+  return appendOptInSources(data, sources);
+}
+
+export function migratePublisherDirectOptInsV13(
+  data: Record<string, unknown>,
+  sources: ReadonlyArray<string>,
+): Record<string, unknown> {
+  return appendOptInSources(data, sources);
+}
+
+function appendOptInSources(
+  data: Record<string, unknown>,
+  sources: ReadonlyArray<string>,
+): Record<string, unknown> {
+  const raw = data['worldmonitor-disabled-feeds'];
+  if (typeof raw !== 'string') return data;
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return data; }
+  if (!Array.isArray(parsed) || parsed.length === 0 || parsed.some(name => typeof name !== 'string')) return data;
+  const updated = [...parsed];
+  for (const name of sources) {
+    if (!updated.includes(name)) updated.push(name);
+  }
+  if (updated.length === parsed.length) return data;
   return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(updated) };
 }

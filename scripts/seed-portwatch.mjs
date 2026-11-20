@@ -143,6 +143,14 @@ export async function fetchBaselineStats(portname, { fromEpoch, toEpoch }, timeo
     where: `portname='${portname.replace(/'/g, "''")}' AND date >= ${epochToTimestamp(fromEpoch)} AND date < ${epochToTimestamp(toEpoch)}`,
     outStatistics: JSON.stringify([
       { statisticType: 'avg', onStatisticField: 'n_total', outStatisticFieldName: 'avg_total' },
+      { statisticType: 'avg', onStatisticField: 'n_tanker', outStatisticFieldName: 'avg_tanker' },
+      { statisticType: 'avg', onStatisticField: 'capacity_tanker', outStatisticFieldName: 'avg_cap_tanker' },
+      { statisticType: 'count', onStatisticField: 'n_tanker', outStatisticFieldName: 'tanker_days' },
+      // Days with tanker DWT reported. A zero-filled gap lowers the mean, so the
+      // mean only defines normal when most days carry DWT.
+      { statisticType: 'sum', onStatisticField: 'CASE WHEN capacity_tanker > 0 THEN 1 ELSE 0 END', outStatisticFieldName: 'cap_tanker_days' },
+      // The rows avg_cap_tanker averages: the denominator for that majority.
+      { statisticType: 'count', onStatisticField: 'capacity_tanker', outStatisticFieldName: 'cap_tanker_rows' },
       { statisticType: 'count', onStatisticField: 'n_total', outStatisticFieldName: 'day_count' },
     ]),
     f: 'json',
@@ -158,16 +166,78 @@ export async function fetchBaselineStats(portname, { fromEpoch, toEpoch }, timeo
 }
 
 /**
+ * The layer's newest day after `afterDate` (YYYY-MM-DD), or null when it has
+ * none or the probe fails. The Hub export can stop updating while the query
+ * service keeps publishing (export ended 2026-10-25, layer 2026-11-01, on
+ * 2026-11-07); one filtered max() shows which chokepoints the export trails.
+ */
+export async function fetchLatestQueryDate(afterDate, timeoutMs = BASELINE_REQUEST_TIMEOUT_MS) {
+  const afterEpoch = Date.parse(`${afterDate}T00:00:00Z`) + DAY_MS;
+  if (!Number.isFinite(afterEpoch)) return null;
+  const params = new URLSearchParams({
+    where: `date >= ${epochToTimestamp(afterEpoch)}`,
+    outStatistics: JSON.stringify([
+      { statisticType: 'max', onStatisticField: 'date', outStatisticFieldName: 'latest_date' },
+    ]),
+    f: 'json',
+  });
+  try {
+    const resp = await fetch(`${ARCGIS_BASE}?${params}`, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const body = await resp.json();
+    if (body.error) throw new Error(body.error.message);
+    // `date` is a DateOnly field, so the max comes back as "YYYY-MM-DD".
+    const latest = Date.parse(body.features?.[0]?.attributes?.latest_date);
+    return Number.isFinite(latest) ? formatDate(latest) : null;
+  } catch (e) {
+    console.warn(`[PortWatch] latest-date probe failed: ${e?.message || e}`);
+    return null;
+  }
+}
+
+/**
  * `{ avgDaily, days, from, to }` from an outStatistics row, or null when the
  * window holds fewer than BASELINE_MIN_DAYS published days or the row is
  * malformed. Null is stored as-is: consumers withhold the comparison rather
  * than compare against a partial year.
+ *
+ * `tankerAvgDaily` and `capTankerAvgDaily` (tanker count and tanker DWT) are
+ * added when the row has them. The chokepoint-flows seeder measures oil flow
+ * against them, because a trailing window inside a long closure reads the
+ * closure as normal.
  */
 export function buildBaseline(stats, window) {
   const avg = Number(stats?.avg_total);
   const days = Number(stats?.day_count);
   if (!Number.isFinite(avg) || avg < 0 || !Number.isInteger(days) || days < BASELINE_MIN_DAYS) return null;
-  return { avgDaily: Math.round(avg * 10) / 10, days, from: window.from, to: window.to };
+  const baseline = { avgDaily: Math.round(avg * 10) / 10, days, from: window.from, to: window.to };
+  // Each tanker mean needs its own coverage: the day gate above counts n_total.
+  const tanker = finiteNonNegative(stats.avg_tanker);
+  if (tanker !== null && Number(stats.tanker_days) >= BASELINE_MIN_DAYS) {
+    baseline.tankerAvgDaily = Math.round(tanker * 10) / 10;
+  }
+  // The DWT mean needs as many rows as the count mean, and the majority rule
+  // the flow seeder applies to its trailing window over those rows: blank
+  // capacity cells are not rows, so a majority alone could be one of one.
+  const capTanker = finiteNonNegative(stats.avg_cap_tanker);
+  const capRows = Number(stats.cap_tanker_rows);
+  if (capTanker !== null && Number.isInteger(capRows) && capRows >= BASELINE_MIN_DAYS && Number(stats.cap_tanker_days) >= Math.ceil(capRows / 2)) {
+    baseline.capTankerAvgDaily = Math.round(capTanker);
+  }
+  return baseline;
+}
+
+function finiteNonNegative(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function mean(values) {
+  return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
 }
 
 export function buildHistory(features) {
@@ -237,8 +307,12 @@ export function chokepointsFromCsv(text, sinceEpoch, window) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || formatDate(Date.parse(`${date}T00:00:00Z`)) !== date) {
       throw new Error(`CSV export has an invalid date for ${cells[col.portname]}`);
     }
-    if (date >= window.from && date < baselineEndDay && cells[col.n_total] !== '') {
-      (baselineTotals[id] ??= []).push(Number(cells[col.n_total]));
+    // Each field counts on its own, as the query's per-field avg/count does.
+    if (date >= window.from && date < baselineEndDay) {
+      const base = (baselineTotals[id] ??= { total: [], tanker: [], capTanker: [] });
+      if (cells[col.n_total] !== '') base.total.push(Number(cells[col.n_total]));
+      if (cells[col.n_tanker] !== '') base.tanker.push(Number(cells[col.n_tanker]));
+      if (cells[col.capacity_tanker] !== '') base.capTanker.push(Number(cells[col.capacity_tanker]));
     }
     if (date < sinceDay) continue;
     const attributes = { date };
@@ -248,8 +322,16 @@ export function chokepointsFromCsv(text, sinceEpoch, window) {
   const result = {};
   for (const [id, rows] of Object.entries(features)) {
     const history = buildHistory(rows);
-    const totals = baselineTotals[id] ?? [];
-    const stats = { avg_total: totals.length ? totals.reduce((a, b) => a + b, 0) / totals.length : null, day_count: totals.length };
+    const base = baselineTotals[id] ?? { total: [], tanker: [], capTanker: [] };
+    const stats = {
+      avg_total: mean(base.total),
+      avg_tanker: mean(base.tanker),
+      avg_cap_tanker: mean(base.capTanker),
+      day_count: base.total.length,
+      tanker_days: base.tanker.length,
+      cap_tanker_days: base.capTanker.filter(v => v > 0).length,
+      cap_tanker_rows: base.capTanker.length,
+    };
     result[id] = { history, wowChangePct: computeWow(history), baseline: buildBaseline(stats, window) };
   }
   if (Object.keys(result).length === 0) throw new Error('CSV export has no chokepoint rows in the history window');
@@ -367,12 +449,12 @@ export async function runFetchPipeline(
 }
 
 // Settles within `ms` even if the request ignores its own timeout, so the
-// baseline budget is a wall-clock bound.
-function withinMs(promise, ms) {
+// baseline and query budgets are wall-clock bounds.
+function withinMs(promise, ms, label = 'baseline budget') {
   let timer;
   return Promise.race([
     promise,
-    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`baseline budget exhausted after ${ms}ms`)), ms); }),
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} exhausted after ${ms}ms`)), ms); }),
   ]).finally(() => clearTimeout(timer));
 }
 
@@ -488,17 +570,39 @@ async function fetchFresh(sinceEpoch, window, fetchDeadlineAtMs, prior) {
     const noBaseline = Object.keys(fresh).filter(id => !fresh[id].baseline);
     console.log(`[PortWatch] source=hub-csv: ${Object.keys(fresh).length} chokepoints${noBaseline.length ? `, baseline withheld for ${noBaseline.join(', ')}` : ''}`);
     // Query what the export lacks, and what it trails: the cached export can
-    // end before history an earlier query-fallback run already published.
-    const candidates = CHOKEPOINTS.filter(cp => !fresh[cp.id] || lastHistoryDate(prior[cp.id]) > lastHistoryDate(fresh[cp.id]));
+    // end before history an earlier query-fallback run already published, or
+    // stop updating while the query service keeps publishing.
+    const csvLatest = Object.values(fresh).map(lastHistoryDate).sort().at(-1) ?? '';
+    // The probe is optional, so it never runs into the margin the CSV needs to
+    // come back before runSeed's deadline.
+    const probeTimeoutMs = Math.min(BASELINE_REQUEST_TIMEOUT_MS, baselineBudgetMs(fetchDeadlineAtMs));
+    const queryLatest = probeTimeoutMs > 0 ? await fetchLatestQueryDate(csvLatest, probeTimeoutMs) : null;
+    const candidates = CHOKEPOINTS.filter(cp => !fresh[cp.id]
+      || lastHistoryDate(prior[cp.id]) > lastHistoryDate(fresh[cp.id])
+      || (queryLatest && queryLatest > lastHistoryDate(fresh[cp.id])));
     if (candidates.length === 0 || pastDeadline()) return fresh;
     console.warn(`[PortWatch] CSV export lacks or trails ${candidates.map(cp => cp.id).join(', ')}; querying ArcGIS for them`);
-    const queried = await runFetchPipeline(candidates, sinceEpoch, fetchAllPages, 500, {
+    const pipeline = runFetchPipeline(candidates, sinceEpoch, fetchAllPages, 500, {
       fetchBaselineFn: fetchBaselineStats,
       baselineWindow: window,
       fetchDeadlineAtMs,
     });
+    // The CSV is already in hand, so slow queries must not run it past the
+    // deadline: past the margin, publish the CSV and drop what is still pending.
+    let queried;
+    try {
+      queried = Number.isFinite(fetchDeadlineAtMs)
+        ? await withinMs(pipeline, fetchDeadlineAtMs - Date.now() - BASELINE_DEADLINE_MARGIN_MS, 'query budget')
+        : await pipeline;
+    } catch (e) {
+      console.warn(`[PortWatch] ${e?.message || e}; publishing the CSV export for ${candidates.map(cp => cp.id).join(', ')}`);
+      return fresh;
+    }
     for (const [id, entry] of Object.entries(queried)) {
-      if (lastHistoryDate(entry) > lastHistoryDate(fresh[id])) fresh[id] = entry;
+      if (lastHistoryDate(entry) <= lastHistoryDate(fresh[id])) continue;
+      // Newer history whose own baseline request failed keeps the CSV's
+      // baseline for the same window; the flow seeder depends on it.
+      fresh[id] = entry.baseline || !fresh[id]?.baseline ? entry : { ...entry, baseline: fresh[id].baseline };
     }
     return fresh;
   } catch (e) {

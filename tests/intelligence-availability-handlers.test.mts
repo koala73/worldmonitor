@@ -46,7 +46,9 @@ for (const [name, call, empty, present, malformed, mixed] of [
   [
     'advisories',
     () => listSecurityAdvisories({} as never, {}),
-    { advisories: [], byCountry: {} },
+    // The response always carries the register fields; a confirmed-empty seed
+    // serves them empty.
+    { advisories: [], byCountry: {}, registerLevels: [], fetchedAt: 0 },
     { advisories: [advisory], byCountry: coveredByCountry },
     [{ advisories: [{ ...advisory, pubDate: 'bad' }], byCountry: coveredByCountry }, { advisories: [advisory], byCountry: { UA: 'caution' } }],
     { advisories: [advisory, { ...advisory, pubDate: 'bad' }, null], byCountry: coveredByCountry },
@@ -76,6 +78,25 @@ for (const [name, call, empty, present, malformed, mixed] of [
     assert.equal(records?.length, 1);
   });
 }
+
+test('advisories: serves each register level with the read time, drops invalid rows, and reads a pre-register seed as none', async t => {
+  const redis = mockRedis(t);
+  const usMexico = { title: 'Mexico - Level 2: Exercise Increased Caution', link: 'https://travel.state.gov/mexico.html', pubDate: '2026-11-01T00:00:00.000Z', source: 'US State Dept', sourceCountry: 'US', level: 'caution', country: 'MX' };
+  const auMexico = { title: 'Mexico', link: 'https://www.smartraveller.gov.au/destinations/americas/mexico', pubDate: '', source: 'Australia DFAT Smartraveller', sourceCountry: 'AU', level: 'reconsider', country: 'MX' };
+  redis.value = {
+    advisories: [advisory],
+    byCountry: coveredByCountry,
+    fetchedAt: '2026-11-07T10:00:00.000Z',
+    registerLevels: [usMexico, auMexico, { ...usMexico, link: 'javascript:alert(1)' }, { ...usMexico, level: 'info' }, { ...usMexico, country: 'Mexico' }, null],
+  };
+  const response = await listSecurityAdvisories({} as never, {});
+  assert.deepEqual(response.registerLevels, [usMexico, auMexico]);
+  assert.equal(response.fetchedAt, Date.parse('2026-11-07T10:00:00.000Z'));
+  redis.value = { advisories: [advisory], byCountry: coveredByCountry };
+  const legacy = await listSecurityAdvisories({} as never, {});
+  assert.deepEqual(legacy.registerLevels, []);
+  assert.equal(legacy.fetchedAt, 0);
+});
 
 test('GDELT topics distinguish empty matches from unavailable or malformed seed and read errors', async t => {
   const redis = mockRedis(t);
@@ -114,7 +135,7 @@ test('generated intelligence routes preserve unavailable HTTP status and success
   const redis = mockRedis(t);
   for (const [suffix, empty, malformed] of [
     ['list-satellites', { satellites: [] }, { satellites: [null] }],
-    ['list-security-advisories', { advisories: [], byCountry: {} }, { advisories: [null], byCountry: coveredByCountry }],
+    ['list-security-advisories', { advisories: [], byCountry: {}, registerLevels: [], fetchedAt: 0 }, { advisories: [null], byCountry: coveredByCountry }],
   ] as const) {
     const route = routes.find(candidate => candidate.path.endsWith(suffix))!;
     for (const unavailable of [null, malformed]) {

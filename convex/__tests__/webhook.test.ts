@@ -2153,6 +2153,9 @@ describe("webhook processWebhookEvent", () => {
   });
 
   test("subscription.cancelled preserves entitlements until period end", async () => {
+    // Coverage is evaluated at processing time; pin it inside the paid period.
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP + 1000);
     const t = convexTest(schema, modules);
 
     await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
@@ -2680,6 +2683,9 @@ describe("webhook processWebhookEvent", () => {
   });
 
   test("dispute.lost preserves a future complimentary entitlement floor", async () => {
+    // Coverage is evaluated at processing time; pin it before compUntil.
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP + 1000);
     const t = convexTest(schema, modules);
     const userId = "user_dispute_comp";
     const compUntil = BASE_TIMESTAMP + 60 * 86400000;

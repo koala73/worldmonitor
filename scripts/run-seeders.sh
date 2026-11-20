@@ -37,18 +37,30 @@ if [ -z "${UPSTASH_REDIS_REST_TOKEN:-}" ]; then
 fi
 export UPSTASH_REDIS_REST_URL UPSTASH_REDIS_REST_TOKEN
 
-# Source API keys from docker-compose.override.yml if present.
-# These keys are configured for the container but seeders run on the host.
+# Source API keys from docker-compose.override.yml if present (values in .env
+# are already loaded above). These keys are configured for the container but
+# seeders run on the host.
 OVERRIDE="$PROJECT_DIR/docker-compose.override.yml"
 if [ -f "$OVERRIDE" ]; then
   _env_tmp=$(mktemp)
-  grep -E '^\s+[A-Z_]+:' "$OVERRIDE" \
-    | grep -v '#' \
-    | sed 's/^\s*//' \
-    | sed 's/: */=/' \
-    | sed "s/[\"']//g" \
-    | grep -E '^(NASA_FIRMS|AISSTREAM|FRED|FINNHUB|EIA|ACLED_ACCESS_TOKEN|ACLED_EMAIL|ACLED_PASSWORD|CLOUDFLARE|AVIATIONSTACK|OPENAQ_API_KEY|WAQI_API_KEY|OPENROUTER_API_KEY|LLM_API_URL|LLM_API_KEY|LLM_MODEL|OLLAMA_API_URL|OLLAMA_MODEL)' \
-    | sed 's/^/export /' > "$_env_tmp"
+  # POSIX character classes: BSD sed (macOS) has no \s. A quoted value is
+  # taken verbatim from between its quotes, so a "#" or " #" inside it is kept;
+  # an unquoted value loses a trailing "  # comment" (the SELF_HOSTING.md
+  # template once wrote one on every key). Empty values are skipped so a blank
+  # override line never clobbers a key already set in .env. Every value is
+  # single-quoted on export, so "$", "#" and spaces reach the seeder unchanged.
+  # The indentation strip runs in its own sed: "t" branches on any earlier
+  # successful substitution in the same script, including that one.
+  grep -E '^[[:space:]]+[A-Z_][A-Z0-9_]*:' "$OVERRIDE" \
+    | sed -e 's/^[[:space:]]*//' \
+    | sed -e 's/^\([A-Z_][A-Z0-9_]*\):[[:space:]]*"\([^"]*\)".*$/\1=\2/' -e t \
+          -e "s/^\([A-Z_][A-Z0-9_]*\):[[:space:]]*'\([^']*\)'.*\$/\1=\2/" -e t \
+          -e 's/[[:space:]]#.*$//' \
+          -e 's/[[:space:]]*$//' \
+          -e 's/:[[:space:]]*/=/' \
+    | grep -E '^[A-Z_][A-Z0-9_]*=.' \
+    | grep -E '^(NASA_FIRMS|AISSTREAM|FRED|FINNHUB|EIA|ALPHA_VANTAGE_API_KEY|ACLED_ACCESS_TOKEN|ACLED_EMAIL|ACLED_PASSWORD|CLOUDFLARE|AVIATIONSTACK|OPENSKY_CLIENT_ID|OPENSKY_CLIENT_SECRET|UCDP_ACCESS_TOKEN|OPENAQ_API_KEY|WAQI_API_KEY|OPENROUTER_API_KEY|LLM_API_URL|LLM_API_KEY|LLM_MODEL|OLLAMA_API_URL|OLLAMA_MODEL)' \
+    | sed -e "s/'/'\\\\''/g" -e "s/=/='/" -e "s/\$/'/" -e 's/^/export /' > "$_env_tmp"
   . "$_env_tmp"
   rm -f "$_env_tmp"
 fi

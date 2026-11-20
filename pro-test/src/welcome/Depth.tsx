@@ -54,7 +54,7 @@ export const Depth = () => (
       >
         {DEPTH_PROOF_STATS.map(({ value, labelKey }) => (
           <div key={labelKey} className="data-cell text-center flex flex-col">
-            <dt className="font-mono text-xs text-wm-muted mt-2">{t(labelKey)}</dt>
+            <dt className="font-mono text-xs text-wm-muted mt-2 min-w-0 break-words hyphens-auto">{t(labelKey)}</dt>
             {/* One lead figure carries the accent: every provider is attributed. */}
             <dd className={`order-first text-3xl md:text-4xl font-display font-medium tabular-nums ${labelKey === 'welcome.depth.s3l' ? 'text-wm-green' : 'text-wm-text'}`}>{String(value)}</dd>
           </div>

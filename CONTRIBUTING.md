@@ -52,7 +52,7 @@ The codebase produces app variants from the same source, each targeting a differ
 | `happy` | `npm run dev:happy` | Positive news and constructive signals |
 | `energy` | `npm run dev:energy` | Energy security, chokepoints, oil/gas |
 
-Variants share all code but differ in default panels, map layers, and RSS feeds. Variant configs live in `src/config/variants/`.
+Variants share all code but differ in default panels, map layers, and RSS feeds. Default panels and map layers live in `src/config/panels.ts`; feeds come from `shared/news-catalog.json` via `src/config/feeds.ts`.
 
 ### Directory Structure
 
@@ -133,7 +133,8 @@ npm run dev:energy
 npm run typecheck
 
 # Run tests
-npm run test:data          # Data integrity tests
+npm run test:related       # Data tests the branch's changes can reach
+npm run test:data          # All data integrity tests (CI runs these on every push)
 npm run test:e2e:full      # Playwright end-to-end tests (full variant)
 
 # Production build (per variant)
@@ -323,9 +324,12 @@ completes, which can be more than 24 hours later; dispatch **CodeQL** on `main`
 to scan sooner. Scheduled and manual runs use separate
 concurrency groups, and neither cancels a running scan.
 
-After each default-branch scan, the `prune-overlay-bases` job deletes every CodeQL
-overlay-base cache except the newest per workflow/job/language group, because
-CodeQL saves a new base under a unique key on every run and never removes old ones.
+The `analyze` job sets `CODEQL_OVERLAY_DATABASE_MODE: none`. Otherwise every
+default-branch scan saves an overlay-base database (about 2 GB a day) to the
+Actions cache, and only pull request scans, which this workflow does not run,
+would ever restore it. The `init` step also sets `trap-caching: false`: with
+overlay off, the action would otherwise upload TRAP caches that default-branch
+runs never restore.
 
 The repository owner must coordinate activation with the approved merge:
 

@@ -38,6 +38,16 @@ afterEach(async () => {
 });
 
 describe('withTransaction', () => {
+  it('bounds pool acquisition, statements, queries and idle transactions', () => {
+    getPool();
+    expect(mocks.poolOptions).toHaveBeenLastCalledWith(expect.objectContaining({
+      max: 10,
+      connectionTimeoutMillis: 5_000,
+      statement_timeout: 30_000,
+      query_timeout: 35_000,
+      idle_in_transaction_session_timeout: 30_000,
+    }));
+  });
   it.each(['host=database.example', 'hostaddr=203.0.113.1', 'port=6543', 'host=localhost&host=database.example'])(
     'rejects endpoint query overrides before pg can reclassify a local connection: %s', options => {
       vi.stubEnv('DATABASE_URL', `postgres://user@127.0.0.1/prices?${options}`);
@@ -131,4 +141,14 @@ describe('withTransaction', () => {
     ]);
     expect(mocks.release).toHaveBeenCalledOnce();
   });
+  it('discards a connection when rollback cannot complete', async () => {
+    const error = new Error('query timed out');
+    mocks.clientQuery.mockImplementation(async (sql: string) => {
+      if (sql !== 'BEGIN') throw error;
+      return { rows: [], rowCount: 0 };
+    });
+    await expect(withTransaction(execute => execute('UPDATE fixture'))).rejects.toBe(error);
+    expect(mocks.release).toHaveBeenCalledWith(true);
+  });
+
 });

@@ -215,6 +215,18 @@ function appendChildren(
 }
 
 /**
+ * True when this Enter keydown confirms an IME candidate (Japanese, Chinese,
+ * Korean input) rather than asking to submit. Enter-to-submit handlers must
+ * ignore it, or they send half-typed text.
+ *
+ * Safari delivers compositionend before the confirming keydown, so
+ * isComposing is already false there; keyCode 229 still marks it.
+ */
+export function isImeEnter(event: KeyboardEvent): boolean {
+  return event.isComposing || event.keyCode === 229;
+}
+
+/**
  * Focusable elements within a modal/overlay root, for focus-trap Tab cycling.
  * Filters out disabled, hidden, aria-hidden, and undisplayed (offsetParent-less)
  * matches so the trap never focuses something the user can't see.

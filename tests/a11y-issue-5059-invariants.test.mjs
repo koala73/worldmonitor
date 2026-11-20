@@ -5,10 +5,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   getPanelToggleA11yState,
-  getSettingsTabNavigationIndex,
-  normalizeSettingsTab,
   restoreSettingsToggleFocus,
-  updateSettingsTabSelection,
 } from '../src/components/unified-settings-interactions.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -16,34 +13,6 @@ const read = (...p) => readFileSync(resolve(__dirname, '..', ...p), 'utf-8');
 
 const settings = read('src', 'components', 'UnifiedSettings.ts');
 const css = read('src', 'styles', 'main.css');
-
-function makeClassList(initial = []) {
-  const values = new Set(initial);
-  return {
-    contains: (value) => values.has(value),
-    toggle: (value, force) => {
-      if (force) values.add(value);
-      else values.delete(value);
-    },
-  };
-}
-
-function makeTab(tab, selected = false) {
-  const attributes = new Map();
-  return {
-    dataset: { tab },
-    classList: makeClassList(selected ? ['active'] : []),
-    setAttribute: (name, value) => attributes.set(name, String(value)),
-    getAttribute: (name) => attributes.get(name) ?? null,
-  };
-}
-
-function makePanel(panelId, selected = false) {
-  return {
-    dataset: { panelId },
-    classList: makeClassList(selected ? ['active'] : []),
-  };
-}
 
 describe('panel toggles are real buttons', () => {
   it('panel-toggle-item renders as a button', () => {
@@ -100,54 +69,14 @@ describe('panel toggles are real buttons', () => {
   });
 });
 
-describe('keyboard — roving tablist', () => {
-  it('moves with ArrowLeft/ArrowRight and wraps at each end', () => {
-    assert.equal(getSettingsTabNavigationIndex('ArrowRight', 1, 4), 2);
-    assert.equal(getSettingsTabNavigationIndex('ArrowRight', 3, 4), 0);
-    assert.equal(getSettingsTabNavigationIndex('ArrowLeft', 2, 4), 1);
-    assert.equal(getSettingsTabNavigationIndex('ArrowLeft', 0, 4), 3);
-  });
-
-  it('moves to the first and last tab with Home and End', () => {
-    assert.equal(getSettingsTabNavigationIndex('Home', 2, 4), 0);
-    assert.equal(getSettingsTabNavigationIndex('End', 1, 4), 3);
-  });
-
-  it('does not intercept native Enter/Space button activation', () => {
-    assert.equal(getSettingsTabNavigationIndex('Enter', 1, 4), null);
-    assert.equal(getSettingsTabNavigationIndex(' ', 1, 4), null);
-  });
-
-  it('updates aria-selected, tabindex, active tab, and active panel together', () => {
-    const tabs = [makeTab('settings', true), makeTab('panels'), makeTab('sources')];
-    const panels = [makePanel('settings', true), makePanel('panels'), makePanel('sources')];
-
-    updateSettingsTabSelection(tabs, panels, 'sources');
-
-    assert.deepEqual(tabs.map(tab => tab.getAttribute('aria-selected')), ['false', 'false', 'true']);
-    assert.deepEqual(tabs.map(tab => tab.getAttribute('tabindex')), ['-1', '-1', '0']);
-    assert.deepEqual(tabs.map(tab => tab.classList.contains('active')), [false, false, true]);
-    assert.deepEqual(panels.map(panel => panel.classList.contains('active')), [false, false, true]);
-  });
-
-  it('normalizes an unavailable MCP tab to the Settings tab', () => {
-    assert.equal(
-      normalizeSettingsTab('mcp-clients', ['settings', 'panels', 'sources', 'api-keys']),
-      'settings',
-    );
-    assert.equal(
-      normalizeSettingsTab(
-        'mcp-clients',
-        ['settings', 'panels', 'sources', 'api-keys', 'mcp-clients'],
-      ),
-      'mcp-clients',
-    );
-  });
-
-  it('renders Plan & billing as its own signed-in tab and panel', () => {
-    assert.match(settings, /data-tab="billing"[\s\S]*?>Plan &amp; billing<\/button>/);
-    assert.match(settings, /data-panel-id="billing"[\s\S]*?id="us-tab-panel-billing"/);
-    assert.match(settings, /See your current plan and manage payment details, invoices, or cancellation\./);
+// Settings is a home list of buttons that drill into pages, not a tablist.
+// Keyboard users move with Tab and activate with Enter or Space; the page
+// heading takes focus on entry and the originating row takes it back.
+describe('settings navigation', () => {
+  it('uses plain buttons, not a tablist', () => {
+    assert.doesNotMatch(settings, /role="tab(list|panel)?"/);
+    assert.match(settings, /<button type="button" class="us-row" data-settings-nav=/);
+    assert.match(settings, /<button type="button" class="us-back" data-settings-back hidden aria-label=/);
   });
 });
 
@@ -225,8 +154,8 @@ describe('CSS — focus-visible for preference controls', () => {
 });
 
 describe('decorative children are aria-hidden', () => {
-  it('panel-toggle-checkbox has aria-hidden="true"', () => {
-    assert.match(settings, /panel-toggle-checkbox[\s\S]*?aria-hidden="true"/);
+  it('panel-toggle-switch has aria-hidden="true"', () => {
+    assert.match(settings, /class="panel-toggle-switch" aria-hidden="true"/);
   });
 
   it('source-toggle-checkbox has aria-hidden="true"', () => {

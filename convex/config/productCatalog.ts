@@ -214,6 +214,54 @@ export type PlanFeatures = {
    * entries below ALWAYS set the field explicitly.
    */
   dataExport?: boolean;
+  /**
+   * Alert-ladder capabilities (#4273) — what the plan's notification rules
+   * may hold: followed-country count, delivery channels, event sensitivities,
+   * delivery modes, and whether the AI-composed digest is included. Free is a
+   * deliberately small ladder (critical-only, 3 countries, web push + email)
+   * so the retention loop forms before the paywall; every paid tier gets the
+   * full surface. Read through `resolveAlertCapabilities`
+   * (shared/alert-capabilities.ts), whose BY-TIER fallback covers rows
+   * written before these fields existed: a paid row without them keeps full
+   * access, a free row fails closed to the free ladder.
+   *
+   * These are plan STRUCTURE, like the desktop-key limits:
+   * `mergeEntitlementFeatures` takes them from the catalog regardless of what
+   * a stored row carries, so a ladder change here applies to existing
+   * subscribers at read time. Catalog entries below ALWAYS set them
+   * explicitly.
+   */
+  alertMaxCountries?: number;
+  alertChannels?: string[];
+  alertSensitivities?: string[];
+  alertDigestModes?: string[];
+  aiDigestAccess?: boolean;
+  /**
+   * Dashboard focus (#10453): scoping a tab to chosen countries (plus their
+   * neighbours) and a date window, and sharing a focused team dashboard. True
+   * for Pro Business, API Business and Enterprise. `tier` cannot express this:
+   * Pro Business shares `tier: 1` with Pro, and API Starter shares `tier: 2`
+   * with API Business. `shared/tab-focus-access.ts` holds the predicate.
+   *
+   * Optional for the same reason as `embedAccess`: rows written before the
+   * field existed omit it, the read-time catalog merge supplies the plan
+   * default, and consumers treat `undefined` as false (fail-closed). Catalog
+   * entries below ALWAYS set the field explicitly.
+   */
+  tabFocus?: boolean;
+  /**
+   * Multi-country travel risk assessment drafts (#10451): the
+   * `prepare_travel_risk_assessment` MCP tool. Granted to Pro Business, API
+   * Business and Enterprise. Neither `tier` nor `dataExport` can express that
+   * split: Pro Business shares `tier: 1` with Pro, and API Starter exports
+   * but is not entitled.
+   *
+   * Optional only because rows written before the field existed omit it; the
+   * read-time merge supplies the catalog value. Unlike `dataExport`, consumers
+   * treat `undefined` as **not entitled (fail-CLOSED)** at every tier. Catalog
+   * entries below ALWAYS set the field explicitly.
+   */
+  travelRiskAssessment?: boolean;
 };
 
 export interface CatalogEntry {
@@ -244,6 +292,33 @@ export interface CatalogEntry {
 // ---------------------------------------------------------------------------
 // Shared feature sets (avoids duplication across billing variants)
 // ---------------------------------------------------------------------------
+
+// Alert ladder (#4273). This catalog stays import-free (the product-config
+// generator consumes it), so these literals are the authoritative copy and
+// shared/alert-capabilities.ts carries the matching fallback constants;
+// convex/__tests__/alertRules-free-ladder.test.ts pins the two together.
+// Free `alertDigestModes` opens with realtime only: the digest cron
+// (scripts/seed-digest-notifications.mjs) still delivers to tier >= 1, and
+// advertising a daily digest it would drop is a silent lie. Widen to
+// ["realtime", "daily"] in the change that makes the cron free-aware.
+type AlertCapabilityFields = Required<Pick<PlanFeatures,
+  "alertMaxCountries" | "alertChannels" | "alertSensitivities" | "alertDigestModes" | "aiDigestAccess">>;
+
+const FREE_ALERT_CAPABILITIES: AlertCapabilityFields = {
+  alertMaxCountries: 3,
+  alertChannels: ["web_push", "email"],
+  alertSensitivities: ["critical"],
+  alertDigestModes: ["realtime"],
+  aiDigestAccess: false,
+};
+
+const PAID_ALERT_CAPABILITIES: AlertCapabilityFields = {
+  alertMaxCountries: 50,
+  alertChannels: ["telegram", "slack", "email", "discord", "teams", "webhook", "web_push"],
+  alertSensitivities: ["all", "high", "critical"],
+  alertDigestModes: ["realtime", "daily", "twice_daily", "weekly"],
+  aiDigestAccess: true,
+};
 
 const FREE_FEATURES: PlanFeatures = {
   tier: 0,
@@ -276,6 +351,9 @@ const FREE_FEATURES: PlanFeatures = {
   desktopKeyAccess: false,
   maxDesktopKeys: 0,
   dataExport: false,
+  ...FREE_ALERT_CAPABILITIES,
+  tabFocus: false,
+  travelRiskAssessment: false,
 };
 
 const PRO_FEATURES: PlanFeatures = {
@@ -301,6 +379,9 @@ const PRO_FEATURES: PlanFeatures = {
   desktopKeyAccess: true,
   maxDesktopKeys: 2,
   dataExport: false,
+  ...PAID_ALERT_CAPABILITIES,
+  tabFocus: false,
+  travelRiskAssessment: false,
 };
 
 /**
@@ -337,6 +418,9 @@ const PRO_BUSINESS_FEATURES: PlanFeatures = {
   desktopKeyAccess: true,
   maxDesktopKeys: 3,
   dataExport: true,
+  ...PAID_ALERT_CAPABILITIES,
+  tabFocus: true,
+  travelRiskAssessment: true,
 };
 
 const API_STARTER_FEATURES: PlanFeatures = {
@@ -362,6 +446,9 @@ const API_STARTER_FEATURES: PlanFeatures = {
   desktopKeyAccess: false,
   maxDesktopKeys: 0,
   dataExport: true,
+  ...PAID_ALERT_CAPABILITIES,
+  tabFocus: false,
+  travelRiskAssessment: false,
 };
 
 const API_BUSINESS_FEATURES: PlanFeatures = {
@@ -388,28 +475,33 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
   desktopKeyAccess: false,
   maxDesktopKeys: 0,
   dataExport: true,
+  ...PAID_ALERT_CAPABILITIES,
+  tabFocus: true,
+  travelRiskAssessment: true,
 };
 
-// Enterprise is sold as "Unlimited API requests" under fair use. The daily
-// numbers below are circuit breakers against a leaked key, not plan limits:
-// every one is at least 2.5× the largest self-serve plan, and the high-usage
-// alarm (server/_shared/high-usage-alarm.ts) pages at a quarter of each. An
-// unknown Dodo product also resolves here (FALLBACK_PLAN_KEY in
-// payments/subscriptionHelpers.ts), so "unlimited" was reachable without a
-// sales contract. Pinned by tests/high-usage-alarm.test.mts.
+// Enterprise is sold by contract. These numbers are the contract default —
+// 10,000 requests a day and 300 a minute, the same as API Business, with MCP
+// charged to the REST budget — and apply to every Enterprise user outside a
+// pooled enterprise account. Larger allowances are set per contract, not here.
+// An unknown Dodo product also resolves here (FALLBACK_PLAN_KEY in
+// payments/subscriptionHelpers.ts), so this must stay a finite, sellable
+// default. The read-time merge (lib/entitlements.ts) applies these numbers to
+// stored Enterprise rows too. Pinned by tests/high-usage-alarm.test.mts and
+// convex/__tests__/entitlement-merge-enterprise.test.ts.
 const ENTERPRISE_FEATURES: PlanFeatures = {
   tier: 3,
   historyDays: 365,
   maxDashboards: -1,
   apiAccess: true,
-  apiRateLimit: 1000,
-  apiDailyAllowance: 100_000,
+  apiRateLimit: 300,
+  apiDailyAllowance: 10_000,
   planLimits: {
-    apiRequestsPerDay: 100_000,
-    apiBurstRequestsPerMinute: 1000,
-    mcpCallsPerDay: 25_000,
-    dashboardAiCallsPerDay: 25_000,
-    mcpBurstRequestsPerMinute: 1000,
+    apiRequestsPerDay: 10_000,
+    apiBurstRequestsPerMinute: 300,
+    mcpCallsPerDay: SHARED_API_BUDGET,
+    dashboardAiCallsPerDay: 10_000,
+    mcpBurstRequestsPerMinute: 300,
     desktopKeyRequestsPerDay: 0,
     desktopKeyBurstPerMinute: 0,
   },
@@ -422,6 +514,9 @@ const ENTERPRISE_FEATURES: PlanFeatures = {
   desktopKeyAccess: false,
   maxDesktopKeys: 0,
   dataExport: true,
+  ...PAID_ALERT_CAPABILITIES,
+  tabFocus: true,
+  travelRiskAssessment: true,
 };
 
 // ---------------------------------------------------------------------------
@@ -491,10 +586,8 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
   },
 
   pro_business_monthly: {
-    // PLACEHOLDER — no such product exists in Dodo. Replaced with the real
-    // product ID before launch (activation runbook, plan 2026-07-25-001).
-    // Reaching checkout with this ID is a launch-sequencing bug, not a
-    // supported path.
+    // Live Dodo product "Pro Business Monthly" (USD 49.99/month), created
+    // 2026-07-25 under the activation runbook (plan 2026-07-25-001).
     dodoProductId: "pdt_0NjyFDbhURh2oROgPIU3G",
     planKey: "pro_business_monthly",
     displayName: "Pro Business Monthly",
@@ -510,6 +603,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "MCP + SDK: 250 calls/day (vs 50)",
       "Desktop key for the desktop app (3 keys)",
       "Priority support",
+      "Travel risk assessment drafts in the dashboard and over MCP",
     ],
     highlightFeatures: ["Commercial license included", "1 named user — not a shared login"],
     selfServe: true,
@@ -517,13 +611,15 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     currentForCheckout: true,
     // Pro and Pro Business are separate Dodo products, not a
     // subscription-updatable collection — the customer portal cannot perform
-    // the change, so the plan-limit CTA must not point at it.
+    // the change, so the plan-limit CTA must not point at it. Pro subscribers
+    // upgrade in place through the change-plan API instead
+    // (runProBusinessUpgrade in payments/billing.ts).
     canChangePlanSelfServe: false,
     publicVisible: true,
   },
 
   pro_business_annual: {
-    // PLACEHOLDER — see pro_business_monthly.
+    // Live Dodo product "Pro Business Yearly" (USD 449.99/year), created 2026-07-26.
     dodoProductId: "pdt_0Nk072fxPUcHWivZRtlQW",
     planKey: "pro_business_annual",
     displayName: "Pro Business Annual",
@@ -596,7 +692,9 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "300 requests/minute",
       "10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
       "5 Pro licenses — invite users at any corporate email domain",
+      "Shared team dashboards",
       "Priority support",
+      "Travel risk assessment drafts in the dashboard and over MCP",
     ],
     // API Business is the paid Embed/OEM tier, so its bundled seats may go to
     // corporate addresses at any domain. The server still rejects free or
@@ -643,16 +741,18 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     features: ENTERPRISE_FEATURES,
     marketingFeatures: [
       "Everything in Pro + API",
-      "Unlimited API requests",
+      "Shared team dashboards",
+      "10,000 API requests a day, more by contract",
       "Dedicated support",
       "Custom integrations",
-      "SLA guarantee",
+      "SLA guarantee (by contract)",
       "On-premise option",
       "Data processing agreement (DPA)",
       "Purchase-order billing",
-      "SAML SSO, SCIM",
+      "SAML SSO and SCIM (by contract)",
       "Custom security and privacy settings",
       "Fully white-labeled — with or without revenue sharing",
+      "Travel risk assessment drafts in the dashboard and over MCP",
     ],
     selfServe: false,
     highlighted: false,

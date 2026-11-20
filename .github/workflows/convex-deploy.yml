@@ -146,16 +146,21 @@ jobs:
               'shared/chokepoint-alert-ids.ts' \
               'shared/cloud-preferences-contract.ts' \
               'shared/alert-rule-shape.ts' \
+              'shared/alert-capabilities.ts' \
               'shared/pinned-webcams.ts' \
               'shared/mcp-attribution.ts' \
               'shared/company-monitoring-contract.ts' \
               'shared/company-monitoring-evidence.ts' \
               'shared/embed-access.ts' \
+              'shared/tab-focus-access.ts' \
+              'shared/tab-scope.ts' \
               'shared/desktop-key-access.js' \
               'shared/legal.ts' \
               'shared/agent-client-source.js' \
+              'shared/ui-languages.js' \
               'shared/acquisition-source.ts' \
               'shared/audience-profile.ts' \
+              'shared/email-frame.ts' \
               'scripts/lib/company-monitoring-classification.mjs' \
               'src/utils/country-codes.ts' | grep -q .; then
             echo "convex=true" >> "$GITHUB_OUTPUT"

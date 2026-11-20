@@ -772,16 +772,29 @@ describe('validateBearerToken (with JWKS)', () => {
   });
 
   it('accepts desktop and preview azp values surveyed in #8178', async () => {
-    for (const azp of [
-      'tauri://localhost',
-      'asset://localhost',
-      'https://tauri.localhost',
-      'https://worldmonitor-git-feat-azp-eliewm.vercel.app',
-      'https://worldmonitor-r6q9o-eliewm.vercel.app',
-    ]) {
-      const token = await signToken({ sub: 'user_azp_desktop_preview', plan: 'free', azp });
-      const result = await validateBearerToken(token);
-      assert.equal(result.valid, true, `expected surveyed azp accepted: ${azp}`);
+    // Previews are trusted only as their own deployment (server/cors.ts).
+    const saved = [process.env.VERCEL_ENV, process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL];
+    process.env.VERCEL_ENV = 'preview';
+    process.env.VERCEL_URL = 'worldmonitor-r6q9o-eliewm.vercel.app';
+    process.env.VERCEL_BRANCH_URL = 'worldmonitor-git-feat-azp-eliewm.vercel.app';
+    try {
+      for (const azp of [
+        'tauri://localhost',
+        'asset://localhost',
+        'https://tauri.localhost',
+        'https://worldmonitor-git-feat-azp-eliewm.vercel.app',
+        'https://worldmonitor-r6q9o-eliewm.vercel.app',
+      ]) {
+        const token = await signToken({ sub: 'user_azp_desktop_preview', plan: 'free', azp });
+        const result = await validateBearerToken(token);
+        assert.equal(result.valid, true, `expected surveyed azp accepted: ${azp}`);
+      }
+    } finally {
+      const keys = ['VERCEL_ENV', 'VERCEL_URL', 'VERCEL_BRANCH_URL'];
+      keys.forEach((k, i) => {
+        if (saved[i] === undefined) delete process.env[k];
+        else process.env[k] = saved[i];
+      });
     }
   });
 
@@ -808,6 +821,7 @@ describe('validateBearerToken (with JWKS)', () => {
       'https://clerk.worldmonitor.app',
       'https://abacus.worldmonitor.app',
       'https://worldmonitor-feat-x-attacker.vercel.app',
+      'https://worldmonitor-attacker-eliewm.vercel.app',
       'https://some-other-app-eliewm.vercel.app',
     ]) {
       const token = await signToken({ sub: 'user_azp_foreign', plan: 'pro', azp });

@@ -269,6 +269,11 @@ test('publish-phase SIGTERM releases lock but does NOT extend TTL (strict-floor 
       if (Array.isArray(body) && body[0] === 'SET' && body[3] === 'NX') {
         return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
       }
+      // The publish-phase ownership check (SEED_LOCK_RENEW_SCRIPT, one key)
+      // finds the lock still held, so the run proceeds into atomicPublish.
+      if (Array.isArray(body) && body[0] === 'EVAL' && body[2] === 1 && String(body[1]).includes('PEXPIRE')) {
+        return new Response(JSON.stringify({ result: [1, ''] }), { status: 200 });
+      }
       if (Array.isArray(body) && body[0] === 'EVAL') {
         return new Response(JSON.stringify({ result: 1 }), { status: 200 });
       }

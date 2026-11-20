@@ -1,29 +1,5 @@
-// MCP prompts wire-contract + JMESPath-vs-schema parity.
-//
-// Three concerns:
-//   1. prompts/list returns the documented entries with the spec-shaped
-//      {name, description, arguments} fields. Detects accidental registry
-//      truncation or schema-shape drift.
-//   2. prompts/get interpolates ${arg} tokens, surfaces -32602 for unknown
-//      names and missing required args. Detects the substitution-grammar
-//      regressions that the load-time validator can't see (it only checks
-//      authoring; this exercises runtime).
-//   3. JMESPath-vs-schema parity (the load-bearing assertion). For every
-//      prompt, for every step:
-//        a. the step's `tool` exists in TOOL_REGISTRY,
-//        b. the step's `jmespath` compiles via the same parser the handler
-//           uses at runtime,
-//        c. every field identifier the expression references exists as a
-//           property NAME somewhere in the referenced tool's outputSchema.
-//      A typo'd field path in a prompt OR a renamed field in a tool's schema
-//      fails this test by name, citing the prompt and the offending path.
-//
-// Phase-1 scope: presence-level parity, not full path-level (a Field name
-// must appear in the schema somewhere, not necessarily at the exact
-// dot-path). This is strong enough to catch both sabotage cases documented
-// in the executing-agent notes: a typo'd field name disappears from the
-// schema; a renamed schema field disappears from prompts' Field set. Phase 2
-// (full path-level eval against fixtures) is a follow-up issue.
+// A prompt JMESPath identifier must appear somewhere in that tool's
+// outputSchema. The check is not the field's dot-path.
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';

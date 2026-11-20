@@ -26,14 +26,14 @@ export function resolveMetadataOrigin(req: Request): string {
 }
 
 /**
- * The published auth.md walkthrough for an origin. Every allowed host serves
- * it without a redirect: the apex `/auth.md` is on the Cloudflare apex-to-www
- * exemption list (ARCHITECTURE.md §2). Readiness scanners require the skill
- * URL to equal `<issuer>/auth.md`, so it stays on the request origin.
+ * The published auth.md walkthrough. Every metadata host points at the one
+ * canonical copy on the apex, which serves it without a redirect (`/auth.md`
+ * is on the Cloudflare apex-to-www exemption list, ARCHITECTURE.md §2).
+ * Readiness scanners compare `agent_auth.skill` with the /auth.md published on
+ * the scanned domain, so an issuer-relative URL fails whenever the metadata is
+ * discovered on another host such as api.worldmonitor.app.
  */
-export function authSkillUrl(origin: string): string {
-  return `${origin}/auth.md`;
-}
+export const AUTH_SKILL_URL = 'https://worldmonitor.app/auth.md';
 
 /**
  * These documents are read-only. Answer CORS preflights, allow GET/HEAD, and

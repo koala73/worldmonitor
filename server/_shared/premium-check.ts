@@ -19,7 +19,12 @@ import {
 } from './mcp-internal-hmac.js';
 import { validateUserApiKeyPrincipal } from './user-api-key.js';
 import { isApiOnlyPath } from './api-only-paths.js';
-import { resolveUserKeyEntitlement, resolveUserKeyScope } from './desktop-key-principal.js';
+import {
+  DESKTOP_KEY_CLIENT_ERROR,
+  admitsDesktopKeyClientRequest,
+  resolveUserKeyEntitlement,
+  resolveUserKeyScope,
+} from './desktop-key-principal.js';
 import type { DesktopKeyMeterEntitlement } from './desktop-key-meter.js';
 import {
   DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
@@ -144,6 +149,14 @@ export type PremiumCallerIdentity =
      * classification only exists once a userId was resolved and looked up.
      */
     unauthenticated?: true;
+    /**
+     * True when a valid desktop key arrived from a client other than the
+     * desktop app or a self-hosted relay while `DESKTOP_KEY_CLIENT_CHECK` is
+     * enforced. The owner has Pro, so the answer is "use an API plan"
+     * (`DESKTOP_KEY_CLIENT_ERROR`), not the Pro upsell. Optional and additive
+     * like the fields above.
+     */
+    desktopClientDenied?: true;
   };
 
 /** The deny arm of the union, named so `{ ...DENIED, billingDenial }` stays in it. */
@@ -163,6 +176,12 @@ const DENIED: DeniedIdentity = Object.freeze({
   userId: null,
   kind: null,
   quotaExempt: false,
+});
+
+/** Deny a desktop key sent by a script (`desktopClientDenied`). */
+const DESKTOP_CLIENT_DENIED: DeniedIdentity = Object.freeze({
+  ...DENIED,
+  desktopClientDenied: true,
 });
 
 /**
@@ -273,6 +292,7 @@ export async function requirePremiumRpcAccess<T extends RpcApiErrorLike>(
 
   const billingError = createPremiumRpcBillingDenialError(identity, ApiErrorConstructor);
   if (billingError) throw billingError;
+  if (identity.desktopClientDenied) throw new ApiErrorConstructor(403, DESKTOP_KEY_CLIENT_ERROR, '');
   throw new ApiErrorConstructor(403, fallbackMessage, '');
 }
 
@@ -374,6 +394,8 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
           // KTD7: the API-only set is closed to desktop principals. This is a
           // scope verdict, not a billing one, so it carries no retry/upsell tag.
           if (isApiOnlyPath(new URL(request.url).pathname)) return DENIED;
+          // Scripts reusing a desktop key need an API plan (DESKTOP_KEY_CLIENT_CHECK).
+          if (!admitsDesktopKeyClientRequest(request)) return DESKTOP_CLIENT_DENIED;
           return {
             isPremium: true,
             userId: userKey.userId,

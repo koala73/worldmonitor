@@ -33,11 +33,11 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "New York Times World",
-          "url": "https://news.google.com/rss/search?q=site%3Anytimes.com%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
         },
         {
           "name": "Washington Post World",
-          "url": "https://news.google.com/rss/search?q=site%3Awashingtonpost.com%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://feeds.washingtonpost.com/rss/world"
         },
         {
           "name": "The Economist",
@@ -45,7 +45,11 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "The Independent",
-          "url": "https://news.google.com/rss/search?q=site%3Aindependent.co.uk%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://www.independent.co.uk/news/world/rss"
+        },
+        {
+          "name": "NPR World",
+          "url": "https://feeds.npr.org/1004/rss.xml"
         }
       ],
       "us": [
@@ -192,6 +196,14 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Montreal Gazette",
           "url": "https://news.google.com/rss/search?q=site%3Amontrealgazette.com%20when%3A1d&hl=en-CA&gl=CA&ceid=CA:en"
+        },
+        {
+          "name": "ProPublica",
+          "url": "https://www.propublica.org/feeds/propublica/main"
+        },
+        {
+          "name": "The Atlantic",
+          "url": "https://www.theatlantic.com/feed/all/"
         }
       ],
       "europe": [
@@ -679,7 +691,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "NV EN",
-          "url": "https://news.google.com/rss/search?q=site%3Aenglish.nv.ua%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://english.nv.ua/rss/all_english.xml"
         },
         {
           "name": "Hromadske EN",
@@ -757,7 +769,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Sky News",
-          "url": "https://news.google.com/rss/search?q=site%3Anews.sky.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://feeds.skynews.com/feeds/rss/home.xml"
         },
         {
           "name": "BBC UK",
@@ -766,6 +778,942 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "BBC Northern Ireland",
           "url": "https://feeds.bbci.co.uk/news/northern_ireland/rss.xml"
+        },
+        {
+          "name": "Deutschlandfunk",
+          "url": "https://www.deutschlandfunk.de/nachrichten-100.rss",
+          "lang": "de",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "ZDFheute",
+          "url": "https://www.zdfheute.de/rss/zdf/nachrichten",
+          "lang": "de",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "15min.lt",
+          "url": "https://news.google.com/rss/search?q=site%3Awww.15min.lt+when%3A7d&hl=lt&gl=US&ceid=US%3Alt",
+          "lang": "lt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "24.kg",
+          "url": "https://24.kg/rss/",
+          "lang": "ru",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "24ur.com",
+          "url": "https://www.24ur.com/rss",
+          "lang": "sl",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Denmark",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Denmark%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Liechtenstein",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Liechtenstein%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Montenegro",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Montenegro%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — North Macedonia",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22North+Macedonia%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Vatican City",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28Vatican%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "ABC News Albania",
+          "url": "https://abcnews.al/feed/",
+          "lang": "sq",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Akipress",
+          "url": "https://akipress.com/rss/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Aktuality.sk",
+          "url": "https://www.aktuality.sk/rss/",
+          "lang": "sk",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Asia-Plus",
+          "url": "https://asiaplus.news/feed/",
+          "lang": "ru",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Avesta",
+          "url": "https://avesta.tj/feed/",
+          "lang": "ru",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Azadliq Radiosu (RFE/RL - Azerbaijan)",
+          "url": "https://www.azadliq.org/api/",
+          "lang": "az",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC — Liechtenstein",
+          "url": "https://news.google.com/rss/search?q=site%3Abbc.com+%28%22Liechtenstein%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC — Vatican City",
+          "url": "https://news.google.com/rss/search?q=site%3Abbc.com+%28Vatican%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Belsat TV",
+          "url": "https://belsat.eu/rss",
+          "lang": "be",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Bondia",
+          "url": "https://www.bondia.ad/rss.xml",
+          "lang": "ca",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Chronicles of Turkmenistan",
+          "url": "https://www.hronikatm.com/feed/",
+          "lang": "ru",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "CivilNet",
+          "url": "https://news.google.com/rss/search?q=site%3Acivilnet.am+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "hy",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Cyprus Mail",
+          "url": "https://cyprus-mail.com/feed",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Cyprus News Agency",
+          "url": "https://news.google.com/rss/search?q=site%3Acna.org.cy+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "DELFI Lithuania",
+          "url": "https://news.google.com/rss/search?q=site%3Adelfi.lt+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "lt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Dagsavisen",
+          "url": "https://www.dagsavisen.no/?lab_viewport=rss",
+          "lang": "no",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Danas",
+          "url": "https://www.danas.rs/feed/",
+          "lang": "sr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "De Standaard",
+          "url": "https://standaard.be/rss/",
+          "lang": "nl",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Delfi Latvia",
+          "url": "https://delfi.lv/rss.xml",
+          "lang": "lv",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Delo",
+          "url": "https://www.delo.si/rss",
+          "lang": "sl",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Denník N",
+          "url": "https://dennikn.sk/feed/",
+          "lang": "sk",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Der Standard",
+          "url": "https://www.derstandard.at/rss",
+          "lang": "de",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Diari d'Andorra",
+          "url": "https://www.diariandorra.ad/rss/home.xml",
+          "lang": "ca",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Die Presse",
+          "url": "https://www.diepresse.com/rss",
+          "lang": "de",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Diena",
+          "url": "https://www.diena.lv/rss/",
+          "lang": "lv",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "EVN Report",
+          "url": "https://evnreport.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "El Periòdic d'Andorra",
+          "url": "https://elperiodic.ad/feed/",
+          "lang": "ca",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Euroradio",
+          "url": "https://news.google.com/rss/search?q=site%3Aeuroradio.fm+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "be",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Expresso",
+          "url": "https://rss.impresa.pt/feed/latest/expresso.rss?type=ARTICLE,VIDEO,GALLERY,STREAM,PLAYLIST,EVENT,NEWSLETTER&amp;limit=20&amp;pubsubhub=true",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Falter",
+          "url": "https://www.falter.at/rss",
+          "lang": "de",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Franceinfo",
+          "url": "https://www.franceinfo.fr/titres.rss",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Gazeta.uz",
+          "url": "https://www.gazeta.uz/oz/rss/",
+          "lang": "uz",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Giornale.sm",
+          "url": "https://giornalesm.com/feed/",
+          "lang": "it",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Guardian — Liechtenstein",
+          "url": "https://news.google.com/rss/search?q=site%3Atheguardian.com+%28%22Liechtenstein%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Helsingin Sanomat",
+          "url": "https://www.hs.fi/rss/tuoreimmat.xml",
+          "lang": "fi",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Hetq",
+          "url": "https://hetq.am/hy/rss",
+          "lang": "hy",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Hospodářské noviny",
+          "url": "https://hn.cz/rss/headlines",
+          "lang": "cs",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Hufvudstadsbladet",
+          "url": "https://www.hbl.fi/feed",
+          "lang": "sv",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Iceland Review",
+          "url": "https://www.icelandreview.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Il Post",
+          "url": "https://www.ilpost.it/feed",
+          "lang": "it",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Informburo.kz",
+          "url": "https://informburo.kz/rss/pubsubhubbub-feed.xml",
+          "lang": "ru",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Insajder",
+          "url": "https://insajder.net/feed.xml",
+          "lang": "sr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Ir",
+          "url": "https://ir.lv/rss",
+          "lang": "lv",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Irish Independent",
+          "url": "https://www.independent.ie/rss/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Jyllands-Posten",
+          "url": "https://newsletter-proxy.aws.jyllands-posten.dk/v1/latestNewsRss/jyllands-posten.dk?count=10",
+          "lang": "da",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "KRIK",
+          "url": "https://www.krik.rs/feed/",
+          "lang": "sr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Kallxo",
+          "url": "https://kallxo.com/feed/",
+          "lang": "sq",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Klix.ba",
+          "url": "https://www.klix.ba/rss",
+          "lang": "bs",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Kloop.kg",
+          "url": "https://kloop.kg/feed/",
+          "lang": "ru",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Koha",
+          "url": "https://koha.net/rss/",
+          "lang": "sq",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Kosovo 2.0",
+          "url": "https://news.google.com/rss/search?q=site%3Akosovotwopointzero.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "sq",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Kun.uz",
+          "url": "https://kun.uz/news/rss?lang=uz",
+          "lang": "uz",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Le Soir",
+          "url": "https://lesoir.be/rss.xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Le Temps",
+          "url": "https://www.letemps.ch/articles.rss",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Libertas.sm",
+          "url": "https://news.google.com/rss/search?q=site%3Awww.libertas.sm+when%3A7d&hl=it&gl=US&ceid=US%3Ait",
+          "lang": "it",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Libération",
+          "url": "https://www.liberation.fr/arc/outboundfeeds/rss-all/?outputType=xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Liechtensteiner Vaterland",
+          "url": "https://news.google.com/rss/search?q=site%3Avaterland.li+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "de",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Luxemburger Wort",
+          "url": "https://www.wort.lu/rss/",
+          "lang": "de",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Makfax",
+          "url": "https://makfax.com.mk/feed/",
+          "lang": "mk",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Mediapool.bg",
+          "url": "https://www.mediapool.bg/rss",
+          "lang": "bg",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Meta.mk",
+          "url": "https://meta.mk/feed/",
+          "lang": "mk",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Meydan TV",
+          "url": "https://www.meydan.tv/az/feed/",
+          "lang": "az",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Moldova 1",
+          "url": "https://news.google.com/rss/search?q=site%3Amoldova1.md+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "ro",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Monaco Life",
+          "url": "https://monacolife.net/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Monaco Tribune",
+          "url": "https://monaco-tribune.com/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Monaco-Matin",
+          "url": "https://www.nicematin.com/monaco/rss",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "N1 Bosna i Hercegovina",
+          "url": "https://n1info.ba/feed/",
+          "lang": "bs",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "N1 Info",
+          "url": "https://n1info.rs/feed/",
+          "lang": "sr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Nasha Niva",
+          "url": "https://news.google.com/rss/search?q=site%3Anashaniva.com+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "be",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Netgazeti",
+          "url": "https://netgazeti.ge/feed/",
+          "lang": "ka",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Neue Zürcher Zeitung",
+          "url": "https://www.nzz.ch/recent.rss",
+          "lang": "de",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Novi list",
+          "url": "https://www.novilist.hr/feed/",
+          "lang": "hr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "ORF.at",
+          "url": "https://rss.orf.at/news.xml",
+          "lang": "de",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Observador",
+          "url": "https://observador.pt/feed/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Oslobođenje",
+          "url": "https://www.oslobodjenje.ba/rss.xml",
+          "lang": "bs",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Phileleftheros",
+          "url": "https://www.philenews.com/feed/",
+          "lang": "el",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Podrobno.uz",
+          "url": "https://podrobno.uz/rss/",
+          "lang": "ru",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Politis",
+          "url": "https://www.politis.com.cy/feed",
+          "lang": "el",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Postimees",
+          "url": "https://www.postimees.ee/rss",
+          "lang": "et",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "RTBF Info",
+          "url": "https://rss.rtbf.be/article/rss/highlight_rtbf_info.xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "RTL Luxembourg",
+          "url": "https://news.google.com/rss/search?q=site%3Artl.lu+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "de",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "RTL Nieuws",
+          "url": "https://www.rtl.nl/rss.xml",
+          "lang": "nl",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "RTP Notícias",
+          "url": "https://www.rtp.pt/noticias/rss",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "RTV Slovenija",
+          "url": "https://img.rtvslo.si/feeds/00.xml",
+          "lang": "sl",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "RTVE Noticias",
+          "url": "https://news.google.com/rss/search?q=site%3Artve.es+when%3A7d&hl=es&gl=ES&ceid=ES%3Aes",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "RTÉ News",
+          "url": "https://rte.ie/feeds/rss/?index=/news/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Radio Azatlyk",
+          "url": "https://azathabar.com/api/",
+          "lang": "tk",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Radio Azattyk",
+          "url": "https://www.azattyk.org/api/",
+          "lang": "ky",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Radio Azattyq",
+          "url": "https://azattyq.org/api/",
+          "lang": "kk",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Radio Ozodi",
+          "url": "https://ozodi.org/api/",
+          "lang": "tg",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Radio Prague International",
+          "url": "https://news.google.com/rss/search?q=site%3Aenglish.radio.cz+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Recorder",
+          "url": "https://recorder.ro/feed/",
+          "lang": "ro",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reporter.al",
+          "url": "https://www.reporter.al/feed/",
+          "lang": "sq",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Andorra",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Andorra%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Bulgaria",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Bulgaria%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Denmark",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Denmark%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Estonia",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Estonia%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Iceland",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Iceland%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Monaco",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Monaco%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Montenegro",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Montenegro%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Portugal",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Portugal%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Vatican City",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28Vatican%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "RÚV (Ríkisútvarpið)",
+          "url": "https://www.ruv.is/rss/frettir",
+          "lang": "is",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "San Marino Fixing",
+          "url": "https://news.google.com/rss/search?q=site%3Asanmarinofixing.com+when%3A7d&hl=it&gl=US&ceid=US%3Ait",
+          "lang": "it",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "San Marino RTV",
+          "url": "https://sanmarinortv.sm/rss.xml",
+          "lang": "it",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Schweizer Radio und Fernsehen (SRF)",
+          "url": "https://www.srf.ch/news/bnf/rss/1646",
+          "lang": "de",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Sme",
+          "url": "https://www.sme.sk/rss",
+          "lang": "sk",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Sveriges Radio",
+          "url": "https://news.google.com/rss/search?q=site%3Asverigesradio.se+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "sv",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "TA3",
+          "url": "https://www.ta3.com/rss/top-spravy",
+          "lang": "sk",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "TV 2",
+          "url": "https://news.google.com/rss/search?q=site%3Awww.tv2.no+when%3A7d&hl=no&gl=US&ceid=US%3Ano",
+          "lang": "no",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "TV8",
+          "url": "https://tv8.md/feed",
+          "lang": "ro",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Tages-Anzeiger",
+          "url": "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/",
+          "lang": "de",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Insider",
+          "url": "https://theins.ru/feed",
+          "lang": "ru",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Irish Times",
+          "url": "https://www.irishtimes.com/arc/outboundfeeds/rss/?outputType=xml",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Reykjavík Grapevine",
+          "url": "https://grapevine.is/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Sofia Globe",
+          "url": "https://feeds.feedburner.com/TheSofiaGlobe",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Tashkent Times",
+          "url": "https://news.google.com/rss/search?q=site%3Atashkenttimes.uz+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "TheJournal.ie",
+          "url": "https://www.thejournal.ie/feed/rss/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Tirana Times",
+          "url": "https://www.tiranatimes.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Turan",
+          "url": "https://news.google.com/rss/search?q=site%3Aturan.az+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "az",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Turkmen.news",
+          "url": "https://turkmen.news/feed/",
+          "lang": "ru",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Turun Sanomat",
+          "url": "https://www.ts.fi/rss.xml",
+          "lang": "fi",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "VRT NWS",
+          "url": "https://news.google.com/rss/search?q=site%3Avrt.be+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "nl",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Vatican News English",
+          "url": "https://www.vaticannews.va/en.rss.xml",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Verslo žinios",
+          "url": "https://www.vz.lt/rss",
+          "lang": "lt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Vijesti",
+          "url": "https://www.vijesti.me/rss",
+          "lang": "cnr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Vlast.kz",
+          "url": "https://vlast.kz/feed/",
+          "lang": "ru",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Woxx",
+          "url": "https://www.woxx.lu/feed/",
+          "lang": "de",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Your.tj",
+          "url": "https://your.tj/rss.xml",
+          "lang": "ru",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "de Volkskrant",
+          "url": "https://www.volkskrant.nl/voorpagina/rss.xml",
+          "lang": "nl",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "elDiario.es",
+          "url": "https://www.eldiario.es/rss",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Äripäev",
+          "url": "https://www.aripaev.ee/rss",
+          "lang": "et",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "ČT24",
+          "url": "https://ct24.ceskatelevize.cz/rss",
+          "lang": "cs",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Le Quotidien Luxembourg",
+          "url": "https://news.google.com/rss/search?q=site%3Alequotidien.lu+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "N1 Slovenia",
+          "url": "https://n1info.si/feed/",
+          "lang": "sl",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC News",
+          "url": "https://feeds.bbci.co.uk/news/rss.xml"
+        },
+        {
+          "name": "Guardian UK",
+          "url": "https://www.theguardian.com/uk-news/rss"
+        },
+        {
+          "name": "Channel 4 News",
+          "url": "https://www.channel4.com/news/feed"
+        },
+        {
+          "name": "Le Monde à la une",
+          "url": "https://www.lemonde.fr/rss/une.xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Le Monde International",
+          "url": "https://www.lemonde.fr/international/rss_full.xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Le Figaro",
+          "url": "https://www.lefigaro.fr/rss/figaro_actualites.xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "L'Express",
+          "url": "https://www.lexpress.fr/arc/outboundfeeds/rss/alaune.xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Le Nouvel Obs",
+          "url": "https://www.nouvelobs.com/a-la-une/rss.xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Courrier international",
+          "url": "https://www.courrierinternational.com/feed/all/rss.xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "France 24 Français",
+          "url": "https://www.france24.com/fr/rss",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "RFI",
+          "url": "https://www.rfi.fr/fr/rss",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "TV5Monde Info",
+          "url": "https://information.tv5monde.com/rss.xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
         }
       ],
       "middleeast": [
@@ -907,6 +1855,390 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Middle East Eye",
           "url": "https://news.google.com/rss/search?q=site%3Amiddleeasteye.net%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+        },
+        {
+          "name": "AP — Bahrain",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Bahrain%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Ahram Online",
+          "url": "https://news.google.com/rss/search?q=site%3Aenglish.ahram.org.eg+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Al Mada Newspaper",
+          "url": "https://almadapaper.net/feed/",
+          "lang": "ar",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Al Wasat",
+          "url": "https://news.google.com/rss/search?q=site%3Aalwasat.ly+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "ar",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Al-Ayam (الأيام)",
+          "url": "https://news.google.com/rss/search?q=site%3Aalayyam.info+when%3A7d&hl=ar&gl=US&ceid=US%3Aar",
+          "lang": "ar",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Al-Jumhuriya",
+          "url": "https://news.google.com/rss/search?q=site%3Aaljumhuriya.net+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "ar",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Al-Quds Newspaper",
+          "url": "https://alquds.com/ar/rss",
+          "lang": "ar",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Al-Roya",
+          "url": "https://alroya.om/rss",
+          "lang": "ar",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Al-Sumaria",
+          "url": "https://www.alsumaria.tv/Rss/iraq-latest-news/ar",
+          "lang": "ar",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Algérie Presse Service",
+          "url": "https://news.google.com/rss/search?q=site%3Aaps.dz+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "ar",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Ammon News",
+          "url": "https://ammonnews.net/rss.php?type=news&id=64",
+          "lang": "ar",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Arab Times Kuwait",
+          "url": "https://news.google.com/rss/search?q=site%3Aarabtimesonline.com+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Bahrain Mirror",
+          "url": "https://bahrainmirror.com/rss.xml",
+          "lang": "ar",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BirGün",
+          "url": "https://www.birgun.net/rss/home",
+          "lang": "tr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Cumhuriyet",
+          "url": "https://www.cumhuriyet.com.tr/rss",
+          "lang": "tr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Daily News Egypt",
+          "url": "https://www.dailynewsegypt.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Doha News",
+          "url": "https://dohanews.co/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "El Khabar",
+          "url": "https://news.google.com/rss/search?q=site%3Awww.elkhabar.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "ar",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Entekhab.ir",
+          "url": "https://www.entekhab.ir/fa/rss/allnews",
+          "lang": "fa",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Evrensel",
+          "url": "https://www.evrensel.net/rss/haber.xml",
+          "lang": "tr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Gulf Daily News",
+          "url": "https://news.google.com/rss/search?q=site%3Agdnonline.com+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Gulf News",
+          "url": "https://gulfnews.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Gulf Times",
+          "url": "https://www.gulf-times.com/rssFeed/8",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Hespress",
+          "url": "https://www.hespress.com/feed",
+          "lang": "ar",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Inkyfada",
+          "url": "https://inkyfada.com/fr/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Jordan News",
+          "url": "https://www.jordannews.jo/rss",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Khaleej Times",
+          "url": "https://www.khaleejtimes.com/api/v1/collections/top-section.rss",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Kuwait News Agency",
+          "url": "https://news.google.com/rss/search?q=site%3Akuna.net.kw+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Kuwait Times",
+          "url": "https://news.google.com/rss/search?q=site%3Akuwaittimes.com+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "La Nation",
+          "url": "https://www.lanation.dj/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "La Presse de Tunisie",
+          "url": "https://www.lapresse.tn/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "La Voix de Djibouti",
+          "url": "https://lavoixdedjibouti.info/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Le Desk",
+          "url": "https://ledesk.ma/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "MaltaToday",
+          "url": "https://news.google.com/rss/search?q=site%3Amaltatoday.com.mt+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Morocco World News",
+          "url": "https://news.google.com/rss/search?q=site%3Awww.moroccoworldnews.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Mosaique FM",
+          "url": "https://www.mosaiquefm.net/rss",
+          "lang": "ar",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Muscat Daily",
+          "url": "https://news.google.com/rss/search?q=site%3Awww.muscatdaily.com+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Nawaat",
+          "url": "https://nawaat.org/feed/",
+          "lang": "ar",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Newsbook Malta",
+          "url": "https://news.google.com/rss/search?q=site%3Anewsbook.com.mt+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "mt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Palestine News Network",
+          "url": "https://english.pnn.ps/feed",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "RTD Djibouti",
+          "url": "https://rtd.dj/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Algeria",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Algeria%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Bahrain",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Bahrain%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Djibouti",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Djibouti%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Jordan",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+Jordan+%28Amman+OR+Abdullah+OR+Hashemite%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Kuwait",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Kuwait%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Libya",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Libya%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Palestinian Territories",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28Palestine+OR+Palestinian%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Saudi Arabia",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Saudi+Arabia%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — United Arab Emirates",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22United+Arab+Emirates%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Yemen",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Yemen%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Saudi Gazette",
+          "url": "https://news.google.com/rss/search?q=site%3Asaudigazette.com.sa+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Shafaq News",
+          "url": "https://news.google.com/rss/search?q=site%3Ashafaq.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "ar",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Shargh Daily",
+          "url": "https://www.sharghdaily.com/feeds/",
+          "lang": "fa",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "TSA Algérie (Tout Sur l'Algérie)",
+          "url": "https://www.tsa-algerie.com/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "TelQuel",
+          "url": "https://telquel.ma/feed",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Jordan Times",
+          "url": "https://news.google.com/rss/search?q=site%3Ajordantimes.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Libya Observer",
+          "url": "https://news.google.com/rss/search?q=site%3Alibyaobserver.ly+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Peninsula Qatar",
+          "url": "https://news.google.com/rss/search?q=site%3Athepeninsulaqatar.com+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Public Source",
+          "url": "https://thepublicsource.org/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Shift News",
+          "url": "https://theshiftnews.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Syrian Observer",
+          "url": "https://syrianobserver.com/feed",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Times of Malta",
+          "url": "https://rss.timesofmalta.com/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Times of Oman",
+          "url": "https://news.google.com/rss/search?q=site%3Atimesofoman.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
         }
       ],
       "tech": [
@@ -1320,6 +2652,1014 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
           "url": "https://www.radiondekeluka.org/feed/",
           "lang": "fr",
           "digestLang": "fr"
+        },
+        {
+          "name": "2424.mg",
+          "url": "https://2424.mg/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "A Nação",
+          "url": "https://www.anacao.cv/feed/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AHORAEG Guinea Ecuatorial",
+          "url": "https://ahoraeg.com/feed/",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Comoros",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Comoros%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Equatorial Guinea",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Equatorial+Guinea%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Eritrea",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Eritrea%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Eswatini",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28Eswatini+OR+Swaziland%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Guinea-Bissau",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Guinea-Bissau%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Seychelles",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Seychelles%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Zambia",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Zambia%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Addis Fortune",
+          "url": "https://addisfortune.news/feed",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Addis Standard",
+          "url": "https://news.google.com/rss/search?q=site%3Aaddisstandard.com+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Agence Ivoirienne de Presse (AIP)",
+          "url": "https://www.aip.ci/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Agence de Presse Senegalaise (APS)",
+          "url": "https://aps.sn/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Agência de Notícias da Guiné (ANG)",
+          "url": "https://ang.gw/feed/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Alakhbar",
+          "url": "https://www.alakhbar.info/latest/rss/",
+          "lang": "ar",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Awate.com",
+          "url": "https://awate.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Awoko",
+          "url": "https://news.google.com/rss/search?q=site%3Aawokonewspaper.sl+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC — Angola",
+          "url": "https://news.google.com/rss/search?q=site%3Abbc.com+%28%22Angola%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC — Central African Republic",
+          "url": "https://news.google.com/rss/search?q=site%3Abbc.com+%28%22Central+African+Republic%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC — Comoros",
+          "url": "https://news.google.com/rss/search?q=site%3Abbc.com+%28%22Comoros%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC — Côte d’Ivoire",
+          "url": "https://news.google.com/rss/search?q=site%3Abbc.com+%28%22Ivory+Coast%22+OR+%22C%C3%B4te+d%E2%80%99Ivoire%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC — Equatorial Guinea",
+          "url": "https://news.google.com/rss/search?q=site%3Abbc.com+%28%22Equatorial+Guinea%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC — Eswatini",
+          "url": "https://news.google.com/rss/search?q=site%3Abbc.com+%28Eswatini+OR+Swaziland%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Burkina24",
+          "url": "https://burkina24.com/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "CRTV (Cameroon Radio Television)",
+          "url": "https://news.google.com/rss/search?q=site%3Acrtv.cm+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Carta de Moçambique",
+          "url": "https://cartamz.com/feed/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Catholic Radio Network",
+          "url": "https://catholicradionetwork.org/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Citizen TV",
+          "url": "https://citizen.digital/feed.xml",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Club of Mozambique",
+          "url": "https://clubofmozambique.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "CongoPage",
+          "url": "https://congopage.com/spip.php?page=backend",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Connection Ivoirienne",
+          "url": "https://connectionivoirienne.net/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Corbeau News Centrafrique",
+          "url": "https://corbeaunews-centrafrique.org/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Daily Maverick",
+          "url": "https://www.dailymaverick.co.za/dmrss/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Daily News",
+          "url": "https://dailynews.co.tz/category/tanzania/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Expresso das Ilhas",
+          "url": "https://expressodasilhas.cv/rss",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Eye Radio",
+          "url": "https://www.eyeradio.org/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Foroyaa",
+          "url": "https://news.google.com/rss/search?q=site%3Aforoyaa.net+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Benin",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+Benin+when%3A30d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "FrontPage Africa",
+          "url": "https://frontpageafricaonline.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Gabon Actu",
+          "url": "https://gabonactu.com/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Gabonews",
+          "url": "https://gabonews.com/spip.php?page=backend",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Gabonreview",
+          "url": "https://www.gabonreview.com/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Garowe Online",
+          "url": "https://news.google.com/rss/search?q=site%3Agaroweonline.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Ghana Business News",
+          "url": "https://www.ghanabusinessnews.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Goobjoog News",
+          "url": "https://news.google.com/rss/search?q=site%3Agoobjoog.com+when%3A7d&hl=so&gl=US&ceid=US%3Aso",
+          "lang": "so",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Graphic Online",
+          "url": "https://news.google.com/rss/search?q=site%3Agraphic.com.gh+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "GroundUp",
+          "url": "https://groundup.org.za/sitenews/rss/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Guardian — Angola",
+          "url": "https://news.google.com/rss/search?q=site%3Atheguardian.com+%28%22Angola%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Guinee7.com",
+          "url": "https://www.guinee7.com/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Guineematin.com",
+          "url": "https://guineematin.com/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Guinéenews.org",
+          "url": "https://news.google.com/rss/search?q=site%3Aguineenews.org+when%3A7d&hl=fr&gl=US&ceid=US%3Afr",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Habari Za Comores",
+          "url": "https://www.habarizacomores.com/feeds/posts/default",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "ITV Tanzania",
+          "url": "https://news.google.com/rss/search?q=site%3Awww.itv.co.tz+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "sw",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "IciLome",
+          "url": "https://icilome.com/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Inforpress",
+          "url": "https://news.google.com/rss/search?q=site%3Ainforpress.cv+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Iwacu",
+          "url": "https://www.iwacu-burundi.org/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Jornal Tropical",
+          "url": "https://www.jornaltropical.st/feed/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Journal de Brazza",
+          "url": "https://www.journaldebrazza.com/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Journal du Mali",
+          "url": "https://journaldumali.com/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "KT Press",
+          "url": "https://www.ktpress.rw/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "L'Express Mauritius",
+          "url": "https://news.google.com/rss/search?q=site%3Alexpress.mu+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "L'Express de Madagascar",
+          "url": "https://www.lexpress.mg/atom.xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "L'Union",
+          "url": "https://union.sonapresse.com/rss.xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "La Nouvelle Tribune",
+          "url": "https://lanouvelletribune.info/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Le Calame",
+          "url": "https://lecalame.info/rss.xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Le Défi Media Group",
+          "url": "https://defimedia.info/rss.xml",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Le Jour",
+          "url": "https://lejour.cm/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Le Mauricien",
+          "url": "https://news.google.com/rss/search?q=site%3Awww.lemauricien.com+when%3A7d&hl=fr&gl=US&ceid=US%3Afr",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Le Pays Tchad",
+          "url": "https://www.lepaystchad.com/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Le Potentiel",
+          "url": "https://lepotentiel.cd/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Mali",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+Mali+when%3A30d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Le Sahel",
+          "url": "https://www.lesahel.org/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Le Soleil",
+          "url": "https://lesoleil.sn/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Les Dépêches de Brazzaville",
+          "url": "https://news.google.com/rss/search?q=site%3Aadiac-congo.com+when%3A7d&hl=fr&gl=FR&ceid=FR%3Afr",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Lesotho Times",
+          "url": "https://lestimes.com/?feed=rss2",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Liberian Observer",
+          "url": "https://news.google.com/rss/search?q=site%3Aliberianobserver.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Linfodrome",
+          "url": "https://www.linfodrome.com/rss",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Lusaka Times",
+          "url": "https://news.google.com/rss/search?q=site%3Alusakatimes.com+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Madagascar-Tribune.com",
+          "url": "https://www.madagascar-tribune.com/spip.php?page=backend",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Mail & Guardian",
+          "url": "https://mg.co.za/atom/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Malagen",
+          "url": "https://malagen.org/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Malawi Nyasa Times",
+          "url": "https://www.nyasatimes.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Malawi24",
+          "url": "https://malawi24.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Matin Libre",
+          "url": "https://matinlibre.com/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Midi Madagasikara",
+          "url": "https://midi-madagasikara.mg/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Mmegi",
+          "url": "https://news.google.com/rss/search?q=site%3Ammegi.bw+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Namibia Economist",
+          "url": "https://economist.com.na/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "New Era",
+          "url": "https://neweralive.na/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "News Diggers!",
+          "url": "https://diggers.news/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "NewsDay Zimbabwe",
+          "url": "https://newsday.co.zw/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Notícias do Norte",
+          "url": "https://noticiasdonorte.publ.cv/feed/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "O Democrata",
+          "url": "https://www.odemocratagb.com/?feed=rss2",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "O País",
+          "url": "https://opais.co.mz/feed/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "ORTB Benin",
+          "url": "https://srtb.bj/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "PressAfrik",
+          "url": "https://www.pressafrik.com/xml/syndication.rss",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Public Eye",
+          "url": "https://publiceyenews.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Radio Ergo",
+          "url": "https://radioergo.org/feed/",
+          "lang": "so",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Angola",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Angola%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Botswana",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Botswana%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Burkina Faso",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Burkina+Faso%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Burundi",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Burundi%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Cameroon",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Cameroon%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Central African Republic",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Central+African+Republic%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Chad",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+Chad+%28Africa+OR+%22N%E2%80%99Djamena%22+OR+Deby%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Comoros",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Comoros%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Congo - Brazzaville",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Congo-Brazzaville%22+OR+Brazzaville%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Congo - Kinshasa",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Democratic+Republic+of+Congo%22+OR+%22DR+Congo%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Equatorial Guinea",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Equatorial+Guinea%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Eritrea",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Eritrea%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Guinea",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28Guinea+OR+Conakry%29+-%22Papua+New+Guinea%22+-%22Equatorial+Guinea%22+-%22Guinea-Bissau%22+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Guinea-Bissau",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Guinea-Bissau%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Lesotho",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Lesotho%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Liberia",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Liberia%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Mauritania",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Mauritania%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Mauritius",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Mauritius%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Namibia",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Namibia%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Rwanda",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Rwanda%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Seychelles",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Seychelles%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Sierra Leone",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Sierra+Leone%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Sudan",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Sudan%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Togo",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Togo%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Zambia",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Zambia%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Zimbabwe",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Zimbabwe%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Rádio Nacional de Angola (RNA)",
+          "url": "https://rna.ao/rna.ao/feed/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Rádio Somos Todos Primos (RSTP)",
+          "url": "https://rstp.st/feed/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "SOS Médias Burundi",
+          "url": "https://news.google.com/rss/search?q=site%3Awww.sosmediasburundi.org+when%3A7d&hl=fr&gl=US&ceid=US%3Afr",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "STP-Press",
+          "url": "https://www.stp-press.st/feed/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Sahara Medias",
+          "url": "https://saharamedias.net/feed/",
+          "lang": "ar",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Sahelien.com",
+          "url": "https://sahelien.com/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Setit",
+          "url": "https://setit.org/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Seychelles Broadcasting Corporation",
+          "url": "https://www.sbc.sc/feed/",
+          "lang": "crs",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Seychelles Nation",
+          "url": "https://news.google.com/rss/search?q=site%3Anation.sc+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Studio Kalangou",
+          "url": "https://www.studiokalangou.org/feed",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Studio Yafa",
+          "url": "https://www.studioyafa.bf/feed",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Sudan Tribune",
+          "url": "https://sudantribune.net/feed",
+          "lang": "ar",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Sudan War Monitor",
+          "url": "https://sudanwarmonitor.com/feed",
+          "lang": "ar",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Sudans Post",
+          "url": "https://www.sudanspost.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Swaziland News",
+          "url": "https://news.google.com/rss/search?q=site%3Aswazilandnews.co.za+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Taarifa Rwanda",
+          "url": "https://taarifa.rw/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Botswana Gazette",
+          "url": "https://www.thegazette.news/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Calabash Newspaper",
+          "url": "https://thecalabashnewspaper.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Chanzo",
+          "url": "https://thechanzo.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Citizen Tanzania",
+          "url": "https://www.thecitizen.co.tz/rss.xml",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Financial Gazette",
+          "url": "https://fingaz.co.zw/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Independent (Uganda)",
+          "url": "https://www.independent.co.ug/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Monitor Uganda",
+          "url": "https://www.monitor.co.ug/rss.xml",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Namibian",
+          "url": "https://www.namibian.com.na/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Nation Malawi",
+          "url": "https://mwnation.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The New Dawn Liberia",
+          "url": "https://thenewdawnliberia.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The New Times Rwanda",
+          "url": "https://news.google.com/rss/search?q=site%3Anewtimes.co.rw+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Observer",
+          "url": "https://observer.ug/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Point",
+          "url": "https://thepoint.gm/posts/rss/xml",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Reporter Lesotho",
+          "url": "https://www.thereporter.co.ls/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Sierra Leone Telegraph",
+          "url": "https://www.thesierraleonetelegraph.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Standard",
+          "url": "https://news.google.com/rss/search?q=site%3Astandard.gm+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Standard Kenya",
+          "url": "https://news.google.com/rss/search?q=site%3Astandardmedia.co.ke+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Star Kenya",
+          "url": "https://news.google.com/rss/search?q=site%3Athe-star.co.ke+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Times Group Malawi",
+          "url": "https://times.mw/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Voice",
+          "url": "https://thevoicebw.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Zimbabwe Independent",
+          "url": "https://theindependent.co.zw/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Times of Eswatini",
+          "url": "https://times.co.sz/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Togotopnews",
+          "url": "https://togotopnews.tg/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Togo‑Presse",
+          "url": "https://news.google.com/rss/search?q=site%3Atogopresse.tg+when%3A7d&hl=fr&gl=US&ceid=US%3Afr",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Téla Nón",
+          "url": "https://www.telanon.info/feed/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Uganda Radio Network (URN)",
+          "url": "https://ugandaradionetwork.com/s/tag/uganda/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Yaga Burundi",
+          "url": "https://www.yaga-burundi.com/feed/",
+          "lang": "fr",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Zitamar News",
+          "url": "https://www.zitamar.com/rss/",
+          "lang": "en",
+          "fetchInAllLanguages": true
         }
       ],
       "latam": [
@@ -1445,6 +3785,764 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
           "url": "https://www.14ymedio.com/rss/",
           "lang": "es",
           "digestLang": "es"
+        },
+        {
+          "name": "Guardian Brazil",
+          "url": "https://www.theguardian.com/world/brazil/rss"
+        },
+        {
+          "name": "Brazil Reports",
+          "url": "https://brazilreports.com/feed/"
+        },
+        {
+          "name": "G1 Política",
+          "url": "https://g1.globo.com/rss/g1/politica/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Agência Brasil",
+          "url": "https://agenciabrasil.ebc.com.br/rss/ultimasnoticias/feed.xml",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "ABS TV Radio Antigua & Barbuda",
+          "url": "https://abstvradio.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Dominica",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Dominica%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — El Salvador",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22El+Salvador%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Panama",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+Panama+-Florida+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Paraguay",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Paraguay%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — St. Kitts & Nevis",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22St.+Kitts+%26+Nevis%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — St. Vincent & Grenadines",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22St.+Vincent+%26+Grenadines%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Suriname",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Suriname%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Trinidad & Tobago",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Trinidad+%26+Tobago%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Amandala",
+          "url": "https://amandala.com.bz/news/category/general/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Antigua News Room",
+          "url": "https://news.google.com/rss/search?q=site%3Aantiguanewsroom.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Antigua Observer",
+          "url": "https://antiguaobserver.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Antigua.news",
+          "url": "https://antigua.news/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC — Barbados",
+          "url": "https://news.google.com/rss/search?q=site%3Abbc.com+%28%22Barbados%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC — El Salvador",
+          "url": "https://news.google.com/rss/search?q=site%3Abbc.com+%28%22El+Salvador%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Barbados Today",
+          "url": "https://barbadostoday.bb/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BioBioChile",
+          "url": "https://feeds.feedburner.com/radiobiobio/NNeJ",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Brecha",
+          "url": "https://brecha.com.uy/feed/",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "CNC3",
+          "url": "https://www.cnc3.co.tt/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "CNN Chile",
+          "url": "https://news.google.com/rss/search?q=site%3Awww.cnnchile.com+when%3A7d&hl=es&gl=US&ceid=US%3Aes",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Caribbean Broadcasting Corporation (CBC)",
+          "url": "https://www.cbc.bb/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Channel 5 Belize",
+          "url": "https://www.greaterbelize.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Ciperchile",
+          "url": "https://www.ciperchile.cl/feed/",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Confidencial",
+          "url": "https://news.google.com/rss/search?q=site%3Aconfidencial.digital+when%3A7d&hl=es&gl=US&ceid=US%3Aes",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Criterio.hn",
+          "url": "https://criterio.hn/feed/",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "DBS TV St Lucia",
+          "url": "https://dbstvstlucia.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "De Ware Tijd",
+          "url": "https://dwtonline.com/feed/",
+          "lang": "nl",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "De West",
+          "url": "https://dagbladdewest.com/feed/",
+          "lang": "nl",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Demerara Waves Online News",
+          "url": "https://demerarawaves.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Diario Co Latino",
+          "url": "https://www.diariocolatino.com/feed/",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Diario Libre",
+          "url": "https://www.diariolibre.com/feed/portada.xml",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Diario de Cuba",
+          "url": "https://diariodecuba.com/rss.xml",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Divergentes",
+          "url": "https://www.divergentes.com/feed/",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Dominica News Online",
+          "url": "https://news.google.com/rss/search?q=site%3Adominicanewsonline.com+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "El Comercio",
+          "url": "https://www.elcomercio.com/feed/",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "El Comercio Peru",
+          "url": "https://elcomercio.pe/arcio/rss/",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "El Deber",
+          "url": "https://eldeber.com.bo/feed",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "El Día",
+          "url": "https://eldia.com.do/feed/",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "El Espectador",
+          "url": "https://www.elespectador.com/arc/outboundfeeds/discover/?outputType=xml",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "El Faro",
+          "url": "https://news.google.com/rss/search?q=site%3Aelfaro.net+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "El País Uruguay",
+          "url": "https://news.google.com/rss/search?q=site%3Aelpais.com.uy+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "El Pitazo",
+          "url": "https://elpitazo.net/feed/",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Emonews",
+          "url": "https://emonewsdm.com/feed.xml",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Expreso",
+          "url": "https://news.google.com/rss/search?q=site%3Awww.expreso.ec+when%3A7d&hl=es&gl=US&ceid=US%3Aes",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Eyewitness News",
+          "url": "https://news.google.com/rss/search?q=site%3Aewnews.com+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Grenada Broadcasting Network (GBN)",
+          "url": "https://gbn.gd/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Guardian — Barbados",
+          "url": "https://news.google.com/rss/search?q=site%3Atheguardian.com+%28%22Barbados%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Guardian — Bolivia",
+          "url": "https://news.google.com/rss/search?q=site%3Atheguardian.com+%28%22Bolivia%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Hoy",
+          "url": "https://hoy.com.do/rss/home.xml",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "IDL-Reporteros",
+          "url": "https://www.idl-reporteros.pe/feed/",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Jamaica Information Service (JIS)",
+          "url": "https://jis.gov.jm/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Jamaica Observer",
+          "url": "https://www.jamaicaobserver.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Kaieteur News",
+          "url": "https://kaieteurnewsonline.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "La Diaria",
+          "url": "https://ladiaria.com.uy/feeds/articulos/",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "La Hora",
+          "url": "https://news.google.com/rss/search?q=site%3Alahora.gt+when%3A7d&hl=es&gl=US&ceid=US%3Aes",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "La Nación",
+          "url": "https://www.nacion.com/arc/outboundfeeds/rss/?outputType=xml",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "La Nación Argentina",
+          "url": "https://www.lanacion.com.ar/arc/outboundfeeds/rss/",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "La Nación Paraguay",
+          "url": "https://news.google.com/rss/search?q=site%3Alanacion.com.py+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "La Prensa",
+          "url": "https://www.prensa.com/arc/outboundfeeds/rss/?outputType=xml",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "La Prensa Honduras",
+          "url": "https://news.google.com/rss/search?q=site%3Alaprensa.hn+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "La Prensa Nicaragua",
+          "url": "https://news.google.com/rss/search?q=site%3Alaprensani.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "La República Colombia",
+          "url": "https://www.larepublica.co/rss",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "La República Peru",
+          "url": "https://larepublica.pe/rss/home.xml",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "La Tercera",
+          "url": "https://www.latercera.com/arc/outboundfeeds/rss/?outputType=xml",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Le Nouvelliste",
+          "url": "https://lenouvelliste.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Los Tiempos",
+          "url": "https://news.google.com/rss/search?q=site%3Alostiempos.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Love FM",
+          "url": "https://lovefm.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "MercoPress",
+          "url": "https://en.mercopress.com/rss/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "NBC Radio",
+          "url": "https://www.nbcsvg.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "NOW Grenada",
+          "url": "https://nowgrenada.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "News Room Guyana",
+          "url": "https://news.google.com/rss/search?q=site%3Anewsroom.gy+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Nicaragua Investiga",
+          "url": "https://nicaraguainvestiga.com/feed/",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Plaza Pública",
+          "url": "https://plazapublica.com.gt/rss",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Prensa Comunitaria",
+          "url": "https://prensacomunitaria.org/feed/",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Proceso Digital",
+          "url": "https://proceso.hn/feed/",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Página/12",
+          "url": "https://www.pagina12.com.ar/arc/outboundfeeds/rss/portada/",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "RPP Noticias",
+          "url": "https://rpp.pe/rss",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Radio Jamaica News",
+          "url": "https://news.google.com/rss/search?q=site%3Aradiojamaicanewsonline.com+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reforma",
+          "url": "https://www.reforma.com/rss/portada.xml",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Bolivia",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Bolivia%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Costa Rica",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Costa+Rica%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Cuba",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Cuba%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Dominica",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Dominica%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Dominican Republic",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Dominican+Republic%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Grenada",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Grenada%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Guatemala",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Guatemala%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Guyana",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Guyana%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Honduras",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Honduras%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Mexico",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Mexico%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Panama",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+Panama+-Florida+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Paraguay",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Paraguay%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — St. Kitts & Nevis",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22St.+Kitts+%26+Nevis%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "St Lucia Times",
+          "url": "https://stluciatimes.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "St Vincent Times",
+          "url": "https://www.stvincenttimes.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Suriname Herald",
+          "url": "https://www.srherald.com/feed/",
+          "lang": "nl",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "TVN Noticias",
+          "url": "https://www.tvn-2.com/rss/",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Tal Cual",
+          "url": "https://talcualdigital.com/feed/atom/",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Guardian — Paraguay",
+          "url": "https://news.google.com/rss/search?q=site%3Atheguardian.com+Paraguay+when%3A30d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Telenoticias (Teletica)",
+          "url": "https://www.teletica.com/rss/feed",
+          "lang": "es",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Gleaner",
+          "url": "https://news.google.com/rss/search?q=site%3Ajamaica-gleaner.com+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Haitian Times",
+          "url": "https://haitiantimes.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Nassau Guardian",
+          "url": "https://news.google.com/rss/search?q=site%3Athenassauguardian.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The San Pedro Sun",
+          "url": "https://www.sanpedrosun.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The St Lucia Star",
+          "url": "https://stluciastar.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The St. Kitts-Nevis Observer",
+          "url": "https://www.thestkittsnevisobserver.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Tico Times",
+          "url": "https://ticotimes.net/feed",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Tribune",
+          "url": "https://www.tribune242.com/rss/headlines/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Voice of Saint Lucia",
+          "url": "https://thevoiceslu.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Trinidad Express",
+          "url": "https://news.google.com/rss/search?q=site%3Atrinidadexpress.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Trinidad Guardian",
+          "url": "https://news.google.com/rss/search?q=site%3Aguardian.co.tt+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "WEE FM Radio Grenada",
+          "url": "https://www.weefmgrenada.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "WINNFM 98.9",
+          "url": "https://winnfm.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "ZNS Bahamas",
+          "url": "https://znsbahamas.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "iWitness News",
+          "url": "https://www.iwnsvg.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "g1",
+          "url": "https://g1.globo.com/rss/g1/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "g1 Mundo",
+          "url": "https://g1.globo.com/rss/g1/mundo/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Folha Mundo",
+          "url": "https://feeds.folha.uol.com.br/mundo/rss091.xml",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Estadão Política",
+          "url": "https://www.estadao.com.br/arc/outboundfeeds/feeds/rss/sections/politica/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Estadão Internacional",
+          "url": "https://www.estadao.com.br/arc/outboundfeeds/feeds/rss/sections/internacional/",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC News Brasil",
+          "url": "https://feeds.bbci.co.uk/portuguese/rss.xml",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Nexo Jornal",
+          "url": "https://www.nexojornal.com.br/rss.xml",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "DW Brasil",
+          "url": "https://rss.dw.com/xml/rss-br-all",
+          "lang": "pt",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "RFI Brasil",
+          "url": "https://www.rfi.fr/br/rss",
+          "lang": "pt",
+          "fetchInAllLanguages": true
         }
       ],
       "asia": [
@@ -1680,6 +4778,774 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Japan Times",
           "url": "https://news.google.com/rss/search?q=site%3Ajapantimes.co.jp%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+        },
+        {
+          "name": "ABS-CBN News",
+          "url": "https://news.google.com/rss/search?q=site%3Aabs-cbn.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "ANTARA News",
+          "url": "https://www.antaranews.com/rss/terkini",
+          "lang": "id",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Kiribati",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28Kiribati%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Marshall Islands",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Marshall+Islands%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Micronesia",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Federated+States+of+Micronesia%22+OR+Pohnpei+OR+Chuuk%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Myanmar (Burma)",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28Myanmar+OR+Burma%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Nauru",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Nauru%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Palau",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Palau%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Tonga",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Tonga%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Tuvalu",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Tuvalu%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "AP — Vanuatu",
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com+%28%22Vanuatu%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Al Jazeera — Micronesia",
+          "url": "https://news.google.com/rss/search?q=site%3Aaljazeera.com+%28%22Federated+States+of+Micronesia%22+OR+Pohnpei+OR+Chuuk%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC Korean",
+          "url": "https://bbc.com/korean/feed/",
+          "lang": "ko",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC — Kiribati",
+          "url": "https://news.google.com/rss/search?q=site%3Abbc.com+%28Kiribati%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC — Laos",
+          "url": "https://news.google.com/rss/search?q=site%3Abbc.com+%28%22Laos%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC — Micronesia",
+          "url": "https://news.google.com/rss/search?q=site%3Abbc.com+%28%22Federated+States+of+Micronesia%22+OR+Pohnpei+OR+Chuuk%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC — Nauru",
+          "url": "https://news.google.com/rss/search?q=site%3Abbc.com+%28%22Nauru%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC — Tonga",
+          "url": "https://news.google.com/rss/search?q=site%3Abbc.com+%28%22Tonga%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC — Tuvalu",
+          "url": "https://news.google.com/rss/search?q=site%3Abbc.com+%28%22Tuvalu%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "BBC — Vanuatu",
+          "url": "https://news.google.com/rss/search?q=site%3Abbc.com+%28%22Vanuatu%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Bernama",
+          "url": "https://news.google.com/rss/search?q=site%3Abernama.com+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Bhutan Broadcasting Service",
+          "url": "https://www.bbs.bt/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Borneo Bulletin",
+          "url": "https://news.google.com/rss/search?q=site%3Aborneobulletin.com.bn+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Bhutan",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Bhutan%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen-US",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Business Recorder",
+          "url": "https://news.google.com/rss/search?q=site%3Abrecorder.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Caixin Global",
+          "url": "https://news.google.com/rss/search?q=site%3Acaixinglobal.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "CamboJA News",
+          "url": "https://www.camboja.net/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Daily Mirror Sri Lanka",
+          "url": "https://news.google.com/rss/search?q=site%3Adailymirror.lk+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Daily NK",
+          "url": "https://www.dailynk.com/english/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Dhauru",
+          "url": "https://dhauru.com/feed",
+          "lang": "dv",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "EMTV Online",
+          "url": "https://news.google.com/rss/search?q=site%3Aemtv.com.pg+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "EconomyNext",
+          "url": "https://economynext.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Etilaat Roz",
+          "url": "https://www.etilaatroz.com/feed/",
+          "lang": "fa",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Express Tribune",
+          "url": "https://tribune.com.pk/feed/home",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "FBC News",
+          "url": "https://www.fbcnews.com.fj/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Fiji Sun",
+          "url": "https://news.google.com/rss/search?q=site%3Afijisun.com.fj+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Fiji Times",
+          "url": "https://news.google.com/rss/search?q=site%3Awww.fijitimes.com.fj+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "GMA News",
+          "url": "https://data.gmanews.tv/gno/rss/news/feed.xml",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "GoGo Mongolia",
+          "url": "https://news.google.com/rss/search?q=site%3Agogo.mn+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "mn",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Guardian — Kiribati",
+          "url": "https://news.google.com/rss/search?q=site%3Atheguardian.com+%28Kiribati%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Guardian — Laos",
+          "url": "https://news.google.com/rss/search?q=site%3Atheguardian.com+%28%22Laos%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Guardian — Marshall Islands",
+          "url": "https://news.google.com/rss/search?q=site%3Atheguardian.com+%28%22Marshall+Islands%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Guardian — Micronesia",
+          "url": "https://news.google.com/rss/search?q=site%3Atheguardian.com+%28%22Federated+States+of+Micronesia%22+OR+Pohnpei+OR+Chuuk%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Guardian — Nauru",
+          "url": "https://news.google.com/rss/search?q=site%3Atheguardian.com+%28%22Nauru%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Guardian — Palau",
+          "url": "https://news.google.com/rss/search?q=site%3Atheguardian.com+%28%22Palau%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Guardian — Tuvalu",
+          "url": "https://news.google.com/rss/search?q=site%3Atheguardian.com+%28%22Tuvalu%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Hankyoreh",
+          "url": "https://news.google.com/rss/search?q=site%3Ahani.co.kr+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "ko",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Island Sun",
+          "url": "https://theislandsun.com.sb/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Islands Business",
+          "url": "https://islandsbusiness.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Japan Wire by Kyodo News",
+          "url": "https://english.kyodonews.net/list/feed/rss4kyodonews-fzone",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Khaosod English",
+          "url": "https://news.google.com/rss/search?q=site%3Akhaosodenglish.com%20when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Kiripost",
+          "url": "https://news.google.com/rss/search?q=site%3Akiripost.com+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Kompas",
+          "url": "https://news.google.com/rss/search?q=site%3Akompas.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "id",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Korea Times",
+          "url": "https://feed.koreatimes.co.kr/k/allnews.xml",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Kuensel",
+          "url": "https://kuenselonline.com/feed/posts",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Laotian Times",
+          "url": "https://laotiantimes.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Malay Mail",
+          "url": "https://www.malaymail.com/feed/rss",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Malaysiakini",
+          "url": "https://www.malaysiakini.com/rss/en/news.rss",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Maldives Independent",
+          "url": "https://maldivesindependent.com/api/rss",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Matangi Tonga",
+          "url": "https://matangitonga.to/rss.xml",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Montsame",
+          "url": "https://news.google.com/rss/search?q=site%3Amontsame.mn+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "mn",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Mothership",
+          "url": "https://news.google.com/rss/search?q=site%3Amothership.sg+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Myanmar Now",
+          "url": "https://www.myanmar-now.org/en/feed",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "NHK (日本放送協会)",
+          "url": "https://news.google.com/rss/search?q=site%3Awww3.nhk.or.jp+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "ja",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "NK News",
+          "url": "https://www.nknews.org/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Nepali Times",
+          "url": "https://nepalitimes.com/rss.xml",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "New Zealand Herald",
+          "url": "https://news.google.com/rss/search?q=site%3Anzherald.co.nz+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "News First Sri Lanka",
+          "url": "https://news.google.com/rss/search?q=site%3Anewsfirst.lk+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "News.MN",
+          "url": "https://news.mn/en/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Newsroom",
+          "url": "https://newsroom.co.nz/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Online Khabar",
+          "url": "https://www.onlinekhabar.com/feed",
+          "lang": "ne",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Papua New Guinea Post-Courier",
+          "url": "https://www.postcourier.com.pg/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Philippine Daily Inquirer",
+          "url": "https://www.inquirer.net/fullfeed",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Phnom Penh Post",
+          "url": "https://phnompenhpost.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Prachatai",
+          "url": "https://feeds.feedburner.com/prachatai",
+          "lang": "th",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Prothom Alo",
+          "url": "https://www.prothomalo.com/stories.rss",
+          "lang": "bn",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "RNZ",
+          "url": "https://www.rnz.co.nz/rss/national.xml",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Brunei",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Brunei%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Kiribati",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28Kiribati%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Laos",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Laos%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Maldives",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Maldives%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Marshall Islands",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Marshall+Islands%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Myanmar (Burma)",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28Myanmar+OR+Burma%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Nauru",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Nauru%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — North Korea",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22North+Korea%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Palau",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Palau%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Papua New Guinea",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Papua+New+Guinea%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Samoa",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Samoa%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Timor-Leste",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22East+Timor%22+OR+%22Timor-Leste%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Tonga",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Tonga%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Reuters — Tuvalu",
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com+%28%22Tuvalu%22%29+when%3A30d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Rukhshana Media",
+          "url": "https://rukhshana.com/feed/",
+          "lang": "fa",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "SBS News",
+          "url": "https://news.google.com/rss/search?q=site%3Awww.sbs.com.au+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "SIBC",
+          "url": "https://sibconline.com.sb/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Samoa Global News",
+          "url": "https://samoaglobalnews.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Samoa Observer",
+          "url": "https://news.google.com/rss/search?q=site%3Asamoaobserver.ws+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Scroll.in",
+          "url": "https://feeds.feedburner.com/ScrollinArticles.rss",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Setopati",
+          "url": "https://news.google.com/rss/search?q=site%3Asetopati.com+when%3A7d&hl=ne&gl=US&ceid=US%3Ane",
+          "lang": "ne",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Sixth Tone",
+          "url": "https://news.google.com/rss/search?q=site%3Asixthtone.com+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Solomon Star",
+          "url": "https://news.google.com/rss/search?q=site%3Asolomonstarnews.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Solomon Times",
+          "url": "https://www.solomontimes.com/rss/latest-news.xml",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Straits Times",
+          "url": "https://www.straitstimes.com/news/singapore/rss.xml",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Stuff NZ",
+          "url": "https://www.stuff.co.nz/rss",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Sun Online",
+          "url": "https://news.google.com/rss/search?q=site%3Asun.mv+when%3A7d&hl=dv&gl=US&ceid=US%3Adv",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Sydney Morning Herald",
+          "url": "https://www.smh.com.au/rss/feed.xml",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Talamua Online News",
+          "url": "https://talamua.com/?feed=rss2",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Tatoli",
+          "url": "https://tatoli.tl/feed/",
+          "lang": "tet",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Tempo Indonesia",
+          "url": "https://news.google.com/rss/search?q=site%3Atempo.co+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "id",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Thanh Niên",
+          "url": "https://thanhnien.vn/rss/home.rss",
+          "lang": "vi",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Bhutanese",
+          "url": "https://thebhutanese.bt/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Bruneian",
+          "url": "https://thebruneian.news/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Cambodia Daily",
+          "url": "https://www.cambodiadaily.com/feed/",
+          "lang": "km",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Dili Weekly",
+          "url": "https://thediliweekly.com/feed/",
+          "lang": "tet",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Island",
+          "url": "https://island.lk/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Kathmandu Post",
+          "url": "https://news.google.com/rss/search?q=site%3Akathmandupost.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Korea Herald",
+          "url": "https://www.koreaherald.com/rss/newsAll",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Marshall Islands Journal",
+          "url": "https://marshallislandsjournal.com/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The National PNG",
+          "url": "https://news.google.com/rss/search?q=site%3Athenational.com.pg+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Online Citizen",
+          "url": "https://theonlinecitizen.com/rss.xml",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Reporter",
+          "url": "https://public.twreporter.org/rss/twreporter-rss.xml",
+          "lang": "zh",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The Scoop",
+          "url": "https://thescoop.co/feed/",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "The UB Post",
+          "url": "https://news.google.com/rss/search?q=site%3Aubpost.mn+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Timor Post",
+          "url": "https://timorpost.com/feed/",
+          "lang": "tet",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "VBTC Vanuatu",
+          "url": "https://vbtc.vu/feed/",
+          "lang": "bi",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Vanuatu Daily Post",
+          "url": "https://news.google.com/rss/search?q=site%3Adailypost.vu+when%3A7d&hl=en&gl=US&ceid=US%3Aen",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Vietnam News",
+          "url": "https://vietnamnews.vn/rss/all-news.rss",
+          "lang": "en",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "bdnews24",
+          "url": "https://news.google.com/rss/search?q=site%3Abdnews24.com+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
+          "lang": "bn",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "Matichon",
+          "url": "https://www.matichon.co.th/feed",
+          "lang": "th",
+          "fetchInAllLanguages": true
         }
       ],
       "energy": [

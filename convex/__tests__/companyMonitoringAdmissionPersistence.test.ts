@@ -914,6 +914,44 @@ describe("Company Monitoring admission under an AI routing policy", () => {
     });
   });
 
+  test("an Enterprise account policy inherited by the owner blocks like a per-user row", async () => {
+    const t = convexTest(schema, modules);
+    await seedCandidate(t);
+    await t.run(async (ctx) => {
+      const accountId = await ctx.db.insert("enterpriseAccounts", {
+        name: "Contract customer",
+        contractStart: NOW - 86_400_000,
+        contractEnd: NOW + 365 * 86_400_000,
+        dailyRequestAllowance: 50_000,
+        perMinuteBurst: 300,
+        monthlyInputTokens: 50_000_000,
+        monthlyOutputTokens: 5_000_000,
+        overagePerThousandRequestsUsd: 2,
+        overagePerMillionInputTokensUsd: 4,
+        overagePerMillionOutputTokensUsd: 20,
+        breakerMultiple: 5,
+        seatCap: 5,
+        allowedProviders: ["anthropic"],
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      await ctx.db.insert("enterpriseMembers", {
+        accountId,
+        userId: "user_admission",
+        status: "active",
+        role: "member",
+        joinedAt: NOW,
+        updatedAt: NOW,
+      });
+    });
+    expect(await t.mutation(
+      ADMISSION.claimNextAdmissionCandidateForTest,
+      claimArgs("worker-account-policy-blocked"),
+    )).toEqual({ status: "idle" });
+    const decisions = await t.run(async (ctx) => ctx.db.query("companyMonitoringAdmissionDecisions").collect());
+    expect(decisions[0]).toMatchObject({ reasonCodes: ["ai_routing_policy_excludes_classifier"] });
+  });
+
   test("still classifies when the owner's policy allows the classifier route", async () => {
     const t = convexTest(schema, modules);
     await seedCandidate(t);

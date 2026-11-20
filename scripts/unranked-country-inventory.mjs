@@ -1,5 +1,5 @@
 function compareByCoverage(left, right) {
-  return Number(left.coverage) - Number(right.coverage) || left.id.localeCompare(right.id);
+  return Number(left.coverage) - Number(right.coverage) || left.id.localeCompare(right.id, 'en-US');
 }
 
 function formatProseList(items) {
@@ -13,7 +13,7 @@ function formatProseList(items) {
 function partitionInventory(dimensions, inventoryLimit) {
   const notApplicable = dimensions
     .filter((dimension) => dimension.isNotApplicable)
-    .sort((left, right) => left.id.localeCompare(right.id));
+    .sort((left, right) => left.id.localeCompare(right.id, 'en-US'));
   const gaps = dimensions.filter((dimension) => dimension.isCoverageGap).sort(compareByCoverage);
   const observed = dimensions
     .filter((dimension) => (

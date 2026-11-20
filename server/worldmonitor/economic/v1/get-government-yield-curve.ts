@@ -14,7 +14,6 @@ import { ValidationError } from '../../../../src/generated/server/worldmonitor/e
 import { getCachedJson, getCachedJsonBatch } from '../../../_shared/redis';
 import { macroHistoryWindow } from './macro-history-window';
 import {
-  COVERED_MARKETS,
   OECD_LT_KEY,
   OECD_LT_LATEST_KEY,
   findCoveredMarket,
@@ -95,9 +94,4 @@ export async function getGovernmentYieldCurve(
   } catch {
     return { ...UNAVAILABLE, country: normalized };
   }
-}
-
-/** Registry of daily-covered market codes, exported for docs/tests. */
-export function governmentYieldCountries(): string[] {
-  return COVERED_MARKETS.map((market) => market.country);
 }

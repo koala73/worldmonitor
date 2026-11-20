@@ -243,6 +243,12 @@ function overrideStringExample(key, context = {}) {
   if (key === 'id' && (where.includes('getusinterestrates') || where.includes('get-us-interest-rates'))) {
     return 'fed_funds_effective';
   }
+  // GetMonthlySitcTrade covers Malaysia only and validates sections against
+  // "0"-"9" | "overall"; the heuristic's "US" / "example" would not run.
+  if (where.includes('getmonthlysitctrade') || where.includes('get-monthly-sitc-trade')) {
+    if (key === 'country') return 'MY';
+    if (key === 'sections') return '0';
+  }
   // ListMediaPerspective validates codes, audiences and region slugs; the
   // heuristic's "example" values are rejected with HTTP 400.
   if (where.includes('listmediaperspective') || where.includes('list-media-perspective')) {
@@ -271,6 +277,16 @@ function overrideStringExample(key, context = {}) {
     if (key === 'category') return 'europe';
     if (key === 'sources' || key === 'source') return 'France 24';
     if (key === 'state') return 'found';
+  }
+  // SearchHeadlines / SearchHeadlineArchive validate the edition, and the
+  // heuristic's "example" is rejected with HTTP 400. The response sample is
+  // one real-looking match so publisher, title and state read as they are served.
+  if (where.includes('searchheadline') || where.includes('search-headline')) {
+    if (key === 'query') return 'hormuz tanker';
+    if (key === 'variant') return 'full';
+    if (key === 'state') return 'complete';
+    if (key === 'source') return 'Reuters World';
+    if (key === 'title') return 'Strait of Hormuz tanker seized by patrol boats';
   }
   if (where.includes('listvulnerabilityrankings') || where.includes('list-vulnerability-rankings')) {
     if (key === 'commodityid') return 'crude_oil';
@@ -387,7 +403,7 @@ function overrideStringExample(key, context = {}) {
   // both the query param (`symbols`) and response quote fields (`symbol`).
   if ((key === 'symbols' || key === 'symbol')
       && (where.includes('listcommodityquotes') || where.includes('list-commodity-quotes'))) {
-    return 'GC=F';
+    return 'BZ=F';
   }
   return undefined;
 }
@@ -878,6 +894,28 @@ function getCompanyEnrichmentExample() {
   };
 }
 
+// ListReservoirLevels: ReservoirLevel has 26 properties and none are `required`, so the
+// generic builder kept the alphabetically first five and dropped id/lat/lon, which the
+// handler requires (the record would be filtered out), and the product heuristic named the
+// ATL13 source "diesel". Real Lake Mead values from scripts/data/reservoir-levels-baseline.json,
+// trimmed to the decision fields to stay inside the public OpenAPI scanner budget.
+function getListReservoirLevelsExample() {
+  return {
+    reservoirs: [{
+      id: 'mead',
+      name: 'Lake Mead',
+      lat: 36.13,
+      lon: -114.45,
+      latest: { date: '2026-09-06', levelM: 316.757, ageDays: 24 },
+      change90dM: -2.893,
+      status: 'record_low',
+    }],
+    fetchedAt: 1790812800000,
+    dataAvailable: true,
+    source: { name: 'NASA ICESat-2 ATL13', product: 'ATL13 v007' },
+  };
+}
+
 // ShippingIndex has 12 properties and none are `required`, so the generic
 // builder's MAX_OPTIONAL_PROPERTIES cap keeps only the 5 alphabetically-first —
 // dropping the four decision-grade period-change fields (#6078) along with
@@ -947,6 +985,21 @@ function getInternalDisplacementExample() {
     fetchedAt: 1785542400000,
     dataAvailable: true,
   };
+}
+
+// One US register row, valid for both the news list and registerLevels: the
+// generic filler put level "example" and no issuer in either.
+function getListSecurityAdvisoriesExample() {
+  const row = {
+    title: 'Mexico - Level 2',
+    link: 'https://travel.state.gov/',
+    pubDate: '2026-01-15',
+    source: 'US State Dept',
+    sourceCountry: 'US',
+    level: 'caution',
+    country: 'MX',
+  };
+  return { advisories: [row], byCountry: { MX: 'caution' }, registerLevels: [row], fetchedAt: 1768478400000 };
 }
 
 function getShippingRatesExample() {
@@ -1141,6 +1194,42 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   if (!schema || typeof schema !== 'object') return 'example';
   const original = schema;
   schema = resolveRef(schema, spec);
+  if (depth === 0 && context.operationId === 'ListCommodityQuotes'
+    && context.exampleSurface === 'response') {
+    return {
+      quotes: [{
+        symbol: 'BZ=F', name: 'Brent Crude Oil', display: 'Brent',
+        price: 91.60, change: -1.05, sparkline: [93, 92, 91.60],
+        sparklineIntervalSeconds: 300, sparklineStartAt: 1794290700000,
+        priceBasis: 'futures', priceSource: 'Yahoo Finance', priceAt: 1794291360000,
+      }],
+    };
+  }
+  // GetMonthlySitcTrade: the generic builder keeps only the alphabetically
+  // first optional fields, which leaves out `series` and the availability
+  // flags. Show the response to the documented request (MY, section 0, one
+  // month) with DOSM fixture values; indices lag trade, so September has none.
+  if (depth === 0 && context.operationId === 'GetMonthlySitcTrade'
+    && context.exampleSurface === 'response') {
+    return {
+      country: 'MY',
+      currency: 'MYR',
+      source: 'DOSM Monthly Trade by SITC Section',
+      sourceUrl: 'https://open.dosm.gov.my/data-catalogue/trade_sitc_1d',
+      indexBase: '2010=100',
+      latestMonth: '2026-09',
+      latestIndexMonth: '2026-08',
+      fetchedAt: 1794902400000,
+      series: [{
+        section: '0',
+        label: 'Food',
+        months: [{ month: '2026-09', exports: 4834780427, imports: 7086989476 }],
+      }],
+      // A served response leaves unavailableReason at its zero value, which
+      // examples never show (see GetTradeFlows above).
+      upstreamUnavailable: false,
+    };
+  }
   if (depth === 0 && context.operationId === 'GetWebcamImage'
     && context.exampleSurface === 'response') {
     return {
@@ -1237,6 +1326,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   }
   if (
     depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'listreservoirlevels'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getListReservoirLevelsExample();
+  }
+  if (
+    depth === 0
     && String(context.operationId ?? '').toLowerCase() === 'getpricehistory'
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
@@ -1255,6 +1351,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
     return getShippingRatesExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'listsecurityadvisories'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getListSecurityAdvisoriesExample();
   }
   if (
     depth === 0
@@ -1410,6 +1513,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   if (type === 'integer' && String(name ?? '').toLowerCase() === 'year') {
     const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
     if (where.includes('getbilateraltariff') || where.includes('get-bilateral-tariff')) return 2021;
+  }
+  // SearchHeadlines answers for a fixed window: 24 hours, or 168 on the Pro
+  // archive route. The generic integer `1` documents a window neither serves.
+  if (type === 'integer' && String(name ?? '').toLowerCase() === 'windowhours') {
+    const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
+    if (where.includes('searchheadlinearchive') || where.includes('search-headline-archive')) return 168;
+    if (where.includes('searchheadlines') || where.includes('search-headlines')) return 24;
   }
   if (type === 'number' && String(name ?? '').toLowerCase() === 'boundrate') {
     const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();

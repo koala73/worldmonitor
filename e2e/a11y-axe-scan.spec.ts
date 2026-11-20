@@ -113,6 +113,7 @@ test.describe('a11y — axe-core WCAG A/AA scan', () => {
     await settingsBtn.click();
     await page.locator('#unifiedSettingsModal.active').waitFor({ timeout: 30_000 });
 
+    await expect(page.locator('#us-page-display')).toBeVisible();
     const results = await new AxeBuilder({ page })
       .include('#unifiedSettingsModal')
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])

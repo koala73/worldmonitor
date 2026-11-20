@@ -195,7 +195,10 @@ export class ProgressChartsPanel extends Panel {
     data: ProgressDataPoint[],
     color: string,
   ): void {
-    const containerWidth = this.content.clientWidth - 16; // 8px padding each side
+    // Size from the chart's own box: themes pad the chart container (the happy
+    // theme by 16px a side), so the panel body's width overstates it.
+    // clientWidth rounds up fractional grid tracks and can overflow by 1px.
+    const containerWidth = Math.floor(container.getBoundingClientRect().width);
     if (containerWidth <= 0) return;
 
     const width = containerWidth - CHART_MARGIN.left - CHART_MARGIN.right;

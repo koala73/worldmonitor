@@ -19,10 +19,12 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { runSeed } from '../scripts/_seed-utils.mjs';
+import { runFoodPriceSource } from '../scripts/lib/food-prices-seed.mjs';
 import {
   contentMeta as gdeltContentMeta,
   fetchAllTopics,
 } from '../scripts/seed-gdelt-intel.mjs';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_EXIT = process.exit;
@@ -38,14 +40,14 @@ beforeEach(() => {
   process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
   recordedCalls = [];
 
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const body = opts?.body ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })() : null;
     recordedCalls.push({ url: String(url), method: opts?.method || 'GET', body });
     if (Array.isArray(body) && Array.isArray(body[0])) {
       return new Response(JSON.stringify(body.map(() => ({ result: 0 }))), { status: 200 });
     }
     return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
-  };
+  });
 
   // runSeed exits via process.exit(0|1|143). Convert to a throw so tests can
   // inspect recorded calls and exit codes after the seed "finishes".
@@ -487,6 +489,29 @@ test('initial fetch failure records an error with NX and no success timestamp', 
   assert.equal(meta.fetchedAt, undefined);
   assert.equal(meta.recordCount, 0);
   assert.equal(JSON.stringify(meta).includes('provider unavailable'), false);
+});
+
+test('food-price first failure records health metadata without publishing or activating', async () => {
+  const originalArgv = process.argv[1];
+  const originalExitCode = process.exitCode;
+  try {
+    process.argv[1] = new URL(import.meta.url).pathname;
+    await runFoodPriceSource('twmoa', import.meta.url);
+    const commands = recordedCalls.flatMap(c => Array.isArray(c.body?.[0]) ? c.body : [c.body]);
+    const receipt = commands.find(c => c?.[0] === 'SET' && c[1] === 'seed-meta:economic:food-prices-twmoa');
+    assert.ok(receipt, 'initial failure must be visible to health');
+    assert.equal(receipt.at(-1), 'NX', 'must preserve existing success metadata');
+    const meta = JSON.parse(receipt[2]);
+    assert.equal(meta.status, 'error');
+    assert.equal(meta.recordCount, 0);
+    assert.equal(typeof meta.firstFailureAt, 'number');
+    assert.equal(meta.fetchedAt, undefined);
+    assert.equal(commands.some(c => c?.[0] === 'SET' && c[1] === 'seed-activated:economic:food-prices-twmoa'), false);
+    assert.equal(commands.some(c => c?.[0] === 'SET' && c[1] === 'economic:food-prices:twmoa:v1'), false);
+  } finally {
+    process.argv[1] = originalArgv;
+    process.exitCode = originalExitCode;
+  }
 });
 
 

@@ -5,7 +5,7 @@
  * entitlement verification terminally failed, the component renders NOTHING —
  * an outage must never manufacture an upgrade prompt (the WORLDMONITOR-NY
  * failure class). The rest: anonymous gets the sign-in branch, settled free
- * gets sample + consent + CTA with mission attribution, entitled gets
+ * gets sample + CTA with mission attribution (the /pro plan picker shows the Terms), entitled gets
  * nothing, dismissal persists and reopens only on explicit interaction.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -23,7 +23,7 @@ const analytics = {
   trackProPreviewCta: vi.fn(),
   trackProPreviewDismissed: vi.fn(),
 };
-const openUpgradeCheckout = vi.fn(async () => {});
+const openUpgradePlans = vi.fn(async () => {});
 const unsubAuth = vi.fn();
 const unsubEnt = vi.fn();
 const unsubVer = vi.fn();
@@ -55,7 +55,7 @@ vi.mock('@/services/billing', () => ({
   },
 }));
 vi.mock('@/services/analytics', () => analytics);
-vi.mock('@/services/upgrade-flow', () => ({ openUpgradeCheckout }));
+vi.mock('@/services/upgrade-flow', () => ({ openUpgradePlans }));
 vi.mock('@/utils/legal-links', () => ({
   createCheckoutConsentElement: () => {
     const el = document.createElement('div');
@@ -164,13 +164,14 @@ describe('gating branches', () => {
     expect(analytics.trackProPreviewViewed).toHaveBeenCalledWith('osint-newsroom', 'gdelt-intel');
   });
 
-  it('settled free gets sample, copy, consent, and an Upgrade CTA (viewed once)', () => {
+  it('settled free gets sample, copy, and an Upgrade CTA with no consent line (viewed once)', () => {
     const section = makeSection();
     const el = section.getElement();
     expect(el.hidden).toBe(false);
     expect(el.querySelector('.sample-marker')).not.toBeNull();
     expect(el.textContent).toContain('Pro unlocks intel memory.');
-    expect(el.querySelector('.checkout-consent-marker')).not.toBeNull();
+    // The CTA opens the /pro plan picker, which carries the Terms itself.
+    expect(el.querySelector('.checkout-consent-marker')).toBeNull();
     expect(el.querySelector('.pro-preview__cta')?.textContent).toBe('Upgrade to Pro');
     // Below-fold renders never count; the first intersection counts once.
     expect(analytics.trackProPreviewViewed).not.toHaveBeenCalled();
@@ -184,9 +185,9 @@ describe('CTA attribution', () => {
   it('routes the upgrade through the shared flow with mission attribution', async () => {
     const el = makeSection().getElement();
     (el.querySelector('.pro-preview__cta') as HTMLButtonElement).click();
-    await vi.waitFor(() => expect(openUpgradeCheckout).toHaveBeenCalled());
+    await vi.waitFor(() => expect(openUpgradePlans).toHaveBeenCalled());
     expect(analytics.trackProPreviewCta).toHaveBeenCalledWith('osint-newsroom', 'gdelt-intel');
-    expect(openUpgradeCheckout).toHaveBeenCalledWith({
+    expect(openUpgradePlans).toHaveBeenCalledWith({
       missionId: 'osint-newsroom',
       panelKey: 'gdelt-intel',
     });

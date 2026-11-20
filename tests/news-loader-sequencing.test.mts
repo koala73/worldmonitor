@@ -262,6 +262,43 @@ describe('news loader digest sequencing', () => {
     assert.equal(result.finalDigest, liveDigest);
   });
 
+  it('signals first paint before waiting on a pending digest, and only then', async () => {
+    const digest = deferred<TestDigest | null>();
+    const events: string[] = [];
+    const runPromise = runNewsLoadPass<string[], TestDigest, string>({
+      categories: [{ key: 'politics', feeds: ['Reuters'] }],
+      categoryConcurrency: 1,
+      digestPromise: digest.promise,
+      digestGraceMs: 0,
+      loadCategory: async (category, snapshot) => {
+        events.push(`${category.key}:${snapshot ? 'digest' : 'fallback'}`);
+        return [];
+      },
+      loadIntel: async (snapshot) => {
+        events.push(`intel:${snapshot ? 'digest' : 'fallback'}`);
+        return [];
+      },
+      onFirstPaint: () => events.push('first-paint'),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.deepEqual(events, ['politics:fallback', 'intel:fallback', 'first-paint']);
+
+    digest.resolve({ categories: { politics: {} } });
+    await runPromise;
+    assert.deepEqual(events, ['politics:fallback', 'intel:fallback', 'first-paint', 'politics:digest', 'intel:digest']);
+
+    let fastPaints = 0;
+    await runNewsLoadPass<string[], TestDigest, string>({
+      categories: [{ key: 'politics', feeds: ['Reuters'] }],
+      categoryConcurrency: 1,
+      digestPromise: Promise.resolve({ categories: { politics: {} } }),
+      digestGraceMs: 1000,
+      loadCategory: async () => [],
+      onFirstPaint: () => { fastPaints += 1; },
+    });
+    assert.equal(fastPaints, 0, 'a digest inside the grace window has no late tail to release');
+  });
+
   it('settles every preset category and Intel once a pending digest resolves null', async () => {
     const digest = deferred<TestDigest | null>();
     const categoryStarted = deferred<void>();

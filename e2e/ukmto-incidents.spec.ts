@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
+import { openComponentHarness } from './component-harness';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 test('UKMTO Settings search uses the translated panel label', async ({ page }, testInfo) => {
   await seedAnonymousDashboard(page, 'full', {
@@ -11,12 +13,12 @@ test('UKMTO Settings search uses the translated panel label', async ({ page }, t
   await page.route('**/api/**', route => route.fulfill({ json: {} }));
   await page.goto('/');
   await page.locator('#unifiedSettingsBtn').click();
-  await page.locator('#us-tab-panels').click();
+  await page.locator('[data-settings-nav="panels"]').click();
   await page.locator('.panels-search input').fill('Incidents UKMTO');
   const toggle = page.locator('#usPanelToggles [data-panel="ukmto-incidents"]');
   await expect(toggle).toBeVisible();
   await expect(toggle).toContainText('Incidents UKMTO');
-  await page.locator('#us-tab-panel-panels').screenshot({ path: testInfo.outputPath('ukmto-french-settings.png') });
+  await evidenceScreenshot(page.locator('#us-page-panels'), { path: testInfo.outputPath('ukmto-french-settings.png') });
 });
 
 for (const state of ['fresh', 'stale', 'empty', 'unavailable'] as const) {
@@ -56,17 +58,17 @@ for (const state of ['fresh', 'stale', 'empty', 'unavailable'] as const) {
       await expect(panel).toContainText(state === 'empty' ? 'No incidents' : 'unavailable');
     }
     await panel.scrollIntoViewIfNeeded();
-    await panel.screenshot({ path: testInfo.outputPath(`ukmto-${state}-desktop.png`) });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath(`ukmto-${state}-desktop.png`) });
     await page.setViewportSize({ width: 390, height: 844 });
     await panel.scrollIntoViewIfNeeded();
     await expect(panel).toBeVisible();
-    await panel.screenshot({ path: testInfo.outputPath(`ukmto-${state}-mobile.png`) });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath(`ukmto-${state}-mobile.png`) });
   });
 }
 
 test('UKMTO markers follow the Ships toggle in each renderer', async ({ page }) => {
   await page.route('**/api/**', route => route.fulfill({ json: {} }));
-  await page.goto('/tests/map-harness.html');
+  await openComponentHarness(page);
   const results = await page.evaluate(async () => {
     const modulePaths = ['/src/components/DeckGLMap.ts', '/src/components/Map.ts', '/src/components/GlobeMap.ts'];
     const result = [];
@@ -88,9 +90,10 @@ test('UKMTO markers follow the Ships toggle in each renderer', async ({ page }) 
         ? map.buildLayers().find((layer: { id: string }) => layer.id === 'ukmto-incidents-layer')?.props.data.length ?? 0
         : exports.GlobeMap ? map.globe.htmlElementsData().filter((item: { _kind: string }) => item._kind === 'ukmtoIncident').length
           : container.querySelectorAll('.ukmto-marker').length;
+      // Bounded by timer turns, not wall time: a long GPU stall must not end the wait before the
+      // renderer's own debounced flush timer (queued earlier) gets to run.
       const waitForCount = async (expected: number) => {
-        const deadline = performance.now() + 5000;
-        while (count() !== expected && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+        for (let turn = 0; turn < 100 && count() !== expected; turn++) await new Promise(resolve => setTimeout(resolve, 50));
       };
       await waitForCount(1);
       const enabled = count();
@@ -116,11 +119,9 @@ test('UKMTO markers follow the Ships toggle in each renderer', async ({ page }) 
 
 test('UKMTO map status distinguishes empty and unavailable with the report panel absent', async ({ page }, testInfo) => {
   await page.route('**/api/**', route => route.fulfill({ json: {} }));
-  await page.goto('/tests/map-harness.html');
+  await openComponentHarness(page);
   await page.evaluate(async () => {
     const modulePath = '/src/components/MapContainer.ts';
-    const i18nPath = '/src/services/i18n.ts';
-    await (await import(/* @vite-ignore */ i18nPath)).initI18n({ waitForFullTranslation: true });
     const { MapContainer } = await import(/* @vite-ignore */ modulePath);
     const host = document.createElement('div');
     host.id = 'ukmto-map-proof';
@@ -135,7 +136,7 @@ test('UKMTO map status distinguishes empty and unavailable with the report panel
   await expect(status).toContainText('No incidents');
   await page.evaluate(() => (window as any).__ukmtoMap.setUkmtoSnapshot({ incidents: [], fetchedAt: 0, dataAvailable: false, stale: false }));
   await expect(status).toContainText('unavailable');
-  await page.locator('#ukmto-map-proof').screenshot({ path: testInfo.outputPath('ukmto-map-unavailable.png') });
+  await evidenceScreenshot(page.locator('#ukmto-map-proof'), { path: testInfo.outputPath('ukmto-map-unavailable.png') });
   await page.evaluate(() => (window as any).__ukmtoMap.setLayers({ ais: false }));
   await expect(status).toHaveCount(0);
   await page.evaluate(() => (window as any).__ukmtoMap.setLayers({ ais: true }));

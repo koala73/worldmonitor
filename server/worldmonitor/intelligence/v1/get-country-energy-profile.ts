@@ -414,17 +414,18 @@ export async function getCountryEnergyProfile(
   // Always read gas-storage and electricity directly — both update sub-daily
   // (gas storage ~10:30 UTC, electricity ~14:00 UTC) while the spine seeds once
   // at 06:00 UTC. Serving them from the spine would return stale data for up to 8h.
-  const [spine, gasStorage, electricity, sprRegistry, staticRecord] = await Promise.all([
+  // The regional feeds read their own keys, so they join the same round trip.
+  const [spine, gasStorage, electricity, sprRegistry, staticRecord, regionalEnergyFeeds] = await Promise.all([
     readSeed<EnergySpine>(`${ENERGY_SPINE_KEY_PREFIX}${code}`),
     readSeed<GasStorage>(`energy:gas-storage:v1:${code}`),
     readSeed<ElectricityEntry>(`energy:electricity:v1:${code}`),
     readSeed<SprRegistry>(SPR_POLICIES_KEY),
     readSeed<unknown>(`resilience:static:${code}`),
+    readRegionalEnergyFeeds(code, getRawJson),
   ]);
 
   const sprPolicy = sprRegistry?.policies?.[code] ?? null;
   const importDependency = resolveEnergyImportDependency(staticRecord);
-  const regionalEnergyFeeds = await readRegionalEnergyFeeds(code, getRawJson);
   if (regionalEnergyFeeds.some(feed => feed.status === 'error')) markNoCacheResponse(ctx.request);
 
   if (spine != null && typeof spine === 'object' && spine.coverage != null) {

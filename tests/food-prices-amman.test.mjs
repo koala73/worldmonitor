@@ -76,3 +76,30 @@ test('Amman collect posts back for the latest trading day and the same weekday a
   assert.deepEqual(result.refreshedReports, [{ date: '2026-10-31' }]);
   assert.ok(result.observations.every(r => r.date === '2026-10-31'));
 });
+
+test('Amman collect posts back for every date when the landing page carries no report', async () => {
+  // Since 2026-11-12 a plain GET returns only the search form and "الرجاء إدخال تواريخ صحيحة"
+  // (enter valid dates) — no dated report title. The form state is still there.
+  const form = '<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="vs" /><input type="hidden" name="__VIEWSTATEGENERATOR" value="gen" /><input type="hidden" name="__EVENTVALIDATION" value="ev" />';
+  const landing = `${form}<span id="ctl00_ContentPlaceHolder1_lblerr" class="blink">الرجاء إدخال تواريخ صحيحة</span>`;
+  const calls = [];
+  const ctx = {
+    now: new Date('2026-11-01T05:00:00Z'),
+    dated: (now, offset) => new Date(now.getTime() + offset * 86400000).toISOString().slice(0, 10),
+    warn: () => {},
+    get: async (_url, options = {}) => {
+      if (!options.body) {
+        calls.push('GET');
+        return landing;
+      }
+      const date = new URLSearchParams(options.body).get('ctl00$ContentPlaceHolder1$txtfromdate');
+      calls.push(date);
+      if (date === '01-11-2026') return `${form}${fixture('amman.html')}`;
+      return `${form}<span> أسعار الخضار والفواكه ${date}</span>`;
+    },
+  };
+  const result = await collect(ctx);
+  assert.deepEqual(calls, ['GET', '01-11-2026', '25-10-2026']);
+  assert.deepEqual(result.refreshedReports, [{ date: '2026-11-01' }]);
+  assert.equal(result.observations.length, 21);
+});

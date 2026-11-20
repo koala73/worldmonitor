@@ -148,15 +148,55 @@ describe('LeadsService.submitContact', () => {
       );
     });
 
-    it('rejects missing phone', async () => {
-      globalThis.fetch = async (url) => {
+    it('accepts a missing phone and omits it from the Convex lead and the ops email', async () => {
+      let convexBody;
+      let resendBody;
+      globalThis.fetch = async (url, init) => {
         if (typeof url === 'string' && url.includes('turnstile')) return new Response(JSON.stringify({ success: true }));
+        if (typeof url === 'string' && url.includes('fake-convex')) {
+          convexBody = JSON.parse(init.body);
+          return new Response(JSON.stringify({ status: 'sent' }));
+        }
+        if (typeof url === 'string' && url.includes('resend')) {
+          resendBody = JSON.parse(init.body);
+          return new Response(JSON.stringify({ id: 'msg_123' }));
+        }
         return new Response('{}');
       };
-      await assert.rejects(
-        () => submitContact(makeCtx(), validReq({ phone: '' })),
-        (err) => err instanceof ValidationError && err.violations[0].field === 'phone',
-      );
+      const withoutPhone = validReq();
+      delete withoutPhone.phone;
+      for (const req of [withoutPhone, validReq({ phone: '' }), validReq({ phone: '   ' })]) {
+        const res = await submitContact(makeCtx(), req);
+        assert.equal(res.status, 'sent');
+        assert.equal('phone' in convexBody, false, 'an empty phone must not reach Convex');
+        assert.equal(resendBody.html.includes('>Phone<'), false, 'the ops email must not show an empty Phone row');
+      }
+    });
+
+    it('forwards a provided phone to Convex and the ops email', async () => {
+      let convexBody;
+      let resendBody;
+      globalThis.fetch = async (url, init) => {
+        if (typeof url === 'string' && url.includes('turnstile')) return new Response(JSON.stringify({ success: true }));
+        if (typeof url === 'string' && url.includes('fake-convex')) {
+          convexBody = JSON.parse(init.body);
+          return new Response(JSON.stringify({ status: 'sent' }));
+        }
+        if (typeof url === 'string' && url.includes('resend')) {
+          resendBody = JSON.parse(init.body);
+          return new Response(JSON.stringify({ id: 'msg_123' }));
+        }
+        return new Response('{}');
+      };
+      await submitContact(makeCtx(), validReq({ phone: '  +1 555 123 4567 ' }));
+      assert.equal(convexBody.phone, '+1 555 123 4567');
+      assert.ok(resendBody.html.includes('>Phone<'));
+      // The ops email uses the WorldMonitor frame (shared/email-frame.ts).
+      assert.match(resendBody.html, /^<!DOCTYPE html>/);
+      assert.ok(resendBody.html.includes('WORLD MONITOR'));
+      assert.ok(resendBody.html.includes('android-chrome-192x192.png'));
+      assert.ok(resendBody.html.includes('>Enterprise lead</span>'));
+      assert.ok(resendBody.html.includes('+1 555 123 4567'));
     });
 
     it('rejects invalid phone format', async () => {

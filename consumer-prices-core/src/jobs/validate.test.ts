@@ -7,15 +7,28 @@ vi.mock('../config/loader.js', () => ({ loadAllBasketConfigs: () => [{ slug: 'te
 const { validateAll } = await import('./validate.js');
 const { aggregateBasket } = await import('./aggregate.js');
 const { MAX_OBSERVATION_AGE_DAYS } = await import('../observation-freshness.js');
+const { AUTO_MATCH_THRESHOLD } = await import('../adapters/validator.js');
+// aggregateBasket runs in one transaction after reading the basket id: tx call 0
+// is the per-basket lock, 1 the run date (and whether the inputs table exists),
+// 2 the priced basket rows.
+const RUN_DATE = { rows: [{ metric_date: '2026-11-18', has_inputs: true }] };
+const LOCK = { rows: [], rowCount: 1 };
 function row(id: string, price: number, status = 'auto', owner: string | null = null, admitted: boolean | null = true) {
   return { match_id: id, basket_item_id: 'item', match_status: status, retailer_slug: id,
     canonical_name: 'Milk', price: String(price), currency_code: 'AED', reviewed_by: owner,
-    observation_id: `observation-${id}`, admitted,
-    validator: admitted === null ? null : { ok: admitted, score: admitted ? 0.9 : 0.7, reasons: [], signals: {} } };
+    observation_id: `observation-${id}`, admitted: admitted ?? true };
 }
 beforeEach(() => {
   query.mockReset().mockResolvedValue({ rows: [], rowCount: 1 });
   tx.mockReset().mockResolvedValue({ rows: [], rowCount: 1 });
+});
+it('reads scalar validator columns with the current admission threshold', async () => {
+  await validateAll();
+  const [sql, args] = query.mock.calls[0];
+  expect(sql).toContain('(po.validator_ok AND po.validator_score >= $4) IS TRUE AS admitted');
+  expect(sql).toContain('SELECT id, price, in_stock, validator_ok, validator_score FROM price_observations');
+  expect(sql).not.toContain('raw_payload_json');
+  expect(args).toEqual(['test', 'AE', MAX_OBSERVATION_AGE_DAYS, AUTO_MATCH_THRESHOLD]);
 });
 it('holds both sides of a two-retailer disagreement', async () => {
   query.mockResolvedValueOnce({ rows: [row('honest', 10), row('attacker', 100)] });
@@ -79,25 +92,34 @@ it('recovers only its own hold on the same passing latest observation', async ()
 });
 it('selects the latest observation before checking stock', async () => {
   query.mockResolvedValueOnce({ rows: [{ id: 'basket' }] });
+  tx.mockResolvedValueOnce(LOCK).mockResolvedValueOnce(RUN_DATE);
   await aggregateBasket('test', 'AE');
-  const sql = query.mock.calls[1][0] as string;
+  const sql = tx.mock.calls[2][0] as string;
   expect(sql).not.toContain('WHERE retailer_product_id = rp.id AND in_stock = true');
   expect(sql).toContain(') po ON po.in_stock = true');
 });
+// Aggregate reads inside its per-basket transaction, after the lock wait, so
+// its cutoff is the statement's clock: NOW() would be the transaction start.
 it.each([
-  ['validate', () => validateAll(), 0],
-  ['aggregate', async () => { query.mockResolvedValueOnce({ rows: [{ id: 'basket' }] }); await aggregateBasket('test', 'AE'); }, 1],
-] as const)('%s reads only products a scrape saw within the freshness window', async (_name, run, callIndex) => {
+  ['validate', () => validateAll(), () => query.mock.calls[0], 'NOW()'],
+  ['aggregate', async () => {
+    query.mockResolvedValueOnce({ rows: [{ id: 'basket' }] });
+    tx.mockResolvedValueOnce(LOCK).mockResolvedValueOnce(RUN_DATE);
+    await aggregateBasket('test', 'AE');
+  }, () => tx.mock.calls[2], 'statement_timestamp()'],
+] as const)('%s reads only products a scrape saw within the freshness window', async (_name, run, priced, clock) => {
   await run();
-  const [sql, args] = query.mock.calls[callIndex] as [string, unknown[]];
+  const [sql, args] = priced() as [string, unknown[]];
   // last_seen_at, not observed_at: an unchanged payload reuses its old
   // observation row, so observed_at stops moving while the price stays current.
-  expect(sql).toMatch(/\) po ON po\.in_stock = true\s+AND rp\.last_seen_at >= NOW\(\) - make_interval\(days => \$3\)/);
-  expect(sql).not.toContain('po.observed_at >= NOW()');
+  expect(sql).toMatch(/\) po ON po\.in_stock = true\s+AND rp\.last_seen_at >= /);
+  expect(sql).toContain(`rp.last_seen_at >= ${clock} - make_interval(days => $3)`);
+  expect(sql).not.toContain('po.observed_at >=');
   expect(args[2]).toBe(MAX_OBSERVATION_AGE_DAYS);
 });
 it('records zero coverage when the freshness window leaves the basket empty', async () => {
-  query.mockResolvedValueOnce({ rows: [{ id: 'basket' }] }).mockResolvedValueOnce({ rows: [] });
+  query.mockResolvedValueOnce({ rows: [{ id: 'basket' }] });
+  tx.mockResolvedValueOnce(LOCK).mockResolvedValueOnce(RUN_DATE).mockResolvedValueOnce({ rows: [] });
   await aggregateBasket('test', 'AE');
   // Both statements run in one transaction: a failed coverage write must not
   // leave the day's indices deleted with nothing in their place.
@@ -107,10 +129,14 @@ it('records zero coverage when the freshness window leaves the basket empty', as
   expect(writes).toHaveLength(1);
   expect(writes[0][1]).toEqual(expect.arrayContaining(['basket', 'coverage_pct', 0]));
   // An earlier run the same day may have written indices; they must not outlive the empty basket.
-  const clear = sqls.findIndex((sql) => /DELETE FROM computed_indices\s+WHERE basket_id = \$1 AND metric_date = NOW\(\)::date/.test(sql));
+  const clear = sqls.findIndex((sql) => /DELETE FROM computed_indices\s+WHERE basket_id = \$1 AND metric_date = \$2::date/.test(sql));
   expect(clear).toBeGreaterThan(-1);
   expect(clear).toBeLessThan(sqls.findIndex((sql) => sql.includes('INSERT INTO computed_indices')));
-  expect(tx.mock.calls[clear][1]).toEqual(['basket']);
+  expect(tx.mock.calls[clear][1]).toEqual(['basket', '2026-11-18']);
+  // The day's stored index inputs go with it, so no later chain link reads them.
+  const clearInputs = sqls.findIndex((sql) => /DELETE FROM computed_index_inputs WHERE basket_id = \$1 AND metric_date = \$2::date/.test(sql));
+  expect(clearInputs).toBeGreaterThan(-1);
+  expect(tx.mock.calls[clearInputs][1]).toEqual(['basket', '2026-11-18']);
 });
 it('keeps its hold while another retailer was seen recently but is missing from the priced rows', async () => {
   // The peer's latest observation is out of stock, so the priced query drops it;

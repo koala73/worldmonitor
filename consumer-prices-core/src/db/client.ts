@@ -42,6 +42,11 @@ export function getPool(): pg.Pool {
       max: 10,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
+      // Ten slots cover the five retailer workers plus API/aggregation reads.
+      // Cancel on the server before the client abandons the query.
+      statement_timeout: 30_000,
+      query_timeout: 35_000,
+      idle_in_transaction_session_timeout: 30_000,
       ssl: local ? false : { rejectUnauthorized: true, ...(ca ? { ca } : {}) },
     });
 
@@ -63,6 +68,7 @@ export async function query<T extends pg.QueryResultRow = Record<string, unknown
 export async function withTransaction<T>(work: (execute: QueryExecutor) => Promise<T>): Promise<T> {
   const client = await getPool().connect();
   const execute: QueryExecutor = (sql, params) => client.query(sql, params);
+  let discard = false;
   try {
     await client.query('BEGIN');
     const result = await work(execute);
@@ -72,11 +78,12 @@ export async function withTransaction<T>(work: (execute: QueryExecutor) => Promi
     try {
       await client.query('ROLLBACK');
     } catch (rollbackErr) {
+      discard = true;
       console.error('[db] rollback error:', rollbackErr);
     }
     throw err;
   } finally {
-    client.release();
+    client.release(discard);
   }
 }
 

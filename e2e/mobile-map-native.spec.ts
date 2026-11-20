@@ -25,63 +25,29 @@ test.describe('Mobile map native experience', () => {
   const { defaultBrowserType: _bt, ...mobileContext } = MOBILE_VIEWPORT;
 
   test.describe('timezone-based startup region', () => {
-    test('America/New_York → america view', async ({ browser }) => {
-      const context = await browser.newContext({
-        ...mobileContext,
-        timezoneId: 'America/New_York',
-        locale: 'en-US',
-      });
-      const page = await context.newPage();
-      await page.addInitScript(() => {
-        (window as any).__testResolvedLocation = true;
-      });
-      await page.goto('/');
-      await page.waitForTimeout(3000);
-      const region = await page.evaluate(() => {
-        const select = document.getElementById('regionSelect') as HTMLSelectElement | null;
-        return select?.value ?? null;
-      });
-      expect(region).toBe('america');
-      await context.close();
-    });
+    for (const [timezoneId, locale, region] of [
+      ['America/New_York', 'en-US', 'america'],
+      ['Europe/London', 'en-GB', 'eu'],
+      ['Asia/Tokyo', 'ja-JP', 'asia'],
+    ] as const) {
+      test.describe(timezoneId, () => {
+        test.use({ ...mobileContext, timezoneId, locale });
 
-    test('Europe/London → eu view', async ({ browser }) => {
-      const context = await browser.newContext({
-        ...mobileContext,
-        timezoneId: 'Europe/London',
-        locale: 'en-GB',
+        test(`starts in the ${region} view`, async ({ page }) => {
+          await page.goto('/');
+          await expect(page.locator('#regionSelect')).toHaveValue(region);
+        });
       });
-      const page = await context.newPage();
-      await page.goto('/');
-      await page.waitForTimeout(3000);
-      const region = await page.evaluate(() => {
-        const select = document.getElementById('regionSelect') as HTMLSelectElement | null;
-        return select?.value ?? null;
-      });
-      expect(region).toBe('eu');
-      await context.close();
-    });
-
-    test('Asia/Tokyo → asia view', async ({ browser }) => {
-      const context = await browser.newContext({
-        ...mobileContext,
-        timezoneId: 'Asia/Tokyo',
-        locale: 'ja-JP',
-      });
-      const page = await context.newPage();
-      await page.goto('/');
-      await page.waitForTimeout(3000);
-      const region = await page.evaluate(() => {
-        const select = document.getElementById('regionSelect') as HTMLSelectElement | null;
-        return select?.value ?? null;
-      });
-      expect(region).toBe('asia');
-      await context.close();
-    });
+    }
   });
 
   test.describe('URL restore', () => {
     test.use(mobileContext);
+    // A first visit opens the map expanded (#10220). These cases guard #9620: a deep-link
+    // center must survive a collapsed (0x0) boot, so boot a viewer who collapsed it.
+    test.beforeEach(async ({ page }) => {
+      await page.addInitScript(() => localStorage.setItem('mobile-map-collapsed', 'true'));
+    });
 
     test('lat/lon override view center', async ({ page }) => {
       await page.goto('/?view=eu&lat=48.86&lon=2.35&zoom=5');
@@ -114,32 +80,28 @@ test.describe('Mobile map native experience', () => {
       await page.goto('/');
       await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true', { timeout: 45_000 });
       await expect(page.locator('#mapContainer')).toHaveClass(/svg-mode/, { timeout: 45_000 });
-      const expandMap = page.locator('.map-collapse-btn');
-      await expect(expandMap).toBeVisible();
-      await expandMap.click();
+      // A first visit opens with the map expanded (#10220).
       await expect(page.locator('#mapSection')).not.toHaveClass(/collapsed/);
       const mapEl = page.locator('#mapContainer');
       await expect(mapEl).toBeVisible({ timeout: 10000 });
 
-      const scrollBefore = await page.evaluate(() => window.scrollY);
       const box = await mapEl.boundingBox();
       expect(box).not.toBeNull();
-      const startX = box!.x + box!.width / 2;
-      const startY = box!.y + box!.height / 2;
-      const touch = await page.context().newCDPSession(page);
-      await touch.send('Input.dispatchTouchEvent', {
-        type: 'touchStart',
-        touchPoints: [{ x: startX, y: startY, id: 1 }],
-      });
-      await touch.send('Input.dispatchTouchEvent', {
-        type: 'touchMove',
-        touchPoints: [{ x: startX, y: startY + 60, id: 1 }],
-      });
-      await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-      await touch.detach();
-
-      const scrollAfter = await page.evaluate(() => window.scrollY);
-      expect(scrollAfter).toBe(scrollBefore);
+      // CDP touch input does not drive native page scrolling here, so check what the browser
+      // uses to decide: the touch-action values from the touched element up to the nearest
+      // scroll container, #mapContainer (overflow: hidden), inclusive. Rules above it do not apply.
+      const chain = await page.evaluate(({ x, y }) => {
+        const map = document.getElementById('mapContainer');
+        const hit = document.elementFromPoint(x, y);
+        if (!map || !hit || !map.contains(hit)) return null;
+        const values: string[] = [];
+        for (let el: Element | null = hit; el; el = el === map ? null : el.parentElement) {
+          values.push(`${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}:${getComputedStyle(el).touchAction}`);
+        }
+        return values;
+      }, { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 });
+      expect(chain, 'the map center hits an element inside #mapContainer').not.toBeNull();
+      expect(chain!.some((entry) => entry.endsWith(':none')), chain!.join(' < ')).toBe(true);
     });
   });
 
@@ -164,30 +126,22 @@ test.describe('Mobile map native experience', () => {
   });
 
   test.describe('mobile map viewport', () => {
-    test('map starts collapsed for feed-first mobile and expands to fill the viewport', async ({ browser }) => {
-      const context = await browser.newContext({
-        ...mobileContext,
-        locale: 'en-US',
-      });
+    test('map opens as a short strip on a first visit and Hide Map collapses it', async ({ browser }) => {
+      const context = await browser.newContext({ ...mobileContext, locale: 'en-US' });
       const page = await context.newPage();
       await page.goto('/');
+      await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true', { timeout: 45_000 });
       const mapSection = page.locator('#mapSection');
-      await expect(mapSection).toBeVisible({ timeout: 10000 });
-      await expect(mapSection).toHaveClass(/collapsed/);
-
-      const collapsedRatio = await page.evaluate(() => {
-        const el = document.getElementById('mapSection');
-        return (el?.getBoundingClientRect().height ?? 0) / window.innerHeight;
-      });
-      expect(collapsedRatio).toBeLessThan(0.3);
-
-      await page.locator('.map-collapse-btn').click();
+      const heightRatio = () => page.evaluate(() =>
+        (document.getElementById('mapSection')?.getBoundingClientRect().height ?? 0) / window.innerHeight);
+      // A first visit is expanded (#10220), as a strip about a third of the viewport tall (#10472).
       await expect(mapSection).not.toHaveClass(/collapsed/);
-      const expandedRatio = await page.evaluate(() => {
-        const el = document.getElementById('mapSection');
-        return (el?.getBoundingClientRect().height ?? 0) / window.innerHeight;
-      });
-      expect(expandedRatio).toBeGreaterThanOrEqual(0.7);
+      const strip = await heightRatio();
+      expect(strip).toBeGreaterThan(0.25);
+      expect(strip).toBeLessThan(0.4);
+      await page.locator('.map-collapse-btn').click();
+      await expect(mapSection).toHaveClass(/collapsed/);
+      expect(await heightRatio()).toBeLessThan(strip / 2);
       await context.close();
     });
   });

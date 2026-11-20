@@ -181,7 +181,7 @@ npm run build:full       # Production build
 
 完整的代码许可证请参阅 [LICENSE](LICENSE)，通俗语言摘要请参阅 [docs/zh/license.mdx](docs/zh/license.mdx)。对于需要非 AGPL 条款的团队，可选择商业许可。
 
-版权所有 (C) 2024-2026 Elie Habib。保留所有权利。
+版权所有 (C) 2026 Elie Habib。保留所有权利。
 
 ---
 

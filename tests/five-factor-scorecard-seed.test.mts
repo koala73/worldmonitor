@@ -34,6 +34,7 @@ import {
   scorecardPayloadFingerprint,
   stageScorecardReadModel,
 } from '../scripts/seed-five-factor-scorecard.mjs';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 
 const sources = {
@@ -431,7 +432,7 @@ describe('five-factor atomic snapshot', () => {
     try {
       process.env.UPSTASH_REDIS_REST_URL = 'https://scorecard-test-upstash.invalid';
       process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-      globalThis.fetch = async (_input, init = {}) => {
+      globalThis.fetch = withSeedLockFence(async (_input, init = {}) => {
         requestHeaders.push(new Headers(init.headers));
         const body = JSON.parse(String(init.body)) as unknown[][];
         commands.push(...body);
@@ -444,7 +445,7 @@ describe('five-factor atomic snapshot', () => {
               ? JSON.stringify(readModel.countries.AA)
               : null);
         return new Response(JSON.stringify([{ result: values }]), { status: 200 });
-      };
+      });
       const selected = await readFiveFactorSnapshot(['AA']);
       assert.equal((selected as typeof snapshot).countries.AA?.result.countryCode, 'AA');
       const projection = await readFiveFactorListProjection();
@@ -475,7 +476,7 @@ describe('five-factor atomic snapshot', () => {
       __resetFiveFactorSnapshotCacheForTests();
       process.env.UPSTASH_REDIS_REST_URL = 'https://scorecard-test-upstash.invalid';
       process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-      globalThis.fetch = async (_input, init = {}) => {
+      globalThis.fetch = withSeedLockFence(async (_input, init = {}) => {
         const body = JSON.parse(String(init.body)) as unknown[] | unknown[][];
         if (body[0] === 'GET') {
           commands.push(body as unknown[]);
@@ -484,7 +485,7 @@ describe('five-factor atomic snapshot', () => {
         }
         commands.push(...body as unknown[][]);
         return new Response(JSON.stringify([{ result: [JSON.stringify(readModel.metadata), null] }]), { status: 200 });
-      };
+      });
       const selected = await readFiveFactorSnapshot(['AA']);
       assert.equal((selected as typeof snapshot).countries.AA?.result.countryCode, 'AA');
       assert.equal(commands.some((command) => command[0] === 'GET' && command[1] === 'scorecard:five-factor:v1'), true);
@@ -512,7 +513,7 @@ describe('five-factor atomic snapshot', () => {
       __resetFiveFactorSnapshotCacheForTests();
       process.env.UPSTASH_REDIS_REST_URL = 'https://scorecard-test-upstash.invalid';
       process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-      globalThis.fetch = async (_input, init = {}) => {
+      globalThis.fetch = withSeedLockFence(async (_input, init = {}) => {
         const body = JSON.parse(String(init.body)) as unknown[] | unknown[][];
         if (body[0] === 'GET') {
           commands.push(body as unknown[]);
@@ -522,7 +523,7 @@ describe('five-factor atomic snapshot', () => {
         return new Response(JSON.stringify([{
           result: [JSON.stringify(readModel.metadata), JSON.stringify(tampered)],
         }]), { status: 200 });
-      };
+      });
       const selected = await readFiveFactorSnapshot(['AA']);
       assert.equal((selected as typeof snapshot).countries.AA?.result.pillars.energy.subScore,
         snapshot.countries.AA?.result.pillars.energy.subScore);
@@ -546,12 +547,12 @@ describe('five-factor atomic snapshot', () => {
       __resetFiveFactorSnapshotCacheForTests();
       process.env.UPSTASH_REDIS_REST_URL = 'https://scorecard-test-upstash.invalid';
       process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-      globalThis.fetch = async (_input, init = {}) => {
+      globalThis.fetch = withSeedLockFence(async (_input, init = {}) => {
         requestCount += 1;
         const signal = init.signal;
         if (!signal) throw new Error('missing Redis deadline signal');
         return hangUntilAbort(signal) as unknown as Promise<Response>;
-      };
+      });
       const deadlineAtMs = Date.now() + 40;
       const startedAtMs = Date.now();
       assert.equal(await readFiveFactorSnapshot(['AA'], deadlineAtMs), null);
@@ -585,7 +586,7 @@ describe('five-factor atomic snapshot', () => {
       __resetFiveFactorSnapshotCacheForTests();
       process.env.UPSTASH_REDIS_REST_URL = 'https://scorecard-test-upstash.invalid';
       process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-      globalThis.fetch = async (_input, init = {}) => {
+      globalThis.fetch = withSeedLockFence(async (_input, init = {}) => {
         const body = JSON.parse(String(init.body)) as unknown[] | unknown[][];
         if (body[0] === 'GET') {
           commands.push(body as unknown[]);
@@ -600,7 +601,7 @@ describe('five-factor atomic snapshot', () => {
             return 'not-json';
           }),
         }]), { status: 200 });
-      };
+      });
       const selected = await readFiveFactorSnapshot(['AA', 'AB']) as typeof snapshot;
       assert.equal(selected.countries.AA?.result.countryCode, 'AA', 'the readable country still comes from the read model');
       assert.equal(selected.countries.AB, undefined, 'the corrupt country is simply absent');
@@ -631,7 +632,7 @@ describe('five-factor atomic snapshot', () => {
       __resetFiveFactorSnapshotCacheForTests();
       process.env.UPSTASH_REDIS_REST_URL = 'https://scorecard-test-upstash.invalid';
       process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-      globalThis.fetch = async (_input, init = {}) => {
+      globalThis.fetch = withSeedLockFence(async (_input, init = {}) => {
         const body = JSON.parse(String(init.body)) as unknown[] | unknown[][];
         if (body[0] === 'GET') {
           canonicalReads += 1;
@@ -640,7 +641,7 @@ describe('five-factor atomic snapshot', () => {
         }
         // No usable read model, so every call goes to the canonical fallback.
         return new Response(JSON.stringify([{ result: [null, null] }]), { status: 200 });
-      };
+      });
       const warmed = await readFiveFactorSnapshot(['AA']) as typeof snapshot;
       assert.equal(warmed.countries.AA?.result.countryCode, 'AA');
       assert.equal(canonicalReads, 1);
@@ -693,7 +694,7 @@ describe('five-factor atomic snapshot', () => {
       __resetFiveFactorSnapshotCacheForTests();
       process.env.UPSTASH_REDIS_REST_URL = 'https://scorecard-test-upstash.invalid';
       process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-      globalThis.fetch = async (_input, init = {}) => {
+      globalThis.fetch = withSeedLockFence(async (_input, init = {}) => {
         const body = JSON.parse(String(init.body)) as unknown[] | unknown[][];
         if (body[0] === 'GET') {
           commands.push(body as unknown[]);
@@ -702,7 +703,7 @@ describe('five-factor atomic snapshot', () => {
         commands.push(...body as unknown[][]);
         const fields = (body as unknown[][])[0]!.slice(2).map(String);
         return new Response(JSON.stringify([{ result: fields.map((field) => field === 'metadata' ? JSON.stringify(malformed) : null) }]), { status: 200 });
-      };
+      });
       const selected = await readFiveFactorSnapshot(['AA']);
       assert.equal((selected as typeof snapshot).countries.AA?.result.countryCode, 'AA');
       assert.equal(await readFiveFactorListProjection(), null);
@@ -759,14 +760,14 @@ describe('five-factor atomic snapshot', () => {
     try {
       process.env.UPSTASH_REDIS_REST_URL = 'https://scorecard-test-upstash.invalid';
       process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-      globalThis.fetch = async (input, init = {}) => {
+      globalThis.fetch = withSeedLockFence(async (input, init = {}) => {
         const body = init.body ? JSON.parse(String(init.body)) : null;
         calls.push({ url: String(input), body });
         if (Array.isArray(body) && Array.isArray(body[0])) {
           return new Response(JSON.stringify(body.map(() => ({ result: 1 }))), { status: 200 });
         }
         return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
-      };
+      });
       process.exit = ((code?: number) => { throw new ExitCalled(code ?? 0); }) as never;
 
       let exitCode: number | null = null;
@@ -822,14 +823,14 @@ describe('five-factor atomic snapshot', () => {
     try {
       process.env.UPSTASH_REDIS_REST_URL = 'https://scorecard-test-upstash.invalid';
       process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-      globalThis.fetch = async (_input, init = {}) => {
+      globalThis.fetch = withSeedLockFence(async (_input, init = {}) => {
         const body = init.body ? JSON.parse(String(init.body)) : null;
         calls.push(body);
         if (Array.isArray(body) && Array.isArray(body[0])) {
           return new Response(JSON.stringify(body.map(() => ({ result: 1 }))), { status: 200 });
         }
         return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
-      };
+      });
 
       const snapshot = buildFiveFactorSnapshot(['AA'], sources, '2026-08-29T00:00:00.000Z');
       let staged = false;

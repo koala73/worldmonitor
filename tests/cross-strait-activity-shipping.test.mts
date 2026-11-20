@@ -34,6 +34,7 @@ import {
   writePublicationCompletion,
   writeSourceHealth,
 } from '../scripts/seed-cross-strait-activity.mjs';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
@@ -646,7 +647,7 @@ test('operator seed-health matches the fail-closed Japan blocked classification'
     japanMeta: Record<string, unknown> | null;
     taiwanMeta?: Record<string, unknown>;
   }) => {
-    globalThis.fetch = async (_url, init) => {
+    globalThis.fetch = withSeedLockFence(async (_url, init) => {
       const commands = JSON.parse(String(init?.body));
       const results = commands.map(([operation, key]: [string, string]) => {
         if (operation === 'EXISTS') return { result: 0 };
@@ -682,7 +683,7 @@ test('operator seed-health matches the fail-closed Japan blocked classification'
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
-    };
+    });
 
     const response = await seedHealthHandler(new Request(
       'https://api.worldmonitor.app/api/seed-health',
@@ -930,11 +931,11 @@ test('cross-Strait publish hooks ignore runSeed metadata instead of treating it 
   };
   process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-  globalThis.fetch = async (_url, init) => {
+  globalThis.fetch = withSeedLockFence(async (_url, init) => {
     const command = JSON.parse(String(init?.body));
     if (command[0] === 'SET') writes.push(String(command[1]));
     return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
-  };
+  });
 
   try {
     await Reflect.apply(crossStraitActivityBeforePublish, null, [snapshot, publishMeta]);
@@ -973,10 +974,10 @@ test('cross-Strait source-health failure settles every write before canonical pu
   };
   process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-  globalThis.fetch = async () => {
+  globalThis.fetch = withSeedLockFence(async () => {
     canonicalFetches += 1;
     return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
-  };
+  });
 
   try {
     const outcome = atomicPublish(
@@ -1035,11 +1036,11 @@ test('runSeed forwards cross-Strait source health through the pre-publication bo
   };
   process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-  globalThis.fetch = async (_url, init) => {
+  globalThis.fetch = withSeedLockFence(async (_url, init) => {
     const command = JSON.parse(String(init?.body));
     redisCommands.push(command);
     return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
-  };
+  });
 
   try {
     await assert.rejects(
@@ -1100,7 +1101,7 @@ test('runSeed withholds cross-Strait completion when primary freshness metadata 
   };
   process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-  globalThis.fetch = async (_url, init) => {
+  globalThis.fetch = withSeedLockFence(async (_url, init) => {
     const command = JSON.parse(String(init?.body));
     const key = String(command[1] ?? '');
     if (command[0] === 'SET') writtenKeys.push(key);
@@ -1108,7 +1109,7 @@ test('runSeed withholds cross-Strait completion when primary freshness metadata 
       return new Response('injected primary freshness failure', { status: 503 });
     }
     return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
-  };
+  });
 
   try {
     await assert.rejects(

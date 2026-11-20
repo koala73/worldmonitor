@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 type LayerSnapshot = { id: string; dataCount: number };
 type OverlaySnapshot = {
@@ -215,8 +216,6 @@ const prepareVisualScenario = async (
 };
 
 test.describe('DeckGL map harness', () => {
-  test.describe.configure({ retries: 1 });
-
   test('serves requested runtime variant for this test run', async ({ page }) => {
     await waitForHarnessReady(page);
 
@@ -535,6 +534,20 @@ test.describe('DeckGL map harness', () => {
   test('matches golden screenshots per layer and zoom', async ({ page }) => {
     test.setTimeout(180_000);
 
+    // These are overlay goldens. Live provider tiles/labels made them depend on
+    // network timing (a loaded vector basemap versus the blank reference).
+    await page.addInitScript(() => {
+      localStorage.setItem('wm-map-provider', 'carto');
+      localStorage.setItem('wm-map-theme:carto', 'dark-matter');
+    });
+    await page.route('https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', route => route.fulfill({
+      json: {
+        version: 8,
+        sources: {},
+        layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#0b100d' } }],
+      },
+    }));
+
     await waitForHarnessReady(page);
 
     await page.evaluate(() => {
@@ -826,10 +839,10 @@ test('military bases retain the current viewport after reverse RPC completion', 
   await respond(current, 2);
   const count = () => page.evaluate(() => (window as HarnessWindow).__mapHarness!.getLayerDataCount('bases-layer'));
   await expect.poll(count).toBe(2);
-  await page.screenshot({ path: testInfo.outputPath('current-viewport-controlled-bases.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('current-viewport-controlled-bases.png') });
   await respond(first, 1);
   // Allow the older response and the next render frames to complete.
   await page.waitForTimeout(350);
   expect(await count()).toBe(2);
-  await page.screenshot({ path: testInfo.outputPath('after-older-response.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('after-older-response.png') });
 });

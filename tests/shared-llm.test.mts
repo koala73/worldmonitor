@@ -484,7 +484,7 @@ describe('callLlm', () => {
 
     assert.ok(attemptedModels.includes('google/gemma-4-26b-a4b-it:free'), 'the gemma free leg still serves reasoning calls');
     assert.equal(
-      attemptedModels.includes('nvidia/nemotron-3-super-120b-a12b:free'),
+      attemptedModels.includes('nvidia/nemotron-3.5-super-vl:free'),
       false,
       'NVIDIA logs free-endpoint prompts, so chat and deduction text must never reach it',
     );
@@ -492,7 +492,7 @@ describe('callLlm', () => {
     attemptedModels.length = 0;
     await callLlm({ messages: [{ role: 'user', content: 'Summarize these headlines.' }] });
     assert.ok(
-      attemptedModels.includes('nvidia/nemotron-3-super-120b-a12b:free'),
+      attemptedModels.includes('nvidia/nemotron-3.5-super-vl:free'),
       'the default chain keeps the backup for public-data prompts',
     );
   });
@@ -594,7 +594,7 @@ describe('callLlm', () => {
       }
       const body = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>;
       bodies.push(body);
-      const content = body.model === 'nvidia/nemotron-3-super-120b-a12b:free' ? 'backup answer' : '';
+      const content = body.model === 'nvidia/nemotron-3.5-super-vl:free' ? 'backup answer' : '';
       return new Response(JSON.stringify({
         choices: [{ message: { content } }],
         usage: { total_tokens: 5 },
@@ -604,11 +604,11 @@ describe('callLlm', () => {
     const result = await callLlm({ messages: [{ role: 'user', content: 'Answer briefly.' }] });
 
     assert.equal(result?.provider, 'openrouter-free-backup');
-    assert.equal(result?.model, 'nvidia/nemotron-3-super-120b-a12b:free');
+    assert.equal(result?.model, 'nvidia/nemotron-3.5-super-vl:free');
     assert.deepEqual(bodies.map(body => body.model), [
       'deepseek/deepseek-v4-flash',
       'google/gemma-4-26b-a4b-it:free',
-      'nvidia/nemotron-3-super-120b-a12b:free',
+      'nvidia/nemotron-3.5-super-vl:free',
     ]);
     for (const body of bodies) {
       assert.deepEqual(body.reasoning, { enabled: false });

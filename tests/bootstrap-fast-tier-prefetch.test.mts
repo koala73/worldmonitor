@@ -210,7 +210,7 @@ describe('fast bootstrap tier prefetch', () => {
   it('is started by the dashboard entry before the App chunk import', () => {
     const main = readFileSync(resolve(root, 'src/main.ts'), 'utf8');
     const prime = main.indexOf('primeBootstrapFastTier();');
-    const appImport = main.indexOf("void import('./App')");
+    const appImport = main.indexOf("import('./App')");
     const redirect = main.indexOf('installWebApiRedirect();');
     assert.ok(prime > redirect, 'the primed request must go through the installed web API fetch wrappers');
     assert.ok(prime >= 0 && prime < appImport, 'the fast tier must start before the App chunk is requested');

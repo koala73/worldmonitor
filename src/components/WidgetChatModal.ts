@@ -1,3 +1,4 @@
+import { createTimeoutSignal, isTimeoutOrAbortError } from '@/services/timeout-signal';
 import type { CustomWidgetSpec } from '@/services/widget-store';
 import { getBrowserTesterKey, getWidgetAgentKey, getProWidgetKey } from '@/services/widget-store';
 import { getClerkToken } from '@/services/clerk';
@@ -109,6 +110,7 @@ function connectivityProblem(auth?: BuiltAuthHeaders): string | null {
   return null;
 }
 
+/** Open the widget composer; each submission owns its cancellation and deadline. */
 export function openWidgetChatModal(options: WidgetChatOptions): void {
   closeWidgetChatModal();
   track('widget-ai-open', { panelId: options.existingSpec?.id });
@@ -175,6 +177,7 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
   let currentSessionHtml: string | null = options.existingSpec?.html ?? null;
   let requestInFlight = false;
   let preflightReady = false;
+  let preflightFailures = 0;
   let preflightGen = 0;
   let pendingSaveSpec: CustomWidgetSpec | null = null;
 
@@ -245,9 +248,14 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
       const requestAuthState = getAuthState();
       const requestUserId = requestAuthState.user?.id ?? null;
       const requestBelief = readClientEntitlementBelief(requestAuthState);
-      const res = await fetch(widgetAgentHealthUrl(), { headers: auth.headers });
+      const res = await fetch(widgetAgentHealthUrl(), { signal: createTimeoutSignal(15_000), headers: auth.headers });
       let payload: WidgetAgentHealth | null = null;
-      try { payload = await res.json() as WidgetAgentHealth; } catch { /* ignore */ }
+      try {
+        payload = await res.json() as WidgetAgentHealth;
+      } catch (err) {
+        // A stalled body is not a healthy response; only malformed JSON is ignorable.
+        if (isTimeoutOrAbortError(err)) throw err;
+      }
       if (isStale()) return;
 
       if (!res.ok) {
@@ -266,6 +274,7 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
         return showPreflightError(t('widgets.preflightProUnavailable'));
       }
 
+      preflightFailures = 0;
       preflightReady = true;
       setReadinessState(readinessEl, 'ready', t('widgets.preflightConnected'));
       if (!currentSessionHtml) renderPreviewState(previewEl, 'ready_to_prompt');
@@ -274,6 +283,10 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
     } catch {
       if (isStale()) return;
       showPreflightError(connectivityProblem() ?? t('widgets.preflightUnavailable'));
+      if (navigator.onLine && preflightFailures < 2) {
+        const wait = Math.round(1000 * 2 ** preflightFailures++ * (0.5 + Math.random() * 0.5));
+        preflightRetry = setTimeout(() => void runPreflight(), wait);
+      }
     }
   }
 
@@ -306,19 +319,24 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
         .map((m) => ({ role: m.role, content: m.content.slice(0, 500) })),
     });
 
-    abortController = new AbortController();
+    const controller = new AbortController();
+    abortController = controller;
+    const isCurrent = () => modal.isConnected && abortController === controller && !controller.signal.aborted;
     const timeoutMs = isPro ? 200_000 : 170_000;
-    clientTimeout = setTimeout(() => {
-      abortController?.abort();
+    const timeout = setTimeout(() => {
+      if (!isCurrent()) return;
+      controller.abort();
       appendMessage(messagesEl, 'assistant', t('widgets.requestTimedOut'));
       renderPreviewState(previewEl, 'error', t('widgets.requestTimedOut'));
       setFooterStatus(footerStatusEl, t('widgets.requestTimedOut'), 'error');
       requestInFlight = false;
       syncComposerState();
     }, timeoutMs);
+    clientTimeout = timeout;
 
     try {
       const auth = await buildWidgetAuthHeaders(isPro);
+      if (!isCurrent()) return;
       const unreachable = connectivityProblem(auth);
       if (unreachable) throw new Error(unreachable);
       const requestAuthState = getAuthState();
@@ -331,14 +349,19 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
 
       const res = await fetch(widgetAgentUrl(), {
         method: 'POST',
-        signal: abortController.signal,
+        signal: controller.signal,
         headers: reqHeaders,
         body,
       });
+      if (!isCurrent()) {
+        void res.body?.cancel().catch(() => {});
+        return;
+      }
 
       if (!res.ok) {
         let payload: WidgetAgentHealth | null = null;
         try { payload = await res.json() as WidgetAgentHealth; } catch { /* ignore */ }
+        if (!isCurrent()) return;
         reportWidgetEntitlementDesync(
           res.status,
           payload,
@@ -367,6 +390,10 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
 
       while (true) {
         const { done, value } = await reader.read();
+        if (!isCurrent()) {
+          void reader.cancel().catch(() => {});
+          return;
+        }
         if (done) break;
         buf += decoder.decode(value, { stream: true });
         const lines = buf.split('\n');
@@ -431,15 +458,22 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
         }
       }
     } catch (err) {
+      if (!isCurrent()) return;
       if (err instanceof DOMException && err.name === 'AbortError') return;
       const message = connectivityProblem() ?? (err instanceof Error ? err.message : t('widgets.unknownError'));
       appendMessage(messagesEl, 'assistant', `${t('common.error')}: ${message}`);
       renderPreviewState(previewEl, 'error', message);
       setFooterStatus(footerStatusEl, message, 'error');
     } finally {
-      if (clientTimeout) { clearTimeout(clientTimeout); clientTimeout = null; }
-      requestInFlight = false;
-      syncComposerState();
+      // A closed/timed-out request may settle after another modal or send
+      // owns the shared handles. Clear only this request's timer and state.
+      clearTimeout(timeout);
+      if (abortController === controller) {
+        abortController = null;
+        clientTimeout = null;
+        requestInFlight = false;
+        if (modal.isConnected) syncComposerState();
+      }
     }
   };
 

@@ -22,6 +22,7 @@ import { jsonResponse } from './_json-response.js';
 import { checkRateLimit } from './_rate-limit.js';
 import {
   checkBootstrapDesktopKeyBudget,
+  checkBootstrapDesktopKeyClient,
   checkBootstrapUserApiKeyRateLimit,
   isCanonicalUserApiKey,
   resolveBootstrapUserKeyAccess,
@@ -98,6 +99,10 @@ const TIER_CDN_CACHE = {
 // budget guarantees the shield outlives a complete seed cycle.
 // tests/bootstrap-on-demand-cache-budget.test.mts enforces the ceiling.
 const ON_DEMAND_CACHE_PROFILES = {
+  gridDisruptionClock: {
+    browser: 'max-age=60, stale-while-revalidate=60, stale-if-error=60',
+    cdn: 'public, s-maxage=300, stale-while-revalidate=60, stale-if-error=120',
+  },
   ukmtoIncidents: {
     browser: 'max-age=60, stale-while-revalidate=60, stale-if-error=60',
     cdn: 'public, s-maxage=60, stale-while-revalidate=60, stale-if-error=60',
@@ -440,6 +445,10 @@ async function validateBootstrapAuth(req, cors) {
     }
 
     if (entitlementResult.scope === 'desktop') {
+      const client = checkBootstrapDesktopKeyClient(req);
+      if (!client.ok) {
+        return { ok: false, response: authFailure({ error: client.error }, client.status, cors) };
+      }
       const budget = await checkBootstrapDesktopKeyBudget(userKeyResult.userId, entitlementResult.entitlement);
       if (!budget.ok) {
         return {

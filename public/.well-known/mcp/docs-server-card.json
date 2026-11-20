@@ -4,7 +4,7 @@
   "title": "World Monitor Docs",
   "description": "Search and read World Monitor developer docs, API references, and guides.",
   "kind": "docs",
-  "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
+  "icon": "https://worldmonitor.app/.well-known/mcp/hotlink-ok/icon-512.png",
   "version": "1.0.0",
   "url": "https://www.worldmonitor.app/docs/mcp",
   "serverUrl": "https://www.worldmonitor.app/docs/mcp",

@@ -4,6 +4,17 @@ import { collectFoodSource } from '../scripts/lib/food-prices-fetch.mjs';
 import { mergeFoodSnapshot } from '../scripts/lib/food-prices-seed.mjs';
 
 const context = { countryCode: 'AFG', country: 'Afghanistan', referenceDate: '2026-09-15', fetchedAt: '2026-10-28T12:00:00Z' };
+test('food-price first-failure receipts report SEED_ERROR before activation', async () => {
+  const { __testing__: { classifyKey, STANDALONE_KEYS, SEED_META } } = await import('../api/health.js');
+  const name = 'foodPricesTwmoa';
+  const entry = classifyKey(name, STANDALONE_KEYS[name], { allowOnDemand: true }, {
+    keyStrens: new Map(), keyErrors: new Map(), keyMetaErrors: new Map(),
+    keyMetaValues: new Map([[SEED_META[name].key, JSON.stringify({ status: 'error', firstFailureAt: Date.now(), recordCount: 0 })]]),
+    activationStates: new Map([[name, false]]), now: Date.now(),
+  });
+  assert.equal(entry.status, 'SEED_ERROR');
+});
+
 test('a failed country fetch retains its last-good brief without advancing its fetch clock', () => {
   const merged = mergeFoodSnapshot({ contexts: [context] }, { contexts: [{ countryCode: 'AFG', referenceDate: '', fetchedAt: '', fetchFailed: true }], observations: [], fetchedAt: '2026-10-29T12:00:00Z' });
   assert.equal(merged.contexts[0].referenceDate, '2026-09-15');
@@ -28,6 +39,21 @@ test('seed history retains the prior week and incoming corrections replace old v
 test('a report rollback cannot replace a newer successful price snapshot', () => {
   const row = { date: '2026-10-29', item: 'Rice', market: 'A', marketType: 'retail', unit: 'kg', currency: 'PHP', price: 50 };
   assert.throws(() => mergeFoodSnapshot({ observations: [row] }, { observations: [{ ...row, date: '2026-10-22' }], contexts: [] }), /regressed/);
+});
+
+test('dated context cannot erase retained prices when a publisher table becomes empty', () => {
+  assert.throws(() => mergeFoodSnapshot({ observations: [{ date: '2026-10-01', price: 50 }] }, {
+    observations: [], contexts: [{ countryCode: 'TN', referenceDate: '2026-11-01' }],
+  }), /observations missing/);
+});
+
+test('an ONAGRI report with dated headers but an unparseable table fails before its first publish', async () => {
+  await assert.rejects(collectFoodSource('onagri', {
+    now: new Date('2026-11-05T12:00:00Z'), pause: async () => {},
+    fetchFn: async url => new Response(url.includes('/fr/62')
+      ? '<a href="/uploads/novembre-2026.html">Mercuriale Bir El Kassaa novembre 2026</a>'
+      : '2026 2025 مليم/كلغ <table><tr><td>Changed table</td></tr></table>'),
+  }), /ONAGRI report has no food prices/);
 });
 
 test('a missing prior-week annex does not suppress current prices', async () => {

@@ -18,6 +18,9 @@ test('docs-only PRs and pushes retain the internal-link gate when unit shards sk
   const job = workflow.jobs['docs-stats'];
   assert.equal(job.if, undefined);
   assert.equal(job.needs, undefined);
+  const checkout = job.steps.find((step) => step.uses?.startsWith('actions/checkout@'));
+  assert.equal(checkout?.with?.['fetch-depth'], 0);
+  assert.equal(checkout?.with?.filter, 'blob:none');
   const installIndex = job.steps.findIndex((step) => step.uses === './.github/actions/install-root-deps');
   const linkIndex = job.steps.findIndex((step) => step.run === 'node --import tsx --test tests/internal-link-redirects.test.mjs');
   assert.ok(installIndex >= 0 && linkIndex > installIndex, 'the always-on docs job must run the link suite after installing dependencies');
@@ -211,7 +214,7 @@ test('required variant-smoke aggregate rejects failed, cancelled and unexpected 
     SHARDS_RESULT: '${{ needs.variant-smoke-shards.result }}',
     PRO_WEBMCP_RESULT: '${{ needs.variant-smoke-pro-webmcp.result }}',
   });
-  assert.deepEqual(shards.strategy.matrix.shard, [1, 2, 3, 4]);
+  assert.deepEqual(shards.strategy.matrix.shard, [1, 2, 3, 4, 5, 6, 7, 8]);
   assert.equal(shards.strategy['fail-fast'], false);
   assert.match(
     shards.steps.find((step) => step.run?.includes('npm run test:e2e:ci-smoke:')).run,

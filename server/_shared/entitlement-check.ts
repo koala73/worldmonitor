@@ -97,6 +97,20 @@ export interface CachedEntitlements {
     /** Most active desktop keys one account may hold (R5); `0` without access. */
     maxDesktopKeys?: number;
     /**
+     * Dashboard focus (#10453). Mirrors the catalog field the Convex read-time
+     * merge puts on the wire. Nothing at the edge gates on it — the shared
+     * focus is enforced in `convex/teamDashboards.ts` — so it adds no cache
+     * shape check. `undefined` is fail-CLOSED, as in `shared/tab-focus-access.ts`.
+     */
+    tabFocus?: boolean;
+    /**
+     * Travel risk assessment drafts (#10451), read by the MCP pre-check for
+     * `prepare_travel_risk_assessment`. `undefined` is **fail-CLOSED** at every
+     * tier. The cache-shape gate below checks it only for a read that opts in
+     * (`requireTravelRiskShape`), so other gates keep serving older entries.
+     */
+    travelRiskAssessment?: boolean;
+    /**
      * Catalog plan limits, mirrored verbatim from `PlanFeatures.planLimits`
      * (convex/config/productCatalog.ts). Optional because legacy rows predate
      * it and because the Convex read path only merges what the catalog holds.
@@ -125,6 +139,24 @@ export interface CachedEntitlements {
     };
   };
   validUntil: number;
+  /**
+   * Enterprise contract account (convex/enterpriseAccounts.ts), present only
+   * while the user is an active member of a LIVE contract — whichever source
+   * won the entitlement recompute. Its members share these pooled limits.
+   * Absent for everyone else; consumers must not infer membership from
+   * `planKey === 'enterprise'` (a comp can produce that without an account).
+   */
+  account?: {
+    id: string;
+    /** Pooled REST requests per UTC day across all members. */
+    dailyAllowance: number;
+    /** Pooled requests per minute across all members. */
+    perMinuteBurst: number;
+    /** Multiple of the allowance at which a hard stop trips (default 5). */
+    breakerMultiple: number;
+    monthlyInputTokens: number;
+    monthlyOutputTokens: number;
+  };
   billingStatus?: BillingVerificationStatus;
   retryAfterSeconds?: number;
   renewalVerificationFreshness?: {
@@ -177,6 +209,10 @@ export interface EntitlementCheckOptions {
  * 403'd real Pro subscribers calling via Clerk session (no tester key).
  */
 const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
+  // Orbital Watch REST: passes and images for any point, and per-country
+  // watched-site evidence. The in-app lookup stays free; the API is Pro.
+  '/api/orbital/v1/get-point-passes': 1,
+  '/api/orbital/v1/get-country-imagery-evidence': 1,
   '/api/forecast/v1/trigger-simulation': 1,
   '/api/intelligence/v1/classify-event': 1,
   // deduct-situation is a Pro panel (DeductionPanel premium: 'locked') and in
@@ -206,6 +242,7 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/supply-chain/v1/get-multi-sector-cost-shock': 1,
   '/api/supply-chain/v1/get-sector-dependency': 1,
   '/api/trade/v1/list-comtrade-flows': 1,
+  '/api/trade/v1/get-monthly-sitc-trade': 1,
   '/api/trade/v1/get-tariff-trends': 1,
   '/api/trade/v1/get-bilateral-tariff': 1,
   '/api/trade/v1/get-us-import-duty': 1,
@@ -231,6 +268,12 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/supply-chain/v1/list-vulnerability-rankings': 1,
   '/api/news/v1/list-media-perspective': 1,
   '/api/news/v1/list-news-pool': 1,
+  // Cmd+K headline search over 7 days; the 24-hour sibling stays free.
+  '/api/news/v1/search-headline-archive': 1,
+  // Account-private history of delivered realtime alerts (dashboard search).
+  // Tier-gated so the gateway resolves the session and stamps the trusted
+  // user id the handler reads; an anonymous or keyless caller never reaches it.
+  '/api/news/v1/list-sent-alerts': 1,
 };
 
 const CONVEX_INTERNAL_ENTITLEMENTS_PATH = '/api/internal-entitlements';
@@ -513,6 +556,14 @@ export interface GetEntitlementsOptions {
    * that turns it on.
    */
   requireDesktopKeyShape?: boolean;
+  /**
+   * #10451: the caller is deciding the travel risk assessment question, whose
+   * flag fails closed when absent. A cached entry written before the catalog
+   * carried `travelRiskAssessment` is then refetched through Convex instead of
+   * telling an entitled customer to upgrade until the entry ages out. Only the
+   * MCP pre-check for that one tool turns it on.
+   */
+  requireTravelRiskShape?: boolean;
 }
 
 export async function getEntitlements(
@@ -533,7 +584,9 @@ export async function getEntitlements(
 
   // Coalesced per (user, shape requirement): a desktop-shape read must not be
   // satisfied by a concurrent ordinary read that could return a legacy entry.
-  const inFlightKey = options.requireDesktopKeyShape ? `${userId}\u0000desktop-key-shape` : userId;
+  let inFlightKey = userId;
+  if (options.requireDesktopKeyShape) inFlightKey += '\u0000desktop-key-shape';
+  if (options.requireTravelRiskShape) inFlightKey += '\u0000travel-risk-shape';
   const existing = _inFlight.get(inFlightKey);
   if (existing) return existing;
 
@@ -617,7 +670,11 @@ async function _getEntitlementsImpl(
       // The cache-shape check must
       // run first: a pre-embedAccess marker is still an authorization row, and
       // serving it would bypass the canonical Convex merge below.
-      if (hasCurrentEmbedAccessShape && entitlementMarkerTtlSeconds(ent) !== null) return ent;
+      // The opt-in travel shape applies here too: a marker row written before
+      // `travelRiskAssessment` existed would otherwise admit the account at the
+      // MCP pre-check and then deny the tool as a missing plan feature.
+      const hasRequestedTravelShape = !options.requireTravelRiskShape || typeof ent.features.travelRiskAssessment === 'boolean';
+      if (hasCurrentEmbedAccessShape && hasRequestedTravelShape && entitlementMarkerTtlSeconds(ent) !== null) return ent;
       // Only use cached data if it hasn't expired AND has the post-U10 shape.
       //
       // Legacy cache entries written before plan 2026-05-10-001 U10 lack the
@@ -644,12 +701,12 @@ async function _getEntitlementsImpl(
       // `{allowance: 'mcp'}` — same counter and same ceiling as the correct
       // `{allowance: 'api', counter: 'mcp'}`, but one unit per call instead of
       // the per-tool weight, so those callers under-pay until the entry ages
-      // out. Below Enterprise, no plan pairs `apiAccess` with a NUMERIC
-      // mcpCallsPerDay (the API tiers carry the marker), so that pairing
-      // identifies a pre-marker entry exactly. Enterprise (tier 3) carries a
-      // numeric fair-use ceiling and must stay cacheable.
+      // out. No current plan pairs `apiAccess` with a NUMERIC mcpCallsPerDay
+      // (every apiAccess plan, Enterprise included, carries the marker), so
+      // that pairing identifies a pre-marker entry exactly. That includes an
+      // Enterprise entry cached before Enterprise moved onto the marker
+      // (100k REST, a dedicated 25k MCP ceiling).
       const legacySharedBudgetShape = ent.features.apiAccess === true
-        && ent.features.tier < 3
         && typeof ent.features.planLimits?.mcpCallsPerDay === 'number';
       // Fourth instance, opt-in (plan 2026-10-25-001): a Pro entry written
       // before `desktopKeyAccess` existed satisfies every check above, and the
@@ -663,7 +720,8 @@ async function _getEntitlementsImpl(
         hasCurrentEmbedAccessShape &&
         ent.features.planLimits?.dashboardAiCallsPerDay !== undefined &&
         !legacySharedBudgetShape &&
-        (!options.requireDesktopKeyShape || hasDesktopKeyShape(ent))
+        (!options.requireDesktopKeyShape || hasDesktopKeyShape(ent)) &&
+        hasRequestedTravelShape
       ) {
         return ent;
       }

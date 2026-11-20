@@ -10,6 +10,7 @@ import { runInNewContext } from 'node:vm';
 import { afterEach, describe, it } from 'node:test';
 import ts from 'typescript';
 import { ALLOWED_CHANNELS } from '../scripts/lib/digest-delivered-log.mjs';
+import { selectDigestChannelContent } from '../scripts/lib/digest-channel-content.mjs';
 
 const require = createRequire(import.meta.url);
 const https = require('node:https');
@@ -297,25 +298,33 @@ describe('realtime relay Teams dispatch', () => {
     const posts = [];
     const loaded = loadRelayWithTeamsStub(posts, { status });
     restore = loaded.restore;
-    const channel = { _id: 'teams-channel', channelType: 'teams', webhookEnvelope: crypto.encrypt(TEAMS_URL), verified: true };
+    const channel = { _id: 'teams-channel', linkedAt: 1, deliveryAttempt: { sequence: 1, pending: true }, channelType: 'teams', webhookEnvelope: crypto.encrypt(TEAMS_URL), verified: true };
     const deactivations = [];
     const held = [];
     const deletedHeld = [];
+    const removedHeld = [];
     globalThis.fetch = async (input, init) => {
       const url = String(input);
       if (url.includes('/relay/enabled-rules')) return Response.json([{
-        userId: 'owner', variant: 'full', sensitivity: 'all', eventTypes: ['conflict_escalation'], channels: ['teams'], ...rule,
+        // conflict_escalation is a local event (#10873): it reaches rules that list its country.
+        userId: 'owner', variant: 'full', sensitivity: 'all', eventTypes: ['conflict_escalation'], countries: ['IR'], channels: ['teams'], ...rule,
       }]);
       if (url.endsWith('/relay/channels')) return Response.json([channel]);
-      if (url.endsWith('/relay/deactivate')) { deactivations.push(JSON.parse(String(init?.body))); return Response.json({ ok: true }); }
+      if (url.endsWith('/relay/delivery-result')) { deactivations.push(...JSON.parse(String(init?.body)).results); return Response.json({ ok: true }); }
       if (url.includes('/GET/relay%3Aentitlement')) return Response.json({ result: '1' });
       if (url.includes('/RPUSH/') || url.includes('/LPUSH/')) { held.push(url); return Response.json({ result: 1 }); }
       if (url.includes('/LLEN/')) return Response.json({ result: 1 });
       if (url.includes('/LRANGE/')) return Response.json({ result: heldEvents.map(ev => JSON.stringify(ev)) });
       if (url.includes('/DEL/')) { deletedHeld.push(url); return Response.json({ result: 1 }); }
+      if (url.endsWith('/pipeline')) {
+        const cmds = JSON.parse(String(init?.body ?? '[]'));
+        const lrem = cmds.filter((cmd) => cmd[0] === 'LREM');
+        removedHeld.push(...lrem.map((cmd) => cmd[3]));
+        return Response.json(cmds.map((cmd) => ({ result: cmd[0] === 'LREM' ? 1 : 'OK' })));
+      }
       return Response.json({ result: 'OK' });
     };
-    return { relay: loaded.relay, posts, deactivations, held, deletedHeld };
+    return { relay: loaded.relay, posts, deactivations, held, deletedHeld, removedHeld };
   }
 
   it('delivers a matching event to the Teams channel as an Adaptive Card', async () => {
@@ -330,7 +339,9 @@ describe('realtime relay Teams dispatch', () => {
     assert.match(renderedText(card), /Synthetic escalation/);
     assert.match(renderedText(card), /Iran \(IR\)/);
     assert.match(renderedText(card), /Coverage: {2}\| 3 independent publishers/);
-    assert.equal(card.actions[0].url, 'https://www.reuters.com/x');
+    // A relay-originated article link carries the alert referrer tag.
+    assert.equal(card.actions[0].url, 'https://www.reuters.com/x?utm_source=worldmonitor&utm_medium=alert&utm_campaign=teams');
+    assert.equal(card.actions[0].title, 'Open original report (www.reuters.com)');
   });
 
   it('applies the rule country scope to Teams like every other channel', async () => {
@@ -339,10 +350,11 @@ describe('realtime relay Teams dispatch', () => {
     assert.equal(posts.length, 0);
   });
 
-  it('deactivates the channel when the workflow is gone', async () => {
+  it('reports the terminal status and channel version when the workflow is gone', async () => {
     const { relay, deactivations } = setup({ status: 404 });
-    await relay.processEvent({ eventType: 'conflict_escalation', severity: 'critical', payload: { title: 'Gone' } });
-    assert.deepEqual(deactivations, [{ userId: 'owner', channelType: 'teams' }]);
+    await relay.processEvent({ eventType: 'conflict_escalation', severity: 'critical', payload: { title: 'Gone', countryCode: 'IR' } });
+    assert.deepEqual(deactivations, [{ userId: 'owner', channelType: 'teams',
+      delivery: { channelId: 'teams-channel', linkedAt: 1, sequence: 1, error: 'HTTP 404' } }]);
   });
 
   it('sends the connect/test welcome card to the exact Teams channel', async () => {
@@ -367,7 +379,7 @@ describe('realtime relay Teams dispatch', () => {
     const heldEvents = Array.from({ length: 100 }, (_, i) => ({
       eventType: 'conflict_escalation', severity: 'high', payload: { title: `Held ${String(i).padStart(3, '0')} ${'x'.repeat(190)}` },
     }));
-    const { relay, posts, deletedHeld } = setup({ heldEvents });
+    const { relay, posts, removedHeld } = setup({ heldEvents });
     await relay.processEvent({ eventType: 'flush_quiet_held', userId: 'owner', variant: 'full' });
     assert.ok(posts.length > 1, 'the batch is split, not refused as oversized');
     const delivered = [];
@@ -379,17 +391,18 @@ describe('realtime relay Teams dispatch', () => {
     }
     assert.equal(delivered.length, 100, 'no held alert is dropped before the queue is cleared');
     assert.equal(new Set(delivered).size, 100);
-    assert.equal(deletedHeld.length, 1, 'a delivered batch clears the held queue');
+    assert.equal(removedHeld.length, 100, 'a delivered batch removes each delivered alert from the held queue');
   });
 
   it('keeps the held queue when a later card of the batch fails', async () => {
     const heldEvents = Array.from({ length: 100 }, (_, i) => ({
       eventType: 'conflict_escalation', severity: 'high', payload: { title: `Held ${String(i).padStart(3, '0')} ${'x'.repeat(190)}` },
     }));
-    const { relay, posts, deletedHeld } = setup({ heldEvents, status: [202, 500] });
+    const { relay, posts, deletedHeld, removedHeld } = setup({ heldEvents, status: [202, 500] });
     await relay.processEvent({ eventType: 'flush_quiet_held', userId: 'owner', variant: 'full' });
     assert.ok(posts.length >= 2);
     assert.equal(deletedHeld.length, 0, 'a partly delivered Teams batch is retried, not dropped');
+    assert.ok(removedHeld.length < 100, 'only fully delivered groups are removed');
   });
 });
 
@@ -418,7 +431,11 @@ describe('digest cron Teams dispatch', () => {
         throw new Error(`unexpected fetch ${url}`);
       },
       decrypt: (envelope) => envelope.replace(/^enc:/, ''),
-      deactivateChannel: async (userId, channelType) => { deactivations.push({ userId, channelType }); },
+      withDeliveryReports: async deliver => deliver(),
+      recordDelivery: async (userId, channelType, channel, error = null) => {
+        deactivations.push({ userId, channelType, delivery: { channelId: channel._id, linkedAt: channel.linkedAt, sequence: channel.deliveryAttempt.sequence, error } });
+        return error === null;
+      },
       buildTeamsDigestPayload: teams.buildTeamsDigestPayload,
       stripSourceSuffix: (title) => title.replace(/ - Reuters$/, ''),
       sendTeamsPayload: async (url, payload) => { sends.push({ url, payload }); return { ok: status < 300, status, gone: status === 404 }; },
@@ -429,7 +446,8 @@ describe('digest cron Teams dispatch', () => {
       getLastSentAt: async () => 0, isDue: () => true, isUserPro: async () => true,
       digestWindowStartMs: () => 0,
       buildDigest: async () => [{ title: 'Synthetic digest story - Reuters', severity: 'critical', sources: ['Reuters'] }],
-      buildDigestDeliveryPlan: ({ rawStories }) => ({ formatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
+      selectDigestChannelContent,
+      buildDigestDeliveryPlan: ({ rawStories }) => ({ formatterStories: rawStories, canonicalFormatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
       formatDigest: () => 'WorldMonitor Daily Digest — October 17, 2026\n\nSynthetic digest story',
       renderDigestEmailHtml: () => ({ html: '<p>x</p>', bytes: 0, truncated: false, shownStories: 1 }),
       buildChannelBodies: (text) => ({ text, telegramText: text, slackText: text, discordText: text }),
@@ -442,7 +460,7 @@ describe('digest cron Teams dispatch', () => {
     return { sends, deactivations, metadata };
   }
 
-  const verified = { _id: 'teams-channel', channelType: 'teams', webhookEnvelope: `enc:${TEAMS_URL}`, verified: true };
+  const verified = { _id: 'teams-channel', linkedAt: 1, deliveryAttempt: { sequence: 1, pending: true }, channelType: 'teams', webhookEnvelope: `enc:${TEAMS_URL}`, verified: true };
 
   it('delivers the digest to a verified Teams channel as an Adaptive Card', async () => {
     const { sends, metadata } = await runDigest({ channel: verified });
@@ -464,9 +482,9 @@ describe('digest cron Teams dispatch', () => {
     assert.equal(sends.length, 0);
   });
 
-  it('deactivates a Teams channel whose workflow is gone', async () => {
+  it('reports a Teams channel whose workflow is gone', async () => {
     const { deactivations, metadata } = await runDigest({ channel: verified, status: 404 });
-    assert.deepEqual(deactivations, [{ userId: 'owner', channelType: 'teams' }]);
+    assert.deepEqual(deactivations, [{ userId: 'owner', channelType: 'teams', delivery: { channelId: 'teams-channel', linkedAt: 1, sequence: 1, error: 'HTTP 404' } }]);
     assert.equal(metadata[0].sentCount, 0);
   });
 });

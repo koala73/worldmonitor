@@ -49,12 +49,12 @@ const stored = (key: string) => {
   return value == null ? null : typeof value === 'string' ? value : JSON.stringify(value);
 };
 function persistEval(command: string[]) {
-  const [, , , recordKey, ownerKey, allKey, expected, next, ttl, id] = command;
+  const [, , , recordKey, ownerKey, allKey, quotaKey, expected, next, ttl, id] = command;
   if (beforePersist) { const hook = beforePersist; beforePersist = null; hook(); }
   expect(ttl).toBe(String(86400 * 30));
   if (stored(recordKey) !== expected) return { result: 0 };
   records.set(recordKey, JSON.parse(next));
-  for (const key of [ownerKey, allKey]) {
+  for (const key of [ownerKey, allKey, quotaKey]) {
     const members = (records.get(key) as { members?: string[] } | undefined)?.members ?? [];
     if (!members.includes(id)) members.push(id);
     records.set(key, { members });
@@ -64,6 +64,16 @@ function persistEval(command: string[]) {
 function pipelineResult(commands: string[][]) {
   return commands.map(command => {
     if (command[0] === failVerb) return { error: 'OOM command not allowed when used memory > maxmemory' };
+    if (command[0] === 'EVAL' && command[1] === REGISTER_WEBHOOK_SCRIPT) {
+      const [, , , recordKey, ownerKey, allKey, quotaKey, raw, id] = command;
+      records.set(recordKey, JSON.parse(raw));
+      for (const key of [ownerKey, allKey, quotaKey]) {
+        const members = (records.get(key) as { members?: string[] } | undefined)?.members ?? [];
+        if (!members.includes(id)) members.push(id);
+        records.set(key, { members });
+      }
+      return { result: 1 };
+    }
     if (command[0] === 'EVAL') return persistEval(command);
     if (command[0] === 'GET') return { result: stored(command[1]) };
     if (command[0] === 'SSCAN') return { result: ['0', []] };
@@ -89,7 +99,7 @@ const transactionResult = async (commands: string[][]) => (
 const runRedisTransaction = vi.fn(transactionResult);
 const registrationCommands = () => {
   const call = runRedisPipeline.mock.calls.find(([commands]) => (
-    commands[0]?.[0] === 'SET' && String(commands[0][1]).startsWith('webhook:sub:')
+    commands[0]?.[1] === REGISTER_WEBHOOK_SCRIPT
   ));
   expect(call).toBeDefined();
   return call![0];
@@ -106,7 +116,7 @@ import { createDomainGateway, serverOptions } from '../gateway';
 import { createShippingV2ServiceRoutes } from '../../src/generated/server/worldmonitor/shipping/v2/service_server';
 import statusHandler from '../../api/v2/shipping/webhooks/[subscriberId]';
 import actionHandler from '../../api/v2/shipping/webhooks/[subscriberId]/[action]';
-import { registerWebhook } from '../worldmonitor/shipping/v2/register-webhook';
+import { registerWebhook, REGISTER_WEBHOOK_SCRIPT } from '../worldmonitor/shipping/v2/register-webhook';
 import { checkFailClosedScopedIpRateLimit } from '../_shared/rate-limit';
 const registerHandler = vi.fn(registerWebhook);
 const routes = createShippingV2ServiceRoutes({ listWebhooks: vi.fn(), registerWebhook: registerHandler, routeIntelligence: vi.fn() }, serverOptions);
@@ -139,12 +149,14 @@ for (const key of [keyA, keyB]) {
     expect(body.subscriberId).toMatch(/^wh_[a-f0-9]{24}$/);
     expect(body.secret).toMatch(/^[a-f0-9]{64}$/);
     const commands = registrationCommands();
-    const record = JSON.parse(commands[0][2]);
+    const record = JSON.parse(commands[0][7]);
     expect(record).toMatchObject({ ...payload, ownerTag: hash(key), subscriberId: body.subscriberId, secret: body.secret, active: true });
-    expect(commands[1]).toEqual(['SADD', `webhook:owner:${hash(key)}:v1`, body.subscriberId]);
-    expect(commands[2]).toEqual(['EXPIRE', `webhook:owner:${hash(key)}:v1`, String(86400 * 30)]);
-    expect(commands[3]).toEqual(['SADD', 'webhook:all:v1', body.subscriberId]);
-    expect(commands[0].slice(3)).toEqual(['EX', String(86400 * 30)]);
+    expect(commands[0].slice(2, 7)).toEqual([
+      '4', `webhook:sub:${body.subscriberId}:v1`, `webhook:owner:${hash(key)}:v1`,
+      'webhook:all:v1', `webhook:owner:${hash(`webhook-user:owner-${key.slice(-1)}`)}:v1`,
+    ]);
+    expect(record.quotaTag).toBe(hash(`webhook-user:owner-${key.slice(-1)}`));
+    expect(commands[0].slice(8)).toEqual([body.subscriberId, String(86400 * 30), '10']);
   });
 }
 
@@ -186,8 +198,8 @@ test('validated user key still cannot register a private callback', async () => 
 test('enterprise cookie keeps its owner with an anonymous header', async () => {
   expect((await gateway(request('wms_anonymous', { Cookie: '__Host-wm-pro-key=enterprise-test' }), context)).status).toBe(200);
   const commands = registrationCommands();
-  expect(JSON.parse(commands[0][2]).ownerTag).toBe(hash('enterprise-test'));
-  expect(commands[1][1]).toBe(`webhook:owner:${hash('enterprise-test')}:v1`);
+  expect(JSON.parse(commands[0][7]).ownerTag).toBe(hash('enterprise-test'));
+  expect(commands[0][4]).toBe(`webhook:owner:${hash('enterprise-test')}:v1`);
 });
 
 const manage = (subscriberId: string, action: string, key?: string, extra: Record<string, string> = {}) => {
@@ -286,7 +298,7 @@ test('management preflight allows POST', async () => {
 
 const persistCalls = () => runRedisPipeline.mock.calls
   .map(([commands]) => commands[0])
-  .filter((command) => command?.[0] === 'EVAL');
+  .filter((command) => command?.[0] === 'EVAL' && command[1] !== REGISTER_WEBHOOK_SCRIPT);
 
 test('rotate-secret does not echo a secret the store did not confirm', async () => {
   const own = await (await gateway(request(keyA), context)).json();
@@ -314,11 +326,12 @@ test('rotate-secret writes the record and both indexes in one compare-and-set', 
   const rotated = await manage(own.subscriberId, 'rotate-secret', keyA);
   expect(rotated.status).toBe(200);
   const [command] = persistCalls();
-  expect(command.slice(2, 9)).toEqual([
-    '3', `webhook:sub:${own.subscriberId}:v1`, `webhook:owner:${hash(keyA)}:v1`, 'webhook:all:v1',
+  expect(command.slice(2, 10)).toEqual([
+    '4', `webhook:sub:${own.subscriberId}:v1`, `webhook:owner:${hash(keyA)}:v1`, 'webhook:all:v1',
+    `webhook:owner:${hash('webhook-user:owner-a')}:v1`,
     before, stored(`webhook:sub:${own.subscriberId}:v1`), String(86400 * 30),
   ]);
-  expect(command[9]).toBe(own.subscriberId);
+  expect(command[10]).toBe(own.subscriberId);
 });
 
 for (const action of ['rotate-secret', 'reactivate']) {

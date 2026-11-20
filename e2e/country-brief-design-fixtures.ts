@@ -1,9 +1,11 @@
 import { normalizeComtradeProducts, HS4_CODES, HS4_LABELS } from '../scripts/shared/comtrade.mjs';
 import type { Page } from '@playwright/test';
+import { acceptTesterKeySession } from './helpers/accept-tester-key-session';
 import us from './fixtures/country-brief-us.json' with { type: 'json' };
 
 export async function installCountryBriefDesignData(page: Page) {
   await page.addInitScript(() => localStorage.setItem('wm-pro-key', 'e2e-country-brief-design'));
+  await acceptTesterKeySession(page);
   let releaseFactors: () => void = () => {};
   const factorsReady = new Promise<void>(resolve => { releaseFactors = resolve; });
   const countriesRequested: string[] = [];

@@ -86,12 +86,12 @@ describe('notifications-settings.ts — country picker integration', () => {
     );
   });
 
-  it('hint copy mentions "Leave empty" so users know the empty state means all-countries', () => {
-    assert.match(
-      settingsSrc,
-      /Leave empty to receive alerts from all countries/,
-      'must include the "leave empty" hint',
-    );
+  // #10873: an empty scope means global critical events plus enabled opt-in
+  // alerts (opt-in tiers are admitted regardless of countries), not every country.
+  it('copy says an empty scope gets global critical events plus enabled opt-in alerts', () => {
+    assert.match(settingsSrc, /No countries picked: real-time alerts cover global critical events, plus any opt-in alerts you turned on/);
+    assert.doesNotMatch(settingsSrc, /global critical events only/);
+    assert.doesNotMatch(settingsSrc, /Leave empty to receive alerts from all countries/);
   });
 
   it('preselectCountry parameter is declared on the host interface (PR B U8 R9 receiver)', () => {
@@ -181,7 +181,7 @@ describe('notifications-settings.ts — centralized save state (countries thread
   it('saveCurrentAlertRule uses getCurrentAlertRuleFormState (debounced picker save)', () => {
     assert.match(
       settingsSrc,
-      /function\s+saveCurrentAlertRule\s*\(\)[\s\S]*?const\s+state\s*=\s*getCurrentAlertRuleFormState\(\)[\s\S]*?saveAlertRules\(/,
+      /function\s+saveCurrentAlertRule\s*\([^)]*\)[\s\S]*?const\s+state\s*=\s*getCurrentAlertRuleFormState\(\)[\s\S]*?saveAlertRules\(/,
       'saveCurrentAlertRule must source payload from getCurrentAlertRuleFormState',
     );
   });
@@ -241,8 +241,11 @@ describe('notifications-settings.ts — centralized save state (countries thread
     //
     // Match every settings-scoped saveAlertRules invocation; each must contain
     // `...state` and the settings lifecycle signal so a Retry-After wait cannot
-    // outlive the panel that initiated it.
-    const calls = settingsSrc.match(/saveAlertRules\(\{[\s\S]*?\},\s*signal\)/g) ?? [];
+    // outlive the panel that initiated it. The one sanctioned exception is the
+    // close-time flush (#4273): a pending debounced save dispatched from the
+    // abort handler must NOT ride the already-aborting signal, so that call
+    // site carries the explicit `opts?.flush ? undefined : signal` tail.
+    const calls = settingsSrc.match(/saveAlertRules\(\{[\s\S]*?\},\s*(?:signal|opts\?\.flush \? undefined : signal)\)/g) ?? [];
     assert.ok(calls.length >= 4, `expected ≥4 saveAlertRules call sites, found ${calls.length}`);
     for (const call of calls) {
       assert.match(

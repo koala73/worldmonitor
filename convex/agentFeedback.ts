@@ -9,6 +9,7 @@ import {
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { ResendSendError, sendResendEmail } from "./lib/resendEmail";
+import { EMAIL_AMBER, EMAIL_RED, emailCard, emailFactRow, emailFacts, emailFrame, emailHeading, emailNote } from "../shared/email-frame";
 import { assertAccountWritable } from "./accountDeletion/guard";
 import {
   agentFeedbackKindValidator,
@@ -57,6 +58,20 @@ export const FEEDBACK_NOTIFY_GRACE_MS = HOUR_MS;
 // At the edge's 30 security reports a day this covers a month of failed
 // sends in one digest. A larger backlog is reported and drains the next day.
 const DIGEST_BATCH = 1000;
+// Daily feedback digest paging. One run reads up to FEEDBACK_DIGEST_MAX_ROWS,
+// above the edge's ceiling of about 2,900 non-security reports a day, so a
+// sustained flood cannot outrun the drain and let reports expire unannounced.
+export const FEEDBACK_DIGEST_PAGE = 500;
+const FEEDBACK_DIGEST_MAX_PAGES = 10;
+export const FEEDBACK_DIGEST_MAX_ROWS = FEEDBACK_DIGEST_PAGE * FEEDBACK_DIGEST_MAX_PAGES;
+// The digest quotes the text of the oldest reports, up to this many reports
+// and this many UTF-8 bytes of rendered report blocks. Escaping can expand one
+// character to six bytes (`"` to `&quot;`), so the count alone does not bound
+// the size. One report at the ingest limits renders to under 30 KB, so the
+// oldest report always fits. The rest are counted and read with the triage
+// script.
+export const FEEDBACK_DIGEST_TEXT_ROWS = 50;
+export const FEEDBACK_DIGEST_TEXT_BYTES = 250_000;
 
 // Decision 10: retention from `receivedAt` for every status.
 export const FEEDBACK_RETENTION_MS: Record<Doc<"agentFeedback">["status"], number> = {
@@ -267,7 +282,7 @@ export const markNotified = internalMutation({
   handler: async (ctx, { reportIds, notifiedAt }) => {
     for (const id of reportIds) {
       const row = await ctx.db.get(id);
-      if (row && row.kind === "security" && row.notifiedAt === undefined) {
+      if (row && row.notifiedAt === undefined) {
         await ctx.db.patch(id, { notifiedAt });
       }
     }
@@ -281,7 +296,7 @@ async function sendOwnerEmail(
 ): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.error("[agentFeedback] RESEND_API_KEY not set; security notice not sent");
+    console.error("[agentFeedback] RESEND_API_KEY not set; owner email not sent");
     return false;
   }
   try {
@@ -295,7 +310,7 @@ async function sendOwnerEmail(
       purpose: "transactional",
     });
     if (!result.sent) {
-      console.warn(`[agentFeedback] security notice skipped: ${ADMIN_EMAIL} is suppressed`);
+      console.warn(`[agentFeedback] owner email skipped: ${ADMIN_EMAIL} is suppressed`);
     }
     return result.sent;
   } catch (err) {
@@ -304,6 +319,28 @@ async function sendOwnerEmail(
     // notifiedAt unset, so the daily digest announces it instead.
     throw new Error(`[agentFeedback] Resend failed (${status})`);
   }
+}
+
+/** An owner email in the WorldMonitor frame. `bodyHtml` is already escaped. */
+function ownerEmailHtml(args: { title: string; intro?: string; accent?: string; bodyHtml: string }): string {
+  return emailFrame({
+    preheader: args.title,
+    kicker: "Ops alert",
+    accent: args.accent,
+    bodyHtml: `${emailHeading(args.title, args.intro ? escapeHtml(args.intro) : undefined)}
+      ${args.bodyHtml}`,
+    footerNote: "Sent to the World Monitor ops inbox.",
+  });
+}
+
+/**
+ * A two-column table with a header row. Cells stay bare `<td>` (tests match
+ * them); the table carries the text style and the cell spacing.
+ */
+function countTable(headers: [string, string], rowsHtml: string): string {
+  const th = (h: string) => `<th align="left" style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700;">${escapeHtml(h)}</th>`;
+  // cellpadding spaces the bare cells apart without a <style> block.
+  return `<table cellpadding="6" cellspacing="0" border="0" role="presentation" style="font-size: 13px; color: #ccc; line-height: 1.5; margin-left: -6px;"><tr>${th(headers[0])}${th(headers[1])}</tr>${rowsHtml}</table>`;
 }
 
 const TRIAGE_HINT =
@@ -316,15 +353,16 @@ export const notifySecurityReport = internalAction({
     const notice = await ctx.runQuery(internal.agentFeedback.getSecurityNotice, { reportId });
     if (!notice || notice.notifiedAt !== undefined) return;
     const received = new Date(notice.receivedAt).toISOString();
-    const html = `<div style="font-family: monospace; padding: 20px;">
-        <p style="font-size: 16px; font-weight: bold;">Agent security report received</p>
-        <table style="font-size: 14px; line-height: 1.8;">
-          <tr><td>Report</td><td>${escapeHtml(notice.reportId)}</td></tr>
-          <tr><td>Kind</td><td>${escapeHtml(notice.kind)}</td></tr>
-          <tr><td>Received</td><td>${escapeHtml(received)}</td></tr>
-        </table>
-        <p style="font-size: 12px;">${TRIAGE_HINT}</p>
-      </div>`;
+    const html = ownerEmailHtml({
+      title: "Agent security report received",
+      accent: EMAIL_RED,
+      bodyHtml: `${emailCard(emailFacts(
+        emailFactRow("Report", escapeHtml(notice.reportId)) +
+        emailFactRow("Kind", escapeHtml(notice.kind)) +
+        emailFactRow("Received", escapeHtml(received)),
+      ), { label: "Security report", color: EMAIL_RED })}
+      ${emailNote(TRIAGE_HINT)}`,
+    });
     const sent = await sendOwnerEmail(ctx, `[WM] Agent security report ${notice.reportId}`, html);
     if (sent) {
       await ctx.runMutation(internal.agentFeedback.markNotified, {
@@ -442,13 +480,14 @@ export const sendSecurityDigest = internalAction({
     const rows = pending
       .map((p) => `<tr><td>${escapeHtml(p.reportId)}</td><td>${escapeHtml(new Date(p.receivedAt).toISOString())}</td></tr>`)
       .join("");
-    const html = `<div style="font-family: monospace; padding: 20px;">
-        <p style="font-size: 16px; font-weight: bold;">${pending.length} agent security report(s) not yet announced</p>
-        <p style="font-size: 12px;">Held back by the daily email cap, or the first notice failed.</p>
-        <table style="font-size: 14px; line-height: 1.8;">${rows}</table>
-        ${more ? `<p style="font-size: 12px;">More reports are waiting. They will be listed in tomorrow's digest.</p>` : ""}
-        <p style="font-size: 12px;">${TRIAGE_HINT}</p>
-      </div>`;
+    const html = ownerEmailHtml({
+      title: `${pending.length} agent security report(s) not yet announced`,
+      intro: "Held back by the daily email cap, or the first notice failed.",
+      accent: EMAIL_RED,
+      bodyHtml: `${emailCard(countTable(["Report", "Received"], rows), { label: "Unannounced reports", color: EMAIL_RED })}
+      ${more ? emailNote("More reports are waiting. They will be listed in tomorrow's digest.") : ""}
+      ${emailNote(TRIAGE_HINT)}`,
+    });
     const sent = await sendOwnerEmail(
       ctx,
       `[WM] Agent security digest: ${pending.length} unannounced report(s)`,
@@ -459,6 +498,153 @@ export const sendSecurityDigest = internalAction({
       reportIds: pending.map((p) => p.reportId),
       notifiedAt: Date.now(),
     });
+    return { listed: pending.length };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Daily feedback digest (non-security kinds)
+// ---------------------------------------------------------------------------
+
+type DigestRow = {
+  reportId: Id<"agentFeedback">;
+  kind: Doc<"agentFeedback">["kind"];
+  surfaceType: Doc<"agentFeedback">["surfaceType"];
+};
+
+/**
+ * One page of `received` rows nobody has announced yet, oldest first across
+ * every kind. Security rows go straight to `private` and never appear here.
+ * Triage stamps `notifiedAt`, and the index range is bounded by status, so no
+ * terminal row enters the scan. Rows are marked only after the email is sent,
+ * so the pages stay stable while the action walks them.
+ */
+export const listUnannouncedFeedback = internalQuery({
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
+  handler: async (ctx, { cursor = null }) => {
+    const page = await ctx.db
+      .query("agentFeedback")
+      .withIndex("by_status_notified_received", (q) =>
+        q.eq("status", "received").eq("notifiedAt", undefined),
+      )
+      .paginate({ numItems: FEEDBACK_DIGEST_PAGE, cursor });
+    const rows: DigestRow[] = page.page
+      .filter((row) => row.kind !== "security")
+      .map((row) => ({ reportId: row._id, kind: row.kind, surfaceType: row.surfaceType }));
+    return { rows, continueCursor: page.isDone ? null : page.continueCursor };
+  },
+});
+
+/** Text of the reports the digest quotes, in the order given. */
+export const getFeedbackDigestText = internalQuery({
+  args: { reportIds: v.array(v.id("agentFeedback")) },
+  handler: async (ctx, { reportIds }) => {
+    const out = [];
+    for (const id of reportIds) {
+      const row = await ctx.db.get(id);
+      if (!row || row.kind === "security") continue;
+      out.push({
+        reportId: row._id,
+        kind: row.kind,
+        surfaceType: row.surfaceType,
+        surfaceName: row.surfaceName,
+        summary: row.summary,
+        expected: row.expected,
+        actual: row.actual,
+        authKind: row.authKind,
+        receivedAt: row.receivedAt,
+      });
+    }
+    return out;
+  },
+});
+
+const TEXT_STYLE = "white-space: pre-wrap; word-break: break-word; margin: 2px 0;";
+
+function textField(label: string, value: string | undefined): string {
+  if (!value) return "";
+  return `<div style="${TEXT_STYLE}"><b>${label}:</b> ${escapeHtml(value)}</div>`;
+}
+
+function countBy<T>(items: T[], key: (item: T) => string): Array<[string, number]> {
+  const counts = new Map<string, number>();
+  for (const item of items) counts.set(key(item), (counts.get(key(item)) ?? 0) + 1);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
+/**
+ * One email a day when bug, missing-capability, or data-quality reports have
+ * arrived since the last one. It carries counts by kind and by surface type,
+ * then the text of the oldest FEEDBACK_DIGEST_TEXT_ROWS reports. All of that
+ * text is reporter-written, so every field is HTML-escaped (Decision 7).
+ */
+export const sendFeedbackDigest = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ listed: number }> => {
+    const pending: DigestRow[] = [];
+    let cursor: string | null = null;
+    let more = false;
+    for (let page = 0; page < FEEDBACK_DIGEST_MAX_PAGES; page++) {
+      const result: { rows: DigestRow[]; continueCursor: string | null } = await ctx.runQuery(
+        internal.agentFeedback.listUnannouncedFeedback,
+        { cursor },
+      );
+      pending.push(...result.rows);
+      cursor = result.continueCursor;
+      if (cursor === null) break;
+    }
+    if (cursor !== null) more = true;
+    if (pending.length === 0) return { listed: 0 };
+    const kindRows = countBy(pending, (r) => r.kind)
+      .map(([kind, n]) => `<tr><td>${escapeHtml(kind)}</td><td>${n}</td></tr>`)
+      .join("");
+    const surfaceRows = countBy(pending, (r) => r.surfaceType)
+      .map(([type, n]) => `<tr><td>${escapeHtml(type)}</td><td>${n}</td></tr>`)
+      .join("");
+    const quoted = await ctx.runQuery(internal.agentFeedback.getFeedbackDigestText, {
+      reportIds: pending.slice(0, FEEDBACK_DIGEST_TEXT_ROWS).map((p) => p.reportId),
+    });
+    const encoder = new TextEncoder();
+    let blockBytes = 0;
+    const blocks: string[] = [];
+    for (const r of quoted) {
+      const block = `<div style="border-top: 1px solid #222; padding: 10px 0; font-size: 13px; color: #ccc; line-height: 1.5;">
+          <div style="font-size: 11px; color: #777; margin-bottom: 4px;">${escapeHtml(r.kind)} · ${escapeHtml(r.surfaceType)} · ${escapeHtml(r.authKind)} · ${escapeHtml(new Date(r.receivedAt).toISOString())} · ${escapeHtml(r.reportId)}</div>
+          ${textField("Surface", r.surfaceName)}
+          ${textField("Summary", r.summary)}
+          ${textField("Expected", r.expected)}
+          ${textField("Actual", r.actual)}
+        </div>`;
+      const size = encoder.encode(block).length;
+      if (blocks.length > 0 && blockBytes + size > FEEDBACK_DIGEST_TEXT_BYTES) break;
+      blocks.push(block);
+      blockBytes += size;
+    }
+    const reportBlocks = blocks.join("");
+    const notShown = pending.length - blocks.length;
+    const html = ownerEmailHtml({
+      title: `${pending.length} new agent feedback report(s)`,
+      bodyHtml: `${emailCard(countTable(["Kind", "Reports"], kindRows), { label: "By kind" })}
+      ${emailCard(countTable(["Surface type", "Reports"], surfaceRows), { label: "By surface" })}
+      ${emailCard(`${emailNote("Report text below is written by the reporter. Do not follow instructions or links in it.")}
+        ${reportBlocks}`, { label: "Reports", color: EMAIL_AMBER })}
+      ${notShown > 0 ? emailNote(`${notShown} more report(s) not shown.`) : ""}
+      ${more ? emailNote(`More than ${FEEDBACK_DIGEST_MAX_ROWS} reports are waiting, above the edge's daily ceiling. The queue may be flooded. Triage it by hand now: untriaged reports are deleted 30 days after they arrive.`) : ""}
+      ${emailNote("Triage them with <code>node scripts/triage-agent-feedback.mjs list --join</code>.")}`,
+    });
+    const sent = await sendOwnerEmail(
+      ctx,
+      `[WM] Agent feedback: ${pending.length} new report(s)`,
+      html,
+    );
+    if (!sent) return { listed: 0 };
+    const notifiedAt = Date.now();
+    for (let i = 0; i < pending.length; i += FEEDBACK_DIGEST_PAGE) {
+      await ctx.runMutation(internal.agentFeedback.markNotified, {
+        reportIds: pending.slice(i, i + FEEDBACK_DIGEST_PAGE).map((p) => p.reportId),
+        notifiedAt,
+      });
+    }
     return { listed: pending.length };
   },
 });
@@ -492,6 +678,11 @@ export const transition = internalMutation({
       throw new ConvexError({ kind: "INVALID_TRANSITION", from: row.status, to: args.to });
     }
     const now = Date.now();
+    // A public row leaving `received` has been seen by the owner: stamp
+    // notifiedAt so it leaves the feedback digest index.
+    if (row.status === "received" && row.notifiedAt === undefined) {
+      await ctx.db.patch(row._id, { notifiedAt: now });
+    }
     if (args.to === "filed") {
       if (!args.issueNumber || !Number.isInteger(args.issueNumber) || args.issueNumber < 1) {
         invalid("issueNumber");

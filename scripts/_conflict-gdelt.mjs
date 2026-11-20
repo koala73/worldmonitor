@@ -26,6 +26,7 @@ export const GDELT_COUNTRY_NAMES = {
   SA: 'Saudi Arabia', IR: 'Iran', IL: 'Israel', LB: 'Lebanon', QA: 'Qatar',
   AE: 'United Arab Emirates', KW: 'Kuwait', BH: 'Bahrain', OM: 'Oman',
   RU: 'Russia', DJ: 'Djibouti', ER: 'Eritrea',
+  VE: 'Venezuela', PK: 'Pakistan', IN: 'India', TW: 'Taiwan',
 };
 
 export const GDELT_CONFLICT_TERMS = '(clashes OR airstrike OR shelling OR militants OR offensive OR killed)';
@@ -94,7 +95,7 @@ function canonicalGdeltArticleUrl(value) {
     if (url.protocol !== 'https:' && url.protocol !== 'http:') return '';
     url.hash = '';
     const params = [...url.searchParams.entries()].sort(
-      ([keyA, valueA], [keyB, valueB]) => keyA.localeCompare(keyB) || valueA.localeCompare(valueB),
+      ([keyA, valueA], [keyB, valueB]) => keyA.localeCompare(keyB, 'en-US') || valueA.localeCompare(valueB, 'en-US'),
     );
     url.search = '';
     for (const [key, paramValue] of params) url.searchParams.append(key, paramValue);

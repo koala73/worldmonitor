@@ -15,7 +15,7 @@ function relay() {
   let body = '[{"id":"one"},{"id":"two"}]';
   let destroyed = false;
   const context = {
-    URL, URLSearchParams, Date: class extends Date { static now() { return now; } }, Buffer, PORT: 3004, CHROME_UA: 'WorldMonitor-test', process: { env: {} },
+    AbortSignal, URL, URLSearchParams, Date: class extends Date { static now() { return now; } }, Buffer, PORT: 3004, CHROME_UA: 'WorldMonitor-test', process: { env: {} },
     console: { log() {}, error() {} },
     sendCompressed: (_req, res, status, headers, data) => res.done({ status, headers, data }),
     safeEnd: (res, status, headers, data) => res.done({ status, headers, data }),

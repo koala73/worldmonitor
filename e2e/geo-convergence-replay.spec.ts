@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 test('replaying domain snapshots keeps the visible convergence count and confidence stable', async ({ page }, testInfo) => {
   await page.goto('/tests/runtime-harness.html');
@@ -39,10 +40,10 @@ test('replaying domain snapshots keeps the visible convergence count and confide
   await page.getByRole('button', { name: 'Replay same feeds', exact: true }).click();
   await expect(page.locator('.signal-description')).toContainText('3 events/24h');
   await expect(page.locator('.signal-confidence')).toContainText('81%');
-  await page.screenshot({ path: testInfo.outputPath('geo-replay.png'), fullPage: true, animations: 'disabled' });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('geo-replay.png'), fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: 'Add one flight', exact: true }).click();
   await expect(page.locator('.signal-description')).toContainText('4 events/24h');
   await expect(page.locator('.signal-confidence')).toContainText('83%');
-  await page.screenshot({ path: testInfo.outputPath('geo-new-flight.png'), fullPage: true, animations: 'disabled' });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('geo-new-flight.png'), fullPage: true, animations: 'disabled' });
 });

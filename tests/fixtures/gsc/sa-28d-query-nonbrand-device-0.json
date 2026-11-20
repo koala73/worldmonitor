@@ -1,0 +1,35 @@
+{
+  "rows": [
+    {
+      "keys": [
+        "kerch strait",
+        "DESKTOP"
+      ],
+      "clicks": 0,
+      "impressions": 980,
+      "ctr": 0.0,
+      "position": 9.2
+    },
+    {
+      "keys": [
+        "kerch strait",
+        "MOBILE"
+      ],
+      "clicks": 0,
+      "impressions": 20,
+      "ctr": 0.0,
+      "position": 10.0
+    },
+    {
+      "keys": [
+        "pizza index",
+        "MOBILE"
+      ],
+      "clicks": 10,
+      "impressions": 800,
+      "ctr": 0.0125,
+      "position": 7.0
+    }
+  ],
+  "responseAggregationType": "byPage"
+}

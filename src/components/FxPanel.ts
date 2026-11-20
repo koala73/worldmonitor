@@ -315,8 +315,8 @@ export class FxPanel extends Panel {
     const stressedCount = this.stress.filter((r) => r.stressed).length;
 
     return safeHtml`
-      <div class="fx-scroll">
-        <table class="fx-table">
+      <div class="fx-scroll table-scroll table-scroll-pinned-start" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+        <table class="wm-table fx-table">
           <thead>
             <tr>
               <th scope="col" class="fx-ccy">${t('components.fx.currency')}</th>
@@ -354,8 +354,8 @@ export class FxPanel extends Panel {
 
       sections.push(safeHtml`
         <div class="fx-section-title">${t('components.fx.usdBase')}</div>
-        <div class="fx-scroll">
-          <table class="fx-table">
+        <div class="fx-scroll table-scroll table-scroll-pinned-start" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+          <table class="wm-table fx-table">
             <thead>
               <tr>
                 <th scope="col" class="fx-ccy">${t('components.fx.currency')}</th>
@@ -384,8 +384,8 @@ export class FxPanel extends Panel {
 
       sections.push(safeHtml`
         <div class="fx-section-title">${t('components.fx.eurBase')}</div>
-        <div class="fx-scroll">
-          <table class="fx-table">
+        <div class="fx-scroll table-scroll table-scroll-pinned-start" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+          <table class="wm-table fx-table">
             <thead>
               <tr>
                 <th scope="col" class="fx-ccy">${t('components.fx.pair')}</th>
@@ -427,8 +427,8 @@ export class FxPanel extends Panel {
 
     return safeHtml`
       <div class="fx-section-title">${t('components.fx.rubBase')}</div>
-      <div class="fx-scroll">
-        <table class="fx-table">
+      <div class="fx-scroll table-scroll table-scroll-pinned-start" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+        <table class="wm-table fx-table">
           <thead>
             <tr>
               <th scope="col" class="fx-ccy">${t('components.fx.currency')}</th>

@@ -96,6 +96,8 @@ vi.mock('@/services/analytics', async (importOriginal) => ({
 const SNAPSHOT_TS = 1_700_000_000_000;
 vi.mock('@/services/storage', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/storage')>()),
+  // jsdom has no IndexedDB, so the real probe reports storage blocked.
+  isStorageAvailable: async () => true,
   getSnapshotTimestamps: async () => [SNAPSHOT_TS],
   getSnapshotAt: async () => ({
     timestamp: SNAPSHOT_TS,

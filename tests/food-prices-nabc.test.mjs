@@ -1,44 +1,67 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { NABC_BASKET, collect, nuxtData, parseNabcCommodity } from '../scripts/lib/food-prices-adapters/nabc.mjs';
+import { NABC_BASKET, NABC_FARM_PRICES_URL, collect, nuxtData, parseNabcFarmPrices } from '../scripts/lib/food-prices-adapters/nabc.mjs';
 
-const pages = JSON.parse(readFileSync(new URL('./fixtures/food-prices/nabc.json', import.meta.url), 'utf8'));
-const payload = html => JSON.parse(/>(\[[\s\S]*\])<\/script>$/.exec(html)[1]);
-const withPayload = (html, nodes) => html.replace(/>\[[\s\S]*\]<\/script>$/, `>${JSON.stringify(nodes)}</script>`);
+// NABC closed its weekly /commodity pages (HTTP 410 since 2026-11-02). The
+// fixture is an excerpt of /dashboard/farm-prices fetched on 2026-11-03: real
+// values, with each daily series cut to its last 15 points and each market list
+// to two rows, re-encoded in the page's Nuxt reference format.
+const page = readFileSync(new URL('./fixtures/food-prices/nabc-farm-prices-2026-11-03.html', import.meta.url), 'utf8');
+const detail = () => nuxtData(page, 'farm-prices-detail');
+const encode = value => {
+  const nodes = [['ShallowReactive', 1], { data: 2 }, ['ShallowReactive', 3], { 'farm-prices-detail': 4 }];
+  const add = item => {
+    const index = nodes.length;
+    nodes.push(null);
+    nodes[index] = Array.isArray(item) ? item.map(add)
+      : item && typeof item === 'object' ? Object.fromEntries(Object.entries(item).map(([k, v]) => [k, add(v)]))
+        : item;
+    return index;
+  };
+  add(value);
+  return `<script type="application/json" id="__NUXT_DATA__">${JSON.stringify(nodes)}</script>`;
+};
+const withProducts = edit => encode({ ...detail(), products: edit(detail().products) });
 
-test('NABC keeps OAE weekly national farm-gate averages for the latest week and the week before', () => {
-  const { date, rows, missing } = parseNabcCommodity(pages['ข้าว'], 'ข้าว');
-  assert.equal(date, '2026-10-26');
-  assert.deepEqual(missing, []);
-  const paddy = rows.filter(r => r.item === 'Paddy rice, white (15% moisture)');
-  assert.deepEqual(paddy.map(r => [r.date, r.price]), [['2026-10-19', 8841.54], ['2026-10-26', 8754.63]]);
-  assert.deepEqual({ ...paddy[1], price: 0 }, { item: 'Paddy rice, white (15% moisture)', market: 'National average', marketType: 'farmgate', unit: 'tonne', currency: 'THB', date: '2026-10-26', price: 0, origin: '' });
-  assert.equal(rows.length, 8);
-  const eggs = parseNabcCommodity(pages['ไข่ไก่'], 'ไข่ไก่').rows.find(r => r.item === 'Chicken eggs (mixed sizes)' && r.date === '2026-10-26');
-  assert.equal(eggs.price, 392.86);
-  assert.equal(eggs.unit, '100 eggs');
-  assert.equal(parseNabcCommodity(pages['สุกร'], 'สุกร').rows.find(r => r.date === '2026-10-26').price, 68.84);
+test('NABC reads the median price major markets paid farmers on the latest day and a week earlier', () => {
+  const { date, rows, missing } = parseNabcFarmPrices(page);
+  assert.equal(date, '2026-11-03');
+  const rice = rows.filter(r => r.item === 'Paddy rice, Hom Mali 105');
+  assert.deepEqual(rice.map(r => [r.date, r.price]), [['2026-10-27', 17900], ['2026-11-03', 15350]]);
+  assert.deepEqual(rice[1], {
+    item: 'Paddy rice, Hom Mali 105', market: 'Major buying markets (median)', marketType: 'farmgate',
+    unit: 'tonne', currency: 'THB', date: '2026-11-03', price: 15350, origin: '',
+  });
+  assert.equal(rows.find(r => r.item === 'Chicken eggs' && r.date === '2026-11-03').unit, '100 eggs');
+  assert.equal(rows.find(r => r.item === 'Live hogs (over 100 kg)' && r.date === '2026-11-03').price, 74);
+  assert.equal(rows.find(r => r.item === 'Feed maize grain (14.5% moisture)' && r.date === '2026-10-27').price, 9.5);
+  assert.deepEqual(missing, ['Oil palm fresh fruit bunches (over 15 kg)']);
+  assert.ok(!rows.some(r => r.item.startsWith('Oil palm')), 'a product a day behind is left out rather than dated differently');
+  assert.ok(!rows.some(r => /rubber/i.test(r.item)), 'rubber is not a food price');
+  assert.equal(rows.length, 12);
+  assert.ok(rows.every(r => r.currency === 'THB' && r.price > 0 && ['2026-10-27', '2026-11-03'].includes(r.date)));
 });
 
-test('NABC parses every basket page with positive THB prices and only mapped varieties', () => {
-  const rows = Object.keys(NABC_BASKET).flatMap(th => parseNabcCommodity(pages[th], th).rows);
-  const items = new Set(Object.values(NABC_BASKET).flatMap(variants => Object.values(variants)));
-  assert.equal(rows.length, 2 * items.size);
-  assert.ok(rows.every(r => r.price > 0 && r.currency === 'THB' && items.has(r.item) && ['2026-10-19', '2026-10-26'].includes(r.date)));
-  assert.equal(new Set(rows.map(r => `${r.item}|${r.date}`)).size, rows.length);
+test('NABC maps every food product the dashboard publishes', () => {
+  const published = detail().products.map(p => p.key).filter(key => key !== 'rubber_sheet3').sort();
+  assert.deepEqual(Object.keys(NABC_BASKET).sort(), published);
 });
 
-test('NABC fails closed when the page payload or series layout changes', () => {
-  assert.throws(() => parseNabcCommodity('<html>blocked</html>', 'ข้าว'), /nabc page payload format changed/);
-  assert.throws(() => parseNabcCommodity(pages['สุกร'], 'ข้าว'), /format changed/);
-  const nodes = payload(pages['สุกร']);
-  const unitAt = nodes.indexOf('บาท/กก.');
-  assert.throws(() => parseNabcCommodity(withPayload(pages['สุกร'], nodes.map((n, i) => i === unitAt ? 'บาท/ตัว' : n)), 'สุกร'), /format changed/);
-  const weekEnd = nodes.indexOf('2026-11-01');
-  assert.throws(() => parseNabcCommodity(withPayload(pages['สุกร'], nodes.map((n, i) => i === weekEnd ? '2026-11-03' : n)), 'สุกร'), /week format changed/);
-  const renamed = nodes.map(n => n === 'สุกรมีชีวิต น้ำหนักเกิน 100 กก.' ? 'Live hogs' : n);
-  assert.throws(() => parseNabcCommodity(withPayload(pages['สุกร'], renamed), 'สุกร'), /no latest-week national prices/);
+test('NABC fails closed when the dashboard payload or a product layout changes', () => {
+  assert.throws(() => parseNabcFarmPrices('<html>closed</html>'), /nabc page payload format changed/);
+  assert.throws(() => parseNabcFarmPrices(withProducts(ps => ps.map(p => p.key === 'swine' ? { ...p, unit_en: 'THB/head' } : p))), /nabc swine format changed/);
+  assert.throws(() => parseNabcFarmPrices(withProducts(ps => ps.map(p => p.key === 'egg' ? { ...p, series: p.series.map(s => ({ ...s, d: '03/11/2026' })) } : p))), /nabc egg format changed/);
+  assert.throws(() => parseNabcFarmPrices(withProducts(ps => ps.filter(p => p.key === 'rubber_sheet3'))), /nabc has no food prices/);
+  const renamed = parseNabcFarmPrices(withProducts(ps => ps.map(p => p.key === 'broiler' ? { ...p, key: 'broiler_live' } : p)));
+  assert.ok(renamed.missing.includes('Live broilers'));
+});
+
+test('NABC skips a non-positive median instead of publishing it', () => {
+  const { rows, missing } = parseNabcFarmPrices(withProducts(ps => ps.map(p => p.key === 'egg'
+    ? { ...p, series: p.series.map(s => s.d === '2026-11-03' ? { ...s, med: 0 } : s) } : p)));
+  assert.ok(!rows.some(r => r.item === 'Chicken eggs' && r.date === '2026-11-03'));
+  assert.ok(missing.includes('Chicken eggs'));
 });
 
 test('NABC payload decoder resolves Nuxt references and reactive wrappers', () => {
@@ -47,19 +70,17 @@ test('NABC payload decoder resolves Nuxt references and reactive wrappers', () =
   assert.throws(() => nuxtData(html, 'missing'), /missing/);
 });
 
-test('NABC collect fetches one page per basket commodity and refreshes both weeks', async () => {
+test('NABC collect fetches the dashboard once and refreshes both dates', async () => {
   const urls = [];
   const warnings = [];
   const result = await collect({
-    get: async url => {
-      urls.push(url);
-      return pages[decodeURIComponent(new URL(url).pathname.split('/').pop())];
-    },
+    get: async url => { urls.push(url); return page; },
     warn: message => warnings.push(message),
   });
-  assert.equal(urls.length, Object.keys(NABC_BASKET).length);
-  assert.deepEqual(urls.map(url => decodeURIComponent(url.slice('https://www.nabc.go.th/commodity/'.length))), Object.keys(NABC_BASKET));
-  assert.deepEqual(result.refreshedReports.map(r => r.date).sort(), ['2026-10-19', '2026-10-26']);
-  assert.equal(result.observations.length, 26);
-  assert.deepEqual(warnings, []);
+  assert.deepEqual(urls, [NABC_FARM_PRICES_URL]);
+  assert.equal(NABC_FARM_PRICES_URL, 'https://www.nabc.go.th/dashboard/farm-prices');
+  assert.deepEqual(result.refreshedReports.map(r => r.date).sort(), ['2026-10-27', '2026-11-03']);
+  assert.equal(result.observations.length, 12);
+  assert.equal(result.reportUrl, NABC_FARM_PRICES_URL);
+  assert.deepEqual(warnings, ['2026-11-03 lacks Oil palm fresh fruit bunches (over 15 kg)']);
 });

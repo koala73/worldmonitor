@@ -6,6 +6,7 @@ import type { ListGlobalTendersRequest, ServerContext } from '../src/generated/s
 import { __testing__ as health } from '../api/health.js';
 import { readSectionFreshness } from '../scripts/_bundle-runner.mjs';
 import { createTenderReceipt, TENDER_RECEIPTS_KEY } from '../scripts/_global-tender-receipts.mjs';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 const NOW = Date.parse('2026-09-11T14:00:00Z');
 const KEY = 'economic:global-tenders:v1';
@@ -71,7 +72,8 @@ function fixture(t: TestContext) {
     }
     throw new Error(`Unexpected Redis command ${op}`);
   };
-  t.mock.method(globalThis, 'fetch', async (url, options = {}) => {
+  // runSeed's fenced canonical/seed-meta writes reach this double as SETs.
+  t.mock.method(globalThis, 'fetch', withSeedLockFence(async (url, options = {}) => {
     const parsed = new URL(String(url));
     if (parsed.hostname === 'redis.fixture') {
       if (parsed.pathname.startsWith('/get/')) {
@@ -95,7 +97,7 @@ function fixture(t: TestContext) {
       } }));
     }
     return Response.json(state.payload);
-  });
+  }));
   const adapters = [['world-bank', fetchWorldBank], ['ted', async ({ now }: { now: number }) => {
     state.siblingCalls++;
     if (state.siblingFailed) throw new Error('sibling failed');
@@ -145,7 +147,7 @@ test('repeated HTTP 500 retains usable records and source clocks independently o
     assert.equal(Date.parse(response.sourceStatuses[0].lastSuccessfulAt), NOW);
     assert.equal(f.read(SOURCE_META).fetchedAt, NOW);
     assert.equal(f.read(SOURCE_META).lastAttemptAt, new Date(f.state.now).toISOString());
-    assert.equal(f.sourceHealth().status, 'OK', 'retained rows inside the 24h source budget are not an alarm');
+    assert.equal(f.sourceHealth().status, 'OK', 'retained rows inside the 3-day source budget are not an alarm');
     assert.equal(f.read(KEY)._seed.fetchedAt, f.state.now);
     assert.equal(f.receipts[0].sources[0].outcome, 'error');
     assert.equal(f.receipts[0].sources[0].effectiveState, 'stale');
@@ -154,7 +156,7 @@ test('repeated HTTP 500 retains usable records and source clocks independently o
     assert.equal(Date.parse(f.receipts[0].sources[0].lastSuccessfulAt), NOW);
     const freshness = await readSectionFreshness({ canonicalKey: KEY, completionMetaKey: COMPLETE }, async key => f.read(key));
     assert.equal(freshness.fetchedAt, f.state.now);
-    assert.ok(f.state.now + 60 * 60_000 - freshness.fetchedAt >= 0.8 * 60 * 60_000, 'next hourly run remains due');
+    assert.ok(f.state.now + 24 * 60 * 60_000 - freshness.fetchedAt >= 0.8 * 24 * 60 * 60_000, 'next daily run remains due');
   }
   assert.equal(f.state.attempts, 7, 'one initial success and three attempts per failed run');
   assert.equal(f.read(SOURCE_META).consecutiveFailures, 2);
@@ -199,8 +201,8 @@ test('confirmed empty clears old data, and a subsequent failure stays distinct f
   assert.equal(f.read(SOURCE_META).confirmedEmpty, true);
   assert.equal(f.read(SOURCE_META).sourceState, 'error');
   assert.equal(f.read(SOURCE_META).fetchedAt, emptyAt);
-  assert.equal(f.sourceHealth().status, 'OK', 'a verified empty result is still true inside the 24h budget');
-  f.state.now = emptyAt + 24 * 60 * 60_000 + 60_000;
+  assert.equal(f.sourceHealth().status, 'OK', 'a verified empty result is still true inside the 3-day budget');
+  f.state.now = emptyAt + 3 * 24 * 60 * 60_000 + 60_000;
   assert.notEqual(f.sourceHealth().status, 'OK', 'past the budget the failure warns again');
 });
 
@@ -216,8 +218,8 @@ for (const scenario of ['expired-deadline', 'expired-source', 'missing', 'unusab
     if (scenario === 'missing') f.values.delete(KEY);
     f.state.mode = '500';
     // Keep refreshing the aggregate through healthy siblings, while World Bank ages out.
-    const hourly = Array.from({ length: 24 }, (_, hour) => (hour + 1) * 60);
-    for (const minutes of scenario === 'expired-source' ? hourly : [60]) {
+    const daily = Array.from({ length: 3 }, (_, day) => (day + 1) * 24 * 60);
+    for (const minutes of scenario === 'expired-source' ? daily : [60]) {
       f.state.now = NOW + minutes * 60_000;
       await f.run();
     }
@@ -231,7 +233,8 @@ for (const scenario of ['expired-deadline', 'expired-source', 'missing', 'unusab
 test('expired Redis canonical is unavailable at the actual reader', async t => {
   const f = fixture(t);
   await f.run();
-  f.state.now += 181 * 60_000;
+  // The canonical snapshot's TTL is four days (CACHE_TTL_SECONDS).
+  f.state.now += (4 * 24 * 60 + 1) * 60_000;
   assert.equal((await f.rpc()).availability, 'unavailable');
 });
 

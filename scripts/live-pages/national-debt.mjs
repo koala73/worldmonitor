@@ -31,9 +31,9 @@ function fiscalPeriodList() {
   }
   const sortName = (name) => name.replace(/^The /, '');
   const items = [...groups.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
+    .sort(([a], [b]) => a.localeCompare(b, 'en-US'))
     .map(([, { label, names }]) => {
-      const sorted = names.sort((a, b) => sortName(a).localeCompare(sortName(b)));
+      const sorted = names.sort((a, b) => sortName(a).localeCompare(sortName(b), 'en-US'));
       return `        <li>${label}: ${escapeHtml(sorted.join(', '))}</li>`;
     });
   return `      <ul>\n${items.join('\n')}\n      </ul>`;

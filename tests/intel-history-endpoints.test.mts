@@ -29,6 +29,7 @@ process.env.UPSTASH_REDIS_REST_TOKEN = 'test-upstash-token';
 import { normalizeForEmbedding } from '../scripts/lib/brief-embedding.mjs';
 import {
   EMBED_DIMS,
+  EMBED_MODEL,
   OPENROUTER_EMBEDDINGS_URL,
 } from '../scripts/lib/brief-dedup-consts.mjs';
 import { normalizeQueryText } from '../server/_shared/intel-history-embed';
@@ -230,6 +231,16 @@ describe('embedding dimension contract', () => {
     );
     assert.ok(indexBlock, 'the by_embedding vector index must declare dimensions');
     assert.equal(Number(indexBlock[1]), EMBED_DIMS);
+  });
+
+  // The per-row stamp (#5742) names the space every stored vector lives in.
+  // It must be the seeder's model@dims literally, or a model swap on one side
+  // would stamp rows as current while embedding them in another space.
+  it('pins INTEL_HISTORY_EMBED_MODEL to the seeder model and dimension', () => {
+    const convexSrc = readFileSync(resolve(root, 'convex/intelHistory.ts'), 'utf8');
+    const stamp = convexSrc.match(/INTEL_HISTORY_EMBED_MODEL\s*=\s*"([^"]+)"/);
+    assert.ok(stamp, 'INTEL_HISTORY_EMBED_MODEL must be a string literal');
+    assert.equal(stamp[1], `${EMBED_MODEL}@${EMBED_DIMS}`);
   });
 });
 

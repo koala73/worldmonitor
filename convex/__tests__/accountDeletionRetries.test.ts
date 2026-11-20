@@ -33,7 +33,8 @@ function isRedisPipelineUrl(urlLike: string): boolean {
     return false;
   }
 }
-function success(input: RequestInfo | URL): Promise<Response> {
+function success(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  if (String(init?.body).startsWith('["SCAN",')) return Promise.resolve(Response.json({ result: ["0", []] }));
   const url = String(input);
   if (isClerkApiUrl(url)) return Promise.resolve(new Response(null, { status: 204 }));
   return Promise.resolve(Response.json(isRedisPipelineUrl(url) ? [{ result: 1 }] : { result: null }));
@@ -86,8 +87,8 @@ describe("external account deletion retry policy", () => {
   );
 
   test.each([401, 403])("permanent Clerk HTTP %i fails without retries", async (status) => {
-    fetchMock.mockImplementation((input) => isClerkApiUrl(String(input))
-      ? Promise.resolve(new Response(null, { status })) : success(input));
+    fetchMock.mockImplementation((input, init) => isClerkApiUrl(String(input))
+      ? Promise.resolve(new Response(null, { status })) : success(input, init));
     const { t, deletionId, row } = await setup();
     expect(await t.action(internal.accountDeletion.sideEffects.runExternalErase, { deletionId }))
       .toEqual({ status: "failed" });
@@ -118,8 +119,8 @@ describe("external account deletion retry policy", () => {
   });
 
   test("persistent transient failures back off and stop after five attempts", async () => {
-    fetchMock.mockImplementation((input) => isClerkApiUrl(String(input))
-      ? Promise.resolve(new Response(null, { status: 503 })) : success(input));
+    fetchMock.mockImplementation((input, init) => isClerkApiUrl(String(input))
+      ? Promise.resolve(new Response(null, { status: 503 })) : success(input, init));
     const { t, deletionId, row } = await setup();
     const startedAt = Date.now();
     await t.action(internal.accountDeletion.sideEffects.runExternalErase, { deletionId });
@@ -151,13 +152,13 @@ describe("external account deletion retry policy", () => {
   // The MCP negative-cache sentinels are SET commands inside the same
   // revocation pipeline as the DELs, so a per-command error on one of them —
   // Upstash answers HTTP 200 and reports the failure in the body — must still
-  // block completion. Only the SET results are poisoned here; the DELs report
-  // success, so this fails for the reason it claims to.
+  // block completion. Only the sentinel results are poisoned here; every other
+  // command reports success, so this fails for the reason it claims to.
   test("an HTTP 200 error on the MCP sentinel write cannot complete deletion", async () => {
     fetchMock.mockImplementation(async (input, init) => {
       if (!isRedisPipelineUrl(String(input))) return success(input);
       const commands = JSON.parse(String(init?.body ?? "[]")) as string[][];
-      return Response.json(commands.map((command) => command[0] === "SET"
+      return Response.json(commands.map((command) => command[1]?.startsWith("pro-mcp-token-neg:")
         ? { error: "ERR denied" }
         : { result: 1 }));
     });
@@ -178,18 +179,56 @@ describe("external account deletion retry policy", () => {
       .filter(([input]) => isRedisPipelineUrl(String(input)))
       .map(([, init]) => JSON.parse(String(init?.body ?? "[]")) as string[][]);
     // One pipeline for the whole revocation set, not one fetch per token.
-    const withSets = pipelines.filter((commands) => commands.some((c) => c[0] === "SET"));
+    const withSets = pipelines.filter((commands) => commands.some((c) => c[0] === "SET" && c[1].startsWith("pro-mcp-token-neg:")));
     expect(withSets).toHaveLength(1);
     expect(withSets[0]?.filter((c) => c[0] === "SET").map((c) => c[1])).toEqual([
+      "wm:notif:sent-erased:v1:user_retry",
       "pro-mcp-token-neg:token_1",
       "pro-mcp-token-neg:token_2",
     ]);
   });
 
+  // The relay writes a recipient's alert history when its delivery pass ends,
+  // which can be after this pipeline ran. That write is refused while the
+  // marker exists (scripts/lib/sent-alert-history.cjs). The pipeline is not a
+  // transaction, so the marker has to be set before the history is deleted: a
+  // write landing between a DEL and a later SET would bring the history back.
+  test("the alert-history deletion marker is set before the history is deleted", async () => {
+    const { t, deletionId } = await setup();
+    await t.action(internal.accountDeletion.sideEffects.runExternalErase, { deletionId });
+    const commands = fetchMock.mock.calls
+      .filter(([input]) => isRedisPipelineUrl(String(input)))
+      .map(([, init]) => JSON.parse(String(init?.body ?? "[]")) as string[][])
+      .find((pipeline) => pipeline.some((c) => c[1] === "wm:notif:sent:v1:user_retry")) ?? [];
+    const marker = commands.findIndex((c) => c[1] === "wm:notif:sent-erased:v1:user_retry");
+    const historyDelete = commands.findIndex((c) => c[0] === "DEL" && c[1] === "wm:notif:sent:v1:user_retry");
+    expect(commands[marker]).toEqual([
+      "SET", "wm:notif:sent-erased:v1:user_retry", "1", "EX", String(7 * 24 * 60 * 60),
+    ]);
+    expect(historyDelete).toBeGreaterThan(marker);
+  });
+
+  // Without the marker a late relay write recreates the deleted history, so a
+  // marker that was not stored must not let the deletion finish.
+  test("an HTTP 200 error on the alert-history marker write cannot complete deletion", async () => {
+    fetchMock.mockImplementation(async (input, init) => {
+      if (!isRedisPipelineUrl(String(input))) return success(input);
+      const commands = JSON.parse(String(init?.body ?? "[]")) as string[][];
+      return Response.json(commands.map((command) => command[1]?.startsWith("wm:notif:sent-erased:v1:")
+        ? { error: "ERR denied" }
+        : { result: 1 }));
+    });
+    const { t, deletionId, row } = await setup();
+    expect(await t.action(internal.accountDeletion.sideEffects.runExternalErase, { deletionId }))
+      .toEqual({ status: "failed" });
+    expect((await row())?.redisClearedAt).toBeUndefined();
+    expect(fetchMock.mock.calls.some(([input]) => isClerkApiUrl(String(input)))).toBe(false);
+  });
+
   test.each(["/get/", "/pipeline"])("Redis HTTP 200 error on %s cannot complete deletion", async (operation) => {
-    fetchMock.mockImplementation((input) => String(input).includes(operation)
+    fetchMock.mockImplementation((input, init) => String(input).includes(operation)
       ? Promise.resolve(Response.json(operation === "/pipeline" ? [{ error: "ERR denied" }] : { error: "ERR denied" }))
-      : success(input));
+      : success(input, init));
     const { t, deletionId, row } = await setup();
     await t.run((ctx) => ctx.db.patch(deletionId, { mcpTokenIds: ["token_1"] }));
     expect(await t.action(internal.accountDeletion.sideEffects.runExternalErase, { deletionId }))

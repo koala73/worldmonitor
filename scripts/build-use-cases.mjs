@@ -38,12 +38,6 @@ export const USE_CASE_PAGES = [
     slug, title, hubCard, path: `/use-cases/${slug}/`,
   })),
 ];
-const UMAMI_SCRIPT_TAG =
-  '<script async defer src="https://abacus.worldmonitor.app/script.js" '
-  + 'data-website-id="e8800335-16bc-4241-a133-0eb28c07c832" '
-  + 'data-domains="worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app" '
-  + 'nonce="wm-static-bootstrap"></script>';
-
 export const HANDOFF_PRESERVE_SCRIPT = `(() => {
   const PARAMS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
   const rewrite = (anchor) => {
@@ -99,10 +93,10 @@ function withContentAttribution(url, {
   return `${parsed.pathname}${parsed.search}${parsed.hash}`;
 }
 
-function assertMetaDescription(description, label) {
+function assertMetaDescription(description, label, bounds = { min: 155, max: 160 }) {
   const length = [...description].length;
-  if (length < 155 || length > 160) {
-    throw new Error(`${label} meta description must be 155–160 chars (got ${length})`);
+  if (length < bounds.min || length > bounds.max) {
+    throw new Error(`${label} meta description must be ${bounds.min}–${bounds.max} chars (got ${length})`);
   }
 }
 
@@ -175,8 +169,8 @@ function renderUseCasesIndex({ tpl, baseUrl, lastmod }) {
   const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const path = '/use-cases/';
   const description =
-    'Evergreen World Monitor use-case workflows that turn a monitoring question into an exact dashboard decision, with provenance, limits, and clear next steps.';
-  assertMetaDescription(description, 'use-cases hub');
+    'Step-by-step World Monitor workflows for monitoring supply-chain disruption, country risk and breaking news, with sources, limits and clear next steps.';
+  assertMetaDescription(description, 'use-cases hub', { min: 120, max: 160 });
 
   const cards = USE_CASE_PAGES.map((page) => `        <a class="card" href="${escapeHtml(page.path)}"><strong>${escapeHtml(page.title)}</strong><br><span>${escapeHtml(page.hubCard)}</span></a>`).join('\n');
 
@@ -197,7 +191,7 @@ ${cards}
   return pageDocument({
     baseUrl,
     path,
-    title: 'Use Cases | World Monitor',
+    title: 'Geopolitical Monitoring Use Cases | World Monitor',
     description,
     lastmod,
     ogType: 'website',
@@ -214,7 +208,7 @@ ${cards}
       { name: 'Use cases', path },
     ]),
     body,
-    footerBody: `${UMAMI_SCRIPT_TAG}World Monitor use-case corpus. Evergreen workflows use committed product evidence; live API results belong on dashboard and country pages.`,
+    footerBody: `World Monitor use-case corpus. Evergreen workflows use committed product evidence; live API results belong on dashboard and country pages.`,
   });
 }
 
@@ -384,7 +378,7 @@ function renderCountryRiskUseCase({ tpl, baseUrl, lastmod }) {
     ]),
     body,
     inlineScript: HANDOFF_PRESERVE_SCRIPT,
-    footerBody: `${UMAMI_SCRIPT_TAG}World Monitor use-case corpus. Evergreen workflows use committed product evidence; live API results belong on dashboard and country pages.`,
+    footerBody: `World Monitor use-case corpus. Evergreen workflows use committed product evidence; live API results belong on dashboard and country pages.`,
   });
 }
 
@@ -563,7 +557,7 @@ function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
     ]),
     body,
     inlineScript: HANDOFF_PRESERVE_SCRIPT,
-    footerBody: `${UMAMI_SCRIPT_TAG}World Monitor use-case corpus. Evergreen workflows use committed product evidence; live API results belong on dashboard and country pages.`,
+    footerBody: `World Monitor use-case corpus. Evergreen workflows use committed product evidence; live API results belong on dashboard and country pages.`,
   });
 }
 
@@ -763,7 +757,7 @@ function renderSupplyChainDisruptionsUseCase({ tpl, baseUrl, lastmod }) {
     ]),
     body,
     inlineScript: HANDOFF_PRESERVE_SCRIPT,
-    footerBody: `${UMAMI_SCRIPT_TAG}World Monitor use-case corpus. Evergreen workflows use committed product evidence; live API results belong on dashboard and country pages.`,
+    footerBody: `World Monitor use-case corpus. Evergreen workflows use committed product evidence; live API results belong on dashboard and country pages.`,
   });
 }
 
@@ -824,7 +818,7 @@ ${related}
       { name: 'Home', path: '/' }, { name: 'Use cases', path: '/use-cases/' }, { name: page.title, path },
     ]),
     body, inlineScript: HANDOFF_PRESERVE_SCRIPT,
-    footerBody: `${UMAMI_SCRIPT_TAG}World Monitor use-case corpus. Check original sources and their observation times before acting.`,
+    footerBody: `World Monitor use-case corpus. Check original sources and their observation times before acting.`,
   });
 }
 

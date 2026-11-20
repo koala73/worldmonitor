@@ -27,6 +27,237 @@ const USER = {
   emailVerified: true,
 };
 
+describe("delivery failure lifecycle", () => {
+  async function setup() {
+    vi.useFakeTimers();
+    process.env.CONVEX_NOTIFICATION_RELAY_SECRET = "delivery-secret";
+    const t = convexTest(schema, modules);
+    const id = await t.run(ctx => ctx.db.insert("notificationChannels", {
+      userId: USER.subject, channelType: "webhook", webhookEnvelope: "encrypted",
+      verified: true, linkedAt: 1,
+    }));
+    const begin = async () => {
+      const response = await t.fetch("/relay/channels", {
+        method: "POST", headers: { Authorization: "Bearer delivery-secret", "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: USER.subject, deliveryChannels: ["webhook"] }),
+      });
+      const channels = await response.json();
+      return channels.find((channel: { _id: string }) => channel._id === id)?.deliveryAttempt?.sequence as number | undefined;
+    };
+    const complete = (sequence: number | undefined, error?: string, linkedAt = 1) => t.fetch("/relay/delivery-result", {
+      method: "POST",
+      headers: { Authorization: "Bearer delivery-secret", "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: USER.subject, channelType: "webhook",
+        delivery: { channelId: id, linkedAt, sequence, error: error ?? null } }),
+    });
+    const report = async (error?: string, linkedAt = 1) => complete(await begin(), error, linkedAt);
+    return { t, id, begin, complete, report, row: () => t.run(ctx => ctx.db.get(id)) };
+  }
+
+  test("a lost success report cannot join the old streak after a new worker reads channels", async () => {
+    const { begin, complete, report, row } = await setup();
+    for (let i = 0; i < 9; i++) await report("HTTP 503");
+    vi.setSystemTime(Date.now() + 25 * 60 * 60 * 1000);
+    await begin(); // Provider succeeded, but its result was lost before Convex saw it.
+    const restartedWorkerAttempt = await begin();
+    await complete(restartedWorkerAttempt, "HTTP 503");
+    expect(await row()).toMatchObject({ verified: true, deliveryFailure: { count: 1 } });
+  });
+
+  test("overlapping held and realtime attempts cannot disable before a delayed success", async () => {
+    const { begin, complete, report, row } = await setup();
+    for (let i = 0; i < 9; i++) await report("HTTP 503");
+    vi.setSystemTime(Date.now() + 25 * 60 * 60 * 1000);
+    const heldAttempt = await begin();
+    const realtimeAttempt = await begin();
+    await complete(realtimeAttempt, "HTTP 503");
+    expect(await row()).toMatchObject({ verified: true, deliveryFailure: { count: 1 } });
+    await complete(heldAttempt);
+    expect(await row()).toMatchObject({ verified: true, deliveryFailure: { count: 1 } });
+  });
+
+  test("transient failures need both ten attempts and a 24 hour streak", async () => {
+    vi.useFakeTimers();
+    const { report, row } = await setup();
+    for (let i = 0; i < 10; i++) expect((await report("DNS lookup failed")).status).toBe(200);
+    expect(await row()).toMatchObject({ verified: true, deliveryFailure: { count: 10 } });
+    vi.setSystemTime(Date.now() + 24 * 60 * 60 * 1000);
+    await report("DNS lookup failed");
+    expect(await row()).toMatchObject({ verified: false, deliveryFailure: { count: 11 } });
+  });
+
+  test("a success clears the streak and an old result cannot disable a re-saved channel", async () => {
+    const { t, id, report, row } = await setup();
+    await report("HTTP 503");
+    await report();
+    expect((await row())?.verified).toBe(true);
+    expect((await row())?.deliveryFailure).toBeUndefined();
+    await t.run(ctx => ctx.db.patch(id, { linkedAt: 2 }));
+    await report("HTTP 401");
+    expect((await row())?.verified).toBe(true);
+  });
+
+  test.each([401, 403, 404, 410])("HTTP %s disables once and schedules one notice", async status => {
+    const { t, report, row } = await setup();
+    await report(`HTTP ${status}`);
+    expect((await row())?.verified).toBe(false);
+    const first = await row();
+    await report(`HTTP ${status}`);
+    expect(await row()).toEqual(first);
+    const scheduled = await t.run(ctx => ctx.db.system.query("_scheduled_functions").collect());
+    expect(scheduled).toHaveLength(1);
+  });
+
+  test("elapsed time alone does not disable, and saving clears failure state", async () => {
+    const { t, report, row } = await setup();
+    await report("HTTP 503");
+    vi.setSystemTime(Date.now() + 25 * 60 * 60 * 1000);
+    await report("HTTP 503");
+    expect((await row())?.verified).toBe(true);
+    await seedEntitlement(t);
+    await t.mutation(notificationChannelFns.setChannelForUser, {
+      userId: USER.subject, channelType: "webhook", webhookEnvelope: "new-envelope",
+    });
+    expect((await row())?.verified).toBe(true);
+    expect((await row())?.deliveryFailure).toBeUndefined();
+    await report("HTTP 401");
+    expect((await row())?.verified).toBe(true);
+  });
+
+  test("a successful digest batch resets a day-old realtime failure streak", async () => {
+    const { t, id, begin, report, row } = await setup();
+    for (let i = 0; i < 9; i++) await report("HTTP 503");
+    vi.setSystemTime(Date.now() + 25 * 60 * 60 * 1000);
+    const sequence = await begin();
+    expect((await t.fetch("/relay/delivery-result", {
+      method: "POST", headers: { Authorization: "Bearer delivery-secret", "Content-Type": "application/json" },
+      body: JSON.stringify({ results: [{ userId: USER.subject, channelType: "webhook",
+        delivery: { channelId: id, linkedAt: 1, sequence, error: null } }] }),
+    })).status).toBe(200);
+    await report("HTTP 503");
+    expect(await row()).toMatchObject({ verified: true, deliveryFailure: { count: 1, firstFailedAt: Date.now() } });
+  });
+
+  test("duplicate completions count once and invalid batches cannot partially complete an attempt", async () => {
+    const { t, id, begin, row } = await setup();
+    let sequence = await begin();
+    const send = (results: unknown[]) => t.fetch("/relay/delivery-result", {
+      method: "POST", headers: { Authorization: "Bearer delivery-secret", "Content-Type": "application/json" },
+      body: JSON.stringify({ results }),
+    });
+    const result = (error: string | null) => ({ userId: USER.subject, channelType: "webhook",
+      delivery: { channelId: id, linkedAt: 1, sequence, error } });
+    expect((await send([result("HTTP 503"), result(null), result("Request timed out")])).status).toBe(200);
+    expect((await row())?.deliveryFailure).toMatchObject({ count: 1, lastError: "HTTP 503" });
+    sequence = await begin();
+    for (const invalid of [[], Array(101).fill(result(null)), [result(null), result("private host")]]) {
+      expect((await send(invalid)).status).toBe(400);
+      expect((await row())?.deliveryFailure?.count).toBe(1);
+      expect((await row())?.deliveryAttempt?.pending).toBe(true);
+    }
+  });
+
+  test("an older terminal result cannot disable after a newer success", async () => {
+    const { begin, complete, row } = await setup();
+    const older = await begin();
+    const newer = await begin();
+    await complete(newer);
+    await complete(older, "HTTP 401");
+    expect((await row())?.verified).toBe(true);
+    expect((await row())?.deliveryFailure).toBeUndefined();
+  });
+
+  test("a lost acknowledgement can be replayed without incrementing the failure count", async () => {
+    const { begin, complete, row } = await setup();
+    const sequence = await begin();
+    await complete(sequence, "HTTP 503");
+    await complete(sequence, "HTTP 503");
+    expect((await row())?.deliveryFailure?.count).toBe(1);
+    await complete(await begin(), "HTTP 503");
+    expect((await row())?.deliveryFailure?.count).toBe(2);
+  });
+
+  test("legacy reads stay read-only and legacy results cannot disable during rollout", async () => {
+    const { t, id, begin, complete, row } = await setup();
+    await t.run(ctx => ctx.db.patch(id, { deliveryFailure: {
+      count: 9, firstFailedAt: Date.now() - 25 * 60 * 60 * 1000, lastError: "HTTP 503",
+    } }));
+    const before = await row();
+    expect((await t.fetch("/relay/channels", {
+      method: "POST", headers: { Authorization: "Bearer delivery-secret", "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: USER.subject }),
+    })).status).toBe(200);
+    expect(await row()).toEqual(before);
+    await complete(undefined, "HTTP 401");
+    expect(await row()).toEqual(before);
+    await complete(await begin(), "HTTP 503");
+    expect(await row()).toMatchObject({ verified: true, deliveryFailure: { count: 1 } });
+  });
+
+  test("only selected channels reserve attempts and invalid requests leave state intact", async () => {
+    const { t, begin, complete, row } = await setup();
+    const request = (deliveryChannels: unknown, authorized = true) => t.fetch("/relay/channels", {
+      method: "POST", headers: { "Content-Type": "application/json", ...(authorized ? { Authorization: "Bearer delivery-secret" } : {}) },
+      body: JSON.stringify({ userId: USER.subject, deliveryChannels }),
+    });
+    expect((await request(["slack"])).status).toBe(200);
+    expect((await row())?.deliveryAttempt).toBeUndefined();
+    await begin();
+    const before = await row();
+    expect((await request(["webhook"], false)).status).toBe(401);
+    for (const invalid of [null, "webhook", ["unknown"], Array(8).fill("webhook")]) {
+      expect((await request(invalid)).status).toBe(400);
+    }
+    for (const invalid of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      expect((await complete(invalid, "HTTP 401")).status).toBe(400);
+    }
+    expect(await row()).toEqual(before);
+  });
+
+  test("rejects untrusted callers and unsanitized error details", async () => {
+    const { t, report, row } = await setup();
+    const response = await t.fetch("/relay/delivery-result", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+    });
+    expect(response.status).toBe(401);
+    expect((await report("DNS failure at private.example?token=secret")).status).toBe(400);
+    expect((await row())?.verified).toBe(true);
+    expect((await row())?.deliveryFailure).toBeUndefined();
+  });
+
+  test.each([false, true])("scheduled notice uses the account address and stable idempotency after retry=%s", async retry => {
+    const { t, report } = await setup();
+    const oldKey = process.env.RESEND_API_KEY;
+    process.env.CLERK_SECRET_KEY = "test-clerk";
+    process.env.RESEND_API_KEY = "test-resend";
+    const sends: Array<{ headers: Headers; body: Record<string, unknown> }> = [];
+    globalThis.fetch = vi.fn(async (url, init) => {
+      if (String(url).startsWith("https://api.clerk.com/")) return Response.json({
+        id: USER.subject, primary_email_address_id: "primary",
+        email_addresses: [{ id: "primary", email_address: "account@example.com", verification: { status: "verified" } }],
+      });
+      expect(String(url)).toBe("https://api.resend.com/emails");
+      sends.push({ headers: new Headers(init?.headers), body: JSON.parse(String(init?.body)) });
+      if (retry && sends.length === 1) return Response.json({ error: "temporary" }, { status: 503 });
+      return Response.json({ id: "email-1" });
+    });
+    try {
+      await report("HTTP 401");
+      await report("HTTP 401");
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+      expect(sends).toHaveLength(retry ? 2 : 1);
+      expect(sends[0].body.to).toEqual(["account@example.com"]);
+      expect(sends[0].body.text).toContain("HTTP 401");
+      expect(sends[0].body.text).toContain("/dashboard?settings=notifications");
+      expect(sends[0].headers.get("Idempotency-Key")).toMatch(/^channel-disabled-/);
+      expect(new Set(sends.map(send => send.headers.get("Idempotency-Key"))).size).toBe(1);
+    } finally {
+      if (oldKey === undefined) delete process.env.RESEND_API_KEY;
+      else process.env.RESEND_API_KEY = oldKey;
+    }
+  });
+});
+
 describe("notificationChannels legacy alert-rule delivery validation", () => {
   test.each(["all", "high"])("returns recovery guidance without saving realtime + %s", async sensitivity => {
     process.env.CONVEX_TENANT_RELAY_SECRET = "relay-secret";
@@ -121,14 +352,17 @@ async function seedEntitlement(
 }
 
 describe("notificationChannels — Convex entitlement gate", () => {
-  // Creation paths stay Pro-gated (identity-scoped internals since the public
-  // surface was retired; production writes go through the edge relay). Deletion/deactivation are internal and
-  // ungated — covered by the "live delete/deactivate" suite below (#8430).
+  // Creation paths gate on the caller's alert-ladder channel set (#4273):
+  // the free set (web push + email) is open to every account, everything
+  // else is a structured upgrade denial. Identity-scoped internals since the
+  // public surface was retired; production writes go through the edge relay.
+  // Deletion/deactivation are internal and ungated — covered by the "live
+  // delete/deactivate" suite below (#8430).
   const guardedMutations: Array<[string, (asUser: TestUser) => Promise<unknown>]> = [
-    ["setChannel", (asUser: TestUser) =>
+    ["setChannel (slack)", (asUser: TestUser) =>
       asUser.mutation(internal.notificationChannels.setChannel, {
-        channelType: "email",
-        email: "free-user@example.com",
+        channelType: "slack",
+        webhookEnvelope: "enc",
       })],
     ["createPairingToken", (asUser: TestUser) =>
       asUser.mutation(internal.notificationChannels.createPairingToken, {
@@ -145,17 +379,35 @@ describe("notificationChannels — Convex entitlement gate", () => {
     ["tier-0", (t: ReturnType<typeof convexTest>) => seedEntitlement(t, 0)],
   ])("%s entitlement", (_entitlementState, arrangeEntitlement) => {
     test.each(guardedMutations)(
-      "%s rejects an authenticated non-Pro caller",
+      "%s rejects an authenticated non-Pro caller with the ladder denial",
       async (_name, invoke) => {
         const t = convexTest(schema, modules);
         await arrangeEntitlement(t);
         const asUser = t.withIdentity(USER);
 
         await expect(invoke(asUser)).rejects.toThrow(
-          /PRO_REQUIRED|Notifications are a PRO feature/i,
+          /ALERT_CHANNEL_UPGRADE_REQUIRED/,
         );
       },
     );
+
+    test("email channel creation is on the free ladder and succeeds (#4273)", async () => {
+      const t = convexTest(schema, modules);
+      await arrangeEntitlement(t);
+      const asUser = t.withIdentity({ ...USER, email: "free-user@example.com", emailVerified: true });
+
+      await asUser.mutation(internal.notificationChannels.setChannel, {
+        channelType: "email",
+        email: "free-user@example.com",
+      });
+      const channels = await t.run(async (ctx) =>
+        ctx.db
+          .query("notificationChannels")
+          .withIndex("by_user_channel", (q) => q.eq("userId", USER.subject).eq("channelType", "email"))
+          .collect(),
+      );
+      expect(channels).toHaveLength(1);
+    });
   });
 
   test("claimPairingToken rejects a token whose owner is no longer Pro", async () => {
@@ -598,6 +850,10 @@ describe("notificationChannels — durable first-connect welcome", () => {
     const fetchMock = installQueueMock();
     process.env.CONVEX_TENANT_RELAY_SECRET = "relay-secret";
     const t = convexTest(schema, modules);
+    // The slack channel below sits past the free ladder (#4273), so the
+    // relay caller must hold a paid entitlement — in production the edge
+    // gate guarantees that before this action is reached.
+    await seedEntitlement(t);
     const headers = {
       Authorization: "Bearer relay-secret",
       "Content-Type": "application/json",

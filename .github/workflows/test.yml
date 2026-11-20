@@ -1,4 +1,9 @@
 name: Test
+# Records which pull request and base a run tested. GitHub keeps no reliable
+# record of it after the PR merges, and the push-to-main verdict reuse in the
+# `changes` job credits only runs named for that PR into main. Other events
+# get the default name.
+run-name: "${{ github.event_name == 'pull_request' && format('PR #{0} into {1}: {2}', github.event.pull_request.number, github.event.pull_request.base.ref, github.event.pull_request.title) || '' }}"
 
 on:
   pull_request:
@@ -23,11 +28,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
+      # The push-only verdict reuse below reads commits, compares and Test runs.
+      actions: read
+      contents: read
     outputs:
-      code: ${{ steps.diff.outputs.code }}
-      browser: ${{ steps.diff.outputs.browser }}
+      # A push to main whose tree a green pull_request run already tested may
+      # switch these off (the reuse step); it can never switch one on.
+      code: ${{ steps.reuse.outputs.code || steps.diff.outputs.code }}
+      browser: ${{ steps.reuse.outputs.browser || steps.diff.outputs.browser }}
       digest: ${{ steps.diff.outputs.digest }}
-      validation: ${{ steps.diff.outputs.validation }}
+      validation: ${{ steps.reuse.outputs.validation || steps.diff.outputs.validation }}
       umami: ${{ steps.diff.outputs.umami }}
       consumer_prices: ${{ steps.diff.outputs.consumer_prices }}
       desktop_config: ${{ steps.diff.outputs.desktop_config }}
@@ -126,6 +136,7 @@ jobs:
             emit_all_true
             exit 0
           fi
+          echo "files_json=$(printf '%s\n' "$FILES" | jq -Rsc 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
           CODE=$(printf '%s\n' "$FILES" | awk '
             /^docs\/research\/seo-ai-visibility\// { count++; next }
             # Committed resilience acceptance artifacts are docs-path data that
@@ -276,6 +287,8 @@ jobs:
             /^src-tauri\// { count++; next }
             /^package\.json$/ { count++; next }
             /^scripts\/repack-linux-appimage\.sh$/ { count++; next }
+            /^scripts\/prefetch-appimage-tools\.sh$/ { count++; next }
+            /^scripts\/fetch-with-retry\.sh$/ { count++; next }
             /^scripts\/check-desktop-build-env\.mjs$/ { count++; next }
             /^scripts\/sync-desktop-version\.mjs$/ { count++; next }
             /^scripts\/check-rust-security-floors\.mjs$/ { count++; next }
@@ -294,6 +307,33 @@ jobs:
             END { print count + 0 }
           ')
           echo "desktop_rust=$( [ "$DESKTOP_RUST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+      # A squash merge whose PR head already contained main's previous tip has
+      # the same tree that PR's runs tested (18 of the last 100 merges on
+      # 2026-11-17, 15% of main-push Test job-minutes). Same tree, same verdict:
+      # the script switches off the unit and browser groups a green
+      # pull_request run on that head passed within 24 h. It never reuses when
+      # a lockfile, .npmrc, vendor/, .github/ or scripts/download-node.sh
+      # changed (main saves the shared caches those key), only trusts runs of
+      # that PR against main, and any lookup doubt or error leaves every job on.
+      - name: Check out the verdict reuse script
+        if: github.event_name == 'push'
+        continue-on-error: true
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          sparse-checkout: |
+            .github/scripts/reuse-pr-test-verdict.mjs
+            scripts/lib/main-module.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Reuse a green pull request verdict on an identical tree
+        id: reuse
+        if: github.event_name == 'push'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+          FILES_JSON: ${{ steps.diff.outputs.files_json }}
+        run: node .github/scripts/reuse-pr-test-verdict.mjs
 
   zapier:
     needs: changes
@@ -326,7 +366,11 @@ jobs:
         with:
           # Docs page dates derive from git history; a shallow checkout would
           # resolve every file to HEAD instead of its last content change.
+          # Blobless: git log --name-only reads commits and trees, not
+          # historical blobs (matching unit-shards, unit-built-output, and
+          # scripts/generate-docs-page-dates.mjs --fetch-history).
           fetch-depth: 0
+          filter: blob:none
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
@@ -470,7 +514,12 @@ jobs:
           WM_EXPECT_BUILT_OUTPUT: '1'
           WM_EXPECT_SCRIPTS_DEPS: '1'
           DURATIONS_KEY: ${{ needs.changes.outputs.durations_key }}
-        run: npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/5 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl ${DURATIONS_KEY:+--durations="$HOME/data-test-durations/durations.json"}
+        run: >-
+          npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/5 --concurrency=4
+          --exclude=tests/docs-page-dates.test.mjs
+          --exclude=tests/docs-i18n-parity.test.mjs
+          --exclude=tests/internal-link-redirects.test.mjs
+          --timings=${{ runner.temp }}/data-test-timings.jsonl ${DURATIONS_KEY:+--durations="$HOME/data-test-durations/durations.json"}
       # The next run's estimates, saved whether the tests passed or not: a cache
       # saved only by green runs goes stale exactly while main is red. The next
       # run reads only the newest entry, so if every shard saved, whichever
@@ -514,6 +563,7 @@ jobs:
           key: data-test-durations-v1-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
       - name: Upload data test timings
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: data-test-timings-${{ matrix.shard }}-${{ github.run_attempt }}
@@ -542,15 +592,39 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: |
-            package-lock.json
-            pro-test/package-lock.json
-            blog-site/package-lock.json
       - uses: ./.github/actions/install-root-deps
+      # Like the unit shards' nested-deps cache: the two nested trees are
+      # restored whole. Before, setup-node restored the npm download cache for
+      # all three lockfiles (6-9s, most of it the root's), and the two installs
+      # still took 3s (blog-site) and 12s (pro-test). The key hashes every
+      # file that decides their contents (both trees link packages from
+      # vendor/); bump the version when an install command below, ci:blog-site,
+      # or the install half of build:pro in package.json changes.
+      - name: Restore blog-site and pro-test dependencies
+        id: built-output-deps
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
-          # setup-node restores the npm cache for this job's other install.
-          npm-cache: 'false'
+          path: |
+            blog-site/node_modules
+            pro-test/node_modules
+          key: built-output-deps-v1-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('blog-site/package.json', 'blog-site/package-lock.json', 'blog-site/.npmrc', 'pro-test/package.json', 'pro-test/package-lock.json', 'pro-test/.npmrc', '.npmrc', 'vendor/**') }}
+      - name: Install blog-site deps
+        if: steps.built-output-deps.outputs.cache-hit != 'true'
+        run: npm run ci:blog-site
+      - name: Install /pro deps
+        # The install half of build:pro; the build step below runs the other.
+        if: steps.built-output-deps.outputs.cache-hit != 'true'
+        env:
+          npm_config_allow_scripts: ''
+        run: npm --prefix pro-test ci --prefer-offline
+      - name: Save blog-site and pro-test dependencies
+        if: steps.built-output-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            blog-site/node_modules
+            pro-test/node_modules
+          key: ${{ steps.built-output-deps.outputs.cache-primary-key }}
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
@@ -626,6 +700,7 @@ jobs:
         # duplicate name within a run, which collides on the re-run someone
         # starts to chase the failure.
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: openapi-capacity-${{ github.run_attempt }}
@@ -634,15 +709,15 @@ jobs:
           retention-days: 14
       - name: Build and verify buying guides
         run: |
-          npm run ci:blog-site
           npm --prefix blog-site run build
           npm --prefix blog-site run verify:guides
       - name: Build /pro artifacts for built-output tests
         # public/pro/ stopped being committed in #6898, so the suites that read
         # it need the same treatment dist/ already gets. Ordered before the
         # dashboard build to mirror production: root `vite build` copies
-        # public/ into dist/, so /pro must exist by then.
-        run: npm run build:pro
+        # public/ into dist/, so /pro must exist by then. This is the build
+        # half of build:pro; its install half is the cached step above.
+        run: npm --prefix pro-test run build
       - name: Build dashboard artifacts for built-output tests
         run: VITE_VARIANT=full ./node_modules/.bin/vite build
       - name: Client bundle size budget (#7111, #7119)
@@ -659,6 +734,7 @@ jobs:
       - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data -- --built-output=only --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
       - name: Upload data test timings
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: data-test-timings-built-output-${{ github.run_attempt }}
@@ -732,6 +808,20 @@ jobs:
     if: needs.changes.outputs.consumer_prices == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        env:
+          POSTGRES_DB: consumer_prices_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready --username=postgres --dbname=consumer_prices_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -742,6 +832,8 @@ jobs:
       - uses: ./.github/actions/install-redis
       - run: npm ci --prefix consumer-prices-core
       - run: npm test --prefix consumer-prices-core
+        env:
+          CONSUMER_PRICES_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/consumer_prices_test
 
   umami-postgres:
     needs: changes
@@ -829,7 +921,7 @@ jobs:
         run: |
           export PATH="$PWD/src-tauri/sidecar/node:$PATH"
           node --version
-          npm run test:sidecar
+          npm run test:sidecar:desktop
           # Every route the app ships must load from the shipped files alone
           # on this runtime (#9906).
           node scripts/check-sidecar-shipped-routes.mjs
@@ -858,8 +950,11 @@ jobs:
             echo '::error::Desktop versions out of sync — run `npm run version:sync` and commit the result.'
             exit 1
           }
-      - name: Linux AppImage post-processing script parses
-        run: bash -n scripts/repack-linux-appimage.sh
+      - name: Linux AppImage build scripts parse
+        run: |
+          bash -n scripts/repack-linux-appimage.sh
+          bash -n scripts/prefetch-appimage-tools.sh
+          bash -n scripts/fetch-with-retry.sh
       - name: Desktop build env parity (#5905)
         # A VITE_ key missing from the Tauri build steps silently disables the
         # capability in every shipped build (sign-in, Pro, Cyber Threats were
@@ -968,7 +1063,10 @@ jobs:
         with:
           node-version: '24'
       - uses: ./.github/actions/install-root-deps
-      - run: npm run test:convex
+      # Vitest defaults to one worker fewer than the CPU count, which leaves one
+      # of the runner's 4 vCPUs idle. Four workers took the suite from 48.8s
+      # (81% CPU busy) to 45.5s (94%), alternating on one VM (bench run 44274790851).
+      - run: npm run test:convex -- --maxWorkers=4
 
   # DOM-behavioral gate tests (#5634). Kept OUT of the `unit` job's tsx glob:
   # the components under test import `@/services/i18n`, which uses
@@ -989,22 +1087,30 @@ jobs:
       # never be type-checked — the first run of this config caught four real
       # type errors in them.
       - run: npm run typecheck:dom-tests
+      # Vitest defaults to one worker fewer than the CPU count. Four workers, one
+      # per vCPU, took the suite from 196.5s (74% CPU busy) to 176.1s (89%),
+      # alternating on one VM; six reached 170.5s at 95% (bench run 44274790851).
+      # VITEST_MAX_THREADS is the config's existing override, so local runs keep
+      # Vitest's default.
       - run: npm run test:dom
+        env:
+          VITEST_MAX_THREADS: '4'
 
   variant-smoke-shards:
     name: variant-smoke (${{ matrix.shard }})
     strategy:
       fail-fast: false
       matrix:
-        # Four shards. The specs run with two Playwright workers that keep the
+        # Eight shards. The specs run with two Playwright workers that keep the
         # runner's CPU 81-85% busy, and four workers only bought ~15% with more
         # flaky retries, so more runners is where the time comes from. The spec
-        # lists in package.json (test:e2e:ci-smoke:1..4) are balanced by
+        # lists in package.json (test:e2e:ci-smoke:1..8) are balanced by
         # measured test-seconds (history in docs/solutions/performance-issues/
         # ci-runners-are-cpu-bound-shard-before-parallel-steps.md). Re-balance
-        # them from the per-test durations in the list reporter output when a
-        # spec grows.
-        shard: [1, 2, 3, 4]
+        # them with `node scripts/balance-smoke-shards.mjs --write`, which packs
+        # the specs from per-test durations in recent main runs, when a spec is
+        # added or grows.
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     timeout-minutes: 20
     needs: changes
     if: needs.changes.outputs.browser == 'true'
@@ -1127,11 +1233,11 @@ jobs:
             sample_memory >> "$DIAGNOSTICS_DIR/memory-samples.log"
             mkdir -p test-results/browser-loss
             cp "$DIAGNOSTICS_DIR/"*.log test-results/browser-loss/
-            # A browser crash is not a flake. With retries at 1 a single crash
-            # is absorbed and the job reports `flaky`, which is how these went
-            # unnoticed from #5685 until #8447. Report every crash whatever the
-            # job outcome, and do not change the exit code while the rate is
-            # still around one crash per run.
+            # A browser crash is not a flake. While CI retried once, a single
+            # crash was absorbed and the job reported `flaky`, which is how
+            # these went unnoticed from #5685 until #8447. Playwright no longer
+            # retries, so a crash fails its test; this step still names the
+            # cause, and leaves the exit code to Playwright.
             CRASHES=$(grep -ac "signal=SIGTRAP" "$DIAGNOSTICS_DIR/playwright.log" 2>/dev/null || true)
             if [ "${CRASHES:-0}" -gt 0 ]; then
               echo "::error title=Browser crashed::chrome-headless-shell exited with SIGTRAP ${CRASHES} time(s) on ci-smoke shard ${{ matrix.shard }}. A green job does not mean no crash. See the browser-loss artifact."
@@ -1160,6 +1266,7 @@ jobs:
 
       - name: Upload ci-smoke Playwright artifacts
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-ci-smoke-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -1175,11 +1282,18 @@ jobs:
     # server and Chrome, and more workers did not shorten it (bench run
     # 40097331565), so the gates moved off its path instead. Both parts keep the
     # full setup: each builds /pro (the legacy WebMCP tests load
-    # /pro/welcome.html) and a retry records video with Playwright's ffmpeg.
+    # /pro/welcome.html).
+    #
+    # The plugin parts run the MCP Apps view specs on the built views in
+    # dist/plugin. No other job ran them, so a change could break a view spec
+    # and still merge green (#10494 broke 31 metering tests). plugin-news runs
+    # the news metering spec alone and plugin-views runs the rest: with all
+    # news specs in one part it was the last browser job in 43 of 73 green PR
+    # runs (258s of work against 123s for the country view).
     strategy:
       fail-fast: false
       matrix:
-        part: [webmcp, pro-gates]
+        part: [webmcp, pro-gates, plugin-news, plugin-views]
     runs-on: ubuntu-latest
     # No secrets are injected here. The smoke allows provider-level
     # unavailable/stale states and gates app-level boot, variant, 401,
@@ -1190,16 +1304,10 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
-          # node_modules comes from install-root-deps, so ~/.npm serves only
-          # the pro-test install inside build:pro. Keyed on the root lockfile
-          # it restored the 583 MB root download cache, and both parts pulling
-          # it at once took 12-62s instead of ~6s.
-          cache-dependency-path: pro-test/package-lock.json
       - uses: ./.github/actions/install-root-deps
-        with:
-          # setup-node restores the npm cache for this job's other install.
-          npm-cache: 'false'
+      - name: Install /pro dependencies
+        if: ${{ !startsWith(matrix.part, 'plugin-') }}
+        uses: ./.github/actions/install-pro-deps
       - name: Resolve Playwright version
         id: playwright-version
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
@@ -1286,13 +1394,17 @@ jobs:
             # public/pro/ is built output since #6898. Keep this explicit and
             # immediately before the focused specs so the browser checks cannot
             # run against missing or stale bytes from another build.
-            run: npm run build:pro
+            # The plugin parts never load /pro. Dependencies are restored above
+            # via install-pro-deps (matching the install half of build:pro).
+            if: ${{ !startsWith(matrix.part, 'plugin-') }}
+            run: npm --prefix pro-test run build
       - name: Run fail-closed prehydration browser checks
         id: prehydration
         if: matrix.part == 'pro-gates'
         run: npm run test:e2e:prehydration
       - name: Upload prehydration Playwright artifacts
         if: ${{ !cancelled() && steps.prehydration.outcome != 'skipped' }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-prehydration-${{ github.run_id }}-${{ github.run_attempt }}
@@ -1301,15 +1413,16 @@ jobs:
           retention-days: 14
       # Named explicitly for the same reason as the ci-smoke set above: nothing
       # runs the e2e/ glob, so an unnamed gate reported green while never
-      # executing. The four /pro gates (critical-CSS layout shift, mobile
-      # overflow, hero native animation, hero LCP) share one Playwright run:
+      # executing. The /pro gates (critical-CSS layout shift, mobile
+      # overflow, hero native animation, hero LCP, landing nav fit in every
+      # locale) share one Playwright run:
       # each run starts the Vite dev server and Chrome (~3.5s), and separate
       # runs went one after another. They read the same public/pro/ bytes the
       # build step above produced, and nothing between here and there rebuilds
       # them -- they sit after the prehydration upload rather than beside its
       # build because dashboard-build-guards.test.mjs pins that
       # build/prehydration pair as literally adjacent text.
-      - name: Run /pro critical-CSS, overflow, hero animation and LCP gates
+      - name: Run /pro critical-CSS, overflow, hero animation, LCP and nav-fit gates
         id: pro-gates
         if: matrix.part == 'pro-gates'
         run: npm run test:e2e:pro-gates
@@ -1317,6 +1430,7 @@ jobs:
       # starts, so a later run would delete these gates' failure traces.
       - name: Upload /pro gate Playwright artifacts
         if: ${{ !cancelled() && steps.pro-gates.outcome != 'skipped' }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-pro-gates-${{ github.run_id }}-${{ github.run_attempt }}
@@ -1338,9 +1452,26 @@ jobs:
       # itself a failure signal.
       - name: Upload WebMCP Playwright artifacts
         if: ${{ !cancelled() && steps.webmcp.outcome != 'skipped' }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-webmcp-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # Each plugin script builds dist/plugin first: the specs load the built
+      # views, never the source.
+      - name: Run MCP Apps view specs
+        id: plugin
+        if: startsWith(matrix.part, 'plugin-')
+        run: npm run test:e2e:${{ matrix.part }}
+      - name: Upload MCP Apps view Playwright artifacts
+        if: ${{ !cancelled() && steps.plugin.outcome != 'skipped' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-${{ matrix.part }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 14

@@ -47,6 +47,7 @@ export interface ListUcdpEventsRequest {
 export interface ListUcdpEventsResponse {
   events: UcdpViolenceEvent[];
   pagination?: PaginationResponse;
+  candidateVersion: string;
 }
 
 export interface UcdpViolenceEvent {
@@ -62,6 +63,8 @@ export interface UcdpViolenceEvent {
   deathsHigh: number;
   violenceType: UcdpViolenceType;
   sourceOriginal: string;
+  hasPreciseLocation?: boolean;
+  locationName?: string;
 }
 
 export interface GetHumanitarianSummaryRequest {

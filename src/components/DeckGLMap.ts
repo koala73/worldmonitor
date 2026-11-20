@@ -1,3 +1,6 @@
+import { bindMapControlDisclosure } from './map-control-disclosure';
+import { MapDistanceControl } from './map-distance-control';
+import { createTimeoutSignal } from '@/services/timeout-signal';
 /**
  * DeckGLMap - WebGL-accelerated map visualization for desktop
  * Uses deck.gl for high-performance rendering of large datasets
@@ -6,9 +9,11 @@
 import { MapLibreOverlay } from '@deck.gl/maplibre';
 import type { Layer, LayersList, PickingInfo } from '@deck.gl/core';
 import { GeoJsonLayer, ScatterplotLayer, PathLayer, IconLayer, TextLayer, PolygonLayer } from '@deck.gl/layers';
+import type { IconLayerProps } from '@deck.gl/layers';
 import * as maplibregl from 'maplibre-gl';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import type { StyleSpecification } from 'maplibre-gl';
+import type { FocusFitBounds } from '@/utils/focus-map';
 import { FALLBACK_DARK_STYLE, FALLBACK_LIGHT_STYLE, getMapProvider, getMapTheme, isLightMapTheme } from '@/config/basemap';
 import { getStyleForProvider } from '@/config/basemap-styles';
 import Supercluster from 'supercluster';
@@ -46,11 +51,15 @@ import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import { fetchAircraftPositions } from '@/services/aviation';
 import { type IranEvent, getIranEventColor, getIranEventRadius } from '@/services/conflict';
 import { getMilitaryBaseColor } from '@/config/military-base-colors';
+import { DECK_POINT_LAYER_CATEGORY, categoryForDeckLayerId, categoryGlyphForLayer, categoryGlyphSizePx, markerPixelRadius } from '@/config/map-layer-glyphs';
+import { getCategoryGlyphAtlas, type CategoryGlyphAtlas } from './map-category-glyph-atlas';
 import { getMineralColor } from '@/config/mineral-colors';
 import { getWindColor } from '@/config/wind-colors';
 import { CII_LEVEL_COLORS, type CiiLevel } from '@/config/cii-colors';
 import type { GpsJamHex } from '@/services/gps-interference';
+import { continuousTrack, pointNear, sweptSwath, type FootprintRing, type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import { fetchImageryScenes } from '@/services/imagery';
+import { holdsViewportRequests, onViewportRequestsResumed } from '@/services/orbital/lookup-host';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import type { CrossBorderData, CrossBorderPoint, DisplacementEventPoint, DisplacementEventsData, DisplacementFlow, InternalDisplacementData, InternalDisplacementRegion, InternalDisplacementRoute } from '@/services/displacement';
@@ -63,6 +72,7 @@ import type { CanadaRoadRecord } from '@/services/canada-roads';
 import { isReportableCanadaRoad } from '@/services/canada-road-report';
 import type { CanadaAlert } from '@/services/canada-alerts';
 import { escapeHtml } from '@/utils/sanitize';
+import { installLongPressContextMenu } from '@/utils/long-press';
 import { corroborationLabelHtml } from '@/utils/corroboration-flag';
 import {
   derivePipelinePublicBadge,
@@ -80,13 +90,18 @@ import { getCachedFuelShortageRegistry } from '@/shared/fuel-shortage-registry-s
 // getCountryCentroid is imported lower in the file alongside other
 // country-geometry helpers; don't re-import it here.
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
-import { initI18n, t } from '@/services/i18n';
+import { getLocale, initI18n, t } from '@/services/i18n';
+import type { ReservoirLevel } from '@/services/climate';
+import { getCSSColor } from '@/utils/theme-colors';
+import { isHollowStatus, reservoirHeadline, reservoirTone, reservoirToneRgb, statusLabel as reservoirStatusLabel } from './reservoir-levels-view';
+import { statusLabel as popupStatusLabel, storageFacilityTypeLabel } from './map-popup-i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
 import { createIdleAwareFrameProvider } from '@/utils/idle-aware-frame-provider';
 import { isInputPending, scheduleYield } from '@/utils/after-paint';
 import { showLayerWarning } from '@/utils/layer-warning';
 import { ukmtoIncidentLabel, type UkmtoMapIncident } from '../../shared/ukmto-incidents';
 import { localizeMapLabels } from '@/utils/map-locale';
+import { improveBasemapLabels } from '@/config/basemap-labels';
 import {
   createCountryHoverQueryController,
   resolveCountryForPointerInteraction,
@@ -130,6 +145,7 @@ import {
   isLayerEntitled,
   isLayerToggleAllowed,
   sanitizeLockedLayers,
+  LAYER_REGISTRY,
   type MapVariant,
 } from '@/config/map-layer-definitions';
 import { isProTierResolved } from '@/services/widget-store';
@@ -139,6 +155,7 @@ import { onEntitlementChange } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
 import { MapPopup, type PopupType } from './MapPopup';
+import { fireDetectionPopupData } from './map-popup-fire';
 import { renderMilitaryVesselTooltipHtml } from './deckgl-tooltip-renderers';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { ChinaCorridorControlTower } from '../../shared/china-corridor-control-towers';
@@ -164,7 +181,7 @@ import {
   canonicalizeCountryCode,
   getCountriesGeoJson,
   getCountryAtCoordinates,
-  getCountryBbox,
+  getCountryMapBbox,
   getCountryCentroid,
 } from '@/services/country-geometry';
 import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
@@ -212,6 +229,8 @@ import {
   type CountryClickGestureTracker,
 } from './map-interaction-guard';
 
+/** deck.gl accessor shape: (datum, objectInfo) => value. */
+type GlyphAccessor<T> = (d: unknown, info: unknown) => T;
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type DeckMapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -273,6 +292,34 @@ const VIEW_PRESETS: Record<DeckMapView, { longitude: number; latitude: number; z
 };
 
 const VIEWPORT_MOVEMENT_EVENT_KEY = 'worldMonitorViewportGeneration';
+
+// Dashboard focus outline (#10453). The colour is the focus bar's accent
+// (--green in main.css) for the basemap's brightness.
+const FOCUS_CHOSEN_FILL_LAYER = 'country-focus-chosen-fill';
+const FOCUS_CHOSEN_BORDER_LAYER = 'country-focus-chosen-border';
+const FOCUS_NEIGHBOUR_BORDER_LAYER = 'country-focus-neighbour-border';
+const FOCUS_OUTLINE_COLOR = { dark: '#44ff88', light: '#16a34a' } as const;
+const FOCUS_OUTLINE_STYLE = {
+  chosen: { width: 2, opacity: 0.95, fillOpacity: 0.06 },
+  neighbour: { width: 1, opacity: 0.45 },
+} as const;
+function focusCodeFilter(codes: readonly string[]): maplibregl.FilterSpecification {
+  return ['in', ['get', 'ISO3166-1-Alpha-2'], ['literal', [...codes]]] as maplibregl.FilterSpecification;
+}
+
+function focusFitPadding(container: HTMLElement): number {
+  const size = Math.min(container.clientWidth || 0, container.clientHeight || 0);
+  // Keep a frame on a phone-sized map without leaving MapLibre too little
+  // room to fit at all.
+  return size > 0 && size < 400 ? 20 : 40;
+}
+
+function lngLatOf(center: maplibregl.LngLatLike): { lng: number; lat: number } | null {
+  if (Array.isArray(center)) return { lng: center[0], lat: center[1] };
+  const c = center as { lng?: number; lon?: number; lat: number };
+  const lng = c.lng ?? c.lon;
+  return typeof lng === 'number' && Number.isFinite(lng) && Number.isFinite(c.lat) ? { lng, lat: c.lat } : null;
+}
 const DECK_IDLE_FRAME_INTERVAL_MS = 250;
 const DECK_ACTIVE_FRAME_WINDOW_MS = 300;
 // 'render' covers every map frame, including repaints deck itself requests.
@@ -371,23 +418,41 @@ function getOverlayColors() {
 // Initialize and refresh on every buildLayers() call
 let COLORS = getOverlayColors();
 
-// SVG icons as data URLs for different marker shapes
-const MARKER_ICONS = {
-  // Square - for datacenters
-  square: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect x="2" y="2" width="28" height="28" rx="3" fill="white"/></svg>`),
-  // Diamond - for hotspots
-  diamond: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 30,16 16,30 2,16" fill="white"/></svg>`),
-  // Triangle up - for military bases
-  triangleUp: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 30,28 2,28" fill="white"/></svg>`),
-  // Hexagon - for nuclear
-  hexagon: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 28,9 28,23 16,30 4,23 4,9" fill="white"/></svg>`),
-  // Circle - fallback
-  circle: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="white"/></svg>`),
-  // Star - for special markers
-  star: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 20,12 30,12 22,19 25,30 16,23 7,30 10,19 2,12 12,12" fill="white"/></svg>`),
-  // Airplane silhouette - top-down with wings and tail (pointing north, rotated by trackDeg)
-  plane: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M16 2 L17.5 10 L17 12 L27 17 L27 19 L17 16 L17 24 L20 26.5 L20 28 L16 27 L12 28 L12 26.5 L15 24 L15 16 L5 19 L5 17 L15 12 L14.5 10 Z" fill="white"/></svg>`),
-};
+// Marker shapes in a 32×32 box, drawn white so the icon layers tint them (mask: true).
+// deck.gl fetches an icon atlas given as a URL, and CSP checks that fetch as
+// connect-src. MCP Apps hosts allow data: images but not data: fetches, so the
+// atlases are canvases, which deck.gl uploads without a request.
+const MARKER_SHAPES = {
+  square: 'M5 2H27A3 3 0 0 1 30 5V27A3 3 0 0 1 27 30H5A3 3 0 0 1 2 27V5A3 3 0 0 1 5 2Z',
+  triangleUp: 'M16 2L30 28H2Z',
+  hexagon: 'M16 2L28 9V23L16 30L4 23V9Z',
+  plane: 'M16 2 L17.5 10 L17 12 L27 17 L27 19 L17 16 L17 24 L20 26.5 L20 28 L16 27 L12 28 L12 26.5 L15 24 L15 16 L5 19 L5 17 L15 12 L14.5 10 Z',
+} as const;
+const markerIconCanvases = new Map<keyof typeof MARKER_SHAPES, HTMLCanvasElement>();
+
+/**
+ * deck.gl's image props upload any browser image object, a canvas included
+ * (createTexture in @deck.gl/core), but IconLayer types iconAtlas as string | Texture.
+ */
+function canvasAtlas(canvas: HTMLCanvasElement): IconLayerProps['iconAtlas'] {
+  return canvas as unknown as IconLayerProps['iconAtlas'];
+}
+
+function markerIcon(shape: keyof typeof MARKER_SHAPES): IconLayerProps['iconAtlas'] {
+  let canvas = markerIconCanvases.get(shape);
+  if (!canvas) {
+    canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+    if (ctx && typeof Path2D !== 'undefined') {
+      ctx.fillStyle = 'white';
+      ctx.fill(new Path2D(MARKER_SHAPES[shape]));
+    }
+    markerIconCanvases.set(shape, canvas);
+  }
+  return canvasAtlas(canvas);
+}
 
 const BASES_ICON_MAPPING = { triangleUp: { x: 0, y: 0, width: 32, height: 32, mask: true } };
 const NUCLEAR_ICON_MAPPING = { hexagon: { x: 0, y: 0, width: 32, height: 32, mask: true } };
@@ -522,6 +587,23 @@ function positionAlongPath(path: [number, number][], progress: number): [number,
   return [lon, latA + (latB - latA) * fraction];
 }
 
+const ORBITAL_TRACK_MARKER_LAYER_ID = 'orbital-track-marker-layer';
+const ORBITAL_SWEPT_LAYER_ID = 'orbital-swept-layer';
+const ORBITAL_LEADING_EDGE_LAYER_ID = 'orbital-leading-edge-layer';
+const ORBITAL_REPLAY_LAYER_IDS = new Set([ORBITAL_SWEPT_LAYER_ID, ORBITAL_LEADING_EDGE_LAYER_ID, ORBITAL_TRACK_MARKER_LAYER_ID]);
+/** The Orbital Watch accent, text and background tokens as deck.gl RGB. */
+/** Reads an Orbital Watch colour token per render, so a theme switch repaints the orbital overlay. */
+function orbitalRgba(token: '--green' | '--text' | '--text-dim' | '--panel-bg', alpha: number): [number, number, number, number] {
+  const hex = getCSSColor(token).replace(/^#([\da-f])([\da-f])([\da-f])$/i, '#$1$1$2$2$3$3');
+  const m = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex);
+  return m ? [parseInt(m[1]!, 16), parseInt(m[2]!, 16), parseInt(m[3]!, 16), alpha] : [128, 128, 128, alpha];
+}
+const ORBITAL_RETICLE = { pickable: false } as const;
+
+function deckLayerId(layer: LayersList[number]): string | null {
+  return layer && !Array.isArray(layer) && typeof layer === 'object' ? (layer as Layer).id : null;
+}
+
 const PREFERS_REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 const TRADE_ANIMATION_CYCLE = 1000;
 const TRADE_ANIMATION_SPEED = 0.3;
@@ -611,6 +693,7 @@ export class DeckGLMap {
   private static readonly MAX_CLUSTER_LEAVES = 200;
 
   private container: HTMLElement;
+  private controlDisclosureCleanups: (() => void)[] = [];
   private deckOverlay: MapLibreOverlay | null = null;
   // deck.gl's loop polls for layer changes on every display frame. Between
   // map activity it polls on a slow timer instead, which removes most idle
@@ -640,11 +723,13 @@ export class DeckGLMap {
   private aptGroupsLoaded = false;
   private _unsubscribeAuthState: (() => void) | null = null;
   private _unsubscribeEntitlement: (() => void) | null = null;
+  private stopViewportResume: (() => void) | null = null;
   private aptGroupsLayerFailed = false;
   private satelliteImageryLayerFailed = false;
   private iranEvents: IranEvent[] = [];
   private aisDisruptions: AisDisruptionEvent[] = [];
   private ukmtoIncidents: UkmtoMapIncident[] = [];
+  private reservoirLevels: ReservoirLevel[] = [];
   private aisDensity: AisDensityZone[] = [];
   private liveTankers: Array<{ mmsi: string; lat: number; lon: number; speed: number; shipType: number; name: string }> = [];
   private liveTankersAbort: AbortController | null = null;
@@ -664,6 +749,8 @@ export class DeckGLMap {
   private militaryFlightClusters: MilitaryFlightCluster[] = [];
   private activeFlightTrails = new Set<string>();
   private clearTrailsBtn: HTMLButtonElement | null = null;
+  private zoomControlsEl: HTMLElement | null = null;
+  private mountedMapControl: HTMLElement | null = null;
   private militaryVessels: MilitaryVessel[] = [];
   private militaryVesselClusters: MilitaryVesselCluster[] = [];
   private serverBases: MilitaryBaseEnriched[] = [];
@@ -672,7 +759,7 @@ export class DeckGLMap {
   private serverBasesFetchSeq = 0;
   private baseConfigLoadPending = false;
   private naturalEvents: NaturalEvent[] = [];
-  private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }> = [];
+  private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string; detected_at?: number; satellite?: string; source?: string }> = [];
   private techEvents: TechEventMarker[] = [];
   private flightDelays: AirportDelayAlert[] = [];
   private aircraftPositions: PositionSample[] = [];
@@ -705,6 +792,12 @@ export class DeckGLMap {
   private highlightedLane: { routeId: string; path: [number, number][]; chokepointIds: string[] } | null = null;
   private highlightedMarkers: HighlightedMarker[] = [];
   private bypassArcData: BypassArcDatum[] = [];
+  private orbitalTrack: PassTrack | null = null;
+  private orbitalTrackMarker: TrackPoint | null = null;
+  private orbitalTarget: OrbitalTarget | null = null;
+  private orbitalFramedPastEdge = false;
+  /** The layer list last handed to deck.gl, so the replay marker can move without a full rebuild. */
+  private committedLayers: LayersList | null = null;
   private scenarioState: ScenarioVisualState | null = null;
   private selectedChinaCorridorOverlay: ChinaCorridorOverlayProjection | null = null;
   private affectedIso2Set: Set<string> = new Set();
@@ -752,13 +845,14 @@ export class DeckGLMap {
   private countryGeoJsonLoaded = false;
   private countryHoverSetup = false;
   private highlightedCountryCode: string | null = null;
+  /** Dashboard focus (#10453): chosen countries outlined solid, neighbours lighter. */
+  private focusOutline: { chosen: string[]; neighbours: string[] } | null = null;
   private hoveredCountryIso2: string | null = null;
   private hoveredCountryName: string | null = null;
 
   // Callbacks
   private onNewsClick?: (item: Pick<NewsLocationMarker, 'article' | 'title'>) => void;
   private onHotspotClick?: (hotspot: Hotspot) => void;
-  private onTradeArcClick?: (segment: TradeRouteSegment, waypoints: string[], x: number, y: number) => void;
   private onTimeRangeChange?: (range: TimeRange) => void;
   private onCountryClick?: (country: CountryClickPayload) => void;
   private onMapContextMenu?: (payload: { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string }) => void;
@@ -785,6 +879,7 @@ export class DeckGLMap {
     if (!this.maplibreMap) return;
     const canvas = this.maplibreMap.getCanvas();
     canvas.addEventListener('contextmenu', this.handleContextMenu);
+    this.removeLongPress = installLongPressContextMenu(canvas);
     canvas.addEventListener('pointerdown', this.handleCountryClickPointerDown);
     canvas.addEventListener('pointermove', this.handleCountryClickPointerMove);
     canvas.addEventListener('pointerup', this.handleCountryClickPointerEnd);
@@ -798,11 +893,14 @@ export class DeckGLMap {
     this.maplibreMap.off('dragstart', this.markCountryDragGesture);
     this.maplibreMap.off('dragend', this.refreshCountryDragSuppression);
     canvas.removeEventListener('contextmenu', this.handleContextMenu);
+    this.removeLongPress?.();
+    this.removeLongPress = null;
     canvas.removeEventListener('pointerdown', this.handleCountryClickPointerDown);
     canvas.removeEventListener('pointermove', this.handleCountryClickPointerMove);
     canvas.removeEventListener('pointerup', this.handleCountryClickPointerEnd);
     canvas.removeEventListener('pointercancel', this.handleCountryClickPointerEnd);
   }
+  private removeLongPress: (() => void) | null = null;
   private readonly handleContextMenu = (e: MouseEvent): void => {
     e.preventDefault();
     if (!this.onMapContextMenu || !this.maplibreMap) return;
@@ -871,6 +969,10 @@ export class DeckGLMap {
     windowMs: 60_000,
   });
   private destroyed = false;
+  private zoomCap: number | null = null;
+  /** The map's own max zoom, kept while a cap is on so lifting the cap puts it back. */
+  private uncappedMaxZoom: number | null = null;
+  private distanceControl: MapDistanceControl | null = null;
   private usedFallbackStyle = false;
   private readonly chrome: boolean;
   private readonly mapLibreWorkerUrl: string | undefined;
@@ -969,6 +1071,16 @@ export class DeckGLMap {
     }, 150);
     this.debouncedFetchBases = debounce(() => this.fetchServerBases(), 300);
     this.debouncedFetchAircraft = debounce(() => this.fetchViewportAircraft(), 500);
+    // Viewport fetches held while the satellite pass lookup was open run for where the map is now.
+    this.stopViewportResume = onViewportRequestsResumed(() => {
+      if (this.destroyed) return;
+      if (this.state.layers.bases) this.debouncedFetchBases();
+      if (this.state.layers.flights) this.debouncedFetchAircraft();
+      if (this.state.layers.satellites) {
+        if (this.imagerySearchTimer) clearTimeout(this.imagerySearchTimer);
+        this.imagerySearchTimer = setTimeout(() => this.fetchImageryForViewport(), 500);
+      }
+    });
     this.rafUpdateLayers = rafSchedule(() => {
       if (this.renderPaused || this.webglLost || !this.maplibreMap) return;
       this.updateLayers();
@@ -1054,7 +1166,7 @@ export class DeckGLMap {
   }
 
   private fetchAndApplyRadar(): void {
-    fetch('https://api.rainviewer.com/public/weather-maps.json')
+    fetch('https://api.rainviewer.com/public/weather-maps.json', { signal: createTimeoutSignal(15_000) })
       .then(r => r.json())
       .then((data: { host: string; radar: { past: Array<{ path: string }> } }) => {
         const past = data.radar?.past;
@@ -1099,6 +1211,8 @@ export class DeckGLMap {
         type: 'raster',
         tiles: [this.radarTileUrl],
         tileSize: 256,
+        // RainViewer serves a "Zoom Level Not Supported" tile above z7, so deeper views overzoom z7.
+        maxzoom: 7,
         attribution: '© RainViewer',
       });
       const beforeId = this.maplibreMap.getLayer('country-interactive') ? 'country-interactive' : undefined;
@@ -1200,6 +1314,7 @@ export class DeckGLMap {
         }
         : {}),
     });
+    this.applyZoomCap();
 
     const reportFatalBasemapFailure = (error: unknown, center = this.getCenter()): void => {
       const message = error instanceof Error ? error.message : String(error);
@@ -1271,6 +1386,7 @@ export class DeckGLMap {
             }
             : {}),
         });
+        this.applyZoomCap();
       } catch (error) {
         // MapLibre throws GPUInitializationError synchronously when WebGL2 is
         // gone (lost context, software renderer revoked, etc.). Catch it so it
@@ -1281,6 +1397,7 @@ export class DeckGLMap {
       this.maplibreMap.on('load', () => {
         this.attachMapLibreInteractionHandlers();
         localizeMapLabels(this.maplibreMap);
+        improveBasemapLabels(this.maplibreMap, isLightMapTheme(initialMapTheme));
         this.initDeck();
         this.loadCountryBoundaries();
         this.fetchServerBases();
@@ -1290,6 +1407,7 @@ export class DeckGLMap {
 
     this.maplibreMap.on('load', () => {
       localizeMapLabels(this.maplibreMap);
+      improveBasemapLabels(this.maplibreMap, isLightMapTheme(initialMapTheme));
       this.initDeck();
       this.loadCountryBoundaries();
       this.fetchServerBases();
@@ -1365,6 +1483,14 @@ export class DeckGLMap {
   private initDeck(): void {
     if (!this.maplibreMap) return;
 
+    this.distanceControl?.destroy();
+    this.distanceControl = this.chrome
+      ? new MapDistanceControl(this.maplibreMap, this.container, () => {
+        this.popup.hide();
+        this.rafUpdateLayers();
+      })
+      : null;
+
     installDeckInterleavedRaceFilter();
 
     this.deckOverlay = this.createDeckOverlay();
@@ -1439,7 +1565,7 @@ export class DeckGLMap {
       // Forwarded by Deck.setProps to luma.gl's AnimationLoop.setProps.
       animationFrameProvider: this.deckFrameProvider,
       layers: this.buildLayers(true),
-      getTooltip: (info: PickingInfo) => this.getTooltip(info),
+      getTooltip: (info: PickingInfo) => this.getCategorizedTooltip(info),
       onClick: (info: PickingInfo) => this.handleClick(info),
       pickingRadius: 10,
       useDevicePixels: window.devicePixelRatio > 2 ? 2 : true,
@@ -2079,18 +2205,6 @@ export class DeckGLMap {
       this.layerCache.delete('pipelines-layer');
     }
 
-    // Storage facilities layer. Registry is seeded weekly by
-    // scripts/seed-storage-facilities.mjs; colors by derived publicBadge
-    // identical to the panel's evidence deriver so first-paint map dots match
-    // panel status exactly. Available on any variant with
-    // `mapLayers.storageFacilities: true` (plan §R/#3 decision B).
-    if (mapLayers.storageFacilities) {
-      const storageLayer = this.createEnergyStorageLayer();
-      if (storageLayer) layers.push(storageLayer);
-    } else {
-      this.layerCache.delete('storage-facilities-layer');
-    }
-
     // Fuel shortage pins. One pin per active shortage placed at the country
     // centroid. Color by severity; click opens the FuelShortagePanel drawer
     // via event. Available on any variant with `mapLayers.fuelShortages: true`
@@ -2263,6 +2377,10 @@ export class DeckGLMap {
         getFillColor: item => item.stale ? [135, 145, 155, 180] : [120, 180, 255, 220],
         stroked: true, getLineColor: [255, 255, 255, 200], lineWidthMinPixels: 1, pickable: true,
       }));
+    }
+
+    if (mapLayers.reservoirLevels && this.reservoirLevels.length > 0) {
+      layers.push(this.createReservoirLevelsLayer());
     }
 
     // GPS/GNSS jamming layer
@@ -2526,17 +2644,121 @@ export class DeckGLMap {
       }));
     }
 
+    layers.push(...this.createOrbitalTrackLayers());
+
     // News geo-locations (always shown if data exists)
     if (this.newsLocations.length > 0) {
       layers.push(...this.createNewsLocationsLayer());
     }
 
-    const result = layers.filter(Boolean) as LayersList;
+    // Last on purpose. Deck.gl picks the topmost layer, and pickingRadius
+    // lets a marker drawn above this dot take the hover and the click.
+    if (mapLayers.storageFacilities) {
+      const storageLayer = this.createEnergyStorageLayer();
+      if (storageLayer) layers.push(storageLayer);
+    } else {
+      this.layerCache.delete('storage-facilities-layer');
+    }
+
+    const result = this.withCategoryGlyphs(layers.filter(Boolean) as LayersList);
+    result.push(...(this.distanceControl?.getLayers() ?? []));
     const elapsed = performance.now() - startTime;
     if (import.meta.env.DEV && elapsed > 16) {
       console.warn(`[DeckGLMap] buildLayers took ${elapsed.toFixed(2)}ms (>16ms budget), ${result.length} layers`);
     }
     return result;
+  }
+
+  /**
+   * Layers-menu category glyph beside each point marker (#10139), so markers
+   * from different layers can be told apart without toggling. Derived from
+   * the layers already built, so a hidden layer leaves no glyph. Each glyph
+   * layer sits right after its marker layer, so later count badges and labels
+   * still draw on top, and it is not pickable: hover and click still hit the
+   * marker underneath.
+   */
+  private withCategoryGlyphs(built: LayersList): LayersList {
+    const atlas = getCategoryGlyphAtlas();
+    if (!atlas) return built;
+    const zoom = this.maplibreMap?.getZoom() ?? 0;
+    const out: LayersList = [];
+    for (const layer of built) {
+      out.push(layer);
+      if (!layer || typeof layer !== 'object' || !('id' in layer)) continue;
+      const glyph = this.createCategoryGlyphLayer(layer as Layer, zoom, atlas);
+      if (glyph) out.push(glyph);
+    }
+    return out;
+  }
+
+  private createCategoryGlyphLayer(base: Layer, zoom: number, atlas: CategoryGlyphAtlas): Layer | null {
+    const category = DECK_POINT_LAYER_CATEGORY[base.id];
+    if (!category || base.props.visible === false) return null;
+    const { data, getPosition } = base.props as { data?: unknown; getPosition?: unknown };
+    if (!Array.isArray(data) || typeof getPosition !== 'function') return null;
+    const size = categoryGlyphSizePx(zoom, data.length);
+    if (size === 0) return null;
+    const radiusOf = this.markerRadiusAccessor(base, zoom, getPosition as GlyphAccessor<[number, number]>);
+    if (!radiusOf) return null;
+    // Badge sits just outside each marker's rendered radius, so the marker's
+    // status colour stays visible at every zoom and marker size.
+    const gap = Math.round(size / 2) + 2;
+    const triggers = base.props.updateTriggers ?? {};
+    return new IconLayer({
+      id: `${base.id}-category-glyph`,
+      data,
+      getPosition: getPosition as (d: unknown) => [number, number],
+      getIcon: () => category,
+      iconAtlas: canvasAtlas(atlas.image),
+      iconMapping: atlas.mapping,
+      getSize: size,
+      sizeUnits: 'pixels',
+      getPixelOffset: (d: unknown, info: unknown) => [Math.round(radiusOf(d, info) + gap), 0],
+      pickable: false,
+      updateTriggers: {
+        getPosition: triggers.getPosition,
+        getPixelOffset: [Math.round(zoom * 10), size, triggers.getRadius ?? triggers.getSize ?? null],
+      },
+    });
+  }
+
+  /**
+   * Per-datum rendered radius in pixels of a ScatterplotLayer or IconLayer
+   * marker, from the layer's own radius/size accessor, units and pixel clamp.
+   * Null for other layer types: without a known radius the badge could land
+   * on the marker, so it is left off.
+   */
+  private markerRadiusAccessor(base: Layer, zoom: number, getPosition: GlyphAccessor<[number, number]>): GlyphAccessor<number> | null {
+    const props = base.props as Record<string, unknown>;
+    const read = (accessor: unknown, fallback: number): GlyphAccessor<number> =>
+      typeof accessor === 'function'
+        ? (d, info) => Number((accessor as GlyphAccessor<number>)(d, info))
+        : () => (typeof accessor === 'number' ? accessor : fallback);
+    if (base instanceof ScatterplotLayer) {
+      const radius = read(props.getRadius, 1);
+      return (d, info) => markerPixelRadius({
+        units: props.radiusUnits as string | undefined,
+        value: radius(d, info),
+        scale: props.radiusScale as number | undefined,
+        minPx: props.radiusMinPixels as number | undefined,
+        maxPx: props.radiusMaxPixels as number | undefined,
+        lat: getPosition(d, info)[1],
+        zoom,
+      });
+    }
+    if (base instanceof IconLayer) {
+      const sizeOf = read(props.getSize, 1);
+      return (d, info) => markerPixelRadius({
+        units: (props.sizeUnits as string | undefined) ?? 'pixels',
+        value: sizeOf(d, info),
+        scale: props.sizeScale as number | undefined,
+        minPx: props.sizeMinPixels as number | undefined,
+        maxPx: props.sizeMaxPixels as number | undefined,
+        lat: getPosition(d, info)[1],
+        zoom,
+      }) / 2;
+    }
+    return null;
   }
 
   // Layer creation methods
@@ -2843,14 +3065,32 @@ export class DeckGLMap {
       onClick: info => {
         const obj = info?.object as EnergyStorageDot | undefined;
         if (!obj?.id) return false;
-        // Dispatch to StorageFacilityMapPanel — same loose-coupling
-        // pattern as the pipelines layer.
+        let claimed = false;
         try {
-          window.dispatchEvent(new CustomEvent('energy:open-storage-facility-detail', {
+          const event = new CustomEvent('energy:open-storage-facility-detail', {
+            cancelable: true,
             detail: { facilityId: obj.id },
-          }));
+          });
+          window.dispatchEvent(event);
+          claimed = event.defaultPrevented;
         } catch {
-          // Silent no-op on non-browser runtimes.
+          claimed = false;
+        }
+        if (!claimed) {
+          this.popup.show({
+            type: 'storageFacility',
+            data: {
+              id: obj.id,
+              name: obj.name,
+              operator: obj.operator,
+              facilityType: obj.facilityType,
+              country: obj.country,
+              capacityDisplay: obj.capacityDisplay,
+              badge: obj.badge,
+            },
+            x: info.x ?? 0,
+            y: info.y ?? 0,
+          });
         }
         return true;
       },
@@ -3173,7 +3413,7 @@ export class DeckGLMap {
       data,
       getPosition: (d) => [d.lon, d.lat],
       getIcon: () => 'triangleUp',
-      iconAtlas: MARKER_ICONS.triangleUp,
+      iconAtlas: markerIcon('triangleUp'),
       iconMapping: BASES_ICON_MAPPING,
       getSize: (d) => highlightedBases.has(d.id) ? 16 : 11,
       getColor: (d) => {
@@ -3193,7 +3433,8 @@ export class DeckGLMap {
     if (this.serverBaseClusters.length === 0) return [];
     const zoom = this.maplibreMap?.getZoom() || 3;
     const alphaScale = Math.min(1, (zoom - 2.5) / 2.5);
-    const a = Math.round(180 * Math.max(0.3, alphaScale));
+    // Dense base clusters should leave the geographic reference visible beneath.
+    const a = Math.round(130 * Math.max(0.3, alphaScale));
 
     const scatterLayer = new ScatterplotLayer<ServerBaseCluster>({
       id: 'bases-cluster-layer',
@@ -3201,8 +3442,8 @@ export class DeckGLMap {
       getPosition: (d) => [d.longitude, d.latitude],
       getRadius: (d) => Math.max(8000, Math.log2(d.count) * 6000),
       getFillColor: (d) => getMilitaryBaseColor(d.dominantType, a),
-      radiusMinPixels: 10,
-      radiusMaxPixels: 40,
+      radiusMinPixels: 8,
+      radiusMaxPixels: 24,
       pickable: true,
     });
 
@@ -3236,7 +3477,7 @@ export class DeckGLMap {
       data,
       getPosition: (d) => [d.lon, d.lat],
       getIcon: () => 'hexagon',
-      iconAtlas: MARKER_ICONS.hexagon,
+      iconAtlas: markerIcon('hexagon'),
       iconMapping: NUCLEAR_ICON_MAPPING,
       getSize: (d) => highlightedNuclear.has(d.id) ? 15 : 11,
       getColor: (d) => {
@@ -3404,7 +3645,7 @@ export class DeckGLMap {
       data: this.aircraftPositions,
       getPosition: (d) => [d.lon, d.lat],
       getIcon: () => 'plane',
-      iconAtlas: MARKER_ICONS.plane,
+      iconAtlas: markerIcon('plane'),
       iconMapping: AIRCRAFT_ICON_MAPPING,
       getSize: (d) => d.onGround ? 14 : 18,
       getColor: (d) => {
@@ -3454,7 +3695,7 @@ export class DeckGLMap {
       data,
       getPosition: (d) => [d.lon, d.lat],
       getIcon: () => 'square',
-      iconAtlas: MARKER_ICONS.square,
+      iconAtlas: markerIcon('square'),
       iconMapping: DATACENTER_ICON_MAPPING,
       getSize: (d) => highlightedDC.has(d.id) ? 14 : 10,
       getColor: (d) => {
@@ -4102,9 +4343,9 @@ export class DeckGLMap {
       getFillColor: (d) => {
         // Vessel types: 'exercise' | 'deployment' | 'transit' | 'unknown'
         const activity = d.activityType || 'unknown';
-        if (activity === 'exercise' || activity === 'deployment') return [255, 100, 100, 200] as [number, number, number, number];
-        if (activity === 'transit') return [255, 180, 100, 180] as [number, number, number, number];
-        return [200, 150, 150, 160] as [number, number, number, number];
+        if (activity === 'exercise' || activity === 'deployment') return [255, 100, 100, 150] as [number, number, number, number];
+        if (activity === 'transit') return [255, 180, 100, 135] as [number, number, number, number];
+        return [200, 150, 150, 120] as [number, number, number, number];
       },
       radiusMinPixels: 8,
       radiusMaxPixels: 25,
@@ -4150,9 +4391,9 @@ export class DeckGLMap {
       getRadius: (d) => 15000 + (d.flightCount || 1) * 3000,
       getFillColor: (d) => {
         const activity = d.activityType || 'unknown';
-        if (activity === 'exercise' || activity === 'patrol') return [100, 150, 255, 200] as [number, number, number, number];
-        if (activity === 'transport') return [255, 200, 100, 180] as [number, number, number, number];
-        return [150, 150, 200, 160] as [number, number, number, number];
+        if (activity === 'exercise' || activity === 'patrol') return [100, 150, 255, 150] as [number, number, number, number];
+        if (activity === 'transport') return [255, 200, 100, 135] as [number, number, number, number];
+        return [150, 150, 200, 120] as [number, number, number, number];
       },
       radiusMinPixels: 8,
       radiusMaxPixels: 25,
@@ -4409,10 +4650,10 @@ export class DeckGLMap {
       radiusMinPixels: 6,
       radiusMaxPixels: 22,
       getFillColor: d => {
-        if (d.hasRiot) return [220, 40, 40, 200] as [number, number, number, number];
-        if (d.maxSeverity === 'high') return [255, 80, 60, 180] as [number, number, number, number];
-        if (d.maxSeverity === 'medium') return [255, 160, 40, 160] as [number, number, number, number];
-        return [255, 220, 80, 140] as [number, number, number, number];
+        if (d.hasRiot) return [220, 40, 40, 150] as [number, number, number, number];
+        if (d.maxSeverity === 'high') return [255, 80, 60, 135] as [number, number, number, number];
+        if (d.maxSeverity === 'medium') return [255, 160, 40, 120] as [number, number, number, number];
+        return [255, 220, 80, 105] as [number, number, number, number];
       },
       pickable: true,
       updateTriggers: { getRadius: this.lastSCZoom, getFillColor: this.lastSCZoom },
@@ -4474,9 +4715,9 @@ export class DeckGLMap {
       radiusMinPixels: 5,
       radiusMaxPixels: 18,
       getFillColor: d => {
-        if (d.primaryType === 'faang') return [0, 220, 120, 200] as [number, number, number, number];
-        if (d.primaryType === 'unicorn') return [255, 100, 200, 180] as [number, number, number, number];
-        return [80, 160, 255, 180] as [number, number, number, number];
+        if (d.primaryType === 'faang') return [0, 220, 120, 150] as [number, number, number, number];
+        if (d.primaryType === 'unicorn') return [255, 100, 200, 135] as [number, number, number, number];
+        return [80, 160, 255, 135] as [number, number, number, number];
       },
       pickable: true,
       updateTriggers: { getRadius: this.lastSCZoom },
@@ -4534,8 +4775,8 @@ export class DeckGLMap {
       radiusMinPixels: 5,
       radiusMaxPixels: 18,
       getFillColor: d => {
-        if (d.soonestDaysUntil <= 14) return [255, 220, 50, 200] as [number, number, number, number];
-        return [80, 140, 255, 180] as [number, number, number, number];
+        if (d.soonestDaysUntil <= 14) return [255, 220, 50, 150] as [number, number, number, number];
+        return [80, 140, 255, 135] as [number, number, number, number];
       },
       pickable: true,
       updateTriggers: { getRadius: this.lastSCZoom },
@@ -4576,8 +4817,8 @@ export class DeckGLMap {
       radiusMinPixels: 6,
       radiusMaxPixels: 20,
       getFillColor: d => {
-        if (d.majorityExisting) return [160, 80, 255, 180] as [number, number, number, number];
-        return [80, 160, 255, 180] as [number, number, number, number];
+        if (d.majorityExisting) return [160, 80, 255, 135] as [number, number, number, number];
+        return [80, 160, 255, 135] as [number, number, number, number];
       },
       pickable: true,
       updateTriggers: { getRadius: this.lastSCZoom },
@@ -5143,7 +5384,7 @@ export class DeckGLMap {
 
   private async fetchImageryForViewport(): Promise<void> {
     const map = this.maplibreMap;
-    if (!map) return;
+    if (!map || holdsViewportRequests()) return;
     const bounds = map.getBounds();
     const bbox = `${bounds.getWest().toFixed(4)},${bounds.getSouth().toFixed(4)},${bounds.getEast().toFixed(4)},${bounds.getNorth().toFixed(4)}`;
     const version = ++this.imagerySearchVersion;
@@ -5153,6 +5394,18 @@ export class DeckGLMap {
       this.imageryScenes = scenes;
       this.render();
     } catch { /* viewport fetch failed silently */ }
+  }
+
+  private getCategorizedTooltip(info: PickingInfo): { html: string } | null {
+    const tooltip = this.getTooltip(info);
+    const category = categoryForDeckLayerId(info.layer?.id || '');
+    if (!tooltip || !category) return tooltip;
+    // Name the layer as well as the object, so overlapping markers from
+    // different layers stay identifiable (#10139).
+    const label = `<div class="deckgl-tooltip-category">${categoryGlyphForLayer(category)} ${escapeHtml(resolveLayerLabel(LAYER_REGISTRY[category], t))}</div>`;
+    // Replacer function: a `$` in a translated label must not act as a pattern.
+    const html = tooltip.html.replace(/^\s*<div class="deckgl-tooltip[^"]*"[^>]*>/, (open) => `${open}${label}`);
+    return { html: html === tooltip.html ? `${label}${tooltip.html}` : html };
   }
 
   private getTooltip(info: PickingInfo): { html: string } | null {
@@ -5238,12 +5491,8 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${commodityLabel}</div>` };
       }
       case 'storage-facilities-layer': {
-        const typeLabel = {
-          ugs: 'UGS', spr: 'SPR',
-          lng_export: 'LNG export', lng_import: 'LNG import',
-          crude_tank_farm: 'Crude hub',
-        }[String(obj.facilityType)] ?? text(obj.facilityType);
-        const badge = String(obj.badge || 'disputed').toUpperCase();
+        const typeLabel = text(storageFacilityTypeLabel(String(obj.facilityType)));
+        const badge = popupStatusLabel(String(obj.badge || 'disputed'));
         const cap = text(obj.capacityDisplay || '—');
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${typeLabel} · ${text(obj.country)} · ${cap}<br/><strong>${text(badge)}</strong></div>` };
       }
@@ -5359,6 +5608,11 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>AIS ${text(obj.type || t('components.deckgl.tooltip.disruption'))}</strong><br/>${text(obj.severity)} ${t('popups.severity')}<br/>${text(obj.description)}</div>` };
       case 'ukmto-incidents-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(ukmtoIncidentLabel(obj))}</strong><br/>${text(obj.description)}</div>` };
+      case 'reservoir-levels-layer': {
+        const r = obj as ReservoirLevel;
+        const headline = reservoirHeadline(r, { t, locale: getLocale(), nowMs: Date.now() });
+        return { html: `<div class="deckgl-tooltip"><strong>${text(r.name)}</strong><br/>${text(reservoirStatusLabel(r, t))} · ${text(headline)}</div>` };
+      }
       case 'cross-border-deaths-layer':
       case 'cross-border-points-layer': {
         const change = obj.change !== null && obj.change !== 0
@@ -5740,7 +5994,6 @@ export class DeckGLMap {
       }
       const waypoints = ROUTE_WAYPOINTS_MAP.get(segment.routeId) ?? [];
       this.popup.showRouteBreakdown(segment, waypoints, info.x, info.y);
-      this.onTradeArcClick?.(segment, waypoints, info.x, info.y);
       return;
     }
 
@@ -5793,10 +6046,14 @@ export class DeckGLMap {
       'gps-jamming-layer': 'gpsJamming',
       'cable-advisories-layer': 'cable-advisory',
       'repair-ships-layer': 'repair-ship',
+      'reservoir-levels-layer': 'reservoirLevel',
+      'fires-layer': 'fireDetection',
     };
 
     const popupType = layerToPopupType[layerId];
     if (!popupType) return;
+    // Only a satellite detection opens a fire popup, and only with Orbital Watch on (#10713).
+    if (popupType === 'fireDetection' && !fireDetectionPopupData(info.object)) return;
 
     // For synthetic storm layers, unwrap the backing NaturalEvent
     let data = info.object?._event ?? info.object;
@@ -5948,6 +6205,12 @@ export class DeckGLMap {
     return [100, 100, 100, alpha];
   }
 
+  /** Adds a control below the zoom buttons, kept across a late controls build. */
+  public mountMapControl(el: HTMLElement): void {
+    this.mountedMapControl = el;
+    this.zoomControlsEl?.append(el);
+  }
+
   // UI Creation methods
   private createControls(): void {
     const controls = document.createElement('div');
@@ -5981,6 +6244,8 @@ export class DeckGLMap {
       else if (target.classList.contains('zoom-out')) this.zoomOut();
       else if (target.classList.contains('zoom-reset')) this.resetView();
     });
+    this.zoomControlsEl = controls.querySelector('.zoom-controls');
+    if (this.mountedMapControl) this.zoomControlsEl?.append(this.mountedMapControl);
 
     const viewSelect = controls.querySelector('.view-select') as HTMLSelectElement;
     viewSelect.value = this.state.view;
@@ -6048,7 +6313,7 @@ export class DeckGLMap {
     setTrustedHtml(toggles, trustedHtml(`
       <div class="toggle-header">
         <span>${t('components.deckgl.layersTitle')}</span>
-        <button class="layer-help-btn" aria-label="${t('components.deckgl.layerGuide')}">?</button>
+        <button class="layer-help-btn" aria-label="${t('components.deckgl.layerGuide')}">i</button>
         <button class="toggle-collapse">&#9660;</button>
       </div>
       <input type="text" class="layer-search" placeholder="${t('components.deckgl.layerSearch')}" autocomplete="off" spellcheck="false" />
@@ -6068,11 +6333,6 @@ export class DeckGLMap {
         }).join('')}
       </div>
     `, "legacy direct innerHTML migration"));
-
-    const authorBadge = document.createElement('div');
-    authorBadge.className = 'map-author-badge';
-    authorBadge.textContent = '© Elie Habib · Someone™';
-    toggles.appendChild(authorBadge);
 
     this.container.appendChild(toggles);
 
@@ -6186,7 +6446,6 @@ export class DeckGLMap {
     helpBtn?.addEventListener('click', () => this.showLayerHelp());
 
     // Collapse toggle
-    const collapseBtn = toggles.querySelector('.toggle-collapse');
     const toggleList = toggles.querySelector('.toggle-list');
 
     // Manual scroll: intercept wheel, prevent map zoom, scroll the list ourselves
@@ -6199,13 +6458,7 @@ export class DeckGLMap {
       toggles.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: false });
     }
     bindLayerSearch(toggles);
-    const searchEl = toggles.querySelector('.layer-search') as HTMLElement | null;
-
-    collapseBtn?.addEventListener('click', () => {
-      toggleList?.classList.toggle('collapsed');
-      if (searchEl) searchEl.style.display = toggleList?.classList.contains('collapsed') ? 'none' : '';
-      if (collapseBtn) setTrustedHtml(collapseBtn, trustedHtml(toggleList?.classList.contains('collapsed') ? '&#9654;' : '&#9660;', "legacy direct innerHTML migration"));
-    });
+    this.controlDisclosureCleanups.push(bindMapControlDisclosure(this.container, toggles, 'layers', t('components.deckgl.layersTitle')));
   }
 
   private async showLayerExplanation(layer: keyof MapLayers): Promise<void> {
@@ -6377,6 +6630,7 @@ export class DeckGLMap {
       helpItem(label('canadaRoads'), 'canadaRoads'),
       helpItem(label('canadaAlerts'), 'canadaAlerts'),
       helpItem(label('climateAnomalies'), 'climateAnomalies'),
+      helpItem(label('reservoirLevels'), 'reservoirLevels'),
       helpItem(label('economicCenters'), 'economicCenters'),
       helpItem(label('criticalMinerals'), 'mineralsFull'),
     ])}
@@ -6421,6 +6675,11 @@ export class DeckGLMap {
     const legend = document.createElement('div');
     legend.className = 'map-legend deckgl-legend';
 
+    // Point markers carry their Layers-menu glyph on the map (#10139), so this
+    // legend only explains colour scales and status levels the glyph cannot:
+    // hotspot alert levels, disease alert levels, resilience bands, zone fills
+    // and line colours. It shows only entries for active layers and hides
+    // itself when none apply.
     // SVG shapes for different marker types
     const shapes = {
       circle: (color: string) => `<svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="${color}"/></svg>`,
@@ -6439,11 +6698,6 @@ export class DeckGLMap {
     ];
     const legendItems: { shape: string; label: string; layerKey: keyof MapLayers }[] = SITE_VARIANT === 'tech'
       ? [
-        { shape: shapes.circle(isLight ? 'rgb(22, 163, 74)' : 'rgb(0, 255, 150)'), label: t('components.deckgl.legend.startupHub'), layerKey: 'startupHubs' },
-        { shape: shapes.circle('rgb(100, 200, 255)'), label: t('components.deckgl.legend.techHQ'), layerKey: 'techHQs' },
-        { shape: shapes.circle(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 200, 0)'), label: t('components.deckgl.legend.accelerator'), layerKey: 'accelerators' },
-        { shape: shapes.circle('rgb(150, 100, 255)'), label: t('components.deckgl.legend.cloudRegion'), layerKey: 'cloudRegions' },
-        { shape: shapes.square('rgb(136, 68, 255)'), label: t('components.deckgl.legend.datacenter'), layerKey: 'datacenters' },
         { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
         { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
         { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
@@ -6451,11 +6705,6 @@ export class DeckGLMap {
       ]
       : SITE_VARIANT === 'finance'
         ? [
-          { shape: shapes.circle('rgb(255, 215, 80)'), label: t('components.deckgl.legend.stockExchange'), layerKey: 'stockExchanges' },
-          { shape: shapes.circle('rgb(0, 220, 150)'), label: t('components.deckgl.legend.financialCenter'), layerKey: 'financialCenters' },
-          { shape: shapes.hexagon('rgb(255, 210, 80)'), label: t('components.deckgl.legend.centralBank'), layerKey: 'centralBanks' },
-          { shape: shapes.square('rgb(255, 150, 80)'), label: t('components.deckgl.legend.commodityHub'), layerKey: 'commodityHubs' },
-          { shape: shapes.triangle('rgb(80, 170, 255)'), label: t('components.deckgl.legend.waterway'), layerKey: 'waterways' },
           { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
           { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
           { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
@@ -6465,12 +6714,7 @@ export class DeckGLMap {
           ? [
             { shape: shapes.circle('rgb(34, 197, 94)'), label: 'Positive Event', layerKey: 'positiveEvents' },
             { shape: shapes.circle('rgb(234, 179, 8)'), label: 'Breakthrough', layerKey: 'positiveEvents' },
-            { shape: shapes.circle('rgb(74, 222, 128)'), label: 'Act of Kindness', layerKey: 'kindness' },
-            { shape: shapes.circle('rgb(255, 100, 50)'), label: 'Natural Event', layerKey: 'natural' },
             { shape: shapes.square('rgb(34, 180, 100)'), label: 'Happy Country', layerKey: 'happiness' },
-            { shape: shapes.circle('rgb(74, 222, 128)'), label: 'Species Recovery Zone', layerKey: 'speciesRecovery' },
-            { shape: shapes.circle('rgb(255, 200, 50)'), label: 'Renewable Installation', layerKey: 'renewableInstallations' },
-            { shape: shapes.circle('rgb(160, 100, 255)'), label: t('components.deckgl.legend.aircraft'), layerKey: 'flights' },
             { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
             { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
             { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
@@ -6478,12 +6722,7 @@ export class DeckGLMap {
           ]
           : SITE_VARIANT === 'commodity'
             ? [
-              { shape: shapes.hexagon(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 200, 0)'), label: t('components.deckgl.legend.commodityHub'), layerKey: 'commodityHubs' },
-              { shape: shapes.circle('rgb(180, 80, 80)'), label: t('components.deckgl.legend.miningSite'), layerKey: 'miningSites' },
-              { shape: shapes.square('rgb(80, 160, 220)'), label: t('components.deckgl.legend.commodityPort'), layerKey: 'commodityPorts' },
               { shape: shapes.circle('rgb(255, 150, 50)'), label: t('components.deckgl.legend.pipeline'), layerKey: 'pipelines' },
-              { shape: shapes.triangle('rgb(80, 170, 255)'), label: t('components.deckgl.legend.waterway'), layerKey: 'waterways' },
-              { shape: shapes.circle('rgb(200, 100, 255)'), label: t('components.deckgl.legend.processingPlant'), layerKey: 'processingPlants' },
               { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
               { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
               { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
@@ -6494,10 +6733,6 @@ export class DeckGLMap {
               { shape: shapes.circle('rgb(255, 165, 0)'), label: t('components.deckgl.legend.elevated'), layerKey: 'hotspots' },
               { shape: shapes.circle(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 255, 0)'), label: t('components.deckgl.legend.monitoring'), layerKey: 'hotspots' },
               { shape: shapes.circle('rgb(255, 100, 100)'), label: t('components.deckgl.legend.conflict'), layerKey: 'conflicts' },
-              { shape: shapes.triangle('rgb(68, 136, 255)'), label: t('components.deckgl.legend.base'), layerKey: 'bases' },
-              { shape: shapes.hexagon(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 220, 0)'), label: t('components.deckgl.legend.nuclear'), layerKey: 'nuclear' },
-              { shape: shapes.square('rgb(136, 68, 255)'), label: t('components.deckgl.legend.datacenter'), layerKey: 'datacenters' },
-              { shape: shapes.circle('rgb(160, 100, 255)'), label: t('components.deckgl.legend.aircraft'), layerKey: 'flights' },
               { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
               { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
               { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
@@ -6540,14 +6775,18 @@ export class DeckGLMap {
     legend.appendChild(no2Legend);
 
     this.container.appendChild(legend);
+    this.controlDisclosureCleanups.push(bindMapControlDisclosure(this.container, legend, 'legend', t('components.deckgl.legend.title')));
     this.updateLegend();
   }
 
   private updateLegend(): void {
+    let visibleEntries = 0;
     this.container.querySelectorAll<HTMLElement>('.legend-item[data-layer]').forEach(item => {
       const layerKey = item.dataset.layer;
       if (!layerKey || !(layerKey in this.state.layers)) return;
-      item.style.display = this.state.layers[layerKey as keyof MapLayers] ? '' : 'none';
+      const active = Boolean(this.state.layers[layerKey as keyof MapLayers]);
+      item.style.display = active ? '' : 'none';
+      if (active) visibleEntries++;
     });
     const ciiLegend = this.container.querySelector<HTMLElement>('#ciiChoroplethLegend');
     if (ciiLegend) {
@@ -6559,6 +6798,11 @@ export class DeckGLMap {
       const credit = no2Legend.querySelector<HTMLElement>('.no2-activity-credit');
       if (credit && this.no2Activity?.attribution) credit.textContent = this.no2Activity.attribution;
     }
+    if (this.state.layers.ciiChoropleth) visibleEntries++;
+    if (this.state.layers.no2Activity) visibleEntries++;
+    // A bare "Legend" title over nothing reads as a broken, partial list.
+    const legend = this.container.querySelector<HTMLElement>('.deckgl-legend');
+    if (legend) legend.hidden = visibleEntries === 0;
   }
 
   // Public API methods (matching MapComponent interface)
@@ -6613,6 +6857,7 @@ export class DeckGLMap {
       jsBuild = performance.now() - buildStart;
       layerCount = built.length;
       this.deckFrameProvider.wake();
+      this.committedLayers = built;
       this.deckOverlay?.setProps({ layers: built });
     } catch { /* map may be mid-teardown (null.getProjection) */ }
     if (import.meta.env.DEV) {
@@ -6761,7 +7006,7 @@ export class DeckGLMap {
     }
   }
 
-  public setCenter(lat: number, lon: number, zoom?: number): void {
+  public setCenter(lat: number, lon: number, zoom?: number, durationMs = 500): void {
     // Publish the requested destination immediately, matching setView(). This
     // keeps URL/context reads truthful even if flyTo is interrupted or its
     // moveend arrives after a programmatic caller's bounded settlement wait.
@@ -6776,14 +7021,14 @@ export class DeckGLMap {
       this.maplibreMap.flyTo({
         center: [lon, lat],
         ...(zoom != null && { zoom }),
-        duration: 500,
+        duration: durationMs,
       }, { [VIEWPORT_MOVEMENT_EVENT_KEY]: viewportMovementGeneration });
     }
     this.onStateChange?.(this.getState());
   }
 
   public fitCountry(code: string): void {
-    const bbox = getCountryBbox(code);
+    const bbox = getCountryMapBbox(code);
     if (!bbox || !this.maplibreMap) return;
     const [minLon, minLat, maxLon, maxLat] = bbox;
     this.maplibreMap.fitBounds([[minLon, minLat], [maxLon, maxLat]], {
@@ -6791,6 +7036,14 @@ export class DeckGLMap {
       duration: 800,
       maxZoom: 8,
     });
+  }
+
+  /** Where (lat, lon) is drawn in client coordinates. */
+  public projectToClient(lat: number, lon: number): { x: number; y: number } | null {
+    const point = this.projectToScreen(lat, lon);
+    if (!point || !this.maplibreMap) return null;
+    const rect = this.maplibreMap.getContainer().getBoundingClientRect();
+    return { x: rect.left + point.x, y: rect.top + point.y };
   }
 
   public getCenter(): { lat: number; lon: number } | null {
@@ -6854,6 +7107,25 @@ export class DeckGLMap {
       pan: { ...this.state.pan },
       layers: { ...this.state.layers },
     };
+  }
+
+  /** Holds the map at `max` zoom or below, through a rebuilt basemap too, or lifts the cap with null. MapLibre clamps a map already past it. */
+  public setZoomCap(max: number | null): void {
+    this.zoomCap = max;
+    this.applyZoomCap();
+  }
+
+  private applyZoomCap(): void {
+    const map = this.maplibreMap;
+    if (!map) return;
+    if (this.zoomCap === null) {
+      if (this.uncappedMaxZoom !== null) map.setMaxZoom(this.uncappedMaxZoom);
+      this.uncappedMaxZoom = null;
+      return;
+    }
+    this.uncappedMaxZoom ??= map.getMaxZoom();
+    map.setMaxZoom(this.zoomCap);
+    this.state.zoom = Math.min(this.state.zoom, this.zoomCap);
   }
 
   // Zoom controls - public for external access
@@ -7507,6 +7779,51 @@ export class DeckGLMap {
     this.render();
   }
 
+  public setReservoirLevels(reservoirs: ReservoirLevel[]): void {
+    this.reservoirLevels = reservoirs;
+    this.render();
+  }
+
+  /** Fly to a reservoir and open its popup at the container centre, where the flight ends. */
+  public openReservoir(reservoir: ReservoirLevel): void {
+    const reveal = () => {
+      if (this.destroyed || !this.maplibreMap) return;
+      this.setCenter(reservoir.lat, reservoir.lon, 6);
+      const { x, y } = this.getContainerCenter();
+      this.popup.show({ type: 'reservoirLevel', data: reservoir, x, y });
+    };
+    if (this.maplibreMap) reveal();
+    else void this.whenReady().then(reveal).catch(() => {});
+  }
+
+  /**
+   * One dot per strategic reservoir, coloured by status from the theme's
+   * semantic tokens: red and amber for falling or low, blue for rising or
+   * high, grey for normal, and a hollow ring when there is no recent pass or
+   * too little history to judge.
+   */
+  private createReservoirLevelsLayer(): ScatterplotLayer<ReservoirLevel> {
+    const theme = getCurrentTheme();
+    const rgb = (r: ReservoirLevel) => reservoirToneRgb(reservoirTone(r.status), getCSSColor);
+    const outline: [number, number, number, number] = theme === 'light' ? [255, 255, 255, 230] : [10, 12, 16, 230];
+    return new ScatterplotLayer<ReservoirLevel>({
+      id: 'reservoir-levels-layer',
+      data: this.reservoirLevels,
+      getPosition: (r) => [r.lon, r.lat],
+      getRadius: 9000,
+      radiusMinPixels: 6,
+      radiusMaxPixels: 12,
+      filled: true,
+      stroked: true,
+      getFillColor: (r) => (isHollowStatus(r.status) ? [0, 0, 0, 0] : [...rgb(r), 235]),
+      getLineColor: (r) => (isHollowStatus(r.status) ? [...rgb(r), 255] : outline),
+      getLineWidth: (r) => (isHollowStatus(r.status) ? 2 : 1.5),
+      lineWidthUnits: 'pixels',
+      pickable: true,
+      updateTriggers: { getFillColor: theme, getLineColor: theme },
+    });
+  }
+
   public setUkmtoIncidents(incidents: UkmtoMapIncident[]): void {
     this.ukmtoIncidents = incidents;
     this.render();
@@ -7596,6 +7913,8 @@ export class DeckGLMap {
   }
 
   private fetchServerBases(): void {
+    // The satellite pass lookup has the map on its point; the bases already drawn stay.
+    if (holdsViewportRequests()) return;
     const fetchSeq = ++this.serverBasesFetchSeq;
     this.serverBases = [];
     this.serverBaseClusters = [];
@@ -7664,7 +7983,7 @@ export class DeckGLMap {
   }
 
   private fetchViewportAircraft(): void {
-    if (!this.maplibreMap) return;
+    if (!this.maplibreMap || holdsViewportRequests()) return;
     if (!this.state.layers.flights) return;
     const zoom = this.maplibreMap.getZoom();
     if (zoom < 2) {
@@ -7679,6 +7998,9 @@ export class DeckGLMap {
       return;
     }
     if (!this.hasAircraftViewportChanged()) return;
+    // Coverage is the viewport the request was made for. The map can move without
+    // a new request (the point lookup holds them), so the live view may differ by completion.
+    const requestCenter = this.maplibreMap.getCenter();
     const bounds = this.maplibreMap.getBounds();
     const sw = bounds.getSouthWest();
     const ne = bounds.getNorthEast();
@@ -7691,11 +8013,8 @@ export class DeckGLMap {
       if (seq !== this.aircraftFetchSeq) return; // discard stale response
       this.aircraftPositions = positions;
       this.onAircraftPositionsUpdate?.(positions);
-      const center = this.maplibreMap?.getCenter();
-      if (center) {
-        this.lastAircraftFetchCenter = [center.lng, center.lat];
-        this.lastAircraftFetchZoom = this.maplibreMap!.getZoom();
-      }
+      this.lastAircraftFetchCenter = [requestCenter.lng, requestCenter.lat];
+      this.lastAircraftFetchZoom = zoom;
       this.setLayerReady('flights', positions.length > 0);
       this.render();
     }).catch((err) => {
@@ -7714,7 +8033,7 @@ export class DeckGLMap {
     this.render();
   }
 
-  public setFires(fires: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }>): void {
+  public setFires(fires: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string; detected_at?: number; satellite?: string; source?: string }>): void {
     this.firmsFireData = fires;
     this.render();
   }
@@ -7916,6 +8235,200 @@ export class DeckGLMap {
     this.render();
   }
 
+  public setOrbitalTrack(track: PassTrack | null, marker: TrackPoint | null): void {
+    this.orbitalTrack = track;
+    this.orbitalTrackMarker = track ? marker : null;
+    this.syncOrbitalWorldCopies();
+    this.render();
+  }
+
+  /** Orbital shapes are drawn whole, with longitudes continuous near the looked-up point. */
+  private orbitalAroundLon(track: PassTrack): number {
+    return this.orbitalTarget?.lon ?? track.closest.lon;
+  }
+
+  /**
+   * The map draws no world copies, so a pass across the antimeridian would end at the map edge.
+   * While one is drawn or framed, the copies are on so the ground past ±180 shows under it.
+   */
+  private syncOrbitalWorldCopies(framed?: FrameBounds): void {
+    const track = this.orbitalTrack;
+    const beyond = (lon: number) => lon < -180 || lon > 180;
+    if (framed) this.orbitalFramedPastEdge = beyond(framed[0][0]) || beyond(framed[1][0]);
+    if (!track && !this.orbitalTarget) this.orbitalFramedPastEdge = false;
+    const shapes = track ? continuousTrack(track, this.orbitalAroundLon(track)) : null;
+    const past = this.orbitalFramedPastEdge || !!shapes && [shapes.path, ...shapes.footprint].some((line) => line.some(([lon]) => beyond(lon)));
+    this.maplibreMap?.setRenderWorldCopies(past);
+  }
+
+  /** Moves the replay to a moment by swapping only the replay layers into the layers already committed to deck.gl. */
+  public setOrbitalTrackMarker(point: TrackPoint | null): void {
+    if (!this.orbitalTrack) return;
+    this.orbitalTrackMarker = point;
+    const layers = this.committedLayers?.filter((layer) => !ORBITAL_REPLAY_LAYER_IDS.has(deckLayerId(layer) ?? ''));
+    const at = layers?.findIndex((layer) => deckLayerId(layer) === 'orbital-track-layer') ?? -1;
+    if (!layers || at < 0 || this.renderRafId !== null || this.renderPaused || this.webglLost || !this.maplibreMap) {
+      this.render();
+      return;
+    }
+    layers.splice(at + 1, 0, ...this.createOrbitalReplayLayers());
+    this.committedLayers = layers;
+    this.deckFrameProvider.wake();
+    this.deckOverlay?.setProps({ layers });
+    this.maplibreMap.triggerRepaint();
+  }
+
+  /** The swath swept so far, its leading edge and the satellite, at the replay moment. */
+  private createOrbitalReplayLayers(): Layer[] {
+    const marker = this.orbitalTrackMarker;
+    const track = this.orbitalTrack;
+    if (!marker || !track) return [];
+    const aroundLon = this.orbitalAroundLon(track);
+    const swept = sweptSwath(track, marker.timeMs, aroundLon);
+    return [
+      new PolygonLayer<FootprintRing>({
+        id: ORBITAL_SWEPT_LAYER_ID,
+        data: swept.rings,
+        getPolygon: (ring) => ring,
+        getFillColor: orbitalRgba('--green', 56),
+        stroked: false,
+        pickable: false,
+      }),
+      new PathLayer<Array<[number, number]>>({
+        id: ORBITAL_LEADING_EDGE_LAYER_ID,
+        data: swept.leadingEdge,
+        getPath: (line) => line,
+        getColor: orbitalRgba('--green', 255),
+        getWidth: 3,
+        widthUnits: 'pixels',
+        capRounded: true,
+        pickable: false,
+      }),
+      new ScatterplotLayer<TrackPoint>({
+        id: 'orbital-track-marker-layer',
+        data: [pointNear(marker, aroundLon)],
+        getPosition: (point) => [point.lon, point.lat],
+        getRadius: 5,
+        radiusUnits: 'pixels',
+        getFillColor: orbitalRgba('--text', 255),
+        getLineColor: orbitalRgba('--panel-bg', 230),
+        stroked: true,
+        lineWidthMinPixels: 1.5,
+        pickable: false,
+      }),
+    ];
+  }
+
+  public setOrbitalTarget(target: OrbitalTarget | null): void {
+    this.orbitalTarget = target;
+    this.container.classList.toggle('orbital-pinned', !!target);
+    this.syncOrbitalWorldCopies();
+    this.render();
+  }
+
+  /**
+   * Fits the map to a box inside the part of the map left visible by `occluders`, the screen boxes
+   * of the lookup's sheet and HUD. Each one pads the side of the map it costs least to give up.
+   */
+  public frameOrbitalBounds(bounds: FrameBounds, occluders: DOMRect[] = []): void {
+    if (!this.maplibreMap) return;
+    const box = this.container.getBoundingClientRect();
+    const width = box.width || this.container.clientWidth;
+    const height = box.height || this.container.clientHeight;
+    const padding = { top: 40, bottom: 40, left: 40, right: 40 };
+    for (const r of occluders) {
+      if (Math.min(r.right, box.right) <= Math.max(r.left, box.left) || Math.min(r.bottom, box.bottom) <= Math.max(r.top, box.top)) continue;
+      const cost = { top: r.bottom - box.top, bottom: box.bottom - r.top, left: r.right - box.left, right: box.right - r.left };
+      const share = (side: keyof typeof cost) => cost[side] / (side === 'top' || side === 'bottom' ? height : width);
+      const side = (Object.keys(cost) as Array<keyof typeof cost>).reduce((best, next) => (share(next) < share(best) ? next : best));
+      padding[side] = Math.max(padding[side], Math.round(cost[side]) + 16);
+    }
+    if (width - padding.left - padding.right < 80 || height - padding.top - padding.bottom < 60) return;
+    this.syncOrbitalWorldCopies(bounds);
+    const [[west, south], [east, north]] = bounds;
+    this.maplibreMap.fitBounds([[west, south], [east, north]], { padding, maxZoom: 9, duration: 600 });
+    this.maplibreMap.once('moveend', () => this.render());
+  }
+
+  /** The reticle on the looked-up point: an accent ring with a dot and a mono label. */
+  private createOrbitalTargetLayer(): Layer[] {
+    const target = this.orbitalTarget;
+    if (!target) return [];
+    const ring = { ...ORBITAL_RETICLE, getPosition: (point: OrbitalTarget) => [point.lon, point.lat] as [number, number] };
+    // The tag sits right of the reticle unless that would run it off the map, as at the antimeridian edge.
+    const x = this.maplibreMap?.project([target.lon, target.lat]).x;
+    const labelWidth = 14 + 7 * Math.max(0, ...target.lines.map((line) => line.length));
+    const left = x !== undefined && x + 24 + labelWidth > this.container.clientWidth && x - 24 - labelWidth >= 0;
+    return [
+      new ScatterplotLayer<OrbitalTarget>({
+        id: 'orbital-target-layer',
+        data: [target],
+        ...ring,
+        getRadius: 14,
+        radiusUnits: 'pixels',
+        filled: false,
+        stroked: true,
+        getLineColor: orbitalRgba('--green', 255),
+        lineWidthUnits: 'pixels',
+        getLineWidth: 2,
+      }),
+      new ScatterplotLayer<OrbitalTarget>({
+        id: 'orbital-target-dot-layer',
+        data: [target],
+        ...ring,
+        getRadius: 3,
+        radiusUnits: 'pixels',
+        getFillColor: orbitalRgba('--green', 255),
+      }),
+      new TextLayer<OrbitalTarget>({
+        id: 'orbital-target-label-layer',
+        data: [target],
+        ...ring,
+        getText: (point) => point.lines.join('\n'),
+        getSize: 11,
+        fontFamily: getCSSColor('--font-mono'),
+        fontWeight: 500,
+        characterSet: 'auto',
+        lineHeight: 1.45,
+        getColor: orbitalRgba('--text', 255),
+        getTextAnchor: left ? 'end' : 'start',
+        getAlignmentBaseline: 'center',
+        getPixelOffset: [left ? -24 : 24, 0],
+        updateTriggers: { getTextAnchor: left, getPixelOffset: left },
+        background: true,
+        getBackgroundColor: orbitalRgba('--panel-bg', 225),
+        backgroundPadding: [7, 4, 7, 4],
+      }),
+    ];
+  }
+
+  private createOrbitalTrackLayers(): Layer[] {
+    const track = this.orbitalTrack;
+    if (!track) return this.createOrbitalTargetLayer();
+    const shapes = continuousTrack(track, this.orbitalAroundLon(track));
+    const layers: Layer[] = [
+      new PolygonLayer<FootprintRing>({
+        id: 'orbital-footprint-layer',
+        data: shapes.footprint,
+        getPolygon: (ring) => ring,
+        getFillColor: orbitalRgba('--green', 18),
+        getLineColor: orbitalRgba('--green', 120),
+        lineWidthMinPixels: 1,
+        pickable: false,
+      }),
+      new PathLayer<Array<[number, number]>>({
+        id: 'orbital-track-layer',
+        data: [shapes.path],
+        getPath: (path) => path,
+        getColor: orbitalRgba('--text-dim', 230),
+        getWidth: 1.5,
+        widthUnits: 'pixels',
+        pickable: false,
+      }),
+    ];
+    return [...layers, ...this.createOrbitalReplayLayers(), ...this.createOrbitalTargetLayer()];
+  }
+
   public clearBypassRoutes(): void {
     if (this.bypassArcData.length === 0) return;
     this.bypassArcData = [];
@@ -8098,16 +8611,6 @@ export class DeckGLMap {
     return getHotspotEscalation(hotspotId);
   }
 
-  /** Get military flight clusters for rendering/analysis */
-  public getMilitaryFlightClusters(): MilitaryFlightCluster[] {
-    return this.militaryFlightClusters;
-  }
-
-  /** Get military vessel clusters for rendering/analysis */
-  public getMilitaryVesselClusters(): MilitaryVesselCluster[] {
-    return this.militaryVesselClusters;
-  }
-
   public highlightAssets(assets: RelatedAsset[] | null): void {
     // Clear previous highlights
     Object.values(this.highlightedAssets).forEach(set => set.clear());
@@ -8129,10 +8632,6 @@ export class DeckGLMap {
 
   public setOnHotspotClick(callback: (hotspot: Hotspot) => void): void {
     this.onHotspotClick = callback;
-  }
-
-  public setOnTradeArcClick(cb: (segment: TradeRouteSegment, waypoints: string[], x: number, y: number) => void): void {
-    this.onTradeArcClick = cb;
   }
 
   public setOnTimeRangeChange(callback: (range: TimeRange) => void): void {
@@ -8603,11 +9102,14 @@ export class DeckGLMap {
           filter: ['==', ['get', 'ISO3166-1-Alpha-2'], ''],
         });
 
+        this.addFocusOutlineLayers();
+
         if (!this.countryHoverSetup) this.setupCountryHover();
         const paintProvider = getMapProvider();
         const paintMapTheme = getMapTheme(paintProvider);
         this.updateCountryLayerPaint(isLightMapTheme(paintMapTheme) ? 'light' : 'dark');
         if (this.highlightedCountryCode) this.highlightCountry(this.highlightedCountryCode);
+        this.applyFocusOutline();
         this.render();
       })
       .catch((err) => console.warn('[DeckGLMap] Failed to load country boundaries:', err));
@@ -8747,6 +9249,99 @@ export class DeckGLMap {
     this.countryPulseRaf = requestAnimationFrame(step);
   }
 
+  // --- Dashboard focus outline and fit (#10453) ---
+
+  /**
+   * Outline the focus: chosen countries with a solid border (and a faint
+   * fill), neighbours with a thinner, fainter one. Separate layers from the
+   * country-brief highlight, so opening or closing a brief never clears the
+   * focus outline. Null removes it. Markers are untouched.
+   */
+  public setFocusOutline(outline: { chosen: readonly string[]; neighbours: readonly string[] } | null): void {
+    this.focusOutline = outline
+      ? { chosen: [...outline.chosen], neighbours: [...outline.neighbours] }
+      : null;
+    this.applyFocusOutline();
+  }
+
+  private addFocusOutlineLayers(): void {
+    const map = this.maplibreMap;
+    if (!map) return;
+    const color = FOCUS_OUTLINE_COLOR[isLightMapTheme(getMapTheme(getMapProvider())) ? 'light' : 'dark'];
+    const none = focusCodeFilter([]);
+    map.addLayer({
+      id: FOCUS_CHOSEN_FILL_LAYER,
+      type: 'fill',
+      source: 'country-boundaries',
+      paint: { 'fill-color': color, 'fill-opacity': FOCUS_OUTLINE_STYLE.chosen.fillOpacity },
+      filter: none,
+    });
+    // Neighbours first, so the chosen border draws over a shared border.
+    map.addLayer({
+      id: FOCUS_NEIGHBOUR_BORDER_LAYER,
+      type: 'line',
+      source: 'country-boundaries',
+      paint: {
+        'line-color': color,
+        'line-width': FOCUS_OUTLINE_STYLE.neighbour.width,
+        'line-opacity': FOCUS_OUTLINE_STYLE.neighbour.opacity,
+      },
+      filter: none,
+    });
+    map.addLayer({
+      id: FOCUS_CHOSEN_BORDER_LAYER,
+      type: 'line',
+      source: 'country-boundaries',
+      paint: {
+        'line-color': color,
+        'line-width': FOCUS_OUTLINE_STYLE.chosen.width,
+        'line-opacity': FOCUS_OUTLINE_STYLE.chosen.opacity,
+      },
+      filter: none,
+    });
+  }
+
+  private applyFocusOutline(): void {
+    const map = this.maplibreMap;
+    if (!map || !this.countryGeoJsonLoaded) return;
+    try {
+      // Boundaries still loading: the load callback applies the outline.
+      if (!map.getLayer(FOCUS_CHOSEN_BORDER_LAYER)) return;
+      const chosen = focusCodeFilter(this.focusOutline?.chosen ?? []);
+      map.setFilter(FOCUS_CHOSEN_FILL_LAYER, chosen);
+      map.setFilter(FOCUS_CHOSEN_BORDER_LAYER, chosen);
+      map.setFilter(FOCUS_NEIGHBOUR_BORDER_LAYER, focusCodeFilter(this.focusOutline?.neighbours ?? []));
+    } catch { /* style swapped mid-call; the next boundaries load re-applies */ }
+  }
+
+  /**
+   * Frame the focus's chosen countries. `fit.east` is unwrapped past 180
+   * when the union crosses the dateline, which MapLibre fits across the
+   * Pacific. `maxZoom` is FOCUS_FIT_MAX_ZOOM from that module, passed in so
+   * this chunk does not import it statically.
+   */
+  public fitFocusBounds(fit: FocusFitBounds, maxZoom: number): void {
+    const map = this.maplibreMap;
+    if (!map) return;
+    const camera = map.cameraForBounds(
+      [[fit.west, fit.south], [fit.east, fit.north]],
+      { padding: focusFitPadding(this.container), maxZoom },
+    );
+    const center = camera?.center ? lngLatOf(camera.center) : null;
+    if (!center) return;
+    const lon = ((center.lng + 180) % 360 + 360) % 360 - 180;
+    const zoom = camera?.zoom ?? map.getZoom();
+    this.pendingCenter = { lat: center.lat, lon };
+    this.state.zoom = zoom;
+    const viewportMovementGeneration = this.markViewportMoving({ lat: center.lat, lon, zoom }, 1_100);
+    map.flyTo({
+      center: [lon, center.lat],
+      zoom,
+      duration: 800,
+    }, { [VIEWPORT_MOVEMENT_EVENT_KEY]: viewportMovementGeneration });
+    this.onStateChange?.(this.getState());
+  }
+
   private async switchBasemap(): Promise<void> {
     const map = this.maplibreMap;
     if (!map) return;
@@ -8764,6 +9359,7 @@ export class DeckGLMap {
     map.setStyle(style, { diff: false });
     map.once('style.load', () => {
       localizeMapLabels(this.maplibreMap);
+      improveBasemapLabels(this.maplibreMap, isLightMapTheme(isHappyVariant ? getCurrentTheme() : mapTheme));
       this.loadCountryBoundaries();
       if (this.radarActive) this.applyRadarLayer();
       const paintTheme = isLightMapTheme(mapTheme) ? 'light' as const : 'dark' as const;
@@ -8827,6 +9423,7 @@ export class DeckGLMap {
     this.maplibreMap.setStyle(fallback, { diff: false });
     this.maplibreMap.once('style.load', () => {
       localizeMapLabels(this.maplibreMap);
+      improveBasemapLabels(this.maplibreMap, isLightMapTheme(mapTheme));
       this.loadCountryBoundaries();
       if (this.radarActive) this.applyRadarLayer();
       const paintTheme = isLightMapTheme(mapTheme) ? 'light' as const : 'dark' as const;
@@ -8845,6 +9442,12 @@ export class DeckGLMap {
   private updateCountryLayerPaint(theme: 'dark' | 'light'): void {
     if (!this.maplibreMap || !this.countryGeoJsonLoaded) return;
     if (!this.maplibreMap.style || !this.maplibreMap.getLayer('country-hover-fill')) return;
+    if (this.maplibreMap.getLayer(FOCUS_CHOSEN_BORDER_LAYER)) {
+      const color = FOCUS_OUTLINE_COLOR[theme];
+      this.maplibreMap.setPaintProperty(FOCUS_CHOSEN_FILL_LAYER, 'fill-color', color);
+      this.maplibreMap.setPaintProperty(FOCUS_NEIGHBOUR_BORDER_LAYER, 'line-color', color);
+      this.maplibreMap.setPaintProperty(FOCUS_CHOSEN_BORDER_LAYER, 'line-color', color);
+    }
     const hoverFillOpacity   = theme === 'light' ? 0.08 : 0.05;
     const hoverBorderOpacity = theme === 'light' ? 0.35 : 0.22;
     const highlightOpacity   = theme === 'light' ? 0.18 : 0.12;
@@ -8858,7 +9461,11 @@ export class DeckGLMap {
   }
 
   public destroy(): void {
+    this.controlDisclosureCleanups.forEach(cleanup => cleanup());
+    this.controlDisclosureCleanups = [];
     this.destroyed = true;
+    // The popup is appended to document.body, so removing the map container leaves it open.
+    this.popup.hide();
     this.aircraftFetchSeq += 1;
     this.deckFrameProvider.dispose();
     this.settleViewportMovement(false);
@@ -8869,6 +9476,8 @@ export class DeckGLMap {
     this._unsubscribeAuthState = null;
     this._unsubscribeEntitlement?.();
     this._unsubscribeEntitlement = null;
+    this.stopViewportResume?.();
+    this.stopViewportResume = null;
     window.removeEventListener('theme-changed', this.handleThemeChange);
     window.removeEventListener('map-theme-changed', this.handleMapThemeChange);
     this.tradeReducedMotionMedia?.removeEventListener('change', this.handleTradeMotionPreferenceChange);
@@ -8913,6 +9522,8 @@ export class DeckGLMap {
     this.activeNuclearFacilities = null;
     this.activeDatacenters = null;
 
+    this.distanceControl?.destroy();
+    this.distanceControl = null;
     this.deckOverlay?.finalize();
     this.deckOverlay = null;
     this.detachMapLibreInteractionHandlers();

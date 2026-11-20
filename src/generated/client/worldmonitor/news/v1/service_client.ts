@@ -59,6 +59,8 @@ export interface NewsItem {
   snippet: string;
   tickers: string[];
   credibilityScore: number;
+  linkVerified: boolean;
+  originPublisher: string;
 }
 
 export interface ThreatClassification {
@@ -97,6 +99,8 @@ export interface DigestCoverage {
   servedStale: boolean;
   staleAgeSeconds: number;
   staleReason: string;
+  itemsConsidered: number;
+  publishersConsidered: number;
 }
 
 export interface ListCountryHeadlinesRequest {
@@ -351,6 +355,43 @@ export interface ClaimHeadline {
   title: string;
   link: string;
   publishedAt: number;
+}
+
+export interface SearchHeadlinesRequest {
+  query: string;
+  variant: string;
+  lang: string;
+}
+
+export interface SearchHeadlinesResponse {
+  headlines: HeadlineMatch[];
+  searchedHeadlines: number;
+  windowHours: number;
+  state: string;
+  newestServedAt: number;
+}
+
+export interface HeadlineMatch {
+  source: string;
+  title: string;
+  link: string;
+  publishedAt: number;
+  lastServedAt: number;
+}
+
+export interface ListSentAlertsRequest {
+}
+
+export interface ListSentAlertsResponse {
+  alerts: SentAlert[];
+  state: string;
+}
+
+export interface SentAlert {
+  title: string;
+  source: string;
+  link: string;
+  sentAt: number;
 }
 
 export type StoryPhase = "STORY_PHASE_UNSPECIFIED" | "STORY_PHASE_BREAKING" | "STORY_PHASE_DEVELOPING" | "STORY_PHASE_SUSTAINED" | "STORY_PHASE_FADING";
@@ -738,6 +779,83 @@ export class NewsServiceClient {
     }
 
     return await resp.json() as SearchClaimHeadlinesResponse;
+  }
+
+  async searchHeadlines(req: SearchHeadlinesRequest, options?: NewsServiceCallOptions): Promise<SearchHeadlinesResponse> {
+    let path = "/api/news/v1/search-headlines";
+    const params = new URLSearchParams();
+    if (req.query != null && req.query !== "") params.set("query", String(req.query));
+    if (req.variant != null && req.variant !== "") params.set("variant", String(req.variant));
+    if (req.lang != null && req.lang !== "") params.set("lang", String(req.lang));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as SearchHeadlinesResponse;
+  }
+
+  async searchHeadlineArchive(req: SearchHeadlinesRequest, options?: NewsServiceCallOptions): Promise<SearchHeadlinesResponse> {
+    let path = "/api/news/v1/search-headline-archive";
+    const params = new URLSearchParams();
+    if (req.query != null && req.query !== "") params.set("query", String(req.query));
+    if (req.variant != null && req.variant !== "") params.set("variant", String(req.variant));
+    if (req.lang != null && req.lang !== "") params.set("lang", String(req.lang));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as SearchHeadlinesResponse;
+  }
+
+  async listSentAlerts(_req: ListSentAlertsRequest, options?: NewsServiceCallOptions): Promise<ListSentAlertsResponse> {
+    let path = "/api/news/v1/list-sent-alerts";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListSentAlertsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

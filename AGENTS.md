@@ -32,6 +32,7 @@ Merge, auto-merge, and deployment require explicit authorization in the current 
 - Every PR that adds or changes UI must include screenshots of the changed UI in its GitHub description before it is ready for review. This applies to new PRs and updates to existing PRs.
 - Capture and inspect the rendered change. Include desktop and mobile views when responsive behavior is affected, and before/after or error/recovery states when they help show the change. Use test data, label the state and tested commit, and refresh screenshots after further UI changes.
 - Upload images with GitHub CLI 2.99 or newer: `gh pr edit <number> --attach '/absolute/path/screenshot.png#Description of the changed UI'`. Repeat `--attach` for multiple images. Preserve the existing PR description and verify that the uploaded images appear in it; local file paths alone are not GitHub evidence.
+- Never push screenshots to a branch (`pr-assets`, `assets/*`, `dogfood/*-screenshots`, or any orphan or image-only ref), and never link them through `raw.githubusercontent.com`. An image-only branch has no `vercel.json`, so Vercel builds it and fails with `Could not read package.json`. The pre-push hook refuses a branch that shares no history with `origin/main`. Do not bypass it with `--no-verify`.
 - When creating or updating a PR is authorized, uploading its UI screenshots is part of that delivery. If upload is blocked, report the blocker and do not claim the screenshot requirement is complete.
 
 ## Find the code and its checks
@@ -64,12 +65,14 @@ Test path, command, and owning CI job. Read this instead of `.github/workflows/t
 
 | Test path | Command | CI job |
 |---|---|---|
-| `tests/*.test.mjs`, `tests/*.test.mts`, `cli/test/`, `api/security/report.test.mjs` | `npm run test:data` | `unit-shards` |
+| `tests/*.test.mjs`, `tests/*.test.mts`, `cli/test/`, `api/security/report.test.mjs` | `npm run test:related` locally; `npm run test:data` is the full suite | `unit-shards` |
 | `tests/dom/` | `npm run test:dom` | `dom-tests` |
 | `convex/__tests__/`, `server/__tests__/`, `src/services/correlation-engine/` | `npm run test:convex` | `convex-tests` |
 | `api/` node suites except `api/security/report.test.mjs`, and `src-tauri/` | `npm run test:sidecar` | `sidecar` |
 
 Find a suite by subject with `ls tests/ | grep <subject>` before searching the tree.
+
+Before pushing, run `npm run test:related`. It runs the data tests that a branch's changes can reach, usually in under a minute. The full `test:data` suite takes about six minutes locally, and CI runs it on every push.
 
 ## Critical boundaries
 
@@ -88,9 +91,32 @@ The browser import direction is `types -> config -> services -> components -> ap
 
 - For browser behavior, load [verify-worldmonitor](.agents/skills/verify-worldmonitor/SKILL.md). Start with an existing strict feature test. Use manual driving for the interaction being changed.
 - For Sentry events, load [sentry-triage](.agents/skills/sentry-triage/SKILL.md). Its default is read-only triage.
+- For a new or changed news feed, load [add-rss-feed](.agents/skills/add-rss-feed/SKILL.md). For a JSON API endpoint, load [add-rpc-endpoint](.agents/skills/add-rpc-endpoint/SKILL.md). For a new dataset, seeder, or map layer, load [add-data-source](.agents/skills/add-data-source/SKILL.md).
+- For a code review or a self-review before a PR, load [review-worldmonitor-change](.agents/skills/review-worldmonitor-change/SKILL.md). A standalone review stays read-only.
+- Folder rules live in `src/components/AGENTS.md`, `scripts/AGENTS.md`, and `server/AGENTS.md`. Read the one for the folder you edit.
 - `.agents/skills/` contains repository engineering skills. `skills/` contains published product recipes for API and MCP consumers. They serve different users.
 - Read [documented solutions](docs/solutions/) when the affected area has a prior fix — organized by category directory (`security-issues/`, `logic-errors/`, `conventions/`, …) with YAML frontmatter (`module`, `component`, `problem_type`, `tags`) to grep. Use [CONCEPTS.md](CONCEPTS.md) for shared terms and [design philosophy](docs/architecture.mdx) for design decisions.
 
 Run the smallest meaningful proof first. Preserve useful regression coverage. Run heavy checks sequentially. Report failures honestly. Keep locally verified, PR ready, merged, deployed, observed in production, and acceptance complete as separate claims.
 
 A green pre-push hook proves only its local checks. After pushing, monitor required CI on the exact PR head. Repair relevant failures on the existing branch and verify the new head. Do not report CI success while required checks are failed or pending. Inspect the failed job's first actionable error before retrying or changing code.
+
+## Wait for PR events instead of polling
+
+With GitHub CLI 2.105 or newer, `gh event listen` blocks until a pull request event arrives. Run it in the background and act when it exits. Never wrap `gh pr checks`, `gh pr view`, or `gh api` in a sleep loop.
+
+```bash
+gh event listen --resource https://github.com/koala73/worldmonitor/pull/<number> \
+  --event com.github.pull_request.check_suite.status.changed.v1,com.github.pull_request.review.submitted.v1,com.github.pull_request.head.changed.v1,com.github.pull_request.state.changed.v1 \
+  --timeout 45m
+```
+
+- Read the state with `gh pr view <number> --json headRefOid,statusCheckRollup`. It shows the head SHA, which `gh pr checks` does not.
+- The command exits after the first event. Events are not replayed. The listener prints a status line on stderr each time the stream attaches, including after it reconnects from a dropped stream. Read the state after each status line and after each event.
+- A push before the listener attaches sends no `head.changed` event. On each read, compare `headRefOid` with the pinned head SHA. If it differs, or a `head.changed` event arrives, pin the new SHA before acting on earlier findings or check results.
+- Each check suite sends its own event. While required checks are pending, start the listener again. When a suite fails, inspect that job instead of waiting for the rest.
+- `gate` is a commit status that Deploy Gate posts after the other workflows finish, so it sends no event. When only `gate` is pending, wait for it with one bounded watch, such as `timeout 30m gh pr checks <number> --watch`. If `gate` is still pending on an unchanged head after that, Deploy Gate may have used up the head's status capacity. Report that the head is blocked until it gets a new commit.
+- Exit status 8 means the timeout passed with no event. Read the state once, then decide whether to listen again.
+- Exit status 1 with `Event subscriptions are not enabled for this account` means the account lacks the Event Streams preview. Use one background `gh pr checks <number> --watch` instead. The owner account returned this error on 2026-11-19.
+- Neither command's exit status proves CI passed. `gh pr checks --watch` can exit 0 while it prints jobs as `skipping` after a failure. Before reporting success, read `statusCheckRollup` for the pinned head and confirm that `gate` is `SUCCESS`, no check is still queued or in progress, and no check concluded `FAILURE`. A rerun can leave an earlier `SUCCESS` gate visible until it finishes. `gate` already accepts required jobs that path selection skipped.
+- Subscriptions expire after 24 hours, and each account has a limited number. Delete a subscription you no longer need with `gh event subscription delete <id>`.

@@ -11,7 +11,7 @@ symptoms:
 root_cause: config_error
 resolution_type: workflow_improvement
 severity: medium
-tags: [ci-performance, sharding, parallel-steps, github-actions, playwright, cpu-bound]
+tags: [ci-performance, sharding, parallel-steps, github-actions, playwright, cpu-bound, vitest]
 ---
 
 # CI test runners are CPU-bound: shard by measured time, and use parallel steps only for setup
@@ -152,6 +152,44 @@ serves the pro-test install inside `build:pro` (root `node_modules` comes from
 same blob at the same moment took 12-62s on PR #9626. The job now sets
 `cache-dependency-path: pro-test/package-lock.json`.
 
+## Which steps leave a vCPU idle (November 2026)
+
+A hosted `ubuntu-latest` runner on this public repo reports `nproc` 4: an AMD
+EPYC 7763 slice with 2 cores and 2 threads per core, and 16 GB of memory. Bench
+runs 44274790851 and 44282614737 alternated each setting several times on the
+same VM and read CPU busy from `/proc/stat`:
+
+| Step | Default | Changed to | Result |
+|---|---|---|---|
+| `test:dom` (Vitest) | 3 workers: 196.5s, 74% busy | 4 workers | 176.1s, 89% busy. 6 workers: 170.5s, 95% |
+| `test:convex` (Vitest) | 3 workers: 48.8s, 81% busy | 4 workers | 45.5s, 94% busy |
+| `test:sidecar` (node:test) | 54.7s, 17% busy | air-traffic and ingestion tests 4 at a time (not shipped) | 41.5s, 26% busy; flaked on the PR run |
+| ci-smoke shard 5 (Playwright) | 2 workers: 178.0s, 80% busy | 4 workers (not shipped) | 168.6s, 97% busy, 1.3 GB more memory |
+
+- **Vitest defaults to one worker fewer than the CPU count.** In a CI step
+  nothing else competes for that last vCPU. `dom-tests` sets
+  `VITEST_MAX_THREADS=4`, the config's existing override, so local runs keep
+  Vitest's default. `convex-tests` passes `--maxWorkers=4`.
+- **The sidecar suite stays serial.** `--test-concurrency` did nothing
+  (54.1s at the default, 53.8s at 4, 54.4s at 8): the wall is one file,
+  `scripts/ais-relay-air-traffic.test.cjs`, whose 33 tests each spawn a relay
+  and run one after another for ~55s. Registering them, and the ingestion
+  file's, in a `describe` with `concurrency: 4` took the suite to 41.5s with
+  0 failures in 16 bench runs, but the PR's own run failed. Each lane runs the
+  relay on a test clock 300 times real time, so a 5-minute bin lasts one real
+  second, and a relay starved of CPU misses it. Fixing one lane (slower clock,
+  ordering assertions instead of elapsed time) moved the failure to the next:
+  lanes 4, 4b, 6b, 20, 22 and 23 all failed under load. The job finishes well
+  inside the browser shards' wall, so 13s was not worth a flaky required check.
+- **Playwright stays at 2 workers.** 4 workers saved 5% on the slowest smoke
+  shard and pushed the runner to 97% busy. With `retries: 0`, a contention flake
+  now fails a required check.
+- **The unit shards stay at concurrency 4.** Bench run 40083951067 found 6 and
+  8 no faster.
+- **Builds have no worker setting to raise.** `tsc` is TypeScript 7, which
+  already checks in parallel (typecheck steps take 5-6s), and `vite build`
+  (Vite 6, Rollup) is single-threaded.
+
 ## Prevention
 
 - **Tests that walk `job.steps` do not see steps nested in a `parallel:`
@@ -185,6 +223,18 @@ same blob at the same moment took 12-62s on PR #9626. The job now sets
   most runs. The repack keeps shard 3 and moves 7 small specs:
   244/246/243/245. `country-brief` (207s) and `dashboard-news-request-budget`
   (191s) are each most of a shard, so the small specs fill the remainder.
+- **It drifted again within weeks.** On 4 November 2026 the split measured
+  268/331/411/287 of 1297 test-seconds (per-spec medians of six main runs),
+  and shard 3 finished last in five of the six. Moving
+  `map-overlay-marker-budget` to shard 1, and `progress-chart-fits` and
+  `variant-live-smoke` to shard 4, gives 326/317/328/326. A greedy search
+  (move the one spec that most lowers the largest shard, repeat) found that
+  three-move split; a hand-picked four-move split only reached 342.
+- **The rebalance is now a script:** `node scripts/balance-smoke-shards.mjs --write`.
+  It reads the shard logs of the six newest successful main runs, takes
+  per-spec medians, and repacks with that greedy search. Specs added by hand
+  had grown the total to 1607 test-seconds and the split to
+  520/231/460/396. The script moved seven specs for 405/398/399/405.
 - **Removing sleeps does not free the seconds they held on CI.** Locally the
   flag set 0.3-0.6s after the first digest. On a runner each 8s wait saved only
   1-5s; the flag time there was not logged. The spec's other tests got slower (3.9s to

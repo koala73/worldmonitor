@@ -582,6 +582,23 @@ describe('KTD6: the meter module', () => {
     assert.equal(desktopKeyMinuteKey('u1', at), `rl:desktopkey:min:u1:${Math.floor(at.getTime() / 60_000)}`);
   });
 
+  it('releaseDaily gives back the day count only, keeps the burst slot, and runs once', async () => {
+    const counts = { day: 10, minute: 5 };
+    const pipeline = async (commands: Array<Array<string | number>>) => commands.map(([verb, key]) => {
+      const which = String(key).includes(':day:') ? 'day' : 'minute';
+      if (verb === 'INCR') return { result: ++counts[which] };
+      if (verb === 'DECR') return { result: --counts[which] };
+      return { result: 1 };
+    });
+    const admitted = await reserveDesktopKeyBudget({ userId: 'u1', dailyLimit: 7_500, burstPerMinute: 120, pipeline });
+    assert.equal(admitted.ok, true);
+    if (admitted.ok !== true) return;
+    await admitted.releaseDaily();
+    await admitted.releaseDaily();
+    await admitted.rollback();
+    assert.deepEqual(counts, { day: 10, minute: 6 });
+  });
+
   it('INCRs both counters in one pipeline, rolls back on rejection, and fails closed on a bad pipeline', async () => {
     const seen: Array<Array<Array<string | number>>> = [];
     const counts = { day: 7_499, minute: 119 };

@@ -12,7 +12,7 @@
  * make graduated decisions (auto vs candidate) instead of the legacy 1.0 shortcut.
  * Reasons are returned so shadow mode and evidence_json can be human-readable.
  */
-import { parseSize, type ParsedSize } from '../normalizers/size.js';
+import { normalizeDecimalSeparators, parseSize, type ParsedSize } from '../normalizers/size.js';
 import type { BasketItem } from '../config/types.js';
 
 /**
@@ -171,19 +171,20 @@ function titleMultipackSize(
   item: ValidatorInput['item'],
 ): string | null {
   if (item.baseUnit === 'ct') return null;
-  const match = PACK_OF.exec(productName);
+  const title = normalizeDecimalSeparators(productName);
+  const match = PACK_OF.exec(title);
   const count = match ? Number(match[1]) : 0;
   if (!match || count <= 1) {
     // Only fills a multiplier the extractor dropped: sizeText must read as ONE
     // unit of the same dimension. An unparseable or cross-dimension sizeText
     // keeps its own verdict.
-    const nx = TITLE_N_X_SIZE.exec(productName);
+    const nx = TITLE_N_X_SIZE.exec(title);
     const total = nx && Number(nx[1]) > 1 ? parseSize(`${nx[1]} x ${nx[2]}`) : null;
     const extracted = parseSize(sizeText);
     const dropped = total && extracted && extracted.packCount === 1 && extracted.baseUnit === total.baseUnit;
     return dropped ? total.rawText : null;
   }
-  const titleSizes = [...productName.replace(match[0], ' ').matchAll(TITLE_SIZE)]
+  const titleSizes = [...title.replace(match[0], ' ').matchAll(TITLE_SIZE)]
     .map((m) => parseSize(m[0]))
     .filter((size): size is ParsedSize => size !== null);
   // Sizes in the unit the window measures come first: "6 pcs (Pack of 2, 400g

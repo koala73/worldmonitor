@@ -12,6 +12,7 @@ export interface BrowserCatalogFeed {
   url: CatalogUrl;
   type?: string;
   lang?: string;
+  fetchInAllLanguages?: boolean;
   strategicDefault?: boolean;
   /**
    * The only digest language that carries this source, set whenever the

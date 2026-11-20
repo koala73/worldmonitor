@@ -242,10 +242,16 @@ describe('overlay reload-contract gate', () => {
       'src/components/AboutYouCard.ts :: root',
       'src/components/IntelligenceGapBadge.ts :: overlay',
       'src/components/MobileWarningModal.ts :: this.element',
+      // Read-only archive imagery for a looked-up point; a reload only closes it.
+      'src/components/OrbitalImageViewer.ts :: this.root',
+      // Read-only satellite pass results; a reload only drops the lookup and
+      // an unsent place query, which is not saved work.
+      'src/components/OrbitalWatchPage.ts :: this.sheet',
       'src/components/RouteExplorer/KeyboardHelp.ts :: this.element',
       'src/components/SignalModal.ts :: this.element',
       'src/components/StoryModal.ts :: modalEl',
       'src/components/market-chart-modal.ts :: modalEl',
+      'src/services/pwa-install.ts :: sheet',
     ]);
     assert.deepEqual(safeDeclarationsIn("declareOverlay(el, { reload: 'blocking' })"), []);
     assert.deepEqual(safeDeclarationsIn("declareOverlay(root.querySelector('.x')!, { reload: 'safe' })"), ["root.querySelector('.x')!"]);

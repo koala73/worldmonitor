@@ -12,7 +12,9 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders } from '../_cors.js';
 // @ts-expect-error JS module without declarations.
 import { captureSilentError } from '../_sentry-edge.js';
-import { resolveSessionUserId } from '../../server/_shared/auth-session';
+// @ts-expect-error JS module without declarations.
+import { checkRateLimit } from '../_rate-limit.js';
+import { resolveVerifiedClerkSession } from '../../server/_shared/auth-session';
 import {
   reservePasskeyOfferSlot,
   type PasskeyOfferReservation,
@@ -34,6 +36,7 @@ export type PasskeyOfferFailureStep = 'clerk-read' | 'redis-claim' | 'clerk-mirr
 
 export interface PasskeyOfferDeps {
   resolveUserId(request: Request): Promise<string | Response | null>;
+  rateLimit(request: Request, userId: string, headers: Record<string, string>): Promise<Response | null>;
   readMigratedCount(userId: string): Promise<number>;
   reserve(userId: string, migratedCount: number): Promise<PasskeyOfferReservation>;
   persistTerminalCount(userId: string): Promise<void>;
@@ -158,6 +161,10 @@ export async function passkeyOfferHandler(
     });
   }
 
+  // Charge the verified account before either Clerk read or metadata write.
+  const limited = await deps.rateLimit(request, userId, jsonHeaders);
+  if (limited) return limited;
+
   const report = deps.report ?? defaultReport;
 
   let migratedCount: number;
@@ -205,9 +212,25 @@ export async function passkeyOfferHandler(
   return new Response(JSON.stringify(reservation), { status: 200, headers: jsonHeaders });
 }
 
+export function passkeyOfferRateLimitPolicy(userId: string) {
+  return {
+    scope: 'passkey-offer',
+    identifier: `user:${userId}`,
+    // Three lifetime offers plus retries; exhausted accounts share this budget.
+    limit: 10,
+    window: '10 m',
+    failClosed: true,
+  } as const;
+}
+
 export default async function handler(request: Request): Promise<Response> {
   return passkeyOfferHandler(request, {
-    resolveUserId: resolveSessionUserId,
+    resolveUserId: async (req) => {
+      // A plan lookup here would spend Clerk quota before the limiter.
+      const session = await resolveVerifiedClerkSession(req);
+      return session instanceof Response ? session : session?.userId ?? null;
+    },
+    rateLimit: (req, userId, headers) => checkRateLimit(req, headers, passkeyOfferRateLimitPolicy(userId)),
     readMigratedCount: readClerkMigratedCount,
     reserve: (userId, migratedCount) => (
       reservePasskeyOfferSlot(createRedisSlotStore(userId), migratedCount)

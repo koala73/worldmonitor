@@ -13,6 +13,14 @@ function formatCompact(n: number): string {
   return String(n);
 }
 
+/** The velocity number's colour: the bar's hue, with the light theme's darker text shade. */
+function velocityTextColor(score: number): string {
+  if (score >= 80) return 'var(--red-text, #e74c3c)';
+  if (score >= 50) return 'var(--semantic-high-text, #e67e22)';
+  if (score >= 25) return 'var(--yellow-text, #f1c40f)';
+  return 'var(--green-text, #27ae60)';
+}
+
 function velocityColor(score: number): string {
   if (score >= 80) return '#e74c3c';
   if (score >= 50) return '#e67e22';
@@ -94,54 +102,52 @@ export class WsbTickerScannerPanel extends Panel {
     const sorted = this._sorted();
     const maxVelocity = Math.max(1, ...sorted.map(t => t.velocityScore));
 
-    const headerStyle = 'font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:700;color:var(--text-dim);text-transform:uppercase;padding:4px 6px;cursor:pointer;user-select:none;white-space:nowrap';
     const sortButtonStyle = 'display:block;width:100%;appearance:none;border:0;padding:0;background:transparent;color:inherit;font:inherit;text-transform:inherit;letter-spacing:inherit;cursor:inherit;white-space:inherit';
-    const cellStyle = 'font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:5px 6px;vertical-align:middle';
 
     const rows = sorted.slice(0, 50).map((tk, i) => {
       const vColor = velocityColor(tk.velocityScore);
       const barPct = Math.max(4, Math.round((tk.velocityScore / maxVelocity) * 100));
       const subs = tk.subreddits.map(s =>
-        `<span style="font-size:calc(8px * var(--wm-panel-effective-scale, 1));padding:1px 4px;border-radius:2px;background:rgba(255,255,255,0.06);color:var(--text-dim);margin-right:2px">r/${escapeHtml(s)}</span>`
+        `<span style="font-size:calc(8px * var(--wm-panel-effective-scale, 1));padding:1px 4px;border-radius:2px;background:rgba(255,255,255,0.06);color:var(--text-secondary);margin-right:2px">r/${escapeHtml(s)}</span>`
       ).join('');
 
-      return `<tr style="border-bottom:1px solid var(--border)">
-        <td style="${cellStyle};color:var(--text-dim);text-align:right;min-width:20px">${i + 1}</td>
-        <td style="${cellStyle};font-family:'SF Mono',SFMono-Regular,Consolas,monospace;font-weight:700;color:var(--text)">${escapeHtml(tk.symbol)}</td>
-        <td style="${cellStyle};text-align:right;color:var(--text)">${tk.mentionCount}</td>
-        <td style="${cellStyle};text-align:right;color:var(--text)">${formatCompact(tk.totalScore)}</td>
-        <td style="${cellStyle};min-width:80px">
+      return `<tr>
+        <td class="wsb-rank">${i + 1}</td>
+        <td class="wsb-ticker">${escapeHtml(tk.symbol)}</td>
+        <td class="wsb-num">${tk.mentionCount}</td>
+        <td class="wsb-num">${formatCompact(tk.totalScore)}</td>
+        <td class="wsb-velocity">
           <div style="display:flex;align-items:center;gap:4px">
-            <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${vColor};min-width:24px;text-align:right">${Math.round(tk.velocityScore)}</span>
+            <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${velocityTextColor(tk.velocityScore)};min-width:24px;text-align:right">${Math.round(tk.velocityScore)}</span>
             <div style="flex:1;height:4px;border-radius:2px;background:rgba(255,255,255,0.08)">
               <div style="height:100%;width:${barPct}%;border-radius:2px;background:${vColor}"></div>
             </div>
           </div>
         </td>
-        <td style="${cellStyle}">${subs}</td>
+        <td>${subs}</td>
       </tr>`;
     }).join('');
 
     this.setSafeContent(unsafeRawHtml(`
-      <div style="overflow-x:auto;overflow-y:auto;max-height:480px">
-        <table style="width:100%;border-collapse:collapse;border-spacing:0">
+      <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+        <table class="wm-table wsb-table">
           <thead>
-            <tr style="border-bottom:1px solid var(--border)">
-              <th scope="col" style="${headerStyle};text-align:right">#</th>
-              <th scope="col" style="${headerStyle};text-align:left">Ticker</th>
-              <th scope="col" style="${headerStyle};text-align:right" data-sort="mentionCount"${this._ariaSort('mentionCount')}>
+            <tr>
+              <th scope="col" class="wsb-num">#</th>
+              <th scope="col">Ticker</th>
+              <th scope="col" class="wsb-num" data-sort="mentionCount"${this._ariaSort('mentionCount')}>
                 <button type="button" data-sort="mentionCount" style="${sortButtonStyle};text-align:right">Mentions<span aria-hidden="true">${this._sortIndicator('mentionCount')}</span></button>
               </th>
-              <th scope="col" style="${headerStyle};text-align:right" data-sort="totalScore"${this._ariaSort('totalScore')}>
+              <th scope="col" class="wsb-num" data-sort="totalScore"${this._ariaSort('totalScore')}>
                 <button type="button" data-sort="totalScore" style="${sortButtonStyle};text-align:right">Score<span aria-hidden="true">${this._sortIndicator('totalScore')}</span></button>
               </th>
-              <th scope="col" style="${headerStyle};text-align:left" data-sort="velocityScore"${this._ariaSort('velocityScore')}>
+              <th scope="col" data-sort="velocityScore"${this._ariaSort('velocityScore')}>
                 <button type="button" data-sort="velocityScore" style="${sortButtonStyle};text-align:left">Velocity<span aria-hidden="true">${this._sortIndicator('velocityScore')}</span></button>
               </th>
-              <th scope="col" style="${headerStyle};text-align:left">Source</th>
+              <th scope="col">Source</th>
             </tr>
           </thead>
-          <tbody>${rows || '<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--text-dim);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">No ticker data</td></tr>'}</tbody>
+          <tbody>${rows || '<tr><td colspan="6" class="wsb-empty">No ticker data</td></tr>'}</tbody>
         </table>
       </div>
       <div style="margin-top:6px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Reddit \u00B7 r/wallstreetbets, r/stocks, r/investing \u00B7 sorted by ${this._sortField.replace(/([A-Z])/g, ' $1').toLowerCase()}</div>

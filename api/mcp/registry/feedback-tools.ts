@@ -113,7 +113,7 @@ export const FEEDBACK_TOOLS: ToolDef[] = [
           maxLength: 200,
           description: 'What the report is about: a tool name such as get_market_data, a REST path such as /api/market/v1/list-market-quotes, or a short label for something that does not exist yet.',
         },
-        summary: { type: 'string', minLength: 1, maxLength: 300, description: 'One sentence describing the problem.' },
+        summary: { type: 'string', minLength: 1, maxLength: 300, description: 'The problem as a maintainer would title it, such as "Quotes for ^N225 come back empty".' },
         expected: { type: 'string', maxLength: 2000, description: 'What you expected to happen or to receive.' },
         actual: { type: 'string', maxLength: 2000, description: 'What happened instead, such as the error message or the wrong value.' },
         requestId: {
@@ -131,7 +131,7 @@ export const FEEDBACK_TOOLS: ToolDef[] = [
       required: ['reportId', 'status'],
       properties: {
         reportId: { type: 'string', description: 'The stored report id. Quote it when following up.' },
-        status: { type: 'string', description: 'received, or private for a security report. A retry of the same report within 10 minutes returns the first report unchanged.' },
+        status: { type: 'string', enum: ['received', 'triaged', 'filed', 'duplicate', 'dismissed', 'private', 'closed'], description: 'Triage state of the stored report: received when new, private for a security report. A retry of the same report within 10 minutes returns the first report\'s id and its current state, which may already be triaged, filed, duplicate, dismissed or closed.' },
         advisoryUrl: { type: 'string', description: 'Security reports only: the private advisory form where vulnerability details belong.' },
         notice: { type: 'string', description: 'Security reports only: a reminder not to send exploit details through this tool.' },
       },
