@@ -711,7 +711,7 @@ const PR_ONLY_CANCEL_IN_PROGRESS = "${{ github.event_name == 'pull_request' }}";
 // never failure), and only for the workflow named Test. Any other workflow that
 // collapses main pushes still trips the #8445 guard.
 const TEST_SUPERSEDING_GROUP =
-  "test-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main') || github.run_id }}";
+  "test-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == '1' && 'main') || github.run_id }}";
 
 function workflowLevelConcurrency(source: string): {
   group?: unknown;
@@ -3019,15 +3019,18 @@ describe('gated workflows evict superseded PR runs (#8443)', () => {
     };
     assert.equal(workflow.name, 'Test', 'deploy-gate.sh matches the superseded run by this name');
     assert.equal(workflow.concurrency?.group, TEST_SUPERSEDING_GROUP);
+    assert.match(TEST_SUPERSEDING_GROUP, /github\.run_attempt == '1'/, 'a re-run of an old main run must not cancel the newer one');
     assert.equal(workflow.concurrency?.['cancel-in-progress'], true);
     assert.match(deployGateScript, /select\(\.name == "Test" and \.head_branch == "main"\)/,
       'the gate must recognise a superseded main Test run, or cancelling it posts a permanent red gate');
   });
 
   it('accepts the superseding group only on the workflow named Test', () => {
+    // The exact Test group, so only the workflow-name check can reject it.
     const typecheck = read(resolve(workflowsDir, 'typecheck.yml'))
-      .replace(/group:\s*[^\n]+/, `group: ${TEST_SUPERSEDING_GROUP.replace(/^test-/, 'typecheck-')}`)
+      .replace(/group:\s*[^\n]+/, `group: ${TEST_SUPERSEDING_GROUP}`)
       .replace(/cancel-in-progress:\s*[^\n]+/, 'cancel-in-progress: true');
+    assert.equal(workflowLevelConcurrency(typecheck)?.group, TEST_SUPERSEDING_GROUP, 'the mutation must apply');
     assert.equal(cancelsUnconditionallyWithoutNonPrFallback(typecheck), true);
   });
 

@@ -17,9 +17,10 @@ on:
 # of 64 main runs (55% of main run time) were still going when the next merge
 # landed (2026-11-18..20). deploy-gate.sh posts "Superseded on main" pending,
 # not failure, for the cancelled commit, and the CI health scan does not count
-# the cancel as a timeout. Any other event keeps a group of one (run_id).
+# the cancel as a timeout. A re-run of an old main run keeps a group of one
+# (run_id) so it cannot cancel the newer commit's run; so does any other event.
 concurrency:
-  group: test-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main') || github.run_id }}
+  group: test-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == '1' && 'main') || github.run_id }}
   cancel-in-progress: true
 
 permissions:
