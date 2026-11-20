@@ -3212,6 +3212,19 @@ describe('docker-publish conditions', () => {
     assert.equal(steps[gate]['continue-on-error'], undefined);
   });
 
+  it('checks live-pulse freshness before the self-hosted app image builds', () => {
+    const selfHosted = YAML.parse(read(resolve(workflowsDir, 'docker-publish-self-hosted.yml')));
+    const job = Object.values(selfHosted.jobs).find((candidate: any) =>
+      candidate.strategy?.matrix?.include?.some((leg: { dockerfile?: string }) => leg.dockerfile === 'Dockerfile'),
+    ) as { steps: Array<{ run?: string; uses?: string; if?: string; 'continue-on-error'?: unknown }> };
+    assert.ok(job, 'docker-publish-self-hosted.yml must build the root Dockerfile');
+    const gate = job.steps.findIndex((step) => step.run === 'node scripts/check-crawlable-live-pulse.mjs');
+    const firstBuild = job.steps.findIndex((step) => step.uses?.startsWith('docker/build-push-action@'));
+    assert.ok(gate >= 0 && gate < firstBuild);
+    assert.equal(job.steps[gate].if, "matrix.image == 'worldmonitor-selfhosted'");
+    assert.equal(job.steps[gate]['continue-on-error'], undefined);
+  });
+
   const tagEnableExpressions = () => {
     const metaStep = dockerPublish.jobs.docker.steps.find(
       (step: { id?: string }) => step.id === 'meta',

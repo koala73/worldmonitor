@@ -1859,7 +1859,10 @@ describe('crawlable corpus generator', () => {
       const check = () => execFileSync(process.execPath, [freshnessCheck], {
         cwd: fixtureRoot, encoding: 'utf8', stdio: 'pipe',
       });
-      assert.throws(check, { status: 1, stderr: /2026-01-12\.json is \d+ days old \(max 10\)/ });
+      assert.throws(check, {
+        status: 1,
+        stderr: new RegExp(`${latest}\\.json is \\d+ days old \\(max 10\\)`),
+      });
 
       const today = new Date().toISOString().slice(0, 10);
       writeFileSync(
@@ -6585,6 +6588,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
   // #7533-allowlist: 2026-02-03 x2 2026-02-30 x2 2026-02-31 x1 2001-02-29 x1 — laterDate unit pin; invalid-calendar CII/chokepoint timestamp and crisis-editorial date fixtures
   // #7533-allowlist: 2026-03-04 x6 2026-03-14 x2 2026-04-09 x1 2026-05-01 x2 — laterDate unit pin; resolveChokepointObservation fallback constants
   // #7533-allowlist: 2026-05-28 x2 — datasetTemporalCoverage pure-function fixture
+  // #7533-allowlist: 2026-01-12 x1 — stale synthetic snapshot for the publishing freshness check
   // #7533-allowlist: 2026-06-01 x2 2026-07-28 x3 — synthetic git-commit and sitemap stub dates
   // #7533-allowlist: 2026-08-08 x3 2026-08-09 x4 2026-08-10 x4 2026-08-11 x3 2026-08-12 x3 2026-08-13 x4 — sourcePageLastmod pure-function fixtures
   // #7533-allowlist: 2026-08-29 x5 — STORY_CAPTURED_AT synthetic story clock and static snapshot-path fixtures

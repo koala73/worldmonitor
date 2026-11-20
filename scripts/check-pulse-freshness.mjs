@@ -125,14 +125,14 @@ export function evaluatePulseFreshness(snapshot, lastRun, {
     reasons.push({
       kind: 'build-blocked',
       detail: `${snapshot.filename} is ${age} days old, past the ${ceilingDays}-day ceiling. `
-        + 'Official publishing is blocked until the pulse is refreshed.',
+        + 'Every official deploy is blocked until the pulse is refreshed.',
     });
   } else if (snapshot.ageDays > warnAgeDays) {
     reasons.push({
       kind: 'stale',
       detail: `${snapshot.filename} is ${age} days old, past the ${warnAgeDays}-day warning line `
         + `and ${Math.max(0, Math.ceil(ceilingDays - snapshot.ageDays))} day(s) from the `
-        + `${ceilingDays}-day publishing ceiling.`,
+        + `${ceilingDays}-day ceiling that blocks publishing.`,
     });
   }
 
