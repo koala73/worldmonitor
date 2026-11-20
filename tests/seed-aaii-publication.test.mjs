@@ -227,7 +227,7 @@ test('a new live HTML week retains the latest 52 genuine weeks and their source 
   assert.deepEqual(canonical.data.weeks.slice(1), oldWeeks.slice(0, 51));
   assert.deepEqual(canonical.data.previous, oldWeeks[0]);
   assert.deepEqual(canonical.data.avg8w, { bullish: 36.2, bearish: 41.4, neutral: 22.4, spread: -5.1 });
-  assert.equal(result.cache[key].expiresAt, now + 604800_000);
+  assert.equal(result.cache[key].expiresAt, now + 21 * 86400_000);
   assert.equal(JSON.parse(result.cache[metaKey].value).recordCount, 52);
 });
 
@@ -283,7 +283,7 @@ test('usable live HTML publishes the existing AAII consumer shape', () => {
   assert.deepEqual(canonical.data.latest, { date: '2026-10-15', bullish: 40, bearish: 30, neutral: 30, spread: 10 });
   assert.deepEqual(canonical.data.weeks, [canonical.data.latest]);
   assert.deepEqual(canonical.data.avg8w, { bullish: 40, bearish: 30, neutral: 30, spread: 10 });
-  assert.equal(result.cache[key].expiresAt, now + 604800_000);
+  assert.equal(result.cache[key].expiresAt, now + 21 * 86400_000);
   assert.equal(JSON.parse(result.cache[metaKey].value).fetchedAt, now);
   assert.match(result.log, /"event":"seed_complete"/);
 });

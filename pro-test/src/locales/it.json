@@ -35,16 +35,16 @@
     "askIt": "Chiedile",
     "askItDesc": "WM Analyst chat. Servizi live interrogabili in inglese semplice.",
     "subscribeIt": "Iscriviti",
-    "subscribeItDesc": "Digest IA alla tua cadenza: quotidiano, bi-giornaliero o settimanale. Slack, Discord, Telegram, Email, webhook.",
+    "subscribeItDesc": "Digest IA alla tua cadenza: quotidiano, bi-giornaliero o settimanale. Slack, Teams, Discord, Telegram, Email, webhook.",
     "buildOnIt": "Costruisci sopra",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + IA) e MCP per Claude, GPT, LLM personalizzati."
   },
   "deliveryDesk": {
     "eyebrow": "SCRIVANIA DI CONSEGNA",
     "title": "Cos'è la personal intelligence desk?",
-    "body": "Fino a 30 elementi classificati per invio, deduplicati tra le fonti, valutati rispetto alla tua watchlist. Scegli la tua cadenza — giornaliera, due volte al giorno o settimanale — con Valutazione AI e Segnali da monitorare consegnati su Slack, Discord, Telegram, Email o webhook.",
+    "body": "Fino a 30 elementi classificati per invio, deduplicati tra le fonti, valutati rispetto alla tua watchlist. Scegli la tua cadenza — giornaliera, due volte al giorno o settimanale — con Valutazione AI e Segnali da monitorare consegnati su Slack, Microsoft Teams, Discord, Telegram, Email o webhook.",
     "closer": "Non è una newsletter. È un analista.",
-    "channels": "Slack · Discord · Telegram · Email · Webhook · Crittografia AES-256 · Orari di silenzio"
+    "channels": "Slack · Teams · Discord · Telegram · Email · Webhook · Crittografia AES-256 · Orari di silenzio"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Dashboard live",
@@ -56,8 +56,7 @@
   "socialProof": {
     "uniqueVisitors": "Visitatori unici",
     "peakDailyUsers": "Utenti giornalieri (picco)",
-    "countriesReached": "Paesi raggiunti",
-    "liveDataSources": "Fonti dati live"
+    "countriesReached": "Paesi raggiunti"
   },
   "audience": {
     "title": "Per chi è stato creato World Monitor?",
@@ -77,34 +76,6 @@
     "aiTeamsDesc": "Fornisci all'assistente aziendale contesto mondiale in tempo reale tramite MCP, con diritti scritti di uso interno.",
     "teamsTitle": "Team e organizzazioni",
     "teamsDesc": "Passa dall'uso individuale a flussi condivisi, accesso API, app TV e deployment gestiti."
-  },
-  "dataCoverage": {
-    "title": "Cosa monitora World Monitor?",
-    "subtitle": "Domini di servizio acquisiti simultaneamente. Mercati, macro, geopolitica, energia, infrastrutture — tutto normalizzato e renderizzato su un globo WebGL.",
-    "markets": "Mercati finanziari e azionari",
-    "marketsDesc": "Analisi azionaria globale, materie prime, cripto, flussi ETF, target degli analisti e dati macro FRED",
-    "economy": "Economia e banche centrali",
-    "economyDesc": "PIL, inflazione, tassi d'interesse, cicli di crescita e tracciamento della politica monetaria sulle principali economie",
-    "geopolitical": "Analisi geopolitica",
-    "geopoliticalDesc": "Eventi ACLED e UCDP con scoring di escalation, framework di rischio e analisi di tendenza",
-    "maritime": "Marittimo e commercio",
-    "maritimeDesc": "Movimenti di navi, rilevamento di vascelli, attività portuale e inferenza cargo",
-    "aviation": "Tracciamento aereo",
-    "aviationDesc": "Tracciamento ADS-B di pattern di volo globali",
-    "infra": "Infrastrutture critiche",
-    "infraDesc": "Siti nucleari, griglie elettriche, pipeline, raffinerie — asset mappati",
-    "fire": "Rilevamento satellitare di incendi",
-    "fireDesc": "Dati NASA FIRMS quasi real-time su incendi e hotspot",
-    "cables": "Cavi sottomarini",
-    "cablesDesc": "Rotte dei cavi sottomarini e stazioni di approdo",
-    "internet": "Internet e GPS",
-    "internetDesc": "Rilevamento di interruzioni, anomalie BGP, zone di jamming GPS",
-    "cyber": "Minacce cyber",
-    "cyberDesc": "Feed ransomware, hijack BGP, rilevamento DDoS",
-    "gdelt": "GDELT e news",
-    "gdeltDesc": "Feed RSS curati, eventi GDELT valutati con AI, trasmissioni live",
-    "seismology": "Sismologia e naturali",
-    "seismologyDesc": "Terremoti USGS, attività vulcanica, meteo estremo"
   },
   "tiers": {
     "free": "Gratis",
@@ -127,13 +98,12 @@
     "riskMonitoring": "Monitoraggio del rischio e scenari",
     "riskMonitoringDesc": "Scoring di rischio globale, analisi di scenari e valutazione del rischio geopolitico. Rilevamento di convergenze su segnali di mercato e politici.",
     "morningBriefs": "Scrivania di intelligence personale",
-    "morningBriefsDesc": "Fino a 30 storie classificate per digest, deduplicati tra le fonti. Scegli cadenza giornaliera, due volte al giorno o settimanale — o avvisi in tempo reale per eventi critici. Valutazione AI e Segnali da monitorare consegnati su Slack, Discord, Telegram, Email o webhook. Non una newsletter — un analista.",
+    "morningBriefsDesc": "Fino a 30 storie classificate per digest, deduplicati tra le fonti. Scegli cadenza giornaliera, due volte al giorno o settimanale — o avvisi in tempo reale per eventi critici. Valutazione AI e Segnali da monitorare consegnati su Slack, Microsoft Teams, Discord, Telegram, Email o webhook. Non una newsletter — un analista.",
     "oneKey": "Servizi live, 1 Chiave",
-    "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky e altro — tutti attivi, senza registrazioni separate.",
+    "oneKeyDesc": "Finnhub, FRED, UCDP, NASA FIRMS, AISStream, OpenSky e altro — tutti attivi, senza registrazioni separate.",
     "deliveryLabel": "Scegli come l'intelligence ti trova",
     "supplyChainLab": "Laboratorio di stress della catena di approvvigionamento",
-    "supplyChainLabDesc": "Modella uno shock di costo tra paesi e settori. Classifica la vulnerabilità delle commodities per dipendenza da colli di bottiglia. Traccia la concentrazione da miniera a raffineria e la divergenza del premio fisico SGE–COMEX — la serie che si muove prima della notizia.",
-    "roadmapNote": "In roadmap: cronologia più estesa, livelli mappa premium."
+    "supplyChainLabDesc": "Modella uno shock di costo tra paesi e settori. Classifica la vulnerabilità delle commodities per dipendenza da colli di bottiglia. Traccia la concentrazione da miniera a raffineria e la divergenza del premio fisico SGE–COMEX — la serie che si muove prima della notizia."
   },
   "apiSection": {
     "apiTier": "LIVELLO API",
@@ -560,7 +530,7 @@
       "n5Title": "Cavi sottomarini",
       "n5Desc": "{{submarineCables}} cavi sottomarini che trasportano internet, sovrapposti con segnali di interruzione e minaccia.",
       "n6Title": "Tracciamento proteste",
-      "n6Desc": "Rilevamento di proteste da ACLED e GDELT; i report da una sola fonte nella stessa cella 0,1° nello stesso giorno si uniscono in un unico evento — segnale, non voce.",
+      "n6Desc": "Rilevamento di proteste da GDELT; i report da una sola fonte nella stessa cella 0,1° nello stesso giorno si uniscono in un unico evento — segnale, non voce.",
       "faith": "Non fidarti dei numeri ciecamente —",
       "faithCta": "apri l'app e conta.",
       "faithNote": "Le fonti sono citate su ogni pannello."
@@ -617,7 +587,7 @@
       "q2": "Che cos'è una dashboard di intelligence globale?",
       "a2": "Una vista live unica che fonde segnali che la maggior parte degli strumenti mantiene separati: eventi di conflitto, tracciamento di navi e aeromobili, punti di strozzatura dello shipping, satelliti, cavi sottomarini, oleodotti, mercati e minacce cyber — su una mappa mondiale in tempo reale, con punteggio IA e brief. World Monitor è una gratuita.",
       "q3": "Da dove provengono i dati?",
-      "a3": "Da {{providers}} provider attribuiti. Quelli nominati includono ACLED e UCDP per i conflitti, AISStream per le navi live, OpenSky per gli aeromobili, NASA FIRMS per gli incendi, USGS per i terremoti, IMF, BIS, FRED e Finnhub per i mercati e il macro — più feed di notizie curati. Ogni panel cita le sue fonti e timestamp in linea.",
+      "a3": "Da {{providers}} provider attribuiti. Quelli nominati includono GDELT e UCDP per i conflitti, AISStream per le navi live, OpenSky per gli aeromobili, NASA FIRMS per gli incendi, USGS per i terremoti, IMF, BIS, FRED e Finnhub per i mercati e il macro — più feed di notizie curati. Ogni panel cita le sue fonti e timestamp in linea.",
       "q4": "Posso monitorare i punti di strozzatura come Hormuz o Bab el-Mandeb in tempo reale?",
       "a4": "Sì. {{chokepoints}} strozzature, sia stretti che canali, da Hormuz e Bab el-Mandeb a Suez, sono monitorate con conteggi live di navi AIS, variazione dei transiti settimana dopo settimana e scoring delle disruzioni — e le anomalie di densità sono segnalate rispetto alla baseline mobile di ogni strozzatura.",
       "q5": "Com'è diverso da una mappa di conflitti come Liveuamap?",

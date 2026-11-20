@@ -35,16 +35,16 @@
     "askIt": "Fragen Sie sie",
     "askItDesc": "WM Analyst Chat. Live-Services in einfachem Englisch abfragbar.",
     "subscribeIt": "Abonnieren Sie sie",
-    "subscribeItDesc": "KI-Digest in Ihrem Takt: täglich, zweimal täglich oder wöchentlich. Slack, Discord, Telegram, E-Mail, Webhook.",
+    "subscribeItDesc": "KI-Digest in Ihrem Takt: täglich, zweimal täglich oder wöchentlich. Slack, Teams, Discord, Telegram, E-Mail, Webhook.",
     "buildOnIt": "Bauen Sie darauf auf",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + KI) und MCP für Claude, GPT, eigene LLMs."
   },
   "deliveryDesk": {
     "eyebrow": "LIEFERPULT",
     "title": "Was ist der persönliche Intelligence Desk?",
-    "body": "Bis zu 30 bewertete Elemente pro Versand, dedupliziert über Quellen, bewertet gegen Ihre Watchlist. Wählen Sie Ihren Rhythmus – täglich, zweimal täglich oder wöchentlich – mit KI-Bewertung und zu beobachtenden Signalen, geliefert an Slack, Discord, Telegram, Email oder Webhook.",
+    "body": "Bis zu 30 bewertete Elemente pro Versand, dedupliziert über Quellen, bewertet gegen Ihre Watchlist. Wählen Sie Ihren Rhythmus – täglich, zweimal täglich oder wöchentlich – mit KI-Bewertung und zu beobachtenden Signalen, geliefert an Slack, Microsoft Teams, Discord, Telegram, Email oder Webhook.",
     "closer": "Kein Newsletter. Ein Analyst.",
-    "channels": "Slack · Discord · Telegram · E-Mail · Webhook · AES-256 verschlüsselt · Ruhezeiten"
+    "channels": "Slack · Teams · Discord · Telegram · E-Mail · Webhook · AES-256 verschlüsselt · Ruhezeiten"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Live-Dashboard",
@@ -56,8 +56,7 @@
   "socialProof": {
     "uniqueVisitors": "Einzelne Besucher",
     "peakDailyUsers": "Tägliche Nutzer (Peak)",
-    "countriesReached": "Erreichte Länder",
-    "liveDataSources": "Live-Datenquellen"
+    "countriesReached": "Erreichte Länder"
   },
   "audience": {
     "title": "Für wen ist World Monitor entwickelt?",
@@ -77,34 +76,6 @@
     "aiTeamsDesc": "Versorgen Sie den Assistenten Ihres Unternehmens per MCP mit aktuellem Weltkontext, mit schriftlichen Rechten zur internen Nutzung.",
     "teamsTitle": "Teams & Organisationen",
     "teamsDesc": "Von individueller Nutzung zu geteilten Workflows, API-Zugang, TV-Apps und gemanagten Deployments."
-  },
-  "dataCoverage": {
-    "title": "Was überwacht World Monitor?",
-    "subtitle": "Service-Domains gleichzeitig erfasst. Märkte, Makro, Geopolitik, Energie, Infrastruktur – alles normalisiert und auf einem WebGL-Globus dargestellt.",
-    "markets": "Finanzmärkte & Aktien",
-    "marketsDesc": "Globale Aktienanalyse, Rohstoffe, Krypto, ETF-Flüsse, Analystenziele und FRED-Makrodaten",
-    "economy": "Wirtschaft & Zentralbanken",
-    "economyDesc": "BIP, Inflation, Zinssätze, Wachstumszyklen und Geldpolitik-Tracking über die wichtigsten Volkswirtschaften",
-    "geopolitical": "Geopolitische Analyse",
-    "geopoliticalDesc": "ACLED- und UCDP-Ereignisse mit Eskalations-Scoring, Risiko-Frameworks und Trendanalyse",
-    "maritime": "Maritim & Handel",
-    "maritimeDesc": "Schiffsbewegungen, Erkennung von Schiffen, Hafenaktivität und Cargo-Inferenz",
-    "aviation": "Luftfahrt-Tracking",
-    "aviationDesc": "ADS-B-Tracking globaler Flugmuster",
-    "infra": "Kritische Infrastruktur",
-    "infraDesc": "Kernanlagen, Stromnetze, Pipelines, Raffinerien – kartografierte Assets",
-    "fire": "Satelliten-Branddetektion",
-    "fireDesc": "NASA-FIRMS-Daten nahezu in Echtzeit zu Bränden und Hotspots",
-    "cables": "Seekabel",
-    "cablesDesc": "Untersee-Kabelrouten und Landungsstationen",
-    "internet": "Internet und GPS",
-    "internetDesc": "Ausfallerkennung, BGP-Anomalien, GPS-Störzonen",
-    "cyber": "Cyber-Bedrohungen",
-    "cyberDesc": "Ransomware-Feeds, BGP-Hijacks, DDoS-Erkennung",
-    "gdelt": "GDELT & Nachrichten",
-    "gdeltDesc": "Kuratierte RSS-Feeds, KI-bewertete GDELT-Events, Live-Übertragungen",
-    "seismology": "Seismologie & Natur",
-    "seismologyDesc": "USGS-Erdbeben, vulkanische Aktivität, schwere Wetter"
   },
   "tiers": {
     "free": "Kostenlos",
@@ -127,13 +98,12 @@
     "riskMonitoring": "Risiko-Monitoring & Szenarien",
     "riskMonitoringDesc": "Globales Risiko-Scoring, Szenarioanalyse und geopolitische Risikobewertung. Konvergenz-Erkennung über Markt- und politische Signale hinweg.",
     "morningBriefs": "Persönlicher Intelligence-Desk",
-    "morningBriefsDesc": "Bis zu 30 bewertete Stories pro Digest, dedupliziert über Quellen. Wählen Sie täglichen, zweimal täglich oder wöchentlichen Rhythmus – oder Echtzeit-Warnungen für kritische Events. KI-Bewertung und zu beobachtenden Signale, geliefert an Slack, Discord, Telegram, Email oder Webhook. Kein Newsletter – ein Analyst.",
+    "morningBriefsDesc": "Bis zu 30 bewertete Stories pro Digest, dedupliziert über Quellen. Wählen Sie täglichen, zweimal täglich oder wöchentlichen Rhythmus – oder Echtzeit-Warnungen für kritische Events. KI-Bewertung und zu beobachtenden Signale, geliefert an Slack, Microsoft Teams, Discord, Telegram, Email oder Webhook. Kein Newsletter – ein Analyst.",
     "oneKey": "Live-Services, 1 Key",
-    "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky und mehr — alle aktiv, keine separaten Registrierungen.",
+    "oneKeyDesc": "Finnhub, FRED, UCDP, NASA FIRMS, AISStream, OpenSky und mehr — alle aktiv, keine separaten Registrierungen.",
     "deliveryLabel": "Wählen Sie, wie Intelligence Sie findet",
     "supplyChainLab": "Supply-Chain-Stress-Lab",
-    "supplyChainLabDesc": "Modellieren Sie einen Kostenschock über Länder und Sektoren. Ranking der Rohstoffvulnerabilität nach Engpass-Abhängigkeit. Verfolgung der Mine-zu-Raffinerie-Konzentration und die SGE–COMEX-Physik-Premium-Divergenz — die Serie, die sich vor der Schlagzeile bewegt.",
-    "roadmapNote": "Auf der Roadmap: längere Verlaufshistorie, Premium-Kartenschichten."
+    "supplyChainLabDesc": "Modellieren Sie einen Kostenschock über Länder und Sektoren. Ranking der Rohstoffvulnerabilität nach Engpass-Abhängigkeit. Verfolgung der Mine-zu-Raffinerie-Konzentration und die SGE–COMEX-Physik-Premium-Divergenz — die Serie, die sich vor der Schlagzeile bewegt."
   },
   "apiSection": {
     "apiTier": "API-STUFE",
@@ -560,7 +530,7 @@
       "n5Title": "Unterseekabel",
       "n5Desc": "{{submarineCables}} Unterseekabel, die das Internet transportieren, überlagert mit Ausfalls- und Bedrohungssignalen.",
       "n6Title": "Protestverfolgung",
-      "n6Desc": "Protesterfassung aus ACLED und GDELT; Meldungen aus einer Quelle in derselben 0,1°-Zelle am selben Tag werden zu einem Ereignis zusammengefasst – Signal, keine Gerüchte.",
+      "n6Desc": "Protesterfassung aus GDELT; Meldungen aus einer Quelle in derselben 0,1°-Zelle am selben Tag werden zu einem Ereignis zusammengefasst – Signal, keine Gerüchte.",
       "faith": "Verlassen Sie sich nicht blind auf die Zahlen —",
       "faithCta": "öffnen Sie die App und zählen Sie selbst.",
       "faithNote": "Quellen sind auf jedem Panel angegeben."
@@ -617,7 +587,7 @@
       "q2": "Was ist ein globales Intelligence-Dashboard?",
       "a2": "Eine einzige Live-Ansicht, die Signale zusammenführt, die die meisten Tools separat halten: Konfliktereignisse, Schiffs- und Flugzeugverfolgung, Versandengpässe, Satelliten, Unterseekabel, Pipelines, Märkte und Cyber-Bedrohungen — auf einer Echtzeit-Weltkarte mit KI-Bewertung und Zusammenfassungen. World Monitor ist eine kostenlose Version davon.",
       "q3": "Woher stammen die Daten?",
-      "a3": "Von {{providers}} geprüften Quellen. Darunter ACLED und UCDP für Konflikte, AISStream für live Schiffe, OpenSky für Luftfahrzeuge, NASA FIRMS für Brände, USGS für Erdbeben, IMF, BIS, FRED und Finnhub für Märkte und Makro – plus kuratierte Nachrichten-Feeds. Jedes Panel nennt seine Quellen und Zeitstempel inline.",
+      "a3": "Von {{providers}} geprüften Quellen. Darunter GDELT und UCDP für Konflikte, AISStream für live Schiffe, OpenSky für Luftfahrzeuge, NASA FIRMS für Brände, USGS für Erdbeben, IMF, BIS, FRED und Finnhub für Märkte und Makro – plus kuratierte Nachrichten-Feeds. Jedes Panel nennt seine Quellen und Zeitstempel inline.",
       "q4": "Kann ich Engpässe wie Hormuz oder Bab el-Mandeb in Echtzeit beobachten?",
       "a4": "Ja. {{chokepoints}} Engpässe, sowohl Meerengen als auch Kanäle, von Hormuz und Bab el-Mandeb bis zum Suezkanal, werden mit Live-AIS-Schiffszählungen, Woche-für-Woche-Transitveränderungen und Störungsbewertungen überwacht – und Dichteanomalien werden gegen die rollende Basis jedes Engpasses gekennzeichnet.",
       "q5": "Wie unterscheidet sich dies von einer Konfliktkarte wie Liveuamap?",

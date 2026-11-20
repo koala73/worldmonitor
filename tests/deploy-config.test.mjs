@@ -611,10 +611,12 @@ describe('crawlable content corpus deployment contracts', () => {
       'vercel.json must pin buildCommand so the deploy contract lives in the repo, not the dashboard',
     );
 
-    const scriptName = buildCommand.match(/^npm run ([\w:-]+)$/)?.[1];
+    const scriptName = buildCommand.match(
+      /^node scripts\/check-crawlable-live-pulse\.mjs && node scripts\/github-stars-snapshot\.mjs && npm run ([\w:-]+)$/,
+    )?.[1];
     assert.ok(
       scriptName,
-      `vercel.json buildCommand must be a plain "npm run <script>" this test can resolve, got: ${buildCommand}`,
+      `vercel.json buildCommand must check live-pulse and star-snapshot freshness before running a package script, got: ${buildCommand}`,
     );
 
     const script = packageJson.scripts[scriptName];
@@ -777,6 +779,8 @@ describe('crawlable content corpus deployment contracts', () => {
       'scripts/search-links.mjs',
       'scripts/lib/search-links.mjs',
       'scripts/lib/main-module.mjs',
+      'scripts/check-crawlable-live-pulse.mjs',
+      'scripts/github-stars-snapshot.mjs',
     ]) {
       assert.equal(vercelIgnoreSource.split(`'${path}'`).length - 1, 2, `${path} must trigger main and preview builds`);
     }

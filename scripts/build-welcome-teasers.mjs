@@ -35,8 +35,8 @@
 // different bytes for the same commit. This generator reads only a COMMITTED
 // snapshot, which is a repo input -- the same guarantee the crawlable corpus
 // build already relies on. The network step stays factored out into
-// `npm run freeze:crawlable-live-pulse`, and the corpus build's 10-day
-// staleness ceiling covers these values too.
+// `npm run freeze:crawlable-live-pulse`. The publishing freshness check
+// also covers this snapshot.
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';

@@ -3,9 +3,9 @@ name: Refresh Crawlable Live Pulse
 # The committed pulse snapshot is published as "Current signal" on every
 # country, chokepoint and crisis page, as the forecast scorecard on /accuracy/,
 # and as the homepage teaser strip's
-# prerendered fallback. build-crawlable-corpus.mjs rejects a snapshot older than
-# MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS (10), so this weekly refresh is what keeps
-# the corpus buildable as well as truthful.
+# prerendered fallback. Official publishing rejects a snapshot older than
+# MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS (10), so the weekly refresh keeps these
+# surfaces eligible to publish.
 #
 # Weekly, not monthly: these pages are headed "Approx. 24-hour movement", and a
 # monthly cron behind a 45-day ceiling let them ship on six-week-old data
@@ -144,6 +144,7 @@ jobs:
           # developments coverage floor for one measured week (#7748).
           CRAWLABLE_DEVELOPMENTS_COVERAGE_RATIO: ${{ inputs.developments_coverage_ratio }}
         run: |
+          node scripts/check-crawlable-live-pulse.mjs
           npm run build:crawlable-corpus
           npm run build:sitemap
           # The homepage teaser strip is derived from the same snapshot, so it

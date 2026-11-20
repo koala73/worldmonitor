@@ -215,6 +215,6 @@ describe('primary news country for alert tiers (#10873)', () => {
   });
 
   it('reads the primary from the full scan in the rss publisher', () => {
-    assert.match(RELAY_SOURCE, /primaryNewsCountryCode\(countriesNamedInHeadline\(chunk\[idx\]\)\)/);
+    assert.match(RELAY_SOURCE, /primaryNewsCountryCode\(countriesNamedInHeadline\(title\)\)/);
   });
 });

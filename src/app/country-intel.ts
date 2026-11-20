@@ -19,6 +19,7 @@ import type {
   CountryDeepDiveMilitarySummary,
   CountryDeepDiveSignalDetails,
   ChinaCountrySummaryData,
+  CountryIntelData,
 } from '@/components/CountryBriefPanel';
 import { reverseGeocode } from '@/utils/reverse-geocode';
 import { yieldToMain } from '@/utils/after-paint';
@@ -56,7 +57,7 @@ import { collectStoryData } from '@/services/story-data';
 // remaining StoryModal eager edge. The modal opens on user interaction
 // (post-paint), so the import() latency is hidden.
 
-import { hasPremiumAccess } from '@/services/panel-gating';
+import { hasPremiumAccess, readClientEntitlementBelief } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
 import { showMapContextMenu, type MapContextMenuItem } from '@/components/MapContextMenu';
@@ -66,6 +67,7 @@ import { BETA_MODE } from '@/config/beta';
 import { mlWorker } from '@/services/ml-worker';
 import { isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
+import { copyText } from '@/utils/copy-text';
 import { trackCountrySelected, trackCountryBriefOpened } from '@/services/analytics';
 import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
 import { raceWebMcpAbort, throwIfWebMcpAborted } from '@/services/webmcp';
@@ -121,6 +123,7 @@ type CountryIntelBriefResult = {
   evidence: IntelBriefEvidence[];
   generatedAt?: string | number;
   cached?: boolean;
+  accessNotice?: CountryIntelData['accessNotice'];
 };
 
 type PendingCountryBriefRequest = {
@@ -155,6 +158,8 @@ type CountryPresentation = {
   imf: ImfCountryBundle | null;
   refreshGeneration: number;
   signalDetailsPending: boolean;
+  briefAccessNotice?: CountryIntelData['accessNotice'];
+  briefAccessRevision?: number;
 };
 
 const AVIATION_SIGNAL_TIMEOUT_MS = 2500;
@@ -185,6 +190,7 @@ export class CountryIntelManager implements AppModule {
   private orbitalMapFocusUnsubscribe: (() => void) | null = null;
   private entitlementUnsubscribe: (() => void) | null = null;
   private lastHadPremium = false;
+  private briefAccessRevision = 0;
   private currentCountryPresentation: CountryPresentation | null = null;
   private countryController: CountryBriefController | null = null;
   private qualifiedSource = createWebsiteCountryBriefSource();
@@ -219,8 +225,25 @@ export class CountryIntelManager implements AppModule {
       this.orbitalRouteUnsubscribe = watchOrbitalRoute(() => this.ctx.map);
       this.orbitalEvidenceUnsubscribe = watchOrbitalEvidence(() => this.ctx.map);
     }
-    this.lastHadPremium = hasPremiumAccess(getAuthState());
-    const syncPremiumAccess = () => this.handlePremiumAccessTransition(hasPremiumAccess(getAuthState()));
+    let previousAuth = getAuthState();
+    let previousBelief = readClientEntitlementBelief(previousAuth);
+    this.lastHadPremium = hasPremiumAccess(previousAuth);
+    const syncPremiumAccess = () => {
+      const auth = getAuthState();
+      const belief = readClientEntitlementBelief(auth);
+      const premium = hasPremiumAccess(auth);
+      const accessChanged = auth.user?.id !== previousAuth.user?.id
+        || auth.isPending !== previousAuth.isPending || premium !== this.lastHadPremium
+        || belief.authRole !== previousBelief.authRole || belief.entitlementTier !== previousBelief.entitlementTier;
+      previousAuth = auth;
+      previousBelief = belief;
+      this.handlePremiumAccessTransition(premium);
+
+      if (accessChanged) {
+        this.briefAccessRevision++;
+        this.refreshBriefForAccessChange();
+      }
+    };
     this.authUnsubscribe = subscribeAuthState(syncPremiumAccess);
     this.entitlementUnsubscribe = onEntitlementChange(syncPremiumAccess);
   }
@@ -278,6 +301,20 @@ export class CountryIntelManager implements AppModule {
     }
     this.getCountryController(page).refreshPremium();
     this.refreshOpenBrief();
+  }
+
+  private refreshBriefForAccessChange(): void {
+    const presentation = this.currentCountryPresentation;
+    if (!presentation?.briefAccessNotice || this.pendingBriefRequest
+      || presentation.briefAccessRevision === this.briefAccessRevision
+      || !this.isCurrentPresentation(presentation)) return;
+
+    const { page, code } = presentation;
+    void this.openCountryBriefByCode(code, page.getName() ?? code, {
+      owner: this.visibleBriefOwner ?? 'human',
+      trackAnalytics: false,
+    })
+      .catch(err => this.handleCountryBriefOpenError(err));
   }
 
   private handleCountryBriefOpenError(err: unknown): void {
@@ -393,7 +430,10 @@ export class CountryIntelManager implements AppModule {
             openOrbitalWatch({ lat: payload.lat, lon: payload.lon }, document.getElementById('mapContainer'), this.ctx.map));
         },
       });
-      items.push({ label: t('contextMenu.copyCoordinates'), action: () => navigator.clipboard.writeText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`).catch(() => {}) });
+      items.push({
+        label: t('contextMenu.copyCoordinates'),
+        action: () => { void copyText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`); },
+      });
       showMapContextMenu(payload.screenX, payload.screenY, items);
     });
 
@@ -722,7 +762,7 @@ export class CountryIntelManager implements AppModule {
           const countryHeadlines = coverage.headlines.filter(item => (
             CountryIntelManager.isCountryHeadline(item.title, country, code)
           ));
-          if (countryHeadlines.length > 0) page.updateNews(countryHeadlines);
+          if (countryHeadlines.length > 0) page.updateNews([...filteredNews, ...countryHeadlines]);
           this.currentCoverageEvents = coverage.timelineEvents.filter(event => hasCountryTerm(event.label));
           this.mountCountryTimeline(code, country, this.currentCoverageEvents);
         })
@@ -827,11 +867,15 @@ export class CountryIntelManager implements AppModule {
           }
 
           const countryFw = getActiveFrameworkForPanel('country-brief');
+          // A denial can arrive after a sign-in or an entitlement change.
+          presentation.briefAccessRevision = this.briefAccessRevision;
           briefResult = await this.fetchCountryIntelBrief(code, contextSnapshot, countryFw?.systemPromptAppend ?? '');
-          if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
           briefText = briefResult.brief;
         } catch { /* server unreachable */ }
+        if (!this.isCurrentBriefRequest(request) || !this.isCurrentPresentation(presentation)) return;
 
+        const accessNotice = briefResult?.accessNotice;
+        presentation.briefAccessNotice = accessNotice;
         if (briefText) {
           this.ctx.countryBriefPage?.updateBrief({
             brief: briefText,
@@ -853,22 +897,22 @@ export class CountryIntelManager implements AppModule {
                 : `Summarize the current situation in ${country} based on these headlines: ${briefHeadlines.slice(0, 8).join('. ')}`;
 
               const [summary] = await mlWorker.summarize([prompt], BETA_MODE ? 'summarization-beta' : undefined);
-              if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
               if (summary && summary.length > 20) fallbackBrief = summary;
             } catch { /* T5 failed */ }
           }
+          if (!this.isCurrentBriefRequest(request) || !this.isCurrentPresentation(presentation)) return;
 
           if (fallbackBrief) {
-            this.ctx.countryBriefPage?.updateBrief({ brief: fallbackBrief, country, code, fallback: true, sources: briefSources });
+            this.ctx.countryBriefPage?.updateBrief({ brief: fallbackBrief, country, code, fallback: true, accessNotice, sources: briefSources });
           } else {
             const lines = this.buildFallbackSignalLines(presentation.score, signals, country, context);
             if (lines.length > 0) {
-              this.ctx.countryBriefPage?.updateBrief({ brief: lines.join('\n'), country, code, fallback: true, signalRows: true });
+              this.ctx.countryBriefPage?.updateBrief({ brief: lines.join('\n'), country, code, fallback: true, signalRows: true, accessNotice });
             } else {
               // Only the desktop app has a Settings field for the key; web
               // visitors get the page's neutral "unavailable" text.
               this.ctx.countryBriefPage?.updateBrief({
-                brief: '', country, code,
+                brief: '', country, code, accessNotice,
                 error: isDesktopRuntime() ? 'No AI service available. Configure OPENROUTER_API_KEY in Settings for full briefs.' : undefined,
               });
             }
@@ -916,6 +960,7 @@ export class CountryIntelManager implements AppModule {
       }
     } finally {
       this.clearBriefRequest(request);
+      if (this.isCurrentBriefRequest(request) && !opts?.signal?.aborted) this.refreshBriefForAccessChange();
     }
   }
 
@@ -968,7 +1013,7 @@ export class CountryIntelManager implements AppModule {
         if (page.isSignalRowsBrief?.()) {
           const lines = this.buildFallbackSignalLines(score, signals, name, {});
           if (lines.length > 0) {
-            page.updateBrief({ brief: lines.join('\n'), country: name, code, fallback: true, signalRows: true });
+            page.updateBrief({ brief: lines.join('\n'), country: name, code, fallback: true, signalRows: true, accessNotice: presentation.briefAccessNotice });
           }
         }
         try {
@@ -1030,7 +1075,20 @@ export class CountryIntelManager implements AppModule {
       headers: { Accept: 'application/json' },
       signal: this.ctx.countryBriefPage?.signal,
     });
-    if (!resp.ok) return { brief: '', sources: [], evidence: [] };
+    if (!resp.ok) {
+      let accessNotice: CountryIntelBriefResult['accessNotice'];
+      if (!isDesktopRuntime() && (resp.status === 401 || resp.status === 403)) {
+        const { classifyDenialResponse, reconcileSessionDenial } = await import('@/services/premium-denial');
+        const denial = await classifyDenialResponse(resp, readClientEntitlementBelief(getAuthState()));
+        if (denial) {
+          const auth = getAuthState();
+          const verdict = reconcileSessionDenial(denial, auth.user !== null || auth.isPending);
+          accessNotice = verdict === 'sign_in_required' ? 'sign-in'
+            : verdict === 'upgrade_required' ? 'pro' : 'unavailable';
+        }
+      }
+      return { brief: '', sources: [], evidence: [], accessNotice };
+    }
 
     const body = (await resp.json()) as {
       brief?: string;

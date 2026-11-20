@@ -7,6 +7,7 @@ import { gzipSync, gunzipSync } from 'node:zlib';
 import { projectCountrySanctions, MAX_COUNTRY_SANCTIONS_BYTES } from '../shared/country-sanctions-signals.mjs';
 import { mergeSanctionEntries, semaTargetCountry, parseSemaXml, SEMA_SOURCE, SEMA_TIMEOUT_MS, SANCTIONS_SOURCE_VERSION, sanctionsListContentMeta } from '../scripts/_sema-sanctions.mjs';
 import { CSL_ROW_ID, CSL_SOURCES, CSL_TIMEOUT_MS } from '../scripts/_csl-sanctions.mjs';
+import { URP_ROW_ID, URP_SOURCES } from '../scripts/_us-restricted-sanctions.mjs';
 import { buildSanctionsChanges } from '../scripts/_sanctions-changes.mjs';
 
 const seed = readFileSync('scripts/seed-sanctions-pressure.mjs', 'utf8');
@@ -44,6 +45,7 @@ async function produce({ previousState = { entryIds: ['SDN:1', 'CONSOLIDATED:1',
       ? { records: [], error: 'SEMA_INGEST_FAILED' }
       : { records: rows[SEMA_SOURCE], quarantined, publishedAtMs: publications[SEMA_SOURCE], error: null },
     CSL_SOURCES, CSL_ROW_ID, ingestCslEntries: async () => ({ lists: {}, error: 'CSL_FIXTURE_OFF' }),
+    URP_SOURCES, URP_ROW_ID, ingestUsRestrictedEntries: async () => ({ lists: {}, error: 'URP_FIXTURE_OFF' }),
     runSeed: (_d, _r, _k, _f, value) => { options = value; },
   });
   vm.runInContext(`${pure}\n${tail}`, context);

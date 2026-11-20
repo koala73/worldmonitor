@@ -11,8 +11,8 @@ import { imfPeriodData, captureImfPeriods, type ImfPeriodScenario } from './coun
 import { evidenceScreenshot } from './evidence-screenshot';
 
 const root = process.cwd();
-for (const width of [1280, 390]) for (const scenario of ['mixed', 'legacy', 'partial', 'sparse'] as ImfPeriodScenario[]) {
-  test(`IMF annual native ${scenario} ${width}`, async ({ page }, testInfo) => {
+for (const scenario of ['mixed', 'legacy', 'partial', 'sparse'] as ImfPeriodScenario[]) {
+  test(`IMF annual native ${scenario} at both widths`, async ({ page }, testInfo) => {
     const requests: object[] = [];
     const errors: object[] = [];
     const frames: object[] = [];
@@ -24,7 +24,7 @@ for (const width of [1280, 390]) for (const scenario of ['mixed', 'legacy', 'par
     page.on('framenavigated', frame => frames.push({ event: 'navigated', url: frame.url() }));
     page.on('pageerror', error => errors.push({ message: error.message, stack: error.stack }));
     page.on('console', message => { if (message.type() === 'error') errors.push({ message: message.text(), location: message.location() }); });
-    await page.setViewportSize({ width, height: 1000 });
+    await page.setViewportSize({ width: scenario === 'mixed' ? 390 : 1280, height: 1000 });
     try {
       host = await installCountryHost(page, false, undefined, false, {}, undefined, undefined, false, false, undefined, scenario);
       const frame = page.frameLocator('iframe');

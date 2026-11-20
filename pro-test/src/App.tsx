@@ -11,7 +11,7 @@ import {
   Cable, Wifi, MapPin, TrendingUp,
   Boxes, Filter, Lightbulb, SlidersHorizontal, Telescope,
   LineChart, Search, Shield, Building2,
-  Landmark, Fuel, Compass, Bot
+  Landmark, Fuel, Compass, Bot, Users
 } from 'lucide-react';
 import { t } from './i18n';
 import { ensureClerk, showCheckoutErrorToast, tryResumeCheckoutFromUrl } from './services/checkout';
@@ -20,6 +20,7 @@ import { startClerkUserStateSync, type ClerkUserState } from './services/clerk-u
 import { hasLiveClientSession } from './services/clerk-session';
 import { createTimeoutSignal, isTimeoutOrAbortError } from './services/timeout-signal';
 import { PricingSection } from './components/PricingSection';
+import depthProofStats from './generated/depth-stats.json';
 import { WhatsNew } from './components/WhatsNew';
 import { Logo } from './components/Logo';
 import { WiredBadge } from './components/WiredBadge';
@@ -538,7 +539,7 @@ const SocialProof = () => (
           { value: "2M+", label: t('socialProof.uniqueVisitors') },
           { value: "421K", label: t('socialProof.peakDailyUsers') },
           { value: "190+", label: t('socialProof.countriesReached') },
-          { value: "500+", label: t('socialProof.liveDataSources') },
+          { value: depthProofStats.providers.toLocaleString('en-US'), label: t('welcome.depth.s3l') },
         ].map((stat, i) => (
           <div key={i}>
             <p className="text-3xl md:text-4xl font-display font-bold text-wm-green">{stat.value}</p>
@@ -772,7 +773,7 @@ const ProShowcase = () => (
           <div className="flex gap-4">
             <Boxes className="w-6 h-6 text-wm-green shrink-0" aria-hidden="true" />
             <div>
-              <h4 className="font-bold mb-1">{t('proShowcase.supplyChainLab')}</h4>
+              <h3 className="font-bold mb-1">{t('proShowcase.supplyChainLab')}</h3>
               <p className="text-sm text-wm-muted">{t('proShowcase.supplyChainLabDesc')}</p>
             </div>
           </div>
@@ -792,13 +793,12 @@ const ProShowcase = () => (
           </div>
         </div>
 
-        <p className="mt-6 text-xs text-wm-muted">{t('proShowcase.roadmapNote')}</p>
-
         <div className="mt-10 pt-8 border-t border-wm-border">
           <p className="font-mono text-xs text-wm-muted uppercase tracking-widest mb-4">{t('proShowcase.deliveryLabel')}</p>
-          <div className="flex gap-6">
+          <div className="flex flex-wrap gap-6">
             {[
               { icon: <SlackIcon />, label: "Slack" },
+              { icon: <Users className="w-5 h-5" aria-hidden="true" />, label: "Teams" },
               { icon: <MessageSquare className="w-5 h-5" aria-hidden="true" />, label: "Discord" },
               { icon: <Send className="w-5 h-5" aria-hidden="true" />, label: "Telegram" },
               { icon: <Mail className="w-5 h-5" aria-hidden="true" />, label: "Email" },
@@ -863,18 +863,19 @@ const ApiSection = () => (
           <div className="p-6 text-gray-300 overflow-x-auto" tabIndex={0} role="region" aria-labelledby="api-example-title">
             <pre><code>
 <span className="text-wm-blue">curl</span> \<br/>
-  <span className="text-wm-green">"https://api.worldmonitor.app/v1/intelligence/convergence?region=MENA&time_window=6h"</span> \<br/>
-  -H <span className="text-wm-green">"Authorization: Bearer wm_live_xxx"</span><br/><br/>
+{'  '}<span className="text-wm-green">"https://api.worldmonitor.app/api/intelligence/v1/list-cross-source-signals"</span> \<br/>
+{'  '}-H <span className="text-wm-green">"X-WorldMonitor-Key: wm_…"</span><br/><br/>
 <span className="text-wm-muted">{"{"}</span><br/>
-  <span className="text-wm-blue">"status"</span>: <span className="text-wm-green">"success"</span>,<br/>
-  <span className="text-wm-blue">"data"</span>: <span className="text-wm-muted">{"["}</span><br/>
-    <span className="text-wm-muted">{"{"}</span><br/>
-      <span className="text-wm-blue">"type"</span>: <span className="text-wm-green">"multi_signal_convergence"</span>,<br/>
-      <span className="text-wm-blue">"signals"</span>: <span className="text-wm-muted">["military_flights", "ais_dark_ships", "oref_sirens"]</span>,<br/>
-      <span className="text-wm-blue">"confidence"</span>: <span className="text-orange-400">0.92</span>,<br/>
-      <span className="text-wm-blue">"location"</span>: <span className="text-wm-muted">{"{"}</span> <span className="text-wm-blue">"lat"</span>: <span className="text-orange-400">34.05</span>, <span className="text-wm-blue">"lng"</span>: <span className="text-orange-400">35.12</span> <span className="text-wm-muted">{"}"}</span><br/>
-    <span className="text-wm-muted">{"}"}</span><br/>
-  <span className="text-wm-muted">{"]"}</span><br/>
+{'  '}<span className="text-wm-blue">"signals"</span>: <span className="text-wm-muted">{"["}</span><br/>
+{'    '}<span className="text-wm-muted">{"{"}</span><br/>
+{'      '}<span className="text-wm-blue">"type"</span>: <span className="text-wm-green">"CROSS_SOURCE_SIGNAL_TYPE_COMPOSITE_ESCALATION"</span>,<br/>
+{'      '}<span className="text-wm-blue">"theater"</span>: <span className="text-wm-green">"Middle East"</span>,<br/>
+{'      '}<span className="text-wm-blue">"severity"</span>: <span className="text-wm-green">"CROSS_SOURCE_SIGNAL_SEVERITY_CRITICAL"</span>,<br/>
+{'      '}<span className="text-wm-blue">"severityScore"</span>: <span className="text-orange-400">9.6</span>,<br/>
+{'      '}<span className="text-wm-blue">"contributingTypes"</span>: <span className="text-wm-muted">["military flight surge", "gps jamming", "oref alert cluster"]</span><br/>
+{'    '}<span className="text-wm-muted">{"}"}</span><br/>
+{'  '}<span className="text-wm-muted">{"]"}</span>,<br/>
+{'  '}<span className="text-wm-blue">"evaluatedAt"</span>: <span className="text-orange-400">1795564800000</span><br/>
 <span className="text-wm-muted">{"}"}</span>
             </code></pre>
           </div>

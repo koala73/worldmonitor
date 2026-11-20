@@ -35,16 +35,16 @@
     "askIt": "Întreabă-l",
     "askItDesc": "WM Analyst chat. Serviciile live interogabile în engleză simplă.",
     "subscribeIt": "Abonează-te",
-    "subscribeItDesc": "Digest IA în ritmul tău: zilnic, de două ori pe zi sau săptămânal. Slack, Discord, Telegram, Email, webhook.",
+    "subscribeItDesc": "Digest IA în ritmul tău: zilnic, de două ori pe zi sau săptămânal. Slack, Teams, Discord, Telegram, Email, webhook.",
     "buildOnIt": "Construiește deasupra",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + IA) și MCP pentru Claude, GPT, LLM-uri proprii."
   },
   "deliveryDesk": {
     "eyebrow": "BIROU DE LIVRARE",
     "title": "Ce este biroul de intelligence personal?",
-    "body": "Până la 30 de articole clasate pe trimitere, deduplicate pe surse, evaluate în raport cu lista ta de monitorizare. Alege cadența — zilnic, de două ori pe zi sau săptămânal — cu Evaluare AI și Semnale de urmărit trimise la Slack, Discord, Telegram, Email sau webhook.",
+    "body": "Până la 30 de articole clasate pe trimitere, deduplicate pe surse, evaluate în raport cu lista ta de monitorizare. Alege cadența — zilnic, de două ori pe zi sau săptămânal — cu Evaluare AI și Semnale de urmărit trimise la Slack, Microsoft Teams, Discord, Telegram, Email sau webhook.",
     "closer": "Nu un newsletter. Un analist.",
-    "channels": "Slack · Discord · Telegram · Email · Webhook · Criptare AES-256 · Ore silențioase"
+    "channels": "Slack · Teams · Discord · Telegram · Email · Webhook · Criptare AES-256 · Ore silențioase"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Panou live",
@@ -56,8 +56,7 @@
   "socialProof": {
     "uniqueVisitors": "Vizitatori unici",
     "peakDailyUsers": "Utilizatori zilnici (vârf)",
-    "countriesReached": "Țări atinse",
-    "liveDataSources": "Surse de date live"
+    "countriesReached": "Țări atinse"
   },
   "audience": {
     "title": "Pentru cine este World Monitor?",
@@ -77,34 +76,6 @@
     "aiTeamsDesc": "Alimentează asistentul companiei cu context global live prin MCP, cu drepturi scrise de utilizare internă.",
     "teamsTitle": "Echipe și organizații",
     "teamsDesc": "Treci de la uz individual la fluxuri partajate, acces API, aplicații TV și deployment gestionat."
-  },
-  "dataCoverage": {
-    "title": "Ce monitorizează World Monitor?",
-    "subtitle": "Domenii de servicii ingerate simultan. Piețe, macro, geopolitică, energie, infrastructură — totul normalizat și renderizat pe un glob WebGL.",
-    "markets": "Piețe financiare și acțiuni",
-    "marketsDesc": "Analiză globală de acțiuni, mărfuri, cripto, fluxuri ETF, ținte de analiști și date macro FRED",
-    "economy": "Economie și bănci centrale",
-    "economyDesc": "PIB, inflație, rate dobândă, cicluri de creștere și urmărire politică monetară în economiile majore",
-    "geopolitical": "Analiză geopolitică",
-    "geopoliticalDesc": "Evenimente ACLED și UCDP cu scoring de escaladare, cadre de risc și analiză de tendințe",
-    "maritime": "Maritim și comerț",
-    "maritimeDesc": "Mișcări de nave, detecție de vase, activitate portuară și inferență de încărcătură",
-    "aviation": "Urmărire aviație",
-    "aviationDesc": "Urmărire ADS-B a modelelor globale de zbor",
-    "infra": "Infrastructură critică",
-    "infraDesc": "Situri nucleare, rețele electrice, conducte, rafinării — active mapate",
-    "fire": "Detecție satelitară incendii",
-    "fireDesc": "Date NASA FIRMS aproape în timp real despre incendii și hotspoturi",
-    "cables": "Cabluri submarine",
-    "cablesDesc": "Rute de cabluri submarine și stații de aterizare",
-    "internet": "Internet și GPS",
-    "internetDesc": "Detecție căderi, anomalii BGP, zone de bruiaj GPS",
-    "cyber": "Amenințări cibernetice",
-    "cyberDesc": "Feed-uri ransomware, hijack-uri BGP, detecție DDoS",
-    "gdelt": "GDELT și știri",
-    "gdeltDesc": "Fluxuri RSS curate, evenimente GDELT scored de AI, transmisiuni live",
-    "seismology": "Seismologie și naturale",
-    "seismologyDesc": "Cutremure USGS, activitate vulcanică, vreme extremă"
   },
   "tiers": {
     "free": "Gratuit",
@@ -127,13 +98,12 @@
     "riskMonitoring": "Monitoring de risc și scenarii",
     "riskMonitoringDesc": "Scoring global de risc, analiză de scenarii și evaluare a riscului geopolitic. Detecție de convergențe între semnale de piață și politice.",
     "morningBriefs": "Birou personal de intelligence",
-    "morningBriefsDesc": "Până la 30 de articole clasate pe digest, deduplicate pe surse. Alege cadență zilnică, de două ori pe zi sau săptămânală — sau alerte în timp real pentru evenimente critice. Evaluare AI și Semnale de urmărit trimise la Slack, Discord, Telegram, Email sau webhook. Nu o newsletter — un analist.",
+    "morningBriefsDesc": "Până la 30 de articole clasate pe digest, deduplicate pe surse. Alege cadență zilnică, de două ori pe zi sau săptămânală — sau alerte în timp real pentru evenimente critice. Evaluare AI și Semnale de urmărit trimise la Slack, Microsoft Teams, Discord, Telegram, Email sau webhook. Nu o newsletter — un analist.",
     "oneKey": "Servicii Live, 1 Cheie",
-    "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky și mai mult — toate active, fără înregistrări separate.",
+    "oneKeyDesc": "Finnhub, FRED, UCDP, NASA FIRMS, AISStream, OpenSky și mai mult — toate active, fără înregistrări separate.",
     "deliveryLabel": "Alege cum te găsește intelligence-ul",
     "supplyChainLab": "Laborator de stres al lanțului de aprovizionare",
-    "supplyChainLabDesc": "Modelează un șoc de cost pe țări și sectoare. Clasifică vulnerabilitatea mărfurilor după dependența de puncte de strangulare. Urmărește concentrația mine-rafinărie și divergența primei fizice SGE–COMEX — seria care se mișcă înainte ca titlul să apară.",
-    "roadmapNote": "Pe roadmap: istoric mai lung, straturi de hartă premium."
+    "supplyChainLabDesc": "Modelează un șoc de cost pe țări și sectoare. Clasifică vulnerabilitatea mărfurilor după dependența de puncte de strangulare. Urmărește concentrația mine-rafinărie și divergența primei fizice SGE–COMEX — seria care se mișcă înainte ca titlul să apară."
   },
   "apiSection": {
     "apiTier": "NIVEL API",
@@ -560,7 +530,7 @@
       "n5Title": "Cabluri submarine",
       "n5Desc": "{{submarineCables}} cabluri submarine care transportă internetul, suprapuse cu semnale de întreruperi și amenințări.",
       "n6Title": "Urmărire proteste",
-      "n6Desc": "Detectarea protestelor din ACLED și GDELT; rapoartele de la o singură sursă în aceeași celulă 0.1° în aceeași zi se fuzionează într-un singur eveniment — semnal, nu zvon.",
+      "n6Desc": "Detectarea protestelor din GDELT; rapoartele de la o singură sursă în aceeași celulă 0.1° în aceeași zi se fuzionează într-un singur eveniment — semnal, nu zvon.",
       "faith": "Nu lua numerele în serios —",
       "faithCta": "deschide aplicația și numără.",
       "faithNote": "Sursele sunt citate pe fiecare panou."
@@ -617,7 +587,7 @@
       "q2": "Ce este un tablou de bord de informații globale?",
       "a2": "O viziune live unică care fuzionează semnale pe care majoritatea instrumentelor le păstrează separate: evenimente de conflict, urmărirea navelor și aeronavelor, puncte de strângulare maritimă, sateliți, cabluri subsalinie, conducte, piețe și amenințări cibernetice — pe o hartă mondială în timp real, cu scoruri AI și rezumate în partea de sus. World Monitor este una gratuită.",
       "q3": "De unde provin datele?",
-      "a3": "De la {{providers}} furnizori atribuiți. Cei numiți includ ACLED și UCDP pentru conflict, AISStream pentru nave live, OpenSky pentru aeronave, NASA FIRMS pentru incendii, USGS pentru cutremure, IMF, BIS, FRED și Finnhub pentru piețe și macroeconomie — plus fluxuri de știri curate. Fiecare panou citează sursele și marcajele temporale inline.",
+      "a3": "De la {{providers}} furnizori atribuiți. Cei numiți includ GDELT și UCDP pentru conflict, AISStream pentru nave live, OpenSky pentru aeronave, NASA FIRMS pentru incendii, USGS pentru cutremure, IMF, BIS, FRED și Finnhub pentru piețe și macroeconomie — plus fluxuri de știri curate. Fiecare panou citează sursele și marcajele temporale inline.",
       "q4": "Pot să monitorizez puncte de strângulare precum Hormuz sau Bab el-Mandeb în timp real?",
       "a4": "Da. {{chokepoints}} puncte de îngustare, atât strâmtori cât și canale, de la Hormuz și Bab el-Mandeb la Suez, sunt monitorizate cu numărări live AIS de vase, schimbare săptămână la săptămână a tranzitelor și scor de perturbații — iar anomaliile de densitate sunt marcate în raport cu linia de bază alunecătoare a fiecărui punct de îngustare.",
       "q5": "Care este diferența față de o hartă de conflict ca Liveuamap?",

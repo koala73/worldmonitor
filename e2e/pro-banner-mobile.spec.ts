@@ -22,6 +22,7 @@ async function openFreeDashboard(page: Page, path = '/'): Promise<void> {
 }
 
 async function bannerLayout(page: Page) {
+  await expect(page.locator('.pro-banner-cta')).toBeVisible();
   return page.locator('.pro-banner').evaluate((banner) => {
     const text = banner.querySelector<HTMLElement>('.pro-banner-text')!;
     const headline = text.querySelector<HTMLElement>('strong')!;
@@ -39,22 +40,6 @@ async function bannerLayout(page: Page) {
   });
 }
 
-for (const width of [360, 390]) {
-  test.describe(`Pro strip at ${width}px`, () => {
-    test.use({ viewport: { width, height: 800 }, isMobile: true, hasTouch: true });
-
-    test('names a concrete Pro feature in full, inside the reserved slot', async ({ page }) => {
-      await openFreeDashboard(page);
-      const layout = await bannerLayout(page);
-      expect(layout.headline).toBe(HEADLINE);
-      expect(layout.headlineClipped, 'headline must not be cut off').toBe(false);
-      expect(layout.taglineVisible, 'the tagline is desktop-only').toBe(false);
-      expect(layout.height).toBeLessThanOrEqual(SLOT_HEIGHT);
-      expect(layout.ctaRight).toBeLessThanOrEqual(layout.viewport);
-    });
-  });
-}
-
 // Every language must fit too: the headline is the whole message on a phone.
 const LOCALE_DIR = new URL('../src/locales/', import.meta.url);
 const localeHeadlines = readdirSync(LOCALE_DIR)
@@ -69,9 +54,33 @@ test.describe('Pro strip at 360px in every language', () => {
 
   for (const { lang, headline } of localeHeadlines) {
     test(`${lang} headline fits in full`, async ({ page }) => {
-      await openFreeDashboard(page, `/?lang=${lang}`);
+      if (lang === 'en' || lang === 'ar') {
+        await openFreeDashboard(page, `/?lang=${lang}`);
+      } else {
+        // The component page has no app bootstrap to settle Clerk's initial session.
+        await page.route('**/src/services/auth-state.ts*', route => route.fulfill({
+          contentType: 'application/javascript',
+          body: `
+            const signedOut = { user: null, isPending: false };
+            export function getAuthState() { return signedOut; }
+            export function subscribeAuthState(callback) {
+              callback(signedOut);
+              return () => {};
+            }
+          `,
+        }));
+        await page.goto(`/tests/runtime-harness.html?lang=${lang}`);
+        await page.addStyleTag({ url: '/src/styles/main.css' });
+        await page.evaluate(async () => {
+          const { initI18n } = await import('/src/services/i18n.ts');
+          await initI18n({ waitForFullTranslation: true });
+          const { showProBanner } = await import('/src/components/ProBanner.ts');
+          showProBanner(document.body);
+        });
+      }
       await expect(page.locator('.pro-banner-text strong')).toHaveText(headline);
       const layout = await bannerLayout(page);
+      expect(layout.taglineVisible).toBe(false);
       expect(layout.headlineClipped, `${lang}: "${headline}" is cut off`).toBe(false);
       expect(layout.height).toBeLessThanOrEqual(SLOT_HEIGHT);
       expect(layout.ctaRight).toBeLessThanOrEqual(layout.viewport);
@@ -120,6 +129,12 @@ for (const colorScheme of ['light', 'dark'] as const) {
 
     test('the headline has readable contrast', async ({ page }) => {
       await openFreeDashboard(page);
+      const layout = await bannerLayout(page);
+      expect(layout.headline).toBe(HEADLINE);
+      expect(layout.headlineClipped).toBe(false);
+      expect(layout.taglineVisible).toBe(false);
+      expect(layout.height).toBeLessThanOrEqual(SLOT_HEIGHT);
+      expect(layout.ctaRight).toBeLessThanOrEqual(layout.viewport);
       const { background, ratio } = await page.locator('.pro-banner').evaluate((banner) => {
         const rgb = (value: string) => (value.match(/[\d.]+/g) ?? []).map(Number);
         const luminance = ([r, g, b]: number[]) => {

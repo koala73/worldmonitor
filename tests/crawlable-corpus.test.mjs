@@ -1835,16 +1835,16 @@ describe('crawlable corpus generator', () => {
     );
   });
 
-  it('picks the newest live-pulse snapshot among several candidates', () => {
+  it('selects a stale committed pulse for builds but rejects it for publishing', () => {
     const fixtureRoot = mkdtempSync(join(tmpdir(), 'wm-pulse-resolve-'));
     try {
       const snapshotDir = join(fixtureRoot, 'docs', 'snapshots');
       mkdirSync(snapshotDir, { recursive: true });
-      const today = new Date().toISOString().slice(0, 10);
+      const latest = '2026-01-12';
       const sections = {
-        countries: [], chokepoints: [], crises: [], signalConvergence: { capturedAt: today },
+        countries: [], chokepoints: [], crises: [], signalConvergence: {},
       };
-      for (const capturedAt of ['2026-01-05', today, '2026-01-09']) {
+      for (const capturedAt of ['2026-01-05', latest, '2026-01-09']) {
         writeFileSync(
           join(snapshotDir, `crawlable-live-pulse-${capturedAt}.json`),
           JSON.stringify({ capturedAt, ...sections }),
@@ -1852,9 +1852,24 @@ describe('crawlable corpus generator', () => {
       }
       assert.equal(
         resolveLatestLivePulseSnapshotPath(fixtureRoot),
-        join('docs', 'snapshots', `crawlable-live-pulse-${today}.json`),
+        join('docs', 'snapshots', `crawlable-live-pulse-${latest}.json`),
         'the resolver must pick the highest-dated snapshot, not the first or last written',
       );
+      const freshnessCheck = join(repoRoot, 'scripts/check-crawlable-live-pulse.mjs');
+      const check = () => execFileSync(process.execPath, [freshnessCheck], {
+        cwd: fixtureRoot, encoding: 'utf8', stdio: 'pipe',
+      });
+      assert.throws(check, {
+        status: 1,
+        stderr: new RegExp(`${latest}\\.json is \\d+ days old \\(max 10\\)`),
+      });
+
+      const today = new Date().toISOString().slice(0, 10);
+      writeFileSync(
+        join(snapshotDir, `crawlable-live-pulse-${today}.json`),
+        JSON.stringify({ capturedAt: today, ...sections }),
+      );
+      assert.match(check(), /Live-pulse snapshot is fresh/);
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
     }
@@ -1883,7 +1898,7 @@ describe('crawlable corpus generator', () => {
 
     assert.ok(
       MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS > cadenceDays,
-      `the ${MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS}-day ceiling must exceed the ${cadenceDays}-day refresh cadence, or a healthy refresh cycle reds the build`,
+      `the ${MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS}-day ceiling must exceed the ${cadenceDays}-day refresh cadence, or a healthy refresh cycle blocks publishing`,
     );
     assert.ok(
       MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS <= cadenceDays * 2,
@@ -6573,6 +6588,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
   // #7533-allowlist: 2026-02-03 x2 2026-02-30 x2 2026-02-31 x1 2001-02-29 x1 — laterDate unit pin; invalid-calendar CII/chokepoint timestamp and crisis-editorial date fixtures
   // #7533-allowlist: 2026-03-04 x6 2026-03-14 x2 2026-04-09 x1 2026-05-01 x2 — laterDate unit pin; resolveChokepointObservation fallback constants
   // #7533-allowlist: 2026-05-28 x2 — datasetTemporalCoverage pure-function fixture
+  // #7533-allowlist: 2026-01-12 x1 — stale synthetic snapshot for the publishing freshness check
   // #7533-allowlist: 2026-06-01 x2 2026-07-28 x3 — synthetic git-commit and sitemap stub dates
   // #7533-allowlist: 2026-08-08 x3 2026-08-09 x4 2026-08-10 x4 2026-08-11 x3 2026-08-12 x3 2026-08-13 x4 — sourcePageLastmod pure-function fixtures
   // #7533-allowlist: 2026-08-29 x5 — STORY_CAPTURED_AT synthetic story clock and static snapshot-path fixtures

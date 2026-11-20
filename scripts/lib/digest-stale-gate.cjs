@@ -1,6 +1,20 @@
 'use strict';
 
 const { gateRelayStoryLink } = require('./publisher-link-relay-gate.cjs');
+const NEWS_CATALOG = require('../../shared/news-catalog.json');
+
+// The relay classifies the English digest, which also carries local-language
+// outlets (fetchInAllLanguages). Their headlines are labelled for the
+// dashboard but must not alert: subscribers got each story once per language.
+// A Google News query in English returns English headlines whatever `lang`
+// routes the feed to, so those keep alerting.
+const OTHER_LANGUAGE_FEEDS = (() => {
+  const english = new Set();
+  const other = new Set();
+  const inEnglish = feed => !feed.lang || feed.lang === 'en' || /^https:\/\/news\.google\.com\/.*[?&]hl=en\b/.test(feed.url);
+  for (const feed of NEWS_CATALOG.feeds) (inEnglish(feed) ? english : other).add(feed.name);
+  return new Set([...other].filter(name => !english.has(name)));
+})();
 
 // #7084: should the relay's digest-derived candidates participate in this
 // classification pass?
@@ -69,7 +83,11 @@ function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs,
     for (const [index, item] of [...served, ...pool].entries()) {
       if (!item?.title) continue;
       if (item.publishedAt && item.publishedAt < oldestAllowedAt) continue;
-      if (!candidates.has(item.title)) {
+      // A copy that can alert replaces one that cannot. A served headline
+      // stays served, so it keeps its label key and its place in the summary.
+      const otherLanguage = OTHER_LANGUAGE_FEEDS.has(item.source);
+      const prior = candidates.get(item.title);
+      if (!prior || (prior.otherLanguage && !otherLanguage)) {
         candidates.set(item.title, {
           // #10977: score on the publisher a topic feed carries, not the feed.
           source: item.originPublisher || item.source || variant,
@@ -82,7 +100,8 @@ function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs,
           // When digest story tracking first saw the headline, in any
           // edition or language. Only for the latency log.
           ...(item.storyMeta?.firstSeen > 0 ? { firstSeen: Number(item.storyMeta.firstSeen) } : {}),
-          ...(index >= served.length ? { fromPool: true } : {}),
+          ...((prior ? prior.fromPool : index >= served.length) ? { fromPool: true } : {}),
+          ...(otherLanguage ? { otherLanguage: true } : {}),
         });
       }
     }

@@ -52,7 +52,6 @@ test('2D scale and ruler follow the camera and preserve map interactions', async
 });
 
 for (const [name, a, b, km] of [
-  ['equator', [0, 0], [1, 0], 111.2],
   ['legacy locale', [0, 0], [1, 0], 111.2],
   ['Iceland', [-22, 65], [-21, 65], 47.0],
   ['dateline', [179.9, 0], [-179.9, 0], 22.2],

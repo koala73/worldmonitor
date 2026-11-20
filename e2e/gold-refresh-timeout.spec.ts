@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openComponentHarness } from './component-harness';
 import { evidenceScreenshot } from './evidence-screenshot';
 
 test('gold keeps its last successful data when refresh times out', async ({ page }, testInfo) => {
@@ -11,7 +12,7 @@ test('gold keeps its last successful data when refresh times out', async ({ page
       crossCurrencyPrices: [], drivers: [], updatedAt: new Date().toISOString(),
     } });
   });
-  await page.goto('/tests/map-harness.html');
+  await openComponentHarness(page);
   await page.evaluate(async () => {
     const modulePath = '/src/components/GoldIntelligencePanel.ts';
     const { GoldIntelligencePanel } = await import(modulePath);

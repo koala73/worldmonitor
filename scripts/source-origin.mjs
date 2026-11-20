@@ -229,6 +229,7 @@ const HOST_ORIGINS = Object.freeze({
   "ammonnews.net": "JO",
   "antigua.news": "AG",
   "antiguaobserver.com": "AG",
+  "asiaplus.news": "TJ",
   "asiaplustj.info": "TJ",
   "awate.com": "US",
   "azathabar.com": "CZ",
@@ -919,6 +920,7 @@ const HOST_ORIGINS = Object.freeze({
 // Provider-level overrides win when the host is a CDN, cloud, or shared
 // platform that would otherwise point at the wrong country.
 const PROVIDER_ORIGINS = Object.freeze({
+  'US Restricted Parties feed (Tensorust LLC)': 'US',
   "BioBioChile": "CL",
   "The Sofia Globe": "BG",
   "Prachatai": "TH",

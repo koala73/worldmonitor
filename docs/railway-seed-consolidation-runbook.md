@@ -1661,7 +1661,7 @@ fetch('https://backboard.railway.com/graphql/v2',{method:'POST',
 
 | Service | Start command | Inferred cadence | Domain |
 |---|---|---|---|
-| seed-aaii-sentiment | `node scripts/seed-aaii-sentiment.mjs` | weekly (7d TTL) | AAII bull/bear investor sentiment survey |
+| seed-aaii-sentiment | `node scripts/seed-aaii-sentiment.mjs` | weekly (21d TTL) | AAII bull/bear investor sentiment survey |
 | seed-market-quotes | `node scripts/seed-market-quotes.mjs` | **planned — not provisioned** | Equity index / stock bootstrap quotes (Yahoo + Finnhub + Alpha Vantage) |
 | seed-commodity-quotes | `node scripts/seed-commodity-quotes.mjs` | ~30 min (30m TTL) | Commodity + extended-gold bootstrap quotes |
 | seed-crypto-sectors | `node scripts/seed-crypto-sectors.mjs` | **planned — not provisioned** | CoinGecko crypto sector performance |

@@ -770,7 +770,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Asia-Plus",
-          "url": "https://asiaplustj.info/rss",
+          "url": "https://asiaplus.news/feed/",
           "lang": "ru",
           "fetchInAllLanguages": true
         },
@@ -1418,9 +1418,12 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Tages-Anzeiger",
-          "url": "https://www.tagesanzeiger.ch/rss.html",
+          "url": "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/",
           "lang": "de",
-          "fetchInAllLanguages": true
+          "fetchInAllLanguages": true,
+          "linkHosts": [
+            "tagesanzeiger.ch"
+          ]
         },
         {
           "name": "The Insider",
@@ -4910,7 +4913,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Korea Times",
-          "url": "https://www.koreatimes.co.kr/www/rss/rss.xml",
+          "url": "https://feed.koreatimes.co.kr/k/allnews.xml",
           "lang": "en",
           "fetchInAllLanguages": true
         },

@@ -103,6 +103,8 @@ const PUBLISHER_FAMILY_DATA = {
   'cnn': { publisher: "CNN", labels: ["CNN World"] },
   'csis': { publisher: "CSIS", labels: ["CSIS", "CSIS Tech"] },
   'die-zeit': { publisher: "Die Zeit", labels: [] },
+  // feed.koreatimes.co.kr serves items on www.koreatimes.co.kr.
+  'korea-times': { publisher: "Korea Times", labels: [] },
   'deutschlandradio': { publisher: "Deutschlandradio", labels: ["Deutschlandfunk"] },
   'dw': { publisher: "Deutsche Welle", labels: ["DW News", "DW Turkish", "DW Brasil"] },
   'eia': { publisher: "US Energy Information Administration", labels: ["EIA Press Room", "EIA Reports"] },
@@ -305,6 +307,7 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'cnn': ['cnn.com'],
   'csis': ['csis.org'],
   'die-zeit': ['zeit.de'],
+  'korea-times': ['koreatimes.co.kr'],
   'deutschlandradio': ['deutschlandfunk.de'],
   'zdf': ['zdfheute.de', 'zdf.de'],
   'dw': ['dw.com'],

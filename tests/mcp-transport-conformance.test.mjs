@@ -968,7 +968,6 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
   let deps;
   let server;
   let aliasUrl;
-  let staticFetchCalls;
   const realFetch = globalThis.fetch;
   const cardText = readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8');
   const guideText = readFileSync(new URL('../public/mcp-server.md', import.meta.url), 'utf8');
@@ -985,26 +984,6 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
     deps = makeProDeps().deps;
     server = await startMcpServer(mcpHandler, deps);
     aliasUrl = server.url.replace('/mcp', '/.well-known/mcp');
-    staticFetchCalls = [];
-    // The handler self-fetches the static card asset; the localhost harness
-    // has no static file server, so serve the on-disk card for that one URL
-    // and delegate everything else (including the test's own requests).
-    globalThis.fetch = (input, init) => {
-      const href = typeof input === 'string' ? input : input.url ?? String(input);
-      if (href.endsWith('/.well-known/mcp/server-card.json')) {
-        staticFetchCalls.push({ href, init });
-        return Promise.resolve(new Response(cardText, { status: 200, headers: { 'Content-Type': 'application/json' } }));
-      }
-      if (href.endsWith('/mcp-server.md')) {
-        staticFetchCalls.push({ href, init });
-        return Promise.resolve(new Response(guideText, { status: 200, headers: { 'Content-Type': 'text/markdown' } }));
-      }
-      if (href.endsWith('/mcp-setup.html')) {
-        staticFetchCalls.push({ href, init });
-        return Promise.resolve(new Response(setupHtml, { headers: { 'Content-Type': 'text/html' } }));
-      }
-      return realFetch(input, init);
-    };
   });
 
   afterEach(async () => {
@@ -1030,13 +1009,6 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
     assert.equal(card.kind, 'product');
     assert.equal(card.serverUrl, 'https://worldmonitor.app/mcp');
     assert.equal(card.remotes?.[0]?.url, 'https://worldmonitor.app/mcp');
-    const cardFetch = staticFetchCalls.find(({ href }) => href.endsWith('/.well-known/mcp/server-card.json'));
-    assert.ok(cardFetch, 'server card must be loaded through the deployment self-fetch');
-    assert.equal(
-      new Headers(cardFetch.init?.headers).get('user-agent'),
-      'WorldMonitor-MCP/1.0 (+https://worldmonitor.app)',
-      'server-side fetches must identify WorldMonitor to the deployment edge',
-    );
     // The manifest is a static, immutable-per-deploy asset — it must stay
     // cacheable (it was `public, max-age=3600` as a static file). The MCP
     // no-store CORS bundle must NOT clobber that on the manifest GET, or every
@@ -1103,68 +1075,49 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
     assert.equal(refused.status, 400);
   });
 
-  it('redirects discovery reads when deployment static-asset self-fetches fail', async () => {
-    // Import the implementation directly with a unique query so its module-scope
-    // document caches start empty; api/mcp.ts re-exports a shared handler module.
-    const fresh = await import(`../api/mcp/handler.ts?fallback=${Date.now()}-${Math.random()}`);
-    const fallbackServer = await startMcpServer(fresh.mcpHandler, deps);
-    const fallbackAliasUrl = fallbackServer.url.replace('/mcp', '/.well-known/mcp');
+  it('serves every discovery document when the deployment cannot be reached', async () => {
+    // Production smoke runs on 2026-09-04, 2026-11-04 and 2026-11-19 got a 302
+    // from an instance whose self-fetch of these assets failed. The documents
+    // ship inside the function bundle, so no read here
+    // may depend on the network. Import the implementation directly with a
+    // unique query so no module-scope state carries over from other tests.
+    const fresh = await import(`../api/mcp/handler.ts?unreachable=${Date.now()}-${Math.random()}`);
+    const isolatedServer = await startMcpServer(fresh.mcpHandler, deps);
+    const isolatedAliasUrl = isolatedServer.url.replace('/mcp', '/.well-known/mcp');
     const successfulStaticFetch = globalThis.fetch;
+    const assetFetches = [];
 
     globalThis.fetch = (input, init) => {
       const href = typeof input === 'string' ? input : input.url ?? String(input);
-      if (href.endsWith('/.well-known/mcp/server-card.json')) {
+      if (/\/(?:\.well-known\/mcp\/server-card\.json|mcp-server\.md|mcp-setup\.html)$/.test(href)) {
+        assetFetches.push(href);
         return Promise.reject(new Error('deployment self-fetch failed'));
-      }
-      if (href.endsWith('/mcp-server.md') || href.endsWith('/mcp-setup.html')) {
-        return Promise.resolve(new Response(null, { status: 503 }));
       }
       return realFetch(input, init);
     };
 
     try {
-      const cardFallback = await fetch(fallbackAliasUrl, {
-        headers: { Accept: 'application/json' },
-        redirect: 'manual',
-      });
-      assert.equal(cardFallback.status, 302);
-      assert.equal(cardFallback.headers.get('location'), '/.well-known/mcp/server-card.json');
-      assert.match(cardFallback.headers.get('vary') ?? '', /\bAccept\b(?!-)/i);
-      assert.match(cardFallback.headers.get('vary') ?? '', /\bLast-Event-ID\b/i);
+      const reads = [
+        { url: isolatedAliasUrl, accept: 'application/json', type: /application\/json/i, body: cardText },
+        { url: isolatedServer.url, accept: 'text/html,*/*', type: /text\/html/i, body: setupHtml },
+        { url: isolatedServer.url, accept: '*/*', type: /text\/markdown/i, body: guideText },
+      ];
+      for (const { url, accept, type, body } of reads) {
+        const res = await fetch(url, { headers: { Accept: accept }, redirect: 'manual' });
+        assert.equal(res.status, 200, `GET ${url} (${accept})`);
+        assert.match(res.headers.get('content-type') ?? '', type);
+        assert.equal(await res.text(), body);
+        assert.match(res.headers.get('vary') ?? '', /\bAccept\b(?!-)/i);
+        assert.match(res.headers.get('vary') ?? '', /\bLast-Event-ID\b/i);
 
-      const guideFallback = await fetch(fallbackServer.url, {
-        headers: { Accept: 'text/html,*/*' },
-        redirect: 'manual',
-      });
-      assert.equal(guideFallback.status, 302);
-      assert.equal(guideFallback.headers.get('location'), 'https://www.worldmonitor.app/docs/mcp-quickstart');
-      assert.match(guideFallback.headers.get('vary') ?? '', /\bAccept\b(?!-)/i);
-      assert.match(guideFallback.headers.get('vary') ?? '', /\bLast-Event-ID\b/i);
-
-      const cardHeadFallback = await fetch(fallbackAliasUrl, {
-        method: 'HEAD',
-        headers: { Accept: 'application/json' },
-        redirect: 'manual',
-      });
-      assert.equal(cardHeadFallback.status, cardFallback.status);
-      assert.equal(cardHeadFallback.headers.get('location'), cardFallback.headers.get('location'));
-
-      const guideHeadFallback = await fetch(fallbackServer.url, {
-        method: 'HEAD',
-        headers: { Accept: 'text/html,*/*' },
-        redirect: 'manual',
-      });
-      assert.equal(guideHeadFallback.status, guideFallback.status);
-      assert.equal(guideHeadFallback.headers.get('location'), guideFallback.headers.get('location'));
-
-      const markdownFallback = await fetch(fallbackServer.url, {
-        headers: { Accept: 'text/markdown' }, redirect: 'manual',
-      });
-      assert.equal(markdownFallback.status, 302);
-      assert.equal(markdownFallback.headers.get('location'), '/mcp-server.md');
+        const head = await fetch(url, { method: 'HEAD', headers: { Accept: accept }, redirect: 'manual' });
+        assert.equal(head.status, 200, `HEAD ${url} (${accept})`);
+        assert.equal(head.headers.get('content-type'), res.headers.get('content-type'));
+      }
+      assert.deepEqual(assetFetches, [], 'discovery documents must not be fetched over the network');
     } finally {
       globalThis.fetch = successfulStaticFetch;
-      await fallbackServer.close();
+      await isolatedServer.close();
     }
   });
 
