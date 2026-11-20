@@ -57,6 +57,18 @@ test.describe('Pro strip at 360px in every language', () => {
       if (lang === 'en' || lang === 'ar') {
         await openFreeDashboard(page, `/?lang=${lang}`);
       } else {
+        // The component page has no app bootstrap to settle Clerk's initial session.
+        await page.route('**/src/services/auth-state.ts*', route => route.fulfill({
+          contentType: 'application/javascript',
+          body: `
+            const signedOut = { user: null, isPending: false };
+            export function getAuthState() { return signedOut; }
+            export function subscribeAuthState(callback) {
+              callback(signedOut);
+              return () => {};
+            }
+          `,
+        }));
         await page.goto(`/tests/runtime-harness.html?lang=${lang}`);
         await page.addStyleTag({ url: '/src/styles/main.css' });
         await page.evaluate(async () => {
