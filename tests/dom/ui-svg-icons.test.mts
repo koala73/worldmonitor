@@ -60,11 +60,17 @@ describe('UI SVG icons replacing missing-glyph Unicode symbols (#11065)', () => 
     const collapseMarkup = maxBtn!.innerHTML;
     expect(collapseMarkup).not.toBe(expandMarkup);
 
+    // Switching countries while maximized must rebuild the button with the collapse icon.
+    panel.show('France', 'FR', null, null);
+    const rebuiltMaxBtn = document.querySelector<HTMLButtonElement>('.cdp-maximize-btn');
+    expect(rebuiltMaxBtn).not.toBeNull();
+    expect(rebuiltMaxBtn!.innerHTML).toBe(collapseMarkup);
+
     panel.minimize();
-    expect(maxBtn!.innerHTML).toBe(expandMarkup);
+    expect(rebuiltMaxBtn!.innerHTML).toBe(expandMarkup);
   });
 
-  it('toggles distinct expand and collapse SVGs on #fullscreenBtn during fullscreenchange', () => {
+  it('toggles distinct expand and collapse SVGs on #fullscreenBtn during fullscreenchange and webkitfullscreenchange', () => {
     const container = document.createElement('div');
     const button = document.createElement('button');
     button.id = 'fullscreenBtn';
@@ -85,17 +91,30 @@ describe('UI SVG icons replacing missing-glyph Unicode symbols (#11065)', () => 
       document.dispatchEvent(new Event('fullscreenchange'));
       expect(button.querySelector('svg')).not.toBeNull();
       expect(button.textContent).not.toContain('\u26F6');
+      expect(button.classList.contains('active')).toBe(true);
       const exitMarkup = button.innerHTML;
 
       Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: null });
       document.dispatchEvent(new Event('fullscreenchange'));
       expect(button.querySelector('svg')).not.toBeNull();
       expect(button.textContent).not.toContain('\u26F6');
+      expect(button.classList.contains('active')).toBe(false);
       const enterMarkup = button.innerHTML;
 
       expect(exitMarkup).not.toBe(enterMarkup);
+
+      Object.defineProperty(document, 'webkitFullscreenElement', { configurable: true, value: document.documentElement });
+      document.dispatchEvent(new Event('webkitfullscreenchange'));
+      expect(button.innerHTML).toBe(exitMarkup);
+      expect(button.classList.contains('active')).toBe(true);
+
+      Object.defineProperty(document, 'webkitFullscreenElement', { configurable: true, value: null });
+      document.dispatchEvent(new Event('webkitfullscreenchange'));
+      expect(button.innerHTML).toBe(enterMarkup);
+      expect(button.classList.contains('active')).toBe(false);
     } finally {
       Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: null });
+      Object.defineProperty(document, 'webkitFullscreenElement', { configurable: true, value: null });
       manager.destroy();
     }
   });

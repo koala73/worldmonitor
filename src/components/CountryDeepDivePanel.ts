@@ -3698,7 +3698,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const maxBtn = this.el('button', 'cdp-maximize-btn') as HTMLButtonElement;
     maxBtn.setAttribute('type', 'button');
     maxBtn.setAttribute('aria-label', 'Toggle maximize');
-    setTrustedHtml(maxBtn, trustedHtml(renderExpandIconSvg(16), 'country deep dive maximize icon'));
+    setTrustedHtml(
+      maxBtn,
+      trustedHtml(
+        this.isMaximizedState ? renderCollapseIconSvg(16) : renderExpandIconSvg(16),
+        'country deep dive maximize icon',
+      ),
+    );
     maxBtn.addEventListener('click', () => {
       if (this.isMaximizedState) this.minimize();
       else this.maximize();

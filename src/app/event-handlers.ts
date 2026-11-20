@@ -568,6 +568,7 @@ export class EventHandlerManager implements AppModule {
     this.debouncedWebcamReload.cancel();
     if (this.boundFullscreenHandler) {
       document.removeEventListener('fullscreenchange', this.boundFullscreenHandler);
+      document.removeEventListener('webkitfullscreenchange', this.boundFullscreenHandler);
       this.boundFullscreenHandler = null;
     }
     if (this.boundResizeHandler) {
@@ -909,17 +910,22 @@ export class EventHandlerManager implements AppModule {
     if (!this.ctx.isDesktopApp && fullscreenBtn) {
       fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
       this.boundFullscreenHandler = () => {
+        const activeFullscreen = Boolean(
+          document.fullscreenElement
+          ?? (document as Document & { webkitFullscreenElement?: Element | null }).webkitFullscreenElement,
+        );
         setTrustedHtml(
           fullscreenBtn,
           trustedHtml(
-            document.fullscreenElement ? renderCollapseIconSvg(14) : renderExpandIconSvg(14),
+            activeFullscreen ? renderCollapseIconSvg(14) : renderExpandIconSvg(14),
             'header fullscreen toggle icon',
           ),
         );
-        fullscreenBtn.classList.toggle('active', !!document.fullscreenElement);
+        fullscreenBtn.classList.toggle('active', activeFullscreen);
         this.syncMapAfterLayoutChange();
       };
       document.addEventListener('fullscreenchange', this.boundFullscreenHandler);
+      document.addEventListener('webkitfullscreenchange', this.boundFullscreenHandler);
     }
 
     const regionSelect = document.getElementById('regionSelect') as HTMLSelectElement;
