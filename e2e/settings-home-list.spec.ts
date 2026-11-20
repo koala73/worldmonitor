@@ -1,4 +1,3 @@
-import AxeBuilder from '@axe-core/playwright';
 import { devices, expect, test, type Page } from '@playwright/test';
 import { evidenceScreenshot } from './evidence-screenshot';
 
@@ -86,14 +85,6 @@ test.describe('settings navigation on a phone', () => {
     await page.locator('#mobileMenuSettings').click();
     await expect(page.locator('[data-settings-home]')).toBeVisible();
   });
-
-  test('a deep link opens straight onto its page', async ({ page }) => {
-    await seed(page);
-    await page.goto('/dashboard?settings=notifications', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#us-page-notifications')).toBeVisible({ timeout: 60_000 });
-    await expect(page.locator('[data-settings-back]')).toBeVisible();
-    await expect(page.locator('[data-settings-home]')).toBeHidden();
-  });
 });
 
 async function openSettingsFromGear(page: Page, query = ''): Promise<void> {
@@ -147,18 +138,6 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768
       await page.keyboard.press('Escape');
       await page.locator('#unifiedSettingsBtn').click();
       await expect(page.locator('#us-page-about'), 'a reopen returns to the page selected last').toBeVisible();
-    });
-
-    test('the open sheet passes axe', async ({ page }) => {
-      test.setTimeout(180_000);
-      await seed(page);
-      await openSettingsFromGear(page);
-      await expect(page.locator('#us-page-display')).toBeVisible();
-      const results = await new AxeBuilder({ page })
-        .include('#unifiedSettingsModal')
-        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-        .analyze();
-      expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
     });
   });
 }

@@ -490,7 +490,6 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/map-overlay-marker-budget.spec.ts',
   'e2e/mobile-displacement.spec.ts',
   'e2e/map-distance.spec.ts',
-  'e2e/mcp-market-built.spec.ts',
   'e2e/live-panel-layout-8276.spec.ts',
   'e2e/panel-grid-no-overlap.spec.ts',
   'e2e/panel-table-overflow.spec.ts',
@@ -3642,6 +3641,9 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
     const specs = readdirSync(resolve(root, 'e2e')).filter((name) => /^plugin-.*\.spec\.ts$/.test(name)).map((name) => `e2e/${name}`);
     assert.ok(specs.length > 0);
     const parts = (job.strategy.matrix.part as string[]).filter((part) => part.startsWith('plugin-'));
+    const pluginViews = shellArgvTokens(packageScripts['test:e2e:plugin-views']);
+    assert.ok(pluginViews.includes('e2e/mcp-market-built.spec.ts'));
+    assert.ok(pluginViews.includes('WM_E2E_PLUGIN_BUILT=1'));
     const covered = parts.flatMap((part) => {
       const script = packageScripts[`test:e2e:${part}`];
       assert.ok(script, `package.json must define test:e2e:${part}`);
