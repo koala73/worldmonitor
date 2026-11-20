@@ -147,17 +147,18 @@ test('a main push diffs from the newest successful main Test run, past cancelled
   // cancelled and red commits' code changes.
   const result = classify(['docs/readme.md', 'src/app/App.ts'], { event: 'push', mainRuns, calls });
   assert.ok(calls.includes('repos/owner/repo/compare/decided...sha'), calls.join('\n'));
-  // The health-probe cutover gate takes the same base, so the cancelled
-  // commit's cutovers are checked too.
+  // Verdict reuse compares this base with the push parent.
   assert.equal(result.push_base, 'decided');
   assert.equal(result.code, 'true');
   assert.equal(result.browser, 'true');
 });
 
-test('the health-probe cutover gate and verdict reuse on a main push use the decided base, not the push parent', () => {
+test('verdict reuse gets the decided base; the cutover gate keeps the push parent', () => {
+  // The cutover check validates one transition (cutover.fromKey must equal
+  // the base's key), so an older base would reject a valid cutover that
+  // follows a red commit which already repointed the probe.
   const step = workflow.jobs['unit-built-output'].steps.find((item) => item.name === 'Enforce health-probe cutovers');
-  assert.equal(step.env.PUSH_BEFORE, '${{ needs.changes.outputs.push_base || github.event.before }}');
-  assert.equal(workflow.jobs.changes.outputs.push_base, '${{ steps.diff.outputs.push_base }}');
+  assert.equal(step.env.PUSH_BEFORE, '${{ github.event.before }}');
   const reuse = workflow.jobs.changes.steps.find((item) => item.id === 'reuse');
   assert.equal(reuse.env.PUSH_BASE, '${{ steps.diff.outputs.push_base }}');
 });
@@ -172,7 +173,7 @@ test('a main push with no successful Test run, or one it does not descend from, 
   ]) {
     const result = classify(['docs/readme.md'], { event: 'push', ...options });
     assert.ok(Object.values(result).every((value) => value === 'true'), JSON.stringify({ options, result }));
-    // Without a decided base the cutover gate falls back to the push parent.
+    // Without a successful base, verdict reuse is refused (see its suite).
     assert.equal(result.push_base, undefined);
   }
 });

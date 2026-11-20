@@ -47,8 +47,6 @@ jobs:
       desktop_rust: ${{ steps.diff.outputs.desktop_rust }}
       zapier: ${{ steps.diff.outputs.zapier }}
       durations_key: ${{ steps.durations.outputs.cache-matched-key }}
-      # On push: the main commit the diff was taken from (the newest successful run).
-      push_base: ${{ steps.diff.outputs.push_base }}
     steps:
       # The newest shard duration estimates CI has measured, found once per run
       # so every unit shard partitions the inventory from the same file: each
@@ -103,8 +101,8 @@ jobs:
             # so the previous commit may have no verdict. Diff from the newest
             # main commit whose Test run succeeded, or a code commit cancelled
             # by a docs-only one would never be tested on main. A red run is
-            # not a base either: a job it never reached (the health-probe
-            # cutover gate) must still run for its commit.
+            # not a base either: the jobs it failed or never reached must
+            # still run for its commit.
             if ! RUNS_JSON=$(gh api "repos/${{ github.repository }}/actions/workflows/test.yml/runs?event=push&branch=main&status=completed&per_page=50") ||
                ! DECIDED=$(jq -er --argjson self "${{ github.run_id }}" '
                  [.workflow_runs[]? | select(.id != $self and .conclusion == "success")]
@@ -688,11 +686,13 @@ jobs:
           # onto, so it tracks what is actually under test. The pre-push hook
           # compares against origin/main for the same reason.
           #
-          # On push, the base is the newest main commit whose Test run
-          # succeeded, not the parent: a cancelled or red run may never have
-          # checked the parent's cutovers, so they are checked here.
+          # On push, the base stays the push parent even when its Test run was
+          # cancelled or red. The check validates one transition: cutover.fromKey
+          # must equal the base's key, so an older base rejects a valid cutover
+          # that follows a commit which already repointed the probe. Each commit's
+          # own transition was checked by its pull request run.
           BASE_REF: ${{ github.event.pull_request.base.ref }}
-          PUSH_BEFORE: ${{ needs.changes.outputs.push_base || github.event.before }}
+          PUSH_BEFORE: ${{ github.event.before }}
         run: |
           if [ -n "$BASE_REF" ]; then
             if git rev-parse --verify --quiet HEAD^2 >/dev/null 2>&1; then
