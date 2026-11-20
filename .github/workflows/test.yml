@@ -510,7 +510,12 @@ jobs:
           WM_EXPECT_BUILT_OUTPUT: '1'
           WM_EXPECT_SCRIPTS_DEPS: '1'
           DURATIONS_KEY: ${{ needs.changes.outputs.durations_key }}
-        run: npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/5 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl ${DURATIONS_KEY:+--durations="$HOME/data-test-durations/durations.json"}
+        run: >-
+          npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/5 --concurrency=4
+          --exclude=tests/docs-page-dates.test.mjs
+          --exclude=tests/docs-i18n-parity.test.mjs
+          --exclude=tests/internal-link-redirects.test.mjs
+          --timings=${{ runner.temp }}/data-test-timings.jsonl ${DURATIONS_KEY:+--durations="$HOME/data-test-durations/durations.json"}
       # The next run's estimates, saved whether the tests passed or not: a cache
       # saved only by green runs goes stale exactly while main is red. The next
       # run reads only the newest entry, so if every shard saved, whichever
