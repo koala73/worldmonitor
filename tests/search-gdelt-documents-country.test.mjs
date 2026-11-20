@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 
 import { GDELT_BULK_COUNTRY_ARTICLES_KEY } from '../scripts/_gdelt-bulk-contract.mjs';
 import {
+  dedupeTopicArticles,
   parseCountryQuery,
   searchGdeltDocuments,
   selectCountryArticles,
@@ -111,5 +112,30 @@ describe('search-gdelt-documents country query', () => {
     assert.deepEqual(response, { articles: [], query: 'country:PW', error: 'seed-unavailable' });
     const topic = await searchGdeltDocuments({}, { query: 'military', maxRecords: 5 });
     assert.equal(topic.error, 'seed-unavailable', 'the topic form keeps its contract');
+  });
+
+  it('deduplicates verbatim syndicated topic articles across domains before applying maxRecords (#11064)', () => {
+    const topicRow = (overrides = {}) => ({
+      title: 'Xi vows to resist protectionism as Putin attacks Western tariffs',
+      url: 'https://birminghamstar.com/news/xi',
+      source: 'birminghamstar.com',
+      date: '20261118T210000Z',
+      image: '',
+      language: 'English',
+      tone: -2.2,
+      ...overrides,
+    });
+    const result = dedupeTopicArticles([
+      topicRow({ url: 'https://birminghamstar.com/news/xi', source: 'birminghamstar.com' }),
+      topicRow({ url: 'https://irishsun.com/news/xi', source: 'irishsun.com', title: 'Xi vows to resist protectionism as Putin attacks Western tariffs - Irish Sun' }),
+      topicRow({ url: 'https://milwaukeesun.com/news/xi', source: 'milwaukeesun.com', title: 'Xi vows to resist protectionism as Putin attacks Western tariffs | Milwaukee Sun' }),
+      topicRow({ url: 'https://reuters.com/world/b', source: 'reuters.com', title: 'NATO naval group enters Baltic exercise' }),
+      topicRow({ url: 'https://apnews.com/world/c', source: 'apnews.com', title: 'UN Security Council convenes on maritime corridors' }),
+    ], 2);
+
+    assert.deepEqual(result.map((article) => article.url), [
+      'https://birminghamstar.com/news/xi',
+      'https://reuters.com/world/b',
+    ]);
   });
 });

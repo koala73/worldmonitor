@@ -359,6 +359,94 @@ describe('GDELT bulk derived products', () => {
     ]);
   });
 
+  it('deduplicates verbatim syndicated headlines across domains and trailing publisher suffixes (#11064)', () => {
+    const nowMs = Date.parse('2026-07-30T12:05:00Z');
+    const records = parseGdeltGkgCsv([
+      gkgRow({
+        id: 'syn-1',
+        timestamp: '20260730120000',
+        domain: 'milwaukeesun.com',
+        url: 'https://milwaukeesun.com/news/xi-protectionism',
+        title: 'Xi vows to resist protectionism as Putin attacks Western tariffs',
+        themes: 'MILITARY,1',
+      }),
+      gkgRow({
+        id: 'syn-2',
+        timestamp: '20260730120000',
+        domain: 'birminghamstar.com',
+        url: 'https://birminghamstar.com/news/xi-protectionism',
+        title: 'Xi vows to resist protectionism as Putin attacks Western tariffs - Birmingham Star',
+        themes: 'MILITARY,1',
+      }),
+      gkgRow({
+        id: 'syn-3',
+        timestamp: '20260730120000',
+        domain: 'irishsun.com',
+        url: 'https://irishsun.com/news/xi-protectionism',
+        title: 'Xi vows to resist protectionism as Putin attacks Western tariffs | Irish Sun',
+        themes: 'MILITARY,1',
+      }),
+      gkgRow({
+        id: 'syn-nonlatin-1',
+        timestamp: '20260730120000',
+        domain: 'arabic1.example',
+        url: 'https://arabic1.example/a',
+        title: 'مناورات بحرية في البحر الأحمر',
+        themes: 'MILITARY,1',
+      }),
+      gkgRow({
+        id: 'syn-nonlatin-2',
+        timestamp: '20260730120000',
+        domain: 'arabic2.example',
+        url: 'https://arabic2.example/b',
+        title: 'تحركات عسكرية على الحدود الشمالية',
+        themes: 'MILITARY,1',
+      }),
+      gkgRow({
+        id: 'distinct-1',
+        timestamp: '20260730115900',
+        domain: 'reuters.com',
+        url: 'https://reuters.com/world/iran-us-talks',
+        title: 'Iran - US talks resume',
+        themes: 'MILITARY,1',
+      }),
+    ].join('\n'));
+
+    const previous = {
+      intel: {
+        topics: [{
+          id: 'military',
+          fetchedAt: '2026-07-30T11:45:00.000Z',
+          articles: [{
+            title: 'Xi vows to resist protectionism as Putin attacks Western tariffs',
+            url: 'https://dailyadvance.com/news/xi-protectionism-earlier',
+            source: 'dailyadvance.com',
+            date: '20260730T114500Z',
+            image: '',
+            language: 'English',
+            tone: -1,
+          }],
+        }],
+      },
+    };
+
+    const result = materializeGdeltBulk({
+      batches: [{ timestamp: '20260730120000', records }],
+      previous,
+      nowMs,
+    });
+
+    const military = result.intel.topics.find((topic) => topic.id === 'military');
+    // All 4 copies of the Xi story (3 fresh across domains + 1 prior) collapse to 1,
+    // while both distinct Arabic stories and the short hyphenated headline are preserved.
+    assert.deepEqual(military.articles.map((article) => article.url), [
+      'https://arabic1.example/a',
+      'https://arabic2.example/b',
+      'https://birminghamstar.com/news/xi-protectionism',
+      'https://reuters.com/world/iran-us-talks',
+    ]);
+  });
+
   it('keeps an unchanged topic timeline and its source freshness old', () => {
     const previousFetchedAt = '2026-07-29T11:45:00.000Z';
     const previousCyber = {

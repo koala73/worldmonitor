@@ -50,8 +50,53 @@ export interface SeededCountryIndex {
 }
 
 const COUNTRY_QUERY_RE = /^country:([a-z]{2})$/i;
+const TRAILING_PUBLISHER_SUFFIX_RE = /\s+[-|—–]\s+([^-|—–]{1,45})$/;
 const DEFAULT_MAX_RECORDS = 10;
 const MAX_RECORDS_CAP = 20;
+
+function topicHeadlineKey(title: string): string {
+  let text = String(title || '').trim();
+  const suffixMatch = text.match(TRAILING_PUBLISHER_SUFFIX_RE);
+  if (suffixMatch && suffixMatch.index !== undefined) {
+    const prefix = text.slice(0, suffixMatch.index).trim();
+    const suffixWords = suffixMatch[1]!.trim().split(/\s+/).filter(Boolean).length;
+    const prefixWords = prefix.split(/\s+/).filter(Boolean).length;
+    if (prefix.length >= 20 && prefixWords >= 4 && suffixWords <= 6) {
+      text = prefix;
+    }
+  }
+  return text
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+/**
+ * Collapse verbatim syndicated copies (including trailing publisher tags) before
+ * applying the per-topic display cap. Mirrors `gdeltHeadlineDedupeKey` in
+ * `scripts/_gdelt-bulk-materializer.mjs` so cached snapshots written before the
+ * next seeder tick still serve distinct stories.
+ */
+export function dedupeTopicArticles(articles: GdeltArticle[], maxRecords: number): GdeltArticle[] {
+  const limit = boundedMaxRecords(maxRecords);
+  const seenUrls = new Set<string>();
+  const seenHeadlines = new Set<string>();
+  const out: GdeltArticle[] = [];
+  for (const article of articles) {
+    if (seenUrls.has(article.url)) continue;
+    seenUrls.add(article.url);
+    const headlineKey = topicHeadlineKey(article.title);
+    if (headlineKey) {
+      if (seenHeadlines.has(headlineKey)) continue;
+      seenHeadlines.add(headlineKey);
+    }
+    out.push(article);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
 
 /** ISO-2 code from a `country:XX` query, or null for every other query. */
 export function parseCountryQuery(query: unknown): string | null {
@@ -189,9 +234,8 @@ export async function searchGdeltDocuments(
       return { articles: [], query: req.query, error: '' };
     }
 
-    const maxRecords = boundedMaxRecords(req.maxRecords);
     return {
-      articles: match.articles.slice(0, maxRecords),
+      articles: dedupeTopicArticles(match.articles, req.maxRecords),
       query: req.query,
       error: '',
     };

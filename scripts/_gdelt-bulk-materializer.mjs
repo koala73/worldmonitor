@@ -355,6 +355,30 @@ export function toArticle(record) {
   };
 }
 
+// Strip a trailing publisher tag ("Headline - Irish Sun", "Headline | Reuters")
+// only when the remaining prefix is a full headline and the suffix is short,
+// so hyphenated clauses ("Iran - US talks") stay intact.
+const TRAILING_PUBLISHER_SUFFIX_RE = /\s+[-|—–]\s+([^-|—–]{1,45})$/;
+
+export function gdeltHeadlineDedupeKey(title) {
+  let text = String(title || '').trim();
+  const suffixMatch = text.match(TRAILING_PUBLISHER_SUFFIX_RE);
+  if (suffixMatch) {
+    const prefix = text.slice(0, suffixMatch.index).trim();
+    const suffixWords = suffixMatch[1].trim().split(/\s+/).filter(Boolean).length;
+    const prefixWords = prefix.split(/\s+/).filter(Boolean).length;
+    if (prefix.length >= 20 && prefixWords >= 4 && suffixWords <= 6) {
+      text = prefix;
+    }
+  }
+  return text
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
 function mergeArticles(
   currentRecords,
   previousArticles,
@@ -371,10 +395,21 @@ function mergeArticles(
     if (!article?.url || !Number.isFinite(dateMs) || dateMs < cutoff || byUrl.has(article.url)) continue;
     byUrl.set(article.url, article);
   }
-  return [...byUrl.values()]
+  const sorted = [...byUrl.values()]
     .sort((a, b) => gdeltSeenDateToMs(b.date) - gdeltSeenDateToMs(a.date)
-      || a.url.localeCompare(b.url))
-    .slice(0, limit);
+      || a.url.localeCompare(b.url));
+  const seenHeadlines = new Set();
+  const deduped = [];
+  for (const article of sorted) {
+    const headlineKey = gdeltHeadlineDedupeKey(article.title);
+    if (headlineKey) {
+      if (seenHeadlines.has(headlineKey)) continue;
+      seenHeadlines.add(headlineKey);
+    }
+    deduped.push(article);
+    if (deduped.length >= limit) break;
+  }
+  return deduped;
 }
 
 // ASCII-folded, lowercased words: the same token space for a GKG location
