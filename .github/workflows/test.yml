@@ -47,7 +47,7 @@ jobs:
       desktop_rust: ${{ steps.diff.outputs.desktop_rust }}
       zapier: ${{ steps.diff.outputs.zapier }}
       durations_key: ${{ steps.durations.outputs.cache-matched-key }}
-      # On push: the main commit the diff was taken from (the newest decided run).
+      # On push: the main commit the diff was taken from (the newest successful run).
       push_base: ${{ steps.diff.outputs.push_base }}
     steps:
       # The newest shard duration estimates CI has measured, found once per run
@@ -101,18 +101,20 @@ jobs:
             fi
             # A newer main push cancels the run in progress (see concurrency),
             # so the previous commit may have no verdict. Diff from the newest
-            # main commit whose Test run decided, or a code commit cancelled by
-            # a docs-only one would never be tested on main.
+            # main commit whose Test run succeeded, or a code commit cancelled
+            # by a docs-only one would never be tested on main. A red run is
+            # not a base either: a job it never reached (the health-probe
+            # cutover gate) must still run for its commit.
             if ! RUNS_JSON=$(gh api "repos/${{ github.repository }}/actions/workflows/test.yml/runs?event=push&branch=main&status=completed&per_page=50") ||
                ! DECIDED=$(jq -er --argjson self "${{ github.run_id }}" '
-                 [.workflow_runs[]? | select(.id != $self and (.conclusion == "success" or .conclusion == "failure"))]
+                 [.workflow_runs[]? | select(.id != $self and .conclusion == "success")]
                  | first | .head_sha | strings' <<< "$RUNS_JSON"); then
-              echo "No decided main Test run found; running every Test job."
+              echo "No successful main Test run found; running every Test job."
               emit_all_true
               exit 0
             fi
             if [ "$DECIDED" != "$BEFORE" ]; then
-              echo "Main Test runs after $DECIDED did not decide; diffing from it instead of $BEFORE."
+              echo "Main Test runs after $DECIDED did not succeed; diffing from it instead of $BEFORE."
             fi
             BEFORE="$DECIDED"
             if ! COMPARE_JSON=$(gh api "repos/${{ github.repository }}/compare/${BEFORE}...${{ github.sha }}"); then
@@ -359,6 +361,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BEFORE: ${{ github.event.before }}
+          PUSH_BASE: ${{ steps.diff.outputs.push_base }}
           FILES_JSON: ${{ steps.diff.outputs.files_json }}
         run: node .github/scripts/reuse-pr-test-verdict.mjs
 
@@ -685,9 +688,9 @@ jobs:
           # onto, so it tracks what is actually under test. The pre-push hook
           # compares against origin/main for the same reason.
           #
-          # On push, the base is the newest main commit whose Test run decided,
-          # not the parent: a cancelled run (see concurrency) never checked the
-          # parent's cutovers, so they are checked here.
+          # On push, the base is the newest main commit whose Test run
+          # succeeded, not the parent: a cancelled or red run may never have
+          # checked the parent's cutovers, so they are checked here.
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           PUSH_BEFORE: ${{ needs.changes.outputs.push_base || github.event.before }}
         run: |

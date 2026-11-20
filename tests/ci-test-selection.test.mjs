@@ -135,16 +135,16 @@ test('unusable, incomplete and moved diff metadata runs every Test job', () => {
 
 // A newer main push cancels the main run in progress, so `before` may have no
 // verdict. A code commit cancelled by a docs-only one must still be tested.
-test('a main push diffs from the newest decided main Test run, past cancelled ones', () => {
+test('a main push diffs from the newest successful main Test run, past cancelled and red ones', () => {
   const calls = [];
   const mainRuns = [
     { id: 99, head_sha: 'sha', conclusion: null },
     { id: 97, head_sha: 'before', conclusion: 'cancelled' },
-    { id: 96, head_sha: 'decided', conclusion: 'failure' },
-    { id: 95, head_sha: 'older', conclusion: 'success' },
+    { id: 96, head_sha: 'red', conclusion: 'failure' },
+    { id: 95, head_sha: 'decided', conclusion: 'success' },
   ];
   // The fixture's file list stands for decided...sha, which includes the
-  // cancelled commit's code change.
+  // cancelled and red commits' code changes.
   const result = classify(['docs/readme.md', 'src/app/App.ts'], { event: 'push', mainRuns, calls });
   assert.ok(calls.includes('repos/owner/repo/compare/decided...sha'), calls.join('\n'));
   // The health-probe cutover gate takes the same base, so the cancelled
@@ -154,16 +154,19 @@ test('a main push diffs from the newest decided main Test run, past cancelled on
   assert.equal(result.browser, 'true');
 });
 
-test('the health-probe cutover gate on a main push uses the decided base, not the push parent', () => {
+test('the health-probe cutover gate and verdict reuse on a main push use the decided base, not the push parent', () => {
   const step = workflow.jobs['unit-built-output'].steps.find((item) => item.name === 'Enforce health-probe cutovers');
   assert.equal(step.env.PUSH_BEFORE, '${{ needs.changes.outputs.push_base || github.event.before }}');
   assert.equal(workflow.jobs.changes.outputs.push_base, '${{ steps.diff.outputs.push_base }}');
+  const reuse = workflow.jobs.changes.steps.find((item) => item.id === 'reuse');
+  assert.equal(reuse.env.PUSH_BASE, '${{ steps.diff.outputs.push_base }}');
 });
 
-test('a main push with no decided Test run, or one it does not descend from, runs every Test job', () => {
+test('a main push with no successful Test run, or one it does not descend from, runs every Test job', () => {
   for (const options of [
     { mainRuns: [] },
     { mainRuns: [{ id: 97, head_sha: 'before', conclusion: 'cancelled' }] },
+    { mainRuns: [{ id: 96, head_sha: 'before', conclusion: 'failure' }] },
     { mainRuns: [{ id: 99, head_sha: 'sha', conclusion: 'success' }] },
     { compareStatus: 'diverged' },
   ]) {
