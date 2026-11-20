@@ -125,10 +125,11 @@ test('unusable, incomplete and moved diff metadata runs every Test job', () => {
     [['docs/line\nbreak.md'], {}], [[{}], {}],
     [Array.from({ length: 300 }, (_, i) => `docs/${i}.md`), { event: 'push' }],
   ]) {
-    const result = classify(files, options);
+    // push_base names the diffed-from commit, not a path selection.
+    const { push_base: _base, ...result } = classify(files, options);
     assert.ok(Object.values(result).every((value) => value === 'true'), JSON.stringify({ files: files.slice(0, 2), options, result }));
     // durations_key is the unit shards' cache lookup, not a path selection.
-    assert.equal(Object.keys(result).length, Object.keys(workflow.jobs.changes.outputs).filter((key) => key !== 'durations_key').length);
+    assert.equal(Object.keys(result).length, Object.keys(workflow.jobs.changes.outputs).filter((key) => !['durations_key', 'push_base'].includes(key)).length);
   }
 });
 
@@ -146,8 +147,17 @@ test('a main push diffs from the newest decided main Test run, past cancelled on
   // cancelled commit's code change.
   const result = classify(['docs/readme.md', 'src/app/App.ts'], { event: 'push', mainRuns, calls });
   assert.ok(calls.includes('repos/owner/repo/compare/decided...sha'), calls.join('\n'));
+  // The health-probe cutover gate takes the same base, so the cancelled
+  // commit's cutovers are checked too.
+  assert.equal(result.push_base, 'decided');
   assert.equal(result.code, 'true');
   assert.equal(result.browser, 'true');
+});
+
+test('the health-probe cutover gate on a main push uses the decided base, not the push parent', () => {
+  const step = workflow.jobs['unit-built-output'].steps.find((item) => item.name === 'Enforce health-probe cutovers');
+  assert.equal(step.env.PUSH_BEFORE, '${{ needs.changes.outputs.push_base || github.event.before }}');
+  assert.equal(workflow.jobs.changes.outputs.push_base, '${{ steps.diff.outputs.push_base }}');
 });
 
 test('a main push with no decided Test run, or one it does not descend from, runs every Test job', () => {
@@ -159,6 +169,8 @@ test('a main push with no decided Test run, or one it does not descend from, run
   ]) {
     const result = classify(['docs/readme.md'], { event: 'push', ...options });
     assert.ok(Object.values(result).every((value) => value === 'true'), JSON.stringify({ options, result }));
+    // Without a decided base the cutover gate falls back to the push parent.
+    assert.equal(result.push_base, undefined);
   }
 });
 

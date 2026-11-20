@@ -47,6 +47,8 @@ jobs:
       desktop_rust: ${{ steps.diff.outputs.desktop_rust }}
       zapier: ${{ steps.diff.outputs.zapier }}
       durations_key: ${{ steps.durations.outputs.cache-matched-key }}
+      # On push: the main commit the diff was taken from (the newest decided run).
+      push_base: ${{ steps.diff.outputs.push_base }}
     steps:
       # The newest shard duration estimates CI has measured, found once per run
       # so every unit shard partitions the inventory from the same file: each
@@ -123,6 +125,7 @@ jobs:
               emit_all_true
               exit 0
             fi
+            echo "push_base=$BEFORE" >> "$GITHUB_OUTPUT"
             if ! FILES_JSON=$(jq -ce '.files | arrays' <<< "$COMPARE_JSON"); then
               emit_all_true
               exit 0
@@ -681,8 +684,12 @@ jobs:
           # The merge commit's FIRST parent is the base tip this tree was merged
           # onto, so it tracks what is actually under test. The pre-push hook
           # compares against origin/main for the same reason.
+          #
+          # On push, the base is the newest main commit whose Test run decided,
+          # not the parent: a cancelled run (see concurrency) never checked the
+          # parent's cutovers, so they are checked here.
           BASE_REF: ${{ github.event.pull_request.base.ref }}
-          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_BEFORE: ${{ needs.changes.outputs.push_base || github.event.before }}
         run: |
           if [ -n "$BASE_REF" ]; then
             if git rev-parse --verify --quiet HEAD^2 >/dev/null 2>&1; then
