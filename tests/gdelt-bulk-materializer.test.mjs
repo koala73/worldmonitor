@@ -502,6 +502,9 @@ describe('GDELT bulk derived products', () => {
     // Subdomains and hyphenated names still identify the publisher.
     assert.equal(gdeltHeadlineDedupeKey(`${headline} - BBC News`, 'news.bbc.co.uk'), key);
     assert.equal(gdeltHeadlineDedupeKey(`${headline} - CNN`, 'edition.cnn.com'), key);
+    // A short outlet name under a country TLD is the publisher, not a second-level suffix.
+    assert.equal(gdeltHeadlineDedupeKey(`${headline} - CNN`, 'news.cnn.gr'), key);
+    assert.equal(gdeltHeadlineDedupeKey(`${headline} - ABC News`, 'abc.net.au'), key);
     assert.equal(gdeltHeadlineDedupeKey(`${headline} - Al-Jazeera`, 'aljazeera.com'), key);
     assert.equal(gdeltHeadlineDedupeKey(`${headline} - The Times of Israel`, 'timesofisrael.com'), key);
     // A subject word that merely appears inside the domain is not a publisher tag.

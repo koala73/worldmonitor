@@ -52,6 +52,10 @@ export interface SeededCountryIndex {
 const COUNTRY_QUERY_RE = /^country:([a-z]{2})$/i;
 const TRAILING_PUBLISHER_SUFFIX_RE = /\s+[-|—–]\s+((?:(?!\s[-|—–]\s)[^|—–]){1,60})$/;
 const PUBLISHER_NAME_LABELS = ['news', 'online', 'world', 'today', 'tv', 'digital'];
+// Second levels under a country TLD that are part of the public suffix (bbc.co.uk,
+// abc.net.au); any other label there is the outlet itself (news.cnn.gr -> cnn).
+// Same list as BARE_HOST_RE in shared/story-identity.js.
+const COUNTRY_SECOND_LEVEL_LABELS = new Set(['co', 'com', 'net', 'org', 'gov', 'ac', 'edu']);
 const DEFAULT_MAX_RECORDS = 10;
 const MAX_RECORDS_CAP = 20;
 
@@ -77,7 +81,7 @@ function sourceDomainStem(source: string, url: string): string {
     }
   }
   const parts = host.split('.').filter(Boolean);
-  if (parts.length >= 3 && parts[parts.length - 1]!.length === 2 && parts[parts.length - 2]!.length <= 3) {
+  if (parts.length >= 3 && parts[parts.length - 1]!.length === 2 && COUNTRY_SECOND_LEVEL_LABELS.has(parts[parts.length - 2]!)) {
     parts.splice(-2);
   } else if (parts.length >= 2) {
     parts.pop();

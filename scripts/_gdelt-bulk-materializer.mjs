@@ -363,6 +363,10 @@ export function toArticle(record) {
 const TRAILING_PUBLISHER_SUFFIX_RE = /\s+[-|—–]\s+((?:(?!\s[-|—–]\s)[^|—–]){1,60})$/;
 // Labels an outlet appends to its own short name ("BBC News", "CNN Online").
 const PUBLISHER_NAME_LABELS = ['news', 'online', 'world', 'today', 'tv', 'digital'];
+// Second levels under a country TLD that are part of the public suffix (bbc.co.uk,
+// abc.net.au); any other label there is the outlet itself (news.cnn.gr -> cnn).
+// Same list as BARE_HOST_RE in shared/story-identity.js.
+const COUNTRY_SECOND_LEVEL_LABELS = new Set(['co', 'com', 'net', 'org', 'gov', 'ac', 'edu']);
 
 // Fold accents on Latin letters only ("Côte" = "Cote"). Marks in other scripts
 // carry meaning (Cyrillic й vs и, Devanagari vowel signs) and stay in the key.
@@ -390,7 +394,7 @@ function sourceDomainStem(source, url) {
     }
   }
   const parts = host.split('.').filter(Boolean);
-  if (parts.length >= 3 && parts.at(-1).length === 2 && parts.at(-2).length <= 3) {
+  if (parts.length >= 3 && parts.at(-1).length === 2 && COUNTRY_SECOND_LEVEL_LABELS.has(parts.at(-2))) {
     parts.splice(-2);
   } else if (parts.length >= 2) {
     parts.pop();

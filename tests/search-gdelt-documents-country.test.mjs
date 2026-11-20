@@ -147,6 +147,7 @@ describe('search-gdelt-documents country query', () => {
       ['Xi vows to resist protectionism as Putin attacks Western tariffs - Birmingham Star', 'birminghamstar.com', ''],
       ['Xi vows to resist protectionism as Putin attacks Western tariffs | Irish Sun', '', 'https://www.irishsun.com/news/x'],
       ['Military leaders announce new border deployment - BBC News', 'news.bbc.co.uk', ''],
+      ['Military leaders announce new border deployment - CNN', 'news.cnn.gr', ''],
       ['Military aid package approved today by lawmakers - Israel', 'timesofisrael.com', ''],
       ['Police arrest three suspects after the downtown robbery - Al-Jazeera', 'aljazeera.com', ''],
       ['Iran - US talks resume', 'reuters.com', ''],
