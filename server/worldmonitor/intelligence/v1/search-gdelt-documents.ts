@@ -50,14 +50,19 @@ export interface SeededCountryIndex {
 }
 
 const COUNTRY_QUERY_RE = /^country:([a-z]{2})$/i;
-const TRAILING_PUBLISHER_SUFFIX_RE = /\s+[-|—–]\s+([^-|—–]{1,60})$/;
+const TRAILING_PUBLISHER_SUFFIX_RE = /\s+[-|—–]\s+((?:(?!\s[-|—–]\s)[^|—–]){1,60})$/;
+const PUBLISHER_NAME_LABELS = ['news', 'online', 'world', 'today', 'tv', 'digital'];
 const DEFAULT_MAX_RECORDS = 10;
 const MAX_RECORDS_CAP = 20;
 
-function compactPublisherToken(value: string): string {
+function foldLatinMarks(value: string): string {
   return String(value || '')
     .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/(\p{Script=Latin})[\u0300-\u036f]+/gu, '$1');
+}
+
+function compactPublisherToken(value: string): string {
+  return foldLatinMarks(value)
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '');
 }
@@ -71,14 +76,13 @@ function sourceDomainStem(source: string, url: string): string {
       host = '';
     }
   }
-  host = host.replace(/^(?:www|m|amp)\./, '');
   const parts = host.split('.').filter(Boolean);
   if (parts.length >= 3 && parts[parts.length - 1]!.length === 2 && parts[parts.length - 2]!.length <= 3) {
     parts.splice(-2);
   } else if (parts.length >= 2) {
     parts.pop();
   }
-  return compactPublisherToken(parts.join(''));
+  return compactPublisherToken(parts[parts.length - 1] ?? '');
 }
 
 function suffixMatchesPublisher(suffix: string, source: string, url: string): boolean {
@@ -90,12 +94,12 @@ function suffixMatchesPublisher(suffix: string, source: string, url: string): bo
     : suffixToken;
   return hostStem === suffixToken
     || hostStem === suffixWithoutThe
-    || hostStem.includes(suffixToken)
-    || hostStem.includes(suffixWithoutThe)
+    || PUBLISHER_NAME_LABELS.some((label) => suffixToken === `${hostStem}${label}`)
     || (hostStem.length >= 4 && suffixToken.includes(hostStem));
 }
 
-function topicHeadlineKey(title: string, source = '', url = ''): string {
+/** Exported for the parity test against `gdeltHeadlineDedupeKey`. */
+export function topicHeadlineKey(title: string, source = '', url = ''): string {
   let text = String(title || '').trim();
   const suffixMatch = text.match(TRAILING_PUBLISHER_SUFFIX_RE);
   if (suffixMatch && suffixMatch.index !== undefined) {
@@ -105,9 +109,7 @@ function topicHeadlineKey(title: string, source = '', url = ''): string {
       text = prefix;
     }
   }
-  return text
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
+  return foldLatinMarks(text)
     .toLowerCase()
     .replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ')
     .trim();

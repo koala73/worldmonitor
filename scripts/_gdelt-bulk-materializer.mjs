@@ -355,20 +355,31 @@ export function toArticle(record) {
   };
 }
 
-// Strip a trailing publisher tag ("Headline - Birmingham Star", "Headline | Irish Sun")
-// only when the suffix identifies the article's own source domain, so meaningful
-// trailing clauses ("Military aid package approved today - Ukraine" vs "- Israel")
-// remain distinct stories.
-const TRAILING_PUBLISHER_SUFFIX_RE = /\s+[-|—–]\s+([^-|—–]{1,60})$/;
+// Strip a trailing publisher tag ("Headline - Birmingham Star", "Headline | Irish Sun",
+// "Headline - BBC News") only when the suffix names the article's own source domain,
+// so meaningful trailing clauses ("Military aid package approved today - Ukraine" vs
+// "- Israel") remain distinct stories. Hyphens inside a name ("Al-Jazeera") are part
+// of the suffix; only a spaced separator starts it.
+const TRAILING_PUBLISHER_SUFFIX_RE = /\s+[-|—–]\s+((?:(?!\s[-|—–]\s)[^|—–]){1,60})$/;
+// Labels an outlet appends to its own short name ("BBC News", "CNN Online").
+const PUBLISHER_NAME_LABELS = ['news', 'online', 'world', 'today', 'tv', 'digital'];
 
-function compactPublisherToken(value) {
+// Fold accents on Latin letters only ("Côte" = "Cote"). Marks in other scripts
+// carry meaning (Cyrillic й vs и, Devanagari vowel signs) and stay in the key.
+function foldLatinMarks(value) {
   return String(value || '')
     .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/(\p{Script=Latin})[\u0300-\u036f]+/gu, '$1');
+}
+
+function compactPublisherToken(value) {
+  return foldLatinMarks(value)
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '');
 }
 
+// The registrable label of the source host: "news.bbc.co.uk" -> "bbc",
+// "edition.cnn.com" -> "cnn", "birminghamstar.com" -> "birminghamstar".
 function sourceDomainStem(source, url) {
   let host = String(source || '').trim().toLowerCase();
   if (!host && url) {
@@ -378,14 +389,13 @@ function sourceDomainStem(source, url) {
       host = '';
     }
   }
-  host = host.replace(/^(?:www|m|amp)\./, '');
   const parts = host.split('.').filter(Boolean);
   if (parts.length >= 3 && parts.at(-1).length === 2 && parts.at(-2).length <= 3) {
     parts.splice(-2);
   } else if (parts.length >= 2) {
     parts.pop();
   }
-  return compactPublisherToken(parts.join(''));
+  return compactPublisherToken(parts.at(-1) || '');
 }
 
 function suffixMatchesPublisher(suffix, source, url) {
@@ -397,8 +407,9 @@ function suffixMatchesPublisher(suffix, source, url) {
     : suffixToken;
   return hostStem === suffixToken
     || hostStem === suffixWithoutThe
-    || hostStem.includes(suffixToken)
-    || hostStem.includes(suffixWithoutThe)
+    || PUBLISHER_NAME_LABELS.some((label) => suffixToken === `${hostStem}${label}`)
+    // "The Times of Israel" for timesofisrael.com; a short stem could sit inside an
+    // unrelated suffix, so it must reach four characters.
     || (hostStem.length >= 4 && suffixToken.includes(hostStem));
 }
 
@@ -412,9 +423,7 @@ export function gdeltHeadlineDedupeKey(title, source = '', url = '') {
       text = prefix;
     }
   }
-  return text
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
+  return foldLatinMarks(text)
     .toLowerCase()
     .replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ')
     .trim();

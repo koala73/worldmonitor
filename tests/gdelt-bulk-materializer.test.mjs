@@ -7,6 +7,7 @@ import {
   buildGdeltCountryIndex,
   extractGdeltBulkCsv,
   GDELT_COUNTRY_INDEX_WINDOW_MS,
+  gdeltHeadlineDedupeKey,
   MAX_ARTICLES_PER_COUNTRY,
   materializeGdeltBulk,
   parseGdeltBulkDescriptors,
@@ -482,6 +483,41 @@ describe('GDELT bulk derived products', () => {
       'https://hindi1.example/pul',
       'https://hindi2.example/pol',
     ]);
+  });
+
+  it('strips an acronym publisher label ("- BBC News") only for its own domain', () => {
+    const headline = 'Military leaders announce new border deployment';
+    const key = gdeltHeadlineDedupeKey(headline, 'example.com');
+    assert.equal(gdeltHeadlineDedupeKey(`${headline} - BBC News`, 'bbc.com'), key);
+    assert.equal(gdeltHeadlineDedupeKey(`${headline} | BBC News`, 'bbc.co.uk'), key);
+    assert.equal(gdeltHeadlineDedupeKey(`${headline} - CNN`, 'cnn.com'), key);
+    // A label after a different outlet's acronym, or a non-label word, is not stripped.
+    assert.notEqual(gdeltHeadlineDedupeKey(`${headline} - BBC News`, 'cnn.com'), key);
+    assert.notEqual(gdeltHeadlineDedupeKey(`${headline} - BBC Verify`, 'bbc.com'), key);
+  });
+
+  it('keys publisher suffixes on the registrable domain label and keeps topical suffixes', () => {
+    const headline = 'Military aid package approved today by lawmakers';
+    const key = gdeltHeadlineDedupeKey(headline, 'example.com');
+    // Subdomains and hyphenated names still identify the publisher.
+    assert.equal(gdeltHeadlineDedupeKey(`${headline} - BBC News`, 'news.bbc.co.uk'), key);
+    assert.equal(gdeltHeadlineDedupeKey(`${headline} - CNN`, 'edition.cnn.com'), key);
+    assert.equal(gdeltHeadlineDedupeKey(`${headline} - Al-Jazeera`, 'aljazeera.com'), key);
+    assert.equal(gdeltHeadlineDedupeKey(`${headline} - The Times of Israel`, 'timesofisrael.com'), key);
+    // A subject word that merely appears inside the domain is not a publisher tag.
+    assert.notEqual(gdeltHeadlineDedupeKey(`${headline} - Israel`, 'timesofisrael.com'), key);
+    assert.notEqual(gdeltHeadlineDedupeKey(`${headline} - Kyiv`, 'kyivindependent.com'), key);
+  });
+
+  it('folds Latin accents but keeps marks that distinguish words in other scripts', () => {
+    assert.equal(
+      gdeltHeadlineDedupeKey('Côte d’Ivoire holds a presidential election today'),
+      gdeltHeadlineDedupeKey('Cote d’Ivoire holds a presidential election today'),
+    );
+    assert.notEqual(
+      gdeltHeadlineDedupeKey('Мой друзья пошли на рынок вчера'),
+      gdeltHeadlineDedupeKey('Мои друзья пошли на рынок вчера'),
+    );
   });
 
   it('keeps an unchanged topic timeline and its source freshness old', () => {

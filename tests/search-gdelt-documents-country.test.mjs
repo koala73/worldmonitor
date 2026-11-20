@@ -3,11 +3,13 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import { GDELT_BULK_COUNTRY_ARTICLES_KEY } from '../scripts/_gdelt-bulk-contract.mjs';
+import { gdeltHeadlineDedupeKey } from '../scripts/_gdelt-bulk-materializer.mjs';
 import {
   dedupeTopicArticles,
   parseCountryQuery,
   searchGdeltDocuments,
   selectCountryArticles,
+  topicHeadlineKey,
 } from '../server/worldmonitor/intelligence/v1/search-gdelt-documents.ts';
 
 // The `country:<ISO2>` query form (#7748): the crawlable country pages top up
@@ -138,5 +140,33 @@ describe('search-gdelt-documents country query', () => {
       'https://reuters.com/world/aid-ukraine',
       'https://apnews.com/world/aid-israel',
     ]);
+  });
+
+  it('computes the same headline key as the bulk materializer it mirrors', () => {
+    const cases = [
+      ['Xi vows to resist protectionism as Putin attacks Western tariffs - Birmingham Star', 'birminghamstar.com', ''],
+      ['Xi vows to resist protectionism as Putin attacks Western tariffs | Irish Sun', '', 'https://www.irishsun.com/news/x'],
+      ['Military leaders announce new border deployment - BBC News', 'news.bbc.co.uk', ''],
+      ['Military aid package approved today by lawmakers - Israel', 'timesofisrael.com', ''],
+      ['Police arrest three suspects after the downtown robbery - Al-Jazeera', 'aljazeera.com', ''],
+      ['Iran - US talks resume', 'reuters.com', ''],
+      ['Côte d’Ivoire holds a presidential election today', '', ''],
+      ['Мой друзья пошли на рынок вчера', 'example.ru', ''],
+      ['भारत में पुल गिरा', 'hindi.example', ''],
+      ['', '', ''],
+    ];
+    for (const [title, source, url] of cases) {
+      assert.equal(topicHeadlineKey(title, source, url), gdeltHeadlineDedupeKey(title, source, url), title);
+    }
+  });
+
+  it('collapses an acronym publisher label ("- BBC News") from its own domain (#11064)', () => {
+    const row = (title, url, source) => ({ title, url, source, date: '20261118T210000Z', image: '', language: 'English', tone: 0 });
+    const result = dedupeTopicArticles([
+      row('Military leaders announce new border deployment', 'https://example.com/a', 'example.com'),
+      row('Military leaders announce new border deployment - BBC News', 'https://bbc.com/news/a', 'bbc.com'),
+      row('Military leaders announce new border deployment - BBC News', 'https://cnn.com/a', 'cnn.com'),
+    ], 10);
+    assert.deepEqual(result.map((article) => article.url), ['https://example.com/a', 'https://cnn.com/a']);
   });
 });
