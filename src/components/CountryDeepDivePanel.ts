@@ -102,6 +102,7 @@ import { toApiUrl } from '@/services/runtime';
 import type { ComputeEnergyShockScenarioResponse, CrudeShareBaseline, ImageryChangeContext, ProductImpact, RegionalEnergyFeed } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { IMAGERY_CONTEXT_EXCLUSION, IMAGERY_CONTEXT_METHODOLOGY_HREF, imageryChangeSummary } from './_risk-imagery-context';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { renderCollapseIconSvg, renderExpandIconSvg } from '@/utils/ui-icons';
 import { confirmShareLinkCopied, createShareLinkButton } from './share-link-button';
 import { copyText } from '@/utils/copy-text';
 import { overlayHistory, type OverlayCloseOrigin } from '@/utils/overlay-history';
@@ -450,7 +451,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (this.isMaximizedState) {
       this.isMaximizedState = false;
       this.panel.classList.remove('maximized');
-      if (this.maximizeButton) this.maximizeButton.textContent = '\u26F6';
+      if (this.maximizeButton) {
+        setTrustedHtml(this.maximizeButton, trustedHtml(renderExpandIconSvg(16), 'country deep dive maximize icon'));
+      }
     }
     this.abortController.abort();
     this.close();
@@ -479,7 +482,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (this.isMaximizedState) return;
     this.isMaximizedState = true;
     this.panel.classList.add('maximized');
-    if (this.maximizeButton) this.maximizeButton.textContent = '\u229F';
+    if (this.maximizeButton) {
+      setTrustedHtml(this.maximizeButton, trustedHtml(renderCollapseIconSvg(16), 'country deep dive minimize icon'));
+    }
     this.onStateChangeCallback?.({ visible: true, maximized: true });
   }
 
@@ -487,7 +492,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!this.isMaximizedState) return;
     this.isMaximizedState = false;
     this.panel.classList.remove('maximized');
-    if (this.maximizeButton) this.maximizeButton.textContent = '\u26F6';
+    if (this.maximizeButton) {
+      setTrustedHtml(this.maximizeButton, trustedHtml(renderExpandIconSvg(16), 'country deep dive maximize icon'));
+    }
     this.onStateChangeCallback?.({ visible: true, maximized: false });
   }
 
@@ -3688,9 +3695,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     const right = this.el('div', 'cdp-header-right');
 
-    const maxBtn = this.el('button', 'cdp-maximize-btn', '\u26F6') as HTMLButtonElement;
+    const maxBtn = this.el('button', 'cdp-maximize-btn') as HTMLButtonElement;
     maxBtn.setAttribute('type', 'button');
     maxBtn.setAttribute('aria-label', 'Toggle maximize');
+    setTrustedHtml(maxBtn, trustedHtml(renderExpandIconSvg(16), 'country deep dive maximize icon'));
     maxBtn.addEventListener('click', () => {
       if (this.isMaximizedState) this.minimize();
       else this.maximize();

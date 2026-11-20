@@ -127,6 +127,7 @@ import { evaluatePlaybackGate } from '@/services/gates/playback';
 import { resolveGateAction, type PanelGateReason } from '@/services/panel-gating';
 import { ExportGateControl } from '@/components/ExportGateControl';
 import { h, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { renderCollapseIconSvg, renderExpandIconSvg } from '@/utils/ui-icons';
 import { copyText } from '@/utils/copy-text';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import { declareOverlay, isModalOpen } from '@/utils/open-modal';
@@ -908,7 +909,13 @@ export class EventHandlerManager implements AppModule {
     if (!this.ctx.isDesktopApp && fullscreenBtn) {
       fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
       this.boundFullscreenHandler = () => {
-        fullscreenBtn.textContent = document.fullscreenElement ? '\u26F6' : '\u26F6';
+        setTrustedHtml(
+          fullscreenBtn,
+          trustedHtml(
+            document.fullscreenElement ? renderCollapseIconSvg(14) : renderExpandIconSvg(14),
+            'header fullscreen toggle icon',
+          ),
+        );
         fullscreenBtn.classList.toggle('active', !!document.fullscreenElement);
         this.syncMapAfterLayoutChange();
       };
