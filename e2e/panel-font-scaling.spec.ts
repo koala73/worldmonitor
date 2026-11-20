@@ -201,6 +201,8 @@ test.describe('panel font scaling', () => {
   });
 
   test('persists an absolute panel override and captures it in the active tab snapshot', async ({ page }) => {
+    // A breaking-news banner can cover the tab strip while this test switches tabs.
+    await page.addInitScript(() => localStorage.setItem('wm-breaking-alerts-v1', JSON.stringify({ enabled: false })));
     await bootDashboard(page);
     const firstPanel = page.locator('#panelsGrid > .panel:not(.hidden)').first();
     const panelId = await firstPanel.getAttribute('data-panel');
