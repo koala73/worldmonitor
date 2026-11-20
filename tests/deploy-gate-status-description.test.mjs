@@ -184,6 +184,7 @@ function runGate(conclusions, {
   gatedRuns,
   gatedRunsReadFails = false,
   triggerRunId = '',
+  superseded,
 } = {}) {
   const tempDir = mkdtempSync(join(repoRoot, '.tmp-deploy-gate-'));
   const fakeBin = join(tempDir, 'bin');
@@ -221,6 +222,12 @@ function runGate(conclusions, {
     writeFileSync(callsFile, '');
     writeFileSync(fetchesFile, '');
     writeFileSync(summaryFile, '');
+    const pushRunsFile = join(tempDir, 'push-runs.json');
+    const mainTestRunsFile = join(tempDir, 'main-test-runs.json');
+    const runJobsFile = join(tempDir, 'run-jobs.json');
+    writeFileSync(pushRunsFile, JSON.stringify([{ workflow_runs: superseded?.pushRuns ?? [] }]));
+    writeFileSync(mainTestRunsFile, JSON.stringify({ workflow_runs: superseded?.mainTestRuns ?? [] }));
+    writeFileSync(runJobsFile, JSON.stringify([{ jobs: (superseded?.jobs ?? []).map((name) => ({ name })) }]));
     const gatedRunsFile = join(tempDir, 'gated-runs.json');
     writeFileSync(gatedRunsFile, JSON.stringify((gatedRuns ?? []).map((run, index) => ({ id: 100 + index, ...run }))));
     const drifting = {
@@ -462,6 +469,26 @@ function runGate(conclusions, {
         '    fi',
         '    exit 0',
         '    ;;',
+        '  *"actions/runs?head_sha="*"&event=push"*)',
+        '    echo "push-runs" >> "$FAKE_CALLS"',
+        '    cat "$FAKE_PUSH_RUNS"',
+        '    exit 0',
+        '    ;;',
+        '  *"actions/workflows/test.yml/runs"*)',
+        '    echo "main-test-runs" >> "$FAKE_CALLS"',
+        '    cat "$FAKE_MAIN_TEST_RUNS"',
+        '    exit 0',
+        '    ;;',
+        '  *"/compare/"*)',
+        '    echo "compare" >> "$FAKE_CALLS"',
+        '    printf \'%s\\n\' "$FAKE_COMPARE_STATUS"',
+        '    exit 0',
+        '    ;;',
+        '  *"/actions/runs/"[0-9]*"/jobs"*)',
+        '    echo "run-jobs" >> "$FAKE_CALLS"',
+        '    cat "$FAKE_RUN_JOBS"',
+        '    exit 0',
+        '    ;;',
         '  *"actions/runs?head_sha="*)',
         '    echo "head-runs-page" >> "$FAKE_CALLS"',
         '    [ "$FAKE_GATED_RUNS_FAIL" = "1" ] && { echo "gh: forced runs read failure (HTTP 502)" >&2; exit 1; }',
@@ -649,6 +676,10 @@ function runGate(conclusions, {
           FAKE_STATUS_FAILURES: statusFailuresFile,
           FAKE_STATUS_FAILURES_PER_SHA: statusFailuresPerSha ? '1' : '0',
           FAKE_SWEEP_RESPONSES: sweepFile,
+          FAKE_PUSH_RUNS: pushRunsFile,
+          FAKE_MAIN_TEST_RUNS: mainTestRunsFile,
+          FAKE_RUN_JOBS: runJobsFile,
+          FAKE_COMPARE_STATUS: superseded?.compare ?? 'identical',
           FAKE_GATED_RUNS: gatedRunsFile,
           FAKE_GATED_RUNS_FAIL: gatedRunsReadFails ? '1' : '0',
           GATED_WORKFLOWS: gatedRuns === undefined ? '' : 'Test,Lint Code',
@@ -1037,6 +1068,55 @@ describe('deploy gate commit-status description', () => {
       result.posted[0].description.endsWith(`... ${GATE_STAMP}`),
       'a truncated failure description must preserve the contract stamp',
     );
+  });
+
+  describe('a main commit whose Test run a newer main push cancelled', () => {
+    const NEWER = MAIN_TIP;
+    // A cancelled run fails its always() aggregates too, so `unit` reads failure.
+    const cancelledTest = () => ({ ...conclusionsFor('success'), sidecar: 'cancelled', 'dom-tests': 'cancelled', unit: 'failure' });
+    const superseded = (overrides = {}) => ({
+      pushRuns: [{ id: 7, name: 'Test', head_branch: 'main', conclusion: 'cancelled', created_at: '2026-08-12T12:00:00Z', updated_at: '2026-08-12T12:04:10Z' }],
+      mainTestRuns: [
+        { head_sha: SHA, created_at: '2026-08-12T12:00:00Z' },
+        { head_sha: NEWER, created_at: '2026-08-12T12:04:05Z' },
+      ],
+      compare: 'ahead',
+      jobs: ['changes', 'sidecar', 'dom-tests', 'unit', 'unit-shard (1)'],
+      ...overrides,
+    });
+
+    it('publishes pending naming the superseding commit instead of failure', () => {
+      const result = runGate(cancelledTest(), { superseded: superseded() });
+
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(result.rejected, [], `the API rejected a description: ${result.stderr}`);
+      assert.deepEqual(result.posted, [{
+        state: 'pending',
+        description: stamped(`Superseded on main by ${NEWER.slice(0, 10)}: Test was cancelled and that commit's run covers this one`),
+      }]);
+    });
+
+    const stillFails = {
+      'a failed check from another workflow': [{ ...cancelledTest(), typecheck: 'failure' }, superseded()],
+      'a Test run that failed rather than being cancelled': [cancelledTest(), superseded({
+        pushRuns: [{ id: 7, name: 'Test', head_branch: 'main', conclusion: 'failure', created_at: '2026-08-12T12:00:00Z', updated_at: '2026-08-12T12:04:10Z' }],
+      })],
+      'no newer main push while the run was live': [cancelledTest(), superseded({
+        mainTestRuns: [{ head_sha: SHA, created_at: '2026-08-12T12:00:00Z' }, { head_sha: NEWER, created_at: '2026-08-12T12:30:00Z' }],
+      })],
+      'a commit main does not contain': [cancelledTest(), superseded({ compare: 'diverged' })],
+      'a pull request run with no main push': [cancelledTest(), superseded({ pushRuns: [] })],
+    };
+    for (const [label, [conclusions, scenario]] of Object.entries(stillFails)) {
+      it(`still publishes failure for ${label}`, () => {
+        const result = runGate(conclusions, { superseded: scenario });
+
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(result.posted.length, 1);
+        assert.equal(result.posted[0].state, 'failure');
+        assert.match(result.posted[0].description, /^Required PR gates did not pass/);
+      });
+    }
   });
 
   it('keeps the whole list when it fits', () => {

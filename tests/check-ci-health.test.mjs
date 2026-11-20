@@ -160,6 +160,29 @@ describe('timeout detector', () => {
     assert.deepEqual(findings.map((finding) => finding.title), ['CI health (timeout): Test / unit-shard (5)']);
     assert.match(findings[0].evidence[0].detail, /attempt 1 cancelled after 916s/);
   });
+
+  // Test cancels a main push run when a newer main commit lands. The cancel
+  // follows the newer run's creation within seconds; a job timeout does not.
+  // job() starts at 04:10:00, so a 916s job ends at 04:25:16.
+  const superseded = run({ id: 1, conclusion: 'cancelled', created_at: '2026-10-31T04:08:21Z' });
+
+  it('does not report a job a newer main push cancelled', () => {
+    const newer = run({ id: 2, created_at: '2026-10-31T04:25:10Z' });
+    const findings = findTimeouts([{ run: superseded, attempt: 1, jobs: [job('unit-shard (5)', 'cancelled', 916)] }], [superseded, newer]);
+    assert.deepEqual(findings, []);
+  });
+
+  it('still reports a timeout when the newer push landed long before the cancel', () => {
+    const newer = run({ id: 2, created_at: '2026-10-31T04:12:00Z' });
+    const findings = findTimeouts([{ run: superseded, attempt: 1, jobs: [job('unit-shard (5)', 'cancelled', 916)] }], [superseded, newer]);
+    assert.deepEqual(findings.map((finding) => finding.title), ['CI health (timeout): Test / unit-shard (5)']);
+  });
+
+  it('only lets a newer run of the same workflow supersede', () => {
+    const otherWorkflow = run({ id: 2, name: 'Typecheck', created_at: '2026-10-31T04:25:10Z' });
+    const findings = findTimeouts([{ run: superseded, attempt: 1, jobs: [job('unit-shard (5)', 'cancelled', 916)] }], [superseded, otherWorkflow]);
+    assert.equal(findings.length, 1);
+  });
 });
 
 describe('failing-main detector', () => {

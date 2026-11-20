@@ -11,8 +11,8 @@
 //             were filed days after their fixes merged). A recurrence after
 //             that change is newer than it, so it is reported.
 //   timeout   a job on a push to main was cancelled after running 10+ minutes
-//             (push runs on main are not superseded, so this is a job timeout;
-//             unit-shard (5) hung silently for 14 minutes on 2098d920ae)
+//             and no newer main push cancelled it, so this is a job timeout
+//             (unit-shard (5) hung silently for 14 minutes on 2098d920ae)
 //   failing   a workflow's two newest decided runs on main both failed
 //   slower    a job's median time on successful main runs rose 20% and 30s+
 //             week over week. Samples are 15 runs spread across each week: the
@@ -245,13 +245,31 @@ export function attributeFlakes(findings, { readLog, changeSince, limit = FLAKE_
   return { findings: kept, skipped, warnings };
 }
 
+// Test cancels a main push run when a newer main commit lands. That cancel
+// reaches the job seconds after the newer run is created; a job timeout fires
+// on its own clock, so a newer run created this close to the cancel is the cause.
+const SUPERSEDE_CANCEL_SECONDS = 120;
+
+function supersededBy(job, run, mainRuns) {
+  const cancelledAt = Date.parse(job.completed_at);
+  return mainRuns.some((other) => {
+    if (other.id === run.id || other.name !== run.name) return false;
+    const createdAt = Date.parse(other.created_at);
+    return createdAt > Date.parse(run.created_at)
+      && createdAt <= cancelledAt
+      && cancelledAt - createdAt <= SUPERSEDE_CANCEL_SECONDS * 1000;
+  });
+}
+
 // mainAttempts: [{ run, attempt, jobs }] for push runs on main
-export function findTimeouts(mainAttempts) {
+// mainRuns: every push run on main in the window, to recognise supersession
+export function findTimeouts(mainAttempts, mainRuns = []) {
   const findings = new Map();
   for (const { run, attempt, jobs } of mainAttempts) {
     for (const job of jobs) {
       const seconds = jobSeconds(job);
       if (job.conclusion !== 'cancelled' || seconds === null || seconds < TIMEOUT_MIN_SECONDS) continue;
+      if (supersededBy(job, run, mainRuns)) continue;
       const workflow = safeLabel(run.name);
       const name = safeLabel(job.name);
       addFinding(findings, {
@@ -419,6 +437,7 @@ export function collect({ gh, repository, now }) {
   const currentStart = now - WINDOW_DAYS * DAY_MS;
   const reruns = [];
   const mainAttempts = [];
+  const mainRuns = [];
   const samples = [];
   const failing = [];
   for (const workflow of MONITORED_WORKFLOWS) {
@@ -440,6 +459,7 @@ export function collect({ gh, repository, now }) {
     }
     // A timed-out attempt survives a later successful re-run, so every
     // attempt of a re-run or unsuccessful main push is read.
+    mainRuns.push(...window.filter((item) => item.event === 'push' && item.head_branch === 'main'));
     for (const run of window.filter((item) => item.event === 'push' && item.head_branch === 'main'
       && (item.run_attempt > 1 || item.conclusion === 'cancelled' || item.conclusion === 'failure'))) {
       allAttempts(run).forEach((jobs, index) => mainAttempts.push({ run, attempt: index + 1, jobs }));
@@ -463,7 +483,7 @@ export function collect({ gh, repository, now }) {
       }
     }
   }
-  const all = [...failing, ...findTimeouts(mainAttempts), ...findFlakyJobs(reruns), ...findSlowdowns(samples)];
+  const all = [...failing, ...findTimeouts(mainAttempts, mainRuns), ...findFlakyJobs(reruns), ...findSlowdowns(samples)];
   return attributeFlakes(all, {
     // The log endpoint answers raw text that may carry colour codes, which gh
     // refuses to print unless told to.
