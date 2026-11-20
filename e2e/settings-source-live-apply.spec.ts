@@ -132,7 +132,7 @@ async function bootSourceSettings(page: Page): Promise<DigestLog> {
   return log;
 }
 
-/** A quiet baseline lets the two request-budget tests attribute later loads to the modal. */
+/** A quiet baseline lets the request-budget test attribute later loads to the modal. */
 async function bootUntilNewsSettles(page: Page): Promise<DigestLog> {
   const log = await bootSourceSettings(page);
   await page.waitForTimeout(SETTLE_MS);
@@ -372,12 +372,22 @@ test.describe('settings source live apply (#6380)', () => {
     await evidenceScreenshot(page, { path: screenshotPath }, { testInfo, name: 'Regional source choice after reload' });
   });
 
-  test('toggling sources and closing Settings reloads news once, without a reload', async ({ page }) => {
+  test('closing Settings reloads news once only when sources changed', async ({ page }) => {
     await seedProFullVariant(page);
     const log = await bootUntilNewsSettles(page);
     // #6724: snapshot the count AFTER the boot check passes, so a late boot
     // digest is never charged to the toggle assertion below.
     const baseline = log.urls.length;
+
+    await openSourcesTab(page);
+    await page.locator('.unified-settings-close').click();
+    await page.waitForTimeout(SETTLE_MS);
+
+    expect(
+      log.urls.length - baseline,
+      `an unchanged source selection has the same news work-list, so closing Settings must ` +
+        `not spend a digest request (requests since baseline: ${log.urls.length - baseline})`,
+    ).toBe(0);
 
     await openSourcesTab(page);
     const disabled = await disableFirstSources(page, TOGGLE_COUNT);
@@ -409,22 +419,5 @@ test.describe('settings source live apply (#6380)', () => {
       `disabling ${disabled.length} sources (${disabled.join(', ')}) must cost exactly one ` +
         `extra news load, not one per click (requests since baseline: ${log.urls.length - baseline})`,
     ).toBe(1);
-  });
-
-  test('closing Settings without touching sources issues no news load', async ({ page }) => {
-    await seedProFullVariant(page);
-    const log = await bootUntilNewsSettles(page);
-    // #6724: same baseline-delta pattern.
-    const baseline = log.urls.length;
-
-    await openSourcesTab(page);
-    await page.locator('.unified-settings-close').click();
-    await page.waitForTimeout(SETTLE_MS);
-
-    expect(
-      log.urls.length - baseline,
-      `an unchanged source selection has the same news work-list, so closing Settings must ` +
-        `not spend a digest request (requests since baseline: ${log.urls.length - baseline})`,
-    ).toBe(0);
   });
 });

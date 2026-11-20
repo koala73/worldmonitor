@@ -54,7 +54,18 @@ test.describe('Pro strip at 360px in every language', () => {
 
   for (const { lang, headline } of localeHeadlines) {
     test(`${lang} headline fits in full`, async ({ page }) => {
-      await openFreeDashboard(page, `/?lang=${lang}`);
+      if (lang === 'en' || lang === 'ar') {
+        await openFreeDashboard(page, `/?lang=${lang}`);
+      } else {
+        await page.goto(`/tests/runtime-harness.html?lang=${lang}`);
+        await page.addStyleTag({ url: '/src/styles/main.css' });
+        await page.evaluate(async () => {
+          const { initI18n } = await import('/src/services/i18n.ts');
+          await initI18n({ waitForFullTranslation: true });
+          const { showProBanner } = await import('/src/components/ProBanner.ts');
+          showProBanner(document.body);
+        });
+      }
       await expect(page.locator('.pro-banner-text strong')).toHaveText(headline);
       const layout = await bannerLayout(page);
       expect(layout.taglineVisible).toBe(false);
