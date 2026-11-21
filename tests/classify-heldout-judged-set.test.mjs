@@ -71,10 +71,10 @@ describe('held-out judged set', () => {
     assert.equal(alertLevel, 41);
     const pick = (s) => ({ missed: s.missed, falseAlerts: s.falseAlerts });
     assert.deepEqual(pick(score('relay-before')), { missed: 2, falseAlerts: 20 });
-    assert.deepEqual(pick(score('relay-after')), { missed: 4, falseAlerts: 6 });
+    assert.deepEqual(pick(score('relay-after')), { missed: 2, falseAlerts: 5 });
     assert.deepEqual(pick(score('relay-after-rerun')), { missed: 5, falseAlerts: 6 });
     assert.deepEqual(pick(score('rpc-before')), { missed: 0, falseAlerts: 58 });
-    assert.deepEqual(pick(score('rpc-after')), { missed: 3, falseAlerts: 12 });
+    assert.deepEqual(pick(score('rpc-after')), { missed: 3, falseAlerts: 11 });
     // The old relay model returned no valid label for 11 titles; production skips those.
     assert.equal(score('relay-before').unlabelled, 11);
     assert.equal(score('relay-after').unlabelled, 0);
