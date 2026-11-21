@@ -815,11 +815,15 @@ export function wildfirePublishData(data) {
   return publicData;
 }
 
-function nextIdenticalSourceFailureCount(previousMeta, errorCode) {
+// Matches warnAfterConsecutive for these codes in api/health.js SEED_META.wildfires.
+const FIRMS_PARTIAL_WARN_AFTER_CONSECUTIVE = 2;
+const CANADA_SUBSOURCE_WARN_AFTER_CONSECUTIVE = 3;
+
+function nextIdenticalSourceFailureCount(previousMeta, errorCode, warnAfter = FIRMS_PARTIAL_WARN_AFTER_CONSECUTIVE) {
   // A missing or unreadable predecessor cannot prove this is the first failure.
   // Fail closed so a transient seed-meta read error cannot restart the grace
   // window while the same partial-coverage incident continues.
-  if (!previousMeta || typeof previousMeta !== 'object') return 2;
+  if (!previousMeta || typeof previousMeta !== 'object') return warnAfter;
   const previousCode = previousMeta?.lastSourceFailureCode ?? previousMeta?.errorCode;
   if (previousCode !== errorCode) return 1;
   if (Number.isInteger(previousMeta?.consecutiveSourceFailures)
@@ -829,7 +833,7 @@ function nextIdenticalSourceFailureCount(previousMeta, errorCode) {
   // Metadata written before the streak fields shipped already represents one
   // observed failure. Count the next identical run as the second failure so a
   // rollout cannot turn an active production warning green.
-  if (previousMeta?.sourceState === 'degraded' && previousMeta?.errorCode === errorCode) return 2;
+  if (previousMeta?.sourceState === 'degraded' && previousMeta?.errorCode === errorCode) return warnAfter;
   return 1;
 }
 
@@ -895,12 +899,24 @@ export function canadianWildfireAfterPublish(data, { previousMeta = null } = {})
         lastSourceAttemptAt: snapshot.lastAttemptAt,
       }
     : { failedSources: [], sourceHealth: {}, lastSourceAttemptAt: null };
+  // A BC failure is graced only while its retained snapshot still serves.
+  // A prescribed-layer failure keeps the current active CWFIS layer.
+  const graced = errorCode === 'CWFIS_PRESCRIBED_FAILED'
+    || (errorCode === 'BC_WILDFIRE_SOURCE_FAILED' && Number.isSafeInteger(data?._bcSnapshot?.fetchedAt));
+  const streak = graced
+    ? {
+        consecutiveSourceFailures: nextIdenticalSourceFailureCount(
+          previousMeta, errorCode, CANADA_SUBSOURCE_WARN_AFTER_CONSECUTIVE),
+        lastSourceFailureCode: errorCode,
+      }
+    : {};
   return {
     freshnessMetaPatch: {
       sourceState: 'degraded',
       errorCode,
       canadaSourceFailureCount: failureCount,
       ...cwfisFailure,
+      ...streak,
     },
   };
 }

@@ -7,7 +7,7 @@
 //   - startCommand: node seed-fire-detections.mjs
 //   - Cron schedule: "*/10 * * * *" (every 10min UTC)
 
-import { getRedisCredentials, loadEnvFile, readSeedSnapshot, redisCommand, runSeed, withRetry, writeExtraKey, MAX_PAYLOAD_BYTES } from './_seed-utils.mjs';
+import { getRedisCredentials, loadEnvFile, readExistingSeedMeta, readSeedSnapshot, redisCommand, runSeed, withRetry, writeExtraKey, MAX_PAYLOAD_BYTES } from './_seed-utils.mjs';
 import { buildEnvelope } from './_seed-envelope-source.mjs';
 import { compactWildfireDashboardPayload, WILDFIRE_CANONICAL_DETECTION_LIMIT } from './_wildfire-dashboard.mjs';
 import {
@@ -201,7 +201,11 @@ async function main() {
     schemaVersion: 1,
     maxStaleMin: 360,
     beforePublish: persistSourceSnapshots,
-    afterPublish: canadianWildfireAfterPublish,
+    // afterPublish runs before runSeed rewrites seed-meta, so this reads the
+    // previous run and lets a Canadian subsource failure count its streak.
+    afterPublish: async (data) => canadianWildfireAfterPublish(data, {
+      previousMeta: await readExistingSeedMeta('wildfire', 'fires'),
+    }),
     // Success path only: the marker follows the summary extra key and the
     // canonical seed-meta, never a validation skip or a preserved last-good run.
     afterFreshness: markSummaryActivated,

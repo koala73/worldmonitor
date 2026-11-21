@@ -420,6 +420,12 @@ test('BC failures and unconfirmed empty results keep source coverage through the
     assert.equal(meta.fetchedAt, now + 3 * MIN);
     assert.equal(meta.sourceState, sourceFailed ? 'degraded' : 'ok');
     if (sourceFailed) assert.equal(meta.errorCode, 'BC_WILDFIRE_SOURCE_FAILED');
+    // The real seeder reads its previous seed-meta, so a retained BC failure
+    // counts runs and stays OK until the third identical failure. An expired
+    // snapshot (minute 120) retains nothing and alarms at once.
+    const expectedStreak = { 10: 1, 20: 2, 30: 3, 40: 4, 170: 1 }[minute];
+    assert.equal(meta.consecutiveSourceFailures, expectedStreak, `minute ${minute}`);
+    const graced = expectedStreak !== undefined && expectedStreak < 3;
     const expectedPublic = JSON.parse(store.get('wildfire:fires-bootstrap:v1')).data.fireDetections;
     assert.deepEqual(captured.reader.fireDetections, expectedPublic);
     assert.ok(captured.reader.fireDetections.some(row => row.source === 'firms' && row.detectedAt === now - MIN));
@@ -434,7 +440,8 @@ test('BC failures and unconfirmed empty results keep source coverage through the
       keyErrors: new Map(), keyMetaErrors: new Map(), keyMetaValues: new Map([[metaKey, store.get(metaKey)]]),
       now: now + 3 * MIN,
     });
-    assert.equal(entry.status, sourceFailed ? 'SEED_ERROR' : 'OK');
+    assert.equal(entry.status, sourceFailed && !graced ? 'SEED_ERROR' : 'OK', `minute ${minute}`);
+    assert.equal(entry.sourceFailurePending, graced ? true : undefined, `minute ${minute}`);
     assert.equal(entry.sourceFailurePendingUntil, undefined);
     previous = captured.store;
   }
