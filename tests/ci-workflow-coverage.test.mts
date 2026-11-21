@@ -3808,16 +3808,34 @@ if [ "$1 $2" = "issue list" ]; then printf '%s' "\${FAKE_EXISTING_ISSUE:-}"; fi
         `#!/bin/bash
 echo "$*" >> "${callLog}"
 if [[ "$*" == *"--json autoMergeRequest"* ]]; then
+  [ "$FAKE_PROBE_FAIL" = yes ] && exit 1
   [ "$FAKE_ARMED" = yes ] && echo '{"state":"ENABLED"}'
 elif [[ "$*" == *"--json headRefOid"* ]]; then
+  [ "$FAKE_HEAD_FAIL" = yes ] && exit 1
   echo "$FAKE_CURRENT_HEAD"
+elif [[ "$*" == *"--disable-auto"* ]]; then
+  [ "$FAKE_DISABLE_FAIL" = yes ] && exit 1
 fi
 exit 0
 `,
         { mode: 0o755 },
       );
 
-      const runDisarm = ({ eventHead, liveHead, armed = true }: { eventHead: string; liveHead: string; armed?: boolean }) => {
+      const runDisarm = ({
+        eventHead,
+        liveHead,
+        armed = true,
+        probeFail = false,
+        headFail = false,
+        disableFail = false,
+      }: {
+        eventHead: string;
+        liveHead: string;
+        armed?: boolean;
+        probeFail?: boolean;
+        headFail?: boolean;
+        disableFail?: boolean;
+      }) => {
         writeFileSync(callLog, '');
         const env = stepEnvironment(disarm, {
           github: { event: { pull_request: { html_url: 'https://github.com/koala73/worldmonitor/pull/1', head: { sha: eventHead } } }, sha: 'merge-commit-sha' },
@@ -3829,6 +3847,12 @@ exit 0
             PATH: `${workDir}:${process.env.PATH}`,
             FAKE_CURRENT_HEAD: liveHead,
             FAKE_ARMED: armed ? 'yes' : 'no',
+            FAKE_PROBE_FAIL: probeFail ? 'yes' : 'no',
+            FAKE_HEAD_FAIL: headFail ? 'yes' : 'no',
+            FAKE_DISABLE_FAIL: disableFail ? 'yes' : 'no',
+            // The step retries a failing call with a growing sleep; the test
+            // must not wait it out.
+            RETRY_BASE_DELAY: '0',
             GITHUB_ACTOR: 'a-maintainer',
           },
           stdio: 'pipe',
@@ -3850,6 +3874,25 @@ exit 0
         runDisarm({ eventHead: 'abc123', liveHead: 'abc123', armed: false }),
         /--disable-auto/,
         'an unarmed PR must not be touched',
+      );
+      // Failing to LOOK must not mean failing to ACT (CodeRabbit, #9676): when
+      // the state or head probe errors out, the step still tries to disarm,
+      // because aborting would leave a possible arming in place.
+      assert.match(
+        runDisarm({ eventHead: 'abc123', liveHead: 'abc123', probeFail: true }),
+        /--disable-auto/,
+        'an unreadable auto-merge state must still attempt the disable',
+      );
+      assert.match(
+        runDisarm({ eventHead: 'abc123', liveHead: 'def456', headFail: true }),
+        /--disable-auto/,
+        'an unreadable head must disarm rather than guess that a newer run owns the decision',
+      );
+      // And a disable that cannot be done stays loud: the step goes red.
+      assert.throws(
+        () => runDisarm({ eventHead: 'abc123', liveHead: 'abc123', disableFail: true }),
+        /Command failed/,
+        'a failed disable must fail the step',
       );
     } finally {
       rmSync(workDir, { recursive: true, force: true });
