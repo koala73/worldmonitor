@@ -112,9 +112,12 @@ function fakeGlobe() {
     satelliteCardI18nListener: null,
     popup: null,
     satelliteMarkers: [],
+    layers: { satellites: true },
     rebuildSatBeams: vi.fn(),
     flushMarkers: vi.fn(),
+    flushArcs: vi.fn(),
     flushPaths: vi.fn(),
+    flushPolygons: vi.fn(),
   });
   return map;
 }
@@ -152,6 +155,39 @@ describe('Orbital Watch satellite card', () => {
     map.setSatellites([satellite({ noradId: '99999', name: 'OTHER' })]);
     expect(map.tooltipEl).toBeNull();
     expect(card.isConnected).toBe(false);
+  });
+
+  it('closes when the satellites layer is turned off in the layer list', () => {
+    const map = fakeGlobe();
+    map.setSatellites([satellite()]);
+    const card = openCard(map);
+    map.layers.satellites = false;
+    map.flushLayerChannels('satellites');
+    expect(map.tooltipEl).toBeNull();
+    expect(card.isConnected).toBe(false);
+    expect(map.openSatelliteCard).toBeNull();
+    expect(map.satelliteSitesClock).toBeNull();
+  });
+
+  it('closes when the dashboard turns the satellites layer off', () => {
+    const map = fakeGlobe();
+    map.setSatellites([satellite()]);
+    const card = openCard(map);
+    map.setLayers({ satellites: false });
+    expect(map.tooltipEl).toBeNull();
+    expect(card.isConnected).toBe(false);
+  });
+
+  it('stays open when a different layer is turned off', () => {
+    const map = fakeGlobe();
+    map.setSatellites([satellite()]);
+    const card = openCard(map);
+    map.layers.fires = true;
+    map.setLayers({ satellites: true, fires: false });
+    map.layers.fires = false;
+    map.flushLayerChannels('fires');
+    expect(map.tooltipEl).toBe(card);
+    expect(card.isConnected).toBe(true);
   });
 
   it('redraws its labels and the sites section when the locale arrives after it opened', async () => {
