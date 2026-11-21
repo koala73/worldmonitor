@@ -2244,6 +2244,7 @@ async function finishAlertRewrite(event, rewrite, reachedUsers, skippedUsers) {
     // Titles let a skip be audited after the anchors expire.
     title: formatEventTitle(event).slice(0, 300),
     model: decision.model,
+    judgeModel: decision.judgeModel,
     importanceScore: event.payload?.importanceScore ?? null,
     candidates: decision.candidates,
     best: decision.best,

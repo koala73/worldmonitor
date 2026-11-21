@@ -84,7 +84,7 @@ function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStat
     zsets.set(newsPublisherCoverageKey(title), new Map(families.map(f => [f, Date.now() - 60_000])));
   }
   const sets = new Map();
-  const calls = { sends: [], judge: [], embed: 0, anchorWrites: [] };
+  const calls = { sends: [], judge: [], judgeBodies: [], embed: 0, anchorWrites: [] };
   const state = { users, verdict, judgeStatus };
   const logs = [];
   const orig = { log: console.log, warn: console.warn, info: console.info, error: console.error };
@@ -168,9 +168,13 @@ function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStat
       return { ok: true, status: 200, json: async () => ({ data: input.map((t, index) => ({ index, embedding: vectorFor(t) })) }) };
     }
     if (host === 'openrouter.ai' && path.endsWith('/chat/completions')) {
-      calls.judge.push(JSON.parse(opts.body).messages[1].content);
+      const body = JSON.parse(opts.body);
+      calls.judge.push(body.messages[1].content);
+      calls.judgeBodies.push(body);
       if (state.judgeStatus !== 200) return { ok: false, status: state.judgeStatus, json: async () => ({}) };
-      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: state.verdict }, finish_reason: 'stop' }] }) };
+      // An array gives each judge call its own reply, in order.
+      const content = Array.isArray(state.verdict) ? state.verdict.shift() : state.verdict;
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content }, finish_reason: 'stop' }] }) };
     }
     if (path === '/pipeline') {
       const body = JSON.parse(opts.body);
@@ -199,13 +203,39 @@ describe('reworded news alerts (#10916)', () => {
       assert.deepEqual(h.sentTo(), ['chat-user-1']);
       await relay.processEvent(alert(SUN));
       assert.deepEqual(h.sentTo(), ['chat-user-1'], 'the rewrite must not alert again');
-      assert.equal(h.calls.judge.length, 1);
+      assert.equal(h.calls.judge.length, 2, 'one check asks the judge twice');
+      assert.equal(h.calls.judge[0], h.calls.judge[1]);
       assert.match(h.calls.judge[0], /EARLIER:\n1\. \(under an hour earlier\) Exclusive: US intel/);
       assert.match(h.calls.judge[0], /NEW:\nIran plots dirty bomb/);
       const record = h.record();
       assert.equal(record.skippedUsers, 1);
       assert.equal(record.reachedUsers, 0);
       assert.ok(record.anchor && record.anchor.score > 0.99);
+    } finally { h.restore(); }
+  });
+
+  // Gemini 2.5 Flash on a one-token answer called 10 of 21 rewrites of the
+  // 2026-11-20 Russia-Poland strike new developments (10 emails for one
+  // incident). The judge reasons now, so it needs a reasoning model, room to
+  // reason and a schema that keeps the reply a bare {"same": N}: a reply cut at
+  // the token limit is dropped by the chain, which keeps every alert.
+  it('asks a reasoning model for a schema-bound verdict with room to reason', async () => {
+    const { REWRITE_JUDGE_MODEL } = await import('../scripts/lib/news-alert-coverage.mjs');
+    const h = installHarness();
+    try {
+      await relay.processEvent(alert(CNN));
+      await relay.processEvent(alert(SUN));
+      assert.equal(h.calls.judgeBodies.length, 2);
+      const body = h.calls.judgeBodies[0];
+      assert.equal(body.model, REWRITE_JUDGE_MODEL);
+      assert.equal(body.model, 'anthropic/claude-sonnet-5.5');
+      assert.deepEqual(body.reasoning, { effort: 'low' });
+      assert.equal(body.response_format?.type, 'json_schema');
+      assert.deepEqual(body.response_format.json_schema.schema, {
+        type: 'object', properties: { same: { type: 'integer' } }, required: ['same'], additionalProperties: false,
+      });
+      assert.ok(body.max_tokens >= 1000, `max_tokens ${body.max_tokens} leaves no room to reason`);
+      assert.equal(h.record().judgeModel, REWRITE_JUDGE_MODEL);
     } finally { h.restore(); }
   });
 
@@ -220,7 +250,7 @@ describe('reworded news alerts (#10916)', () => {
     } finally { h.restore(); }
   });
 
-  for (const verdict of ['{"same": 1}', '{"same": 2}']) {
+  for (const verdict of ['{"same": 1}', '{"same": 2}', ['{"same": 1}', '{"same": 2}'], ['{"same": 2}', '{"same": 1}']]) {
     it(`a third wording skips everyone who had either earlier one (verdict ${verdict})`, async () => {
       const h = installHarness({ users: ['user-1'] });
       try {
@@ -230,7 +260,7 @@ describe('reworded news alerts (#10916)', () => {
         assert.deepEqual(h.sentTo(), ['chat-user-1', 'chat-user-2']);
         // Both earlier wordings are anchors now; whichever the judge names,
         // each user already had the story once.
-        h.state.verdict = verdict;
+        h.state.verdict = Array.isArray(verdict) ? [...verdict] : verdict;
         await relay.processEvent(alert(NDTV));
         assert.deepEqual(h.sentTo(), ['chat-user-1', 'chat-user-2']);
         assert.equal(h.record().skippedUsers, 2);
@@ -276,7 +306,7 @@ describe('reworded news alerts (#10916)', () => {
       const record = h.record();
       assert.equal(record.coverageMerged, true);
       assert.equal(record.judged, true);
-      assert.equal(record.verdict, '{"same": 1}');
+      assert.equal(record.verdict, '{"same": 1} | {"same": 1}');
       assert.match(record.title, /^Iran plots dirty bomb/);
       assert.match(record.anchor.title, /^Exclusive: US intel/);
     } finally { h.restore(); }
@@ -289,10 +319,30 @@ describe('reworded news alerts (#10916)', () => {
       await relay.processEvent(alert(SUN));
       await relay.processEvent(alert(NDTV));
       assert.deepEqual(h.calls.anchorWrites, [CNN]);
-      assert.match(h.calls.judge[1], /EARLIER:\n1\. \(under an hour earlier\) Exclusive: US intel[^\n]*\n\nNEW:\nIran Plans To Detonate/);
+      assert.match(h.calls.judge[2], /EARLIER:\n1\. \(under an hour earlier\) Exclusive: US intel[^\n]*\n\nNEW:\nIran Plans To Detonate/);
       assert.deepEqual(h.sentTo(), ['chat-user-1']);
     } finally { h.restore(); }
   });
+
+  // Sonnet merged Tusk's confirmation of the Poland strike into the earlier
+  // "likely crossed into Poland" report in 1 of 8 runs. A skip needs both
+  // replies to name the same earlier headline.
+  for (const verdicts of [['{"same": 1}', '{"same": 0}'], ['{"same": 0}', '{"same": 1}'], ['{"same": 1}', 'They look similar.']]) {
+    it(`sends when the two judge replies disagree (${verdicts.join(' / ')})`, async () => {
+      const h = installHarness();
+      try {
+        await relay.processEvent(alert(CNN));
+        h.state.verdict = [...verdicts];
+        await relay.processEvent(alert(SUN));
+        assert.equal(h.calls.judge.length, 2);
+        assert.equal(h.calls.sends.length, 2, 'a split verdict keeps the alert');
+        const record = h.record();
+        assert.equal(record.anchor, null);
+        assert.equal(record.skippedUsers, 0);
+        assert.match(record.verdict, /\|/);
+      } finally { h.restore(); }
+    });
+  }
 
   it('sends when the judge calls it a different development', async () => {
     const h = installHarness({ verdict: '{"same": 0}' });

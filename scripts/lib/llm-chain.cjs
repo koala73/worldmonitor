@@ -135,6 +135,8 @@ const LLM_PROVIDERS = [
  *   tried in the order given. Opt-in providers (anthropic) run only when named here.
  * @param {string[]} [opts.skipProviders] - Optional provider denylist
  * @param {Record<string, string>} [opts.modelOverrides] - Per-provider model override, keyed by provider name
+ * @param {Record<string, unknown>} [opts.extraBody] - Request fields added to every OpenAI-compatible
+ *   attempt after the provider's own (e.g. `reasoning`, `response_format`). Not sent to `invoke` providers.
  * @param {string} [opts.stage] - llm_call telemetry surface tag (#4944 U5)
  * @returns {Promise<string|null>} Generated text, or null if all providers fail
  */
@@ -147,6 +149,7 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
     allowedProviders,
     skipProviders,
     modelOverrides,
+    extraBody,
     stage = 'llm-chain',
   } = opts;
   const allowedSet = allowedProviders ? new Set(allowedProviders) : null;
@@ -221,6 +224,7 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
           max_tokens: maxTokens,
           temperature,
           ...provider.extraBody,
+          ...extraBody,
         }),
         signal: AbortSignal.timeout(timeout),
       });
