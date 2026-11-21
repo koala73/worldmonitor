@@ -285,6 +285,12 @@ describe('reworded news alerts (#10916)', () => {
         // Each reply vouches for a different earlier alert; nobody had both.
         assert.deepEqual(h.sentTo(), ['chat-user-1', 'chat-user-2', 'chat-user-1', 'chat-user-2']);
         assert.equal(h.record().skippedUsers, 0);
+        // Neither earlier alert is treated as the match, so no receipt crosses
+        // from one to the other and no publisher history is merged.
+        const recipients = title => [...(h.zsets.get(`news:alert-anchor-recipients:v1:full:${newsPublisherCoverageKey(title).split(':').pop()}`) ?? new Map()).keys()].sort();
+        assert.deepEqual(recipients(CNN), ['user-1']);
+        assert.deepEqual(recipients(SUN), ['user-2']);
+        assert.equal(h.record().coverageMerged, false);
       } finally { h.restore(); }
     });
   }

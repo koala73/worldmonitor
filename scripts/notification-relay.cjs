@@ -2213,6 +2213,10 @@ async function releaseRealtimeClaim(dedupDecision, claim) {
 // OpenRouter key, or on any failure, nobody is skipped.
 const NO_REWRITE = { applies: false, decision: null, alreadyAlerted: new Set(), lib: null };
 
+function matchedAnchorId(decision) {
+  return decision?.anchor && decision.anchorIds?.length === 1 ? decision.anchor.id : null;
+}
+
 async function checkAlertRewrite(event, matching) {
   if (!process.env.OPENROUTER_API_KEY) return NO_REWRITE;
   try {
@@ -2221,7 +2225,9 @@ async function checkAlertRewrite(event, matching) {
     const decision = await lib.findRewriteAnchor(event);
     const userIds = [...new Set(matching.map(r => r.userId))];
     const alreadyAlerted = decision.anchor ? await lib.usersAlertedFor(decision.anchorIds ?? decision.anchor.id, userIds) : new Set();
-    const coverageMerged = decision.anchor ? await lib.mergeStoryCoverage(event, decision.anchor.id) : false;
+    // Only a match both replies agree on joins the two stories' receipts and
+    // publisher history; a split names two alerts that may be separate.
+    const coverageMerged = matchedAnchorId(decision) ? await lib.mergeStoryCoverage(event, matchedAnchorId(decision)) : false;
     return { applies: true, decision, alreadyAlerted, coverageMerged, lib };
   } catch (err) {
     console.warn('[news-alert-rewrite] unavailable:', err?.name);
@@ -2234,7 +2240,7 @@ async function checkAlertRewrite(event, matching) {
 async function finishAlertRewrite(event, rewrite, reachedUsers, skippedUsers) {
   if (!rewrite.applies) return;
   const anchored = reachedUsers.size > 0 && await rewrite.lib.recordAlertAnchor(event, [...reachedUsers], {
-    matchedAnchorId: rewrite.decision.anchor?.id ?? null,
+    matchedAnchorId: matchedAnchorId(rewrite.decision),
   });
   const { decision } = rewrite;
   console.info('[news-alert-rewrite]', JSON.stringify({
