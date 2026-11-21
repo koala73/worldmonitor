@@ -48,6 +48,12 @@ Measured on 2026-11-14 against a CelesTrak active list recorded that day (16,896
 | Catalog response | 1.09 MB before compression |
 | Default lookup (7 days back, 72 hours ahead) over every profiled satellite | 2.3 to 2.8 seconds, about 8 to 10 ms per satellite |
 
+### Element history
+
+The catalog seeder also keeps a 30-day history of the profiled satellites' orbit elements in R2, at `seed-data/orbital/elements-history-v1.json`. It adds one entry each time a satellite's elements carry a new epoch, so a satellite with several element sets a day keeps all of them. It drops entries whose epoch is older than 30 days. Each entry holds the NORAD number, epoch, mean motion, eccentricity, inclination, right ascension of the ascending node and drag term, about 147 bytes. At two new element sets per satellite per day, 30 days is about 2.6 MB. Only the seeder reads it; it is not sent to browsers.
+
+The history is best effort. Without R2 credentials, when R2 fails, or when the update takes longer than its 25-second budget, the catalog is still published and the history is left as it was. A stored history the seeder cannot read is never replaced.
+
 ### Matching against archives
 
 Your browser asks the public archives directly: Earth Search and Microsoft Planetary Computer for Sentinel-2, Sentinel-1 and Landsat scenes, NASA GIBS for daily mosaics and geostationary frames, and EUMETSAT for Meteosat frames. A scene belongs to a pass when its acquisition time is within 5 minutes of the computed pass. For optical scenes, Orbital Watch also reads the scene's cloud classification at the point itself, not just the scene-wide cloud percentage.
