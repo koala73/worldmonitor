@@ -48,7 +48,15 @@ const CANONICAL_KEY = 'resilience:recovery:reexport-share:v1';
 // evict (the SWF seeder's bundle-freshness guard falls back to gross
 // imports if seed-meta predates the current bundle run, independent
 // of data-key TTL).
-const CACHE_TTL_SECONDS = 35 * 24 * 3600;
+//
+// It must also OUTLIVE this key's health staleness gate: api/health.js
+// registers recoveryReexportShare at maxStaleMin 86400 (60d). At the previous
+// 35d the payload expired 25 days before the warning could fire, so a merely
+// late monthly run reported EMPTY (crit) instead of escalating through
+// STALE_SEED (warn) — the inversion tests/seed-ttl-outlives-health-staleness
+// .test.mjs exists to prevent. 61d clears the rounded boundary and keeps the
+// health comment's "2x interval" rationale true.
+export const CACHE_TTL_SECONDS = 61 * 24 * 3600;
 
 const COMTRADE_URL = 'https://comtradeapi.un.org/data/v1/get/C/A/HS';
 const MAX_RECORDS = 250_000;
@@ -335,7 +343,11 @@ if (isMain) {
     // may prune all; per-country floor may omit all). Downstream SWF
     // seeder handles an empty map as "all gross imports". Not strict.
     zeroIsValid: true,
-    maxStaleMin: 10080,
+    // Mirrors api/health.js recoveryReexportShare (86400 = 60d), as the three
+    // sibling recovery seeders already do. The old 7d value was the reason the
+    // fleet TTL audit never saw this key's violation: it compares the canonical
+    // TTL against the seeder's own number, not against health's gate.
+    maxStaleMin: 86400,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

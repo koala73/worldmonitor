@@ -25,6 +25,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { ACLED_TTL } from '../scripts/seed-conflict-intel.mjs';
+import { CACHE_TTL_SECONDS as REEXPORT_SHARE_TTL } from '../scripts/seed-recovery-reexport-share.mjs';
 import { __testing__ } from '../api/health.js';
 
 const radarSeeder = readFileSync(new URL('../scripts/seed-internet-outages.mjs', import.meta.url), 'utf8');
@@ -75,4 +76,55 @@ test('the ACLED key survives more than one missed cron tick', () => {
     `ACLED_TTL (${ACLED_TTL}s) must cover at least 2 refresh intervals `
       + `(${2 * CRON_INTERVAL_SECONDS}s) so a single skipped tick cannot drop the data`,
   );
+});
+
+// seed-recovery-reexport-share was invisible to the fleet TTL audit
+// (tests/seed-ttl-outlives-staleness-fleet.test.mjs): that audit compares the
+// canonical key's TTL against the SEEDER's own maxStaleMin, and this seeder
+// declared 7d while api/health.js registers the key at 60d. Its three sibling
+// recovery seeders all declare 60d, so their identical 35d TTLs were caught
+// and frozen in KNOWN_VIOLATIONS; this one slipped through unexamined.
+test('the re-export share key outlives its own health staleness threshold', () => {
+  const { SEED_META } = __testing__;
+  const config = SEED_META.recoveryReexportShare;
+  const maxStaleSeconds = config.maxStaleMin * 60;
+
+  assert.ok(
+    REEXPORT_SHARE_TTL > (config.maxStaleMin + 0.5) * 60,
+    `CACHE_TTL_SECONDS (${REEXPORT_SHARE_TTL}s) must exceed the rounded health boundary `
+      + `(${config.maxStaleMin}min = ${maxStaleSeconds}s), or the data key expires before `
+      + 'STALE_SEED can fire and a late monthly run reports as an EMPTY crit',
+  );
+});
+
+test('a late re-export share run still classifies as STALE_SEED, not EMPTY', () => {
+  const { SEED_META, STANDALONE_KEYS, classifyKey } = __testing__;
+  const config = SEED_META.recoveryReexportShare;
+  const redisKey = STANDALONE_KEYS.recoveryReexportShare;
+  const now = 1_700_000_000_000;
+
+  // One missed monthly tick: the payload must still be there for health to
+  // describe, rather than having evaporated 25 days earlier.
+  for (const ageSeconds of [config.maxStaleMin * 60 + 29, config.maxStaleMin * 60 + 31]) {
+    assert.ok(
+      REEXPORT_SHARE_TTL > ageSeconds,
+      `the payload must survive ${ageSeconds}s so health can describe it`,
+    );
+    const entry = classifyKey('recoveryReexportShare', redisKey, { allowOnDemand: false }, {
+      keyStrens: new Map([[redisKey, 128]]), keyErrors: new Map(),
+      keyMetaValues: new Map([[config.key, JSON.stringify({ fetchedAt: now - ageSeconds * 1000, recordCount: 7 })]]),
+      keyMetaErrors: new Map(), now,
+    });
+    assert.equal(entry.status, ageSeconds < (config.maxStaleMin + 0.5) * 60 ? 'OK' : 'STALE_SEED');
+  }
+});
+
+test('the seeder declares the same staleness budget health registers', () => {
+  // The divergence that hid the TTL gap. Keeping these equal is what lets the
+  // fleet audit see this key at all.
+  const { SEED_META } = __testing__;
+  const source = readFileSync(new URL('../scripts/seed-recovery-reexport-share.mjs', import.meta.url), 'utf8');
+  const declared = source.match(/^\s*maxStaleMin:\s*(\d+),/m);
+  assert.ok(declared, 'the seeder must declare maxStaleMin in its runSeed options');
+  assert.equal(Number(declared[1]), SEED_META.recoveryReexportShare.maxStaleMin);
 });
