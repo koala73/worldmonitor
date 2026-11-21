@@ -3716,11 +3716,19 @@ if [ "$1 $2" = "issue list" ]; then printf '%s' "\${FAKE_EXISTING_ISSUE:-}"; fi
     const concurrency = autoMerge.concurrency as { group: string; 'cancel-in-progress': boolean };
     assert.ok(concurrency, 'concurrent synchronize runs for one PR must not race');
     assert.equal(concurrency['cancel-in-progress'], true, 'a stale run must not survive to reach its disarm step');
-    const group = (number: number) =>
+    // The context carries a run id and a head SHA as well, so a key that grew
+    // either one would change between two runs of the same PR instead of
+    // comparing equal on `undefined` (CodeRabbit, #9676).
+    const group = (number: number, run: { id: number; head: string }) =>
       evaluateExpression(concurrency.group.replace(/^\$\{\{(.+)\}\}$/s, '$1'), {
-        github: { event: { pull_request: { number } } },
+        github: { run_id: run.id, sha: run.head, event: { pull_request: { number, head: { sha: run.head } } } },
       });
-    assert.notEqual(group(101), group(102), 'PRs must not share a slot and evict each other');
+    assert.notEqual(group(101, { id: 1, head: 'aaa' }), group(102, { id: 1, head: 'aaa' }), 'PRs must not share a slot and evict each other');
+    assert.equal(
+      group(101, { id: 1, head: 'aaa' }),
+      group(101, { id: 2, head: 'bbb' }),
+      'two pushes to the same PR must share one slot, or the older run is never cancelled',
+    );
   });
 
   it('disarms auto-merge whenever the commit under review does not qualify', () => {
