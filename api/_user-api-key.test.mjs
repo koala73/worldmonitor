@@ -999,3 +999,22 @@ test('user-key validation rate limit uses current TTL for Retry-After when over 
     assert.equal(result.headers['Cache-Control'], 'no-store');
   }, { redisResults: [{ result: 601 }, { result: 0 }, { result: 17 }] });
 });
+
+// The sub-second tail of an active fixed window is a reachable, documented
+// state: the TTL guard above accepts 0 rather than fail-closing a valid
+// under-limit request, and that acceptance is pinned separately. Combined with
+// an over-limit counter it used to produce Retry-After: 0, which tells a
+// client that was just refused to retry immediately into the same window.
+test('user-key validation rate limit never tells an over-limit caller to retry immediately', async () => {
+  await withMockedConvex(async () => {
+    const req = new Request('https://api.worldmonitor.app/api/bootstrap', {
+      headers: { 'cf-connecting-ip': '203.0.113.8' },
+    });
+    const result = await checkBootstrapUserApiKeyRateLimit(req);
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 429);
+    assert.equal(result.headers['Retry-After'], '1');
+    assert.equal(result.headers['Cache-Control'], 'no-store');
+  }, { redisResults: [{ result: 601 }, { result: 0 }, { result: 0 }] });
+});
