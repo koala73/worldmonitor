@@ -16,6 +16,7 @@ import {
   guardRedisReadOnly,
   loadRefreshChannels,
   makeFetchAll,
+  makeFetchPage,
   markLiveVideoActivated,
   mergeResolved,
   resolveRunProxy,
@@ -249,6 +250,106 @@ describe('makeFetchAll', () => {
   });
 });
 
+describe('makeFetchPage (direct first, proxy only without a direct verdict)', () => {
+  const RAW = 'gate.decodo.com:10001:probe-user:probe-pass';
+  const livePageHtml = (channelId, videoId) => `<link rel="canonical" href="https://www.youtube.com/watch?v=${videoId}">`
+    + `<script>var ytInitialPlayerResponse = ${JSON.stringify({
+      videoDetails: { videoId, channelId, isLive: true, title: 'News live' },
+      playabilityStatus: { status: 'OK', playableInEmbed: true },
+    })};</script>`;
+  const notLiveHtml = (channelId) => `<link rel="canonical" href="https://www.youtube.com/channel/${channelId}">`;
+  const BOT_WALL_HTML = '{"playabilityStatus":{"status":"LOGIN_REQUIRED","reason":"Sign in to confirm you’re not a bot"}}';
+  const page = (html, status = 200) => new Response(html, { status });
+  const proxied = (html) => ({ ok: true, status: 200, location: '', buffer: Buffer.from(html) });
+  const proxy407 = () => Object.assign(new Error('Proxy CONNECT: HTTP/1.1 407 Proxy Authentication Required'), {
+    proxyConnect: true, proxyFailure: { stage: 'proxy_connect', httpStatus: null, proxyConnectStatus: 407 },
+  });
+  /** Counts each route's page fetches; `direct` and `viaProxy` answer per channel id. */
+  function routes({ direct, viaProxy }) {
+    const calls = { direct: [], proxy: [] };
+    const fetchImpl = async (url) => {
+      const id = /channel\/([^/]+)\/live/.exec(String(url))[1];
+      calls.direct.push(id);
+      return direct(id);
+    };
+    const proxyFetchImpl = async (url, proxy) => {
+      const id = /channel\/([^/]+)\/live/.exec(String(url))[1];
+      calls.proxy.push([id, proxy.port]);
+      return viaProxy(id);
+    };
+    return { calls, fetchImpl, proxyFetchImpl };
+  }
+
+  it('reads a live channel direct and never touches the proxy', async () => {
+    const { calls, fetchImpl, proxyFetchImpl } = routes({ direct: (id) => page(livePageHtml(id, VIDEO(1))), viaProxy: () => assert.fail('proxy used') });
+    const result = await makeFetchPage({ proxyUrl: RAW, fetchImpl, proxyFetchImpl })(ID(1), { attempt: 0 });
+    assert.deepEqual([result.status, result.videoId, result.route], ['live', VIDEO(1), 'direct']);
+    assert.deepEqual(calls, { direct: [ID(1)], proxy: [] });
+  });
+
+  it('takes a clean direct "not live" read as the verdict, without asking the proxy', async () => {
+    const { calls, fetchImpl, proxyFetchImpl } = routes({ direct: (id) => page(notLiveHtml(id)), viaProxy: () => assert.fail('proxy used') });
+    const result = await makeFetchPage({ proxyUrl: RAW, fetchImpl, proxyFetchImpl })(ID(1), { attempt: 0 });
+    assert.deepEqual([result.status, result.route], ['not-live', 'direct']);
+    assert.deepEqual(calls.proxy, []);
+  });
+
+  it('falls back to the proxy for a bot wall, a non-2xx, a transport error or an unparseable page', async () => {
+    const failures = {
+      'bot-wall': () => page(BOT_WALL_HTML),
+      'http-429': () => page('', 429),
+      'fetch-error': () => { throw new TypeError('fetch failed'); },
+      'no-canonical': () => page('<html>nothing here</html>'),
+    };
+    for (const [reason, direct] of Object.entries(failures)) {
+      const { calls, fetchImpl, proxyFetchImpl } = routes({ direct, viaProxy: (id) => proxied(livePageHtml(id, VIDEO(2))) });
+      const result = await makeFetchPage({ proxyUrl: RAW, fetchImpl, proxyFetchImpl })(ID(1), { attempt: 0 });
+      assert.deepEqual([result.status, result.videoId, result.route, result.directReason], ['live', VIDEO(2), 'proxy', reason], reason);
+      assert.deepEqual(calls.proxy, [[ID(1), 10001]], reason);
+    }
+  });
+
+  it('returns the direct read when no proxy is configured', async () => {
+    const { calls, fetchImpl, proxyFetchImpl } = routes({ direct: () => page(BOT_WALL_HTML), viaProxy: () => assert.fail('proxy used') });
+    const result = await makeFetchPage({ proxyUrl: null, fetchImpl, proxyFetchImpl })(ID(1), { attempt: 0 });
+    assert.deepEqual([result.status, result.reason, result.route], ['unreadable', 'bot-wall', 'direct']);
+    assert.equal(result.proxyFailure, undefined, 'a direct failure never rotates the proxy session');
+    assert.deepEqual(calls.proxy, []);
+  });
+
+  it('goes straight to the proxy on a retry after a proxy failure, without fetching direct again', async () => {
+    const { calls, fetchImpl, proxyFetchImpl } = routes({ direct: () => page(BOT_WALL_HTML), viaProxy: (id) => proxied(livePageHtml(id, VIDEO(3))) });
+    const result = await makeFetchPage({ proxyUrl: RAW, fetchImpl, proxyFetchImpl })(ID(1), { attempt: 1, retry: true });
+    assert.deepEqual([result.status, result.route], ['live', 'proxy']);
+    assert.deepEqual(calls, { direct: [], proxy: [[ID(1), 10002]] });
+  });
+
+  it('publishes the direct reads while the proxy answers 407, and asks the proxy once per walled channel', async () => {
+    const channels = [ID(1), ID(2), ID(3)].map((channelId) => ({ channelId, slots: ['live-news/x'] }));
+    const { calls, fetchImpl, proxyFetchImpl } = routes({
+      direct: (id) => (id === ID(3) ? page(BOT_WALL_HTML) : page(livePageHtml(id, id === ID(1) ? VIDEO(1) : VIDEO(2)))),
+      viaProxy: () => { throw proxy407(); },
+    });
+    const session = { current: 0 };
+    const lines = [];
+    const payload = await makeFetchAll({
+      channels,
+      fetchPage: makeFetchPage({ proxyUrl: RAW, fetchImpl, proxyFetchImpl }),
+      readPrevious: async () => null,
+      session,
+      now: () => NOW,
+      log: (line) => lines.push(line),
+    })();
+    assert.deepEqual(Object.keys(payload.channels), [ID(1), ID(2)]);
+    assert.ok(validateResolvedPayload(payload));
+    assert.deepEqual(calls.proxy, [[ID(3), 10001]], 'a 407 is account-wide: no other sticky session is tried');
+    assert.equal(session.current, 0);
+    const stats = lines.find((line) => line.includes('stats:'));
+    assert.match(stats, /\bdirect=2 proxy=0 proxied=1\b/, stats);
+    assert.ok(lines.some((line) => line.includes(ID(3)) && line.includes('unreadable/fetch-error') && line.includes('direct bot-wall')), lines.join('\n'));
+  });
+});
+
 describe('resolveRunProxy', () => {
   it('returns the parseProxyConfig route for the raw value, host not rewritten to the curl endpoint', () => {
     assert.deepEqual(resolveRunProxy('gate.decodo.com:7000:u:p'), {
@@ -267,14 +368,24 @@ describe('resolveRunProxy', () => {
   it('reads LIVE_VIDEO_PROXY_URL first and falls back to PROXY_URL, in the shape the registry test derives', () => {
     const source = readFileSync(SEEDER, 'utf8');
     assert.match(source, /resolveRunProxy\(process\.env\.LIVE_VIDEO_PROXY_URL \|\| process\.env\.PROXY_URL\)/);
-    assert.match(source, /fetchChannelLivePage\(id, \{ proxyUrl, attempt \}\)/, 'the raw value and the attempt reach the resolver, so sticky sessions rotate');
+    assert.match(source, /makeFetchPage\(\{ proxyUrl \}\)/, 'the raw value reaches the resolver, so sticky sessions rotate');
   });
 
-  it('exits 0 with NO SOURCE on Railway when neither variable is set, before touching Redis', () => {
-    const env = { PATH: process.env.PATH, RAILWAY_ENVIRONMENT: 'production', NODE_TEST_CONTEXT: 'child-v8' };
-    const child = spawnSync(process.execPath, [SEEDER], { env, encoding: 'utf8', timeout: 30_000 });
+  it('resolves direct on Railway when neither variable is set, instead of giving up', () => {
+    // Every fetch is pointed at a closed port, so the run reads each page unreadable without leaving the machine.
+    const env = {
+      PATH: process.env.PATH,
+      RAILWAY_ENVIRONMENT: 'production',
+      NODE_TEST_CONTEXT: 'child-v8',
+      NODE_USE_ENV_PROXY: '1',
+      HTTPS_PROXY: 'http://127.0.0.1:9',
+    };
+    const child = spawnSync(process.execPath, [SEEDER, '--dry-run'], { env, encoding: 'utf8', timeout: 60_000 });
     assert.equal(child.status, 0, child.stderr);
-    assert.match(child.stdout, /NO SOURCE: LIVE_VIDEO_PROXY_URL\/PROXY_URL unset/);
+    assert.doesNotMatch(child.stdout, /NO SOURCE/);
+    assert.match(child.stdout, /direct only \(no proxy configured\)/);
+    assert.match(child.stdout, /unreadable\/fetch-error/);
+    assert.match(child.stdout, /would exit 75 and keep last-good/);
   });
 });
 

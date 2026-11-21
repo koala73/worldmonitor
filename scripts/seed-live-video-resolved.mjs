@@ -3,8 +3,12 @@
 // Publishes the video each catalog YouTube channel has live right now (#8545), so the Live News and Live Webcams
 // players can try a fresh `watch?v=` id immediately before the channel entry that produced it.
 //
-// Each run reads every channel's public /live page through the Decodo proxy (scripts/lib/live-video-channel-live.mjs,
-// the resolver the daily audit also uses), validates the result (channel id matches, live, embeddable, 11-char id) and
+// Each run reads every channel's public /live page (scripts/lib/live-video-channel-live.mjs, the resolver the daily
+// audit also uses) direct first, and through the paid Decodo proxy only when the direct read gave no verdict: a
+// transport error, a non-2xx, a bot or consent wall, or a page that did not parse. A clean "not live" read is a verdict.
+// Railway's asia-southeast1 IPv4 egress read all 28 channels direct on 2026-11-21, while us-east4 IPv4 got the
+// player-level bot wall on 24 of them, so the proxy stays as the fallback. The run then validates the result (channel
+// id matches, live, embeddable, 11-char id) and
 // publishes only `{ channelId -> { videoId, resolvedAt } }` plus counts. The channel list comes from
 // scripts/shared/live-video-refresh-channels.generated.json (npm run sync:live-video-channels), because this service
 // is packaged from scripts/ alone and cannot read src/.
@@ -26,7 +30,7 @@
 //   - Root directory: scripts
 //   - Start command: node seed-live-video-resolved.mjs
 //   - Cron: 0 */6 * * *
-//   - Variables: UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN, LIVE_VIDEO_PROXY_URL or PROXY_URL
+//   - Variables: UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN; optional fallback LIVE_VIDEO_PROXY_URL or PROXY_URL
 //
 // Dry run (resolves and merges against the live last-good, prints counts and channel -> id, writes nothing):
 //   node scripts/seed-live-video-resolved.mjs --dry-run
@@ -47,7 +51,12 @@ export const LIVE_VIDEO_ACTIVATION_KEY = 'seed-activated:live-video:resolved';
 export const LAST_GOOD_MAX_AGE_MS = 36 * 60 * 60 * 1000;
 /** Same cap as MAX_REFRESH_CHANNELS in scripts/lib/live-video-refresh.mjs (TypeScript-importing, so not imported here). */
 export const MAX_CHANNELS = 60;
-/** No channel page fetch starts after this; one pass takes at most this plus one page's worst case (2 x 15 s). */
+/** A direct page read took under a second from Railway; this bounds a route that hangs before the proxy is tried. */
+export const DIRECT_PAGE_TIMEOUT_MS = 10_000;
+/**
+ * No channel page fetch starts after this. A channel started just before it can still take one direct read and up to three
+ * proxy reads (one plus MAX_PROXY_RETRIES), each up to 2 x 15 s (CHANNEL_PAGE_TIMEOUT_MS): about 100 s past the budget.
+ */
 export const RESOLVE_BUDGET_MS = 3 * 60_000;
 export const RESOLVE_CONCURRENCY = 4;
 const TTL_SECONDS = 7 * 24 * 60 * 60;
@@ -142,6 +151,44 @@ export function resolveRunProxy(raw) {
   return { proxyUrl, route: proxyForAttempt(proxyUrl, 0) };
 }
 
+/**
+ * The resolver's fetchPage: reads the page direct, and through the proxy (routed for `attempt`) only when the direct
+ * read is unreadable and a proxy is configured. A retry after a proxy failure goes straight to the proxy, since the
+ * direct read already failed for this channel. Each result carries `route` ('direct' or 'proxy'), and a proxied one
+ * carries the direct read's reason as `directReason`. Direct reads never set `proxyFailure`, so they never rotate the
+ * proxy session.
+ */
+export function makeFetchPage({
+  proxyUrl,
+  fetchImpl = (...args) => globalThis.fetch(...args),
+  proxyFetchImpl,
+  directTimeoutMs = DIRECT_PAGE_TIMEOUT_MS,
+}) {
+  return async function fetchPage(id, { attempt = 0, retry = false } = {}) {
+    let directReason;
+    if (!retry) {
+      const direct = await fetchChannelLivePage(id, { fetchImpl, timeoutMs: directTimeoutMs });
+      if (direct.status !== 'unreadable' || !proxyUrl) return { ...direct, route: 'direct' };
+      directReason = direct.reason;
+    }
+    const viaProxy = await fetchChannelLivePage(id, { proxyUrl, attempt, proxyFetchImpl });
+    return { ...viaProxy, route: 'proxy', ...(directReason ? { directReason } : {}) };
+  };
+}
+
+/** Log-only route counts: verdicts read direct, verdicts read through the proxy, and channels that needed the proxy. */
+function routeCounts(results) {
+  const counts = { direct: 0, proxy: 0, proxied: 0 };
+  for (const result of results.values()) {
+    if (result?.route === 'proxy') counts.proxied++;
+    if (result?.status === 'live' || result?.status === 'not-live') {
+      if (result.route === 'direct') counts.direct++;
+      else if (result.route === 'proxy') counts.proxy++;
+    }
+  }
+  return counts;
+}
+
 const nonRetryable = (error) => Object.assign(error instanceof Error ? error : new Error(String(error)), { nonRetryable: true });
 
 /**
@@ -171,10 +218,12 @@ export function makeFetchAll({
         const result = results.get(id);
         const kept = result?.status === 'unreadable' && payload.channels[id] ? ` (kept ${payload.channels[id].videoId})` : '';
         const title = result?.title ? ` "${result.title}"` : '';
-        log(`  ${id} [${(slotsById.get(id) ?? []).join(', ')}] ${result?.status ?? 'missing'}${result?.reason ? `/${result.reason}` : ''}${result?.detail ? `: ${String(result.detail).slice(0, 160)}` : ''}${result?.videoId ? ` -> ${result.videoId}` : ''}${title}${kept}`);
+        const route = result?.route ? ` via ${result.route}${result.directReason ? ` (direct ${result.directReason})` : ''}` : '';
+        log(`  ${id} [${(slotsById.get(id) ?? []).join(', ')}] ${result?.status ?? 'missing'}${result?.reason ? `/${result.reason}` : ''}${result?.detail ? `: ${String(result.detail).slice(0, 160)}` : ''}${result?.videoId ? ` -> ${result.videoId}` : ''}${title}${route}${kept}`);
       }
       const { stats } = payload;
-      log(`  stats: ${STAT_FIELDS.map((field) => `${field}=${stats[field]}`).join(' ')} proxySession=${session.current} durationMs=${now() - startedAt}`);
+      const routes = routeCounts(results);
+      log(`  stats: ${STAT_FIELDS.map((field) => `${field}=${stats[field]}`).join(' ')} direct=${routes.direct} proxy=${routes.proxy} proxied=${routes.proxied} proxySession=${session.current} durationMs=${now() - startedAt}`);
       if (stats.attempted > 0 && stats.unreadable === stats.attempted) {
         throw new Error(`every channel page was unreadable (${stats.attempted}); last-good kept`);
       }
@@ -219,17 +268,12 @@ export function guardRedisReadOnly(redisUrl, counts) {
 async function main() {
   loadEnvFile(import.meta.url);
   const dryRun = process.argv.includes('--dry-run');
-  const { proxyUrl, route } = resolveRunProxy(process.env.LIVE_VIDEO_PROXY_URL || process.env.PROXY_URL);
-  if (!route && process.env.RAILWAY_ENVIRONMENT) {
-    // #5256: no later tick can fix a missing variable, so a crash every 6 h would only train the team to ignore the
-    // crash channel. /api/health reports liveVideoResolved EMPTY, then STALE_SEED, which is where the alarm belongs.
-    console.log('NO SOURCE: LIVE_VIDEO_PROXY_URL/PROXY_URL unset or unparseable; published nothing, /api/health carries the alarm');
-    process.exit(0);
-  }
+  const { proxyUrl: rawProxyUrl, route } = resolveRunProxy(process.env.LIVE_VIDEO_PROXY_URL || process.env.PROXY_URL);
+  const proxyUrl = route ? rawProxyUrl : null;
   const channels = loadRefreshChannels();
   const session = { current: 0 };
-  const fetchPage = (id, { attempt }) => fetchChannelLivePage(id, { proxyUrl, attempt });
-  console.log(`live-video resolved: ${channels.length} channels, ${route ? 'through the proxy' : 'direct (no proxy configured)'}${dryRun ? ', dry run' : ''}`);
+  const fetchPage = makeFetchPage({ proxyUrl });
+  console.log(`live-video resolved: ${channels.length} channels, ${route ? 'direct first, proxy fallback' : 'direct only (no proxy configured)'}${dryRun ? ', dry run' : ''}`);
 
   if (dryRun) {
     const hasRedis = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
@@ -263,7 +307,7 @@ async function main() {
     schemaVersion: 1,
     sourceVersion: 'youtube-channel-live-page-v1',
     maxStaleMin: 1080, // 3 x the 0 */6 * * * cron
-    fetchPhaseTimeoutMs: 6 * 60_000, // one worst-case pass (3.5 min) plus the last-good read
+    fetchPhaseTimeoutMs: 6 * 60_000, // one worst-case pass (about 4.7 min) plus the last-good read
     lockTtlMs: 8 * 60_000,
   });
 }

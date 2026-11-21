@@ -1672,7 +1672,7 @@ fetch('https://backboard.railway.com/graphql/v2',{method:'POST',
 | seed-comtrade-bilateral-hs4-ext | `node scripts/seed-comtrade-bilateral-hs4-ext.mjs` | **`0 6 15 * *` (monthly, provisioned 2026-11-18, service `0d46fcc7-19ec-484f-ab8e-506510205704`)** | UN Comtrade bilateral HS4 for 16 extended headings (rubber, cocoa, coconut and palm kernel oil, fruit, fish and seafood, processed food, oleochemicals), one request per reporter (~197 calls) into `comtrade:bilateral-hs4-ext:*`; mid-month so it does not share a day of the 500/day quota with the core run |
 | seed-hs2-chokepoint-exposure | `node scripts/seed-hs2-chokepoint-exposure.mjs` | periodic (TTL-extended) | HS2 chokepoint trade-exposure (derived) |
 | seed-service-statuses | `node scripts/seed-service-statuses.mjs` | **planned — not provisioned** | Service-status warm-ping; primary seeder is the AIS relay loop |
-| seed-live-video-resolved | `node seed-live-video-resolved.mjs` | **`0 */6 * * *` (verified 2026-09-24)** (health budget 1080 min) | The video each catalog YouTube channel has live now, for the Live News and Live Webcams players (#8545); scripts-root service `11581ac4-24ea-4cfc-bf17-471e41305364` (Railpack, `rootDirectory` `scripts`), reads channel `/live` pages through `LIVE_VIDEO_PROXY_URL` or `PROXY_URL` |
+| seed-live-video-resolved | `node seed-live-video-resolved.mjs` | **`0 */6 * * *` (verified 2026-09-24)** (health budget 1080 min) | The video each catalog YouTube channel has live now, for the Live News and Live Webcams players (#8545); scripts-root service `11581ac4-24ea-4cfc-bf17-471e41305364` (Railpack, `rootDirectory` `scripts`), reads channel `/live` pages direct, and through `LIVE_VIDEO_PROXY_URL` or `PROXY_URL` only for a page the direct read could not answer |
 | seed-no2-activity | `node seed-no2-activity.mjs` | **`20 6 * * *` (provisioned 2026-10-27, service `359e5bd7-4160-41d6-8792-f4aff20a3006`)** (health budget 4320 min) | Global Sentinel-5P TROPOMI tropospheric NO2 activity dataset: 199 regions (167 countries from the repository geometry plus 32 industrial clusters), each with a year-over-year direction against the same window in the prior three years; the China activity nowcast reads the four Chinese clusters as its atmosphere family (#9722). 199 CDSE Statistical API refresh requests per run plus up to 90 backfill chunks (about 6,200 requests and 600 PU a month steady state, 1,700 requests and 2,800 PU one-time backfill); needs `CDSE_CLIENT_ID`/`CDSE_CLIENT_SECRET` |
 | seed-imd-cyclone-marine | `node seed-imd-cyclone-marine.mjs` | **`*/15 * * * *` (verified 2026-09-05)** | Official IMD sea-area and coastal marine bulletins from public pages; scripts-root Nixpacks service `5f943d96-5f89-4817-941b-fdc36b71722e` |
 | seed-natural-events | `node seed-natural-events.mjs` | **`*/30 * * * *` (verified 2026-11-07, service `7119c932-05f5-4727-a54f-e4e2de2a907f`)** (health budget 120 min) | EONET, GDACS, NHC, HKO and western-Pacific cyclone events. Sole producer of `natural:events:v1` since 2026-11-07; it also ran as a seed-bundle-climate section until then |
@@ -1692,6 +1692,14 @@ Railway reference variables to `seed-fred-rates`; `LIVE_VIDEO_PROXY_URL` is
 unset, so the seeder uses `PROXY_URL`. The service is enrolled in
 `scripts/railway-native-autodeploy-fleet.json` with `source.checkSuites`
 `false`, like the rest of the fleet.
+
+Since 2026-11-21 the seeder reads each page direct first and uses the proxy
+only for a page the direct read could not answer. The service runs in
+asia-southeast1 with IPv6 egress off. From that region's IPv4 egress, the
+resolver read all 28 channels direct. From us-east4 IPv4 it read 24 of them as
+`bot-wall`, so the proxy stays configured as the fallback. The `stats:` log
+line reports `direct=` (verdicts read direct), `proxy=` (verdicts read through
+the proxy) and `proxied=` (channels that needed the proxy).
 
 `seed-comtrade-bilateral-hs4-ext` was provisioned on 2026-11-18 after #10939
 merged. Its config copies `seed-comtrade-bilateral-hs4`: Railpack, build

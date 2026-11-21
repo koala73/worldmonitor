@@ -402,12 +402,12 @@ describe('proxy session rotation', () => {
 
   it('retries a proxy failure at most twice, then keeps it unreadable', async () => {
     const attempts = [];
-    const fetchPage = async (id, { attempt }) => {
-      attempts.push(attempt);
+    const fetchPage = async (id, { attempt, retry }) => {
+      attempts.push([attempt, retry]);
       return { status: 'unreadable', reason: 'fetch-error', videoId: null, channelId: id, title: null, proxyFailure: true };
     };
     const results = await resolveChannelsLive([CHANNEL], { fetchPage });
-    assert.deepEqual(attempts, [0, 1, 2]);
+    assert.deepEqual(attempts, [[0, false], [1, true], [2, true]], 'a retry is marked, so a caller can skip work that cannot have changed');
     assert.deepEqual([results.get(CHANNEL).status, results.get(CHANNEL).reason], ['unreadable', 'fetch-error']);
   });
 

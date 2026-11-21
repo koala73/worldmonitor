@@ -2280,11 +2280,7 @@
     "startCommand": "node seed-live-video-resolved.mjs",
     "requiredEnv": [
       "UPSTASH_REDIS_REST_URL",
-      "UPSTASH_REDIS_REST_TOKEN",
-      [
-        "LIVE_VIDEO_PROXY_URL",
-        "PROXY_URL"
-      ]
+      "UPSTASH_REDIS_REST_TOKEN"
     ],
     "watchPatterns": [
       "scripts/_env-file.mjs",
