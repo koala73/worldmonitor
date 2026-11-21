@@ -17,6 +17,7 @@ import {
   evidenceFromItem,
   type Corroboration,
 } from '@/utils/corroboration-flag';
+import { safeStorageGetChecked, safeStorageSet, safeStorageSetChecked } from '@/utils/safe-storage';
 
 export interface BreakingAlert {
   id: string;
@@ -112,7 +113,9 @@ function makeAlertKey(headline: string, source: string, link?: string): string {
 
 function loadDedupeMap(): void {
   try {
-    const raw = localStorage.getItem(DEDUPE_KEY);
+    // Best effort: a dedupe map that cannot be read only means an alert the
+    // reader already saw may fire once more.
+    const raw = safeStorageGetChecked(DEDUPE_KEY).value;
     if (!raw) return;
     const entries: Array<[string, number]> = JSON.parse(raw);
     const now = Date.now();
@@ -125,35 +128,48 @@ function loadDedupeMap(): void {
 }
 
 function saveDedupeMap(): void {
-  try {
-    const entries = [...dedupeMap.entries()];
-    localStorage.setItem(DEDUPE_KEY, JSON.stringify(entries));
-  } catch {}
+  // Best effort, as above: nothing downstream records that this landed.
+  const entries = [...dedupeMap.entries()];
+  safeStorageSet(DEDUPE_KEY, JSON.stringify(entries));
 }
 
 // ─── Settings ──────────────────────────────────────────────────────────────
 
 export function getAlertSettings(): AlertSettings {
   if (cachedSettings) return cachedSettings;
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      cachedSettings = { ...DEFAULT_SETTINGS, ...parsed };
+  const read = safeStorageGetChecked(SETTINGS_KEY);
+  if (read.value) {
+    try {
+      cachedSettings = { ...DEFAULT_SETTINGS, ...JSON.parse(read.value) };
       return cachedSettings!;
-    }
-  } catch {}
-  cachedSettings = { ...DEFAULT_SETTINGS };
-  return cachedSettings;
+    } catch {}
+  }
+  const defaults = { ...DEFAULT_SETTINGS };
+  // Only pin the cache when storage actually answered. A failed read that
+  // cached the defaults would hold `enabled: true` for the rest of the page
+  // view even after storage recovered, so a stored opt-out never took effect.
+  if (read.ok) cachedSettings = defaults;
+  return defaults;
 }
 
-export function updateAlertSettings(partial: Partial<AlertSettings>): void {
+/**
+ * Returns whether the change was persisted.
+ *
+ * These settings are an opt-out from a notification that fans out to push,
+ * Telegram, Slack and email, so absence is intent, not a default. Swallowing
+ * a `QuotaExceededError` here left `cachedSettings` claiming the new value:
+ * the caller re-rendered the switch from that cache, the user saw the opt-out
+ * take effect, and the next page load read the old `enabled: true` and
+ * resumed alerting. `wm-breaking-alerts-v1` is also a CLOUD_SYNC_KEY, so the
+ * opt-out never reached the user's other devices either.
+ */
+export function updateAlertSettings(partial: Partial<AlertSettings>): boolean {
   const current = getAlertSettings();
   const updated = { ...current, ...partial };
-  cachedSettings = updated;
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
-  } catch {}
+  const persisted = safeStorageSetChecked(SETTINGS_KEY, JSON.stringify(updated));
+  // Do not let the in-memory copy assert a change that storage rejected.
+  cachedSettings = persisted ? updated : current;
+  return persisted;
 }
 
 // ─── Gate checks ───────────────────────────────────────────────────────────
