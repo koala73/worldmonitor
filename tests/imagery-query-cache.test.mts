@@ -16,6 +16,8 @@ function setup(t: TestContext) {
   const redis = createRedisFetch({});
   const bodies: Array<{ bbox: number[]; datetime: string; collections: string[]; limit: number }> = [];
   const urls: string[] = [];
+  // STAC answers 200 unless a test says otherwise.
+  const control = { stacStatus: 200 };
   t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     urls.push(url);
@@ -23,12 +25,13 @@ function setup(t: TestContext) {
     assert.equal(url, 'https://earth-search.aws.element84.com/v1/search');
     assert.equal(init?.method, 'POST');
     bodies.push(JSON.parse(String(init?.body)));
+    if (control.stacStatus !== 200) return new Response(null, { status: control.stacStatus });
     return Response.json({ features: [{
       id: `scene-${bodies.length}`, properties: { datetime: request.datetime }, geometry: null,
       assets: { thumbnail: { href: 's3://fixture-bucket/preview.png' }, visual: { href: 'http://127.0.0.1/private' } },
     }] });
   });
-  return { bodies, urls, redis };
+  return { bodies, urls, redis, control };
 }
 
 test('unknown and legacy sources selecting default collections share one cache entry', async t => {
@@ -103,4 +106,32 @@ test('historical date ranges and open bounds stay supported; response URLs are n
   }
   assert.equal(bodies.length, 3);
   assert.ok(urls.every(url => url.startsWith('https://redis.test/') || url === 'https://earth-search.aws.element84.com/v1/search'));
+});
+
+// A transient provider failure used to be stored as a successful empty result
+// for CACHE_TTL, so one 503 answered "no scenes over this box" to every caller
+// of that query for the next hour, and the call was reported upstream as a 200.
+test('a failed STAC search is negative-cached, not stored as an hour of "no scenes"', async t => {
+  const { bodies, redis, control } = setup(t);
+  control.stacStatus = 503;
+
+  const failed = await searchImagery({} as never, request);
+  assert.deepEqual(failed, { scenes: [], totalResults: 0, cacheHit: false });
+  assert.equal(bodies.length, 1, 'the provider was asked');
+
+  const key = [...redis.redis.keys()].find(name => name.startsWith('imagery:search:v2:'));
+  assert.ok(key, 'the failed search leaves a cache marker');
+  const stored = redis.redis.get(key)!;
+  assert.doesNotMatch(stored, /scenes/, 'a provider failure is not a positive empty result');
+  assert.match(stored, /__WM_NEG__/, 'it takes the negative-sentinel path');
+  assert.ok(redis.expires.get(key)! <= 300, `a failure must not hold the 1h positive TTL (got ${redis.expires.get(key)})`);
+});
+
+// Positive control: a real empty answer from a healthy provider still caches.
+test('a healthy STAC answer is cached positively for the full hour', async t => {
+  const { redis } = setup(t);
+  await searchImagery({} as never, request);
+  const key = [...redis.redis.keys()].find(name => name.startsWith('imagery:search:v2:'))!;
+  assert.match(redis.redis.get(key)!, /scenes/);
+  assert.equal(redis.expires.get(key), 3600);
 });
