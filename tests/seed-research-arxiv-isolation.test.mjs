@@ -92,3 +92,57 @@ test('the arXiv query asks for the newest submissions first', async () => {
   assert.equal(params.get('sortBy'), 'submittedDate');
   assert.equal(params.get('sortOrder'), 'descending');
 });
+
+// A non-ok status used to end the loop with `[]` whatever the status was, so
+// the bounded retry above could never engage on 503 — the status arXiv
+// actually answers an overloaded or rate-limited caller with — and the outage
+// was reported downstream as a category that simply published nothing.
+const errResp = (status, headers) => ({ ok: false, status, headers: new Headers(headers ?? {}) });
+
+test('a 503 from arXiv is retried, not reported as a category with no papers', async () => {
+  let aiAttempts = 0;
+  const slept = [];
+  const fetchFn = async (url) => {
+    if (url.includes('cat:cs.AI')) {
+      aiAttempts += 1;
+      if (aiAttempts === 1) return errResp(503, { 'Retry-After': '1' });
+    }
+    return okResp(arxivXml(`${catOf(url)}-1`, 'paper'));
+  };
+
+  const papers = await fetchArxivCategory('cs.AI', {
+    fetchFn, retries: 1, sleepFn: async (ms) => { slept.push(ms); },
+  });
+
+  assert.equal(aiAttempts, 2, 'the retryable status must use the retry');
+  assert.equal(papers.length, 1, 'the recovered attempt supplies the papers');
+  assert.deepEqual(slept, [2000], 'a short Retry-After does not shorten the floor');
+});
+
+test('a Retry-After longer than the floor is honoured, up to the cap', async () => {
+  const slept = [];
+  const fetchFn = async () => errResp(503, { 'Retry-After': '45' });
+  await assert.rejects(
+    fetchArxivCategory('cs.AI', { fetchFn, retries: 1, sleepFn: async (ms) => { slept.push(ms); } }),
+    /HTTP 503/,
+  );
+  assert.deepEqual(slept, [10_000], 'honoured but capped, so one outage cannot stall the run');
+});
+
+test('a permanent status still yields [] in one call, with no retry', async () => {
+  let attempts = 0;
+  const fetchFn = async () => { attempts += 1; return errResp(404); };
+  const papers = await fetchArxivCategory('cs.AI', { fetchFn, retries: 1, sleepFn: noSleep });
+  assert.deepEqual(papers, []);
+  assert.equal(attempts, 1, 'a 404 is not worth a second attempt');
+});
+
+test('a category whose 503 outlasts the retry is isolated, not counted as zero papers', async () => {
+  const fetchFn = async (url) => {
+    if (url.includes('cat:cs.AI')) return errResp(503);
+    return okResp(arxivXml(`${catOf(url)}-1`, 'paper'));
+  };
+  const results = await fetchArxivPapers({ fetchFn, retries: 1, sleepFn: noSleep });
+  assert.ok(!results['research:arxiv:v1:cs.AI::50'], 'a failed read is absent, not an empty success');
+  assert.ok(results['research:arxiv:v1:cs.CR::50'], 'other categories are unaffected');
+});
