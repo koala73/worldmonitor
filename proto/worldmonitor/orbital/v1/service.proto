@@ -7,6 +7,7 @@ import "worldmonitor/orbital/v1/get_country_imagery_evidence.proto";
 import "worldmonitor/orbital/v1/get_point_passes.proto";
 import "worldmonitor/orbital/v1/get_watched_site_imagery.proto";
 import "worldmonitor/orbital/v1/list_imaging_satellites.proto";
+import "worldmonitor/orbital/v1/list_satellite_maneuvers.proto";
 
 // OrbitalService serves the orbit data behind the point lookup of which satellites imaged a place.
 service OrbitalService {
@@ -30,5 +31,10 @@ service OrbitalService {
   // GetWatchedSiteImagery returns one watched site's newest image and next imaging pass, looked up by the site's registry id so no point is sent.
   rpc GetWatchedSiteImagery(GetWatchedSiteImageryRequest) returns (GetWatchedSiteImageryResponse) {
     option (sebuf.http.config) = {path: "/get-watched-site-imagery", method: HTTP_METHOD_GET};
+  }
+
+  // ListSatelliteManeuvers returns candidate orbit manoeuvres of the profiled imaging satellites, each with both element sets and the threshold applied, and whether each satellite could be judged.
+  rpc ListSatelliteManeuvers(ListSatelliteManeuversRequest) returns (ListSatelliteManeuversResponse) {
+    option (sebuf.http.config) = {path: "/list-satellite-maneuvers", method: HTTP_METHOD_GET};
   }
 }

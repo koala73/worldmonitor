@@ -5449,7 +5449,15 @@
       "count_other": "{{count}} locais dentro da área de cobertura de {{family}}",
       "passes_one": "{{count}} passagem",
       "passes_many": "{{count}} passagens",
-      "passes_other": "{{count}} passagens"
+      "passes_other": "{{count}} passagens",
+      "maneuver": "Possível manobra {{date}}: {{change}}",
+      "maneuverRaised": "órbita elevada em {{km}} km",
+      "maneuverLowered": "órbita rebaixada em {{km}} km",
+      "maneuverInclination": "inclinação alterada em {{deg}}°",
+      "maneuverPlane": "nó ascendente deslocado {{deg}}°",
+      "maneuverHint": "Seus elementos orbitais se afastaram da tendência do próprio satélite. É uma manobra possível, não confirmada.",
+      "maneuverShort": "possível manobra {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · desvio da tendência {{residual}}, limiar {{threshold}} · conjuntos de elementos {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "Satélites seguidos sobre este local · próximas {{hours}} h",

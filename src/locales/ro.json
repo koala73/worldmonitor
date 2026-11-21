@@ -5449,7 +5449,15 @@
       "count_other": "{{count}} de locații în amprenta {{family}}",
       "passes_one": "{{count}} trecere",
       "passes_few": "{{count}} treceri",
-      "passes_other": "{{count}} de treceri"
+      "passes_other": "{{count}} de treceri",
+      "maneuver": "Manevră posibilă {{date}}: {{change}}",
+      "maneuverRaised": "orbita ridicată cu {{km}} km",
+      "maneuverLowered": "orbita coborâtă cu {{km}} km",
+      "maneuverInclination": "înclinația schimbată cu {{deg}}°",
+      "maneuverPlane": "nodul ascendent deplasat cu {{deg}}°",
+      "maneuverHint": "Elementele orbitale s-au abătut de la tendința proprie a satelitului. Este o manevră posibilă, nu confirmată.",
+      "maneuverShort": "manevră posibilă {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · abatere de la tendință {{residual}}, prag {{threshold}} · seturi de elemente {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "Sateliți urmăriți deasupra acestei locații · următoarele {{hours}} h",

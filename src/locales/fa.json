@@ -5417,7 +5417,15 @@
       "count_one": "{{count}} سایت درون محدودهٔ پوشش {{family}}",
       "count_other": "{{count}} سایت درون محدودهٔ پوشش {{family}}",
       "passes_one": "{{count}} گذر",
-      "passes_other": "{{count}} گذر"
+      "passes_other": "{{count}} گذر",
+      "maneuver": "مانور احتمالی {{date}}: {{change}}",
+      "maneuverRaised": "مدار {{km}} کیلومتر بالا رفت",
+      "maneuverLowered": "مدار {{km}} کیلومتر پایین آمد",
+      "maneuverInclination": "میل مداری {{deg}}° تغییر کرد",
+      "maneuverPlane": "گره صعودی {{deg}}° جابه‌جا شد",
+      "maneuverHint": "عناصر مداری آن از روند خود ماهواره فاصله گرفت. این یک مانور احتمالی است، نه تأییدشده.",
+      "maneuverShort": "مانور احتمالی {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · انحراف از روند {{residual}}، آستانه {{threshold}} · مجموعه‌های عناصر {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "ماهواره‌های ردیابی‌شده بر فراز این سایت · {{hours}} ساعت آینده",

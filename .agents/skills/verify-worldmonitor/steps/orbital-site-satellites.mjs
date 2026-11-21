@@ -29,7 +29,7 @@ async function resourceText() {
   return text;
 }
 
-async function resourceTles() {
+export async function resourceTles() {
   const lines = (await resourceText()).split(/\r?\n/).map((l) => l.trimEnd()).filter(Boolean);
   const satellites = [];
   for (let i = 0; i + 2 < lines.length; i += 3) {

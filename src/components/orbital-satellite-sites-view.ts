@@ -11,6 +11,7 @@ import {
   type SiteCoverage,
   type TrackedSatelliteTle,
 } from '@/services/orbital/satellite-site-coverage';
+import { loadRecentManeuvers, maneuverChange, maneuverDay, maneuverExpired, maneuverReceipt, type ManeuverCandidate } from '@/services/orbital/satellite-maneuvers';
 
 const HOUR_MS = 3_600_000;
 const MINUTE_MS = 60_000;
@@ -58,6 +59,23 @@ function siteRow(entry: SiteCoverage, nowMs: number): HTMLElement {
   return row;
 }
 
+/**
+ * The candidate-manoeuvre line under the heading: a step in the orbit elements, never a confirmed
+ * burn (#9110). It opens to the receipt: what a candidate is, both element sets' values, how far
+ * the step left the trend and the threshold it crossed, and the epochs compared. Exported for tests.
+ */
+export function maneuverNote(candidate: ManeuverCandidate): HTMLElement {
+  const change = maneuverChange(candidate);
+  const node = el('details', 'osat-sites-maneuver');
+  node.dataset.element = candidate.element;
+  const summary = el('summary', 'osat-sites-maneuver-summary', t(`${KEY}.maneuver`, { date: maneuverDay(candidate), change: t(`${KEY}.${change.key}`, change.values) }));
+  const hint = el('p', 'osat-sites-maneuver-hint', t(`${KEY}.maneuverHint`));
+  const values = maneuverReceipt(candidate);
+  const receipt = values ? [el('p', 'osat-sites-maneuver-receipt', t(`${KEY}.maneuverReceipt`, values))] : [];
+  node.replaceChildren(summary, hint, ...receipt);
+  return node;
+}
+
 /** The body of the section for one coverage answer. Exported for tests. */
 export function coverageNodes(coverage: SatelliteCoverage, nowMs: number): HTMLElement[] {
   switch (coverage.status) {
@@ -84,7 +102,7 @@ export function coverageNodes(coverage: SatelliteCoverage, nowMs: number): HTMLE
 }
 
 /** What a section host shows, so it can be drawn again in the current language. */
-type SectionState = { kind: 'note'; key: string } | { kind: 'coverage'; coverage: SatelliteCoverage };
+type SectionState = { kind: 'note'; key: string } | { kind: 'coverage'; coverage: SatelliteCoverage; maneuver: ManeuverCandidate | null };
 const sections = new WeakMap<HTMLElement, SectionState>();
 /** The element set (both TLE lines) a section's scan ran on; null when none was loaded. */
 const scannedFrom = new WeakMap<HTMLElement, string | null>();
@@ -102,7 +120,10 @@ function draw(host: HTMLElement, state: SectionState, nowMs: number): void {
   if (shown) listScroll.set(host, shown.scrollTop);
   const heading = el('span', 'osat-sites-label', t(`${KEY}.heading`, { hours: COVERAGE_WINDOW_HOURS }));
   const body = state.kind === 'note' ? [note(t(state.key))] : coverageNodes(state.coverage, nowMs);
-  host.replaceChildren(heading, ...body);
+  const maneuver = state.kind === 'coverage' && state.maneuver ? [maneuverNote(state.maneuver)] : [];
+  // The clock tick and the language redraw rebuild the section; an opened receipt stays open.
+  if (maneuver[0] && host.querySelector<HTMLDetailsElement>('details.osat-sites-maneuver')?.open) (maneuver[0] as HTMLDetailsElement).open = true;
+  host.replaceChildren(heading, ...maneuver, ...body);
   const list = host.querySelector('.osat-sites-list');
   const scroll = listScroll.get(host) ?? 0;
   if (list && scroll) list.scrollTop = scroll;
@@ -133,11 +154,17 @@ export function satelliteSitesOutdated(host: HTMLElement, noradId: string): bool
  * section should be computed again.
  */
 export function advanceSatelliteSites(host: HTMLElement, nowMs: number): 'current' | 'rescan' {
-  const state = sections.get(host);
+  let state = sections.get(host);
+  // A candidate line ages out on its own clock, whatever the coverage status: a card with no
+  // sensor profile never rescans, so its line would otherwise stay as long as the card is open.
+  if (state?.kind === 'coverage' && state.maneuver && maneuverExpired(state.maneuver, nowMs)) {
+    state = { ...state, maneuver: null };
+    draw(host, state, nowMs);
+  }
   if (state?.kind !== 'coverage' || state.coverage.status !== 'ok') return 'current';
   const coverage = state.coverage;
   if (nowMs - coverage.windowStartMs >= COVERAGE_RENEW_MS) return 'rescan';
-  draw(host, { kind: 'coverage', coverage: coverageAt(coverage, nowMs) }, nowMs);
+  draw(host, { ...state, coverage: coverageAt(coverage, nowMs) }, nowMs);
   return 'current';
 }
 
@@ -161,6 +188,8 @@ export async function renderSatelliteSites(host: HTMLElement, noradId: string, n
     return null;
   }
   const nowMs = Date.now();
+  // Started alongside the scan; it never rejects, and a failure only leaves the marker out.
+  const maneuvers = loadRecentManeuvers(nowMs);
   let coverage: SatelliteCoverage;
   try {
     const sites = await loadWatchedSites();
@@ -173,6 +202,16 @@ export async function renderSatelliteSites(host: HTMLElement, noradId: string, n
   }
   // A scan of an element set the layer has since replaced is never painted; the card rescans.
   if (signal?.aborted || !host.isConnected || elementSetKey(noradId) !== key) return null;
-  draw(host, { kind: 'coverage', coverage }, Date.now());
+  // The sites are drawn as soon as they are ready; the optional candidate line follows when its
+  // read answers, so a slow or failed read never holds the list back. A rescan keeps the line it had.
+  const kept = renewing && shown?.kind === 'coverage' ? shown.maneuver : null;
+  draw(host, { kind: 'coverage', coverage, maneuver: kept }, Date.now());
+  void maneuvers.then((recent) => {
+    if (signal?.aborted || !host.isConnected || elementSetKey(noradId) !== key) return;
+    const state = sections.get(host);
+    const maneuver = recent.get(noradId) ?? null;
+    if (state?.kind !== 'coverage' || state.maneuver === maneuver) return;
+    draw(host, { ...state, maneuver }, Date.now());
+  });
   return coverage;
 }

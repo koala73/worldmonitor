@@ -5385,7 +5385,15 @@
       },
       "tooOld_other": "궤도 요소가 {{count}}일 전 것이어서 통과를 계산하기에는 너무 오래되었습니다.",
       "count_other": "{{family}} 관측 범위 내 {{count}}개 지점",
-      "passes_other": "{{count}}회 통과"
+      "passes_other": "{{count}}회 통과",
+      "maneuver": "기동 가능성 {{date}}: {{change}}",
+      "maneuverRaised": "궤도 {{km}} km 상승",
+      "maneuverLowered": "궤도 {{km}} km 하강",
+      "maneuverInclination": "궤도 경사 {{deg}}° 변경",
+      "maneuverPlane": "승교점 {{deg}}° 이동",
+      "maneuverHint": "궤도 요소가 위성 자체의 추세에서 벗어났습니다. 확인된 기동이 아니라 가능성입니다.",
+      "maneuverShort": "기동 가능성 {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · 추세 이탈 {{residual}}, 임계값 {{threshold}} · 궤도 요소 {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "이 지점 상공의 추적 위성 · 다음 {{hours}}시간",
