@@ -11,6 +11,14 @@
 // release's manifest.json, so a file from a different release, a truncated
 // download or an edited file is an ingest failure, not data.
 //
+// The build cuts a release only when a list changed, so a release's age alone
+// cannot tell a quiet week from a stopped build. Each run also rewrites a status
+// heartbeat. A list is current when that heartbeat (at most 30h old, build_ok)
+// reports a working agency pull with the same sha256 and row count as the
+// manifest of its last_release_tag, or when the release itself is under 30h old.
+// Any other list is an ingest error for that list only, so the seeder keeps its
+// last good rows for 48h. An affiliates error does not touch these lists.
+//
 // Like the CSL, these rows feed screening and the change feed only, never
 // pressure scores or country counts. Tests import this module, not the seeder.
 
@@ -21,6 +29,11 @@ import { normalizeName, readResponseLimited } from './_sema-sanctions.mjs';
 
 export const URP_RELEASE_URL = 'https://github.com/Mattbusel/us-restricted-parties/releases/latest/download/';
 export const URP_MANIFEST_URL = `${URP_RELEASE_URL}manifest.json`;
+export const URP_STATUS_URL = 'https://raw.githubusercontent.com/Mattbusel/us-restricted-parties/status/status.json';
+const URP_TAG_RELEASE_URL = 'https://github.com/Mattbusel/us-restricted-parties/releases/download/';
+const URP_RELEASE_TAG = /^data-\d{4}-\d{2}-\d{2}$/;
+// The build runs daily; past 30h without a run the lists are unconfirmed.
+export const URP_CONFIRM_MAX_AGE_MS = 30 * 60 * 60 * 1000;
 // Each list file is under 200 KB today; the manifest is about 8 KB.
 export const URP_MAX_BYTES = 4 * 1024 * 1024;
 // Runs alongside SEMA (45s), so it adds nothing to the fetch phase.
@@ -31,6 +44,7 @@ const URP_ASSET_ORIGIN = 'https://release-assets.githubusercontent.com';
 const URP_HOSTS = new Set([
   new URL(URP_RELEASE_URL).hostname,
   new URL(URP_ASSET_ORIGIN).hostname,
+  new URL(URP_STATUS_URL).hostname,
   'objects.githubusercontent.com',
 ]);
 const URP_REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
@@ -123,6 +137,36 @@ export function parseUrpList(list, body, entry, nowMs) {
   return { records: [...records.values()], publishedAt: fetchedAt, error: null };
 }
 
+/**
+ * The heartbeat when it can confirm lists: schema 1, build_ok, generated in the
+ * last 30h and naming a data release. Anything else is null, never an error.
+ */
+export function usableUrpHeartbeat(heartbeat, nowMs) {
+  if (heartbeat?.schema !== 1 || heartbeat.build_ok !== true || !URP_RELEASE_TAG.test(text(heartbeat.last_release_tag))) return null;
+  const generatedAt = Date.parse(text(heartbeat.generated_at));
+  if (!Number.isSafeInteger(generatedAt) || generatedAt > nowMs || nowMs - generatedAt > URP_CONFIRM_MAX_AGE_MS) return null;
+  if (!heartbeat.lists || typeof heartbeat.lists !== 'object') return null;
+  return heartbeat;
+}
+
+/**
+ * Confirm a parsed list against the heartbeat. Returns the parsed result with the
+ * heartbeat's agency read time, the release result if its own read is under 30h
+ * old, or URP_UNCONFIRMED so the seeder applies its 48h last-good fallback.
+ */
+export function confirmUrpList(list, parsed, entry, heartbeat, nowMs) {
+  if (parsed.error) return parsed;
+  const status = heartbeat?.lists?.[list];
+  const readAt = Date.parse(text(status?.fetched_at));
+  if (status?.upstream_ok === true && text(status.sha256).toLowerCase() === entry.sha256.toLowerCase()
+    && status.rows === entry.records && Number.isSafeInteger(readAt) && readAt <= nowMs
+    && nowMs - readAt <= URP_CONFIRM_MAX_AGE_MS) {
+    return { ...parsed, publishedAt: Math.max(parsed.publishedAt, readAt) };
+  }
+  if (nowMs - parsed.publishedAt <= URP_CONFIRM_MAX_AGE_MS) return parsed;
+  return { records: [], publishedAt: 0, error: 'URP_UNCONFIRMED' };
+}
+
 /** Milliseconds the downloads may take before `deadlineAt`, or 0 when too little is left. */
 export function urpFetchBudget(deadlineAt, nowMs, timeoutMs = URP_TIMEOUT_MS) {
   const budget = Math.min(timeoutMs, deadlineAt - nowMs);
@@ -148,8 +192,10 @@ async function download(fetchFn, url, { accept, signal, maxBytes, observe = () =
 }
 
 /**
- * Fetch the manifest and the four list files without throwing. A failed manifest
- * is an error for every list; a failed list file is an error for that list only.
+ * Fetch the heartbeat, the manifest and the four list files without throwing. A
+ * failed manifest is an error for every list; a failed list file or a list the
+ * heartbeat cannot confirm is an error for that list only. A missing heartbeat
+ * falls back to the latest release.
  */
 export async function ingestUsRestrictedEntries({
   fetchFn = globalThis.fetch,
@@ -163,7 +209,14 @@ export async function ingestUsRestrictedEntries({
   try {
     return await withSourceRequestDiagnostics({ source: 'us-restricted-parties' }, async observe => {
       const signal = AbortSignal.timeout(budget);
-      const manifest = JSON.parse((await download(fetchFn, URP_MANIFEST_URL,
+      let heartbeat = null;
+      try {
+        heartbeat = usableUrpHeartbeat(JSON.parse((await download(fetchFn, URP_STATUS_URL,
+          { accept: 'application/json', signal, maxBytes })).toString('utf8')), now);
+      } catch { /* no heartbeat: only a release under 30h old confirms its lists */ }
+      // Read the release the heartbeat checked, so its hashes describe these files.
+      const releaseUrl = heartbeat ? `${URP_TAG_RELEASE_URL}${heartbeat.last_release_tag}/` : URP_RELEASE_URL;
+      const manifest = JSON.parse((await download(fetchFn, `${releaseUrl}manifest.json`,
         { accept: 'application/json', signal, maxBytes, observe })).toString('utf8'));
       if (!manifest || typeof manifest.lists !== 'object' || manifest.lists === null) return { lists: {}, error: 'URP_INVALID_MANIFEST' };
       const results = await Promise.all(Object.entries(URP_LISTS).map(async ([list, source]) => {
@@ -176,8 +229,8 @@ export async function ingestUsRestrictedEntries({
           return [source, { records: [], publishedAt: 0, error: 'URP_LIST_MISSING' }];
         }
         try {
-          const body = await download(fetchFn, `${URP_RELEASE_URL}${file}`, { accept: 'application/x-ndjson, */*', signal, maxBytes });
-          return [source, parseUrpList(list, body, entry, now)];
+          const body = await download(fetchFn, `${releaseUrl}${file}`, { accept: 'application/x-ndjson, */*', signal, maxBytes });
+          return [source, confirmUrpList(list, parseUrpList(list, body, entry, now), entry, heartbeat, now)];
         } catch {
           return [source, { records: [], publishedAt: 0, error: signal.aborted ? 'URP_FETCH_DEADLINE' : 'URP_FETCH_FAILED' }];
         }

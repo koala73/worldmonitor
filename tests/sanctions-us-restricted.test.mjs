@@ -5,7 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  URP_MANIFEST_URL, URP_RELEASE_URL, URP_SOURCES, URP_TIMEOUT_MS,
+  URP_MANIFEST_URL, URP_RELEASE_URL, URP_SOURCES, URP_STATUS_URL, URP_TIMEOUT_MS,
   ingestUsRestrictedEntries, parseUrpList, sha256Hex, urpFetchBudget,
 } from '../scripts/_us-restricted-sanctions.mjs';
 import { screenSanctions } from '../server/_shared/sanctions-screen.ts';
@@ -14,14 +14,36 @@ const file = name => readFileSync(new URL(`./fixtures/us-restricted-parties/${na
 const manifest = JSON.parse(file('manifest.json').toString('utf8'));
 const now = Date.UTC(2026, 10, 18, 12);
 
-// Serves the fixture release the way GitHub does: latest/download lands on the asset host.
-function release({ files = {}, status = {} } = {}) {
+const iso = ms => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+const TAG_RELEASE_URL = 'https://github.com/Mattbusel/us-restricted-parties/releases/download/data-2026-11-18/';
+
+// A status.json run at `at` that rebuilt the fixture release unchanged.
+function heartbeat(at, lists = {}, extra = {}) {
+  return {
+    schema: 1, url: URP_STATUS_URL, generated_at: iso(at), ok: true, build_ok: true, job_status: 'success',
+    last_release_tag: 'data-2026-11-18', released_this_run: false, lists_unchanged_since_last_release: true,
+    lists: Object.fromEntries(Object.entries(manifest.lists).map(([key, entry]) => [key, {
+      fetched_at: iso(at), upstream_ok: true, rows: entry.records, sha256: entry.sha256,
+      data_date: iso(at).slice(0, 10), error: null, ...lists[key],
+    }])),
+    affiliates: { built: true, upstream_ok: true, stale: false, error: null },
+    errors: {},
+    ...extra,
+  };
+}
+
+// Serves the fixture release the way GitHub does: release downloads land on the
+// asset host. Without a heartbeat, status.json is a 404.
+function release({ files = {}, status = {}, heartbeat: hb = null } = {}) {
   const seen = [];
   const assetOrigin = 'https://release-assets.githubusercontent.com/';
   const fetchFn = async (url, init) => {
     seen.push({ url, init });
-    if (url.startsWith(URP_RELEASE_URL)) {
-      return Response.redirect(assetOrigin + url.slice(URP_RELEASE_URL.length), 302);
+    if (url === URP_STATUS_URL) {
+      return hb === null ? new Response('404: Not Found', { status: 404 }) : new Response(typeof hb === 'string' ? hb : JSON.stringify(hb));
+    }
+    for (const base of [URP_RELEASE_URL, TAG_RELEASE_URL]) {
+      if (url.startsWith(base)) return Response.redirect(assetOrigin + url.slice(base.length), 302);
     }
     assert.ok(url.startsWith(assetOrigin));
     const name = url.slice(assetOrigin.length);
@@ -95,9 +117,10 @@ describe('US restricted-party list ingest', () => {
     assert.deepEqual(URP_SOURCES.slice().sort(), ['US-1260H', 'US-889', 'US-FCC', 'US-UFLPA']);
     assert.deepEqual(Object.keys(lists).sort(), [...URP_SOURCES].sort());
     assert.ok(Object.values(lists).every(list => list.error === null && list.records.length > 0));
-    assert.equal(seen[0].url, URP_MANIFEST_URL);
+    assert.equal(seen[0].url, URP_STATUS_URL);
+    assert.equal(seen[1].url, URP_MANIFEST_URL);
     assert.ok(!seen.some(({ url }) => url.includes('biosecure')));
-    assert.equal(seen.length, 10);
+    assert.equal(seen.length, 11);
     assert.ok(seen.every(({ init }) => init.redirect === 'manual' && init.headers['User-Agent'] && init.signal === seen[0].init.signal));
   });
 
@@ -113,8 +136,9 @@ describe('US restricted-party list ingest', () => {
 
   it('rejects a reported upstream failure while keeping the other lists from an older release', async () => {
     const reportedFailure = { ...manifest, errors: { us_fcc_covered: 'agency request failed' } };
-    const { fetchFn, seen } = release({ files: { 'manifest.json': JSON.stringify(reportedFailure) } });
-    const { lists, error } = await ingestUsRestrictedEntries({ fetchFn, now: now + 30 * 86400_000 });
+    const later = now + 30 * 86400_000;
+    const { fetchFn, seen } = release({ files: { 'manifest.json': JSON.stringify(reportedFailure) }, heartbeat: heartbeat(later - 3600_000) });
+    const { lists, error } = await ingestUsRestrictedEntries({ fetchFn, now: later });
     assert.equal(error, null);
     assert.equal(lists['US-FCC'].error, 'URP_UPSTREAM_FAILED');
     assert.ok(!seen.some(({ url }) => url.endsWith('us_fcc_covered.jsonl')));
@@ -158,7 +182,7 @@ describe('US restricted-party list ingest', () => {
         return Response.redirect(location, 302);
       };
       assert.deepEqual(await ingestUsRestrictedEntries({ fetchFn, now }), { lists: {}, error: 'URP_UNEXPECTED_HOST' });
-      assert.deepEqual(seen, [URP_MANIFEST_URL]);
+      assert.deepEqual(seen, [URP_STATUS_URL, URP_MANIFEST_URL]);
     }
   });
 
@@ -169,7 +193,7 @@ describe('US restricted-party list ingest', () => {
       return new Response(null, { status: 302, headers: { Location: './manifest.json' } });
     };
     assert.deepEqual(await ingestUsRestrictedEntries({ fetchFn, now }), { lists: {}, error: 'URP_INVALID_REDIRECT' });
-    assert.equal(requests, 4);
+    assert.equal(requests, 8, 'four for the heartbeat, four for the manifest');
   });
 
   it('skips the download when the deadline leaves too little time', async () => {
@@ -178,6 +202,89 @@ describe('US restricted-party list ingest', () => {
     const { fetchFn, seen } = release();
     assert.deepEqual(await ingestUsRestrictedEntries({ fetchFn, deadlineAt: Date.now() + 1_000 }), { lists: {}, error: 'URP_FETCH_DEADLINE' });
     assert.equal(seen.length, 0);
+  });
+});
+
+describe('US restricted-party heartbeat', () => {
+  // Five quiet days after the 2026-11-18 release: no new release, daily heartbeats.
+  const later = now + 5 * 86400_000;
+  const UNCONFIRMED = { records: [], publishedAt: 0, error: 'URP_UNCONFIRMED' };
+
+  it('keeps serving an unchanged release that a fresh heartbeat confirms', async () => {
+    const ranAt = later - 2 * 3600_000;
+    const { fetchFn, seen } = release({ heartbeat: heartbeat(ranAt) });
+    const { lists, error } = await ingestUsRestrictedEntries({ fetchFn, now: later });
+    assert.equal(error, null);
+    for (const source of URP_SOURCES) {
+      assert.equal(lists[source].error, null);
+      assert.ok(lists[source].records.length > 0);
+      assert.equal(lists[source].publishedAt, ranAt);
+    }
+    assert.equal(seen[0].url, URP_STATUS_URL);
+    assert.equal(seen[1].url, `${TAG_RELEASE_URL}manifest.json`, 'reads the release the heartbeat checked');
+    assert.ok(seen.slice(1).every(({ url }) => !url.startsWith(URP_RELEASE_URL)));
+  });
+
+  it('a stale heartbeat or a failed build confirms nothing, so an old release falls back to last-good', async () => {
+    for (const hb of [heartbeat(later - 31 * 3600_000), heartbeat(later - 3600_000, {}, { build_ok: false })]) {
+      const { fetchFn, seen } = release({ heartbeat: hb });
+      const { lists, error } = await ingestUsRestrictedEntries({ fetchFn, now: later });
+      assert.equal(error, null);
+      for (const source of URP_SOURCES) assert.deepEqual(lists[source], UNCONFIRMED);
+      assert.equal(seen[1].url, URP_MANIFEST_URL);
+    }
+  });
+
+  it('a stale heartbeat still serves lists the release itself read in the last 30 hours', async () => {
+    const { fetchFn } = release({ heartbeat: heartbeat(now - 40 * 3600_000) });
+    const { lists } = await ingestUsRestrictedEntries({ fetchFn, now });
+    for (const source of URP_SOURCES) {
+      assert.equal(lists[source].error, null);
+      assert.equal(lists[source].publishedAt, Date.parse(manifest.built_at));
+    }
+  });
+
+  it('a missing or unreadable heartbeat falls back to the latest release', async () => {
+    for (const hb of [null, 'not json', { ...heartbeat(later - 3600_000), schema: 2 }]) {
+      const fresh = await ingestUsRestrictedEntries({ fetchFn: release({ heartbeat: hb }).fetchFn, now });
+      assert.equal(fresh.error, null);
+      assert.ok(URP_SOURCES.every(source => fresh.lists[source].error === null), 'a release under 30h old needs no heartbeat');
+      const old = await ingestUsRestrictedEntries({ fetchFn: release({ heartbeat: hb }).fetchFn, now: later });
+      assert.equal(old.error, null);
+      for (const source of URP_SOURCES) assert.deepEqual(old.lists[source], UNCONFIRMED);
+    }
+  });
+
+  it('a reported failure for one list leaves only that list unconfirmed', async () => {
+    const ranAt = later - 3600_000;
+    const hb = heartbeat(ranAt, {
+      us_fcc_covered: { upstream_ok: false, fetched_at: null, error: 'HTTP 503' },
+      us_dhs_uflpa: { sha256: '0'.repeat(64) },
+      us_far_889: { rows: 2 },
+    }, { ok: false, errors: { us_fcc_covered: 'HTTP 503' } });
+    const { fetchFn } = release({ heartbeat: hb });
+    const { lists, error } = await ingestUsRestrictedEntries({ fetchFn, now: later });
+    assert.equal(error, null);
+    assert.deepEqual(lists['US-FCC'], UNCONFIRMED);
+    assert.deepEqual(lists['US-UFLPA'], UNCONFIRMED, 'a hash that differs from the release is not a confirmation');
+    assert.deepEqual(lists['US-889'], UNCONFIRMED, 'a row count that differs from the release is not a confirmation');
+    assert.equal(lists['US-1260H'].error, null);
+    assert.equal(lists['US-1260H'].publishedAt, ranAt);
+  });
+
+  it('an affiliates error does not degrade the four lists', async () => {
+    const ranAt = later - 3600_000;
+    const hb = heartbeat(ranAt, {}, {
+      ok: false,
+      affiliates: { built: true, upstream_ok: false, stale: true, error: 'GLEIF request failed' },
+      errors: { affiliates: 'GLEIF request failed' },
+    });
+    const { lists, error } = await ingestUsRestrictedEntries({ fetchFn: release({ heartbeat: hb }).fetchFn, now: later });
+    assert.equal(error, null);
+    for (const source of URP_SOURCES) {
+      assert.equal(lists[source].error, null);
+      assert.equal(lists[source].publishedAt, ranAt);
+    }
   });
 });
 
