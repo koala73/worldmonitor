@@ -265,6 +265,21 @@ describe('travel risk draft for a Thailand, Vietnam and Indonesia trip', () => {
     for (const country of ['TH', 'VN', 'ID']) assert.equal(blockOf(document, 'access', country, 'Airspace').status, 'not_covered');
   });
 
+  it('carries the reason for a not-covered topic into the summary, not a bare label', () => {
+    const paragraph = document.summary.countries.find((country) => country.countryCode === 'TH').paragraph;
+    assert.match(
+      paragraph,
+      /Instability index: not covered \(the Country Instability Index scores \d+ countries and Thailand is not one of them\)/,
+    );
+    assert.match(
+      paragraph,
+      /Airspace: not covered \(this draft reads airspace restrictions for Thailand only from the airport NOTAM rows above\./,
+    );
+    // A clause that stops at the label reads as "nothing to report", which is
+    // the opposite of what a not-covered block means.
+    assert.doesNotMatch(paragraph, /not covered[;.]/);
+  });
+
   it('lists disrupted airports first and marks the ones serving listed cities', () => {
     const airports = blockOf(document, 'access', 'TH', 'Monitored airports');
     assert.equal(airports.status, 'reported');
@@ -326,6 +341,14 @@ describe('travel risk draft with missing data', () => {
       assert.ok(row.note, row.source);
     }
     assert.match(markdown, /\| unavailable: the source snapshot is not in the cache \|/);
+  });
+
+  it('carries each unavailable reason into the summary, not a bare label', () => {
+    const { document } = buildTravelRiskResult(TRIP, sourcesDown(), NOW);
+    const paragraph = document.summary.countries.find((country) => country.countryCode === 'TH').paragraph;
+    assert.match(paragraph, /Armed conflict events: unavailable \(the source snapshot is not in the cache\)/);
+    assert.match(paragraph, /Curated hotspots: unavailable \(the hotspot model could not run: the read failed\)/);
+    assert.doesNotMatch(paragraph, /unavailable[;.]/, 'every unavailable clause names why');
   });
 
   it('keeps the seasonal calendar when every live feed is down, because it does not read them', () => {
