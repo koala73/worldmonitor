@@ -1,4 +1,5 @@
 import { bindMapControlDisclosure } from './map-control-disclosure';
+import { capEarthquakesForMobile, capIranEventsForMobile } from '@/config/map-density-caps';
 import { createTimeoutSignal } from '@/services/timeout-signal';
 import * as d3 from 'd3';
 import { UKMTO_SOURCE_URL, ukmtoIncidentLabel, type UkmtoMapIncident } from '../../shared/ukmto-incidents';
@@ -196,8 +197,6 @@ export interface FocusFitInset {
 }
 
 export class MapComponent {
-  private static readonly MOBILE_MIN_EARTHQUAKE_MAGNITUDE = 5;
-  private static readonly MOBILE_MAX_IRAN_EVENTS = 50;
   // #4669: how long markers pulse after a render before settling to static.
   // Infinite opacity pulses hold a permanent compositing layer per marker
   // (385 of 517 desktop layers; Layerize ~34% of the main thread scales with
@@ -2082,12 +2081,8 @@ export class MapComponent {
     const activeIranEvents = layers.iranAttacks ? this.filterByTime(this.iranEvents, (event) => event.timestamp) : [];
     const filteredQuakes = withinTimeRange(activeQuakes);
     return {
-      quakes: this.isMobile
-        ? filteredQuakes.filter((eq) => eq.magnitude >= MapComponent.MOBILE_MIN_EARTHQUAKE_MAGNITUDE)
-        : filteredQuakes,
-      iranEvents: this.isMobile
-        ? activeIranEvents.slice(0, MapComponent.MOBILE_MAX_IRAN_EVENTS)
-        : activeIranEvents,
+      quakes: this.isMobile ? capEarthquakesForMobile(filteredQuakes) : filteredQuakes,
+      iranEvents: this.isMobile ? capIranEventsForMobile(activeIranEvents) : activeIranEvents,
       // Already capped at 200 by the render loop; planned on the same slice so
       // the budget cannot spend share on the 201st position onwards.
       aircraft: layers.flights ? this.aircraftPositions.slice(0, 200) : [],
