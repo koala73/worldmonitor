@@ -3374,6 +3374,36 @@ a.hub-top-story {
   color: var(--text-faint);
 }
 
+/* On-demand translate control, shown only when the UI language is not English
+   (ClimateNewsPanel). Sits in the header beside the timestamp so it never
+   reflows the title or summary it acts on. */
+.climate-news-card__translate {
+  margin-left: 6px;
+  padding: 0 3px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.climate-news-card__translate:hover,
+.climate-news-card__translate:focus-visible {
+  color: var(--text);
+  background: var(--bg-hover, rgb(255 255 255 / 8%));
+}
+
+.climate-news-card__translate.translated {
+  color: var(--accent-green, #22c55e);
+}
+
+.climate-news-card__translate[disabled] {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .climate-news-card__title {
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-weight: 500;
