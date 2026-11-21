@@ -6,17 +6,25 @@ const HOUR_MS = 60 * 60 * 1000;
 const ELEVATED_THRESHOLD = 3;
 const SPIKE_THRESHOLD = 6;
 
-const NEGATIVE_WORDS = new Set([
+// The two sets MUST stay disjoint. analyzeSentiment tests both without an
+// else, so a word in both adds -1 and +1 and contributes nothing — it reads
+// as a tuned weight while being silently inert. `surge` was in both: in this
+// list it sat at the end of the market-fall run (`plunge`, `plummet`), where
+// a rise word does not belong, while in POSITIVE_WORDS it is one of six
+// market-rise synonyms (`rise`, `boost`, `rally`, `soar`, `jump`). It is kept
+// there and dropped here. tests/velocity-sentiment.test.mts pins the
+// invariant so the next addition cannot reintroduce the shape.
+export const NEGATIVE_WORDS = new Set([
   'war', 'attack', 'killed', 'death', 'dead', 'crisis', 'crash', 'collapse',
   'threat', 'danger', 'escalate', 'escalation', 'conflict', 'strike', 'bomb',
   'explosion', 'casualties', 'disaster', 'emergency', 'catastrophe', 'fail',
   'failure', 'reject', 'rejected', 'sanctions', 'invasion', 'missile', 'nuclear',
   'terror', 'terrorist', 'hostage', 'assassination', 'coup', 'protest', 'riot',
-  'warns', 'warning', 'fears', 'concern', 'worried', 'plunge', 'plummet', 'surge',
+  'warns', 'warning', 'fears', 'concern', 'worried', 'plunge', 'plummet',
   'flee', 'evacuate', 'shutdown', 'layoff', 'layoffs', 'cuts', 'slump', 'recession',
 ]);
 
-const POSITIVE_WORDS = new Set([
+export const POSITIVE_WORDS = new Set([
   'peace', 'deal', 'agreement', 'breakthrough', 'success', 'win', 'gains',
   'recovery', 'growth', 'rise', 'surge', 'boost', 'rally', 'soar', 'jump',
   'ceasefire', 'treaty', 'alliance', 'partnership', 'cooperation', 'progress',
@@ -24,7 +32,7 @@ const POSITIVE_WORDS = new Set([
   'record', 'milestone', 'historic', 'landmark', 'celebrates', 'victory',
 ]);
 
-function analyzeSentiment(text: string): { sentiment: SentimentType; score: number } {
+export function analyzeSentiment(text: string): { sentiment: SentimentType; score: number } {
   const words = text.toLowerCase().split(/\W+/);
   let score = 0;
 
