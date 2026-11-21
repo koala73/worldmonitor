@@ -94,9 +94,9 @@ The seeder writes both summaries in one country payload with the existing TTL an
 
 ### Cable cache continuity
 
-The cable-health handler recomputes its response after 30 minutes but retains the last valid payload for at most 90 minutes, matching its existing health budget. A cache hit does not advance `seed-meta:cable-health.fetchedAt`. Slow or failed refreshes leave the prior payload and its original success time intact; repairing an evicted payload does not reset its expiry or overwrite a concurrent fresh publication. A confirmed zero-cable result is valid data. An unavailable source with no usable last-good result is not published as a successful empty observation.
+The cable-health handler recomputes its response after 30 minutes but serves the last valid payload for at most 90 minutes, matching its existing health budget. Redis keeps that payload for 95 minutes, past the point where health's whole-minute age rounding first reads it as stale, so a late refresh reports `STALE_SEED` rather than `EMPTY`. A cache hit does not advance `seed-meta:cable-health.fetchedAt`. Slow or failed refreshes leave the prior payload and its original success time intact; repairing an evicted payload does not reset its expiry or overwrite a concurrent fresh publication. A confirmed zero-cable result is valid data. An unavailable source with no usable last-good result is not published as a successful empty observation.
 
-Cache hits migrate legacy short TTLs to the snapshot's original 90-minute deadline and retry missing or incorrect metadata. The repair checks the current payload atomically before changing its expiry or metadata, so an older reader cannot alter a newer publication. Concurrent requests within one runtime share the full refresh, including cache publication when NGA data is already cached.
+Cache hits migrate legacy short TTLs to the snapshot's original 95-minute retention deadline and retry missing or incorrect metadata. The repair checks the current payload atomically before changing its expiry or metadata, so an older reader cannot alter a newer publication. Concurrent requests within one runtime share the full refresh, including cache publication when NGA data is already cached.
 
 ### Contracts Finder refresh failures
 
