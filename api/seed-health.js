@@ -76,6 +76,9 @@ const SEED_DOMAINS = {
   // intervalMin * 2, and minRecordCount matches api/health.js (below one run's count, so a cold
   // start's first run is not partial). Pending until the first publication.
   'orbital:sites': { key: 'seed-meta:orbital:sites', intervalMin: 2160, minRecordCount: 150, activationKey: 'seed-activated:orbital:sites' },
+  // Climate bundle member every 6h (#9110). intervalMin expresses health.js maxStaleMin:1440 as
+  // intervalMin * 2; no minRecordCount, as in api/health.js. Pending until the first publication.
+  'orbital:maneuvers': { key: 'seed-meta:orbital:maneuvers', intervalMin: 720, activationKey: 'seed-activated:orbital:maneuvers' },
   // #4920 completeness measurement — both run in the daily feed-validation
   // GitHub Actions workflow (00:00 UTC), not Railway. 1440-min cadence;
   // classifier stales at intervalMin*2 = one fully missed day.
