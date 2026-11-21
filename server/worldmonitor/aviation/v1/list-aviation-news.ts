@@ -60,7 +60,14 @@ function matchesEntities(text: string, entities: string[]): string[] {
     return entities.filter(e => lower.includes(e.toLowerCase()));
 }
 
-async function fetchFeed(feedUrl: string, sourceName: string): Promise<RssItem[]> {
+/**
+ * One feed's items, or null when the feed could not be read at all.
+ *
+ * The caller distinguishes the two: nine feeds that all answered with no
+ * matching items is a real empty snapshot worth caching, while nine feeds that
+ * all failed is not, and must not be stored as one.
+ */
+async function fetchFeed(feedUrl: string, sourceName: string): Promise<RssItem[] | null> {
     try {
         const resp = await fetch(feedUrl, {
             headers: {
@@ -71,11 +78,11 @@ async function fetchFeed(feedUrl: string, sourceName: string): Promise<RssItem[]
         });
         if (resp.status === 401 || resp.status === 403) {
             incrementProviderCounter('aviationNewsAuthRejection');
-            return [];
+            return null;
         }
         if (!resp.ok) {
             incrementProviderCounter('aviationNewsTerminalFailure');
-            return [];
+            return null;
         }
         const xml = await resp.text();
         incrementProviderCounter('aviationNewsSuccess');
@@ -84,7 +91,7 @@ async function fetchFeed(feedUrl: string, sourceName: string): Promise<RssItem[]
         const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.message.includes('timed out'));
         if (isTimeout) incrementProviderCounter('aviationNewsTimeout');
         else incrementProviderCounter('aviationNewsTerminalFailure');
-        return [];
+        return null;
     }
 }
 
@@ -110,13 +117,23 @@ export async function listAviationNews(
         const snapshot = await cachedFetchJson<{ items: RssItem[] }>(
             'aviation:news:feeds:v2', CACHE_TTL, async () => {
                 const allItems: RssItem[] = [];
+                let feedsRead = 0;
                 await Promise.allSettled(
-                    AVIATION_RSS_FEEDS.map(feed => fetchFeed(feed.url, feed.name).then(items => allItems.push(...items)))
+                    AVIATION_RSS_FEEDS.map(feed => fetchFeed(feed.url, feed.name).then(items => {
+                        if (items === null) return;
+                        feedsRead += 1;
+                        allItems.push(...items);
+                    }))
                 );
-                return { items: allItems };
+                // Null, not `{items: []}`: a non-null payload is cached as a
+                // success, so a total RSS outage would otherwise be stored over
+                // the prewarmed snapshot for CACHE_TTL and served as `source:
+                // 'rss'` — an assertion that the feeds were read.
+                return feedsRead > 0 ? { items: allItems } : null;
             }
         );
-        const allItems = snapshot?.items ?? [];
+        if (!snapshot) return { items: [], source: 'error', updatedAt: now };
+        const allItems = snapshot.items;
 
         const cutoff = now - windowMs;
         const filtered: AviationNewsItem[] = [];

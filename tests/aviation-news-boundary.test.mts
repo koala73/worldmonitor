@@ -299,3 +299,40 @@ test('actual native sidecar requires its token before the news gateway', async (
     await app.close();
   }
 });
+
+// Nine feeds that all failed is not an empty news snapshot. The fetcher used
+// to return `{items: []}` in that case, which `cachedFetchJsonCore` stores as
+// a success: the empty result went over the prewarmed `aviation:news:feeds:v2`
+// key for CACHE_TTL and every caller got `source: 'rss'`, an assertion that
+// the feeds were read.
+test('a total RSS outage is not cached and does not claim source: rss', async () => {
+  const transport = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.hostname === 'redis.example') return transport(input, init);
+    return new Response(null, { status: 503 });
+  }) as typeof fetch;
+
+  const result = await read([], 24, 20);
+  assert.deepEqual(result.items, []);
+  assert.notEqual(result.source, 'rss', 'a failed read must not claim the feeds were read');
+  const stored = redis.redis.get('aviation:news:feeds:v2');
+  assert.ok(stored === undefined || !stored.includes('"items"'),
+    `a total outage must not be stored as a snapshot (got ${stored})`);
+});
+
+// Positive control: feeds that answer with nothing matching are a real empty
+// snapshot, and still cache as one.
+test('feeds that answer with no items are a real empty snapshot', async () => {
+  const transport = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.hostname === 'redis.example') return transport(input, init);
+    return new Response('<rss><channel></channel></rss>');
+  }) as typeof fetch;
+
+  const result = await read([], 24, 20);
+  assert.deepEqual(result.items, []);
+  assert.equal(result.source, 'rss');
+  assert.match(redis.redis.get('aviation:news:feeds:v2')!, /"items"/);
+});
