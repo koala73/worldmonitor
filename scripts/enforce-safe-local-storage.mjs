@@ -292,7 +292,6 @@ export const LEGACY_RAW_LOCAL_STORAGE = [
   'src/services/analytics.ts :: <global>.localStorage x3',
   'src/services/anonymous-identity-storage.ts :: localStorage.<member> x5',
   'src/services/aviation/watchlist.ts :: localStorage.<member> x2',
-  'src/services/breaking-news-alerts.ts :: localStorage.<member> x4',
   'src/services/cached-risk-scores.ts :: localStorage.<member> x5',
   'src/services/cached-theater-posture.ts :: localStorage.<member> x4',
   'src/services/followed-countries.ts :: localStorage.<member> x3',
