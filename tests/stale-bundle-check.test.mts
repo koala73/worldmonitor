@@ -8,6 +8,7 @@ import {
 } from '../src/bootstrap/sentry-defer.ts';
 import { RELOAD_BLOCKING_MODAL_SELECTOR, RELOAD_POLICY_ATTR, type VisibleElementLike } from '../src/utils/open-modal.ts';
 import type { DeferralReport } from '../src/bootstrap/stale-bundle-check.ts';
+import { _resetPageUnloadSignalForTests, isPageUnloading } from '../src/bootstrap/page-unload-signal.ts';
 
 // ---------------------------------------------------------------------------
 // Fake environment
@@ -20,6 +21,8 @@ interface FakeEnv {
   fetchCalls: Array<{ url: string; init?: RequestInit }>;
   fetchResponse: { ok: boolean; status: number; body: string };
   reloadCalls: number;
+  /** Runs inside the injected reload, to observe state at that moment. */
+  onReload?: () => void;
   clock: { value: number; tick(ms: number): void };
   visibilityState: 'visible' | 'hidden';
   /**
@@ -148,7 +151,7 @@ function install(
       env.intervalCallbacks.push(cb);
       return env.intervalCallbacks.length; // dummy handle
     },
-    reload: () => { env.reloadCalls++; },
+    reload: () => { env.reloadCalls++; env.onReload?.(); },
     ...(useDefaultReporter ? {} : { reportDeferral: (report: DeferralReport) => { env.deferralReports.push(report); } }),
     now: () => env.clock.value,
   });
@@ -252,6 +255,18 @@ describe('installStaleBundleCheck', () => {
     await fireFocus(env);
     assert.equal(env.fetchCalls.length, 1);
     assert.equal(env.reloadCalls, 1);
+  });
+
+  it('marks the page as unloading before it reloads, so the aborted fetches are not reported', async () => {
+    _resetPageUnloadSignalForTests();
+    env.fetchResponse = { ok: true, status: 200, body: 'sha-newer-deploy\n' };
+    const seen: boolean[] = [];
+    env.onReload = () => { seen.push(isPageUnloading()); };
+    install(env);
+    assert.equal(isPageUnloading(), false);
+    await fireFocus(env);
+    assert.deepEqual(seen, [true]);
+    _resetPageUnloadSignalForTests();
   });
 
   it('does NOT reload when the deployed hash matches the running bundle', async () => {
