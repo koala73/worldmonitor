@@ -28,10 +28,26 @@ const mutations = [
     expect: 'with no Redis failures',
   },
   {
-    name: 'no delayed sweep (#10956)',
-    file: MODEL,
-    apply: (s) => s.replace('actors: [compose, erase, sweep]', 'actors: [compose, erase]'),
-    expect: 'the delayed sweep removes',
+    name: 'completing the deletion schedules no brief sweep (#10956)',
+    file: 'convex/accountDeletion/erase.ts',
+    apply: (s) => s.replace(`    await ctx.scheduler.runAfter(BRIEF_SWEEP_DELAY_MS,
+      internal.accountDeletion.sideEffects.sweepBriefEnvelopes,
+      { deletionId: row._id, cursor: "0", attempt: 0 },
+    );
+`, ''),
+    expect: 'the scheduled sweep removes',
+  },
+  {
+    name: 'the sweep stops after its first SCAN page',
+    file: 'convex/accountDeletion/sideEffects.ts',
+    apply: (s) => s.replace('      if (cursor !== "0") {\n        const pages', '      if (false) {\n        const pages'),
+    expect: 'the scheduled sweep removes',
+  },
+  {
+    name: 'the sweep delay is shorter than a compose can run',
+    file: 'convex/accountDeletion/registry.ts',
+    apply: (s) => s.replace('export const BRIEF_SWEEP_DELAY_MS = 15 * 60_000;', 'export const BRIEF_SWEEP_DELAY_MS = 5_000;'),
+    expect: 'the scheduled sweep removes',
   },
 ];
 

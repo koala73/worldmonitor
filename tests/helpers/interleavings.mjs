@@ -12,15 +12,16 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 const FAULTS = ['ok', 'dropped', 'lost'];
 
 class Run {
-  constructor(prefix, previousTrace, maxFaults, faultsIn) {
+  constructor(prefix, previousDetails, maxFaults, faultsIn) {
     this.prefix = prefix;
-    this.previousTrace = previousTrace;
+    this.previousDetails = previousDetails;
     this.maxFaults = maxFaults;
     this.faultsIn = faultsIn;
     this.choices = [];
     this.widths = [];
     this.pending = [];
     this.trace = [];
+    this.details = [];
     this.faults = 0;
     this.sleep = [];
     this.onChange = null;
@@ -37,28 +38,31 @@ class Run {
     return pick;
   }
 
-  record(entry) {
+  /** `detail` is what a replay must repeat exactly; the trace shows `entry`. */
+  record(entry, detail = entry) {
     const i = this.trace.length;
-    if (this.replaying && this.previousTrace[i] !== entry) {
-      throw new Error(`exploreInterleavings: actors are not deterministic; replay step ${i} was "${entry}", first run had "${this.previousTrace[i]}"`);
+    if (this.replaying && this.previousDetails[i] !== detail) {
+      throw new Error(`exploreInterleavings: actors are not deterministic; replay step ${i} was "${detail}", first run had "${this.previousDetails[i]}"`);
     }
     this.trace.push(entry);
+    this.details.push(detail);
   }
 
   /** `access` is { keys, writes } for one command, or { all: true } for SCAN. */
-  step(actor, label, access, apply) {
+  step(actor, label, access, apply, detail = label) {
     return new Promise((resolve, reject) => {
-      this.pending.push({ actor, label, access, apply, resolve, reject });
+      this.pending.push({ actor, label, detail, access, apply, resolve, reject });
       this.onChange?.();
     });
   }
 
-  fault(actor, label) {
+  fault(actor, label, detail = label) {
     if (this.faults >= this.maxFaults || (this.faultsIn && !this.faultsIn.includes(actor))) return 'ok';
     const fault = FAULTS[this.choose(FAULTS.length)];
     if (fault === 'ok') return fault;
     this.faults += 1;
-    this.record(`${actor}: ${label} (${fault === 'dropped' ? 'request failed, nothing applied' : 'applied, response lost'})`);
+    const what = fault === 'dropped' ? 'request failed, nothing applied' : 'applied, response lost';
+    this.record(`${actor}: ${label} (${what})`, `${actor}: ${detail} (${what})`);
     return fault;
   }
 }
@@ -75,14 +79,14 @@ class Run {
  */
 export async function exploreInterleavings({ setup, actors, check, maxFaults = 0, faultsIn, maxRuns = 200_000 }) {
   let prefix = [];
-  let previousTrace = [];
+  let previousDetails = [];
   for (let runs = 1; runs <= maxRuns; runs += 1) {
-    const run = new Run(prefix, previousTrace, maxFaults, faultsIn);
+    const run = new Run(prefix, previousDetails, maxFaults, faultsIn);
     const world = setup(run);
     const outcomes = await execute(run, world, actors);
     const message = outcomes && check(world, outcomes);
     if (message) return { runs, violation: { message, trace: run.trace } };
-    previousTrace = run.trace;
+    previousDetails = run.details;
     prefix = nextPrefix(run);
     if (!prefix) return { runs, violation: null };
   }
@@ -109,21 +113,23 @@ async function execute(run, world, actors) {
   const outcomes = {};
   const started = new Set();
   const startReady = () => {
+    let any = false;
     for (const actor of actors) {
       if (started.has(actor.name)) continue;
       if (!(actor.after ?? []).every((name) => name in outcomes)) continue;
       started.add(actor.name);
+      any = true;
       actorContext.run(actor.name, () => actor.start(world)).then(
         (value) => { outcomes[actor.name] = { ok: true, value }; run.onChange?.(); },
         (error) => { outcomes[actor.name] = { ok: false, error }; run.onChange?.(); },
       );
     }
+    return any;
   };
   startReady();
   for (;;) {
-    await untilAllParked(run, outcomes, started);
-    startReady();
-    await untilAllParked(run, outcomes, started);
+    do await untilAllParked(run, outcomes, started);
+    while (startReady());
     if (run.pending.length === 0) {
       if (Object.keys(outcomes).length === actors.length) return outcomes;
       const waiting = actors.filter((a) => !(a.name in outcomes)).map((a) => a.name);
@@ -137,7 +143,7 @@ async function execute(run, world, actors) {
     const step = awake[pick];
     run.sleep = [...run.sleep, ...awake.slice(0, pick)].filter((z) => independent(z, step));
     run.pending.splice(run.pending.indexOf(step), 1);
-    run.record(`${step.actor}: ${step.label}`);
+    run.record(`${step.actor}: ${step.label}`, `${step.actor}: ${step.detail}`);
     step.resolve(step.apply());
   }
 }
@@ -179,11 +185,13 @@ function accessOf(command) {
 
 /**
  * An in-memory Redis for the commands the modelled code sends. Real Redis
- * semantics that matter to a model: an empty sorted set does not exist, and
- * SCAN MATCH is a glob.
+ * semantics that matter to a model: an empty sorted set does not exist, SCAN
+ * MATCH is a glob, and SCAN can return fewer keys than COUNT, or none, before
+ * its cursor reaches 0.
  * @param {Record<string, string | Record<string, number>>} initial strings, or sorted sets as member → score
+ * @param {{ scanCount?: number }} [options] most keys one SCAN call examines
  */
-export function createModelRedis(initial = {}) {
+export function createModelRedis(initial = {}, { scanCount = Infinity } = {}) {
   const data = new Map(Object.entries(initial).map(([key, value]) =>
     [key, typeof value === 'string' ? value : new Map(Object.entries(value))]));
   const zset = (key) => {
@@ -195,6 +203,7 @@ export function createModelRedis(initial = {}) {
     if (set.size === 0) data.delete(key);
     else data.set(key, set);
   };
+  const scanCursors = new Map();
   const commands = {
     GET: ([key]) => {
       const value = data.get(key);
@@ -240,7 +249,26 @@ export function createModelRedis(initial = {}) {
       const members = [...zset(key)].sort((a, b) => a[1] - b[1]).map(([member]) => member);
       return members.slice(Number(start), Number(stop) === -1 ? undefined : Number(stop) + 1);
     },
-    SCAN: ([, , pattern]) => ['0', [...data.keys()].filter((key) => globToRegExp(pattern).test(key))],
+    SCAN: ([cursor, ...options]) => {
+      const flag = (name) => {
+        const i = options.findIndex((o) => o.toUpperCase() === name);
+        return i < 0 ? undefined : options[i + 1];
+      };
+      const pattern = flag('MATCH') ?? '*';
+      const count = Math.min(Number(flag('COUNT') ?? 10), scanCount);
+      // A cursor resumes after the last key it examined, so a key that exists
+      // for the whole scan is returned even when others are deleted meanwhile.
+      const after = cursor === '0' ? null : scanCursors.get(cursor);
+      if (after === undefined) throw new Error(`model redis: unknown SCAN cursor ${cursor}`);
+      const rest = [...data.keys()].sort().filter((key) => after === null || key > after);
+      const page = rest.slice(0, count);
+      let next = '0';
+      if (rest.length > count) {
+        next = String(scanCursors.size + 1);
+        scanCursors.set(next, page[page.length - 1]);
+      }
+      return [next, page.filter((key) => globToRegExp(pattern).test(key))];
+    },
   };
   const cell = (command) => {
     const [verb, ...args] = command.map(String);
@@ -283,11 +311,13 @@ export function upstashFetch(run, redis, { isShared = () => true } = {}) {
   const requests = {};
   const owners = new Map();
   const local = (actor, command) => {
-    const key = String(command[1] ?? '');
-    if (isShared(key)) return false;
-    const owner = owners.get(key) ?? actor;
-    if (owner !== actor) throw new Error(`upstashFetch: ${owner} and ${actor} both touch ${key}, which isShared says is unshared`);
-    owners.set(key, actor);
+    const access = accessOf(command);
+    if (access.all || access.keys.some(isShared)) return false;
+    for (const key of access.keys) {
+      const owner = owners.get(key) ?? actor;
+      if (owner !== actor) throw new Error(`upstashFetch: ${owner} and ${actor} both touch ${key}, which isShared says is unshared`);
+      owners.set(key, actor);
+    }
     return true;
   };
   const serve = async (input, init) => {
@@ -307,7 +337,7 @@ export function upstashFetch(run, redis, { isShared = () => true } = {}) {
     }
     const describe = (command) => command.slice(0, 2).join(' ');
     const label = batch.length === 1 ? describe(batch[0]) : `${url.pathname.slice(1)} [${batch.map(describe).join(', ')}]`;
-    const fault = run.fault(actor, label);
+    const fault = run.fault(actor, label, JSON.stringify(batch));
     if (fault === 'dropped') throw new TypeError('fetch failed');
     let cells = [];
     if (atomic) {
@@ -315,10 +345,11 @@ export function upstashFetch(run, redis, { isShared = () => true } = {}) {
       const access = accesses.some((a) => a.all)
         ? { all: true, writes: accesses.some((a) => a.writes) }
         : { keys: accesses.flatMap((a) => a.keys), writes: accesses.some((a) => a.writes) };
-      cells = await run.step(actor, label, access, () => batch.map(redis.cell));
+      cells = await run.step(actor, label, access, () => batch.map(redis.cell), JSON.stringify(batch));
     } else {
       for (const command of batch) {
-        cells.push(local(actor, command) ? redis.cell(command) : await run.step(actor, describe(command), accessOf(command), () => redis.cell(command)));
+        cells.push(local(actor, command) ? redis.cell(command)
+          : await run.step(actor, describe(command), accessOf(command), () => redis.cell(command), JSON.stringify(command)));
       }
     }
     if (fault === 'lost') throw new TypeError('fetch failed');

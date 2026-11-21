@@ -1,6 +1,6 @@
 ---
 name: verify-brief-erasure
-description: Model-check that account erasure leaves no brief behind when a digest compose runs at the same time. Use when changing storeBrief or undoBriefWriteIfErased in scripts/lib/brief-l10n.mjs, the brief write in scripts/seed-digest-notifications.mjs, or deleteAccountRedisKeys, scanAccountBriefPage, deleteAccountBriefPage or the sweep scheduling in convex/accountDeletion/.
+description: Model-check that account erasure leaves no brief behind when a digest compose runs at the same time. Use when changing storeBrief or undoBriefWriteIfErased in scripts/lib/brief-l10n.mjs, the brief write in scripts/seed-digest-notifications.mjs, or deleteAccountRedisKeys, sweepBriefEnvelopes, markExternalComplete or BRIEF_SWEEP_DELAY_MS in convex/accountDeletion/, or tests/helpers/interleavings.mjs.
 metadata:
   internal: true
 ---
@@ -15,7 +15,7 @@ The compose and the erase share no lock. They agree through one Redis:
 
 1. The compose indexes its slot, writes the envelopes, then re-reads `brief:erased:<user>`.
 2. The erase sets that marker, then reads the index and deletes what it lists.
-3. A delayed sweep deletes anything left.
+3. Completing the deletion schedules a delayed sweep, which deletes anything left.
 
 ## Run
 
@@ -25,14 +25,16 @@ node --import tsx --test tests/brief-erase-compose-model.test.mts
 
 It takes about 30 s and runs in CI with the other data tests. It checks four things:
 
-- With no Redis failures, the compose and the erase leave nothing, in every order of their Redis commands.
-- With one failed or lost request anywhere, they still leave nothing. Every request is retried once, so one fault cannot strand a brief.
-- With two failed or lost compose requests, the delayed sweep removes what the compose left.
-- The sweep delay (`BRIEF_SWEEP_DELAY_MS`) is longer than the most compose requests seen in any run, times `BRIEF_REDIS_TIMEOUT_MS`. The model assumes the sweep runs after the compose.
+- Control: a compose with no erase stores the new envelope, sibling, index entry and latest pointer.
+- With no Redis failures, the compose and the erase leave nothing, in every order of their Redis commands. The compose may fail only by finding the erase marker.
+- With one failed or lost request anywhere, they still leave nothing. The compose retries its index write, its marker read and each cleanup once, and a failed envelope write runs the cleanup before it throws. The erase retries up to `MAX_EXTERNAL_ATTEMPTS` times. So one fault cannot strand a brief.
+- With two failed or lost compose requests, the sweep that completing the deletion scheduled removes what the compose left. In every run, the sweep delay must also outlast the compose: its requests times `BRIEF_REDIS_TIMEOUT_MS`. The model runs the sweep after the compose, which holds only then.
 
 ## How it works
 
 `tests/helpers/interleavings.mjs` runs the real functions against a fake Upstash `fetch`. Each Redis command is one step, because Upstash does not run a `/pipeline` atomically. Other clients' commands can run between its commands, and only `/multi-exec` is atomic.
+
+The Convex parts run through their real handlers with a fake `ctx`. The erase calls `markExternalComplete`, whose scheduler records the sweep. The sweep actor runs `sweepBriefEnvelopes` for each job, including its retries and next pages. The model Redis returns one key per `SCAN` call, and the fixture puts an unrelated key first, so the sweep must follow its cursor past an empty page.
 
 A faulty request either never reaches Redis or runs every command and loses the response. The explorer replays the actors once for every order of steps and every placement of faults.
 
@@ -41,7 +43,7 @@ The search is reduced in two ways:
 - **Sleep sets.** Orders that only swap two steps on different keys, or two reads, are explored once.
 - **Unshared keys.** Commands on keys that `isShared` marks unshared take no step at all. The helper throws if a second actor ever touches one of those keys.
 
-On replay, the helper checks that the actors repeat the recorded steps, so nondeterministic code fails loudly instead of corrupting the search.
+On replay, the helper checks that the actors repeat the recorded commands with the same arguments, so nondeterministic code fails loudly instead of corrupting the search. `tests/interleavings-helper.test.mjs` tests the helper itself.
 
 ## Reading a failure
 
@@ -66,11 +68,13 @@ Keep the model calling the real functions. If you move a step into a new functio
 node scripts/check-brief-erasure-model-mutations.mjs
 ```
 
-It applies three breaks to the real code one at a time, runs the model, and restores the files:
+It applies five breaks to the real code one at a time, runs the model, and restores the files:
 
 - The compose skips the marker re-read after its envelope write. This is the race CodeRabbit flagged on #10896.
 - The erase reads the slot index before it sets the marker.
-- No delayed sweep. This is the case #10956 exists for.
+- Completing the deletion schedules no sweep. This is the case #10956 exists for.
+- The sweep stops after its first `SCAN` page.
+- The sweep delay is shorter than a compose can run.
 
 Each must be caught. If a break no longer applies because the code moved, update its text in the script.
 
@@ -79,8 +83,8 @@ Each must be caught. If a break no longer applies because the code moved, update
 Covered:
 
 - One compose of one new slot, with an older slot already stored.
-- One erase, retried up to `MAX_EXTERNAL_ATTEMPTS` times.
-- The delayed sweep.
+- One erase, retried up to `MAX_EXTERNAL_ATTEMPTS` times, then the deletion's completion.
+- The sweep that completion schedules, with its retries and next pages.
 - The fault bounds listed under Run.
 
 Not covered:
@@ -89,16 +93,16 @@ Not covered:
 - Two faults that include erase or sweep requests.
 - A compose that starts after the sweep.
 - Expiring TTLs.
-- The Convex mutations that track the deletion's progress.
+- The Convex mutations that track the deletion's progress, other than `markExternalComplete`. The erase's retry loop is written in the test.
 
 ## Coverage record
 
 | Check | Code |
 |---|---|
 | compose actor | `storeBrief`, `writeBriefSlotIndex`, `undoBriefWriteIfErased` in `scripts/lib/brief-l10n.mjs`; `redisPipeline` in `api/_upstash-json.js` |
-| erase actor | `deleteAccountRedisKeys` in `convex/accountDeletion/sideEffects.ts` |
-| sweep actor | `scanAccountBriefPage`, `deleteAccountBriefPage` in `convex/accountDeletion/sideEffects.ts`; `BRIEF_SWEEP_DELAY_MS` in `convex/accountDeletion/registry.ts` |
+| erase actor | `deleteAccountRedisKeys` in `convex/accountDeletion/sideEffects.ts`; `markExternalComplete` in `convex/accountDeletion/erase.ts` |
+| sweep actor | `sweepBriefEnvelopes`, `scanAccountBriefPage`, `deleteAccountBriefPage` in `convex/accountDeletion/sideEffects.ts`; `BRIEF_SWEEP_DELAY_MS` in `convex/accountDeletion/registry.ts` |
 
-**Last confirmed against:** `2f1e70ac7b`, plus the commit that adds this skill.
+**Last confirmed against:** `2f1e70ac7b`, plus the commits of #11111, which adds this skill.
 
 When any covered function changes, reread it against the model, rerun the check, and move this line forward only after both pass.
