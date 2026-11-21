@@ -947,6 +947,9 @@ const SEED_META = {
         sources: ['cwfis', 'firms', 'bc'],
         failureCodePattern: /^CWFIS_SOURCE_FAILED$/,
       },
+      // One Canadian subsource failing while the rest of the payload, or a
+      // retained BC snapshot, keeps serving is transient until it repeats.
+      { warnAfterConsecutive: 3, failureCodePattern: /^(BC_WILDFIRE_SOURCE_FAILED|CWFIS_PRESCRIBED_FAILED)$/ },
     ],
   }, // FIRMS NRT resets at midnight UTC; new-day data takes 3-6h to accumulate
   wildfiresBootstrap: { key: 'seed-meta:wildfire:fires-bootstrap', maxStaleMin: 360 }, // Compact CDN payload is a distinct publish target; monitor it so canonical fallback cannot hide transform/write failures.
