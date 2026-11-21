@@ -1089,6 +1089,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Excluded from the provider count: user-configured MCP connector.',
     status: 'excluded',
   },
+  'api.serply.io': {
+    provider: 'Serply Search MCP',
+    license: 'Excluded: optional user-configured MCP connector',
+    attribution: 'Excluded from the provider count: user-configured MCP connector.',
+    status: 'excluded',
+  },
   'api.example.com': {
     provider: 'Example API placeholder',
     license: 'Excluded: documentation/test placeholder',
@@ -1219,7 +1225,8 @@ const PROVIDER_OVERRIDES = {
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
   // PR #10998: identify the restricted-party feed on its release asset host.
-  sha256: 'b277b8a702e4c60aff18002601ea9ad29369f392460169df4c83cf6b46cd5e5f',
+  // Serply Search MCP is an excluded user-configured connector (PR #7089).
+  sha256: '80010ba7fb296ff55e22152b0280ebf95eb3db55a0c91059237196afaf514e32',
   // 2026-11-18 (#10937): name The Kyiv Independent and The New Voice of
   // Ukraine on their direct feeds. Group Sky News and The Washington Post with
   // the hosts their Google News claim-depth searches fetch again. Drop the
