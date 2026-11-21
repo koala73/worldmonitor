@@ -52,9 +52,13 @@ const ENGLISH_WORDS = new Set([
 
 const LETTER = /\p{L}/u;
 const LATIN = /\p{Script=Latin}/u;
-const WORD_BREAK = /[^\p{L}\p{M}]+/u;
-// "Mining.com.au" is a name, not Portuguese "com" and French "au".
-const DOTTED_NAME = /\S+\.\p{L}{2,}\S*/gu;
+// An apostrophe stays inside its word: "I've" must not yield Turkish "ve",
+// nor "'em" Portuguese "em".
+const WORD_BREAK = /[^\p{L}\p{M}'\u2019]+/u;
+const WHITESPACE = /\s+/u;
+// "Mining.com.au" is a name, not Portuguese "com" and French "au". Tested per
+// token, so one long unbroken title costs one linear scan.
+const DOTTED_NAME = /\.\p{L}{2}/u;
 
 /**
  * @param {unknown} title
@@ -76,7 +80,8 @@ function headlineInOtherLanguage(title) {
 
   const other = new Set();
   let english = 0;
-  for (const word of text.replace(DOTTED_NAME, ' ').split(WORD_BREAK)) {
+  const words = text.split(WHITESPACE).flatMap(token => (DOTTED_NAME.test(token) ? [] : token.split(WORD_BREAK)));
+  for (const word of words) {
     // Case matters: "I" is English and "i" is Norwegian or Polish; "De" opens a name.
     if (OTHER_LANGUAGE_WORDS.has(word)) other.add(word);
     else if (ENGLISH_WORDS.has(word.toLowerCase())) english++;

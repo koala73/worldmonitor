@@ -30,8 +30,16 @@ describe('headlineInOtherLanguage', () => {
       '𝐎𝐟𝐟𝐢𝐜𝐢𝐚𝐥𝐬 𝐟𝐫𝐨𝐦 𝐭𝐡𝐞 𝐊𝐞𝐧𝐲𝐚 𝐑𝐚𝐢𝐥𝐰𝐚𝐲𝐬 𝐂𝐨𝐫𝐩𝐨𝐫𝐚𝐭𝐢𝐨𝐧 𝐦𝐞𝐞𝐭 𝐚 𝐔𝐊 𝐝𝐞𝐥𝐞𝐠𝐚𝐭𝐢𝐨𝐧',
       '^TWII: -10% decline',
       'I was there when the dam broke, says survivor',
+      "Trump: 'I've got 'em'",
+      'We’ve seen it; they’re done',
       '',
     ]) assert.equal(headlineInOtherLanguage(title), false, title);
     assert.equal(headlineInOtherLanguage(undefined), false);
+  });
+
+  it('reads one long unbroken word in linear time', () => {
+    const started = performance.now();
+    assert.equal(headlineInOtherLanguage('a'.repeat(200_000)), false);
+    assert.ok(performance.now() - started < 500, 'a publisher-controlled title must not stall the relay');
   });
 });
