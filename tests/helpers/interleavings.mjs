@@ -12,16 +12,16 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 const FAULTS = ['ok', 'dropped', 'lost'];
 
 class Run {
-  constructor(prefix, previousDetails, maxFaults, faultsIn) {
+  constructor(prefix, previousReplayKeys, maxFaults, faultsIn) {
     this.prefix = prefix;
-    this.previousDetails = previousDetails;
+    this.previousReplayKeys = previousReplayKeys;
     this.maxFaults = maxFaults;
     this.faultsIn = faultsIn;
     this.choices = [];
     this.widths = [];
     this.pending = [];
     this.trace = [];
-    this.details = [];
+    this.replayKeys = [];
     this.faults = 0;
     this.sleep = [];
     this.onChange = null;
@@ -38,31 +38,30 @@ class Run {
     return pick;
   }
 
-  /** `detail` is what a replay must repeat exactly; the trace shows `entry`. */
-  record(entry, detail = entry) {
+  record(entry, replayKey = entry) {
     const i = this.trace.length;
-    if (this.replaying && this.previousDetails[i] !== detail) {
-      throw new Error(`exploreInterleavings: actors are not deterministic; replay step ${i} was "${detail}", first run had "${this.previousDetails[i]}"`);
+    if (this.replaying && this.previousReplayKeys[i] !== replayKey) {
+      throw new Error(`exploreInterleavings: actors are not deterministic; replay step ${i} was "${replayKey}", first run had "${this.previousReplayKeys[i]}"`);
     }
     this.trace.push(entry);
-    this.details.push(detail);
+    this.replayKeys.push(replayKey);
   }
 
   /** `access` is { keys, writes } for one command, or { all: true } for SCAN. */
-  step(actor, label, access, apply, detail = label) {
+  step(actor, label, access, apply, replayKey = label) {
     return new Promise((resolve, reject) => {
-      this.pending.push({ actor, label, detail, access, apply, resolve, reject });
+      this.pending.push({ actor, label, replayKey, access, apply, resolve, reject });
       this.onChange?.();
     });
   }
 
-  fault(actor, label, detail = label) {
+  fault(actor, label, replayKey = label) {
     if (this.faults >= this.maxFaults || (this.faultsIn && !this.faultsIn.includes(actor))) return 'ok';
     const fault = FAULTS[this.choose(FAULTS.length)];
     if (fault === 'ok') return fault;
     this.faults += 1;
     const what = fault === 'dropped' ? 'request failed, nothing applied' : 'applied, response lost';
-    this.record(`${actor}: ${label} (${what})`, `${actor}: ${detail} (${what})`);
+    this.record(`${actor}: ${label} (${what})`, `${actor}: ${replayKey} (${what})`);
     return fault;
   }
 }
@@ -79,14 +78,14 @@ class Run {
  */
 export async function exploreInterleavings({ setup, actors, check, maxFaults = 0, faultsIn, maxRuns = 200_000 }) {
   let prefix = [];
-  let previousDetails = [];
+  let previousReplayKeys = [];
   for (let runs = 1; runs <= maxRuns; runs += 1) {
-    const run = new Run(prefix, previousDetails, maxFaults, faultsIn);
+    const run = new Run(prefix, previousReplayKeys, maxFaults, faultsIn);
     const world = setup(run);
     const outcomes = await execute(run, world, actors);
     const message = outcomes && check(world, outcomes);
     if (message) return { runs, violation: { message, trace: run.trace } };
-    previousDetails = run.details;
+    previousReplayKeys = run.replayKeys;
     prefix = nextPrefix(run);
     if (!prefix) return { runs, violation: null };
   }
@@ -143,7 +142,7 @@ async function execute(run, world, actors) {
     const step = awake[pick];
     run.sleep = [...run.sleep, ...awake.slice(0, pick)].filter((z) => independent(z, step));
     run.pending.splice(run.pending.indexOf(step), 1);
-    run.record(`${step.actor}: ${step.label}`, `${step.actor}: ${step.detail}`);
+    run.record(`${step.actor}: ${step.label}`, `${step.actor}: ${step.replayKey}`);
     step.resolve(step.apply());
   }
 }

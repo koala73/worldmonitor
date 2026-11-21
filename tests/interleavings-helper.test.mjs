@@ -29,7 +29,6 @@ describe('exploreInterleavings', () => {
         runs += 1;
         return { fetch: upstashFetch(run, createModelRedis()), value: String(runs) };
       },
-      // The replay of a later order repeats a's first write with a new value.
       actors: [
         { name: 'a', start: async (w) => { await command(w.fetch, 'SET', 'k', w.value); await command(w.fetch, 'SET', 'k', 'again'); } },
         { name: 'b', start: (w) => command(w.fetch, 'GET', 'k') },

@@ -61,8 +61,9 @@ const compose = {
   }, (commands: unknown[]) => redisPipeline(commands, BRIEF_REDIS_TIMEOUT_MS, true)),
 };
 
-// The erase action retries its Redis step MAX_EXTERNAL_ATTEMPTS times, then
-// completes the deletion, which schedules the sweep.
+// The erase makes up to MAX_EXTERNAL_ATTEMPTS Redis attempts, as runExternalErase
+// does, then completes the deletion, which schedules the sweep. The Clerk step
+// and the back-off between attempts touch no brief key.
 const erase = {
   name: 'erase',
   start: async (world: World) => {
@@ -85,7 +86,6 @@ const erase = {
   },
 };
 
-// Runs what the deletion scheduled: the sweep, its retries and its next pages.
 const sweep = {
   name: 'sweep',
   after: ['erase', 'compose'],
