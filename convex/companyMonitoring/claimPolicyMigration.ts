@@ -38,6 +38,7 @@ export const migrateAccountClaimPolicy = internalMutation({
         companiesProcessed: 0,
         claimsPatched: 0,
         aliasesInserted: 0,
+        aliasesSkippedAtCap: 0,
         nextCursor: null,
         claimPolicyVersion: account.claimPolicyVersion,
       };
@@ -56,6 +57,7 @@ export const migrateAccountClaimPolicy = internalMutation({
     const now = Date.now();
     let claimsPatched = 0;
     let aliasesInserted = 0;
+    let aliasesSkippedAtCap = 0;
     for (const company of page.page) {
       if (company.lifecycle === "removed" || company.purgePhase !== "none") continue;
       const claims = await ctx.db
@@ -86,7 +88,20 @@ export const migrateAccountClaimPolicy = internalMutation({
       );
       if (company.name !== undefined && !hasCurrentNameAlias) {
         if (claims.length >= COMPANY_MONITORING_LIMITS.maxClaimsPerCompany) {
-          throw new ConvexError("COMPANY_MONITORING_CLAIM_LIMIT_EXCEEDED");
+          // A company sitting exactly at the cap is a legal state —
+          // `assertCompanyClaimBudget` accepts a resulting count of
+          // `maxClaimsPerCompany` — so there is no invariant to fail on here.
+          // The genuine invariant guard is the `claims.length > max` check
+          // above. Throwing instead rolled back the whole page: the
+          // `allowedUses` patches for every other company were discarded,
+          // `claimPolicyVersion` was never stamped, and every retry of the
+          // same cursor hit this company and threw again, so the account's
+          // monitoring stayed permanently blocked behind
+          // COMPANY_MONITORING_CLAIM_POLICY_MIGRATION_REQUIRED with no
+          // self-healing path. The alias is a convenience; skip it, count it,
+          // and let the account finish migrating.
+          aliasesSkippedAtCap += 1;
+          continue;
         }
         await ctx.db.insert("companyMonitoringClaims", {
           ownerAccountId: args.ownerAccountId,
@@ -114,6 +129,7 @@ export const migrateAccountClaimPolicy = internalMutation({
         companiesProcessed: page.page.length,
         claimsPatched,
         aliasesInserted,
+        aliasesSkippedAtCap,
         nextCursor: null,
         claimPolicyVersion: COMPANY_MONITORING_CLAIM_POLICY_VERSION,
       };
@@ -124,6 +140,7 @@ export const migrateAccountClaimPolicy = internalMutation({
       companiesProcessed: page.page.length,
       claimsPatched,
       aliasesInserted,
+      aliasesSkippedAtCap,
       nextCursor: page.continueCursor,
       claimPolicyVersion: null,
     };

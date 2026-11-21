@@ -3,6 +3,7 @@ import { internal } from "../_generated/api";
 import { describe, expect, test } from "vitest";
 import { COMPANY_MONITORING_CLAIM_POLICY_VERSION } from "../companyMonitoring/_shared";
 import { CLAIM_POLICY_MIGRATION_COMPANY_PAGE_SIZE } from "../companyMonitoring/claimPolicyMigration";
+import { COMPANY_MONITORING_LIMITS } from "../../shared/company-monitoring-contract";
 import {
   accountFor,
   CM,
@@ -330,5 +331,116 @@ describe("Company Monitoring claim-policy migration", () => {
     expect(await accountFor(t, OWNER_A)).toMatchObject({
       claimPolicyVersion: COMPANY_MONITORING_CLAIM_POLICY_VERSION,
     });
+  });
+});
+
+// A company sitting exactly at `maxClaimsPerCompany` is a legal state —
+// `assertCompanyClaimBudget` accepts a resulting count of exactly the max, and
+// a customer can remove the alias claim whose value equals the company name
+// through `updateCompanyForOwner`. The migration treated that combination as
+// fatal and threw, rolling back the whole page: the `allowedUses` patches for
+// every other company on it were discarded, the account version was never
+// stamped, and every retry of the same cursor hit the same company and threw
+// again. The account's monitoring then stayed blocked behind
+// COMPANY_MONITORING_CLAIM_POLICY_MIGRATION_REQUIRED with no self-healing path.
+describe("a company at the claim cap does not wedge the migration", () => {
+  async function fillClaimsToCap(
+    t: ReturnType<typeof convexTest>,
+    ownerAccountId: string,
+    companyId: string,
+  ) {
+    await t.run(async (ctx) => {
+      const existing = await ctx.db
+        .query("companyMonitoringClaims")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", ownerAccountId).eq("companyId", companyId)
+        )
+        .collect();
+      for (let i = existing.length; i < COMPANY_MONITORING_LIMITS.maxClaimsPerCompany; i += 1) {
+        await ctx.db.insert("companyMonitoringClaims", {
+          ownerAccountId,
+          companyId,
+          claimId: `cm_claim_filler_${i}`,
+          type: "domain",
+          value: `filler-${i}.example`,
+          provenance: "customer",
+          trustState: "unverified",
+          allowedUses: ["attribution", "discovery"],
+          createdAt: NOW,
+          updatedAt: NOW,
+        });
+      }
+    });
+  }
+
+  test("the page still completes, the skip is reported, and the account migrates", async () => {
+    const t = convexTest(schema, modules);
+    const ownerAccountId = await seedLegacyAccount(t, 2);
+    // Company 000 has no current-name alias and is at the cap; 001 is ordinary.
+    await fillClaimsToCap(t, ownerAccountId, "cm_company_legacy_policy_000");
+
+    const result = await t.mutation(MIGRATION.migrateAccountClaimPolicy, {
+      ownerAccountId,
+      cursor: null,
+    });
+    expect(result).toMatchObject({
+      status: "complete",
+      companiesProcessed: 2,
+      aliasesSkippedAtCap: 1,
+      aliasesInserted: 1,
+      claimPolicyVersion: COMPANY_MONITORING_CLAIM_POLICY_VERSION,
+    });
+
+    const after = await t.run(async (ctx) => ({
+      account: await ctx.db
+        .query("companyMonitoringAccounts")
+        .withIndex("by_logicalAccountId", (q) => q.eq("logicalAccountId", ownerAccountId))
+        .unique(),
+      atCap: await ctx.db
+        .query("companyMonitoringClaims")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", ownerAccountId).eq("companyId", "cm_company_legacy_policy_000")
+        )
+        .collect(),
+      ordinary: await ctx.db
+        .query("companyMonitoringClaims")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", ownerAccountId).eq("companyId", "cm_company_legacy_policy_001")
+        )
+        .collect(),
+    }));
+    // The account finished migrating rather than staying blocked.
+    expect(after.account?.claimPolicyVersion).toBe(COMPANY_MONITORING_CLAIM_POLICY_VERSION);
+    // No claim was added past the cap, and the at-cap company's own claims
+    // still got their allowedUses.
+    expect(after.atCap).toHaveLength(COMPANY_MONITORING_LIMITS.maxClaimsPerCompany);
+    expect(after.atCap.every((claim) => claim.allowedUses !== undefined)).toBe(true);
+    // The other company on the same page was not rolled back.
+    expect(after.ordinary).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "alias", value: "Legacy Company 001" }),
+    ]));
+  });
+
+  test("positive control: more claims than the cap is still an invariant failure", async () => {
+    const t = convexTest(schema, modules);
+    const ownerAccountId = await seedLegacyAccount(t, 1);
+    await fillClaimsToCap(t, ownerAccountId, "cm_company_legacy_policy_000");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("companyMonitoringClaims", {
+        ownerAccountId,
+        companyId: "cm_company_legacy_policy_000",
+        claimId: "cm_claim_over_cap",
+        type: "domain",
+        value: "over-cap.example",
+        provenance: "customer",
+        trustState: "unverified",
+        allowedUses: ["attribution", "discovery"],
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+    });
+    await expect(
+      t.mutation(MIGRATION.migrateAccountClaimPolicy, { ownerAccountId, cursor: null }),
+    ).rejects.toThrow(/COMPANY_MONITORING_CLAIM_LIMIT_EXCEEDED/);
   });
 });
