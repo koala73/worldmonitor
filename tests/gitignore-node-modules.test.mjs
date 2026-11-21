@@ -9,7 +9,6 @@ const root = resolve(import.meta.dirname, '..');
 // git matches a path that does not exist as a file, the way it matches a
 // symlink. An installed node_modules is a directory, which the old rule
 // "node_modules/" also ignored, so probe under a prefix that cannot exist.
-// be77a47129 committed a node_modules symlink.
 function isIgnored(path) {
   return spawnSync('git', ['check-ignore', '--quiet', '--no-index', path], { cwd: root }).status === 0;
 }
