@@ -52,7 +52,9 @@ test('after a failed or regressed report, keep history and suppress the next com
     const gap = buildGridClockSnapshot(unavailable, first, start + tick);
     assert.equal(gap.regions[0].current, null);
     assert.equal(gap.regions[0].history[0].customersOut, 500);
-    assert.equal(gridClockHealth(gap, start + tick).freshnessMetaPatch.sourceState, 'degraded');
+    assert.equal(gridClockHealth(gap, start + tick).freshnessMetaPatch.sourceState, undefined);
+    const failedAgain = { gridClockFailedRuns: { CA: 1 } };
+    assert.equal(gridClockHealth(gap, start + tick, failedAgain).freshnessMetaPatch.sourceState, 'degraded');
     const next = buildGridClockSnapshot(regions(start + 2 * tick, 200), gap, start + 2 * tick);
     assert.ok(isGridClockSnapshot(next));
     assert.equal(deriveGridClock(next.regions[0], start + 2 * tick).changeCustomers, null);
@@ -86,7 +88,10 @@ test('the first usable publish sets a durable one-way marker, including mixed-ag
     command: async (_url, _token, command) => { writes.push(command); } };
   const unavailable = regions(start, null);
   for (const region of unavailable) region.warningSources[0].status = 'unavailable';
-  assert.equal((await afterGridClockPublish({ regions: unavailable }, options)).freshnessMetaPatch.sourceState, 'degraded');
+  const pending = (await afterGridClockPublish({ regions: unavailable }, options)).freshnessMetaPatch;
+  assert.equal(pending.sourceState, undefined);
+  const sustained = await afterGridClockPublish({ regions: unavailable }, { ...options, previousMeta: pending });
+  assert.equal(sustained.freshnessMetaPatch.sourceState, 'degraded');
   assert.deepEqual(writes, []);
   const usable = regions(start, 0);
   usable[0].current.partial = true;
@@ -100,12 +105,19 @@ test('the first usable publish sets a durable one-way marker, including mixed-ag
 // 69 of 143 runs in a day, and each onset re-fired a health incident
 // (WORLDMONITOR-1EM). The panel already labels partial data and skips its
 // comparison, so a fresh partial report is a healthy publish.
-test('a fresh partial report is healthy; missing, stale and unavailable inputs stay degraded', () => {
+test('a fresh partial report is healthy', () => {
   const now = start + tick;
   const partial = regions(now, 40);
   for (const region of partial) region.current.partial = true;
   assert.equal(gridClockHealth({ regions: partial }, now), undefined);
+});
 
+// Single NWS or MassOutage fetch failures (fetch failed, timeouts, a recurring
+// ~11:00Z HTTP 503) each fired an incident although the next ten-minute run
+// was clean (WORLDMONITOR-1EM). One failed run is pending; a second
+// consecutive failed run degrades and names the region.
+test('missing, stale and unavailable inputs degrade only on the second consecutive failed run', () => {
+  const now = start + tick;
   const missing = regions(now, 40);
   missing[2].current = null;
   const stale = regions(now, 40);
@@ -113,19 +125,72 @@ test('a fresh partial report is healthy; missing, stale and unavailable inputs s
   const unavailable = regions(now, 40);
   unavailable[4].warningSources[0].status = 'unavailable';
   for (const [snapshot, code] of [[missing, 'TX'], [stale, 'CA'], [unavailable, 'NY']]) {
-    const patch = gridClockHealth({ regions: snapshot }, now).freshnessMetaPatch;
-    assert.equal(patch.sourceState, 'degraded');
-    assert.equal(patch.errorCode, 'GRID_CLOCK_PARTIAL');
-    assert.match(patch.errorDetail, new RegExp(code));
-    assert.deepEqual(patch.failedDatasets, [code]);
+    const first = gridClockHealth({ regions: snapshot }, now).freshnessMetaPatch;
+    assert.equal(first.sourceState, undefined);
+    assert.equal(first.failedDatasets, undefined);
+    assert.deepEqual(first.gridClockFailedRuns, { [code]: 1 });
+
+    const second = gridClockHealth({ regions: snapshot }, now + tick, first).freshnessMetaPatch;
+    assert.equal(second.sourceState, 'degraded');
+    assert.equal(second.errorCode, 'GRID_CLOCK_PARTIAL');
+    assert.match(second.errorDetail, new RegExp(code));
+    assert.deepEqual(second.failedDatasets, [code]);
+    assert.deepEqual(second.gridClockFailedRuns, { [code]: 2 });
+
+    // A clean run resets the streak, so the next failure is pending again.
+    assert.equal(gridClockHealth({ regions: regions(now, 40) }, now + 2 * tick, second), undefined);
+    const after = gridClockHealth({ regions: snapshot }, now + 3 * tick, undefined).freshnessMetaPatch;
+    assert.equal(after.sourceState, undefined);
   }
+});
+
+test('a streak counts per region: alternating failures in different regions never degrade', () => {
+  const now = start + tick;
+  const txDown = regions(now, 40);
+  txDown[2].current = null;
+  const nyDown = regions(now, 40);
+  nyDown[4].warningSources[0].status = 'unavailable';
+  let meta = gridClockHealth({ regions: txDown }, now).freshnessMetaPatch;
+  meta = gridClockHealth({ regions: nyDown }, now + tick, meta).freshnessMetaPatch;
+  assert.equal(meta.sourceState, undefined);
+  assert.deepEqual(meta.gridClockFailedRuns, { NY: 1 });
+});
+
+test('malformed prior streaks count as no prior failure', () => {
+  const now = start + tick;
+  const missing = regions(now, 40);
+  missing[2].current = null;
+  for (const gridClockFailedRuns of [null, 'x', [], { TX: -1 }, { TX: 1.5 }, { TX: '1' }]) {
+    const patch = gridClockHealth({ regions: missing }, now, { gridClockFailedRuns }).freshnessMetaPatch;
+    assert.equal(patch.sourceState, undefined);
+    assert.deepEqual(patch.gridClockFailedRuns, { TX: 1 });
+  }
+  const capped = gridClockHealth({ regions: missing }, now, { gridClockFailedRuns: { TX: 100 } }).freshnessMetaPatch;
+  assert.deepEqual(capped.gridClockFailedRuns, { TX: 100 });
+});
+
+test('a pending first failure classifies as healthy', () => {
+  const name = 'gridDisruptionClock';
+  const key = health.STANDALONE_KEYS[name];
+  const now = start + tick;
+  const missing = regions(now, 40);
+  missing[2].current = null;
+  const patch = gridClockHealth({ regions: missing }, now).freshnessMetaPatch;
+  const meta = { fetchedAt: now, recordCount: 6, ...patch };
+  const entry = health.classifyKey(name, key, { allowOnDemand: true }, {
+    keyStrens: new Map([[key, 100]]),
+    keyMetaValues: new Map([[health.SEED_META[name].key, JSON.stringify(meta)]]),
+    activationStates: new Map([[name, true]]), keyErrors: new Map(), keyMetaErrors: new Map(), now,
+  });
+  assert.equal(entry.status, 'OK');
 });
 
 test('health projects the failing regions so a source incident names them', () => {
   const name = 'gridDisruptionClock';
   const key = health.STANDALONE_KEYS[name];
   const now = start + tick;
-  const patch = gridClockHealth({ regions: regions(now - 61 * 60_000, 40) }, now).freshnessMetaPatch;
+  const stale = { regions: regions(now - 61 * 60_000, 40) };
+  const patch = gridClockHealth(stale, now, gridClockHealth(stale, now).freshnessMetaPatch).freshnessMetaPatch;
   const meta = { fetchedAt: now, recordCount: 6, ...patch };
   const entry = health.classifyKey(name, key, { allowOnDemand: true }, {
     keyStrens: new Map([[key, 100]]),
