@@ -27,7 +27,7 @@ const MCP_NEG_CACHE_TTL_SECONDS = 60;
 // relay module.
 const SENT_ALERTS_ERASED_TTL_SECONDS = 7 * 24 * 60 * 60;
 const USER_AGENT = "worldmonitor-convex/1.0";
-const MAX_EXTERNAL_ATTEMPTS = 5;
+export const MAX_EXTERNAL_ATTEMPTS = 5;
 const RETRY_BASE_DELAY_MS = 30_000;
 const RETRY_MAX_DELAY_MS = 5 * 60_000;
 
@@ -280,7 +280,7 @@ async function redisZrangeAll(key: string): Promise<string[]> {
     : [];
 }
 
-async function deleteAccountRedisKeys(args: {
+export async function deleteAccountRedisKeys(args: {
   userId: string;
   keyHashes: string[];
   embedKeyHashes: string[];
@@ -360,6 +360,35 @@ function isAccountBriefKey(key: string, userId: string): boolean {
   return false;
 }
 
+export async function scanAccountBriefPage(userId: string, cursor: string): Promise<{ cursor: string; keys: string[] }> {
+  // Redis MATCH is a glob, not a literal. Escape identity characters; the
+  // glob over-matches (brief:erased:, ids sharing a prefix), so every key
+  // is checked against the exact account shapes before deleting.
+  const pattern = `brief:*${userId.replace(/[\\*?\[\]]/g, "\\$&")}*`;
+  const response = await redisCommand("", {
+    body: JSON.stringify(["SCAN", cursor, "MATCH", pattern, "COUNT", "1000"]),
+  });
+  const body = await redisResult(response, "BRIEF_SCAN") as { result?: unknown };
+  const result = body.result;
+  if (!Array.isArray(result) || result.length !== 2 ||
+      typeof result[0] !== "string" || !/^\d+$/.test(result[0]) ||
+      !Array.isArray(result[1]) || !result[1].every((key: unknown) =>
+        typeof key === "string" && key.startsWith("brief:") && key.includes(userId))) {
+    throw new Error("REDIS_BRIEF_SCAN_INVALID_RESULT");
+  }
+  return { cursor: result[0], keys: (result[1] as string[]).filter(key => isAccountBriefKey(key, userId)) };
+}
+
+export async function deleteAccountBriefPage(userId: string, page: { keys: string[] }): Promise<void> {
+  if (!page.keys.every(key => isAccountBriefKey(key, userId))) {
+    throw new Error("REDIS_BRIEF_PAGE_INVALID_KEYS");
+  }
+  // COUNT is a hint, so bound each delete request independently.
+  for (let i = 0; i < page.keys.length; i += 100) {
+    await redisRevoke(page.keys.slice(i, i + 100), []);
+  }
+}
+
 function reportBriefSweepFailure(
   args: { deletionId: string; cursor: string; pages?: number },
   error: string,
@@ -392,32 +421,9 @@ export const sweepBriefEnvelopes = internalAction({
       // data still needs cleanup even if cancellation is pending or failed.
       if (!snapshot) return null;
       const { userId } = snapshot;
-      // Redis MATCH is a glob, not a literal. Escape identity characters; the
-      // glob over-matches (brief:erased:, ids sharing a prefix), so every key
-      // is checked against the exact account shapes before deleting.
-      const pattern = `brief:*${userId.replace(/[\\*?\[\]]/g, "\\$&")}*`;
-      if (!page) {
-        const response = await redisCommand("", {
-          body: JSON.stringify(["SCAN", args.cursor, "MATCH", pattern, "COUNT", "1000"]),
-        });
-        const body = await redisResult(response, "BRIEF_SCAN") as { result?: unknown };
-        const result = body.result;
-        if (!Array.isArray(result) || result.length !== 2 ||
-            typeof result[0] !== "string" || !/^\d+$/.test(result[0]) ||
-            !Array.isArray(result[1]) || !result[1].every((key: unknown) =>
-              typeof key === "string" && key.startsWith("brief:") && key.includes(userId))) {
-          throw new Error("REDIS_BRIEF_SCAN_INVALID_RESULT");
-        }
-        page = { cursor: result[0], keys: (result[1] as string[]).filter(key => isAccountBriefKey(key, userId)) };
-      }
-      if (!page.keys.every(key => isAccountBriefKey(key, userId))) {
-        throw new Error("REDIS_BRIEF_PAGE_INVALID_KEYS");
-      }
-      const { keys, cursor } = page;
-      // COUNT is a hint, so bound each delete request independently.
-      for (let i = 0; i < keys.length; i += 100) {
-        await redisRevoke(keys.slice(i, i + 100), []);
-      }
+      if (!page) page = await scanAccountBriefPage(userId, args.cursor);
+      await deleteAccountBriefPage(userId, page);
+      const { cursor } = page;
       if (cursor !== "0") {
         const pages = (args.pages ?? 0) + 1;
         if (pages >= MAX_BRIEF_SWEEP_PAGES) {

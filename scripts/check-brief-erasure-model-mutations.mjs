@@ -1,0 +1,60 @@
+#!/usr/bin/env node
+// Proves tests/brief-erase-compose-model.test.mts can fail: applies each past
+// or plausible break to a copy of the real code, runs the model, and expects a
+// failure. Restores every file afterwards. Run after changing the model.
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+const root = resolve(import.meta.dirname, '..');
+const MODEL = 'tests/brief-erase-compose-model.test.mts';
+const MARKER_WRITE = '  await redisRevoke([], [{ key: `brief:erased:${args.userId}`, value: "1", ttlSeconds: BRIEF_ERASED_TTL_SECONDS }]);\n';
+const INDEX_READ = '  const slots = mergeUniqueStrings(await redisZrangeAll(slotsKey), slot ? [slot] : []);\n';
+
+const mutations = [
+  {
+    name: 'the compose skips the erase-marker re-read after its envelope write (the race flagged on #10896)',
+    file: 'scripts/lib/brief-l10n.mjs',
+    apply: (s) => s.replace(`  if (await undoBriefWriteIfErased(userId, issueSlot, pipeline)) {
+    throw new Error('account erased during compose; brief removed');
+  }
+`, ''),
+    expect: 'with no Redis failures',
+  },
+  {
+    name: 'the erase reads the slot index before it sets the marker',
+    file: 'convex/accountDeletion/sideEffects.ts',
+    apply: (s) => s.replace(MARKER_WRITE, '').replace(INDEX_READ, INDEX_READ + MARKER_WRITE),
+    expect: 'with no Redis failures',
+  },
+  {
+    name: 'no delayed sweep (#10956)',
+    file: MODEL,
+    apply: (s) => s.replace('actors: [compose, erase, sweep]', 'actors: [compose, erase]'),
+    expect: 'the delayed sweep removes',
+  },
+];
+
+let escaped = 0;
+for (const mutation of mutations) {
+  const path = resolve(root, mutation.file);
+  const original = readFileSync(path, 'utf8');
+  const mutated = mutation.apply(original);
+  if (mutated === original) throw new Error(`mutation no longer applies, update it: ${mutation.name}`);
+  writeFileSync(path, mutated);
+  let output = '';
+  try {
+    output = execFileSync(process.execPath, ['--import', 'tsx', '--test', MODEL], { cwd: root, encoding: 'utf8', stdio: 'pipe' });
+  } catch (err) {
+    output = `${err.stdout ?? ''}`;
+  } finally {
+    writeFileSync(path, original);
+  }
+  const caught = output.split('\n').some((line) => line.startsWith('  ✖') && line.includes(mutation.expect));
+  console.log(`${caught ? 'caught ' : 'ESCAPED'}  ${mutation.name}`);
+  if (!caught) escaped += 1;
+}
+if (escaped > 0) {
+  console.error(`${escaped} mutation(s) escaped the model`);
+  process.exit(1);
+}

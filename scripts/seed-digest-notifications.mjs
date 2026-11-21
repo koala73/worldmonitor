@@ -135,9 +135,8 @@ import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
 import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
 import { buildDigestDeliveryPlan } from './lib/digest-delivery-plan.mjs';
 import { selectDigestChannelContent } from './lib/digest-channel-content.mjs';
-import { briefL10nEnvOverrideWarning, briefL10nTarget, briefPipelineErrors, briefSlotIndexCommands, fetchBriefL10nConfig, localizeBrief, readBriefL10nConfig, undoBriefWriteIfErased, writeBriefSlotIndex } from './lib/brief-l10n.mjs';
+import { BRIEF_REDIS_TIMEOUT_MS, briefL10nEnvOverrideWarning, briefL10nTarget, fetchBriefL10nConfig, localizeBrief, readBriefL10nConfig, storeBrief } from './lib/brief-l10n.mjs';
 import { isRtlLanguage } from '../shared/ui-languages.js';
-import { briefLocalizedKey, briefSlotsKey } from '../shared/brief-envelope.js';
 import { briefIntlLocale, briefPlural, briefT, formatBriefDate } from '../shared/brief-strings.js';
 import { truncateForDisplay } from '../shared/brief-text.js';
 import {
@@ -2146,73 +2145,34 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   // distinct slots so each digest dispatch freezes its own URL.
   const briefTz = winner.rule?.digestTimezone ?? 'UTC';
   const issueSlot = issueSlotInTz(nowMs, briefTz);
-  const key = `brief:${userId}:${issueSlot}`;
-  // The latest-pointer lets readers (dashboard panel, share-url
-  // endpoint) locate the most recent brief without knowing the slot.
-  // One SET per compose is cheap and always current.
-  const latestPointerKey = `brief:latest:${userId}`;
   // synthesizedAt and composedAt ride on the pointer, not the envelope (the
   // renderer rejects unknown envelope keys); the api readers use issueSlot
   // only. synthesizedAt ages reused prose; composedAt (every compose, reused
   // prose included) orders the budgeted default-brief pass.
-  const latestPointerValue = JSON.stringify({ issueSlot, synthesizedAt, composedAt: nowMs });
+  const latestPointer = JSON.stringify({ issueSlot, synthesizedAt, composedAt: nowMs });
   // raw = true pins the bare-key write (#7674): the digest composer publishes
   // the envelopes every api/brief reader resolves raw; see the insights read
   // above for the VERCEL_ENV-leak rationale.
-  // Slot index for account deletion, written before any envelope: if it
-  // cannot be written the compose fails, so no envelope exists that a
-  // deletion could not find.
-  await writeBriefSlotIndex(
-    briefSlotIndexCommands(briefSlotsKey(userId), issueSlot, Date.now(), BRIEF_TTL_SECONDS),
-    (commands) => redisPipeline(commands, 5_000, true),
-  );
-  const briefCommands = [
-    ['SETEX', key, String(BRIEF_TTL_SECONDS), JSON.stringify(finalEnvelope)],
-    ['SETEX', latestPointerKey, String(BRIEF_TTL_SECONDS), latestPointerValue],
-  ];
-  // Flag on: write the sibling, or DEL it so a stale one cannot outlive a
-  // switch back to English. Flag off: no brief:l10n: command at all.
-  let siblingIndex = -1;
-  if (localizedEnvelope) {
-    siblingIndex = briefCommands.length;
-    briefCommands.push(['SETEX', briefLocalizedKey(userId, issueSlot), String(BRIEF_TTL_SECONDS), JSON.stringify(localizedEnvelope)]);
-  } else if (briefL10nConfig.enabled) {
-    briefCommands.push(['DEL', briefLocalizedKey(userId, issueSlot)]);
-  }
-  let pipelineErrors;
-  try {
-    const pipelineResult = await redisPipeline(briefCommands, 5_000, true);
-    if (!pipelineResult || !Array.isArray(pipelineResult) || pipelineResult.length < 2) {
-      throw new Error('null pipeline response from Upstash');
-    }
-    pipelineErrors = briefPipelineErrors(pipelineResult, 2, siblingIndex);
-    if (pipelineErrors.fatal) throw new Error(`Upstash SETEX error: ${pipelineErrors.fatal}`);
-  } catch (err) {
-    // A failed or lost write may still have stored an envelope. If the account
-    // was erased meanwhile, remove it before failing; a failed cleanup fails
-    // with both reasons, so the compose is retried and the envelope is not
-    // silently left behind.
-    try {
-      await undoBriefWriteIfErased(userId, issueSlot, (commands) => redisPipeline(commands, 5_000, true));
-    } catch (cleanupErr) {
-      throw new Error(`${err instanceof Error ? err.message : String(err)}; ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`);
-    }
-    throw err;
-  }
-  if (pipelineErrors.other.length > 0) {
-    console.warn(`[digest] brief index/sibling write error user=${userId}: ${pipelineErrors.other.join('; ')}`);
+  const stored = await storeBrief({
+    userId,
+    issueSlot,
+    envelope: finalEnvelope,
+    latestPointer,
+    localized: localizedEnvelope,
+    clearStaleLocalized: briefL10nConfig.enabled,
+    ttlSeconds: BRIEF_TTL_SECONDS,
+    indexedAtMs: Date.now(),
+  }, (commands) => redisPipeline(commands, BRIEF_REDIS_TIMEOUT_MS, true));
+  if (stored.otherErrors.length > 0) {
+    console.warn(`[digest] brief index/sibling write error user=${userId}: ${stored.otherErrors.join('; ')}`);
   }
   // The magazine and carousel read the stored sibling. Without it they render
   // English, so the email and channels go out in English too.
-  if (pipelineErrors.siblingFailed) {
+  if (stored.siblingFailed) {
     localizedEnvelope = null;
     localizedSynthesis = null;
   }
   const briefLang = localizedEnvelope ? targetLang : 'en';
-  // The account may have been erased while this compose ran; see briefErasedKey.
-  if (await undoBriefWriteIfErased(userId, issueSlot, (commands) => redisPipeline(commands, 5_000, true))) {
-    throw new Error('account erased during compose; brief removed');
-  }
 
   const magazineUrl = await signBriefUrl({
     userId,

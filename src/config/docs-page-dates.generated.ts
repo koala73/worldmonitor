@@ -325,7 +325,7 @@ export const DOCS_PAGE_DATES: Record<string, { datePublished: string; dateModifi
   "geographic-convergence": {"datePublished":"2026-03-12","dateModified":"2026-06-07"},
   "getting-started": {"datePublished":"2026-03-12","dateModified":"2026-11-16"},
   "global-procurement-intelligence": {"datePublished":"2026-07-13","dateModified":"2026-11-14"},
-  "health-endpoints": {"datePublished":"2026-03-11","dateModified":"2026-11-18"},
+  "health-endpoints": {"datePublished":"2026-03-11","dateModified":"2026-11-21"},
   "hotspots": {"datePublished":"2026-03-12","dateModified":"2026-06-09"},
   "incident-feed": {"datePublished":"2026-10-17","dateModified":"2026-10-28"},
   "infrastructure-cascade": {"datePublished":"2026-03-12","dateModified":"2026-10-20"},
