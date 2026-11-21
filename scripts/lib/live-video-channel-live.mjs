@@ -252,9 +252,9 @@ export async function fetchChannelLivePage(channelId, {
 }
 
 /**
- * Resolves every channel once, `concurrency` pages at a time, calling `fetchPage(channelId, { attempt, retry })`. A page
- * that failed at the proxy (`proxyFailure`) moves the shared `session.current` to the next proxy session and is fetched
- * again there with `retry: true`, at most MAX_PROXY_RETRIES times; later channels start on that session, so one dead exit costs one
+ * Resolves every channel once, `concurrency` pages at a time, calling `fetchPage(channelId, { attempt, previous })`. A
+ * page that failed at the proxy (`proxyFailure`) moves the shared `session.current` to the next proxy session and is
+ * fetched again there, with that failed result as `previous` (null on a first fetch), at most MAX_PROXY_RETRIES times; later channels start on that session, so one dead exit costs one
  * failed fetch per worker rather than one per channel. A page YouTube served (a wall, a parse error, a mismatch) is
  * never re-fetched. No fetch or retry starts after `budgetMs`: a channel not started by then reads unreadable/skipped,
  * so the pass takes at most budgetMs plus one page's worst case. Never throws.
@@ -271,9 +271,9 @@ export async function resolveChannelsLive(channelIds, {
   const startedAt = now();
   const withinBudget = () => now() - startedAt < budgetMs;
   let next = 0;
-  const fetchOnce = async (id, attempt, retry) => {
+  const fetchOnce = async (id, attempt, previous) => {
     try {
-      return await fetchPage(id, { attempt, retry });
+      return await fetchPage(id, { attempt, previous });
     } catch (error) {
       return unreadable(id, 'fetch-error', String(error?.message ?? error));
     }
@@ -286,12 +286,12 @@ export async function resolveChannelsLive(channelIds, {
         continue;
       }
       let attempt = session.current;
-      let result = await fetchOnce(id, attempt, false);
+      let result = await fetchOnce(id, attempt, null);
       for (let retry = 1; result?.proxyFailure === true && retry <= MAX_PROXY_RETRIES && withinBudget(); retry++) {
         // Another worker may already have moved past this exit; never move backwards.
         session.current = Math.max(session.current, attempt + 1);
         attempt = session.current;
-        result = await fetchOnce(id, attempt, true);
+        result = await fetchOnce(id, attempt, result);
       }
       results.set(id, result);
     }

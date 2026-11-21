@@ -153,8 +153,8 @@ export function resolveRunProxy(raw) {
 
 /**
  * The resolver's fetchPage: reads the page direct, and through the proxy (routed for `attempt`) only when the direct
- * read is unreadable and a proxy is configured. A retry after a proxy failure goes straight to the proxy, since the
- * direct read already failed for this channel. Each result carries `route` ('direct' or 'proxy'), and a proxied one
+ * read is unreadable and a proxy is configured. A retry after a proxy failure (`previous`) goes straight to the proxy,
+ * since the direct read already failed for this channel, and keeps that read's reason. Each result carries `route` ('direct' or 'proxy'), and a proxied one
  * carries the direct read's reason as `directReason`. Direct reads never set `proxyFailure`, so they never rotate the
  * proxy session.
  */
@@ -164,9 +164,9 @@ export function makeFetchPage({
   proxyFetchImpl,
   directTimeoutMs = DIRECT_PAGE_TIMEOUT_MS,
 }) {
-  return async function fetchPage(id, { attempt = 0, retry = false } = {}) {
-    let directReason;
-    if (!retry) {
+  return async function fetchPage(id, { attempt = 0, previous = null } = {}) {
+    let directReason = previous?.directReason;
+    if (!previous) {
       const direct = await fetchChannelLivePage(id, { fetchImpl, timeoutMs: directTimeoutMs });
       if (direct.status !== 'unreadable' || !proxyUrl) return { ...direct, route: 'direct' };
       directReason = direct.reason;

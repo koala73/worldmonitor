@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { buildEnvelope } from '../scripts/_seed-envelope-source.mjs';
+import { resolveChannelsLive } from '../scripts/lib/live-video-channel-live.mjs';
 import { withRetry } from '../scripts/_seed-utils.mjs';
 import {
   CANONICAL_KEY,
@@ -317,11 +318,20 @@ describe('makeFetchPage (direct first, proxy only without a direct verdict)', ()
     assert.deepEqual(calls.proxy, []);
   });
 
-  it('goes straight to the proxy on a retry after a proxy failure, without fetching direct again', async () => {
-    const { calls, fetchImpl, proxyFetchImpl } = routes({ direct: () => page(BOT_WALL_HTML), viaProxy: (id) => proxied(livePageHtml(id, VIDEO(3))) });
-    const result = await makeFetchPage({ proxyUrl: RAW, fetchImpl, proxyFetchImpl })(ID(1), { attempt: 1, retry: true });
-    assert.deepEqual([result.status, result.route], ['live', 'proxy']);
-    assert.deepEqual(calls, { direct: [], proxy: [[ID(1), 10002]] });
+  it('goes straight to the proxy on a retry after a proxy failure, and keeps why the direct read failed', async () => {
+    const { calls, fetchImpl, proxyFetchImpl } = routes({
+      direct: () => page(BOT_WALL_HTML),
+      viaProxy: (id) => {
+        if (calls.proxy.length === 1) throw Object.assign(new Error('CONNECT tunnel timeout'), { proxyConnect: true });
+        return proxied(livePageHtml(id, VIDEO(3)));
+      },
+    });
+    const session = { current: 0 };
+    const results = await resolveChannelsLive([ID(1)], { fetchPage: makeFetchPage({ proxyUrl: RAW, fetchImpl, proxyFetchImpl }), session });
+    const result = results.get(ID(1));
+    assert.deepEqual([result.status, result.route, result.directReason], ['live', 'proxy', 'bot-wall']);
+    assert.deepEqual(calls, { direct: [ID(1)], proxy: [[ID(1), 10001], [ID(1), 10002]] }, 'the direct read is not repeated on the retry');
+    assert.equal(session.current, 1);
   });
 
   it('publishes the direct reads while the proxy answers 407, and asks the proxy once per walled channel', async () => {
