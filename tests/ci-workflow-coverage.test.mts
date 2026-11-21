@@ -706,6 +706,12 @@ function workflowJobBlock(workflow: string, job: string): string {
 const NON_PR_CONCURRENCY_FALLBACK =
   /github\.event\.pull_request\.number\s*\|\|\s*github\.(?:sha|run_id)\b/;
 const PR_ONLY_CANCEL_IN_PROGRESS = "${{ github.event_name == 'pull_request' }}";
+// Test is the one gated workflow whose main pushes deliberately share a group:
+// deploy-gate.sh recognises a cancelled main Test run as superseded (pending,
+// never failure), and only for the workflow named Test. Any other workflow that
+// collapses main pushes still trips the #8445 guard.
+const TEST_SUPERSEDING_GROUP =
+  "test-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == '1' && 'main') || github.run_id }}";
 
 function workflowLevelConcurrency(source: string): {
   group?: unknown;
@@ -725,6 +731,7 @@ function cancelsUnconditionallyWithoutNonPrFallback(source: string): boolean {
   const isUnconditionalCancel =
     cancel === true || (typeof cancel === 'string' && cancel !== PR_ONLY_CANCEL_IN_PROGRESS);
   if (!isUnconditionalCancel) return false;
+  if (concurrency.group === TEST_SUPERSEDING_GROUP && (YAML.parse(source) as { name?: string }).name === 'Test') return false;
   return typeof concurrency.group !== 'string' || !NON_PR_CONCURRENCY_FALLBACK.test(concurrency.group);
 }
 
@@ -2981,7 +2988,6 @@ describe('CI workflow coverage', () => {
 // a per-run group that nothing can evict.
 describe('gated workflows evict superseded PR runs (#8443)', () => {
   const prScopedCancellers = [
-    ['test.yml', 'test'],
     ['typecheck.yml', 'typecheck'],
     ['lint-code.yml', 'lint-code'],
     ['security-audit.yml', 'security-audit'],
@@ -3005,6 +3011,28 @@ describe('gated workflows evict superseded PR runs (#8443)', () => {
       );
     });
   }
+
+  it('test.yml also cancels a main push run a newer main push supersedes', () => {
+    const workflow = YAML.parse(read(resolve(workflowsDir, 'test.yml'))) as {
+      name?: string;
+      concurrency?: { group?: string; 'cancel-in-progress'?: unknown };
+    };
+    assert.equal(workflow.name, 'Test', 'deploy-gate.sh matches the superseded run by this name');
+    assert.equal(workflow.concurrency?.group, TEST_SUPERSEDING_GROUP);
+    assert.match(TEST_SUPERSEDING_GROUP, /github\.run_attempt == '1'/, 'a re-run of an old main run must not cancel the newer one');
+    assert.equal(workflow.concurrency?.['cancel-in-progress'], true);
+    assert.match(deployGateScript, /select\(\.name == "Test" and \.head_branch == "main"\)/,
+      'the gate must recognise a superseded main Test run, or cancelling it posts a permanent red gate');
+  });
+
+  it('accepts the superseding group only on the workflow named Test', () => {
+    // The exact Test group, so only the workflow-name check can reject it.
+    const typecheck = read(resolve(workflowsDir, 'typecheck.yml'))
+      .replace(/group:\s*[^\n]+/, `group: ${TEST_SUPERSEDING_GROUP}`)
+      .replace(/cancel-in-progress:\s*[^\n]+/, 'cancel-in-progress: true');
+    assert.equal(workflowLevelConcurrency(typecheck)?.group, TEST_SUPERSEDING_GROUP, 'the mutation must apply');
+    assert.equal(cancelsUnconditionallyWithoutNonPrFallback(typecheck), true);
+  });
 
   // The gate's own trigger list is the definition of "blocks a merge". A new
   // workflow added there without cancellation reintroduces the dead-SHA burn

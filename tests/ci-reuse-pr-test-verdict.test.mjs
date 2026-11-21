@@ -134,6 +134,18 @@ describe('reuse of a green pull request Test verdict on a main push', () => {
     }
   });
 
+  // A cancelled or red main run between the last green one and this push
+  // left a commit untested on main (and its health-probe cutovers unchecked);
+  // the PR run never covered it, since its base already contained it.
+  it('never reuses while a main commit since the last successful run is untested, and asks GitHub nothing', async () => {
+    for (const decidedBase of ['OLDER', '']) {
+      const d = await decide({}, { decidedBase });
+      assert.deepEqual(d.reuse, {}, JSON.stringify({ decidedBase }));
+      assert.deepEqual(d.calls, []);
+    }
+    assert.deepEqual((await decide({}, { decidedBase: 'P' })).reuse, { code: true, browser: true });
+  });
+
   it('propagates API failures so the caller runs every job', async () => {
     await assert.rejects(decide({ fail: '/jobs' }));
     await assert.rejects(decide({ fail: '/compare/' }));
@@ -156,7 +168,7 @@ describe('step entry point', () => {
       writeFileSync(join(dir, 'summary'), '');
       // Pin the clock: the fixture run is dated, and the real clock made this
       // case fail once that run aged past the 24 h reuse window.
-      await main({ env: { GITHUB_REPOSITORY: 'o/r', GITHUB_SHA: 'S', BEFORE: 'P', GITHUB_OUTPUT: join(dir, 'out'), GITHUB_STEP_SUMMARY: join(dir, 'summary'), ...env }, api, now: NOW });
+      await main({ env: { GITHUB_REPOSITORY: 'o/r', GITHUB_SHA: 'S', BEFORE: 'P', PUSH_BASE: 'P', GITHUB_OUTPUT: join(dir, 'out'), GITHUB_STEP_SUMMARY: join(dir, 'summary'), ...env }, api, now: NOW });
       return { out: readFileSync(join(dir, 'out'), 'utf8'), summary: readFileSync(join(dir, 'summary'), 'utf8') };
     } finally {
       rmSync(dir, { recursive: true, force: true });

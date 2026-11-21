@@ -539,6 +539,37 @@ gated_run_in_flight() {
   return 1
 }
 
+# Test cancels a main push run when a newer main commit lands, and the newer
+# run tests a tree that contains this commit. The cancelled run decides
+# nothing, so its cancelled jobs (and the always() aggregates that then fail)
+# must not publish a red gate on a commit nobody can fix. Echoes the
+# superseding commit when every failed name is a job of this commit's
+# cancelled main push Test run, a newer main push Test run was created while
+# it ran, and main now contains this commit. Any doubt or read error returns
+# non-zero, which keeps the ordinary failure verdict.
+superseded_on_main() {
+  local eval_sha="$1" failed_names="$2" test_run run_id newer jobs
+  test_run=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/actions/runs?head_sha=$eval_sha&event=push&per_page=100" --paginate --slurp |
+    jq -ce '[.[].workflow_runs[]? | select(.name == "Test" and .head_branch == "main")]
+      | sort_by(.id) | last | select(. != null and .conclusion == "cancelled")
+      | {id, created_at, updated_at}') || return 1
+  run_id=$(printf '%s\n' "$test_run" | jq -r '.id')
+  newer=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/actions/workflows/test.yml/runs?event=push&branch=main&per_page=50" |
+    jq -re --arg sha "$eval_sha" --argjson run "$test_run" '
+      [.workflow_runs[]? | select(.head_sha != $sha
+        and .created_at > $run.created_at and .created_at <= $run.updated_at)]
+      | sort_by(.created_at) | first | .head_sha | select(type == "string")') || return 1
+  [ "$(gh_api_with_rate_limit_retry core "repos/$REPO/compare/$eval_sha...main" --jq '.status')" = "ahead" ] || return 1
+  jobs=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/actions/runs/$run_id/jobs?per_page=100" --paginate --slurp |
+    jq -ce '[.[].jobs[]?.name]') || return 1
+  printf '%s\n' "$failed_names" | jq -Rce --argjson jobs "$jobs" \
+    'split(",") | length > 0 and all(.[]; . as $name | $jobs | index($name))' >/dev/null || return 1
+  printf '%s\n' "$newer"
+}
+
 evaluate_sha() {
 echo "── evaluating $SHA"
 active_sha="$SHA"
@@ -606,6 +637,14 @@ done
 
 if [ -n "$pending" ]; then
   post_gate_status "pending" "Waiting for required PR gates ($(name_count "$pending")): $pending"
+  active_sha=""
+  return 0
+fi
+
+local superseded_by
+if [ -n "$failed" ] && superseded_by=$(superseded_on_main "$SHA" "$failed"); then
+  # Pending, not success: this commit has no verdict of its own.
+  post_gate_status "pending" "Superseded on main by ${superseded_by:0:10}: Test was cancelled and that commit's run covers this one"
   active_sha=""
   return 0
 fi
