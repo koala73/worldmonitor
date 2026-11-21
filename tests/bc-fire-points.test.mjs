@@ -561,6 +561,7 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
       errorCode: 'BC_WILDFIRE_SOURCE_FAILED',
       canadaSourceFailureCount: 1,
       failedSources: [], sourceHealth: {}, lastSourceAttemptAt: null,
+      consecutiveSourceFailures: null, lastSourceFailureCode: null,
     });
 
     const now = Date.parse('2026-08-14T12:00:00Z');
@@ -676,7 +677,8 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
       ...retainedBc,
       _bcSnapshot: { ...retainedBc._bcSnapshot, fetchedAt: null },
     }, { previousMeta: { sourceState: 'ok' } }).freshnessMetaPatch;
-    assert.equal('consecutiveSourceFailures' in unretained, false);
+    assert.equal(unretained.consecutiveSourceFailures, null);
+    assert.equal(unretained.lastSourceFailureCode, null);
     assert.equal(classify(unretained).status, 'SEED_ERROR');
 
     // Partial FIRMS coverage on top of a Canadian failure is not one transient
@@ -684,7 +686,8 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
     for (const data of [retainedBc, prescribed]) {
       const patch = canadianWildfireAfterPublish({ ...data, _firmsPartial: true },
         { previousMeta: { sourceState: 'ok' } }).freshnessMetaPatch;
-      assert.equal('consecutiveSourceFailures' in patch, false, data._bcErrorCode ?? data._cwfisErrorCode);
+      assert.equal(patch.consecutiveSourceFailures, null, data._bcErrorCode ?? data._cwfisErrorCode);
+      assert.equal(patch.lastSourceFailureCode, null);
       assert.equal(classify(patch).status, 'SEED_ERROR');
     }
   });

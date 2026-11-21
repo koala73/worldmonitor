@@ -904,13 +904,19 @@ export function canadianWildfireAfterPublish(data, { previousMeta = null } = {})
   // FIRMS coverage on top of either is not a single transient failure.
   const graced = !firmsPartial && (errorCode === 'CWFIS_PRESCRIBED_FAILED'
     || (errorCode === 'BC_WILDFIRE_SOURCE_FAILED' && Number.isSafeInteger(data?._bcSnapshot?.fetchedAt)));
-  const streak = graced
-    ? {
-        consecutiveSourceFailures: nextIdenticalSourceFailureCount(
-          previousMeta, errorCode, CANADA_SUBSOURCE_WARN_AFTER_CONSECUTIVE),
-        lastSourceFailureCode: errorCode,
-      }
-    : {};
+  // When grace does not apply, null the streak explicitly: a validation-skip
+  // run carries the previous seed-meta diagnostics forward, and a streak left
+  // from an earlier retained failure would keep the grace.
+  let streak = {};
+  if (graced) {
+    streak = {
+      consecutiveSourceFailures: nextIdenticalSourceFailureCount(
+        previousMeta, errorCode, CANADA_SUBSOURCE_WARN_AFTER_CONSECUTIVE),
+      lastSourceFailureCode: errorCode,
+    };
+  } else if (errorCode === 'BC_WILDFIRE_SOURCE_FAILED' || errorCode === 'CWFIS_PRESCRIBED_FAILED') {
+    streak = { consecutiveSourceFailures: null, lastSourceFailureCode: null };
+  }
   return {
     freshnessMetaPatch: {
       sourceState: 'degraded',
