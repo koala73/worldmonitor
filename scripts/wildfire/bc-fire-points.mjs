@@ -900,9 +900,10 @@ export function canadianWildfireAfterPublish(data, { previousMeta = null } = {})
       }
     : { failedSources: [], sourceHealth: {}, lastSourceAttemptAt: null };
   // A BC failure is graced only while its retained snapshot still serves.
-  // A prescribed-layer failure keeps the current active CWFIS layer.
-  const graced = errorCode === 'CWFIS_PRESCRIBED_FAILED'
-    || (errorCode === 'BC_WILDFIRE_SOURCE_FAILED' && Number.isSafeInteger(data?._bcSnapshot?.fetchedAt));
+  // A prescribed-layer failure keeps the current active CWFIS layer. Partial
+  // FIRMS coverage on top of either is not a single transient failure.
+  const graced = !firmsPartial && (errorCode === 'CWFIS_PRESCRIBED_FAILED'
+    || (errorCode === 'BC_WILDFIRE_SOURCE_FAILED' && Number.isSafeInteger(data?._bcSnapshot?.fetchedAt)));
   const streak = graced
     ? {
         consecutiveSourceFailures: nextIdenticalSourceFailureCount(

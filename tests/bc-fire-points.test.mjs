@@ -678,6 +678,15 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
     }, { previousMeta: { sourceState: 'ok' } }).freshnessMetaPatch;
     assert.equal('consecutiveSourceFailures' in unretained, false);
     assert.equal(classify(unretained).status, 'SEED_ERROR');
+
+    // Partial FIRMS coverage on top of a Canadian failure is not one transient
+    // subsource failure: keep alarming on the first run, as before.
+    for (const data of [retainedBc, prescribed]) {
+      const patch = canadianWildfireAfterPublish({ ...data, _firmsPartial: true },
+        { previousMeta: { sourceState: 'ok' } }).freshnessMetaPatch;
+      assert.equal('consecutiveSourceFailures' in patch, false, data._bcErrorCode ?? data._cwfisErrorCode);
+      assert.equal(classify(patch).status, 'SEED_ERROR');
+    }
   });
 
   it('keeps the FIRMS partial and CWFIS active wildfire grace policies unchanged', () => {
