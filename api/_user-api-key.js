@@ -281,7 +281,12 @@ export async function checkBootstrapUserApiKeyRateLimit(req) {
       ok: false,
       status: 429,
       error: 'Too many requests',
-      headers: noStoreHeaders({ 'Retry-After': String(Math.ceil(ttl)) }),
+      // Floor of 1: a TTL of 0 is accepted above as the normal sub-second
+      // tail of an active window, so without this the refusal would carry
+      // Retry-After: 0 and tell a caller that is already over the limit to
+      // come straight back into the same exhausted window. Every other meter
+      // floors it the same way (rateLimitHeaders in _api-key-rate-limit.js).
+      headers: noStoreHeaders({ 'Retry-After': String(Math.max(1, Math.ceil(ttl))) }),
     };
   }
 
