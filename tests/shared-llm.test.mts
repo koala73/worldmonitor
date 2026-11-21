@@ -9,6 +9,8 @@ const originalAbortSignalTimeout = AbortSignal.timeout;
 const originalDateNow = Date.now;
 const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
 const originalOllamaApiUrl = process.env.OLLAMA_API_URL;
+const originalMiniMaxApiKey = process.env.MINIMAX_API_KEY;
+const originalMiniMaxModel = process.env.MINIMAX_MODEL;
 const originalLlmApiUrl = process.env.LLM_API_URL;
 const originalLlmApiKey = process.env.LLM_API_KEY;
 const originalLlmModel = process.env.LLM_MODEL;
@@ -44,11 +46,97 @@ afterEach(() => {
   if (originalOllamaApiUrl === undefined) delete process.env.OLLAMA_API_URL;
   else process.env.OLLAMA_API_URL = originalOllamaApiUrl;
 
+  if (originalMiniMaxApiKey === undefined) delete process.env.MINIMAX_API_KEY;
+  else process.env.MINIMAX_API_KEY = originalMiniMaxApiKey;
+
+  if (originalMiniMaxModel === undefined) delete process.env.MINIMAX_MODEL;
+  else process.env.MINIMAX_MODEL = originalMiniMaxModel;
+
   if (originalLlmApiUrl === undefined) delete process.env.LLM_API_URL;
   else process.env.LLM_API_URL = originalLlmApiUrl;
 
   if (originalLlmApiKey === undefined) delete process.env.LLM_API_KEY;
   else process.env.LLM_API_KEY = originalLlmApiKey;
+});
+
+describe('MiniMax requests', () => {
+  beforeEach(() => {
+    process.env.MINIMAX_API_KEY = 'mm-test-key';
+    delete process.env.MINIMAX_MODEL;
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+    delete process.env.LLM_REASONING_MODEL;
+  });
+
+  for (const model of [undefined, 'MiniMax-M3', 'MiniMax-M2.7-highspeed', 'custom-model']) {
+    for (const stream of [false, true]) {
+      it(`sends ${model ?? 'default Flash'} through the ${stream ? 'streaming' : 'ordinary'} request path`, async () => {
+        if (model) process.env.MINIMAX_MODEL = model;
+        process.env.LLM_REASONING_PROVIDER = 'minimax';
+        const messages = [{ role: 'user', content: 'Test MiniMax.' }];
+        const posts: Array<{ url: string; body: Record<string, unknown>; headers: Headers }> = [];
+        globalThis.fetch = async (input, init) => {
+          if ((init?.method || 'GET') === 'GET') return new Response('');
+          posts.push({
+            url: String(input),
+            body: JSON.parse(String(init?.body)),
+            headers: new Headers(init?.headers),
+          });
+          return stream
+            ? new Response('data: {"choices":[{"delta":{"content":"answer"}}]}\n\ndata: [DONE]\n\n')
+            : new Response(JSON.stringify({ choices: [{ message: { content: 'answer' } }] }));
+        };
+        if (stream) {
+          const output = await new Response(callLlmReasoningStream({ messages })).text();
+          assert.match(output, /"delta":"answer"/);
+          assert.match(output, /"done":true/);
+        } else {
+          // No forced provider: exercise selection from the ordinary chain.
+          const result = await callLlm({ messages });
+          assert.equal(result?.provider, 'minimax');
+          assert.equal(result?.model, model ?? 'MiniMax-M3.1-Flash');
+        }
+        assert.equal(posts.length, 1);
+        assert.equal(posts[0].url, 'https://api.minimax.io/v1/chat/completions');
+        assert.equal(posts[0].headers.get('Authorization'), 'Bearer mm-test-key');
+        assert.deepEqual(posts[0].body, {
+          model: model ?? 'MiniMax-M3.1-Flash',
+          messages,
+          temperature: 0.3,
+          max_tokens: stream ? 600 : 1500,
+          ...(stream ? { stream: true } : {}),
+        });
+        // In particular, do not inherit reasoning-off or gateway routing fields.
+        // Omitting thinking/effort keeps the direct API's adaptive defaults.
+      });
+    }
+  }
+
+  it('honors per-call and profile overrides ahead of the environment model', async () => {
+    process.env.MINIMAX_MODEL = 'MiniMax-M3';
+    process.env.LLM_REASONING_PROVIDER = 'minimax';
+    process.env.LLM_REASONING_MODEL = 'saved-custom-model';
+    const models: string[] = [];
+    globalThis.fetch = async (_input, init) => {
+      if ((init?.method || 'GET') === 'GET') return new Response('');
+      models.push(JSON.parse(String(init?.body)).model);
+      return new Response(JSON.stringify({ choices: [{ message: { content: 'answer' } }] }));
+    };
+    const messages = [{ role: 'user', content: 'Test override.' }];
+    await callLlm({ messages, provider: 'minimax', modelOverrides: { minimax: 'MiniMax-M3.1-Flash' } });
+    await callLlmReasoning({ messages });
+    assert.deepEqual(models, ['MiniMax-M3.1-Flash', 'saved-custom-model']);
+  });
+
+  it('does not send a request without a MiniMax API key', async () => {
+    delete process.env.MINIMAX_API_KEY;
+    let requests = 0;
+    globalThis.fetch = async () => { requests += 1; return new Response(''); };
+    assert.equal(await callLlm({ messages: [], provider: 'minimax' }), null);
+    assert.equal(requests, 0);
+  });
 });
 
 describe('callLlmReasoningStream error bodies', () => {
