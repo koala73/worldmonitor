@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import { pathToFileURL } from 'node:url';
 import {
-  getRedisCredentials, loadEnvFile, readCanonicalValue, readExistingSeedMeta, redisCommand, runSeed,
+  getRedisCredentials, loadEnvFile, readCanonicalValue, redisCommand, runSeed,
 } from './_seed-utils.mjs';
 import { fetchGridClockSources } from './lib/grid-clock-sources.mjs';
 import { GRID_CLOCK_REGIONS, isGridClockSnapshot } from './shared/grid-disruption-clock.js';
 
 const KEY = 'infra:grid-disruption-clock:v1';
+const META_KEY = 'seed-meta:infra:grid-disruption-clock';
 export const GRID_CLOCK_ACTIVATION_KEY = 'seed-activated:infra:grid-disruption-clock';
 const DAY = 24 * 60 * 60_000;
 const MAX_HISTORY = 144;
@@ -95,17 +96,28 @@ export async function afterGridClockPublish(snapshot, {
   return gridClockHealth(snapshot, now, previousMeta);
 }
 
+// Both reads are strict. A failed seed-meta read must fail the run, which
+// leaves the last seed-meta in place, rather than read as "no prior failure"
+// and replace an active degradation with a pending first failure. A missing
+// key is a first run and reads as null.
+export async function loadGridClockRun({
+  fetchSources = fetchGridClockSources, readValue = readCanonicalValue, now = Date.now,
+} = {}) {
+  const [regions, previous, previousMeta] = await Promise.all([
+    fetchSources(),
+    readValue(KEY, { strict: true }),
+    readValue(META_KEY, { strict: true }),
+  ]);
+  return { snapshot: buildGridClockSnapshot(regions, previous, now()), previousMeta };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   loadEnvFile(import.meta.url);
   let previousMeta = null;
   runSeed('infra', 'grid-disruption-clock', KEY, async () => {
-    const [regions, previous, meta] = await Promise.all([
-      fetchGridClockSources(),
-      readCanonicalValue(KEY, { strict: true }),
-      readExistingSeedMeta('infra', 'grid-disruption-clock'),
-    ]);
-    previousMeta = meta;
-    return buildGridClockSnapshot(regions, previous, Date.now());
+    const run = await loadGridClockRun();
+    previousMeta = run.previousMeta;
+    return run.snapshot;
   }, {
     // Retain a full day for comparison even through missed ten-minute runs.
     ttlSeconds: 2 * DAY / 1000,

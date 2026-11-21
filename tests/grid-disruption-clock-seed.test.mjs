@@ -3,7 +3,7 @@ import test from 'node:test';
 import bootstrap from '../api/bootstrap.js';
 import { buildEnvelope } from '../scripts/_seed-envelope-source.mjs';
 import {
-  afterGridClockPublish, buildGridClockSnapshot, gridClockHealth, GRID_CLOCK_ACTIVATION_KEY,
+  afterGridClockPublish, buildGridClockSnapshot, gridClockHealth, GRID_CLOCK_ACTIVATION_KEY, loadGridClockRun,
 } from '../scripts/seed-grid-disruption-clock.mjs';
 import { __testing__ as health } from '../api/health.js';
 import { deriveGridClock, isGridClockSnapshot, GRID_CLOCK_REGIONS } from '../shared/grid-disruption-clock.js';
@@ -167,6 +167,33 @@ test('malformed prior streaks count as no prior failure', () => {
   }
   const capped = gridClockHealth({ regions: missing }, now, { gridClockFailedRuns: { TX: 100 } }).freshnessMetaPatch;
   assert.deepEqual(capped.gridClockFailedRuns, { TX: 100 });
+});
+
+test('a failed seed-meta read fails the run instead of clearing an active degradation', async () => {
+  const now = start + tick;
+  const missing = regions(now, 40);
+  missing[2].current = null;
+  const degraded = { fetchedAt: start, recordCount: 6,
+    ...gridClockHealth({ regions: missing }, now, { gridClockFailedRuns: { TX: 1 } }).freshnessMetaPatch };
+  assert.equal(degraded.sourceState, 'degraded');
+  const reads = [];
+  const store = { 'infra:grid-disruption-clock:v1': null, 'seed-meta:infra:grid-disruption-clock': degraded };
+  const readValue = async (key, options) => {
+    reads.push([key, options]);
+    return store[key];
+  };
+  const run = await loadGridClockRun({ fetchSources: async () => missing, readValue, now: () => now });
+  assert.deepEqual(reads.map(([, options]) => options), [{ strict: true }, { strict: true }]);
+  assert.equal(gridClockHealth(run.snapshot, now, run.previousMeta).freshnessMetaPatch.sourceState, 'degraded');
+
+  const failingRead = async key => {
+    if (key.startsWith('seed-meta:')) throw new Error('Redis GET failed: HTTP 503');
+    return null;
+  };
+  await assert.rejects(loadGridClockRun({ fetchSources: async () => missing, readValue: failingRead, now: () => now }), /HTTP 503/);
+  // An absent seed-meta key is a first run: the failure is pending.
+  const first = await loadGridClockRun({ fetchSources: async () => missing, readValue: async () => null, now: () => now });
+  assert.deepEqual(gridClockHealth(first.snapshot, now, first.previousMeta).freshnessMetaPatch, { gridClockFailedRuns: { TX: 1 } });
 });
 
 test('a pending first failure classifies as healthy', () => {
