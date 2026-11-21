@@ -148,9 +148,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/enforce-mintlify-reserved-slugs.mjs
+            /docs/docs.json
+            /docs/mcp.mdx
+            /docs/authed/mcp.mdx
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
+          package-manager-cache: false
       - run: node scripts/enforce-mintlify-reserved-slugs.mjs
 
   doc-anchors:
