@@ -15,6 +15,7 @@
 
 import fallbackJson from '../generated/teasers.json';
 import { dedupeByArticleUrl } from '../../../shared/article-identity.js';
+import { isVerifiableArticleUrl } from '../../../shared/article-url.js';
 import { createTimeoutSignal } from './timeout-signal';
 
 export interface TeaserHeadline {
@@ -56,24 +57,14 @@ export interface TeaserState {
 
 const FETCH_TIMEOUT_MS = 5000;
 
-// Mirrors AGGREGATOR_LINK_HOSTS in scripts/freeze-crawlable-live-pulse.mjs.
-// pro-test is an isolated package and cannot import from scripts/, so this list
-// is duplicated on purpose — keep the two in step. An aggregator redirect is an
-// opaque, expiring URL: the masthead beside it is real but the link does not
-// let a reader verify the story, which is the whole point of showing it (#7608).
-const AGGREGATOR_LINK_HOSTS = new Set(['news.google.com']);
-
+// The aggregator list and the https/hostname rule are the canonical ones from
+// shared/article-url.js, the same definition the freeze (scripts/crawlable-
+// developments.mjs) and the headline RPCs use, so a host added there is
+// honoured here without a second edit. An aggregator redirect is an opaque,
+// expiring URL: the masthead beside it is real but the link does not let a
+// reader verify the story, which is the whole point of showing it (#7608).
 function articleUrl(link: string | undefined): string {
-  if (!link) return '';
-  try {
-    const parsed = new URL(link);
-    const hostname = parsed.hostname.toLowerCase().replace(/\.+$/, '');
-    return parsed.protocol === 'https:' && hostname && !AGGREGATOR_LINK_HOSTS.has(hostname)
-      ? link
-      : '';
-  } catch {
-    return '';
-  }
+  return isVerifiableArticleUrl(link) ? (link as string) : '';
 }
 
 interface FallbackShape {
