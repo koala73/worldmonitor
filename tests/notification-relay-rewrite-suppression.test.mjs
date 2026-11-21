@@ -268,6 +268,27 @@ describe('reworded news alerts (#10916)', () => {
     });
   }
 
+  for (const verdict of [['{"same": 1}', '{"same": 2}'], ['{"same": 2}', '{"same": 1}']]) {
+    it(`replies naming two separate earlier alerts skip only users who had both (verdict ${verdict.join(' / ')})`, async () => {
+      const h = installHarness({ users: ['user-1'] });
+      try {
+        await relay.processEvent(alert(CNN));
+        // Judged a separate development, so SUN is its own anchor and reached
+        // only user-2: the two anchors keep separate recipients.
+        h.state.users = ['user-2'];
+        h.state.verdict = '{"same": 0}';
+        await relay.processEvent(alert(SUN));
+        assert.deepEqual(h.sentTo(), ['chat-user-1', 'chat-user-2']);
+        h.state.users = ['user-1', 'user-2'];
+        h.state.verdict = [...verdict];
+        await relay.processEvent(alert(NDTV));
+        // Each reply vouches for a different earlier alert; nobody had both.
+        assert.deepEqual(h.sentTo(), ['chat-user-1', 'chat-user-2', 'chat-user-1', 'chat-user-2']);
+        assert.equal(h.record().skippedUsers, 0);
+      } finally { h.restore(); }
+    });
+  }
+
   it('sends the rewrite to a user whose copy of the story is over 24 hours old', async () => {
     const h = installHarness();
     try {

@@ -2220,7 +2220,7 @@ async function checkAlertRewrite(event, matching) {
     if (!lib.rewriteCheckApplies(event)) return NO_REWRITE;
     const decision = await lib.findRewriteAnchor(event);
     const userIds = [...new Set(matching.map(r => r.userId))];
-    const alreadyAlerted = decision.anchor ? await lib.usersAlertedFor(decision.anchor.id, userIds) : new Set();
+    const alreadyAlerted = decision.anchor ? await lib.usersAlertedFor(decision.anchorIds ?? decision.anchor.id, userIds) : new Set();
     const coverageMerged = decision.anchor ? await lib.mergeStoryCoverage(event, decision.anchor.id) : false;
     return { applies: true, decision, alreadyAlerted, coverageMerged, lib };
   } catch (err) {
@@ -2251,6 +2251,7 @@ async function finishAlertRewrite(event, rewrite, reachedUsers, skippedUsers) {
     judged: decision.judged,
     verdict: decision.verdict,
     anchor: decision.anchor ? { id: decision.anchor.id, score: decision.anchor.score, title: String(decision.anchor.title).slice(0, 300) } : null,
+    anchorIds: decision.anchorIds,
     error: decision.error,
     ms: decision.ms,
     coverageMerged: rewrite.coverageMerged,

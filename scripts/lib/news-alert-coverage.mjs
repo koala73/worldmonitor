@@ -186,7 +186,7 @@ export async function findRewriteAnchor(event, {
   // The check fills its own copy; a late finish past the deadline cannot change
   // what was returned.
   const blank = () => ({
-    id: null, model: EMBED_MODEL, judgeModel: REWRITE_JUDGE_MODEL, candidates: 0, best: null, judged: false, verdict: null, anchor: null, error: null, ms: 0,
+    id: null, model: EMBED_MODEL, judgeModel: REWRITE_JUDGE_MODEL, candidates: 0, best: null, judged: false, verdict: null, anchor: null, anchorIds: null, error: null, ms: 0,
   });
   const work = blank();
   let timer;
@@ -232,33 +232,41 @@ async function decide(event, decision, { now, pipeline, embed, judge }) {
     // borderline case one reply in several can (Tusk confirming the Poland
     // strike, 1 of 8 runs), and a wrong repeat hides news, so a "0" or an
     // unreadable reply from either keeps the alert. Two replies that name
-    // different earlier headlines usually name two wordings of one story; the
-    // first reply's anchor decides who is skipped.
+    // different earlier headlines skip only users who had both: wordings of one
+    // story share recipients, while two separate alerts (a "likely" report and
+    // its confirmation) do not.
     const userPrompt = rewriteJudgePrompt(title, shortlist, now);
     const replies = await Promise.all(Array.from({ length: REWRITE_JUDGE_VOTES }, () => judge(REWRITE_JUDGE_SYSTEM_PROMPT, userPrompt)));
     // Kept for the audit log, so an unreadable reply is told apart from a "0".
     decision.verdict = replies.map(r => String(r ?? 'null').replace(/\s+/g, ' ').trim().slice(0, 28)).join(' | ');
     if (replies.some(r => r == null)) throw new Error('judge returned nothing');
     const picks = replies.map(r => parseRewriteVerdict(r, shortlist.length));
-    const index = picks.every(p => p != null) ? picks[0] : null;
-    if (index != null) decision.anchor = { id: shortlist[index].id, title: shortlist[index].title, score: shortlist[index].score };
+    if (picks.every(p => p != null)) {
+      const [index] = picks;
+      decision.anchor = { id: shortlist[index].id, title: shortlist[index].title, score: shortlist[index].score };
+      decision.anchorIds = [...new Set(picks.map(p => shortlist[p].id))];
+    }
   } catch (err) {
     decision.anchor = null;
+    decision.anchorIds = null;
     decision.error = err?.name === 'Error' ? err.message : (err?.name || 'error');
   }
 }
 
 /**
- * Of `userIds`, those the anchor reached in the last 24 hours. An unreadable
- * reply returns an empty set, so nobody is skipped.
+ * Of `userIds`, those every anchor in `anchorIds` (one id or several) reached
+ * in the last 24 hours. An unreadable reply returns an empty set, so nobody is
+ * skipped.
  */
-export async function usersAlertedFor(anchorId, userIds, { now = Date.now(), pipeline = defaultRedisPipeline } = {}) {
-  if (!anchorId || !userIds.length) return new Set();
+export async function usersAlertedFor(anchorIds, userIds, { now = Date.now(), pipeline = defaultRedisPipeline } = {}) {
+  const ids = (Array.isArray(anchorIds) ? anchorIds : [anchorIds]).filter(Boolean);
+  if (!ids.length || !userIds.length) return new Set();
   try {
-    const rows = await pipeline([['ZMSCORE', recipientsKey(anchorId), ...userIds]], { timeoutMs: 1_000 });
-    const scores = rows?.[0]?.result;
-    if (!Array.isArray(scores) || scores.length !== userIds.length) return new Set();
-    return new Set(userIds.filter((_, i) => scores[i] != null && Number(scores[i]) > now - DAY));
+    const rows = await pipeline(ids.map(id => ['ZMSCORE', recipientsKey(id), ...userIds]), { timeoutMs: 1_000 });
+    if (!Array.isArray(rows) || rows.length !== ids.length) return new Set();
+    const fresh = scores => Array.isArray(scores) && scores.length === userIds.length;
+    if (!rows.every(row => fresh(row?.result))) return new Set();
+    return new Set(userIds.filter((_, i) => rows.every(row => row.result[i] != null && Number(row.result[i]) > now - DAY)));
   } catch {
     return new Set();
   }
