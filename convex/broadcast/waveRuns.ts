@@ -2208,23 +2208,56 @@ function canUnstampAbandonedWave(run: {
     && (TERMINAL_FAILURE_SUBSTATUSES as readonly string[]).includes(run.failureSubstatus);
 }
 
-/** Max failed runs to consider per cleanup cron tick. Bounded so a
+/** Max failed runs to CLEAN per cleanup cron tick. Bounded so a
  *  long-lived deployment with many discarded waves doesn't load the
  *  whole table into memory at once. The cron runs daily — at 100/day,
  *  cleanup would catch up on any reasonable backlog within a week. */
 const CLEANUP_CANDIDATES_PER_TICK = 100;
 
+/** Rows read per page while looking for those candidates. */
+const CLEANUP_SCAN_PAGE_SIZE = 200;
+
+/** Hard ceiling on rows read per tick, so the scan below stays bounded
+ *  however many failed runs the table holds. */
+const CLEANUP_MAX_SCANNED_PER_TICK = 2_000;
+
+/**
+ * Page the scan, don't truncate it.
+ *
+ * Every row in this range shares one index key, so `take(N)` always returns
+ * the OLDEST N failed runs — and nothing moves a run out of that prefix:
+ * `_cleanupDiscardedWavePickedContacts` deletes `wavePickedContacts` rows and
+ * unstamps registrations but never patches the `waveRuns` row, and a run that
+ * failed after its broadcast was created is never cleanable at all. Filtering
+ * after the bound therefore let N already-cleaned or never-cleanable runs sit
+ * at the head of the range forever, and the 24h safety net silently stopped
+ * reaching anything newer.
+ */
 export const _listFailedWaveRunsForCleanup = internalQuery({
   args: {},
   handler: async (ctx) => {
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    const failed = await ctx.db
-      .query("waveRuns")
-      .withIndex("by_status", (q) => q.eq("status", "failed"))
-      .take(CLEANUP_CANDIDATES_PER_TICK);
-    return failed
-      .filter((r) => r.updatedAt < cutoff && canUnstampAbandonedWave(r))
-      .map((r) => r.runId);
+    const runIds: string[] = [];
+    let cursor: string | null = null;
+    let scanned = 0;
+    while (
+      runIds.length < CLEANUP_CANDIDATES_PER_TICK
+      && scanned < CLEANUP_MAX_SCANNED_PER_TICK
+    ) {
+      const page = await ctx.db
+        .query("waveRuns")
+        .withIndex("by_status", (q) => q.eq("status", "failed"))
+        .paginate({ cursor, numItems: CLEANUP_SCAN_PAGE_SIZE });
+      scanned += page.page.length;
+      for (const run of page.page) {
+        if (run.updatedAt >= cutoff || !canUnstampAbandonedWave(run)) continue;
+        runIds.push(run.runId);
+        if (runIds.length >= CLEANUP_CANDIDATES_PER_TICK) break;
+      }
+      if (page.isDone) break;
+      cursor = page.continueCursor;
+    }
+    return runIds;
   },
 });
 
