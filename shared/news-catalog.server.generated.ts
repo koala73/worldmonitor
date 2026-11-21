@@ -389,8 +389,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Suspilne",
-          "url": "https://news.google.com/rss/search?q=site%3Asuspilne.media%20when%3A2d&hl=en-US&gl=US&ceid=US:en",
-          "headlineLang": "uk"
+          "url": "https://news.google.com/rss/search?q=site%3Asuspilne.media%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Ukrainska Pravda EN",
@@ -470,8 +469,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Zerkalo",
-          "url": "https://news.google.com/rss/search?q=site%3Azerkalo.io%20when%3A2d&hl=en-US&gl=US&ceid=US:en",
-          "headlineLang": "ru"
+          "url": "https://news.google.com/rss/search?q=site%3Azerkalo.io%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "NewsMaker",

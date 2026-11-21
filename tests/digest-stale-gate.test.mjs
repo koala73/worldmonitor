@@ -74,9 +74,11 @@ describe('relay digest stale gate (#7084)', () => {
     const digest = { categories: { europe: { items: [
       { title: 'Oil tanker struck near Hormuz', source: 'NRK', publishedAt: now - 60_000 },
       { title: 'Missiles cross into Poland', source: 'TVN24', publishedAt: now - 60_000 },
+      // An English Google News query that returns Spanish headlines.
+      { title: 'Court rules on extradition', source: 'El País Uruguay', publishedAt: now - 60_000 },
     ] } } };
     const candidates = buildClassifyCandidateMap(digest, [], 'full', now, 6 * 60 * 60 * 1000, undefined, []);
-    assert.deepEqual([...candidates.values()].map(c => c.otherLanguage), [true, true]);
+    assert.deepEqual([...candidates.values()].map(c => c.otherLanguage), [true, true, true]);
   });
 
   it('marks a headline in another language whatever its feed is tagged', () => {

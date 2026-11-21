@@ -47,6 +47,12 @@ it('pools an English Google News query whatever language its feed is routed to',
   assert.deepEqual(alertPoolItems(servable, [], now, 'en').map(i => i.title), ['Supreme Court overturns jail term']);
 });
 
+it('keeps a feed out of the pool when the catalog states its headlines are in another language', () => {
+  // NRK has no routing language; El País Uruguay is an English query that returns Spanish.
+  const servable = [item('Oil tanker struck near Hormuz', 1, { source: 'NRK', lang: 'en' }), item('Court rules on extradition', 2, { source: 'El País Uruguay', lang: 'es' })];
+  assert.deepEqual(alertPoolItems(servable, [], now, 'en'), []);
+});
+
 it('the pool keeps exactly the feeds the relay lets alert, for every feed in the catalog', () => {
   const feeds = [...Object.values(VARIANT_FEEDS).flatMap(byCategory => Object.values(byCategory).flat()), ...INTEL_SOURCES];
   const names = [...new Set(feeds.map(feed => feed.name))];

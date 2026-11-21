@@ -1346,7 +1346,6 @@
     {
       "name": "Suspilne",
       "url": "https://news.google.com/rss/search?q=site%3Asuspilne.media%20when%3A2d&hl=en-US&gl=US&ceid=US:en",
-      "headlineLang": "uk",
       "browser": {
         "url": {
           "en": "https://news.google.com/rss/search?q=site:suspilne.media+when:2d&hl=en-US&gl=US&ceid=US:en",
@@ -1613,7 +1612,6 @@
     {
       "name": "Zerkalo",
       "url": "https://news.google.com/rss/search?q=site%3Azerkalo.io%20when%3A2d&hl=en-US&gl=US&ceid=US:en",
-      "headlineLang": "ru",
       "notes": [
         "Belarus / Moldova (#5953)",
         "Belarus / Moldova (#5953) — secondary pressure line"
