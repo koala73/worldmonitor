@@ -162,6 +162,50 @@ const SITE_SCHEMA = {
   required: ['siteId', 'name', 'lat', 'lon'],
 };
 
+const MANEUVERS_PATH = '/api/orbital/v1/list-satellite-maneuvers';
+
+function maneuverArgs(params: Record<string, unknown>): number {
+  const value = params.norad_id;
+  if (value === undefined || value === null) return 0;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+    throw new RpcValidationError('list-satellite-maneuvers', [{ field: 'norad_id', description: 'norad_id must be a positive integer NORAD catalogue number.' }]);
+  }
+  return value;
+}
+
+const ELEMENT_SET_SCHEMA = {
+  type: 'object',
+  properties: {
+    epoch: { type: 'integer', description: 'Element epoch, Unix epoch milliseconds.' },
+    meanMotion: { type: 'number', description: 'Revolutions per day.' },
+    semiMajorAxisKm: { type: 'number' },
+    eccentricity: { type: 'number' },
+    inclination: { type: 'number', description: 'Degrees.' },
+    raan: { type: 'number', description: 'Right ascension of the ascending node, degrees.' },
+    bstar: { type: 'number' },
+  },
+};
+
+const MANEUVER_SCHEMA = {
+  type: 'object',
+  properties: {
+    noradId: { type: 'integer' },
+    element: { type: 'string', enum: ['semiMajorAxis', 'inclination', 'raan'], description: 'raan is the node left after J2 nodal regression.' },
+    unit: { type: 'string', enum: ['km', 'deg'] },
+    regime: { type: 'string', enum: ['leo', 'meo', 'geo', 'heo'] },
+    fromEpoch: { type: 'integer', description: 'Epoch before the step, Unix epoch milliseconds.' },
+    toEpoch: { type: 'integer', description: 'Epoch after the step, Unix epoch milliseconds.' },
+    confirmedByEpoch: { type: 'integer', description: 'Following epoch that kept at least half of the step, Unix epoch milliseconds.' },
+    expected: { type: 'number', description: 'Value the baseline trend predicts at toEpoch.' },
+    observed: { type: 'number' },
+    residual: { type: 'number' },
+    threshold: { type: 'number', description: 'The larger of the regime floor and six times the baseline scatter.' },
+    before: ELEMENT_SET_SCHEMA,
+    after: ELEMENT_SET_SCHEMA,
+  },
+  required: ['noradId', 'element', 'unit', 'fromEpoch', 'toEpoch', 'residual', 'threshold', 'before', 'after'],
+};
+
 /**
  * The orbital REST endpoints answer 404 unless ORBITAL_WATCH_ENABLED=true (#10710),
  * so the tools are listed only while the feature is launched (#10721, #10768).
@@ -264,5 +308,45 @@ export const ORBITAL_TOOLS: ToolDef[] = [
     },
     _coverageKeys: ['orbital:sites:v1'],
     _apiPaths: [`GET ${COUNTRY_EVIDENCE_PATH}`],
+  },
+  {
+    name: 'list_satellite_maneuvers',
+    title: 'Candidate orbit manoeuvres of imaging satellites',
+    _subscriptionOnly: true,
+    _outputBudgetBytes: 131072,
+    description: 'Return candidate orbit manoeuvres of the profiled imaging satellites (military, government, commercial and open missions), newest first. A candidate is a step in semi-major axis, inclination or the J2-corrected node that left the satellite\'s own 10-day trend by more than the threshold shown and that the next element set confirmed; each carries both element sets, expected and observed values, the threshold and the orbit regime. It is never a confirmed manoeuvre. satellites says per satellite whether its newest step was evaluated or why not (gap, insufficient-baseline, stale, decaying, no-history): no candidate for an unevaluated satellite means nothing was judged, not that it did not manoeuvre. Falls in LEO semi-major axis are not flagged while drag is unknown (methodNote). stale true means the list is missing or older than 24 hours. Pass norad_id for one satellite. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        norad_id: { type: 'integer', minimum: 1, description: 'NORAD catalogue number of one satellite; omit for every profiled satellite.' },
+      },
+      required: [],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        candidates: { type: 'array', items: MANEUVER_SCHEMA, description: 'Candidate manoeuvres, newest first.' },
+        satellites: {
+          type: 'array',
+          items: { type: 'object', properties: { noradId: { type: 'integer' }, status: { type: 'string', enum: ['evaluated', 'gap', 'insufficient-baseline', 'stale', 'decaying', 'no-history'] }, regime: { type: 'string' }, candidateCount: { type: 'integer' } } },
+        },
+        evaluatedSatellites: { type: 'integer' },
+        generatedAt: { type: 'integer', description: 'When the list was computed, Unix epoch milliseconds; 0 with no list.' },
+        detectionVersion: { type: 'integer' },
+        methodNote: { type: 'string' },
+        stale: { type: 'boolean' },
+      },
+      required: ['candidates', 'satellites', 'evaluatedSatellites', 'generatedAt', 'stale'],
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _validateArgs: (params) => { maneuverArgs(params); },
+    _execute: async (params, base, context, execution) => {
+      const query = new URLSearchParams();
+      const noradId = maneuverArgs(params);
+      if (noradId) query.set('norad_id', String(noradId));
+      return readOrbital(MANEUVERS_PATH, query, 'list-satellite-maneuvers', base, context, execution);
+    },
+    _coverageKeys: ['orbital:maneuvers:v1'],
+    _apiPaths: [`GET ${MANEUVERS_PATH}`],
   },
 ];

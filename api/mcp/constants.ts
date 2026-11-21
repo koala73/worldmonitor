@@ -107,8 +107,9 @@ export const SERVER_NAME = 'worldmonitor';
 // get_country_imagery_evidence (Orbital Watch, #10615); 1.56.0 → 1.57.0 to
 // unlist them while Orbital Watch is dark (#10721); 1.57.0 → 1.58.0 to list the
 // orbital tools again at launch (#10768); 1.58.0 → 1.59.0 for the
-// get_point_satellite_passes tiers/limit filter that keeps it under budget (#10849).
-export const SERVER_VERSION = '1.59.0';
+// get_point_satellite_passes tiers/limit filter that keeps it under budget (#10849);
+// 1.59.0 → 1.60.0 for list_satellite_maneuvers (#9110).
+export const SERVER_VERSION = '1.60.0';
 
 // MCP `Implementation` (initialize serverInfo, and the modern-era
 // _meta["io.modelcontextprotocol/serverInfo"]). `title`, `description`,
