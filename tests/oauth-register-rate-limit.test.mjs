@@ -84,6 +84,21 @@ it('returns 429 for a confirmed denial before body parsing or persistence', asyn
   assert.equal((await response.json()).error, 'rate_limit_exceeded');
   assert.equal(req.bodyUsed, false);
   assert.deepEqual(writes, []);
+  // A refused registration has to say when to come back. Without Retry-After
+  // an unattended client has nothing to pace itself by, and the degraded 503
+  // above already answers this way.
+  const retryAfter = Number(response.headers.get('retry-after'));
+  assert.ok(
+    Number.isInteger(retryAfter) && retryAfter >= 1 && retryAfter <= 60,
+    `Retry-After must be whole seconds within the 60 s window, got ${response.headers.get('retry-after')}`,
+  );
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.equal(response.headers.get('ratelimit-remaining'), '0');
+  assert.equal(response.headers.get('ratelimit-reset'), String(retryAfter));
+  assert.match(response.headers.get('ratelimit-policy') ?? '', /w=60/);
+  assert.equal(response.headers.get('access-control-allow-origin'), '*');
+  // The healthy denial must stay distinguishable from limiter degradation.
+  assert.equal(response.headers.get('x-ratelimit-mode'), null);
 });
 
 for (const failure of ['timeout', 'error', 'missing-url', 'missing-token', 'invalid-url']) {

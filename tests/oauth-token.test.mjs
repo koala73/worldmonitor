@@ -2659,6 +2659,28 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
       !consoleErrors.some((line) => line.includes('[rate-limit] redis-error')),
       `healthy 429 must not look like limiter degradation: ${consoleErrors.join(' | ')}`,
     );
+    // A limiter answer that carries no reset still has to pace the caller:
+    // fall back to one whole window rather than omitting the header.
+    assert.equal(resp.headers.get('retry-after'), '60');
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
+    assert.equal(resp.headers.get('ratelimit-remaining'), '0');
+  });
+
+  it('derives Retry-After from the limiter reset when it carries one', async () => {
+    __setOAuthTokenRatelimitForTest({
+      limit: async () => ({ success: false, limit: 10, reset: Date.now() + 30_000 }),
+    });
+    const { deps } = makeDeps();
+    const resp = await tokenHandler(makeReq('client_credentials', { client_secret: 'x' }), deps);
+    assert.equal(resp.status, 429);
+    const retryAfter = Number(resp.headers.get('retry-after'));
+    assert.ok(
+      retryAfter >= 29 && retryAfter <= 30,
+      `Retry-After must track the limiter reset (~30 s), got ${resp.headers.get('retry-after')}`,
+    );
+    assert.equal(resp.headers.get('ratelimit-limit'), '10');
+    assert.equal(resp.headers.get('ratelimit-reset'), String(retryAfter));
+    assert.match(resp.headers.get('ratelimit-policy') ?? '', /"default";q=10;w=60/);
   });
 
   it('healthy limiter headroom does not mark the response degraded', async () => {
