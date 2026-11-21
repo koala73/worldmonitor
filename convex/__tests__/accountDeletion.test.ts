@@ -17,6 +17,7 @@ import {
   tombstoneUserId,
 } from "../accountDeletion/registry";
 import { PERSONAL_DELETE_TABLES } from "../accountDeletion/batches";
+import { getFeaturesForPlan } from "../lib/entitlements";
 
 const { dodoUpdateMock } = vi.hoisted(() => ({
   dodoUpdateMock: vi.fn(async () => ({ status: "cancelled" })),
@@ -400,6 +401,174 @@ describe("account deletion — eraseConfirmedUser identity", () => {
         email: USER_A.email,
       } as never),
     ).rejects.toThrow(/Unexpected field `email`/);
+  });
+});
+
+
+// Every table in PERSONAL_DELETE_TABLES must actually lose the caller's rows.
+// The registry-parity test below proves a table is LISTED; it cannot prove the
+// walk reaches it. Thirteen of the listed tables had no behavioural coverage
+// at all, and the list grows (agentFeedback, enterpriseMembers,
+// proBusinessUpgradeAdmissions and alertScopeNotices were all appended after
+// the erasure tests were written), so this enumerates the constant instead of
+// naming tables: a table added without a seeder here fails immediately.
+const PERSONAL_ROW_SEEDERS: Record<
+  Exclude<(typeof PERSONAL_DELETE_TABLES)[number], "users">,
+  (ctx: never, userId: string, email: string, now: number) => Promise<unknown>
+> = {
+  userPreferences: (ctx: any, userId, _email, now) => ctx.db.insert("userPreferences", {
+    userId, variant: "coverage", data: { theme: "dark" }, schemaVersion: 1, syncVersion: 1, updatedAt: now,
+  }),
+  userPreferenceWriteRateLimits: (ctx: any, userId, _email, now) => ctx.db.insert("userPreferenceWriteRateLimits", {
+    userId, windowStart: now, count: 1, updatedAt: now,
+  }),
+  billingEmailUpdateAttempts: (ctx: any, userId, _email, now) => ctx.db.insert("billingEmailUpdateAttempts", {
+    userId, attemptedAt: now,
+  }),
+  notificationChannels: (ctx: any, userId, email, now) => ctx.db.insert("notificationChannels", {
+    userId, channelType: "email", email, verified: true, linkedAt: now,
+  }),
+  alertRules: (ctx: any, userId, _email, now) => ctx.db.insert("alertRules", {
+    userId, variant: "full", enabled: true, eventTypes: ["conflict"],
+    sensitivity: "high", channels: ["email"], updatedAt: now,
+  }),
+  telegramPairingTokens: (ctx: any, userId, _email, now) => ctx.db.insert("telegramPairingTokens", {
+    userId, token: `tok-${userId}`, expiresAt: now + 600_000, used: false,
+  }),
+  userApiKeys: (ctx: any, userId, _email, now) => ctx.db.insert("userApiKeys", {
+    userId, name: "coverage-key", keyPrefix: "wm_cover1", keyHash: "c".repeat(64), createdAt: now,
+  }),
+  embedKeys: (ctx: any, userId, _email, now) => ctx.db.insert("embedKeys", {
+    userId, name: "coverage-embed", keyPrefix: "wme_cover", keyHash: "d".repeat(64), createdAt: now,
+  }),
+  mcpProTokens: (ctx: any, userId, _email, now) => ctx.db.insert("mcpProTokens", {
+    userId, clientId: "client_coverage", name: "coverage-token", createdAt: now,
+  }),
+  userReferralCodes: (ctx: any, userId, _email, now) => ctx.db.insert("userReferralCodes", {
+    userId, code: `ref-${userId}`, createdAt: now,
+  }),
+  userReferralCredits: (ctx: any, userId, email, now) => ctx.db.insert("userReferralCredits", {
+    referrerUserId: userId, refereeEmail: `referee-${email}`, createdAt: now,
+  }),
+  entitlements: (ctx: any, userId, _email, now) => ctx.db.insert("entitlements", {
+    userId, planKey: "free", features: getFeaturesForPlan("free"), validUntil: now + 86_400_000, updatedAt: now,
+  }),
+  aiRoutingPolicies: (ctx: any, userId, _email, now) => ctx.db.insert("aiRoutingPolicies", {
+    userId, allowedProviders: ["openrouter"], reason: "coverage", updatedAt: now,
+  }),
+  apiUsageRollups: (ctx: any, userId, _email, now) => ctx.db.insert("apiUsageRollups", {
+    userId, planKey: "api_starter", dimension: "api_daily_requests", windowKey: "2026-01-01",
+    windowStart: now, windowEnd: now + 86_400_000, limit: 1000, usage: 1, usageRatio: 0.001,
+    source: "coverage", sourceFreshAt: now, computedAt: now,
+  }),
+  apiPlanLimitNotices: (ctx: any, userId, _email, now) => ctx.db.insert("apiPlanLimitNotices", {
+    userId, planKey: "api_starter", dimension: "api_daily_requests", state: "warning",
+    windowKey: "2026-01-01", usage: 900, limit: 1000, usageRatio: 0.9, current: true,
+    firstSeenAt: now, lastSeenAt: now, emailStatus: "pending", ctaKind: "checkout",
+  }),
+  checkoutAdmissions: (ctx: any, userId, _email, now) => ctx.db.insert("checkoutAdmissions", {
+    userId, windowStart: now, count: 1,
+  }),
+  checkoutSessionEvents: (ctx: any, userId, _email, now) => ctx.db.insert("checkoutSessionEvents", {
+    userId, productId: "pdt_coverage", anonymous: false, occurredAt: now,
+  }),
+  followedCountriesUserMeta: (ctx: any, userId, _email, now) => ctx.db.insert("followedCountriesUserMeta", {
+    userId, count: 1, updatedAt: now,
+  }),
+  agentFeedback: (ctx: any, userId, _email, now) => ctx.db.insert("agentFeedback", {
+    kind: "bug", surfaceType: "mcp_tool", surfaceName: "get_coverage", summary: "coverage row",
+    redacted: false, fingerprint: "f".repeat(64), retryKey: "a".repeat(64),
+    reporterKey: `principal:${userId}`, authKind: "keyed", principalId: userId,
+    status: "received", receivedAt: now, updatedAt: now,
+  }),
+  enterpriseMembers: async (ctx: any, userId, email, now) => {
+    const accountId = await ctx.db.insert("enterpriseAccounts", {
+      name: "Coverage Corp", contractStart: now, contractEnd: now + 86_400_000,
+      dailyRequestAllowance: 1000, perMinuteBurst: 60,
+      monthlyInputTokens: 1_000_000, monthlyOutputTokens: 1_000_000,
+      overagePerThousandRequestsUsd: 1, overagePerMillionInputTokensUsd: 1,
+      overagePerMillionOutputTokensUsd: 1, breakerMultiple: 2, seatCap: 5,
+      allowedProviders: ["openrouter"], createdAt: now, updatedAt: now,
+    });
+    return ctx.db.insert("enterpriseMembers", {
+      accountId, userId, email, status: "active", role: "member", updatedAt: now,
+    });
+  },
+  proBusinessUpgradeAdmissions: (ctx: any, userId, _email, now) => ctx.db.insert("proBusinessUpgradeAdmissions", {
+    userId, windowStart: now, count: 1,
+  }),
+  alertScopeNotices: async (ctx: any, userId, _email, now) => {
+    const ruleId = await ctx.db.insert("alertRules", {
+      userId, variant: "scope", enabled: true, eventTypes: ["conflict"],
+      sensitivity: "high", channels: ["email"], updatedAt: now,
+    });
+    return ctx.db.insert("alertScopeNotices", {
+      userId, ruleId, variant: "scope", outcome: "scoped", countries: ["US"], createdAt: now,
+      emailStatus: "pending",
+    });
+  },
+};
+
+const SEEDED_PERSONAL_TABLES = PERSONAL_DELETE_TABLES.filter((table) => table !== "users");
+
+/** Rows still addressable for `userId`, by the same field the walk indexes on. */
+async function personalRowCounts(t: ReturnType<typeof convexTest>, userId: string) {
+  return t.run(async (ctx: any) => {
+    const counts: Record<string, number> = {};
+    for (const table of SEEDED_PERSONAL_TABLES) {
+      const field = table === "userReferralCredits" ? "referrerUserId"
+        : table === "agentFeedback" ? "principalId"
+          : "userId";
+      const rows = await ctx.db.query(table).collect();
+      counts[table] = rows.filter((row: Record<string, unknown>) => row[field] === userId).length;
+    }
+    return counts;
+  });
+}
+
+async function seedEveryPersonalTable(
+  t: ReturnType<typeof convexTest>,
+  userId: string,
+  email: string,
+) {
+  const now = Date.now();
+  await t.run(async (ctx: any) => {
+    for (const table of SEEDED_PERSONAL_TABLES) {
+      await PERSONAL_ROW_SEEDERS[table](ctx, userId, email, now);
+    }
+  });
+}
+
+describe("account deletion erases every personal table", () => {
+  test("the seeder map covers PERSONAL_DELETE_TABLES exactly", () => {
+    // The point of the suite: a table appended to the walk without a row here
+    // would otherwise be "covered" by a test that never stores anything in it.
+    expect(Object.keys(PERSONAL_ROW_SEEDERS).sort()).toEqual([...SEEDED_PERSONAL_TABLES].sort());
+  });
+
+  test("self-delete empties every personal table for the caller and no one else", async () => {
+    const t = await makeT();
+    await seedUser(t, USER_A);
+    await seedUser(t, USER_B);
+    await seedEveryPersonalTable(t, USER_A.subject, USER_A.email);
+    await seedEveryPersonalTable(t, USER_B.subject, USER_B.email);
+
+    // Every table starts non-empty, or an "erased" assertion proves nothing.
+    const before = await personalRowCounts(t, USER_A.subject);
+    const unseeded = Object.entries(before).filter(([, count]) => count === 0).map(([table]) => table);
+    expect(unseeded).toEqual([]);
+
+    await t.withIdentity(USER_A).action(api.accountDeletion.erase.requestAccountDeletion, {});
+    await drainErase(t);
+
+    const after = await personalRowCounts(t, USER_A.subject);
+    const retained = Object.entries(after).filter(([, count]) => count > 0).map(([table]) => table);
+    expect(retained).toEqual([]);
+
+    // The other account is untouched: the walk is scoped, not a table wipe.
+    const other = await personalRowCounts(t, USER_B.subject);
+    const lost = Object.entries(other).filter(([, count]) => count === 0).map(([table]) => table);
+    expect(lost).toEqual([]);
   });
 });
 
