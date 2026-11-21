@@ -37,6 +37,7 @@
       "scripts/generate-inventory-facts.mjs",
       "scripts/lib/classify-digest-request.cjs",
       "scripts/lib/digest-stale-gate.cjs",
+      "scripts/lib/headline-language.cjs",
       "scripts/lib/geo-coord.mjs",
       "scripts/lib/jev-classify-relay.cjs",
       "scripts/lib/llm-model-policy.cjs",
