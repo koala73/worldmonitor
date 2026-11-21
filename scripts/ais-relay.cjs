@@ -5290,7 +5290,7 @@ Levels: critical, high, medium, low, info
 Categories: conflict, protest, disaster, diplomatic, economic, terrorism, cyber, health, environmental, military, crime, infrastructure, tech, general
 
 Guidelines for LEVEL assignment (geopolitical scope required for critical):
-- critical: Active military strikes with international implications, geopolitical mass-casualty events (10+ killed in conflict/terrorism/state action), ceasefire agreements/collapses, nuclear incidents, pandemic declarations, coups, strait/waterway closures
+- critical: Active military strikes with international implications, geopolitical mass-casualty events (10+ killed in conflict/terrorism/state action), ceasefire agreements/collapses, nuclear incidents, pandemic declarations, coups, strait/waterway closures that have taken effect
 - high: Armed conflict updates, major diplomatic actions, sanctions packages, significant natural disasters, blockades, terrorist attacks, domestic mass-casualty events (mass shootings, industrial disasters)
 - medium: Ongoing conflict analysis, economic impact reports, protest movements, regional policy changes, military exercises
 - low: Diplomatic meetings, trade discussions, humanitarian aid, election updates, peacekeeping deployments
@@ -5301,6 +5301,8 @@ Key distinction: "critical" requires GEOPOLITICAL scope — events that destabil
 - "23 killed in fireworks factory explosion in India" → industrial accident → high
 - "700 killed in Sudan drone strikes" → geopolitical mass-casualty in active civil war → critical
 - "Iran closes Strait of Hormuz" → global trade disruption → critical
+- "Iran sets its terms for reopening Hormuz" → terms or threats, not a closure or an attack → high
+- "Russia says its missiles destroyed a Ukrainian grain port" → an attack, reported by the attacker → critical
 - "Guardian view on ceasefire: need real peace" → editorial → info
 - "Trump's obsession with energy" → opinion/analysis → info
 - "Man killed his estranged wife" → domestic crime → info
