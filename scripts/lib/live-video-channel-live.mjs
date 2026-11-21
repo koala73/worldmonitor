@@ -217,12 +217,14 @@ export async function fetchChannelLivePage(channelId, {
   } catch (error) {
     return unreadable(channelId, 'fetch-error', error.message);
   }
+  // One deadline for the whole direct read, so a redirect cannot restart it. The proxy path times each hop itself.
+  const directDeadline = proxy ? null : AbortSignal.timeout(timeoutMs);
   const get = async (target) => {
     if (proxy) {
       const response = await proxyFetchImpl(target, proxy, { accept: 'text/html', headers: PAGE_HEADERS, maxResponseBytes: maxBytes, timeoutMs });
       return { ok: response.ok, status: response.status, location: response.location || '', body: () => Buffer.from(response.buffer ?? '').toString('utf8') };
     }
-    const response = await fetchImpl(target, { headers: { Accept: 'text/html', ...PAGE_HEADERS }, redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) });
+    const response = await fetchImpl(target, { headers: { Accept: 'text/html', ...PAGE_HEADERS }, redirect: 'manual', signal: directDeadline });
     return { ok: response.ok, status: response.status, location: response.headers?.get?.('location') || '', body: () => cappedText(response, maxBytes) };
   };
   try {

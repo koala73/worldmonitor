@@ -296,6 +296,17 @@ describe('fetchChannelLivePage', () => {
       for (const call of loop.calls) assert.equal(call.init.redirect, 'manual');
     });
 
+    it('gives the whole direct read one deadline, redirects included', async () => {
+      const fetchImpl = (url, init) => new Promise((resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true });
+        if (url === channelLiveUrl(CHANNEL)) setTimeout(() => resolve(response(302, '', { location: 'https://www.youtube.com/stalls' })), 150);
+      });
+      const startedAt = Date.now();
+      const result = await fetchChannelLivePage(CHANNEL, { fetchImpl, timeoutMs: 200 });
+      assert.equal(result.reason, 'timeout');
+      assert.ok(Date.now() - startedAt < 300, `a stalled redirect must not restart the 200 ms deadline (took ${Date.now() - startedAt} ms)`);
+    });
+
     it('refuses a page larger than the byte cap', async () => {
       const result = await fetchChannelLivePage(CHANNEL, { fetchImpl: direct(response(200, livePage())).fetchImpl, maxBytes: 100 });
       assert.deepEqual([result.status, result.reason], ['unreadable', 'fetch-error']);
