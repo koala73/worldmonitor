@@ -18,14 +18,24 @@ import {
 } from '@/services/velocity';
 import type { ClusteredEvent } from '@/types';
 
-function cluster(primaryTitle: string): ClusteredEvent {
+function cluster(primaryTitle: string, ...otherTitles: string[]): ClusteredEvent {
   const now = new Date();
+  const allItems = [primaryTitle, ...otherTitles].map((title, i) => ({
+    title, source: `Source ${i}`, link: `https://source-${i}.example/news`, pubDate: now, isAlert: false,
+  }));
   return {
+    id: 'cluster',
     primaryTitle,
-    allItems: [],
+    primarySource: allItems[0]!.source,
+    primaryLink: allItems[0]!.link,
+    allItems,
+    sourceCount: allItems.length,
+    uniquePublisherCount: allItems.length,
+    topSources: [],
+    isAlert: false,
     firstSeen: now,
     lastUpdated: now,
-  } as unknown as ClusteredEvent;
+  };
 }
 
 describe('sentiment word sets', () => {
@@ -54,10 +64,8 @@ describe('sentiment word sets', () => {
 });
 
 describe('analyzeSentiment', () => {
-  it('counts surge as the market-rise term its list places it among', () => {
-    expect(analyzeSentiment('markets surge').score).toBe(1);
-    // Two rise words clear the ±1 label threshold.
-    expect(analyzeSentiment('markets surge and rally').sentiment).toBe('positive');
+  it('leaves surge neutral in the keyword scorer', () => {
+    expect(analyzeSentiment('markets surge')).toEqual({ sentiment: 'neutral', score: 0 });
   });
 
   it('still reads the market-fall run as negative', () => {
@@ -76,8 +84,17 @@ describe('analyzeSentiment', () => {
 });
 
 describe('calculateVelocity sentiment', () => {
+  it('keeps repeated reports of a cholera surge neutral', () => {
+    const metrics = calculateVelocity(cluster(
+      'Cholera surge in Haiti, says National Centre for Disease Control',
+      'Haiti sees surge in cholera cases',
+      'Doctors report cholera surge across Haiti',
+    ));
+    expect(metrics).toMatchObject({ sentiment: 'neutral', sentimentScore: 0 });
+  });
+
   it('carries the score through to the metrics the panel renders', () => {
-    const positive = calculateVelocity(cluster('Markets surge as rally and recovery take hold'));
+    const positive = calculateVelocity(cluster('Markets rally as growth and recovery take hold'));
     expect(positive.sentiment).toBe('positive');
     // Clears the badge threshold NewsPanel checks.
     expect(positive.sentimentScore).toBeGreaterThan(2);

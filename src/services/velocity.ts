@@ -6,14 +6,8 @@ const HOUR_MS = 60 * 60 * 1000;
 const ELEVATED_THRESHOLD = 3;
 const SPIKE_THRESHOLD = 6;
 
-// The two sets MUST stay disjoint. analyzeSentiment tests both without an
-// else, so a word in both adds -1 and +1 and contributes nothing — it reads
-// as a tuned weight while being silently inert. `surge` was in both: in this
-// list it sat at the end of the market-fall run (`plunge`, `plummet`), where
-// a rise word does not belong, while in POSITIVE_WORDS it is one of six
-// market-rise synonyms (`rise`, `boost`, `rally`, `soar`, `jump`). It is kept
-// there and dropped here. tests/velocity-sentiment.test.mts pins the
-// invariant so the next addition cannot reintroduce the shape.
+// Keep the sets disjoint. Omit context-dependent terms such as "surge":
+// both markets and disease cases can surge.
 export const NEGATIVE_WORDS = new Set([
   'war', 'attack', 'killed', 'death', 'dead', 'crisis', 'crash', 'collapse',
   'threat', 'danger', 'escalate', 'escalation', 'conflict', 'strike', 'bomb',
@@ -26,7 +20,7 @@ export const NEGATIVE_WORDS = new Set([
 
 export const POSITIVE_WORDS = new Set([
   'peace', 'deal', 'agreement', 'breakthrough', 'success', 'win', 'gains',
-  'recovery', 'growth', 'rise', 'surge', 'boost', 'rally', 'soar', 'jump',
+  'recovery', 'growth', 'rise', 'boost', 'rally', 'soar', 'jump',
   'ceasefire', 'treaty', 'alliance', 'partnership', 'cooperation', 'progress',
   'release', 'released', 'freed', 'rescue', 'saved', 'approved', 'passes',
   'record', 'milestone', 'historic', 'landmark', 'celebrates', 'victory',
