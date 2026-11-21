@@ -53,10 +53,11 @@ function maskEmail(email: string): string {
 /**
  * Stamp the PRO-launch wave on a single `registrations` row by
  * normalizedEmail. Idempotent: returns `alreadyStamped: true` if the
- * row already carries the same wave label, `notFound` if no
- * registration matches the email (e.g., manually-imported Resend
- * contacts that never came through the waitlist), or `stamped: true`
- * on a successful patch.
+ * row already carries the same wave label, `ownedByOtherWave` if a
+ * different wave already owns it (left alone — see the mirror in
+ * `audienceWaveExport.ts`), `notFound` if no registration matches the
+ * email (e.g., manually-imported Resend contacts that never came through
+ * the waitlist), or `stamped: true` on a successful patch.
  *
  * Internal because callers are server-side actions only — this is not
  * a user-facing mutation.
@@ -77,8 +78,20 @@ export const _stampWaveByNormalizedEmail = internalMutation({
     if (!row) {
       return { result: "notFound" as const };
     }
-    if (row.proLaunchWave === waveLabel) {
-      return { result: "alreadyStamped" as const };
+    if (row.proLaunchWave !== undefined) {
+      // Ownership, not just idempotency. The production stamper in
+      // `waveRuns._markContactPushed` guards on ANY existing value ("a late
+      // worker must preserve ownership and the original assignment time"),
+      // and `_cleanupDiscardedWavePickedContacts` only unstamps a row whose
+      // label still equals its own run's. Overwriting a later wave's stamp
+      // therefore sends the contact twice AND puts it out of reach of that
+      // unstamp, while rewriting `proLaunchWaveAssignedAt` to the wrong send
+      // time.
+      return {
+        result: row.proLaunchWave === waveLabel
+          ? ("alreadyStamped" as const)
+          : ("ownedByOtherWave" as const),
+      };
     }
     await ctx.db.patch(row._id, {
       proLaunchWave: waveLabel,
@@ -102,6 +115,7 @@ type BackfillStats = {
   fetched: number;
   stamped: number;
   alreadyStamped: number;
+  ownedByOtherWave: number;
   notFound: number;
   failed: number;
 };
@@ -140,6 +154,7 @@ export const backfillCanary250 = internalAction({
       fetched: 0,
       stamped: 0,
       alreadyStamped: 0,
+      ownedByOtherWave: 0,
       notFound: 0,
       failed: 0,
     };
@@ -201,7 +216,12 @@ export const backfillCanary250 = internalAction({
           );
           if (out.result === "stamped") stats.stamped++;
           else if (out.result === "alreadyStamped") stats.alreadyStamped++;
-          else if (out.result === "notFound") {
+          else if (out.result === "ownedByOtherWave") {
+            stats.ownedByOtherWave++;
+            console.log(
+              `[backfillCanary250] ${maskEmail(normalizedEmail)} already belongs to a later wave; left alone`,
+            );
+          } else if (out.result === "notFound") {
             stats.notFound++;
             // Some segment members may have been added directly via the
             // Resend dashboard rather than coming through the waitlist
